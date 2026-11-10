@@ -50,6 +50,10 @@ from omnimarket.nodes.node_work_state_projection_effect import runtime_work_stat
 pytestmark = pytest.mark.unit
 
 SOURCES = tuple(EnumWorkStateSource)
+COMMITMENT_OVERLAY = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_commitment_ledger_compute/overlay.example.yaml"
+)
 
 
 @pytest.fixture
@@ -368,6 +372,7 @@ def env(home: Path) -> dict[str, str]:
         "OMNI_HOME": str(home),
         "ONEX_WORK_STATE_PLANS_ROOT": str(home),
         "ONEX_REMOTE_LANE_DIR": str(home / "remote-lanes"),
+        "ONEX_COMMITMENT_OVERLAY": str(COMMITMENT_OVERLAY),
     }
 
 
@@ -450,14 +455,17 @@ def test_one_stalled_source_is_stale_and_the_others_still_read(
 def test_a_stalled_source_does_not_hold_back_the_others(
     rules, now, home, env, release: threading.Event
 ) -> None:
-    """The stalled ledger takes its whole budget; the run does not take the sum of the budgets."""
+    """The stalled ledger takes its whole budget; the run does not take the sum of the budgets.
+
+    The commitments source reads the same ledger on its own budget, so it stalls with it and is given the same wait.
+    """
     started = time.monotonic()
     request = runtime_work_state.build_request(
         now,
         home,
         env,
         FakeLedger(release),
-        short_budgets(rules, ledger=0.4),
+        short_budgets(rules, ledger=0.4, commitments=0.4),
         store=InMemorySnapshotStore(),
     )
     waited = time.monotonic() - started

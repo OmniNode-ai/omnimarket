@@ -159,8 +159,13 @@ runtime:
     min_alive: {ledger: 100, landing-decisions: 100, lab-alarm: 12}
     min_tick_samples: 12
     level_max_age_minutes: 90
-    ledger_env: ONEX_LEDGER_PATH
-    ledger_archive_dirname: archive
+    # The ledger is on the bus: counts come from typed row reads of the kinds below, one window of ledger_chunk_hours at a time,
+    # through the command the variable holds. A failed or truncated read leaves the ledger keys unread; nothing reads a file.
+    ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+    ledger_read_timeout_seconds: 120
+    ledger_row_limit: 5000
+    ledger_row_kinds: [CLAIM, TERMINAL, FRICTION, STATUS]
+    ledger_chunk_hours: 24
     ledger_lane_outcomes: [done, handed-off, partial, blocked, failed, skipped-owned]
     friction_umbrella_ticket: OMN-17427
     friction_rules_node: node_friction_rollup_compute

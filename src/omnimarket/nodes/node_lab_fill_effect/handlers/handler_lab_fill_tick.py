@@ -48,7 +48,11 @@ from datetime import UTC, datetime
 from omnimarket.models.cloud_session_placement import (
     ModelCloudSessionPlacementRequest,
 )
-from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaunch
+from omnimarket.models.lab_fill import (
+    PUSH_AND_REPORT_LINE,
+    ModelLabFillApprovedRow,
+    ModelLabFillLaunch,
+)
 from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     HandlerCloudSessionPlacement,
 )
@@ -218,6 +222,7 @@ def _brief(
         + (f"Lane kind: {lane_kind}\n" if lane_kind else "")
         + "\n"
         f"{marker}\n\n"
+        f"{PUSH_AND_REPORT_LINE}\n"
         f"Landing: hand the PR to {request.landing_lane} with needs=land; "
         "never merge or arm it by hand.\n"
     )
@@ -311,6 +316,7 @@ def _diagnose_brief(
         f"lane={request.authority_lane}; parent ticket {request.parent_ticket}.\n"
         f"Parent: {request.parent}. Ticket: {request.parent_ticket}. Repo: none.\n"
         "Opens PR in: none\n\n"
+        f"{PUSH_AND_REPORT_LINE}\n"
         f"Lab-fill ticks with free slots placed no lane for {alarm.streak} ticks running.\n"
         f"run_key={request.run_key} fire_id={request.fire_id} "
         f"free_slots={result.free_slots} placed={result.placed} outcome={result.outcome}\n"
@@ -760,6 +766,8 @@ class HandlerLabFillTick:
                 operator_id=request.operator_id,
                 window_end_epoch_s=request.window_end_epoch_s,
                 lanes_left=max(1, lanes_left),
+                fact_hosts=request.fact_hosts,
+                host_reach=request.host_reach,
             )
         )
 

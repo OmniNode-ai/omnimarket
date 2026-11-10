@@ -85,8 +85,22 @@ class ModelHistorySources(_Frozen):
         ge=1,
         description="The throughput tick log needs this many samples in the window for a per-tick mean to count.",
     )
-    ledger_env: str
-    ledger_archive_dirname: str
+    ledger_read_command_env: str = Field(
+        description="The variable that holds the bus read command; the ledger is read through the bus, never from a file."
+    )
+    ledger_read_timeout_seconds: int = Field(ge=1, le=600)
+    ledger_row_limit: int = Field(
+        ge=1,
+        description="Rows one bus read may return; an answer longer than this is refused as truncated, never counted short.",
+    )
+    ledger_row_kinds: tuple[str, ...] = Field(
+        min_length=1,
+        description="The row kinds the counts read; a record of any of them marks the ledger as having recorded.",
+    )
+    ledger_chunk_hours: int = Field(
+        ge=1,
+        description="Each bus read covers this many hours, so no answer outgrows its limit.",
+    )
     ledger_lane_outcomes: tuple[str, ...]
     friction_umbrella_ticket: str
     friction_rules_node: str
