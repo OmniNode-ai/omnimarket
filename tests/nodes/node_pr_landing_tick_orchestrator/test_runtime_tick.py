@@ -4,7 +4,8 @@
 
 The records come through the reader factory the overlay selects (a fake reader here; the bus reader in the
 unit). Golden: a cutover record compares, writes nothing and leaves a start and a success in the journal.
-Error: a record that does not validate ends the pass unread. Control: act mode in the overlay is refused
+Error: a record that does not validate is skipped with a typed row and the pass reads the rest; a reader
+that raises ends the pass unread. Control: act mode in the overlay is refused
 before any record is read, and without the cutover setting every record fails with no recorded decision.
 """
 
@@ -116,15 +117,63 @@ def test_golden_chain_observe_pass_compares_the_cutover_record(tmp_path: Path) -
     assert phases[-1].endswith("success")
 
 
-def test_error_chain_a_record_that_does_not_validate_is_unread(tmp_path: Path) -> None:
-    _, repository = _cutover()
-    reader = _Reader(['{"tick": "not a record"}'])
+def _with_unknown_pr_field(record: str) -> str:
+    """The record another producer shape writes: one field on a pull request this reader does not know."""
+    data = json.loads(record)
+    data["facts"]["prs"][0]["field_this_reader_does_not_know"] = {"read": True}
+    return json.dumps(data)
+
+
+def test_error_chain_a_record_that_does_not_validate_is_skipped_with_a_typed_row(
+    tmp_path: Path,
+) -> None:
+    """The shared record topic holds a record of another shape: it is skipped and named, the rest is read."""
+    snap, repository = _cutover()
+    good = _record(snap)
+    reader = _Reader(['{"tick": "not a record"}', _with_unknown_pr_field(good), good])
     code, line = run_once(
         _overlay(tmp_path, repository), topic_reader_factory=lambda _selection: reader
     )
+    assert code == 0, line
+    assert line["status"] == "compared"
+    assert line["records"] == 1
+    skipped = line["skipped"]
+    assert isinstance(skipped, list)
+    assert [row["position"] for row in skipped] == [0, 1]
+    assert {row["reason"] for row in skipped} == {"unparseable_record"}
+    assert (
+        "facts.prs.0.field_this_reader_does_not_know: extra_forbidden"
+        in (skipped[1]["detail"])
+    )
+
+
+def test_error_chain_a_reader_that_raises_leaves_the_pass_unread(
+    tmp_path: Path,
+) -> None:
+    """Only the reader itself failing ends the pass unread; a bad record never does."""
+    _, repository = _cutover()
+
+    class _Broken:
+        def read(self, max_records: int, timeout_s: float) -> Iterable[str]:
+            raise ConnectionError("broker unreachable")
+
+    code, line = run_once(
+        _overlay(tmp_path, repository),
+        topic_reader_factory=lambda _selection: _Broken(),
+    )
     assert code == 3
     assert line["status"] == "source_unread"
-    assert line["detail"] == "ValidationError"
+    assert line["detail"] == "ConnectionError"
+
+
+def test_golden_chain_a_clean_read_names_no_skipped_record(tmp_path: Path) -> None:
+    snap, repository = _cutover()
+    reader = _Reader([_record(snap)])
+    code, line = run_once(
+        _overlay(tmp_path, repository), topic_reader_factory=lambda _selection: reader
+    )
+    assert code == 0, line
+    assert line["skipped"] == []
 
 
 def test_control_act_mode_is_refused_before_any_read(tmp_path: Path) -> None:
