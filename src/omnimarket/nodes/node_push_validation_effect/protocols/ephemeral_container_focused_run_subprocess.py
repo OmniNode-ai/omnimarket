@@ -57,6 +57,8 @@ _ORPHAN_AGE_MINUTES = 60
 # A Linux host has no vm.loadavg sysctl; its one-minute load is the first field
 # of this file. The macOS lab hosts have no such file and use the sysctl.
 PROC_LOADAVG = "/proc/loadavg"
+PROC_MEMINFO = "/proc/meminfo"
+PROC_VMSTAT = "/proc/vmstat"
 
 
 class _SshWallClockExceededError(FocusedTestRunInfraError):
@@ -76,6 +78,43 @@ def _required(name: str) -> str:
 def _mirror_name(repo: str) -> str:
     owner, name = repo.split("/", 1)
     return f"{owner}__{name}.git"
+
+
+def parse_admission_probe(out: str) -> ModelHostAdmission:
+    """The capacity reading from the admission probe's output.
+
+    Lines: running task containers, one-minute load, logical cores, page size, then ``MemTotal:`` and
+    ``MemAvailable:`` in kB and two samples of ``pswpin`` and ``pswpout`` a second apart. A host that
+    gives no memory reading is refused as unreadable, never judged on load alone; no swap sample is
+    reported as None and never judged.
+    """
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    try:
+        running = int(lines[0])
+        load = float(lines[1].strip("{} ").split()[0])
+        cores = int(lines[2])
+        page_kb = int(lines[3]) / 1024
+        keyed: dict[str, list[int]] = {}
+        for line in lines[4:]:
+            key, _, value = line.partition(" ")
+            keyed.setdefault(key, []).append(int(value))
+        mem_total_kb = keyed["MemTotal:"][0]
+        mem_avail_kb = keyed["MemAvailable:"][0]
+    except (IndexError, KeyError, ValueError) as exc:
+        raise FocusedTestRunInfraError(f"unreadable admission probe: {out!r}") from exc
+    swap_in = swap_out = None
+    if len(keyed.get("pswpin", [])) == 2 and len(keyed.get("pswpout", [])) == 2:
+        swap_in = (keyed["pswpin"][1] - keyed["pswpin"][0]) * page_kb
+        swap_out = (keyed["pswpout"][1] - keyed["pswpout"][0]) * page_kb
+    return ModelHostAdmission(
+        running_task_containers=running,
+        load_one_minute=load,
+        logical_cores=cores,
+        mem_total_gb=mem_total_kb / 1024 / 1024,
+        mem_avail_gb=mem_avail_kb / 1024 / 1024,
+        swap_in_kb_s=swap_in,
+        swap_out_kb_s=swap_out,
+    )
 
 
 class EphemeralContainerFocusedRunSubprocess:
@@ -134,19 +173,17 @@ class EphemeralContainerFocusedRunSubprocess:
     def admission(self) -> ModelHostAdmission:
         docker = self._q(self.docker_bin())
         proc = self._q(PROC_LOADAVG)
+        meminfo = self._q(PROC_MEMINFO)
+        vmstat = self._q(PROC_VMSTAT)
+        swap = f"awk '/^pswp(in|out) / {{print $1, $2}}' {vmstat}"
         out = self._ssh(
             f"{docker} ps -q --filter label={DTL_LABEL_KEY} | wc -l; "
-            f"if [ -r {proc} ]; then cat {proc}; else sysctl -n vm.loadavg; fi"
+            f"if [ -r {proc} ]; then cat {proc}; else sysctl -n vm.loadavg; fi; "
+            "getconf _NPROCESSORS_ONLN; getconf PAGESIZE; "
+            f"awk '/^(MemTotal|MemAvailable):/ {{print $1, $2}}' {meminfo}; "
+            f"{swap}; sleep 1; {swap}"
         ).stdout.decode()
-        lines = [line.strip() for line in out.splitlines() if line.strip()]
-        try:
-            running = int(lines[0])
-            load = float(lines[1].strip("{} ").split()[0])
-        except (IndexError, ValueError) as exc:
-            raise FocusedTestRunInfraError(
-                f"unreadable admission probe: {out!r}"
-            ) from exc
-        return ModelHostAdmission(running_task_containers=running, load_one_minute=load)
+        return parse_admission_probe(out)
 
     def sweep_orphans(self) -> None:
         root = self._q(self.task_root())
