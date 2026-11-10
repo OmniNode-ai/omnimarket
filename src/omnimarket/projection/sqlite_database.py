@@ -123,7 +123,9 @@ CREATE TABLE IF NOT EXISTS delegation_events (
     -- OMN-19448: nullable requested model and terminal timings (0058).
     requested_model         TEXT,
     queue_wait_ms           INTEGER,
-    execution_ms            INTEGER
+    execution_ms            INTEGER,
+    -- OMN-18534: nullable total inference calls of the terminal (0068).
+    turn_count              INTEGER
 )
 """
 
