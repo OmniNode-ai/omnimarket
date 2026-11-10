@@ -8,11 +8,18 @@ lab_runner_labels:
 # The org read is judged stale past this age and the reading is then UNKNOWN. The bound is the
 # plan's 30-minute read bar (section 7.1, M1 read within 1,800 s).
 max_age_seconds: 1800
-# The private merge-queue pool (OMN-23156). The operator places the group; the installer's declared unit registers the
-# queue runners into it. The reading is WORKING for the pool only when the group's visibility reads private, no public
-# repository is allowed, the expected number of runners with this name prefix are online in it, and no runner with the
-# prefix is registered in another group.
+# The private merge-queue pools (OMN-23156, OMN-23387). The operator places the group; the installer's declared unit
+# registers the queue runners into it. Every pool is one host's runners; the pools must sit on at least min_hosts hosts, and
+# a declaration that rests on fewer is refused when the settings load. The reading is WORKING for the pools only when the
+# group's visibility reads private, no public repository is allowed, every pool has its expected runners online in it,
+# no runner of a pool is registered in another group, and the online runners sit on at least min_hosts hosts.
 private_queue:
   group_name: omni-private-queue
-  runner_name_prefix: hp053-ci-mq-runner
-  expected_online_members: 4
+  pools:
+    - runner_name_prefix: hp053-ci-mq-runner
+      host: h053
+      expected_online_members: 4
+    - runner_name_prefix: hp051-ci-mq-runner
+      host: h051
+      expected_online_members: 4
+  min_hosts: 2

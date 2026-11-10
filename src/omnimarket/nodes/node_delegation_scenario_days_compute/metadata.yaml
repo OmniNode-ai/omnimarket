@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_scenario_days_compute
+version: "0.1.0"
+description: "Consecutive green UTC days of each delegation readiness scenario, from its recorded scheduled results"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_scenario_days_compute: "omnimarket.nodes.node_delegation_scenario_days_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "readiness", "OMN-23171"]
+pack: "pipeline"
+display_name: "Delegation Scenario Green Days"
+node_role: "compute"
