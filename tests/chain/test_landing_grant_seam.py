@@ -21,7 +21,8 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Final
 
 import pytest
-from omnibase_infra.tools.contract_topic_extractor import ContractTopicExtractor
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
+from omnibase_infra.runtime.auto_wiring.handler_wiring import _contract_provision_topics
 
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
 from tests.chain.landing_chain import (
@@ -180,21 +181,20 @@ def test_topics_equal_the_node_contract() -> None:
 def test_every_granted_topic_is_provisioned_by_a_node_contract() -> None:
     """A topic the principal is granted exists on the broker, or the chain times out.
 
-    The provisioner creates what the contracts declare in ``consumed_events``,
-    ``published_events`` and ``event_bus``, and not what ``runtime_dispatch`` names. The
-    command topic is declared by the decision node and its success terminal by the
-    ledger mirror node, which consumes it. A grant on a topic no contract declares
-    is a grant on a topic that was never created.
+    The dev runtime runs with ONEX_BOOT_UNIVERSE_PROVISION=0, so it creates a node's
+    topics only through the per-contract provisioning, which reads the contract's
+    ``event_bus`` section (subscribe, publish and dlq topics) and not
+    ``consumed_events``, ``published_events`` or ``runtime_dispatch``. This reads the
+    decision node's contract through that same path. A grant on a topic it does not
+    provision is a grant on a topic that was never created.
     """
-    decision_dir = DECISION_CONTRACT.parent
-    mirror_dir = decision_dir.parent / "node_work_ledger_landing_mirror"
-    provisioned = {
-        entry.topic
-        for node_dir in (decision_dir, mirror_dir)
-        for entry in ContractTopicExtractor().extract(node_dir)
-    }
+    manifest = discover_contracts_from_paths([DECISION_CONTRACT])
+    assert len(manifest.contracts) == 1, (
+        f"the decision contract was not discovered: {manifest.errors} {manifest.skips}"
+    )
+    provisioned = set(_contract_provision_topics(manifest.contracts[0]))
     assert provisioned >= GRANTED_TOPICS, (
-        f"granted but declared by no node contract: {sorted(GRANTED_TOPICS - provisioned)}"
+        f"granted but provisioned by no node contract: {sorted(GRANTED_TOPICS - provisioned)}"
     )
 
 

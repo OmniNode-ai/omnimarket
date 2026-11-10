@@ -1,22 +1,22 @@
 schema_version: 1.0.0
 ticket_id: OMN-23459
 title: The landing decision failure mailbox is created on the dev message system and the dev lane account may use it
-summary: The landing decision node publishes its failure terminal on onex.evt.omnimarket.pr-landing-decision-failed.v1. The platform topic provisioner reads consumed_events, published_events and event_bus, not runtime_dispatch, so the topic was created by nothing. The decision node contract now declares it under published_events (no event_bus, no handler routing added), and the dev-lane principal's grants in the lab infrastructure declaration cover it (a separate change in that repository).
+summary: The landing decision node publishes its failure terminal on onex.evt.omnimarket.pr-landing-decision-failed.v1. The dev runtime runs with ONEX_BOOT_UNIVERSE_PROVISION=0 and its per-contract provisioning reads only the contract's event_bus section (subscribe, publish and dlq topics), the section that creates the topics of node_pr_landing_github_effect; consumed_events, published_events and runtime_dispatch create nothing there. The decision node contract now declares its command, success and failure topics under event_bus, and the dev-lane principal's grants in the lab infrastructure declaration cover them (a separate change in that repository).
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
 - topics
 requirements:
 - id: req-omn23459-failure-terminal-provisioned
-  statement: The failure terminal of the landing decision node is declared where the topic provisioner reads it, and the dev-lane grants seam test holds the granted topics to what a node contract provisions.
+  statement: The command and both terminals of the landing decision node are declared where the dev runtime's per-contract provisioning reads them (event_bus), and the dev-lane grants seam test holds the granted topics to what that provisioning yields.
   acceptance:
   - id: AC1
-    statement: 'AC1: the topic provisioner (ContractTopicExtractor) extracts onex.evt.omnimarket.pr-landing-decision-failed.v1 from the decision node contract and no event_bus is added -- falsifier: tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py test_provisioner_extracts_the_failure_terminal fails at the merge base, where the node declares no published_events'
+    statement: 'AC1: the dev runtime per-contract provisioning (_contract_provision_topics over the discovered contract) yields the command, success and failure topics of the decision node -- falsifier: tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py test_dev_runtime_provisions_all_three_topics fails at the merge base, where the node declares no event_bus'
   - id: AC2
-    statement: 'AC2: every topic the seam test lists as granted to the dev-lane principal, the failure terminal included, is provisioned by a node contract -- falsifier: tests/chain/test_landing_grant_seam.py test_every_granted_topic_is_provisioned_by_a_node_contract fails at the merge base'
+    statement: 'AC2: every topic the seam test lists as granted to the dev-lane principal is provisioned by the decision node contract through the dev runtime path -- falsifier: tests/chain/test_landing_grant_seam.py test_every_granted_topic_is_provisioned_by_a_node_contract fails at the merge base'
 evidence_requirements:
 - kind: tests
-  description: The failure terminal is extracted by the provisioner (with a control showing the extractor yields nothing for a contract without the declaration)
+  description: The three decision topics are provisioned by the dev runtime's path (with a control showing consumed_events and published_events alone provision nothing)
   command: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py -q --no-cov -p no:randomly
 - kind: tests
   description: The landing grant seam test with the failure terminal among the granted topics
@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23459-failure-terminal-provisioned
-  description: Runs the provisioning test. It passes with the published_events declaration in the decision node contract; at the merge base, where the declaration is absent, test_provisioner_extracts_the_failure_terminal and test_failure_declaration_adds_no_wiring fail.
+  description: Runs the provisioning test. It passes with the event_bus declaration in the decision node contract; at the merge base, where the declaration is absent, test_dev_runtime_provisions_all_three_topics fails.
   source: manual
   binds_ac:
   - AC1
@@ -36,7 +36,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23459-granted-topics-provisioned
-  description: Runs the landing grant seam test. It passes with the failure terminal granted and declared; with the test file laid over the merge base contract, test_every_granted_topic_is_provisioned_by_a_node_contract fails because no node contract there declares the failure terminal.
+  description: Runs the landing grant seam test. It passes with the three topics granted and declared under event_bus; with the test file laid over the merge base contract, test_every_granted_topic_is_provisioned_by_a_node_contract fails because the dev runtime's path provisions none of them.
   source: manual
   binds_ac:
   - AC2
