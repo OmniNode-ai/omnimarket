@@ -13,7 +13,7 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: []
+runtime_profiles: [effects]
 
 description: >
   Reads the floor's bus projections and writes them, with each one's own time, for the floor cycle. The bus is the
@@ -25,21 +25,14 @@ handler:
   input_model: omnimarket.models.floor_projection.ModelFloorProjectionTickRequest
   output_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: read_floor_projections
-      handler:
-        name: HandlerFloorProjectionRead
-        module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read
-      input_model: omnimarket.models.floor_projection.ModelFloorProjectionTickRequest
-      output_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
+# Not a runtime-dispatched handler: HandlerFloorProjectionRead takes the snapshot source and the overlay's projections as constructor parameters, so the node runs through its
+# own CLI as a step of the factory floor publish and never by a runtime subscription.
 
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
-  runtime_profiles: []
+  runtime_profiles: [effects]
   timeout_ms: 60000
   side_effects:
     - listens on each snapshot topic the overlay names for one window and folds the newest publication of each projection

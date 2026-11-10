@@ -13,7 +13,7 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: []
+runtime_profiles: [effects]
 
 description: >
   Publishes the landing controller's owner map as a floor projection with the time it was read.
@@ -24,21 +24,14 @@ handler:
   input_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishRequest
   output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: publish_floor_owner_map
-      handler:
-        name: HandlerFloorOwnerMapPublish
-        module: omnimarket.nodes.node_floor_owner_map_publish_effect.handlers.handler_floor_owner_map_publish
-      input_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishRequest
-      output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
+# Not a runtime-dispatched handler: HandlerFloorOwnerMapPublish takes the controller state reader, the snapshot publisher, the projection id, the producer and the state name as constructor parameters, so the node runs through its
+# own CLI as a step of the factory floor publish and never by a runtime subscription.
 
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
-  runtime_profiles: []
+  runtime_profiles: [effects]
   timeout_ms: 30000
   side_effects:
     - reads the landing controller's state file under the directory the environment names
