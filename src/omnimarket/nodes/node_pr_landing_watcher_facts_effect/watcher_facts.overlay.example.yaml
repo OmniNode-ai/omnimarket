@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# In-memory profile of node_pr_landing_watcher_facts_effect (OMN-23507): the ports are injected.
+backend: inmemory
+repositories:
+  - omnimemory
+owner: OmniNode-ai
+unclassified_red_class: product
+written_topic: onex.evt.omnimarket.pr-landing-watcher-facts-written.v1
+failed_topic: onex.evt.omnimarket.pr-landing-watcher-facts-failed.v1
+floor_piece: 9
+watcher_max_age_seconds: 900
