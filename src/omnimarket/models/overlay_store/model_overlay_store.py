@@ -139,6 +139,12 @@ class ModelOverlayStoreLoadOverlay(_Frozen):
     # A broker named directly, when this deployment's store is not on a declared lane; it wins over bus_lane.
     kafka_bootstrap: str | None = None
     loaded_by: str = Field(min_length=1)
+    # The unit's tick (runtime_overlay_store_load_tick) reads these three: the clone of the overlay home
+    # (relative to the registry root), the branch that clone must sit at the head of, and the overlays it
+    # loads on each run. Unset, the command line is the only way to run the loader.
+    clone_relpath: str | None = Field(default=None, min_length=1)
+    clone_branch: str | None = Field(default=None, min_length=1)
+    overlay_ids: tuple[str, ...] = ()
 
 
 class ModelOverlayReadPolicy(_Frozen):

@@ -100,7 +100,7 @@ CASES = [
         {
             "rejected": False,
             "task_prefix": "[watcher] watcher-1:",
-            "prompt_contains": ["Monitor", "gh pr checks", "watcher-1"],
+            "prompt_contains": ["Monitor", "onex scm pr-checks", "watcher-1"],
             "fence_embeds": [],
             "fence_block_text": "(none",
             "bundle_level": "none",

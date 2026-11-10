@@ -18,9 +18,11 @@ The sequence, and why each step is where it is (the TLA+ model of the loop,
 plan task T1, is the reference: an infrastructure fault is never accepted, and
 every container is removed or left to the next sweep):
 
-1. Admission: at most two task containers on the host and a one-minute load
-   of at most 8 (operator ruling 2026-09-23T21:52:08Z decision (1)), else
-   ``host_busy`` with nothing created.
+1. Admission: at most two task containers on the host (operator ruling
+   2026-09-23T21:52:08Z decision (1)) and the host's measured capacity: load per
+   logical core, free memory share and swap activity against the ``host_capacity``
+   overlay limits, never an absolute load number (OMN-23337); else ``host_busy``
+   with nothing created.
 2. Orphan sweep: labelled containers and task directories older than an hour.
 3. Worktree at the exact commit; a rerun of the same key is refused.
 4. The content-keyed environment image.
@@ -41,6 +43,16 @@ import logging
 import time
 from typing import Literal
 
+from omnimarket.handlers.host_capacity_overlay import load_host_capacity_limits
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_host_capacity import (
+    ModelHostCapacityLimits,
+    ModelHostCapacityReading,
+    ModelHostCapacityRequest,
+)
+from omnimarket.nodes.node_host_capacity_compute.handlers.handler_host_capacity import (
+    HandlerHostCapacity,
+)
 from omnimarket.nodes.node_push_validation_effect.models.model_focused_test_run_receipt import (
     MAX_GATE_OUTPUT_CHARS,
     MAX_JUNIT_BYTES,
@@ -74,7 +86,6 @@ logger = logging.getLogger(__name__)
 
 #: Operator ruling 2026-09-23T21:52:08Z decision (1): at most two at a time.
 MAX_RUNNING_TASK_CONTAINERS = 2
-MAX_LOAD_ONE_MINUTE = 8.0
 #: The effect kills the container by name once the run's timeout plus this has passed.
 WALL_CLOCK_SLACK_SECONDS = 30
 
@@ -129,8 +140,13 @@ def apply_mutation(content: str, find: str, replace: str, path: str) -> str:
 class HandlerFocusedTestRunEffect:
     """EFFECT handler: one focused test run, one throwaway container."""
 
-    def __init__(self, client: ProtocolFocusedTestRunClient | None = None) -> None:
+    def __init__(
+        self,
+        client: ProtocolFocusedTestRunClient | None = None,
+        limits: ModelHostCapacityLimits | None = None,
+    ) -> None:
         self._client = client or EphemeralContainerFocusedRunSubprocess()
+        self._limits = limits
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
@@ -179,16 +195,32 @@ class HandlerFocusedTestRunEffect:
             host = self._client.host_identity()
             task_root = self._client.task_root()
             admission = self._client.admission()
-        except FocusedTestRunInfraError as exc:
+            limits = self._limits or load_host_capacity_limits()
+        except (FocusedTestRunInfraError, NodeOverlayError) as exc:
             return receipt(EnumFocusedTestRunStatus.INFRA_ERROR, f"admission: {exc}")
+        capacity = HandlerHostCapacity().handle(
+            ModelHostCapacityRequest(
+                reading=ModelHostCapacityReading(
+                    host=host,
+                    logical_cores=admission.logical_cores,
+                    mem_total_gb=admission.mem_total_gb,
+                    mem_avail_gb=admission.mem_avail_gb,
+                    swap_in_kb_s=admission.swap_in_kb_s,
+                    swap_out_kb_s=admission.swap_out_kb_s,
+                    load_one_minute=admission.load_one_minute,
+                    running_lanes=admission.running_task_containers,
+                ),
+                limits=limits,
+            )
+        )
         if (
             admission.running_task_containers >= MAX_RUNNING_TASK_CONTAINERS
-            or admission.load_one_minute > MAX_LOAD_ONE_MINUTE
+            or not capacity.admitted
         ):
             return receipt(
                 EnumFocusedTestRunStatus.HOST_BUSY,
                 f"running={admission.running_task_containers} "
-                f"load1={admission.load_one_minute}",
+                f"refusals={'; '.join(capacity.refusals) or 'none'} {capacity.record()}",
                 host=host,
             )
 
