@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_validator_verdict_reducer
+version: 1.0.0
+description: Folds validator findings into a verdict per pull request, one-way ratchet baselines and the canonical-validator count.
+pack: operator_tooling
+node_role: reducer
+display_name: Validator Verdict Reducer
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_validator_verdict_reducer: omnimarket.nodes.node_validator_verdict_reducer
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- reducer
+- validator
+- ratchet

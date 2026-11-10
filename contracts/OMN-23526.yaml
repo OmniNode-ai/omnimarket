@@ -37,13 +37,13 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23526-ac2-freshness
     description: >-
-      The freshness test passes with the limit of 50 unchanged; on dev it reads 57 unrecorded and fails.
+      The freshness test passes with the limit of 50 unchanged, run together with the supplement test. At dev a11e4676e82b the freshness test read 57 unrecorded and failed; at the merge base after dev was merged again (dev 1bff507dacb8) it reads 34 unrecorded and passes alone, so this item also runs the supplement test, which fails there because the measured files are absent from dev's record.
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q -n 0 --no-cov
+        check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py tests/unit/test_ci_duration_record_supplement_omn23527.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23526-durations-record
     description: >-
@@ -56,3 +56,12 @@ dod_evidence:
       - check_type: command
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/config/test_file_durations_provenance.json?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep supplement_omn23526 > /dev/null"
     binds_ac: []
+  - id: dod-omn23526-integration-proof
+    description: >-
+      The pushed head ran the supplement and freshness tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound item.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23526 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_ci_duration_record_supplement_omn23527.py tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov'
+        cwd: .
