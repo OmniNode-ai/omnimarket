@@ -92,6 +92,8 @@ runtime:
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r5_legs.yaml
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
   # The variable that carries the one paid OpenRouter probe key. The value is read at run time only and is never printed,
   # logged, put in an event or a ledger row; an empty variable in the real backend makes the run red, never skipped.
   openrouter_probe_key_env: ONEX_SCENARIO_R5_OPENROUTER_PROBE_KEY
