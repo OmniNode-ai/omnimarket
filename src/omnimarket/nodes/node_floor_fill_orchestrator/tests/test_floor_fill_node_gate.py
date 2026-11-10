@@ -239,6 +239,7 @@ NODE_LOCAL_SEAMS: dict[str, str] = {
     "HST": "adapts ProtocolLaneHostPool (spi) to a free-slot count; a decision-shaped seam",
     "CLK": "a one-method clock; omnibase_spi ProtocolClock is the replacement once its shape is checked",
     "STO": "the conditional state row; bound to the state_io table by the omnibase_infra migration follow-up",
+    "BRF": "reads a stopped lane's report and writes a continuation's brief file; no omnibase_spi protocol covers either yet (OMN-23416)",
     "TKT": "carries T1's verdict models, which move to the floor-fill models package (OMN-22931); the spi store is ProtocolFloorTicketStore",
 }
 
