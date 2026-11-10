@@ -12,7 +12,7 @@ base commit, a draft or a diff hash this test fails, and the scorer is wired to 
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -47,7 +47,7 @@ DRAFT_FIELDS = {
 }
 
 
-def _terminal(run_id, accepted: bool) -> ModelDelegateSkillTerminalProjection:  # type: ignore[no-untyped-def]
+def _terminal(run_id: UUID, accepted: bool) -> ModelDelegateSkillTerminalProjection:
     return ModelDelegateSkillTerminalProjection(
         status="completed",
         correlation_id=run_id,

@@ -9,15 +9,17 @@ from enum import StrEnum, unique
 
 @unique
 class EnumCodeScoreVerdict(StrEnum):
-    """The ``checks`` level of a score. ``PASS`` means every bound check ran and exited 0."""
+    """The ``checks`` level of a score. ``PASS`` means every bound check ran and exited 0.
+
+    Neither a check that hit its wall-clock limit nor an input refused for its size is a verdict on the draft: a limit
+    is ``unscorable`` with source ``harness``, and the input-size ceiling is enforced upstream of this step (OMN-23635).
+    """
 
     PASS = "pass"
     FAIL_CHECK = "fail_check"
     FAIL_NO_DIFF = "fail_no_diff"
     FAIL_DID_NOT_APPLY = "fail_did_not_apply"
     FAIL_TAMPERED = "fail_tampered"
-    FAIL_TIMED_OUT = "fail_timed_out"
-    FAIL_REFUSED_INPUT_SIZE = "fail_refused_input_size"
     UNSCORABLE = "unscorable"
 
     @property

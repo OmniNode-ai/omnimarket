@@ -12,10 +12,21 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_code_contract_score_effect.handlers import (
+    handler_code_contract_score,
+)
 from omnimarket.nodes.node_code_contract_score_effect.handlers.handler_code_contract_score import (
     HandlerCodeContractScore,
 )
-from omnimarket.nodes.node_code_contract_score_effect.models import EnumCodeScoreVerdict
+from omnimarket.nodes.node_code_contract_score_effect.models import (
+    EnumCodeScoreSource,
+    EnumCodeScoreVerdict,
+    ModelCodeScoreRequest,
+)
+from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated_test_control import (
+    EnumControlStatus,
+    ModelControlGrade,
+)
 from tests.nodes.node_code_contract_score_effect.fixture_repo import Fixture, request
 
 pytestmark = pytest.mark.unit
@@ -24,7 +35,12 @@ pytestmark = pytest.mark.unit
 class SkipPlacingCheckFiles(HandlerCodeContractScore):
     """Break 1: the check files are never placed over the worktree."""
 
-    def _place_checks(self, request, files, worktree: Path) -> None:  # type: ignore[no-untyped-def]
+    def _place_checks(
+        self,
+        request: ModelCodeScoreRequest,
+        files: dict[str, bytes],
+        worktree: Path,
+    ) -> None:
         return None
 
 
@@ -33,7 +49,7 @@ class RunAtMergeCommit(HandlerCodeContractScore):
 
     merge: str = ""
 
-    def _scoring_commit(self, request) -> str:  # type: ignore[no-untyped-def]
+    def _scoring_commit(self, request: ModelCodeScoreRequest) -> str:
         return self.merge
 
 
@@ -77,3 +93,25 @@ async def test_break_run_at_merge_commit_makes_the_empty_draft_pass(
     assert result.scored.verdict.checks is EnumCodeScoreVerdict.PASS
     with pytest.raises(AssertionError):
         await empty_draft_scores_fail_check(broken, fx)
+
+
+async def test_the_must_fail_control_is_graded_by_the_control_compute(
+    fx: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The falsifier decision is node_delegated_test_control_compute's: its grade, not this handler, decides."""
+    grade = ModelControlGrade(
+        status=EnumControlStatus.CONTROL_DID_NOT_FAIL,
+        headline=False,
+        control_ref_role="prefix",
+        control_outcome="passed",
+        reason="injected grade",
+    )
+    monkeypatch.setattr(
+        handler_code_contract_score, "grade_control", lambda _request: grade
+    )
+    result = await HandlerCodeContractScore().handle(request(fx, fx.good_diff))
+    assert result.scored is not None
+    verdict = result.scored.verdict
+    assert verdict.checks is EnumCodeScoreVerdict.UNSCORABLE
+    assert verdict.source is EnumCodeScoreSource.FALSIFIER_NOT_HELD
+    assert "injected grade" in verdict.detail

@@ -16,7 +16,7 @@ description: >
   contract, a check file or a protected path (fail_tampered), applies the draft (fail_did_not_apply), places the check
   files (each verified by sha256), syncs the environment (timed apart), and runs each bound dod_evidence check of type
   test_passes or command that is not bound to the local Done gate. The verdict has a checks level (pass, fail_check,
-  fail_no_diff, fail_did_not_apply, fail_tampered, fail_timed_out, fail_refused_input_size, unscorable with a source) and a
+  fail_no_diff, fail_did_not_apply, fail_tampered, unscorable with a source) and a
   runtime level. The delegation gate's text criteria are recorded beside it as gate_accepted and are never the score. A
   check that does not fail at the base is an invalid falsifier (unscorable), never a pass. An infrastructure fault is
   unscorable, never a fail and never a pass.

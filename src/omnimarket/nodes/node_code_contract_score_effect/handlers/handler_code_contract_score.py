@@ -39,8 +39,8 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
+    BashCheckExecution,
     GitWorkspace,
-    ShellRunner,
 )
 from omnimarket.nodes.node_code_contract_score_effect.models import (
     EnumCodeScoreCheckOutcome,
@@ -61,6 +61,16 @@ from omnimarket.nodes.node_code_contract_score_effect.protocols import (
     ProtocolCodeScoreRunner,
     ProtocolCodeScoreWorkspace,
     WorkspaceError,
+)
+from omnimarket.nodes.node_delegated_test_control_compute.handlers.handler_delegated_test_control import (
+    grade_control,
+)
+from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated_test_control import (
+    EnumControlStatus,
+    ModelControlGradeRequest,
+)
+from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated_test_control import (
+    RunOutcome as ControlRunOutcome,
 )
 
 _log = logging.getLogger(__name__)
@@ -103,6 +113,18 @@ def diff_paths(diff: str) -> frozenset[str]:
     return frozenset(paths)
 
 
+def _prefix_outcome(
+    results: tuple[ModelCodeScoreCheckResult, ...],
+    refused: tuple[EnumCodeScoreVerdict, str] | None,
+) -> ControlRunOutcome:
+    """The control grader's outcome word for the base run: a bound check that failed there is ``failed_call``."""
+    if refused is not None:
+        return "infra_error"
+    if any(r.outcome is EnumCodeScoreCheckOutcome.FAILED for r in results):
+        return "failed_call"
+    return "passed"
+
+
 def _is_protected(path: str, protected: tuple[str, ...]) -> bool:
     return any(
         path == entry or path.startswith(entry if entry.endswith("/") else entry + "/")
@@ -120,7 +142,7 @@ class HandlerCodeContractScore:
         event_bus: ProtocolCodeScoreEventPublisher | None = None,
     ) -> None:
         self._workspace: ProtocolCodeScoreWorkspace = workspace or GitWorkspace()
-        self._runner: ProtocolCodeScoreRunner = runner or ShellRunner()
+        self._runner: ProtocolCodeScoreRunner = runner or BashCheckExecution()
         self._event_bus = event_bus
         self._scored_topic = contract_topic(
             _CONTRACT_PATH, "publish_topics", "scored.v1"
@@ -256,17 +278,34 @@ class HandlerCodeContractScore:
             return ModelCodeScoreVerdict(
                 checks=EnumCodeScoreVerdict.FAIL_CHECK, check_results=results
             )
-        # Every bound check passed. A check that also passes at the base without the draft does not discriminate.
+        # Every bound check passed. The must-fail control is graded by node_delegated_test_control_compute: the checks
+        # read again at the base with only the check files placed must fail there, or they do not discriminate.
         base_results, base_outcome = self._run_at(
             request, files, checks, "", request.base_commit, timings
         )
-        if base_outcome is not None or not any(
-            r.outcome is EnumCodeScoreCheckOutcome.FAILED for r in base_results
-        ):
+        grade = grade_control(
+            ModelControlGradeRequest(
+                fixed_outcome="passed",
+                prefix_outcome=_prefix_outcome(base_results, base_outcome),
+                mutation_requested=False,
+                prefix_ref_equals_fixed_ref=(
+                    self._scoring_commit(request) == request.base_commit
+                    and not request.draft_diff.strip()
+                ),
+            )
+        )
+        if grade.status is EnumControlStatus.INFRA_ERROR:
+            return ModelCodeScoreVerdict(
+                checks=EnumCodeScoreVerdict.UNSCORABLE,
+                source=EnumCodeScoreSource.HARNESS,
+                detail=grade.reason,
+                check_results=results,
+            )
+        if not grade.headline:
             return ModelCodeScoreVerdict(
                 checks=EnumCodeScoreVerdict.UNSCORABLE,
                 source=EnumCodeScoreSource.FALSIFIER_NOT_HELD,
-                detail="the bound checks do not fail at the base commit with the check files placed",
+                detail=f"the bound checks do not fail at the base commit with the check files placed ({grade.reason})",
                 check_results=results,
             )
         return ModelCodeScoreVerdict(

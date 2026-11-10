@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Real git workspace and shell runner of node_code_contract_score_effect (OMN-23626).
+"""Real git workspace and bash check execution of node_code_contract_score_effect (OMN-23626).
 
 The git workspace makes a detached worktree of a registry clone under the overlay's scratch root; it never
-touches the clone's own checkout. The runner runs one command through bash with the database environment scrubbed the
+touches the clone's own checkout. The bash check execution runs one command through bash with the database environment scrubbed the
 way the verifier's own check runner scrubs it (``scrub_database_environment``), reads pytest's summary the way it
 does (``command_failure``), and treats the wall-clock limit as a limit, never as an exit code.
 """
@@ -85,7 +85,7 @@ class GitWorkspace:
         _git(repo_root, "worktree", "remove", "--force", str(worktree))
 
 
-class ShellRunner:
+class BashCheckExecution:
     """ProtocolCodeScoreRunner over bash, one command under a wall-clock limit."""
 
     def run(
@@ -120,4 +120,4 @@ class ShellRunner:
         )
 
 
-__all__ = ["GitWorkspace", "ShellRunner"]
+__all__ = ["BashCheckExecution", "GitWorkspace"]

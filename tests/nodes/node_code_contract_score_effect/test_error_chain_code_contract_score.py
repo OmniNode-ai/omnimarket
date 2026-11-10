@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
@@ -16,6 +18,7 @@ from omnimarket.nodes.node_code_contract_score_effect.models import (
     EnumCodeScoreFailureCode,
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
+    ModelCodeScoreRequest,
 )
 from omnimarket.nodes.node_code_contract_score_effect.protocols import (
     RunOutcome,
@@ -41,7 +44,9 @@ class FakeBus:
         self.published.append((topic, key, value))
 
 
-async def unscorable(handler: HandlerCodeContractScore, req) -> EnumCodeScoreSource:  # type: ignore[no-untyped-def]
+async def unscorable(
+    handler: HandlerCodeContractScore, req: ModelCodeScoreRequest
+) -> EnumCodeScoreSource:
     result = await handler.handle(req)
     assert result.scored is not None, result.failed
     verdict = result.scored.verdict
@@ -65,7 +70,7 @@ async def test_environment_sync_timeout_is_unscorable_env(fx: Fixture) -> None:
     assert await unscorable(HandlerCodeContractScore(), req) is EnumCodeScoreSource.ENV
 
 
-async def test_unreadable_contract_is_unscorable_contract(tmp_path) -> None:  # type: ignore[no-untyped-def]
+async def test_unreadable_contract_is_unscorable_contract(tmp_path: Path) -> None:
     text = "ticket_id: [unclosed\n"
     built = build_repo(tmp_path, contract=text)
     req = request(built, built.good_diff, contract=text)
@@ -83,7 +88,9 @@ async def test_unknown_item_id_is_unscorable_contract(fx: Fixture) -> None:
     )
 
 
-async def test_check_type_not_runnable_in_a_worktree_is_unscorable(tmp_path) -> None:  # type: ignore[no-untyped-def]
+async def test_check_type_not_runnable_in_a_worktree_is_unscorable(
+    tmp_path: Path,
+) -> None:
     text = contract_text(check_type="command").replace(
         'check_type: command\n    check_value: "',
         'check_type: grep\n    check_value: "',
@@ -102,7 +109,7 @@ async def test_check_type_not_runnable_in_a_worktree_is_unscorable(tmp_path) -> 
 
 async def test_worktree_failure_is_unscorable_worktree(fx: Fixture) -> None:
     class NoWorktree(GitWorkspace):
-        def create(self, repo_root: str, base_commit: str, scratch_root: str):  # type: ignore[no-untyped-def]
+        def create(self, repo_root: str, base_commit: str, scratch_root: str) -> Path:
             raise WorkspaceError("disk full")
 
     source = await unscorable(
@@ -114,8 +121,8 @@ async def test_worktree_failure_is_unscorable_worktree(fx: Fixture) -> None:
 async def test_check_hitting_its_limit_is_unscorable_harness(fx: Fixture) -> None:
     class Slow:
         def run(
-            self, command: str, cwd, timeout_s: float, tail_chars: int
-        ) -> RunOutcome:  # type: ignore[no-untyped-def]
+            self, command: str, cwd: Path, timeout_s: float, tail_chars: int
+        ) -> RunOutcome:
             if command == "true":
                 return RunOutcome(0, False, 0.0, "")
             return RunOutcome(None, True, timeout_s, "")

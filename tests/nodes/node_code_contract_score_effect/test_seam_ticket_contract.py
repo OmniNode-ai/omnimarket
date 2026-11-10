@@ -10,6 +10,7 @@ refuses an item id the contract does not have. The test fails when omnibase_core
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 import yaml
@@ -81,7 +82,7 @@ def _request(
     fx: Fixture, text: bytes, ticket: str, item_ids: tuple[str, ...]
 ) -> ModelCodeScoreRequest:
     return ModelCodeScoreRequest(
-        correlation_id="22222222-2222-4222-8222-222222222222",  # type: ignore[arg-type]
+        correlation_id=UUID("22222222-2222-4222-8222-222222222222"),
         repo=REPO,
         base_commit=SHA,
         draft_diff="",
