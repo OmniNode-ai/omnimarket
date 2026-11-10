@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23334
+title: Typed-decision delegation results write a delegation_events row, so the census can count a Jev decision
+summary: The typed-decision effect hands each decision's result, the refused and the failed included, to an injected publisher as a delegate-skill completed or failed terminal carrying its backend, outcome and correlation id. The existing delegation projection folds it into one delegation_events row. The in-memory publisher is the default and the container binds the emit-effect publisher. The question and the work-unit state never ride in the event.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23334-typed-decision-row
+  statement: A typed-decision result writes one delegation_events row carrying its backend id, its outcome and its correlation id, and the delegation census counts a Jev decision after install.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a typed-decision delegation result writes one delegation_events row with its backend, outcome and correlation id -- falsifier: uv run pytest tests -q -k typed_decision_event in omnimarket, failing with the write removed'
+  - id: AC2
+    statement: 'AC2: after install, a Jev decision appears in the delegation census -- falsifier: the census reading counts at least one Jev typed decision in the day after install'
+evidence_requirements:
+- kind: tests
+  description: The golden and error chain tests of the typed-decision event, folded through the real delegation projection, and the node's existing tests
+  command: uv run --frozen pytest tests/unit/nodes/node_typed_decision_effect tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23334-typed-decision-event
+  description: A model decision, an abstention, a backend HTTP error and a refused repository each fold through the real delegation projection into exactly one delegation_events row carrying the Jev backend id and the request's correlation id; with the write removed from the handler the same tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_typed_decision_effect/test_typed_decision_event_omn23334.py -q --no-cov -k typed_decision_event
+    cwd: .
+- id: dod-omn23334-container-binding
+  description: The container binds the emit-effect publisher, so a decision made through the node's CLI or the shadow workflow publishes its terminal to the declared topic.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_typed_decision_effect/test_typed_decision_event_omn23334.py -q --no-cov -k container_binds
+    cwd: .
+- id: dod-omn23334-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23334 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_typed_decision_effect tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q --no-cov
+    cwd: .
