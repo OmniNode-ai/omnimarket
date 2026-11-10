@@ -75,6 +75,7 @@ def _overlay(
                 "fault_request": {"query": "not-a-query"},
                 "error_keys": ["error"],
                 "deadline_seconds": 30,
+                "late_listen_seconds": 0,
                 "on_demand": True,
             }
         )
@@ -216,8 +217,8 @@ def test_the_overlay_hash_of_a_reading_without_on_demand_seams_is_unchanged() ->
     raw["seam_declarations"] = []
     after = ModelSeamDeadlineOverlay.model_validate(raw).overlay_hash()
     assert before == after
-    # pinned: the hash origin/dev computes for this example overlay
-    assert before == "9035a8c48ee36c774850f71c"
+    # pinned: the hash this example overlay computes (OMN-23418: late_listen_seconds is part of the spec, so a listen change shows in the row)
+    assert before == "75fa8ab0092811327b949b97"
 
 
 def test_a_declaration_for_a_seam_the_overlay_does_not_run_as_a_demand_is_refused() -> (

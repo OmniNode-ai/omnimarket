@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23169
+title: Delegation rows typed experiment are left out of a user's run, token, spend and savings totals and stay listed on Runs
+summary: Migration 0064 stores data_source experiment for a synthetic terminal, but the Postgres delegation summary view, the Postgres metering refresh query and the SQLite metering reader and summary view left out only fixture rows. Migration 0068 and a new SQLite store step rebuild the summary view over the non-experiment rows, the metering refresh query and the SQLite reader skip experiment rows, and delegation_events still holds every row the Runs listing reads.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23169-synthetic-excluded-from-totals
+  statement: A synthetic run leaves run, token, spend and savings totals unchanged on Postgres and on SQLite and is still listed on Runs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a synthetic run leaves run, token, spend and savings totals unchanged on Postgres and on SQLite and is listed on Runs -- falsifier: `uv run pytest tests/projection/test_synthetic_exclusion.py -q`'
+evidence_requirements:
+- kind: tests
+  description: The synthetic exclusion tests pass on SQLite and, where a Postgres is reachable, on the node's whole migration chain applied to a throwaway schema.
+  command: uv run --frozen pytest tests/projection/test_synthetic_exclusion.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23169-ac1-tests
+  description: Writes one ordinary run and one synthetic run into a SQLite store and a migrated Postgres schema, and checks the metering summary, the delegation summary view and the Runs listing source against the ordinary run alone.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/projection/test_synthetic_exclusion.py -q --no-cov
+    cwd: .
+- id: dod-omn23169-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23169 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_synthetic_exclusion.py -q --no-cov
+    cwd: .

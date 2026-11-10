@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_host_repair_dispatch_effect
+version: 0.1.0
+description: >
+  Consumes the disk watermark alarm and starts one repair lane per host and alarm on another host, with the measured
+  df and findmnt in its brief; dedupe, retry budget, backoff and escalation come from the overlay.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_host_repair_dispatch_effect: omnimarket.nodes.node_lab_host_repair_dispatch_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- in_process
+pack: operator_tooling
+display_name: Lab Host Repair Dispatch Effect
+node_role: effect

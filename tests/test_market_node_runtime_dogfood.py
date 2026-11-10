@@ -77,6 +77,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # OMN-23213: the C32 auth-boundary probe is run by a daily host timer unit
+    # through its own tick module; it subscribes to no topic and has no
+    # onex.nodes entry point.
+    "node_c32_auth_boundary_probe_effect",
     # The host-reconcile effect is likewise run from the command line by a host
     # timer; it subscribes to no topic and has no onex.nodes entry point.
     "node_host_reconcile_effect",
@@ -98,6 +102,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_disk_hygiene_effect",
+    # OMN-23297: the lane context ledger dedupe links files on the host's own
+    # filesystem, so the lab daemon sync's host tick runs it with python -m; it
+    # publishes events but subscribes to no topic and has no onex.nodes entry point.
+    "node_lane_ctx_ledger_dedupe_effect",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
@@ -151,18 +159,12 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
-    # OMN-19986: migration-only until its contract and entry point land.
-    "node_projection_local_identity",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = {
-    # OMN-19986: the local identity migrations precede its contract, which
-    # follows the omnibase_infra release that vendors them.
-    "node_projection_local_identity",
-}
+MIGRATION_ONLY_NODE_DIRS: set[str] = set()
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Requests and results of the stall responder and the lab-idle cost sum (OMN-22885)."""
+"""Request and result of the stall responder (OMN-22885)."""
 
 from __future__ import annotations
 
@@ -75,25 +75,3 @@ class ModelStallResponderResult(BaseModel):
     unreadable_rows: int
     truncated_findings: int
     refusals: tuple[ModelRowRefusal, ...] = ()
-
-
-class ModelLabIdleCostRequest(BaseModel):
-    """Ledger rows and the start to sum from (an ISO stamp, inclusive)."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    rows: tuple[str, ...]
-    since: str
-    until: str = ""
-
-
-class ModelLabIdleCostResult(BaseModel):
-    """Lab-idle FRICTION cost in lane-minutes since a start, and the status-line segment."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    lane_minutes: float
-    rows: int
-    unreadable: int
-    since: str
-    segment: str
