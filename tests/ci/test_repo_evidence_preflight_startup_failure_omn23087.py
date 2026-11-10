@@ -26,14 +26,12 @@ ROOT = Path(__file__).resolve().parents[2]
 LEGACY_KEYED = (
     "auto-merge.yml",
     "dep-health-gate.yml",
-    "market-skill-baseline.yml",
     "plugin-compat-gate.yml",
 )
 POLLERS = (
     "auto-merge.yml",
     "ci.yml",
     "dep-health-gate.yml",
-    "market-skill-baseline.yml",
     "plugin-compat-gate.yml",
     "validator-runtime-profiles.yml",
 )
