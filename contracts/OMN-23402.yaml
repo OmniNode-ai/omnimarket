@@ -1,0 +1,25 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23402"
+title: "The factory floor's owner map is read from a bus projection"
+summary: "The simple floor's work list named each pull request's owner (landing lease, cause lease, parked cause) from the landing controller's state.json, read as a local file on the machine that publishes the page. The controller's host now reads its own state and publishes the owner map as the owner_map floor projection (node_floor_owner_map_publish_effect, stamped with the time it was read), the floor takes its owners from the projection bundle judged against the projection's own bound, and a map older than its bound or never published makes the work list unread. An owner change in the controller's state shows on the floor within one publish: the reader keeps the newest publication by its own time."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "The owner map publisher (golden chain, state unreadable, bus refusing, payload shape, owner change within one publish, the named breaks) and the board's work list built from the projection pass."
+    command: "uv run --frozen pytest tests/nodes/node_floor_owner_map_publish_effect tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23402-owner-map-projection"
+    description: "AC1: the floor reads its owner map from a bus projection, and an owner change in the controller's state shows on the row within one publish. The test plants an owner change between two publications, delivers them newest first, and reads the new owner; a reader that keeps the last message it saw names the old owner and the test fails (shown red with that injected break). The control: with the change never published the floor keeps the last publication's owner and, past the bound, reads unknown."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_floor_owner_map_publish_effect tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
