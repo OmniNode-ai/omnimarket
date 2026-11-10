@@ -19,6 +19,7 @@ from omnimarket.models.work_ledger_query import (
     EnumWorkLedgerQueryKind,
     ModelWorkLedgerLaneActivity,
     ModelWorkLedgerRowRecord,
+    ModelWorkLedgerRowsBounded,
     ModelWorkLedgerStateEntity,
     ModelWorkLedgerStatePage,
     ModelWorkLedgerStateQuery,
@@ -95,6 +96,29 @@ class ProtocolWorkLedgerFilteredRowReader(Protocol):
         kinds: tuple[str, ...],
         contains: str | None,
     ) -> tuple[ModelWorkLedgerRowRecord, ...]: ...
+
+
+@runtime_checkable
+class ProtocolWorkLedgerBoundedRowReader(Protocol):
+    """Read a rows window cut in the store: only the newest ``newest`` rows cross, or only the narrowed rows (OMN-23606).
+
+    A read of one row used to load and parse every row of the ledger (329,018 rows, 12.7 s of a 22.5 s command,
+    measured on the lab on 2026-11-10) before ``limit`` applied. ``kinds`` keeps rows of those row types exactly;
+    ``contains`` keeps rows whose text holds that string without regard to case, a superset of what the term filter
+    keeps. With ``newest`` the store returns the newest rows of the narrowed window and counts the rest; a window
+    with no ``since`` also reports its oldest row, which the parity days start from. The handler still applies every
+    filter the store does not apply exactly, so the answer is the answer of the whole-window read.
+    """
+
+    def read_rows_bounded(
+        self,
+        *,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        newest: int | None,
+    ) -> ModelWorkLedgerRowsBounded: ...
 
 
 @runtime_checkable
@@ -393,6 +417,58 @@ class PostgresWorkLedgerQueryReader:
                 ingested_at=ingested_at,
             )
             for row_id, row_ts, row_type, row_lane, raw_row, source, projected_at, ledger_seq, ingested_at in rows
+        )
+
+    def read_rows_bounded(
+        self,
+        *,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        newest: int | None,
+    ) -> ModelWorkLedgerRowsBounded:
+        window = ["row_ts <= %s"]
+        window_params: list[object] = [until]
+        if since is not None:
+            window.append("row_ts >= %s")
+            window_params.append(since)
+        narrowed = list(window)
+        params = list(window_params)
+        if kinds:
+            narrowed.append("row_type = ANY(%s)")
+            params.append(list(kinds))
+        if contains:
+            narrowed.append("strpos(lower(raw_row), lower(%s)) > 0")
+            params.append(contains)
+        where = " AND ".join(narrowed)
+        first_row_ts = None
+        if since is None:
+            first_row_ts = self._query(
+                "SELECT min(row_ts) FROM {relation} WHERE " + " AND ".join(window),
+                tuple(window_params),
+            )[0][0]
+        matched = None
+        order = "ORDER BY row_ts, projected_at, row_id"
+        if newest is not None:
+            matched = self._query(
+                "SELECT count(*) FROM {relation} WHERE " + where, tuple(params)
+            )[0][0]
+            order = "ORDER BY row_ts DESC, projected_at DESC, row_id DESC LIMIT %s"
+            params.append(newest)
+        records = self._records(
+            self._query(
+                "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE "
+                + where
+                + " "
+                + order,
+                tuple(params),
+            )
+        )
+        return ModelWorkLedgerRowsBounded(
+            records=records if newest is None else records[::-1],
+            matched=matched,
+            first_row_ts=first_row_ts,
         )
 
     def read_parity_receipts(

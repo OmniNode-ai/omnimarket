@@ -28,6 +28,9 @@ from omnimarket.models.work_ledger_query.model_work_ledger_query import (
 from omnimarket.models.work_ledger_query.model_work_ledger_refusal import (
     ModelWorkLedgerRefusal,
 )
+from omnimarket.models.work_ledger_query.model_work_ledger_rows_bounded import (
+    ModelWorkLedgerRowsBounded,
+)
 from omnimarket.models.work_ledger_query.model_work_ledger_state import (
     ModelWorkLedgerLaneActivity,
     ModelWorkLedgerStateCursor,
@@ -58,6 +61,7 @@ __all__ = [
     "ModelWorkLedgerQueryResult",
     "ModelWorkLedgerRefusal",
     "ModelWorkLedgerRowRecord",
+    "ModelWorkLedgerRowsBounded",
     "ModelWorkLedgerStateCursor",
     "ModelWorkLedgerStateEntity",
     "ModelWorkLedgerStatePage",

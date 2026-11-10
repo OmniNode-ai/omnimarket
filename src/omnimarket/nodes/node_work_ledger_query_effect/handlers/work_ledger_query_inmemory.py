@@ -33,7 +33,10 @@ from typing import Any, Protocol
 
 from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp
-from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
+from omnimarket.models.work_ledger_query import (
+    ModelWorkLedgerRowRecord,
+    ModelWorkLedgerRowsBounded,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     WorkLedgerReadError,
 )
@@ -160,6 +163,32 @@ class InMemoryWorkLedgerQueryReader:
             for r in self.read_rows(since=since, until=until)
             if (not wanted or r.row_type in wanted)
             and (not contains or contains in r.raw_row)
+        )
+
+    def read_rows_bounded(
+        self,
+        *,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        newest: int | None,
+    ) -> ModelWorkLedgerRowsBounded:
+        window = self.read_rows(since=since, until=until)
+        wanted = set(kinds)
+        needle = contains.lower() if contains else None
+        kept = tuple(
+            r
+            for r in window
+            if (not wanted or r.row_type in wanted)
+            and (needle is None or needle in r.raw_row.lower())
+        )
+        return ModelWorkLedgerRowsBounded(
+            records=kept if newest is None else kept[-newest:],
+            matched=None if newest is None else len(kept),
+            first_row_ts=(
+                min((r.row_ts for r in window), default=None) if since is None else None
+            ),
         )
 
     def read_parity_receipts(

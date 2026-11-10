@@ -24,6 +24,7 @@ from omnimarket.models.work_ledger_query import (
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerQueryResult,
     ModelWorkLedgerRowRecord,
+    ModelWorkLedgerRowsBounded,
     ModelWorkLedgerStateQuery,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
@@ -39,6 +40,7 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
+    ProtocolWorkLedgerBoundedRowReader,
     ProtocolWorkLedgerFilteredRowReader,
     ProtocolWorkLedgerQueryReader,
     ProtocolWorkLedgerStateReader,
@@ -131,9 +133,18 @@ class HandlerWorkLedgerQuery:
                     base, "open-rulings needs a reader backed by work_ledger_state"
                 )
         try:
-            records = self._read_rows(request, until)
+            bounded = self._read_bounded(request, until)
+            records = (
+                bounded.records
+                if bounded is not None
+                else self._read_rows(request, until)
+            )
             newest_ts, newest_projected = self._reader.freshness(until=until)
-            first = request.since or (min((r.row_ts for r in records), default=until))
+            first = request.since or (
+                (bounded.first_row_ts or until)
+                if bounded is not None
+                else min((r.row_ts for r in records), default=until)
+            )
             days = replay.utc_days(first, until)
             capped = len(days) > _PARITY_DAYS_CAP
             days = days[-_PARITY_DAYS_CAP:]
@@ -181,6 +192,11 @@ class HandlerWorkLedgerQuery:
                 "page_size": request.page_size,
                 "next_cursor": next_cursor,
             }
+        elif bounded is not None and bounded.matched is not None:
+            answer = {
+                "matched": bounded.matched,
+                "rows": tuple(r.record for r in parsed),
+            }
         else:
             answer = self._answer(request, parsed, now, self._hold_stale_after)
         return base.model_copy(
@@ -193,6 +209,42 @@ class HandlerWorkLedgerQuery:
                 ),
                 "parity": parity,
             }
+        )
+
+    def _read_bounded(
+        self, request: ModelWorkLedgerQueryRequest, until: datetime
+    ) -> ModelWorkLedgerRowsBounded | None:
+        """A plain rows read cut in the store: the newest ``limit`` rows, or the rows of the asked kinds and term (OMN-23606).
+
+        Taken only for a rows answer that no lane, PR, ticket, row reference or principal filter narrows, so the
+        store's cut is the cut the handler would make: with no term and a limit the store returns the newest
+        ``limit`` rows and counts the rest (a read of one row no longer loads every row of the ledger); with a term the
+        store keeps the rows whose text holds it without regard to case, and the handler still applies its own term
+        filter and limit. A term that is not ASCII is left to the handler, as its case folding is wider than the store's.
+        """
+        if not isinstance(self._reader, ProtocolWorkLedgerBoundedRowReader):
+            return None
+        if (
+            request.query is not EnumWorkLedgerQueryKind.ROWS
+            or request.page_size is not None
+            or request.principal is not None
+            or request.lane
+            or request.lanes
+            or request.pr
+            or request.ticket
+            or request.row_ref
+        ):
+            return None
+        contains = request.term if request.term and request.term.isascii() else None
+        newest = request.limit if request.term is None else None
+        if not (request.kinds or contains or newest):
+            return None
+        return self._reader.read_rows_bounded(
+            since=request.since,
+            until=until,
+            kinds=tuple(k.upper() for k in request.kinds),
+            contains=contains,
+            newest=newest,
         )
 
     def _read_rows(
