@@ -34,6 +34,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 
 pytestmark = pytest.mark.unit
 
@@ -69,7 +70,7 @@ class _Adapter:
 
 def test_every_type_is_emitted_on_its_own_event_type(rows: dict[str, str]) -> None:
     recorder = _Recorder()
-    handler = HandlerWorkLedgerEmit(emitter=recorder)
+    handler = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE, emitter=recorder)
     for type_cell, row in rows.items():
         result = handler.handle(ModelWorkLedgerEmitRequest(row=row))
         row_type = EnumLedgerRowType(type_cell)
@@ -83,7 +84,7 @@ def test_every_type_is_emitted_on_its_own_event_type(rows: dict[str, str]) -> No
 
 def test_payload_carries_the_exact_row(rows: dict[str, str]) -> None:
     recorder = _Recorder()
-    HandlerWorkLedgerEmit(emitter=recorder).handle(
+    HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE, emitter=recorder).handle(
         ModelWorkLedgerEmitRequest(row=rows["CLAIM"])
     )
     payload = recorder.requests[0].payload
@@ -97,7 +98,7 @@ def test_payload_carries_the_exact_row(rows: dict[str, str]) -> None:
 
 def test_a_row_that_cannot_be_typed_spools_nothing() -> None:
     recorder = _Recorder()
-    result = HandlerWorkLedgerEmit(emitter=recorder).handle(
+    result = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE, emitter=recorder).handle(
         ModelWorkLedgerEmitRequest(row="2026-09-28T10:00:00Z | NOTE | lane=x | hi")
     )
     assert result.accepted is False
@@ -107,7 +108,7 @@ def test_a_row_that_cannot_be_typed_spools_nothing() -> None:
 
 def test_a_spool_refusal_is_a_typed_result_not_a_raise(rows: dict[str, str]) -> None:
     handler = HandlerWorkLedgerEmit(
-        emitter=_Recorder(raises=RuntimeError("spool full"))
+        judge_gate=OPEN_JUDGE_GATE, emitter=_Recorder(raises=RuntimeError("spool full"))
     )
     result = handler.handle(ModelWorkLedgerEmitRequest(row=rows["MSG"]))
     assert result.accepted is False
@@ -121,7 +122,9 @@ def test_through_the_real_spool_the_event_is_durable_and_typed(
 ) -> None:
     """Spool-only (no broker): the row waits on disk on its topic at duty_critical."""
     spool = SpoolOutbox(tmp_path / "spool")
-    handler = HandlerWorkLedgerEmit(emitter=HandlerEventEmitEffect(spool=spool))
+    handler = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE, emitter=HandlerEventEmitEffect(spool=spool)
+    )
     result = handler.handle(ModelWorkLedgerEmitRequest(row=rows["HOLD"]))
     assert result.accepted is True
     assert result.published is False
@@ -139,9 +142,10 @@ def test_through_a_recording_adapter_the_event_is_keyed_by_ledger(
 ) -> None:
     adapter = _Adapter()
     handler = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE,
         emitter=HandlerEventEmitEffect(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=adapter
-        )
+        ),
     )
     result = handler.handle(ModelWorkLedgerEmitRequest(row=rows["STATUS"]))
     assert result.published is True

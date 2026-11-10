@@ -2,6 +2,14 @@
 # SPDX-License-Identifier: MIT
 """Models of the silent-failure alarm compute node (OMN-17427)."""
 
+from omnimarket.models.model_running_vs_merged_alarm import (
+    ModelFleetFoldAbsence,
+    ModelRunningSurface,
+    ModelRunningVsMergedFinding,
+    ModelRunningVsMergedRequest,
+    ModelRunningVsMergedResult,
+)
+
 from .model_drainer_alarm import (
     ModelDrainerObservation,
     ModelDrainerRepair,
@@ -26,12 +34,6 @@ from .model_quiet_host_alarm import (
     ModelQuietHostRequest,
     ModelQuietHostResult,
 )
-from .model_running_vs_merged_alarm import (
-    ModelRunningSurface,
-    ModelRunningVsMergedFinding,
-    ModelRunningVsMergedRequest,
-    ModelRunningVsMergedResult,
-)
 from .model_throughput_results_alarm import (
     ModelThroughputResultsRequest,
     ModelThroughputResultsResult,
@@ -43,6 +45,7 @@ __all__ = [
     "ModelDrainerRepair",
     "ModelDrainerRequest",
     "ModelDrainerResult",
+    "ModelFleetFoldAbsence",
     "ModelHostActivity",
     "ModelJobExitAlarmRequest",
     "ModelJobExitAlarmResult",
