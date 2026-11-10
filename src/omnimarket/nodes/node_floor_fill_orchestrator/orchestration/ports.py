@@ -143,6 +143,19 @@ class ProtocolFloorTickets(Protocol):
 
 
 @runtime_checkable
+class ProtocolFloorBriefs(Protocol):
+    """The previous lane's report text, and the brief file a continuation lane's start entry reads (``--brief``)."""
+
+    def report_text(self, report_path: str) -> str | None:
+        """The report at the path the floor record names; None when there is none, ``FloorFillUnreadableError`` when it cannot be read."""
+        ...
+
+    def save_brief(self, lane: str, text: str) -> str:
+        """Write the brief of a continuation lane (its name already carries the attempt) and return its path; raises ``FloorFillUnreadableError`` when it cannot be written."""
+        ...
+
+
+@runtime_checkable
 class ProtocolFloorClock(Protocol):
     def now(self) -> datetime: ...
 
@@ -178,6 +191,7 @@ __all__: list[str] = [
     "ModelRunOutcome",
     "ModelStateRead",
     "ProtocolFactSource",
+    "ProtocolFloorBriefs",
     "ProtocolFloorClock",
     "ProtocolFloorLedger",
     "ProtocolFloorPool",
