@@ -150,7 +150,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from collections.abc import Mapping
@@ -622,24 +621,17 @@ SWEEP_EXCLUSION_MAX_DAYS: int = 90
 # ruling 2026-11-08) are resolved by node_ci_summary_registry_compute (OMN-23505): the
 # workflow step feeds the files through the node's runtime module and writes its answer
 # beside this file. The gate holds no loader of the files; it reads the answer, and an
-# absent, unparsable or malformed answer, or any refusal the node reported, fails closed.
+# absent or malformed answer raises, and any refusal the node reported fails closed.
 # A neutral passes only for a declared-advisory check; undeclared stays denied.
-REGISTRY_FILE = Path(
-    os.environ.get("CI_SUMMARY_REGISTRY")
-    or Path(__file__).with_name("ci_summary_registry.resolved.json")
-)
+REGISTRY_FILE = Path(__file__).with_name("ci_summary_registry.resolved.json")
 
 
 def load_resolved_registry(path: Path) -> tuple[dict, dict, list[str]]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        return (
-            {n: SweepExclusion(**e) for n, e in raw["exclusions"].items()},
-            {n: frozenset(c) for n, c in raw["check_modes"].items()},
-            list(raw["refusals"]),
-        )
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-        return {}, {}, [f"unreadable or malformed: {exc!r}"]
+    # Raises on an absent or malformed file, which fails the gate (exit 1) like the
+    # loader this replaces; the node's own refusals come back in the third item.
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    exclusions = {n: SweepExclusion(**e) for n, e in raw["exclusions"].items()}
+    return exclusions, raw["check_modes"], list(raw["refusals"])
 
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
@@ -1704,7 +1696,7 @@ def _parse_exclusion_date(raw: object) -> date | None:
 def validate_sweep_exclusions(
     exclusions: Mapping[str, object],
 ) -> list[str]:
-    """Refusal reasons for malformed the resolved sweep exclusions entries.
+    """Refusal reasons for malformed sweep exclusion entries.
 
     A non-empty return FAILS the gate. That is the point: an exclusion nobody
     could have reviewed is worse than no exclusion, because it reads as a
@@ -1865,8 +1857,7 @@ def evaluate_external_sweep(
             "External default-deny sweep: not applicable to this event.",
         )
     loaded, check_modes, mode_refusals = load_resolved_registry(REGISTRY_FILE)
-    if sweep_exclusions is None:
-        sweep_exclusions = loaded
+    sweep_exclusions = loaded if sweep_exclusions is None else sweep_exclusions
     findings = validate_sweep_exclusions(sweep_exclusions)
     active, expired = active_sweep_exclusions(sweep_exclusions, now=now)
     accounted = frozenset(expected) | in_run_names | SOFT_ALLOWLIST | {self_name}

@@ -73,7 +73,7 @@ def test_shipped_overlay_declares_the_reviewer_advisory_and_the_sweep_passes_it(
 ):
     exclusions, check_modes, refusals = gate.load_resolved_registry(gate.REGISTRY_FILE)
     assert refusals == []
-    assert check_modes[TESSL] == frozenset({"neutral"})
+    assert check_modes[TESSL] == ["neutral"]
     assert TESSL not in exclusions
     assert TESSL not in gate.EXPECTED_EXTERNAL_CONTEXTS
     rows = [_run(TESSL, "neutral"), _run("Some Other Gate", "success")]

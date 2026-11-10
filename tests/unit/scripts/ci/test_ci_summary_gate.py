@@ -2385,10 +2385,7 @@ class TestSweepIsWiredIntoProductionPoller:
         assert gate.main(args) == EXIT_SUCCESS
 
     def test_main_rejects_malformed_registry(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         malformed = tmp_path / "malformed_registry.json"
         malformed.write_text(
@@ -2403,11 +2400,11 @@ class TestSweepIsWiredIntoProductionPoller:
         )
         good = gate.REGISTRY_FILE
         monkeypatch.setattr(gate, "REGISTRY_FILE", malformed)
-        assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_FAILURE
-        assert "CI Summary registry unreadable or malformed" in capsys.readouterr().out
+        with pytest.raises(TypeError):
+            self._main(tmp_path, _healthy_check_runs(), [])
         monkeypatch.setattr(gate, "REGISTRY_FILE", tmp_path / "absent_registry.json")
-        assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_FAILURE
-        assert "CI Summary registry unreadable or malformed" in capsys.readouterr().out
+        with pytest.raises(FileNotFoundError):
+            self._main(tmp_path, _healthy_check_runs(), [])
         monkeypatch.setattr(gate, "REGISTRY_FILE", good)
         assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_SUCCESS
 
