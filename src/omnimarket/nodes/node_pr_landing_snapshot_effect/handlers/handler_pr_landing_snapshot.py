@@ -12,12 +12,22 @@ recorded ends in the typed failed event and replaces no earlier record.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import yaml
+
 from omnimarket.models.landing_decision import (
     ModelLandingFacts,
     ModelLandingPrFacts,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
     SnapshotSourceError,
+)
+from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_ports import (
+    InMemoryLandingFactsSource,
+    InMemoryLandingSnapshotPublisher,
+    InMemoryLandingTickRecorder,
+    InMemoryLandingWriteFactsSource,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
     EnumSnapshotFailureReason,
@@ -37,6 +47,15 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.protocols.protocol_landing
     ProtocolLandingTickRecorder,
     ProtocolLandingWriteFactsSource,
 )
+
+_OVERLAY_PATH = Path(__file__).resolve().parents[1] / "snapshot.overlay.example.yaml"
+
+
+def default_overlay() -> ModelSnapshotOverlay:
+    """The node's shipped example overlay: the in-memory default when none is injected."""
+    return ModelSnapshotOverlay.model_validate(
+        yaml.safe_load(_OVERLAY_PATH.read_text(encoding="utf-8"))
+    )
 
 
 def fill_write_facts(
@@ -62,22 +81,35 @@ def fill_write_facts(
 
 
 class HandlerPrLandingSnapshot:
-    """Fill one tick's facts from the declared sources and record them on the bus."""
+    """Fill one tick's facts from the declared sources and record them on the bus.
+
+    Every port is injected in tests and by the composed workflow. Without one,
+    the handler builds the in-memory default: the shipped example overlay and
+    the empty in-memory ports.
+    """
 
     def __init__(
         self,
         *,
-        overlay: ModelSnapshotOverlay,
-        facts_source: ProtocolLandingFactsSource,
-        write_source: ProtocolLandingWriteFactsSource,
-        recorder: ProtocolLandingTickRecorder,
-        publisher: ProtocolLandingSnapshotPublisher,
+        overlay: ModelSnapshotOverlay | None = None,
+        facts_source: ProtocolLandingFactsSource | None = None,
+        write_source: ProtocolLandingWriteFactsSource | None = None,
+        recorder: ProtocolLandingTickRecorder | None = None,
+        publisher: ProtocolLandingSnapshotPublisher | None = None,
     ) -> None:
-        self._overlay = overlay
-        self._facts_source = facts_source
-        self._write_source = write_source
-        self._recorder = recorder
-        self._publisher = publisher
+        self._overlay = default_overlay() if overlay is None else overlay
+        self._facts_source = (
+            InMemoryLandingFactsSource({}) if facts_source is None else facts_source
+        )
+        self._write_source = (
+            InMemoryLandingWriteFactsSource(())
+            if write_source is None
+            else write_source
+        )
+        self._recorder = InMemoryLandingTickRecorder() if recorder is None else recorder
+        self._publisher = (
+            InMemoryLandingSnapshotPublisher() if publisher is None else publisher
+        )
 
     def handle(
         self, request: ModelLandingSnapshotRequest
@@ -154,4 +186,8 @@ class HandlerPrLandingSnapshot:
         )
 
 
-__all__: list[str] = ["HandlerPrLandingSnapshot", "fill_write_facts"]
+__all__: list[str] = [
+    "HandlerPrLandingSnapshot",
+    "default_overlay",
+    "fill_write_facts",
+]

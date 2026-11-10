@@ -16,7 +16,11 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: external_io
-dependencies: []
+dependencies:
+- omnibase_core>=0.39.0
+- pyyaml>=6.0
+- aiokafka>=0.10.0
+- omnibase-infra>=0.1.0
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "pr-landing", "landing-tick", "snapshot", "OMN-23409"]

@@ -28,6 +28,8 @@ description: >
   and records the filled facts of that tick: appended to the recorder and
   published on the overlay's record topic. An unread, mismatched or already
   recorded tick ends in the typed failed event and replaces no earlier record.
+runtime_profiles:
+  - effects
 input_model:
   name: "ModelLandingSnapshotRequest"
   module: "omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot"
@@ -86,7 +88,7 @@ descriptor:
   node_archetype: effect
   purity: side_effecting
   runtime_profiles:
-    - main
+    - effects
   idempotent: true
   timeout_ms: 30000
 overlay:

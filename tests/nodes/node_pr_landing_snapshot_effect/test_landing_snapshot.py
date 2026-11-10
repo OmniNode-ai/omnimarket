@@ -184,6 +184,14 @@ def _failed(
     ]
 
 
+def test_handler_constructs_with_no_arguments() -> None:
+    result = HandlerPrLandingSnapshot().handle(
+        ModelLandingSnapshotRequest(correlation_id=FIXED_ID, tick=SECOND + 1)
+    )
+    assert result.status is EnumSnapshotStatus.FAILED
+    assert result.failure_reason is EnumSnapshotFailureReason.FACTS_UNREAD
+
+
 def test_error_an_unread_tick_ends_in_the_failed_event() -> None:
     publisher = InMemoryLandingSnapshotPublisher()
     recorder = InMemoryLandingTickRecorder()
