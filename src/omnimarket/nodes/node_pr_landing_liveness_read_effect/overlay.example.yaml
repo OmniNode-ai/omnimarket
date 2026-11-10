@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values (OMN-23529). A deployment's real overlay lives in the overlays repository under
+# node_pr_landing_liveness_read_effect/overlay.yaml. Every key is required: an absent key refuses the load.
+reader:
+  # command: run the register completeness reader; inmemory: a read recorded in the test.
+  backend: command
+  argv: [onex-automation-liveness-check]
+checkout:
+  # Environment variables naming the private checkout that holds the register, and the directory
+  # holding a checkout of each repository at the PR head.
+  internal_root_env: EXAMPLE_LIVENESS_INTERNAL_ROOT
+  registry_root_env: EXAMPLE_LIVENESS_REGISTRY_ROOT
+  # What the head is compared against: only installer sources the head adds can hold it.
+  base_ref: origin/dev
+timeouts:
+  read_seconds: 120
+  git_seconds: 30
+topics:
+  completed: onex.evt.omnimarket.pr-landing-liveness-read-completed.v1
+  failed: onex.evt.omnimarket.pr-landing-liveness-read-failed.v1
