@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-23462
+title: 'Three more ssh transport host steps for the lane start: read_ledger_outbox, read_lane_changes, hold_run_dir_guard (child of OMN-23425)'
+summary: 'The ssh transport sends the host the runner script lines for three more provisioning steps and prints the runner lines.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-child-host-steps-a
+  statement: Three more provisioning steps of the ssh transport send the host the runner's recorded script lines and read back the runner's printed lines.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the ssh transport implements read_ledger_outbox, read_lane_changes and hold_run_dir_guard and sends the host the same scripts as the runner''s recorded ones -- falsifier: uv run pytest test_remote_lane_start_provisioning_parity.py, red when the changes script text or the recorded text changes.'
+  - id: AC2
+    statement: 'AC2: each new step answers a typed error and runs no host command when the registry root is not resolved, and names the runner''s kept line for a git dir inside the run directory -- falsifier: the same file, red when the registry-root guard is removed.'
+  - id: AC3
+    statement: 'AC3: integrated: the three steps run once against a real lab host in a test lane directory and the printed lines are read back -- falsifier: the host readings in the pull request comment.'
+  - id: AC4
+    statement: 'AC4: the ssh transport implements drain_guard_spool and stop_lane_guard and sends the host the runner''s recorded lane_guard reap and drain scripts, and runs no host command when the guard host program was not given -- falsifier: uv run pytest test_remote_lane_start_guard_parity.py, red when the transport''s guard command word (spool-drain, reap --unit) or the recorded text changes.'
+evidence_requirements:
+- kind: tests
+  description: The provisioning parity and ops tests of the ssh transport against the recorded runner lines.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_ops.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-OMN-23462-ac1
+  description: The three steps send the recorded runner scripts.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py -q --no-cov --tb=line -k 'read_ledger_outbox or read_lane_changes or hold_run_dir_guard'
+    cwd: .
+- id: dod-OMN-23462-ac2
+  description: An unresolved registry root runs no host command and a git dir inside the run directory is named by the runner's kept line.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py -q --no-cov --tb=line -k 'without_a_resolved_registry_root or runner_kept_line'
+    cwd: .
+- id: dod-OMN-23462-ac4
+  description: The two guard steps send the recorded runner scripts and read back the printed guard lines.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_guard_parity.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-OMN-23462-integration-proof
+  description: The three steps ran once against a real lab host in a test lane directory and the printed lines read back from the work ledger STATUS row that carries them.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query rows --kind STATUS --term 'OMN-23462 host readings' --since 2026-11-10T06:00:00Z | grep -q 'OMN-23462 host readings'
+    cwd: .
+- id: dod-OMN-23462-ac3
+  description: The hosted reading of AC3, the three steps run through the ssh transport and the printed lines read back, against the recorded runner lines; the live lab-host run is the integration-proof item.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_ops.py -q --no-cov --tb=line
+    cwd: .
