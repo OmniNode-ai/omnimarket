@@ -379,7 +379,7 @@ inputs:
     class: config
     where: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY; ONEX_FACTORY_FLOOR_OVERLAY; ONEX_FLOOR_SIMPLE_OVERLAY; ONEX_LAB_STATE_OVERLAY; ONEX_LAB_STATE_ALARM_OVERLAY; ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY; ONEX_MVP_LAUNCH_OVERLAY; ONEX_GOAL_SCOPE_OVERLAY; ONEX_GOAL_SCOPE_TICKET_RULE_OVERLAY; ONEX_FLOOR_DELEGATION_OVERLAY; ONEX_FLOOR_PIECE_MEASURES_OVERLAY (default node_floor_compare_effect/overlay.example.yaml); ONEX_FRICTION_CLASS_OVERLAY; ONEX_WORK_STATE_OVERLAY; ONEX_FLOOR_PROJECTION_OVERLAY; ONEX_LAB_RUN_HOSTS; DELEGATION_HEALTH_OVERLAY_PATH; RUNTIME_HOST_READS_OVERLAY_PATH; each node's contract.yaml
     read_by: [every floor node]
-    steps: [publish, factory_floor, floor_simple, floor_compare, delegation_tracker, floor_projections, join_j2, join_j5, join_refusal, friction_classed, runner_fleet, process_health, mvp_launch_reads, floor_canary, hosts, pool, friction]
+    steps: [publish, factory_floor, floor_simple, floor_compare, delegation_tracker, floor_projections, join_j2, join_j5, join_refusal, join_j7, friction_classed, runner_fleet, process_health, mvp_launch_reads, floor_canary, hosts, pool, friction]
     producer: the overlays repository, delivered through node_overlay_store_load_effect and node_projection_overlay_store
     replacement: {node: node_overlay_store_read_effect, topic: onex.snapshot.projection.overlay-store.v1, status: exists}
     ticket: OMN-22478
