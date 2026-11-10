@@ -54,12 +54,19 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_proof_ancestry_and_seam.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23616-integration-proof-lab
-  description: Runs the node's tests at the pushed head on a lab host through the lab work runner. The read in the running dev runtime is recorded in the pull request's Lab line once the merged revision runs there.
+  description: Runs the node's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The read in the running dev runtime is recorded in the pull request's Lab line once the merged revision runs there.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23616 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23616-node-answer
+  description: Runs the node handler on a scripts/ci change (NA) and a scripts/ change (NO) through the same request model the runtime seeds; the live read in the dev runtime is recorded in the pull request's Lab line once the merged revision runs there.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_files_overlay.py -k "test_ci_script_is_na or test_tool_script_is_no" -q --no-cov -p no:randomly
     cwd: .

@@ -111,3 +111,14 @@ def test_seam_the_overlay_loader_reads_a_file_under_a_named_root(
 
     assert loaded.paths
     assert loaded.min_observed_chars >= 1
+
+
+def test_seam_the_contract_declares_the_decided_terminal_topic() -> None:
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_pr_handoff_install_proof_compute/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    decided = "onex.evt.omnimarket.pr-handoff-install-proof-decided.v1"
+    assert decided in contract["event_bus"]["publish_topics"]
+    assert contract["event_bus"]["terminal_event"] == decided
