@@ -31,6 +31,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 
 pytestmark = pytest.mark.unit
 
@@ -120,9 +121,10 @@ class _FakeDb:
 def test_row_to_bus_to_projection_sql(tmp_path: Path) -> None:
     adapter = _RecordingAdapter()
     handler = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE,
         emitter=HandlerEventEmitEffect(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=adapter
-        )
+        ),
     )
     for row in _ROWS:
         assert handler.handle(ModelWorkLedgerEmitRequest(row=row)).published is True

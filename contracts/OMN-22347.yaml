@@ -1,0 +1,64 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22347
+title: "The lab fill selection holds a ticket whose earlier lane ended already-built or skipped-owned with a merged PR, and lists it for the closer"
+summary: >
+  node_lab_fill_selection_compute reads the fill's own lane names (fill-ticket-OMN-<n>-<tag>) as attempts,
+  and a ticket whose latest lane TERMINAL said already-built, skipped-owned or skipped, with a merged PR
+  known from the candidate or from that TERMINAL, is skipped as already-built until the ticket is updated
+  after the TERMINAL. Held tickets are listed once per tick in the result's closer field and are not taken
+  as DoD-verify lanes. The fill's own state directory record and the handler that builds its briefs are not part
+  of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-already-built-hold"
+    statement: |-
+      A ticket whose earlier lane ended already-built or skipped-owned with a merged PR is not dispatched again until its state changes, and is listed for the closer.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: replaying the three tickets dispatched at 13:22Z on 2026-11-09 (OMN-22662, OMN-22663, OMN-22658) holds each as already-built, lists them in the result's closer field and takes none as a DoD-verify lane -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_already_built.py -q -k todays_three
+      - id: "AC2"
+        statement: |-
+          AC2: a ticket updated after its lane's TERMINAL, a skipped-owned lane with no merged PR, and a blocked fill-ticket lane are each decided by the existing rules, not held as already-built -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_already_built.py -q -k "updated_ticket or without_a_merged or blocked_fill_ticket"
+evidence_requirements:
+  - kind: tests
+    description: "The replay of the three tickets and the release, no-evidence and lane-name cases pass"
+    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_already_built.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-already-built-replay
+    description: "the replay of the three 13:22Z tickets is held for the closer and no fill lane is taken"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_already_built.py -q -k todays_three"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: dod-already-built-release
+    description: "a changed ticket, a missing merged PR and a blocked lane are decided by the existing rules"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_already_built.py -q -k \"updated_ticket or without_a_merged or blocked_fill_ticket\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn22347-deploy-assessment"
+    description: "Deploy assessment: the change edits a pure compute handler and adds a skip reason and a result field with a default; no topic, no migration, no prod mutation. It reaches the runtime on the next standard image rebuild. The check reads the handler from GitHub at the PR branch and fails when the already-built hold is missing."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_selection_compute/handlers/handler_lab_fill_selection.py?ref=omn-22347-fill-already-built-skip')\" && case \"$body\" in *already-built:*) exit 0;; *) exit 1;; esac"
+        cwd: "."
+  - id: "dod-omn22347-integration-proof"
+    description: "The pushed head ran the lab fill selection focused tests on a lab host with its real installed dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane fillbuilt-1410 -- uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute -q --no-cov"
+        cwd: "."

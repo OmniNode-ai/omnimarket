@@ -1,0 +1,6 @@
+{
+  "task_id": "R3b-01",
+  "path": "local",
+  "sha256": "e2b7f1816d838a0ca3ce533e5dfee348d3878cb9af199e6e0aa2662413207234",
+  "response": "run_focused_tests\n{\n  \"repo\": \"omnibase_core\",\n  \"path\": \"tests/unit/validation/test_occ_merge_eligibility.py\",\n  \"k_expr\": null\n}"
+}
