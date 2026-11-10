@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 """What the delegation tracker reads (OMN-23081): the ticket mirror, the pull request watcher, the factory floor record, the
-scenario workflows' runs. Each reader names what it could not read; none returns an empty answer for an error."""
+scenario workflows' runs and the lab nodes' scheduled results. Each reader names what it could not read; none returns an empty answer for an error."""
 
 from __future__ import annotations
 
@@ -9,10 +9,15 @@ import json
 import re
 import subprocess
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.models.model_delegation_scenario import (
+    EnumScenarioTrigger,
+    from_status_row,
+)
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_tracker import (
     plan_ticket_ids,
     referenced_tickets,
@@ -30,6 +35,9 @@ from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation
     PrCi,
     PrState,
     ScenarioReadKind,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
 )
 
 # Runs a command and returns (exit code, stdout, stderr). The tests replace it.
@@ -342,6 +350,79 @@ def read_scenario(
     )
 
 
+def read_lab_node_scenario(
+    decl: ModelScenarioDecl,
+    ledger: ProtocolLedgerPointRead,
+    rt: ModelDelegationRuntime,
+    now: datetime,
+) -> ModelScenarioRead:
+    """The scheduled results a lab node wrote as STATUS rows under its lane, read from the bus, newest first.
+
+    Pages are followed to the end; a page that does not answer, or a read that reaches ``lab_node_max_pages`` with a cursor
+    still open, is unread and carries no result, so a history that stopped early is never read as a pass. Only a row of this
+    scenario with a scheduled trigger is a result (a manual run never fills a slot), and a rerun of a slot keeps its newest row.
+    """
+    at = now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = now - timedelta(days=rt.lab_node_window_days)
+    newest_per_slot: dict[datetime, Any] = {}
+    cursor: str | None = None
+    for number in range(1, rt.lab_node_max_pages + 1):
+        answer = ledger.read(
+            ModelPointQuery(
+                query="rows",
+                lanes=(decl.lane,),
+                since=since,
+                kinds=("STATUS",),
+                page_size=rt.lab_node_rows_page_size,
+                cursor=cursor,
+            )
+        )
+        if answer.error:
+            return ModelScenarioRead(
+                scenario=decl.id,
+                read="unread",
+                read_at=at,
+                reason=f"page {number} of lane {decl.lane} did not answer: {answer.error}"[
+                    :240
+                ],
+            )
+        for line in answer.lines:
+            result = from_status_row(line)
+            if (
+                result is None
+                or result.scenario_id != decl.id
+                or result.trigger is not EnumScenarioTrigger.SCHEDULE
+            ):
+                continue
+            kept = newest_per_slot.get(result.slot_start)
+            if kept is None or result.recorded_at > kept.recorded_at:
+                newest_per_slot[result.slot_start] = result
+        cursor = answer.next_cursor
+        if not cursor:
+            break
+    else:
+        return ModelScenarioRead(
+            scenario=decl.id,
+            read="unread",
+            read_at=at,
+            reason=f"stopped after {rt.lab_node_max_pages} pages of lane {decl.lane} with more rows to read",
+        )
+    newest = sorted(newest_per_slot.values(), key=lambda r: r.slot_start, reverse=True)
+    runs = tuple(
+        ModelScenarioRun(
+            run_id=int(r.slot_start.timestamp()),
+            status="in_progress" if r.conclusion.unfinished else "completed",
+            conclusion="" if r.conclusion.unfinished else r.conclusion.value,
+            event=r.trigger.value,
+            created_at=r.slot_start.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            updated_at=r.recorded_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            url="",
+        )
+        for r in newest[: rt.scenario_run_limit]
+    )
+    return ModelScenarioRead(scenario=decl.id, read="read", read_at=at, runs=runs)
+
+
 def load_previous_reads(path: Path) -> dict[str, ModelScenarioRead]:
     """The scenario reads the last run kept, by scenario id; nothing when there is no usable file."""
     doc, problem = _load_json(path)
@@ -359,8 +440,12 @@ def read_scenarios(
     now: datetime,
     run: CommandRunner = run_command,
     clock: Callable[[], datetime] | None = None,
+    ledger: ProtocolLedgerPointRead | None = None,
 ) -> ModelScenarioReads:
     """Refresh the scenario reads one scenario at a time, the least recently read first, inside the stage deadline.
+
+    A scenario whose overlay entry names the ``lab_node`` source is read from ``ledger``, the bus read of its node's STATUS
+    rows; with no read route it is unread and the reason names the variable that would carry it.
 
     A scenario read within ``scenario_refresh_seconds`` is kept as it is; one whose read the deadline left no time for keeps
     its previous read, which the build then draws unread once it is older than ``scenario_reads_max_age_seconds``.
@@ -391,7 +476,19 @@ def read_scenarios(
             > rt.scenario_stage_deadline_seconds
         ):
             break
-        result[decl.id] = read_scenario(decl, onex, rt, run, tick())
+        if decl.source == "lab_node":
+            result[decl.id] = (
+                read_lab_node_scenario(decl, ledger, rt, tick())
+                if ledger is not None
+                else ModelScenarioRead(
+                    scenario=decl.id,
+                    read="unread",
+                    read_at=tick().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    reason=f"{rt.ledger_read_command_env} is not set; the lab node's results have no bus read route",
+                )
+            )
+        else:
+            result[decl.id] = read_scenario(decl, onex, rt, run, tick())
     return ModelScenarioReads(
         updated_at=now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         reads=tuple(result[d.id] for d in rt.scenarios if d.id in result),
