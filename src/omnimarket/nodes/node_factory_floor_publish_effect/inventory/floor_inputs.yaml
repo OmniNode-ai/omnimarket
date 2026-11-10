@@ -259,6 +259,15 @@ inputs:
     producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
+  - id: delegation_route_reads
+    order: 20
+    class: file
+    where: .onex_state/floor-delegation/route-reads.json
+    read_by: [node_floor_delegation_effect]
+    steps: [delegation_tracker]
+    producer: node_floor_delegation_effect itself (the routes stage reads delegation_events by hour and keeps the counts between cycles)
+    replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-route-reads.v1, status: new}
+    ticket: OMN-23381
   - id: beta_board_reads
     order: 21
     class: file
@@ -277,6 +286,15 @@ inputs:
     producer: the gate store overlay and the overlay home's gate commits
     replacement: {node: node_gate_store_effect, topic: onex.snapshot.projection.join-j6.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-join-j6-projection
+  - id: join_j7_lab_check_run
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the lab check run overlay and the ledger route)
+    read_by: [node_lab_check_run_effect]
+    steps: [join_j7]
+    producer: the lab check run overlay and the ledger's piece 7 readings
+    replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
+    ticket: OMN-23420
   - id: network_reads
     order: 21
     class: http
@@ -355,6 +373,15 @@ inputs:
     replacement: {node: node_overlay_store_read_effect, topic: onex.snapshot.projection.overlay-store.v1, status: exists}
     ticket: OMN-22478
     notes: Already on the bus with a stamped local snapshot (RULING 2026-11-06T00:23:28Z); the floor's row for the store's freshness is the overlay_store_fleet row above.
+  - id: repository_names_overlay
+    order: 25
+    class: config
+    where: ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY; .onex_state/floor-compare/repository-names.yaml; node_floor_compare_effect/overlay.repository_names.yaml
+    read_by: [node_floor_compare_effect]
+    steps: [floor_compare]
+    producer: the overlays repository, delivered through node_overlay_store_load_effect and node_projection_overlay_store; a host's own file under the state directory takes precedence when it exists
+    replacement: {node: node_overlay_store_read_effect, topic: onex.snapshot.projection.overlay-store.v1, status: exists}
+    ticket: OMN-23134
   - id: packaged_pages
     order: 26
     class: static_asset
