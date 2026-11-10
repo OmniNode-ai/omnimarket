@@ -657,10 +657,11 @@ async def test_unsequenced_live_row_is_refused_and_projects_no_row_in_a_real_dat
     db, conn, schema = source_database
     writer = WorkLedgerProjectionWriter()
     writer._db = db
-    live = paired_inbound().model_copy(update={"source": "onex-ledger"})
-    payload = live.model_dump(mode="json")
+    # The refusal is judged on the live dual-write path: the legacy raw_row topic,
+    # which carries ledger_seq. The typed inbound model has no ledger_seq field.
+    payload = {"raw_row": RAW_ROW, "source": "onex-ledger", "ledger_seq": None}
     meta = MessageMeta(
-        partition=0, offset=1, fallback_id="", topic=EnumLedgerRowType.CLAIM.typed_topic
+        partition=0, offset=1, fallback_id="", topic=EnumLedgerRowType.CLAIM.topic
     )
     with pytest.raises(UnsequencedLiveRowError):
         await writer._project_and_report(meta.topic, payload, meta)
