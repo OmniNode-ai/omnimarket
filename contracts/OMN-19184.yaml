@@ -56,7 +56,7 @@ dod_evidence:
     check_value: '! grep -q route_check_local_model src/omnimarket/configs/model_bindings.v1.yaml'
     cwd: .
   - check_type: command
-    check_value: bash -o pipefail -c 'onex run-node node_delegation_rubric_check_compute --help > /dev/null'
+    check_value: bash -o pipefail -c 'uv run onex run-node node_delegation_rubric_check_compute --help > /dev/null'
     cwd: .
 - id: dod-omn19184-integration-proof
   description: The pushed head runs the route check, the A/B compare orchestrator and the guard on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
