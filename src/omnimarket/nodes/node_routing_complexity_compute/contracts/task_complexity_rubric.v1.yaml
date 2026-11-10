@@ -135,6 +135,10 @@ output_kind_by_scorer:
   grounding_coverage: prose
   diagnosis_location: prose
   exact_match: structured
+  # workflow_request parses a name and a JSON object and validates it against a
+  # request schema; like exact_match it compares against held data and runs no
+  # tests, so it takes the same output kind, verification class and execution.
+  workflow_request: structured
   unit_test_execution: code
   patch_apply_and_test: patch
 
@@ -143,6 +147,7 @@ verification_by_scorer:
   grounding_coverage: grounding
   diagnosis_location: grounding
   exact_match: exact_match
+  workflow_request: exact_match
   unit_test_execution: test_run
   patch_apply_and_test: patch_and_test
 

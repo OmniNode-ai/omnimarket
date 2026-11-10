@@ -17,6 +17,7 @@ the engine and are visible in the host's process table, so a secret never goes t
 
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 from collections.abc import Sequence
@@ -47,6 +48,19 @@ from omnibase_spi.contracts.services import (
     ModelLaneStopEngineResult,
 )
 from pydantic import BaseModel, ConfigDict
+
+from omnimarket.models.engine_login import (
+    LABEL_PATTERN,
+    ModelEngineLoginDraw,
+    ModelEngineLoginPool,
+)
+from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
+    CHANGES_LINE_RE,
+    changes_script,
+)
+from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
+    hold_run_dir_guard as _hold_run_dir_guard,
+)
 
 #: What every provisioning step of the protocol answers from this transport: the frozen runner
 #: script still performs these host steps, so the node does not issue them yet (OMN-22848).
@@ -110,6 +124,73 @@ class SubprocessHostCommandExecutor:
         )
 
 
+#: A PATH prefix is written inside double quotes in the host script, so it may carry only path
+#: characters and ``$NAME`` references (``$HOME``); a quote, backtick, ``$(`` or space is refused.
+_PATH_PREFIX = re.compile(r"(?:[A-Za-z0-9_./:-]|\$[A-Za-z_][A-Za-z0-9_]*)*")
+
+
+#: The pool node's status line ends ``label=<label>`` for the token it chose; a refusal ends ``chosen=none``.
+_DRAWN_LABEL = re.compile(r"(?:^|\s)label=(" + LABEL_PATTERN[1:-1] + r")\s*$")
+
+
+def pool_python_sh(pool: ModelEngineLoginPool) -> str:
+    """Shell that sets ``CPY`` to the first registry root's dispatch interpreter (empty when none), as the runner does."""
+    tries = " ".join(shlex.quote(r.rstrip("/")) for r in pool.roots)
+    return (
+        f'CPY=""; for r in {tries}; do '
+        f'if [ -x "$r/{pool.python_relative}" ]; then CPY="$r/{pool.python_relative}"; break; fi; done; '
+    )
+
+
+#: A literal path (a registry root, the marker directory, the run root) written into a host script unquoted.
+_LITERAL_PATH = re.compile(r"[A-Za-z0-9_./-]+")
+
+#: The runner script's exit for a host that holds no registry root, and for run directories that could not be made.
+NO_REGISTRY_ROOT_EXIT = 96
+RUN_DIRS_REFUSED_EXIT = 70
+
+#: The ledger outbox file under the run's context directory, read after the engine ends.
+OUTBOX_FILE = "ledger-outbox.rows"
+
+#: The line the runner's guarded cleanup header ends with when no lane tree keeps a git dir inside the run directory.
+RETENTION_SAFE_LINE = "LANE-RETENTION-SAFE"
+# The runner's lane_guard (omni plugin scripts/lane_guard.py): the host program rides in a shell variable, the
+# command after it reaps a unit or drains the host reaper's queued records. Prefix, variable and printed lines
+# are the runner's; the program itself is injected (``guard_host_source``), never read from a path here.
+GUARD_PATH_LINE = (
+    'export PATH="${ONEX_LANE_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omni/lane-bin}'
+    ':$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
+)
+GUARD_SOURCE_VARIABLE = "G_SRC"
+GUARD_UNIT_PREFIX = "onexlane-"
+GUARD_STOP_PREFIX = "LANE-GUARD-STOP "
+GUARD_SPOOL_PREFIX = "LANE-GUARD-SPOOL "
+GUARD_SOURCE_MISSING = (
+    "{op}: no guard host program was given to the ssh transport (guard_host_source)"
+)
+
+
+def _guard_sanitize(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "-", text)
+
+
+def guard_unit_name(lane: str, run_id: str) -> str:
+    """The runner's ``lane_guard.unit_name``: ``onexlane-<lane>-<tail of the run id>``."""
+    tail = _guard_sanitize(run_id).rsplit("-", 1)[-1][-12:].strip("-.") or "run"
+    return f"{GUARD_UNIT_PREFIX}{_guard_sanitize(lane)[:60].strip('-.')}-{tail}"
+
+
+def guard_script(source: str, command: str) -> str:
+    """The runner's ``reap_script`` / ``drain_script`` text: path line, program in a variable, one guard command."""
+    return "\n".join(
+        [
+            GUARD_PATH_LINE,
+            f"{GUARD_SOURCE_VARIABLE}={shlex.quote(source)}",
+            f'python3 -c "${GUARD_SOURCE_VARIABLE}" {command}',
+        ]
+    )
+
+
 class SshLaneHostTransport:
     """Prepare, start, read and stop a lane's engine on a host with one shell script per call."""
 
@@ -122,8 +203,18 @@ class SshLaneHostTransport:
         host_run_root: str,
         call_timeout_seconds: float,
         detach_argv: Sequence[str],
+        path_prefix: str = "",
+        login_pool: ModelEngineLoginPool | None = None,
+        registry_root_candidates: Sequence[str] = (),
+        registry_marker: str = "",
+        guard_host_source: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
+        if not _PATH_PREFIX.fullmatch(path_prefix):
+            raise ValueError(
+                f"remote_lane_start.host_path_prefix {path_prefix!r}: only path characters and $NAME references"
+            )
+        self._path = f'export PATH="{path_prefix}:$PATH"; ' if path_prefix else ""
         if not host_run_root:
             raise ValueError("remote_lane_start.host_run_root is required")
         self._ssh_argv = tuple(ssh_argv)
@@ -132,6 +223,23 @@ class SshLaneHostTransport:
         self._root = host_run_root.rstrip("/")
         self._detach = " ".join(shlex.quote(a) for a in detach_argv)
         self._timeout = call_timeout_seconds
+        self._pool = login_pool
+        for candidate in registry_root_candidates:
+            if not _LITERAL_PATH.fullmatch(candidate):
+                raise ValueError(
+                    f"remote_lane_start.registry_root_candidates {candidate!r}: only path characters"
+                )
+        if registry_marker and not _LITERAL_PATH.fullmatch(registry_marker):
+            raise ValueError(
+                f"remote_lane_start.registry_marker {registry_marker!r}: only path characters"
+            )
+        if not _LITERAL_PATH.fullmatch(self._root):
+            raise ValueError(
+                f"remote_lane_start.host_run_root {host_run_root!r}: only path characters"
+            )
+        self._candidates = tuple(registry_root_candidates)
+        self._marker = registry_marker
+        self._guard_source = guard_host_source
         self._runner = runner or SubprocessHostCommandExecutor()
 
     def run_dir(self, run_id: str) -> str:
@@ -160,7 +268,7 @@ class SshLaneHostTransport:
             for c in request.registry_root_candidates
         )
         script = (
-            f"mkdir -p {q(run)} || exit 3; for clone in {tries}; do "
+            f"{self._path}mkdir -p {q(run)} || exit 3; for clone in {tries}; do "
             f'if [ -d "$clone/.git" ] || [ -f "$clone/.git" ]; then '
             f'git -C "$clone" worktree add --detach {q(workdir)} {q(request.sha)} >&2 || exit 4; '
             f'echo "ROOT=$(dirname "$clone")"; exit 0; fi; done; echo "no clone of {request.repo}" >&2; exit 5'
@@ -185,6 +293,38 @@ class SshLaneHostTransport:
             prepared=True, registry_root=root, workdir=workdir
         )
 
+    def draw_login(self, host: ModelLaneHostRef) -> ModelEngineLoginDraw:
+        """Ask the host's token pool node which login the engine would run on; the answer is a label, never a value.
+
+        The pool node's ``resolve`` writes the chosen token to stdout and its status line, with the label,
+        to stderr. Here stdout goes to /dev/null on the host and only the last stderr line comes back, so
+        no token crosses the ssh session or this process. The pool skips limited and revoked labels in its
+        draw order; a pool that resolves nothing leaves the host login, as the runner's fallback does.
+        """
+        if self._pool is None:
+            return ModelEngineLoginDraw(state="none", detail="no login pool configured")
+        script = (
+            f"{self._path}{pool_python_sh(self._pool)}"
+            f'if [ -z "$CPY" ]; then echo "POOL-RC=none"; exit 0; fi; '
+            f'line=$("$CPY" -m {shlex.quote(self._pool.module)} resolve 2>&1 >/dev/null); rc=$?; '
+            f'echo "POOL-RC=$rc"; printf "%s\\n" "$line" | tail -n 1'
+        )
+        result = self._sh(host, script, self._pool.draw_timeout_seconds)
+        lines = result.stdout.strip().splitlines()
+        if result.exit_code != 0 or len(lines) < 2 or lines[-2] != "POOL-RC=0":
+            return ModelEngineLoginDraw(
+                state="none",
+                detail=(lines[-2] if len(lines) >= 2 else f"exit {result.exit_code}")[
+                    :120
+                ],
+            )
+        found = _DRAWN_LABEL.search(lines[-1])
+        if found is None:
+            return ModelEngineLoginDraw(
+                state="none", detail="no label in the pool line"
+            )
+        return ModelEngineLoginDraw(label=found.group(1), state="drawn")
+
     def start_engine_detached(
         self, request: ModelLaneStartEngineRequest
     ) -> ModelLaneStartEngineResult:
@@ -192,8 +332,18 @@ class SshLaneHostTransport:
         q = shlex.quote
         env = " ".join(q(f"{k}={v}") for k, v in request.environment)
         engine = " ".join(q(a) for a in request.engine_argv)
+        # The engine's login is drawn by the pool node on the host, in the engine's own shell: the token
+        # is exported there and appears in no command line, as the runner exports it.
+        login = (
+            "unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN; "
+            + pool_python_sh(self._pool)
+            + f'if [ -n "$CPY" ] && CP=$("$CPY" -m {q(self._pool.module)} resolve 2>/dev/null); '
+            'then export CLAUDE_CODE_OAUTH_TOKEN="$CP"; fi; unset CP; '
+            if self._pool is not None
+            else ""
+        )
         inner = (
-            f"cd {q(request.workdir)} || exit 126; "
+            f"{self._path}cd {q(request.workdir)} || exit 126; {login}"
             f"env {env} {engine} > {q(run + '/engine.log')} 2>&1 < /dev/null; "
             f"echo $? > {q(run + '/exit.tmp')}; mv {q(run + '/exit.tmp')} {q(run + '/exit')}"
         )
@@ -274,12 +424,73 @@ class SshLaneHostTransport:
     def resolve_registry_root(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneRegistryRootResult:
-        return ModelLaneRegistryRootResult(error=self._not_run("resolve_registry_root"))
+        """The runner script's ``omni_home_script``: the first candidate that holds the marker directory.
+
+        Same lines, same printed ``REMOTE-OMNI-HOME <path>`` or ``REMOTE-OMNI-HOME-NONE`` and exit 96.
+        """
+        if not self._candidates or not self._marker:
+            return ModelLaneRegistryRootResult(
+                error=self._not_run("resolve_registry_root")
+            )
+        tries = " ".join(shlex.quote(c) for c in self._candidates)
+        script = "\n".join(
+            [
+                'H=""',
+                f"for d in {tries}; do",
+                f'  if [ -n "$d" ] && [ -d "$d/{self._marker}" ]; then H="$d"; break; fi',
+                "done",
+                f'if [ -z "$H" ]; then echo "REMOTE-OMNI-HOME-NONE $(hostname): none of {" ".join(self._candidates)} holds {self._marker}"; exit {NO_REGISTRY_ROOT_EXIT}; fi',
+                'echo "REMOTE-OMNI-HOME $H"',
+            ]
+        )
+        result = self._sh(request.host, script, request.timeout_seconds)
+        found = next(
+            (
+                line.split(" ", 1)[1].strip()
+                for line in result.stdout.splitlines()
+                if line.startswith("REMOTE-OMNI-HOME ")
+            ),
+            None,
+        )
+        if result.exit_code == 0 and found:
+            return ModelLaneRegistryRootResult(registry_root=found)
+        return ModelLaneRegistryRootResult(
+            error=(
+                result.stdout or result.stderr or f"exit {result.exit_code}"
+            ).strip()[-300:]
+        )
+
+    def _run_dirs_header(self, run_id: str) -> str:
+        """The runner's variable line: ``W`` the run directory and ``C`` its context directory."""
+        run = self.run_dir(run_id)
+        return f'W="{run}"; C="{run}.ctx"'
+
+    def _failure(self, result: ModelHostCommandResult) -> str:
+        return (result.stderr or result.stdout or f"exit {result.exit_code}").strip()[
+            -300:
+        ] or f"exit {result.exit_code}"
 
     def prepare_run_dirs(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneRunDirsResult:
-        return ModelLaneRunDirsResult(error=self._not_run("prepare_run_dirs"))
+        """The runner script's ``scratch_script``: the run directory and its ``.ctx`` beside it, made together."""
+        run = self.run_dir(request.run_id)
+        script = "\n".join(
+            [
+                self._run_dirs_header(request.run_id),
+                f'mkdir -p "$W" "$C" || exit {RUN_DIRS_REFUSED_EXIT}',
+                'echo "REMOTE-HOME $HOME"',
+            ]
+        )
+        result = self._sh(request.host, script, request.timeout_seconds)
+        if result.exit_code == 0 and "REMOTE-HOME " in result.stdout:
+            return ModelLaneRunDirsResult(run_dir=run, context_dir=f"{run}.ctx")
+        return ModelLaneRunDirsResult(
+            error=(
+                result.stderr or result.stdout or f"exit {result.exit_code}"
+            ).strip()[-300:]
+            or f"exit {result.exit_code}"
+        )
 
     def stage_ledger_snapshot(
         self, request: ModelLaneStageInputRequest
@@ -313,8 +524,29 @@ class SshLaneHostTransport:
     def drain_guard_spool(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
+        """The runner's ``lane_guard.drain_script``: print and remove the host reaper's queued records.
+
+        Each printed ``LANE-GUARD-SPOOL <json>`` line comes back as a ``spool`` cell, in the order printed;
+        the caller turns them into FRICTION rows as the runner does.
+        """
+        if not self._guard_source:
+            return ModelLaneHostStepResult(
+                ok=False, error=GUARD_SOURCE_MISSING.format(op="drain_guard_spool")
+            )
+        result = self._sh(
+            request.host,
+            guard_script(self._guard_source, "spool-drain"),
+            request.timeout_seconds,
+        )
+        if result.exit_code != 0:
+            return ModelLaneHostStepResult(ok=False, error=self._failure(result))
         return ModelLaneHostStepResult(
-            ok=False, error=self._not_run("drain_guard_spool")
+            ok=True,
+            cells=tuple(
+                ("spool", line.strip()[len(GUARD_SPOOL_PREFIX) :])
+                for line in (result.stdout + result.stderr).splitlines()
+                if line.strip().startswith(GUARD_SPOOL_PREFIX)
+            ),
         )
 
     def relay_reports(
@@ -325,12 +557,40 @@ class SshLaneHostTransport:
     def read_ledger_outbox(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneLedgerOutboxRows:
-        return ModelLaneLedgerOutboxRows(error=self._not_run("read_ledger_outbox"))
+        """The runner script's ``ledger_outbox_script``: print the rows the lane queued (nothing when it queued none)."""
+        run = self.run_dir(request.run_id)
+        result = self._sh(
+            request.host,
+            f'cat "{run}.ctx/{OUTBOX_FILE}" 2>/dev/null; true',
+            request.timeout_seconds,
+        )
+        if result.exit_code != 0:
+            return ModelLaneLedgerOutboxRows(error=self._failure(result))
+        return ModelLaneLedgerOutboxRows(
+            rows=tuple(line for line in result.stdout.splitlines() if line.strip())
+        )
 
     def read_lane_changes(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneChangeList:
-        return ModelLaneChangeList(error=self._not_run("read_lane_changes"))
+        """The runner script's ``changes_script``: the files each of the lane's trees changed, sorted and unique."""
+        if request.registry_root is None:
+            return ModelLaneChangeList(
+                error="read_lane_changes: registry root not resolved"
+            )
+        result = self._sh(
+            request.host,
+            changes_script(request.lane, request.registry_root),
+            request.timeout_seconds,
+        )
+        if result.exit_code != 0:
+            return ModelLaneChangeList(error=self._failure(result))
+        found = (
+            CHANGES_LINE_RE.match(line.strip()) for line in result.stdout.splitlines()
+        )
+        return ModelLaneChangeList(
+            changes=tuple(sorted({m.group(2).strip() for m in found if m}))
+        )
 
     def closeout_worktrees(
         self, request: ModelLaneHostStepRequest
@@ -340,8 +600,33 @@ class SshLaneHostTransport:
     def hold_run_dir_guard(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
+        """The runner script's ``hold_run_dir_guard`` over its cleanup header: safe only when it prints ``LANE-RETENTION-SAFE``.
+
+        A lane tree whose git dir lives inside the run directory ends the script with the printed
+        ``LANE-WORKDIR kept`` line, which is the refusal returned here.
+        """
+        if request.registry_root is None:
+            return ModelLaneHostStepResult(
+                ok=False, error="hold_run_dir_guard: registry root not resolved"
+            )
+        script = _hold_run_dir_guard(
+            f"{self._run_dirs_header(request.run_id)}\necho {RETENTION_SAFE_LINE}",
+            lane=request.lane,
+            registry_root=request.registry_root,
+        )
+        result = self._sh(request.host, script, request.timeout_seconds)
+        if result.exit_code == 0 and RETENTION_SAFE_LINE in result.stdout.splitlines():
+            return ModelLaneHostStepResult(ok=True)
+        kept = next(
+            (
+                line
+                for line in result.stdout.splitlines()
+                if line.startswith("LANE-WORKDIR ")
+            ),
+            None,
+        )
         return ModelLaneHostStepResult(
-            ok=False, error=self._not_run("hold_run_dir_guard")
+            ok=False, error=kept[:300] if kept else self._failure(result)
         )
 
     def retain_run_artifacts(
@@ -354,7 +639,32 @@ class SshLaneHostTransport:
     def stop_lane_guard(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
-        return ModelLaneHostStepResult(ok=False, error=self._not_run("stop_lane_guard"))
+        """The runner's ``lane_guard.reap_script`` for the lane's unit: stop it and kill what carries its tag.
+
+        Succeeds when the host printed the ``LANE-GUARD-STOP <json>`` line, which is returned as the ``stop`` cell;
+        the runner reads the same line for its receipt.
+        """
+        if not self._guard_source:
+            return ModelLaneHostStepResult(
+                ok=False, error=GUARD_SOURCE_MISSING.format(op="stop_lane_guard")
+            )
+        unit = guard_unit_name(request.lane, request.run_id)
+        result = self._sh(
+            request.host,
+            guard_script(self._guard_source, f"reap --unit {shlex.quote(unit)}"),
+            request.timeout_seconds,
+        )
+        stop = next(
+            (
+                line.strip()[len(GUARD_STOP_PREFIX) :]
+                for line in (result.stdout + result.stderr).splitlines()
+                if line.strip().startswith(GUARD_STOP_PREFIX)
+            ),
+            None,
+        )
+        if result.exit_code == 0 and stop is not None:
+            return ModelLaneHostStepResult(ok=True, cells=(("stop", stop),))
+        return ModelLaneHostStepResult(ok=False, error=self._failure(result))
 
 
 __all__ = [
@@ -364,4 +674,5 @@ __all__ = [
     "ProtocolHostCommandRunner",
     "SshLaneHostTransport",
     "SubprocessHostCommandExecutor",
+    "pool_python_sh",
 ]
