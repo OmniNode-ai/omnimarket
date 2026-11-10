@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Real-backend sources and recorder of the landing snapshot step (OMN-23409).
 
-- ControllerFactsFileSource: the facts the landing controller decided its last tick from, the one
+- LandingFactsFileSource: the facts the landing controller decided its last tick from, the one
   facts file it overwrites every tick. Until the node path ports the controller's Snapshot
   functions (to_build rows of the inventory), that file is the declared facts source; the step
   reads it each tick so no tick's facts are lost when the next tick overwrites it.
@@ -46,7 +46,7 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.protocols.protocol_landing
 )
 
 
-class ControllerFactsFileSource:
+class LandingFactsFileSource:
     """The landing controller's facts file for its last tick."""
 
     name = "controller-facts-file"
@@ -183,7 +183,7 @@ def build_snapshot_ports(
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     publisher: ProtocolLandingSnapshotPublisher | None = None,
 ) -> tuple[
-    ControllerFactsFileSource,
+    LandingFactsFileSource,
     WatcherStateWriteFactsSource,
     JsonlLandingTickRecorder,
     ProtocolLandingSnapshotPublisher,
@@ -200,7 +200,7 @@ def build_snapshot_ports(
     ):
         raise ValueError("the redpanda backend needs its overlay fields")
     return (
-        ControllerFactsFileSource(resolve_path(overlay.facts_path)),
+        LandingFactsFileSource(resolve_path(overlay.facts_path)),
         WatcherStateWriteFactsSource(
             resolve_path(overlay.watcher_state_path),
             owner=overlay.owner,
@@ -223,8 +223,8 @@ def _publisher(overlay: ModelSnapshotOverlay) -> ProtocolLandingSnapshotPublishe
 
 
 __all__: list[str] = [
-    "ControllerFactsFileSource",
     "JsonlLandingTickRecorder",
+    "LandingFactsFileSource",
     "SnapshotSourceError",
     "WatcherStateWriteFactsSource",
     "build_snapshot_ports",

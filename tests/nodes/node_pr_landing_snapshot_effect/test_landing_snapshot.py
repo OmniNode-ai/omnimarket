@@ -54,6 +54,10 @@ from tests.nodes.node_pr_landing_snapshot_effect.snapshot_inputs import (
 
 pytestmark = pytest.mark.unit
 
+RECORDED_TOPIC = "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
+FAILED_TOPIC = "onex.evt.omnimarket.pr-landing-snapshot-failed.v1"
+COMMAND_TOPIC = "onex.cmd.omnimarket.pr-landing-snapshot-requested.v1"
+
 
 class LastOnlyTickRecorder:
     """The named injected break: keeps one record and overwrites it every tick, as the script's facts file."""
@@ -235,10 +239,12 @@ def test_overlay_redpanda_needs_servers_and_the_example_is_in_memory() -> None:
 
 def test_contract_declares_the_overlay_topics() -> None:
     contract = yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
-    published = contract["event_bus"]["publish_topics"]
-    assert overlay().record_topic in published
-    assert overlay().failed_topic in published
+    assert contract["event_bus"]["publish_topics"] == [RECORDED_TOPIC, FAILED_TOPIC]
+    assert contract["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]
+    assert contract["terminal_event"] == RECORDED_TOPIC
+    assert overlay().record_topic == RECORDED_TOPIC
+    assert overlay().failed_topic == FAILED_TOPIC
     assert contract["runtime_dispatch"]["terminal_events"] == {
-        "success": overlay().record_topic,
-        "failure": overlay().failed_topic,
+        "success": RECORDED_TOPIC,
+        "failure": FAILED_TOPIC,
     }

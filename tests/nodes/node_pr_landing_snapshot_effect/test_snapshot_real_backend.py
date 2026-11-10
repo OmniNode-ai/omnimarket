@@ -34,8 +34,8 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_ports im
     InMemoryLandingSnapshotPublisher,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_sources import (
-    ControllerFactsFileSource,
     JsonlLandingTickRecorder,
+    LandingFactsFileSource,
     WatcherStateWriteFactsSource,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
@@ -286,7 +286,7 @@ def test_error_a_facts_file_holding_another_tick_is_a_tick_mismatch(
     tmp_path: Path,
 ) -> None:
     _write(tmp_path / "last-facts.json", _unfilled(SECOND).model_dump_json())
-    source = ControllerFactsFileSource(tmp_path / "last-facts.json")
+    source = LandingFactsFileSource(tmp_path / "last-facts.json")
     assert source.read_facts(FIRST) is None
     assert source.current_tick() == SECOND
     _write(tmp_path / "last-facts.json", "[]")
@@ -326,7 +326,7 @@ def _two_ticks(
         _write(tmp / "last-facts.json", _unfilled(tick).model_dump_json())
         handler = HandlerPrLandingSnapshot(
             overlay=overlay(),
-            facts_source=ControllerFactsFileSource(tmp / "last-facts.json"),
+            facts_source=LandingFactsFileSource(tmp / "last-facts.json"),
             write_source=WatcherStateWriteFactsSource(
                 tmp / "state.json", owner=OWNER, max_age_seconds=900, now=lambda: NOW
             ),

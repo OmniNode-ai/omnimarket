@@ -124,5 +124,5 @@ def main(argv: list[str] | None = None) -> int:
 
 __all__: list[str] = ["main", "run_once"]
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
