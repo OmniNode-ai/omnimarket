@@ -39,9 +39,19 @@ MIGRATION = (
 
 
 async def _connect_or_skip() -> asyncpg.Connection:
-    if "INTEGRATION_POSTGRES_DSN" not in os.environ:
+    if "INTEGRATION_POSTGRES_DSN" in os.environ:
+        dsn = os.environ["INTEGRATION_POSTGRES_DSN"]
+    elif os.environ.get("INTEGRATION_POSTGRES_PASSWORD"):
+        # The Integration Silent-Skip Guard exports the discrete variables.
+        dsn = (
+            f"postgresql://{os.environ.get('INTEGRATION_POSTGRES_USER', 'postgres')}"
+            f":{os.environ['INTEGRATION_POSTGRES_PASSWORD']}"
+            f"@{os.environ.get('INTEGRATION_POSTGRES_HOST', 'localhost')}"
+            f":{os.environ.get('INTEGRATION_POSTGRES_PORT', '5432')}"
+            f"/{os.environ.get('INTEGRATION_POSTGRES_DB', 'omnibase_infra')}"
+        )
+    else:
         pytest.skip("INTEGRATION_POSTGRES_DSN is not configured for OMN-19999")
-    dsn = os.environ["INTEGRATION_POSTGRES_DSN"]
     if not dsn.strip():
         raise ValueError("INTEGRATION_POSTGRES_DSN is empty")
     try:
