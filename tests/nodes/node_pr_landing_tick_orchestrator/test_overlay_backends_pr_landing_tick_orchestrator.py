@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
+from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
@@ -37,6 +39,16 @@ pytestmark = pytest.mark.unit
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "pr_landing_tick_replay"
 PATHS = sorted(FIXTURES.glob("*.json"))[:4]
 RAW = [p.read_text(encoding="utf-8") for p in PATHS]
+# What the landing snapshot step publishes on its record_topic: the shared tick record (OMN-23409).
+RECORDS = [
+    ModelLandingTickRecord(
+        correlation_id=UUID(int=i + 1),
+        tick=ModelTickSnapshot.model_validate_json(r).facts.tick,
+        facts=ModelTickSnapshot.model_validate_json(r).facts,
+        provenance="snapshot-step",
+    ).model_dump_json()
+    for i, r in enumerate(RAW)
+]
 INMEMORY = {
     "backend": "inmemory",
     "act_enabled": False,
@@ -60,7 +72,7 @@ class _Reader:
 
     def read(self, max_records: int, timeout_s: float) -> Iterable[str]:
         self._calls.append((max_records, timeout_s))
-        return RAW
+        return RECORDS
 
 
 def test_inmemory_overlay_runs_every_snapshot_in_observe_mode_with_no_write() -> None:
@@ -82,7 +94,7 @@ def test_inmemory_overlay_runs_every_snapshot_in_observe_mode_with_no_write() ->
     assert len(publisher.published) == len(RAW)
 
 
-def test_redpanda_overlay_reads_the_script_tick_records_through_the_injected_reader() -> (
+def test_redpanda_overlay_reads_the_snapshot_step_tick_records_through_the_injected_reader() -> (
     None
 ):
     calls: list[tuple[int, float]] = []
@@ -102,7 +114,11 @@ def test_redpanda_overlay_reads_the_script_tick_records_through_the_injected_rea
             "landing-tick-observe",
         )
     ]
-    assert len(source.snapshots()) == len(RAW)
+    snapshots = source.snapshots()
+    assert len(snapshots) == len(RAW)
+    assert all(
+        s.decision is None and s.provenance == "snapshot-step" for s in snapshots
+    )
     assert calls == [(10, 2.0)]
 
 

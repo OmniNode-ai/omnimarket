@@ -197,7 +197,7 @@ def roll(rules: list[ModelFrictionClassRule]) -> dict[str, dict[str, float]]:
     request = ModelFrictionRollupRequest(
         sources=[
             ModelFrictionRollupSource(
-                display="ROLLING_WORK_LEDGER.md", kind="markdown", text=ledger_text()
+                display="friction_rows.md", kind="markdown", text=ledger_text()
             )
         ],
         since=(NOW - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -301,7 +301,7 @@ def test_a_row_with_only_plain_durations_keeps_its_first_one() -> None:
     request = ModelFrictionRollupRequest(
         sources=[
             ModelFrictionRollupSource(
-                display="ROLLING_WORK_LEDGER.md",
+                display="friction_rows.md",
                 kind="markdown",
                 text=ledger_text(rows),
             )

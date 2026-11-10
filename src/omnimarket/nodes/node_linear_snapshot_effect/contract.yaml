@@ -10,7 +10,7 @@ contract_version:
   patch: 0
 node_version: 1.0.0
 description: >-
-  Write linear-<UTC date>.json, the signed-in subject's open Linear issues with id, title, status, statusType, assignee, labels, project, updatedAt and description and the top-level operator (the resolved Linear user id), validated by one typed model. The lab fill generator reads it for the operator's open tickets and plans-today reads it as the identity sidecar; with only the compact text snapshot the generator reports linear_snapshot unread and generates no ticket. The result carries counts only.
+  Write linear-<UTC date>.json, the signed-in subject's open Linear issues with id, title, status, statusType, assignee, labels, project, updatedAt and description, each issue's attachments (source type, title, metadata) and child ids (null when a part was not read, so a reader reads Linear for it), and the top-level operator (the resolved Linear user id), validated by one typed model. The lab fill generator reads it for the operator's open tickets and plans-today reads it as the identity sidecar; with only the compact text snapshot the generator reports linear_snapshot unread and generates no ticket. The result carries counts only.
 input_model:
   name: ModelLinearSnapshotRequest
   module: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot
@@ -35,7 +35,10 @@ descriptor:
   timeout_ms: 300000
   side_effects:
   - reads the signed-in subject's open Linear issues through the GraphQL API with the LINEAR_API_KEY of the environment
+  - selects each issue's attachments and children (first 50 of each; a part with a next page is written as not read) in the full and the incremental read; a snapshot written before the parts existed is read in full once
   - writes linear-<UTC date>.json under the output directory, replacing the file atomically
+  - writes linear-snapshot-state.json beside it, the time of the last good read and of the last attempt with its status
+  - waits out an HTTP 429 by its Retry-After within a budget, and keeps the last good snapshot (copied to today's name when today has none) when the limit outlasts it
 metadata:
   transport_type: HTTP
   description: >-

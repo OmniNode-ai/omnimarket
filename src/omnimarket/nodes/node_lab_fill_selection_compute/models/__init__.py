@@ -11,6 +11,7 @@ from .model_approved_work_freshness import (
     ModelApprovedWorkVerdict,
 )
 from .model_lab_fill_deployment import ModelLabFillDeployment
+from .model_lab_fill_selection_overlay import ModelLabFillSelectionOverlay
 from .model_lab_fill_selection_request import (
     ModelLabFillCandidateInput,
     ModelLabFillInputBaseline,
@@ -20,6 +21,11 @@ from .model_lab_fill_selection_request import (
 from .model_lab_fill_selection_result import (
     ModelLabFillDecision,
     ModelLabFillSelectionResult,
+)
+from .model_lane_resend import (
+    ModelLaneResendCandidate,
+    ModelLaneResendRequest,
+    ModelLaneResendResult,
 )
 
 __all__ = [
@@ -33,7 +39,11 @@ __all__ = [
     "ModelLabFillDecision",
     "ModelLabFillDeployment",
     "ModelLabFillInputBaseline",
+    "ModelLabFillSelectionOverlay",
     "ModelLabFillSelectionRequest",
     "ModelLabFillSelectionResult",
     "ModelLandingControllerFacts",
+    "ModelLaneResendCandidate",
+    "ModelLaneResendRequest",
+    "ModelLaneResendResult",
 ]

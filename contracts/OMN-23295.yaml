@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23295
+title: Tests (Split 2/20) and (Split 11/20) go green - the duplicate-guard tests stop reading the live bus on a lab host, and the ledger stamp fast path refuses T24:00:00
+summary: Two tests in the duplicate-guard file built the pr-create and pr-duplicate-check commands with the real gateway open-PR source, so a stale watcher state fell through to a read of the live bus; on a lab host the bus answered and the guard did not report unchecked. They now inject an in-memory source that cannot read, and assert that it was asked. The ledger stamp fast path matched any two-digit hour, and Python 3.14's fromisoformat reads T24:00:00 as the next midnight where strptime refuses it; the shape now admits hours 00 to 23 only, so 24:00:00 takes the strptime path and stays refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23295-splits-green
+  statement: The duplicate-guard tests do not depend on the host's bus, and the ledger stamp fast path gives the answer strptime gives on every Python.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the duplicate-guard tests use an in-memory source and pass on a lab host with a live bus, and fail if the guard''s own refusal is removed -- falsifier: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q on h201'
+  - id: AC2
+    statement: 'AC2: the ledger stamp fast path refuses T24:00:00 on Python 3.14 as it does on 3.12 -- falsifier: uv run pytest tests -q -k stamp_fast_path, failing on the old parser'
+evidence_requirements:
+- kind: tests
+  description: The two duplicate-guard tests with the injected unreadable source (red when the guard returns an empty state instead of unchecked), and the hour-24 stamp test (red on the old shape pattern).
+  command: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/nodes/node_factory_floor_effect/test_floor_publish_speed.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23295-ac1-ac2-splits-fix
+  description: The duplicate-guard tests ask the open-PR source injected in memory, and the ledger stamp shape pattern refuses 2026-11-06T24:00:00Z while still matching 23:59:59. The duplicate-guard change is test-side only, so no test of it can fail at the merge base on a runner without a bus; the stamp test does fail there (the old shape pattern matches hour 24), and that failure is the control for this item. Both checks must pass at the head.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -k stale_watcher_asks_the_injected_gateway
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_publish_speed.py -q --no-cov -k stamp_shape_pattern_excludes_hour_24
+    cwd: .
+- id: dod-omn23295-ac3-splits-green
+  description: Read Split 2/20 and Split 11/20 on three affected open pull requests at their newest heads from the PR watcher state, with no test skipped. Hosted CI cannot read the watcher, so only the local Done gate runs this check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: python3 "$OMNI_PLUGIN_ROOT"/skills/merge-drain/scripts/pr_state_local.py --status
+    cwd: .
+- id: dod-omn23295-integration-proof
+  description: Run this pull request's own focused tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23295 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/nodes/node_factory_floor_effect/test_floor_publish_speed.py -q --no-cov
+    cwd: .
