@@ -49,7 +49,9 @@ GOOD = {
 
 
 def _resolve(**fields: object) -> ModelCiSummaryRegistry:
-    return HandlerCiSummaryRegistry().handle(ModelCiSummaryRegistryRequest(**fields))  # type: ignore[arg-type]
+    return HandlerCiSummaryRegistry().handle(
+        ModelCiSummaryRegistryRequest.model_validate(fields)
+    )
 
 
 def test_golden_shipped_exclusions_match_the_old_loader() -> None:

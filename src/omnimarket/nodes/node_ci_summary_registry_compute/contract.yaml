@@ -13,6 +13,7 @@
 name: node_ci_summary_registry_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
@@ -59,6 +60,13 @@ consumed_events:
   - event_type: ModelCiSummaryRegistryRequest
     topic: onex.cmd.omnimarket.ci-summary-registry-requested.v1
     description: The parsed registry files, sent by the poller's workflow step runtime.
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ci-summary-registry-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ci-summary-registry-resolved.v1
+    - onex.evt.omnimarket.ci-summary-registry-failed.v1
 
 dependencies:
   packages:
