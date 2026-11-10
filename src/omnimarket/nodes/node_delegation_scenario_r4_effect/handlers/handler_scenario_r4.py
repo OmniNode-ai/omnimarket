@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerScenarioR4 is built by the node CLI factory (build_runner) with the contract runtime block, not routed by handler_routing or imported by name
 """Scenario R4, every rung fails and time is shared fairly (OMN-23173, readiness plan 2.2).
 
 One run drives the delegation skill handler with synthetic requests and rungs-mode probe ladders:
