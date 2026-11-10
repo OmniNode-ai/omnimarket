@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-23419
+title: The host health check names a missing worker safeguard instead of reporting an unexplained failure
+summary: The piece 2 host canary ends a host guard-missing, with the reason canary-guard-missing-<host>, when the pool read admitted the host and its lane wrapper stub then exited with the overlay's guard-missing code and marker. Two new required overlay keys carry the code and the marker, and the overlays repository branch carries the real values; the two pull requests land together. A seam test pins the pool read, the stub's real exit and the canary's ending against each other.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23419-guard-missing-ending
+  statement: A host the pool read admitted whose lane wrapper stub exits with a guard-missing code and marker ends guard-missing with a reason naming the host, and the seam between the pool read, the stub and the canary has a test that fails when the exit code, the marker or the ending changes.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the canary ends typed canary-guard-missing-<host> when a pool host lacks the declared lane guard, with a failing control on the unfixed canary, and the omnimarket and overlays changes merge together -- falsifier: uv run pytest on the canary''s tests with a planted guard-missing exit fails on the unfixed canary'
+  - id: AC2
+    statement: 'AC2: the seam between the pool read, the lane stub''s exit and the canary has a join test that fails when the exit code or the ending''s shape changes, run on the in-memory bus and the real broker -- falsifier: uv run pytest on that join test with a planted change'
+  - id: AC3
+    statement: 'AC3: integrated: the lane guard is installed on every lab pool host through the declared installer, the running canary unit''s next row reads typed, and piece 2 reads WORKING on the served floor -- falsifier: the piece 2 reading row in the ledger and the served floor after the canary''s next run'
+evidence_requirements:
+- kind: tests
+  description: The canary's probe tests and the seam test at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_probe_host_canary.py tests/unit/nodes/node_host_reading_effect/test_seam_lane_guard_stub_canary.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23419-ac1-ending
+  description: The canary's probe tests pass with the guard-missing ending; with the handler at its content on origin/dev the guard-missing error chain test and the seam error join fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_probe_host_canary.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23419-ac2-seam
+  description: The seam test passes on the in-memory bus and on both canary backends; the real broker case skips where the declared test lane's broker is not reachable. The controls (stub exit changed, stub marker changed, overlay without the pins) read untyped.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_seam_lane_guard_stub_canary.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23419-integration-proof
+  description: The pushed head ran the canary's probe tests and the seam test on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The install and the next-row read of AC3 are recorded in the pull request's Lab comment.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23419 -- uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_probe_host_canary.py tests/unit/nodes/node_host_reading_effect/test_seam_lane_guard_stub_canary.py -q --no-cov'
+    cwd: .
