@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-23557
+title: Keep the shared plans copy current on every lab computer that runs agent work
+summary: The existing declared-clone refresh (node_canonical_clone_refresh_effect, OMN-22149) gets a host tick and a declared installer unit, so the shared plans clone each lab host row declares is brought to its origin tip every 300 s on the host that holds it. The clones list is overlay data (the lab_hosts overlay and the node's overlay in the overlays repository); h101's row gains the entry it lacked, which is why its clone beside the registry root fell 57 commits behind.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- protocols
+requirements:
+- id: req-omn23557-declared-clone-tick
+  statement: Every lab host that declares a knowledge base clone has it refreshed on a schedule by the existing declared-clone refresh, from overlay values, through a declared host-installer unit.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a declared host-installer unit runs the existing declared-clone refresh for the host''s own row only, from overlay values with no constant in code, and refuses with host and path when the clone is missing or not fast-forwarded -- falsifier: pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py and tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py'
+  - id: AC3
+    statement: 'AC3: the seams (declared-clone request and receipt topics, the host-table clones column, the installer unit entry file) fail a test when either side changes shape, on the in-memory bus and the real broker -- falsifier: pytest tests/unit/declared_clone_tick (in-memory) and tests/integration/declared_clone_tick (real broker)'
+  - id: AC4
+    statement: 'AC4: integrated, on h101 installed through the host installer from the branch, one tick of the unit leaves the shared plans clone at the origin tip and writes its evidence file -- falsifier: the unit status and last-run.json read on h101'
+evidence_requirements:
+- kind: tests
+  description: The tick's golden, error and failing-control tests, the installer unit's render tests and the seam tests
+  command: uv run --frozen pytest tests/nodes/node_canonical_clone_refresh_effect tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py tests/unit/declared_clone_tick tests/unit/kbi_clone_coverage -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23557-tick
+  description: One tick refreshes only the tick host's declared clone (golden case, a stale clone is fast-forwarded to origin and last-run.json records it), refuses with host and path for a missing path, a clone that cannot fast-forward, and a host row that declares no clone (the failing control, the row h101 lacked), and ends INDETERMINATE (exit 3) when the host name variable is blank. At the merge base the tick module does not exist, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23557-unit
+  description: The installer declares the declared-clone-refresh launchd unit (every 300 s and at load, run_timeout_s below the interval) running the tick module, renders it from a branch checkout with the host name in LAB_WORK_HOST_NAME, and refuses a checkout without the tick's entry file. At the merge base the installer declares no such unit.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23557-seams
+  description: The request/receipt topics and payload shapes between the tick and the node's host, the host-table clones column, the node overlay and the installer unit's module, entry file and host-name variable are asserted on the in-memory bus; the same body runs on the real broker in the integration profile. A renamed receipt topic fails the seam helper (the control).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/declared_clone_tick -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23557-integration-proof-lab
+  description: Runs the touched nodes' tests, the real-broker seam profile included, at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23557 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_canonical_clone_refresh_effect tests/integration/declared_clone_tick tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py -q --no-cov -p no:randomly'
+    cwd: .
