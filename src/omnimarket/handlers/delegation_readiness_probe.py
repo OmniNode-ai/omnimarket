@@ -380,15 +380,13 @@ def _stub_handler(rung: ModelRungScript, answer: str) -> type[BaseHTTPRequestHan
 
 def seed_probe_tenant(db_path: Path, slug: str) -> None:
     """Mirror the probe tenant into the evidence store the run writes to, as the registry projection does."""
-    from omnimarket.local_deployment.tenant_identity import (
-        _ensure_tables_on,
-        _write_mirror_row,
-    )
+    from omnimarket.handlers.local_identity_mirror import write_mirror_row
+    from omnimarket.local_deployment.tenant_identity import _ensure_tables_on
     from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
     adapter = SqliteDatabaseAdapter(db_path)
     _ensure_tables_on(adapter)
-    _write_mirror_row(
+    write_mirror_row(
         adapter,
         tenant_uuid=uuid5(UUID(int=0), slug),
         tenant_slug=slug,
