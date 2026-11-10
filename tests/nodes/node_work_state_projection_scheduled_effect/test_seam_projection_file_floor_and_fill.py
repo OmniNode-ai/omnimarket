@@ -3,7 +3,7 @@
 """Seam: the projection file the scheduled node writes, the floor's reader and the lab fill's owner reader (OMN-22935).
 
 Three pieces share one file and one model: node_work_state_projection_effect writes ``ModelWorkStateResult`` JSON at its
-contract's output path, node_floor_simple_effect reads it at its own contract's ``work_state_relpath`` and the lab fill reads
+contract's output path, node_floor_simple_effect reads the same JSON as the ``work_state`` floor projection that node publishes on the bus (OMN-23391) and the lab fill reads
 it at its adapter's default path (lane fillorch, OMN-22854, builds the fill orchestrator that calls that reader; its branch
 holds no change to either side yet). The tests fail when any of the three paths differs, when the written JSON stops being the
 model the readers validate, and when a lane whose CLAIM names a ticket stops showing as that ticket's owner and as a lane the
@@ -21,7 +21,7 @@ import yaml
 
 from omnimarket.models.work_state_projection import ModelWorkStateResult
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
-    read_work_state,
+    work_state_from_payload,
     work_state_lanes,
 )
 from omnimarket.nodes.node_lab_fill_effect.protocols import local_lab_fill_adapters
@@ -96,14 +96,20 @@ def _publish(env: dict[str, str], now: datetime) -> None:
 
 
 def test_the_three_pieces_name_one_projection_file() -> None:
+    """The writer's file is the fill's default path; the floor reads the projection the writer publishes (OMN-23391)."""
     written = _contract("node_work_state_projection_effect")["runtime"]["output"][
         "relpath"
     ]
-    floor_reads = _contract("node_floor_simple_effect")["runtime"]["sources"][
-        "work_state_relpath"
+    floor_projection = _contract("node_floor_simple_effect")["runtime"]["sources"][
+        "work_state_projection"
     ]
+    published_topic = _contract("node_work_state_projection_effect")["runtime"][
+        "publish"
+    ]["topic"]
+    reader = _contract("node_floor_projection_read_effect")
     fill_default = Path(local_lab_fill_adapters.__file__).read_text(encoding="utf-8")
-    assert written == floor_reads
+    assert floor_projection == "work_state"
+    assert published_topic in reader["snapshot_reads"]
     assert f'/ "{written}"' in fill_default or f'"{written}"' in fill_default
     scheduled = _contract("node_work_state_projection_scheduled_effect")["runtime"]
     assert scheduled["projection_output"]["contract"] == (
@@ -120,7 +126,9 @@ def test_golden_a_lane_whose_claim_names_a_ticket_shows_after_one_publish_to_bot
     written = _contract("node_work_state_projection_effect")["runtime"]["output"][
         "relpath"
     ]
-    projection = read_work_state(home / written)
+    projection = work_state_from_payload(
+        json.loads((home / written).read_text(encoding="utf-8"))
+    )
     assert isinstance(projection, ModelWorkStateResult)
     lanes = {lane.lane: lane for lane in work_state_lanes(projection)}
     assert lanes["seam-lane"].ticket == "ZEP-7"
@@ -153,7 +161,7 @@ def test_error_a_projection_the_readers_cannot_validate_is_refused_not_read_as_e
     document = json.loads(target.read_text(encoding="utf-8"))
     document.pop("counts")
     target.write_text(json.dumps(document), encoding="utf-8")
-    assert read_work_state(target) is None
+    assert work_state_from_payload(document) is None
     monkeypatch.setenv("OMNI_HOME", str(home))
     monkeypatch.delenv("ONEX_WORK_STATE_PATH", raising=False)
     with pytest.raises(local_lab_fill_adapters.LabFillPortError, match="not readable"):

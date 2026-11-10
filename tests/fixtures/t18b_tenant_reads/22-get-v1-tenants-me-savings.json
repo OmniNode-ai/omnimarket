@@ -1,0 +1,42 @@
+{
+  "cleanup": [],
+  "masks": {
+    "/request/headers/authorization": "credential",
+    "/request/headers/content-type": "private_text",
+    "/response/body/as_of": "private_text",
+    "/response/body/currency": "private_text",
+    "/response/body/data_state": "private_text",
+    "/response/headers/content-length": "private_text",
+    "/response/headers/content-type": "private_text",
+    "/response/headers/date": "volatile"
+  },
+  "method": "GET",
+  "path": "/v1/tenants/me/savings",
+  "request": {
+    "body": null,
+    "headers": {
+      "authorization": "<MASK:credential>",
+      "content-type": "<MASK:private_text>"
+    },
+    "method": "GET",
+    "path": "/v1/tenants/me/savings",
+    "query": {}
+  },
+  "response": {
+    "body": {
+      "as_of": "<MASK:private_text>",
+      "currency": "<MASK:private_text>",
+      "data_state": "<MASK:private_text>",
+      "delegation_runs": 0,
+      "net_saved_usd": 0.0,
+      "total_saved_usd": 0.0,
+      "total_spend_usd": 0.0
+    },
+    "headers": {
+      "content-length": "<MASK:private_text>",
+      "content-type": "<MASK:private_text>",
+      "date": "<MASK:volatile>"
+    },
+    "status": 200
+  }
+}
