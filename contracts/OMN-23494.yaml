@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-23494
+title: 'Landing tick facts: the reading step declares the record topic, the live join test runs on it, and a grant seam test holds both steps'
+summary: The landing tick orchestrator declares the landing snapshot step's tick-facts record topic as a consumed event (no event_bus subscription, so the runtime wires no handler to it; the topic is provisioned from the snapshot step's event_bus.publish_topics). The snapshot join test's real-broker leg moves onto the fixed record topic under a consumer group landing-snapshot-join-<run id> and keeps only records whose provenance carries its run id. A grant seam test holds the snapshot step's lane publisher and the tick orchestrator's bus reader to the dev principal's granted topics and group prefixes.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn23494-tick-facts-seam
+  statement: The tick-facts topic is declared on both sides of the seam the way the runtime provisioner reads, the real-broker join leg runs on that topic under a granted group, and a seam test fails when either side leaves the dev principal's grants.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_pr_landing_tick_orchestrator''s contract declares onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1 as a consumed event, the topic extractor the runtime provisioner uses returns it from the snapshot effect''s event_bus section, and the orchestrator''s contract adds no event_bus subscription for it -- falsifier: test_tick_facts_topic_provisioned.py with the declaration removed'
+  - id: AC2
+    statement: 'AC2: the join test''s real-broker leg publishes and reads on the fixed tick-facts topic under a consumer group landing-snapshot-join-<run id> and keeps only records carrying its own run marker -- falsifier: rename one record field and run the join test''s real-broker leg'
+  - id: AC3
+    statement: 'AC3: a grant seam test holds the snapshot publisher and the tick reader to the dev principal''s granted topics and group prefixes, red when a group outside the prefixes is used -- falsifier: the seam test''s control with an ungranted group'
+evidence_requirements:
+- kind: tests
+  description: The tick-facts provisioning test, the snapshot grant seam test and the snapshot join test
+  command: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_facts_topic_provisioned.py tests/chain/test_landing_snapshot_grant_seam.py tests/nodes/node_pr_landing_snapshot_effect/test_join_landing_snapshot_tick.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23494-topic-declared
+  description: The direction-aware extractor returns the tick-facts topic in the snapshot step's publish_topics; the provisioning extractor returns it from the tick orchestrator's consumed_events; the orchestrator's event_bus.subscribe_topics does not carry it. With the merge-base contract two of the four tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_facts_topic_provisioned.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23494-join-fixed-topic
+  description: The join test's in-memory leg reads every record the snapshot step records and refuses a renamed or missing field; its real-broker leg (run with LANDING_SNAPSHOT_JOIN_LANE naming a declared lane) publishes and reads on the fixed record topic under landing-snapshot-join-<run id> and keeps only its run's records.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_join_landing_snapshot_tick.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23494-grant-seam
+  description: The snapshot step's lane publisher publishes only the granted record and failure topics, the tick reader subscribes only the granted record topic under the two granted group prefixes, and the controls (a group outside the prefixes, a topic the grants do not name) are red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_landing_snapshot_grant_seam.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23494-integration-proof-lab
+  description: Runs the seam's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23494 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_facts_topic_provisioned.py tests/chain/test_landing_snapshot_grant_seam.py tests/nodes/node_pr_landing_snapshot_effect/test_join_landing_snapshot_tick.py -q --no-cov -p no:randomly'
+    cwd: .

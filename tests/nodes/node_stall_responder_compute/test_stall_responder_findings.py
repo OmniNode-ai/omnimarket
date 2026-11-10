@@ -9,14 +9,16 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_stall_responder_compute.handlers.handler_lab_idle_cost import (
+from omnimarket.nodes.node_lab_idle_cost_compute.handlers.handler_lab_idle_cost import (
     HandlerLabIdleCost,
+)
+from omnimarket.nodes.node_lab_idle_cost_compute.models.model_lab_idle_cost import (
+    ModelLabIdleCostRequest,
 )
 from omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder import (
     HandlerStallCauseResponder,
 )
 from omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder import (
-    ModelLabIdleCostRequest,
     ModelStallResponderRequest,
     ModelStallResponderResult,
 )
