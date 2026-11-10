@@ -7,6 +7,7 @@ Production wires ``handlers.adapter_rotation_ports``; tests wire a real temporar
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from pydantic import SecretStr
@@ -21,6 +22,10 @@ class ProtocolLoginFile(Protocol):
 
     def fingerprint(self) -> str | None:
         """The pool fingerprint of the login now on the host, ``None`` when there is no login."""
+        ...
+
+    def since(self) -> datetime | None:
+        """When the login now on the host was written, ``None`` when there is no login."""
         ...
 
     def write(self, value: SecretStr) -> None:
