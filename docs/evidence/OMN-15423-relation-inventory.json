@@ -10836,7 +10836,8 @@
         "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/090_savings_aggregate_excludes_model_text.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/096_delegation_savings_unpriced_calls.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/098_delegation_savings_measured_population.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/098_delegation_savings_measured_population.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/101_delegation_savings_unpriced_single_pass.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
