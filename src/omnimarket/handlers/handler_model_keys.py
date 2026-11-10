@@ -66,7 +66,9 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     PROVIDERS,
     HandlerModelSetup,
-    ModelSetupRefusedError,
+)
+from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    ModelSetupRefusedError as ModelSetupRefusedError,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
@@ -759,6 +761,21 @@ def add_key(
         ModelModelSetupRequest(operation="test", provider=provider)
     ).tests
     return result
+
+
+def add_local(url: str | None, model: str) -> ModelModelTestResult | None:
+    """Register a keyless local model server at ``url`` with ``model`` and return its first test."""
+    try:
+        tests = (
+            model_handler()
+            .handle(
+                ModelModelSetupRequest(operation="add_local", url=url, models=(model,))
+            )
+            .tests
+        )
+    except ModelSetupRefusedError as refusal:
+        raise ModelKeyRefusedError(str(refusal)) from None
+    return tests[0] if tests else None
 
 
 def list_providers() -> tuple[ModelModelStatus, ...]:
