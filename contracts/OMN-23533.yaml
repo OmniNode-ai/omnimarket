@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-23533
+title: 'The local-model, escalation and several-models readiness checks install as scheduled units through the registry installer'
+summary: 'The registry host installer declares scenario-r2-systemd, scenario-r3-systemd and scenario-r5-systemd, each running a tick entry that runs the scenario once as a scheduled run, and a unit may name an optional environment file under the home directory for the settings and keys the scenario reads.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23533-ac1
+  statement: 'The registry host installer declares scenario-r2-systemd, scenario-r3-systemd and scenario-r5-systemd, each running a tick entry that runs the scenario once as a scheduled run; the interval, label, run limit and environment file of each equal its node contract.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the three units are declared, render and match their node contracts, with a test that fails at the merge base for each -- falsifier: the installer unit and seam tests at the merge base'
+- id: req-omn23533-ac2
+  statement: 'A unit that names an environment file loads it from the home directory with a leading dash and no value from the file appears in the rendered unit.'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the environment file line renders, a planted value never appears in the unit, and a traversal or unsafe path is refused -- falsifier: the environment file tests at the merge base'
+- id: req-omn23533-ac3
+  statement: 'Each tick exits 0 on a passing scheduled run, 1 on a failing one and 65 when the run is refused, and scenario R5 takes its backend from the environment file when set.'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the three ticks and the R5 backend override have golden and error chain tests that fail at the merge base -- falsifier: the tick and backend override tests at the merge base'
+evidence_requirements:
+- kind: tests
+  description: 'Runs the declared-unit, render, seam and environment file tests, the three ticks'' golden and error chains, and the R5 backend override tests. At the merge base the units are undeclared, the tick modules are absent and the backend override does not exist.'
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r2_r3_r5_units.py tests/nodes/node_delegation_scenario_r2_effect/test_scenario_r2_tick.py tests/nodes/node_delegation_scenario_r3_effect/test_scenario_r3_tick.py tests/nodes/node_delegation_scenario_r5_effect/test_scenario_r5_tick.py tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23533-units-render
+  description: 'Runs the declared-unit, render, seam and environment file tests, the three ticks'' golden and error chains, and the R5 backend override tests.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r2_r3_r5_units.py tests/nodes/node_delegation_scenario_r2_effect/test_scenario_r2_tick.py tests/nodes/node_delegation_scenario_r3_effect/test_scenario_r3_tick.py tests/nodes/node_delegation_scenario_r5_effect/test_scenario_r5_tick.py tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23533-integration-proof-lab
+  description: 'Runs the unit and tick tests at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23533 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r2_r3_r5_units.py -q --no-cov -p no:randomly'
+    cwd: .

@@ -43,6 +43,9 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# An environment file a unit declares: a path under the home directory, never an absolute one and never one that
+# climbs out of it.
+ENVIRONMENT_FILE = re.compile(r"^[A-Za-z0-9_./-]+$")
 # The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
 LOCKED_MODES = frozenset({"install", "uninstall"})
 EXIT_INSTALL_IN_PROGRESS = 75
@@ -714,6 +717,28 @@ class HandlerRegistryUnits:
             )
         return value.replace("%", "%%")
 
+    @staticmethod
+    def environment_file(unit: dict[str, Any]) -> str:
+        """The home-relative path of the file a unit declares under ``environment_file``, or ''.
+
+        The rendered unit loads it with a leading dash, so systemd starts the tick also when it is absent. A path
+        that is absolute, climbs out of the home directory or holds a character a unit line cannot carry is
+        refused: the file holds the unit's secrets, so it stays under the home directory the unit owns.
+        """
+        declared = str(unit.get("environment_file") or "")
+        if not declared:
+            return ""
+        if (
+            declared.startswith("/")
+            or ".." in declared
+            or not ENVIRONMENT_FILE.fullmatch(declared)
+        ):
+            raise ValueError(
+                f"{unit['label']} declares environment_file {declared!r}; it must be a relative path under the "
+                "home directory, of letters, digits, '_', '.', '/' and '-' only"
+            )
+        return declared
+
     def render_systemd(
         self,
         request: ModelRegistryUnitsRequest,
@@ -731,6 +756,7 @@ class HandlerRegistryUnits:
             f'"{self.systemd_value(name)}={self.systemd_value(value)}"'
             for name, value in self.environment(request, unit).items()
         )
+        environment_file = self.environment_file(unit)
         user = self.run(["id", "-un"]).stdout.strip() or os.environ.get("USER", "")
         values = {
             "LABEL": str(unit["label"]),
@@ -755,6 +781,12 @@ class HandlerRegistryUnits:
             timer = timer.replace(f"__{key}__", self.systemd_value(value))
         service = service.replace(
             "__ENVIRONMENT__", f"Environment={environment}" if environment else ""
+        )
+        service = service.replace(
+            "__ENVIRONMENT_FILE__",
+            f"EnvironmentFile=-{self.systemd_value(str(home / environment_file))}"
+            if environment_file
+            else "",
         )
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""
