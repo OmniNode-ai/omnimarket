@@ -97,7 +97,7 @@ def test_golden_the_start_check_sees_an_overlay_root_only_the_request_names(
     assert result.exit_code == 0, result.stderr
     assert len(proofs.proofs) == 1
     assert f"{ROOTS}={clone}" in proofs.proofs[0]
-    assert proofs.proofs[0][-1] == "--help"
+    assert proofs.proofs[0][-1] == "--probe"
 
 
 def test_error_the_start_check_refuses_when_the_rendered_environment_lacks_the_root(
