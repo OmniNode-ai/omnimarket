@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-21607
+title: A delegation whose answer fails its acceptance check is a failed outcome in the delegation result and its projection
+summary: A delegate-skill terminal that reports quality_gate_passed false beside a failed criterion, a failed gate or a score below the bar is no longer a success. The result routes as failed with the cause quality_gate_refused and the reason, and the delegation_events row reads terminal_ok false with the same cause and the reason in quality_gate_detail.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21607-failed-acceptance
+  statement: The omnimarket side of the ticket. A terminal that records its own failed acceptance is failed in the result and in the projected row, with the cause and the reason named.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a terminal with status completed, quality_gate_passed false and a failed acceptance record projects as terminal_ok false, terminal_failure_cause quality_gate_refused, quality_gate_passed false and the failed criterion in quality_gate_detail -- falsifier: uv run pytest tests/unit/delegation/test_failed_acceptance_shows_failed_omn21607.py -q, which goes red on the base revision of the three source files'
+evidence_requirements:
+- kind: tests
+  description: The failed-acceptance tests, with their passing controls, pass
+  command: uv run --frozen pytest tests/unit/delegation/test_failed_acceptance_shows_failed_omn21607.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21607-failed-acceptance
+  description: Runs the failed-acceptance tests. The result is no longer a success when it records failed acceptance, its failed terminal carries quality_gate_refused and the reason, and the projected row reads terminal_ok false with the cause and the criterion; the controls show a passing terminal and a bare false flag keep their old reading.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_failed_acceptance_shows_failed_omn21607.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn21607-regression
+  description: The neighbouring terminal-cause and construction tests still pass. A regression check, binds no criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_cause_copied_omn19448.py tests/unit/delegation/test_unconstructible_terminal_omn18978.py tests/unit/delegation/test_seam_quality_gate_semantics_omn15539.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn21607-integration-proof
+  description: Runs the failed-acceptance tests at the pushed head on a lab host through the lab work runner, where the real-Postgres twin runs when a database is reachable. Hosted CI cannot reach the lab runner, so only the local Done gate runs this check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21607 --kind test -- uv run --frozen pytest tests/unit/delegation/test_failed_acceptance_shows_failed_omn21607.py tests/test_omn21607_failed_acceptance_real_postgres.py -q --no-cov -p no:randomly'
+    cwd: .

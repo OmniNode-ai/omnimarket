@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Validator Workflow Orchestrator (OMN-23078)
+#
+# Validators run as one workflow. A canonical validator is the generic compute node in
+# omnibase_core (rules as overlay data, handlers for rules that cannot be data). This
+# orchestrator picks the validators that apply to a change from their contracts, then runs the
+# read effect, the validator compute nodes, the verdict reducer, and the emit and gate effects.
+# The first validator it runs is Canonical File Shape (node_canonical_file_shape_check_compute).
+name: node_validator_workflow_orchestrator
+contract_name: node_validator_workflow_orchestrator
+node_name: node_validator_workflow_orchestrator
+lifecycle: experimental
+node_type: ORCHESTRATOR_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Runs one pull request head through the validators the overlay lists that its contracts mark
+  canonical (compute, pure, tagged validator_node) and applicable (a changed path matches the
+  validation contract's target_patterns), folds their findings in node_validator_verdict_reducer,
+  emits the trace and posts the gate conclusion. An unreadable change posts a failing gate.
+input_model:
+  name: ModelValidatorWorkflowRequest
+  module: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow
+  description: One pull request head and its base.
+output_model:
+  name: ModelValidatorWorkflowResult
+  module: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow
+  description: The validator choices, outcomes, verdict, ratchet moves, canonical count and gate decision.
+handler:
+  module: omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow
+  class: HandlerValidatorWorkflow
+  input_model: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow.ModelValidatorWorkflowRequest
+  output_model: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow.ModelValidatorWorkflowResult
+# Not a runtime-dispatched handler: HandlerValidatorWorkflow takes its overlay, reader, contract
+# source, reducer, emitter and gate as constructor parameters; adapters/two_backend.py builds it.
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+terminal_event: onex.evt.omnimarket.validator-workflow-completed.v1
+dependency_ownership:
+  overlay: "Owned by the caller that loads the node overlay and constructs the handler in process."
+  reader: "Owned by the caller; built from the overlay's change-reader backend."
+  contracts: "Owned by the caller; the validator contracts the run reads."
+  reducer: "Owned by the caller; the node_validator_verdict_reducer handler it injects."
+  emitter: "Owned by the caller; the outcome emitter it injects."
+  gate: "Owned by the caller; the gate it injects."
+runtime_dispatch:
+  external_trigger: true
+# The topics by role; the handler reads these and holds no topic string.
+topics:
+  workflow_requested: onex.cmd.omnimarket.validator-workflow-requested.v1
+  workflow_started: onex.evt.omnimarket.validator-workflow-started.v1
+  validator_skipped: onex.evt.omnimarket.validator-workflow-validator-skipped.v1
+  validator_completed: onex.evt.omnimarket.validator-workflow-validator-completed.v1
+  ratchet_refused: onex.evt.omnimarket.validator-workflow-ratchet-refused.v1
+  verdict_folded: onex.evt.omnimarket.validator-workflow-verdict-folded.v1
+  workflow_completed: onex.evt.omnimarket.validator-workflow-completed.v1
+  workflow_failed: onex.evt.omnimarket.validator-workflow-failed.v1
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+# On both backends (OMN-22911): in memory by default; the overlay's backends block picks the
+# git reader and the file emitter and gate.
+backends:
+  default: in_memory
+  in_memory:
+    factory: omnimarket.nodes.node_validator_workflow_orchestrator.adapters.two_backend.make_in_memory_backend
+  real:
+    factory: omnimarket.nodes.node_validator_workflow_orchestrator.adapters.two_backend.make_real_backend
+    overlay_key: backends.reader
+  suite:
+    scenario: omnimarket.nodes.node_validator_workflow_orchestrator.adapters.two_backend.scenario_planted_change
+overlay:
+  node: node_validator_workflow_orchestrator
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-23078
+  transport_type: inmemory
