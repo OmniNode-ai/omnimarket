@@ -15,9 +15,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.rules_lab_fill_closer import CLOSER_EXEMPT_KINDS
 from omnimarket.models.lab_fill import ModelLabFillLaunch
 
-from .model_lab_fill_send_gate import CLOSER_EXEMPT_KINDS, DEFAULT_FACT_HOSTS
+from .model_lab_fill_send_gate import DEFAULT_FACT_HOSTS
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 RUN_KEY_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{4}Z)?$"
