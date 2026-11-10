@@ -14,6 +14,9 @@ from omnibase_spi.contracts.services import (
     ModelLaneHostPoolSnapshot,
 )
 
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
+)
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
     ModelScriptedTransportScript,
     ScriptedLaneHostTransport,
@@ -177,6 +180,7 @@ class Rig:
         calls: list[str] | None = None,
         now: datetime = T0,
         login_labels: tuple[str | None, ...] | None = None,
+        placement: HandlerRemoteLanePlacement | None = None,
     ) -> None:
         self.calls: list[str] = calls if calls is not None else []
         self.ledger_path = tmp / "ledger.md"
@@ -208,6 +212,7 @@ class Rig:
             login=None
             if login_labels is None
             else ScriptedLoginDraw(login_labels, self.calls),
+            placement=placement,
             receipts=self.receipts,
             echo=self.printed.append,
             clock=lambda: now,
