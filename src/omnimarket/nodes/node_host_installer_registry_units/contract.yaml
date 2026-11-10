@@ -291,6 +291,38 @@ units:
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
     state_directory: .onex_state/lane-closeout-sweep
+  # The overlay store's loader on a Linux pool host (OMN-23353): once an hour it loads the overlays the loader's overlay
+  # names from this host's clone of the overlay home, and only while that clone is at the head of the branch the overlay
+  # names (main), so the store is never filled from a side branch. The overlay root is that clone itself. This replaces
+  # a hand-started transient timer that loaded a stale branch.
+  overlay-store-load-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-overlay-store-load
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 120
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_overlay_store_load_effect.runtime_overlay_store_load_tick
+    entry_file: src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+    evidence_file: .local/state/omni/overlay-store-load/last-run.json
+    state_directory: .onex_state/overlay-store-load
   # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
   # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
   # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
