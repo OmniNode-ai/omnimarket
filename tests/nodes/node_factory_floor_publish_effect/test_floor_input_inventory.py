@@ -120,3 +120,14 @@ def test_named_break_a_step_with_no_row_fails_the_inventory() -> None:
     steps = [s["name"] for s in runtime["steps"]] + ["a_new_step_nobody_listed"]
     named = {step for row in _inventory() for step in row["steps"]}
     assert [s for s in steps if s not in named] == ["a_new_step_nobody_listed"]
+
+
+def test_the_j7_step_and_the_route_reads_file_have_rows_citing_their_tickets() -> None:
+    """The J7 join step and the delegation route counts file each have a row naming the ticket that replaces the input."""
+    rows = {row["id"]: row for row in _inventory()}
+    j7 = rows["join_j7_check_run"]
+    assert "join_j7" in j7["steps"]
+    assert j7["ticket"] == "OMN-23499"
+    routes = rows["delegation_route_reads"]
+    assert ".onex_state/floor-delegation/route-reads.json" in routes["where"]
+    assert routes["ticket"] == "OMN-23500"
