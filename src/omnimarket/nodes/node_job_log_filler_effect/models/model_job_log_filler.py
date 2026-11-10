@@ -49,6 +49,16 @@ class ModelJobLogFillerOverlay(BaseModel):
     #: Bytes of the log's end a read keeps in its reply (the cache keeps the whole log).
     reply_tail_bytes: int = Field(ge=1)
     reply_timeout_seconds: float = Field(gt=0)
+    #: A log a pass confirmed cached is not probed again until this many seconds have passed. A probe over
+    #: the bus is a round trip the gateway answers one at a time (measured 2026-11-09: about 0.25 s each,
+    #: 841 probes in about four minutes), so probing every open run on every tick does not fit a tick.
+    reprobe_seconds: int = Field(ge=1)
+    #: Wall-clock seconds after which a pass starts no further probe or read and returns what it holds (OMN-22518).
+    #: A probe is a round trip the gateway answers one at a time (measured 2026-11-09 on h051: median 2.4 s with
+    #: six readers, 886 runs to probe), so a pass that probes every run before it fills any never ended inside
+    #: the unit's run limit. The budget plus ``reply_timeout_seconds`` (the longest read in flight when it ends)
+    #: must stay under the unit's ``run_timeout_s``; the runs a pass leaves are taken, newest first, by the next.
+    pass_budget_seconds: float = Field(default=240.0, gt=0)
     profiles: dict[str, ModelJobLogFillerBusProfile] = Field(min_length=1)
     default_profile: str = Field(min_length=1)
 
@@ -136,7 +146,14 @@ class ModelJobLogFillResult(BaseModel):
     filled: int = Field(ge=0)
     already_cached: int = Field(ge=0)
     failed: int = Field(ge=0)
-    deferred: int = Field(ge=0, description="Runs left for the next pass by the cap.")
+    deferred: int = Field(
+        ge=0,
+        description="Runs left for the next pass by the read cap or the pass budget.",
+    )
+    budget_exhausted: bool = Field(
+        default=False,
+        description="True when the pass budget ended the pass before every run was reached.",
+    )
     stale_skipped: int = Field(
         ge=0, description="Pull requests whose CI record is not of their current head."
     )

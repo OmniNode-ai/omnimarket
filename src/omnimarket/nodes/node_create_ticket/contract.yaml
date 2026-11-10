@@ -38,6 +38,12 @@ handler_routing:
       handler:
         name: HandlerTicketProject
         module: omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project
+    # Lane intake opens a ticket by publishing the ticket write node's create command and reading
+    # the typed terminal (OMN-23138); the handler lives on the dispatch side, bound here.
+    - operation: lane_intake_create
+      handler:
+        name: HandlerLaneIntakeCreate
+        module: omnimarket.handlers.handler_lane_intake_create
 
 handler:
   module: omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket

@@ -60,6 +60,8 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
+from tests.helpers.isolated_schema_sql import for_isolated_schema
+
 pytestmark = pytest.mark.integration
 
 _DELEGATION_MIGRATIONS = (
@@ -111,11 +113,21 @@ _POST_CONVERSION_TIER_MODELS_VIEW = "0060_model_routing_tier_models.sql"
 # ON tenant_id, so it depends on the column the conversion alters and is
 # withheld with 0039.
 _POST_CONVERSION_TOKEN_USAGE_VIEW = "0062_delegation_token_usage_unpriced_calls.sql"
+# OMN-21970: 0067 creates projection_delegation_daily, which groups ON tenant_id,
+# so it is withheld with 0039 for the same reason.
+_POST_CONVERSION_DAILY_VIEW = "0067_delegation_daily_view.sql"
 
 # OMN-22573: 0065 re-creates projection_delegation_quality_gate, which reads
 # 0045's operational_outcome column and groups ON tenant_id, so it depends on
 # 0045 and is withheld with it.
 _POST_CONVERSION_QUALITY_GATE_VIEW = "0065_quality_gate_failure_categories_bounded.sql"
+
+# OMN-23169: 0068 re-creates projection_delegation_summary again (without the
+# experiment rows), with the same dependence on 0045 and on tenant_id, so it is
+# withheld with 0050.
+_POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW = (
+    "0068_delegation_summary_excludes_experiment.sql"
+)
 
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
@@ -165,7 +177,8 @@ def _sql(name: str) -> str:
     """A migration's real bytes, with the one scratch-schema accommodation the
     0031 and 0032 proofs already use."""
     directory = _REGISTRY_MIGRATIONS if name == _MIRROR else _DELEGATION_MIGRATIONS
-    raw = (directory / name).read_text(encoding="utf-8")
+    # OMN-21970: the node's migrations may name public.; apply them here.
+    raw = for_isolated_schema((directory / name).read_text(encoding="utf-8"))
     return raw.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 
@@ -204,7 +217,9 @@ def _pre_conversion_migrations() -> list[Path]:
             _POST_CONVERSION_MODEL_ROUTING_VIEW,
             _POST_CONVERSION_TIER_MODELS_VIEW,
             _POST_CONVERSION_TOKEN_USAGE_VIEW,
+            _POST_CONVERSION_DAILY_VIEW,
             _POST_CONVERSION_QUALITY_GATE_VIEW,
+            _POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW,
         }
     ]
 

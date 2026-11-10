@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import ValidationError
 
@@ -18,6 +18,7 @@ from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidatesRequest,
     ModelFloorRecordRead,
+    ModelFloorStartCriterion,
     ModelFloorTaskPayloadVerdict,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
@@ -180,6 +181,21 @@ class ScriptedTickets:
                         )
         return out
 
+    def start_criteria(self, floor_record: str) -> Sequence[ModelFloorStartCriterion]:
+        try:
+            record = ModelFloorRecordRead.model_validate_json(floor_record)
+        except (ValidationError, ValueError):
+            return ()
+        return [
+            ModelFloorStartCriterion(
+                line_id=line.line_id, task_id=item.id, start_when="Start when: none"
+            )
+            for line in record.lines
+            for station in line.stations
+            for item in station.items
+            if item.state == "prep" and item.note.startswith("ready")
+        ]
+
     def entry_ticket_verdicts(
         self, tickets: Mapping[str, str]
     ) -> Sequence[ModelFloorEntryTicketVerdict]:
@@ -248,6 +264,32 @@ class ScriptedStarter:
         return ModelRunOutcome(state="failed", cause="not-a-command-runner")
 
 
+class ScriptedBriefs:
+    """The previous reports by path, and the briefs a continuation start saved by lane."""
+
+    def __init__(
+        self,
+        reports: Mapping[str, str] | None = None,
+        unreadable_reports: frozenset[str] = frozenset(),
+        fail_save: bool = False,
+    ) -> None:
+        self.reports = dict(reports or {})
+        self.unreadable_reports = unreadable_reports
+        self.fail_save = fail_save
+        self.saved: dict[str, str] = {}
+
+    def report_text(self, report_path: str) -> str | None:
+        if report_path in self.unreadable_reports:
+            raise FloorFillUnreadableError("report-unreadable")
+        return self.reports.get(report_path)
+
+    def save_brief(self, lane: str, text: str) -> str:
+        if self.fail_save:
+            raise FloorFillUnreadableError("brief-unwritable")
+        self.saved[lane] = text
+        return f"scripted://briefs/{lane}.md"
+
+
 class ScriptedCommandForward:
     """The process effect for the forward: records argv and timeout, answers from a script."""
 
@@ -272,6 +314,8 @@ def floor_record(
     *,
     generated_at: datetime,
     not_ready: Mapping[str, str] | None = None,
+    stopped: Sequence[Mapping[str, Any]] = (),
+    lanes: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """A floor record: each line a list of task ids that are ``prep`` and ``ready`` (``not_ready``: key -> note)."""
     import json
@@ -300,12 +344,13 @@ def floor_record(
             }
             for line_id, tasks in lines.items()
         ],
-        "floor": {"lanes": []},
+        "floor": {"lanes": list(lanes), "stopped": list(stopped)},
     }
     return json.dumps(body)
 
 
 __all__: list[str] = [
+    "ScriptedBriefs",
     "ScriptedClock",
     "ScriptedCommandForward",
     "ScriptedFacts",

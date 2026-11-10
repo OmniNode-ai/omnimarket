@@ -212,6 +212,8 @@ class _Draft:
     pr: ModelPullRequestSource | None = None
     check: str | None = None
     commitment: ModelCommitmentSource | None = None
+    assignee: str | None = None
+    parent: str | None = None
 
 
 def _ticket_in_scope(
@@ -269,6 +271,8 @@ class HandlerWorkStateProjection:
                 scope=EnumScopeStatus.IN_SCOPE
                 if ticket_scope(t.ticket_id)
                 else EnumScopeStatus.PAUSED,
+                assignee=t.assignee,
+                parent=t.parent,
             )
         for p in request.plan_tasks:
             key = f"plan:{p.plan}#{p.task_id}"
@@ -512,6 +516,8 @@ class HandlerWorkStateProjection:
                     live_lane=live_lane,
                     left=left,
                     owner=d.commitment.owner if d.commitment else None,
+                    assignee=d.assignee,
+                    parent=d.parent,
                 )
             )
 

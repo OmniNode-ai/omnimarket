@@ -56,6 +56,7 @@ from .fakes import (
     FakeChecks,
     FakeClock,
     FakeLedgerReader,
+    FakeMerged,
     FakeOwners,
     FakePlacement,
     FakeReceipts,
@@ -239,6 +240,7 @@ def _launcher(
     runner: ProtocolLabFillLaneLauncher | None = None,
 ) -> HandlerLabFillLaunch:
     return HandlerLabFillLaunch(
+        merged=FakeMerged(),
         checks=checks if checks is not None else FakeChecks(),
         approved=approved if approved is not None else FakeApproved(),
         blocks=blocks if blocks is not None else FakeBlocks(),
