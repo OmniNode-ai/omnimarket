@@ -34,6 +34,12 @@ handler_routing:
       handler:
         name: HandlerLabCheckRunEffect
         module: omnimarket.nodes.node_lab_check_run_effect.handlers.handler_lab_check_run_effect
+    # The J7 run (OMN-23420) is the join's caller: it runs from the publish cycle's join_j7 step (runtime_join_j7), in
+    # process, and answers each piece 7 golden reading with a send past a stop whose lab check posts on a test head.
+    - operation: join_j7_run
+      handler:
+        name: HandlerLabCheckRunJoinJ7Run
+        module: omnimarket.nodes.node_lab_check_run_effect.handlers.handler_lab_check_run_join_j7_run
 
 # HandlerLabCheckRunEffect takes the overlay, the check-run API, the emission sink, an http transport and a clock as
 # constructor parameters; each defaults to the backend the overlay names.
