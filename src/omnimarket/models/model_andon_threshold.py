@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 from types import MappingProxyType
 from typing import Literal
 
@@ -50,6 +50,22 @@ class ModelClassWindowCounts(_Frozen):
         return self
 
 
+class ModelMeasurementProvenance(_Frozen):
+    """Where a threshold set was measured: the source, the span read and the step between windows."""
+
+    source: str = Field(min_length=1)
+    measured_from: datetime
+    measured_until: datetime
+    step_hours: int = Field(ge=1)
+    events_read: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _span_runs_forward(self) -> ModelMeasurementProvenance:
+        if self.measured_until <= self.measured_from:
+            raise ValueError("measured_until must be after measured_from")
+        return self
+
+
 class ModelAndonThresholdFreeze(_Frozen):
     """The frozen thresholds: the values, their hash and the date they were last recalibrated."""
 
@@ -61,6 +77,8 @@ class ModelAndonThresholdFreeze(_Frozen):
     thresholds: Mapping[str, int] = Field(min_length=1)
     threshold_hash: str = Field(min_length=64, max_length=64)
     recalibrated_on: date
+    # Provenance is information about the measurement, not a threshold value: it is outside the hash.
+    measurement: ModelMeasurementProvenance | None = None
 
     @field_validator("thresholds")
     @classmethod
@@ -86,6 +104,7 @@ class ModelThresholdComputeRequest(_Frozen):
     classes: tuple[ModelClassWindowCounts, ...] = Field(min_length=1)
     recalibrated_on: date
     window_hours: int = Field(default=WINDOW_HOURS, ge=WINDOW_HOURS, le=WINDOW_HOURS)
+    measurement: ModelMeasurementProvenance | None = None
 
     @model_validator(mode="after")
     def _unique_classes(self) -> ModelThresholdComputeRequest:
@@ -145,3 +164,43 @@ class ModelBurstScopeResult(_Frozen):
     admitted_pieces: tuple[int, ...]
     # Classes seen with no frozen threshold: not judged, never read as within bounds.
     unmeasured_classes: tuple[str, ...] = ()
+
+
+class ModelClassEvent(_Frozen):
+    """One observation of a census class at a time (a friction row's class and its stamp)."""
+
+    class_id: str = Field(min_length=1)
+    observed_at: datetime
+
+
+class ModelWindowMeasureRequest(_Frozen):
+    """Rolling 24 hour windows over a span, started every ``step_hours``; the step is the caller's (overlay) setting."""
+
+    events: tuple[ModelClassEvent, ...]
+    measured_from: datetime
+    measured_until: datetime
+    step_hours: int = Field(ge=1)
+    window_hours: int = Field(default=WINDOW_HOURS, ge=WINDOW_HOURS, le=WINDOW_HOURS)
+
+    @model_validator(mode="after")
+    def _span_holds_a_window(self) -> ModelWindowMeasureRequest:
+        if self.measured_from.tzinfo is None or self.measured_until.tzinfo is None:
+            raise ValueError("the measured span needs timezone-aware bounds")
+        span_hours = (self.measured_until - self.measured_from).total_seconds() / 3600
+        if span_hours < self.window_hours:
+            raise ValueError(
+                f"the span is {span_hours:.1f} hours, shorter than one {self.window_hours} hour window"
+            )
+        naive = [e.class_id for e in self.events if e.observed_at.tzinfo is None]
+        if naive:
+            raise ValueError(f"events with no timezone: {sorted(set(naive))[:5]}")
+        return self
+
+
+class ModelWindowMeasureResult(_Frozen):
+    """Per class, its count in every window of the span; feeds ``compute_thresholds``."""
+
+    classes: tuple[ModelClassWindowCounts, ...]
+    windows_measured: int = Field(ge=1)
+    events_read: int = Field(ge=0)
+    events_outside_span: int = Field(ge=0)

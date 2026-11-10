@@ -125,6 +125,14 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.pr-landing-decision-completed.v1"
     failure: "onex.evt.omnimarket.pr-landing-decision-failed.v1"
+# The command the landing controller sends this node (one tick's facts); the
+# provisioner reads consumed_events, not runtime_dispatch, so this entry
+# makes the platform topic provisioner (ContractTopicExtractor) create the
+# topic on the broker (OMN-23395).
+consumed_events:
+  - event_type: ModelLandingFacts
+    topic: "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
+    description: The command the landing controller sends this node (one tick's facts); declared here so the platform topic provisioner (ContractTopicExtractor reads consumed_events, not runtime_dispatch) creates the topic on the broker (OMN-23395).
 descriptor:
   node_archetype: compute
   purity: pure

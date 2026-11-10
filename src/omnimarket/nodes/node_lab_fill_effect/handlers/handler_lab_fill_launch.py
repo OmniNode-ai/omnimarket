@@ -247,6 +247,9 @@ class HandlerLabFillLaunch:
             merged_prs = tuple(
                 self._merged.merged_prs(launch.ticket, request.watcher_state_path)
             )
+            built = tuple(
+                self._merged.built_reports(launch.ticket, request.ledger_path)
+            )
         except LabFillPortError as exc:
             # An unread merge state is not a clear one: a lane sent blind may redo merged work.
             return result(
@@ -259,6 +262,7 @@ class HandlerLabFillLaunch:
                 brief=brief,
                 host=launch.host,
                 merged_prs=merged_prs,
+                built=built,
                 exempt_kinds=request.closer_exempt_kinds,
                 fact_hosts=request.fact_hosts,
                 needs_hosts=request.needs_hosts,

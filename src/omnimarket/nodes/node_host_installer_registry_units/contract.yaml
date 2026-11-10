@@ -18,7 +18,9 @@ description: >-
   the unit. A unit may declare a config_file: a document rendered from the request (refused when a placeholder is left
   unfilled) and written at the path of the environment variable it names, mode 0600, keeping the differing file it
   replaces. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick. A unit that declares
-  run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job.
+  run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job, and ends its run
+  on TERM, INT and HUP, so an unload ends it too. A unit that declares tick_lock_file has a tick that holds that file in its evidence directory
+  while it runs: an install or uninstall waits for a running tick to end after the unload, then stops it, and refuses the install of one it cannot stop.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
@@ -129,8 +131,12 @@ units:
       # directory, because the pool read refuses a table outside its declared roots (OMN-22561).
       - ONEX_LAB_RUN_HOSTS
       - ONEX_LAB_HOST_TABLE_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlays canonical clone first (the floor's owners map and sources live there), then the plugin's overlays
+      # (OMN-23323: the owners map was read from a worktree that worktree triage removed).
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_LAB_RUN_HOSTS: ""
       ONEX_LAB_HOST_TABLE_ROOTS: ""
       ONEX_PLANS_KB_PATH: "{plans_path}"
@@ -171,6 +177,8 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
       - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
@@ -208,11 +216,80 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
       - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
+  # The C32 local auth-boundary probe (node_c32_auth_boundary_probe_effect, OMN-23213, MVP launch plan task M17), once a day on
+  # a Linux lab host: a systemd user service and timer. One run starts the real `onex dashboard` in a scratch HOME, grades the
+  # five auth cases and the planted-credential search, and publishes the run on the node's result topic, where the launch
+  # reading (M1) reads C32. The profile, the onex directory and the history size are the node's overlay in the overlays
+  # repository, found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
+  c32-auth-boundary-probe:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-c32-auth-boundary-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      # The node's own timeout_ms is 1200000 (its contract); the unit ends a hung run at 1260 s and exits 124.
+      run_timeout_s: 1260
+      run_at_load: true
+      description: every 86400 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.runtime_c32_probe_tick
+    entry_file: src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
+    state_directory: .onex_state/c32-auth-boundary-probe
+  # The overlay store's loader on a Linux pool host (OMN-23353): once an hour it loads the overlays the loader's overlay
+  # names from this host's clone of the overlay home, and only while that clone is at the head of the branch the overlay
+  # names (main), so the store is never filled from a side branch. The overlay root is that clone itself. This replaces
+  # a hand-started transient timer that loaded a stale branch.
+  overlay-store-load-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-overlay-store-load
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 120
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_overlay_store_load_effect.runtime_overlay_store_load_tick
+    entry_file: src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+    evidence_file: .local/state/omni/overlay-store-load/last-run.json
+    state_directory: .onex_state/overlay-store-load
   # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
   # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
   # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
@@ -241,6 +318,8 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
       - ONEX_LEDGER_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
@@ -271,6 +350,9 @@ units:
     # Ended with its process group and exits 124 past this; launchd starts no second run while one is alive.
     # Three intervals, the bound the run-limit test holds every unit to; a pass's worst case is the overlay's.
     run_timeout_s: 360
+    # The tick holds this file in the evidence directory while it runs (a second tick exits 3), and an install or uninstall
+    # waits for, then stops, a tick still holding it after the unload (OMN-23349).
+    tick_lock_file: tick.lock
     tick_no_sync: true
     interpreter_candidates:
       - /opt/homebrew/bin/python3.13
@@ -282,6 +364,8 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
