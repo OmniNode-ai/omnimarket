@@ -98,6 +98,13 @@ runtime:
   # read within scenario_refresh_seconds is not read again, so a run refreshes about half of them and none waits longer than two runs.
   scenario_stage_deadline_seconds: 70
   scenario_refresh_seconds: 420
+  # OMN-23176: a workflow the repository does not have yet (its builder has not merged) answers the same 404 on every read, and a
+  # read can take longer than scenario_read_timeout_seconds under load (R5 drew Unread at the 25 s bound). Its cached "not built"
+  # read is therefore asked again only after this many seconds, which is below scenario_reads_max_age_seconds so the cached
+  # answer never goes unread between two asks. The 25 s bound is unchanged.
+  # A read that failed is asked again on the next run (it is not held back for scenario_refresh_seconds like a read that worked), and
+  # every read records read_seconds, so the floor shows how long a read took where it used to show only the timeout.
+  scenario_missing_refresh_seconds: 1500
   # A scenario read older than this is drawn unread instead of reading old state as current.
   scenario_reads_max_age_seconds: 1800
   # A scenario whose overlay entry names the lab_node source is read from the ledger over the bus: its node writes one STATUS row

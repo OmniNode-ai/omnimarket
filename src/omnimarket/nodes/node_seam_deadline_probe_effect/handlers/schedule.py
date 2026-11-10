@@ -21,6 +21,9 @@ from omnimarket.handlers.rules_unit_roots import (
     UnitRootRefusedError,
     refuse_worktree_roots,
 )
+from omnimarket.nodes.node_seam_deadline_probe_effect.handlers.recheck import (
+    ModelRecheckPolicy,
+)
 from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
     NODE_NAME,
     ModelSeamDeadlineHost,
@@ -51,6 +54,8 @@ class ModelSeamDeadlineSchedule(BaseModel):
     state_directory: str
     timeout_seconds: int = Field(ge=1)
     cadence: ModelSeamDeadlineCadence
+    #: The re-read of a red hourly run (OMN-23201): its own timer, running ``read --recheck``.
+    recheck: ModelRecheckPolicy
 
 
 class ModelScheduleResult(BaseModel):
@@ -89,15 +94,15 @@ def _assignment(name: str, value: str) -> str:
     return f'Environment="{name}={escaped}"\n'
 
 
-def render_systemd(
-    schedule: ModelSeamDeadlineSchedule,
+def _unit_facts(
     host: ModelSeamDeadlineHost,
     *,
     omni_root: Path,
     home: Path,
     overlay_root: Path,
-) -> tuple[str, str]:
-    """The systemd user service and timer text."""
+    schedule: ModelSeamDeadlineSchedule,
+) -> tuple[str, str, str, dict[str, str]]:
+    """Registry root, interpreter, state directory and unit environment, shared by every unit."""
     root = _safe(omni_root, "registry root")
     user_home = _safe(home, "home")
     python = _safe(omni_root / host.venv / "bin" / "python", "venv interpreter")
@@ -112,6 +117,25 @@ def render_systemd(
             for name, value in host.environment.items()
         },
     }
+    return root, python, state, environment
+
+
+def render_systemd(
+    schedule: ModelSeamDeadlineSchedule,
+    host: ModelSeamDeadlineHost,
+    *,
+    omni_root: Path,
+    home: Path,
+    overlay_root: Path,
+) -> tuple[str, str]:
+    """The systemd user service and timer text."""
+    root, python, state, environment = _unit_facts(
+        host,
+        omni_root=omni_root,
+        home=home,
+        overlay_root=overlay_root,
+        schedule=schedule,
+    )
     cadence = schedule.cadence
     service = (
         "# Rendered by the seam deadline node (schedule install); the node contract owns the\n"
@@ -139,6 +163,48 @@ def render_systemd(
     return service, timer
 
 
+def render_recheck_systemd(
+    schedule: ModelSeamDeadlineSchedule,
+    host: ModelSeamDeadlineHost,
+    *,
+    omni_root: Path,
+    home: Path,
+    overlay_root: Path,
+) -> tuple[str, str]:
+    """The systemd user service and timer of the re-read of a red hourly run."""
+    root, python, state, environment = _unit_facts(
+        host,
+        omni_root=omni_root,
+        home=home,
+        overlay_root=overlay_root,
+        schedule=schedule,
+    )
+    recheck = schedule.recheck
+    service = (
+        "# Rendered by the seam deadline node (schedule install); the node contract owns the\n"
+        "# recheck, so change the contract and install again rather than editing this file.\n"
+        "# Rollback: schedule uninstall.\n"
+        "[Unit]\nDescription=ONEX seam deadline re-read of a red reading (piece 3)\n"
+        "\n[Service]\nType=oneshot\n"
+        f"TimeoutStartSec={schedule.timeout_seconds}\n"
+        + "".join(_assignment(name, value) for name, value in environment.items())
+        + f"WorkingDirectory={root}\n"
+        f"ExecStart={python} -m {NODE_MODULE} read --recheck\n"
+        f"StandardOutput=append:{state}/seam-deadline.out.log\n"
+        f"StandardError=append:{state}/seam-deadline.err.log\n"
+        f"SyslogIdentifier={recheck.unit_name}\n"
+    )
+    timer = (
+        f"# {recheck.description}\n"
+        "[Unit]\nDescription=ONEX seam deadline re-read tick\n"
+        f"\n[Timer]\nOnActiveSec={recheck.interval}\n"
+        f"OnUnitActiveSec={recheck.interval}\n"
+        f"Unit={recheck.unit_name}.service\n"
+        "\n[Install]\nWantedBy=timers.target\n"
+    )
+    return service, timer
+
+
 class SeamDeadlineScheduler:
     """Install, remove, read and run the hourly schedule on one declared host."""
 
@@ -156,6 +222,8 @@ class SeamDeadlineScheduler:
         self.run = run
         self.service_name = f"{schedule.unit_name}.service"
         self.timer_name = f"{schedule.unit_name}.timer"
+        self.recheck_service_name = f"{schedule.recheck.unit_name}.service"
+        self.recheck_timer_name = f"{schedule.recheck.unit_name}.timer"
         self.unit_dir = home / ".config/systemd/user"
 
     def _declared(self, name: str) -> ModelSeamDeadlineHost | ModelScheduleResult:
@@ -181,12 +249,26 @@ class SeamDeadlineScheduler:
                 home=self.home,
                 overlay_root=overlay_root,
             )
+            recheck_service, recheck_timer = render_recheck_systemd(
+                self.schedule,
+                host,
+                omni_root=omni_root,
+                home=self.home,
+                overlay_root=overlay_root,
+            )
         except ValueError as exc:
             return ModelScheduleResult(exit_code=1, stderr=f"{exc}\n")
         # A unit that runs from a worktree dies when the host reconcile removes the tree: refuse
         # before anything is written or printed, naming the path (OMN-22783).
         try:
-            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
+            refuse_worktree_roots(
+                {
+                    self.service_name: service,
+                    self.timer_name: timer,
+                    self.recheck_service_name: recheck_service,
+                    self.recheck_timer_name: recheck_timer,
+                }
+            )
         except UnitRootRefusedError as exc:
             return ModelScheduleResult(
                 exit_code=1,
@@ -198,6 +280,8 @@ class SeamDeadlineScheduler:
         files = [
             (self.unit_dir / self.service_name, service),
             (self.unit_dir / self.timer_name, timer),
+            (self.unit_dir / self.recheck_service_name, recheck_service),
+            (self.unit_dir / self.recheck_timer_name, recheck_timer),
         ]
         if dry_run:
             return ModelScheduleResult(
@@ -220,6 +304,7 @@ class SeamDeadlineScheduler:
         for step in (
             ["systemctl", "--user", "daemon-reload"],
             ["systemctl", "--user", "enable", "--now", self.timer_name],
+            ["systemctl", "--user", "enable", "--now", self.recheck_timer_name],
         ):
             done = self.run(step)
             if done.returncode:
@@ -238,10 +323,13 @@ class SeamDeadlineScheduler:
         if isinstance(host, ModelScheduleResult):
             return host
         self.run(["systemctl", "--user", "disable", "--now", self.timer_name])
+        self.run(["systemctl", "--user", "disable", "--now", self.recheck_timer_name])
         output = ""
         for target in (
             self.unit_dir / self.timer_name,
             self.unit_dir / self.service_name,
+            self.unit_dir / self.recheck_timer_name,
+            self.unit_dir / self.recheck_service_name,
         ):
             if target.exists():
                 target.unlink()
@@ -256,7 +344,14 @@ class SeamDeadlineScheduler:
         if isinstance(host, ModelScheduleResult):
             return host
         done = self.run(
-            ["systemctl", "--user", "list-timers", self.timer_name, "--all"]
+            [
+                "systemctl",
+                "--user",
+                "list-timers",
+                self.timer_name,
+                self.recheck_timer_name,
+                "--all",
+            ]
         )
         return ModelScheduleResult(
             exit_code=done.returncode, stdout=done.stdout, stderr=done.stderr
@@ -277,5 +372,6 @@ __all__ = [
     "ModelSeamDeadlineSchedule",
     "SeamDeadlineScheduler",
     "load_schedule",
+    "render_recheck_systemd",
     "render_systemd",
 ]
