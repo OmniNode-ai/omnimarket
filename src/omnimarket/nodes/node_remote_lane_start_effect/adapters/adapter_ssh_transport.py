@@ -424,6 +424,7 @@ class SshLaneHostTransport:
         no token crosses the ssh session or this process. The pool skips limited and revoked labels in its
         draw order; a pool that resolves nothing leaves the host login, as the runner's fallback does.
         """
+        self._resolve_arguments = ""
         if self._pool is None:
             return ModelEngineLoginDraw(state="none", detail="no login pool configured")
         steer = self._steer() if self._steer is not None else None
@@ -440,14 +441,17 @@ class SshLaneHostTransport:
         )
         result = self._sh(host, script, self._pool.draw_timeout_seconds)
         lines = result.stdout.strip().splitlines()
-        refused = _REFUSED_START.search(lines[-1]) if len(lines) >= 2 else None
         if (
             result.exit_code == 0
-            and refused is not None
+            and len(lines) >= 2
             and lines[-2] == f"POOL-RC={POOL_START_REFUSED_EXIT}"
         ):
+            # The exit alone says refused: a line that cannot be read must never turn a refusal into a start.
+            code = _REFUSED_START.search(lines[-1])
             return ModelEngineLoginDraw(
-                state="refused", refusal=refused.group(1), detail=lines[-1][:200]
+                state="refused",
+                refusal=code.group(1) if code is not None else "unread",
+                detail=lines[-1][:200],
             )
         if result.exit_code != 0 or len(lines) < 2 or lines[-2] != "POOL-RC=0":
             return ModelEngineLoginDraw(

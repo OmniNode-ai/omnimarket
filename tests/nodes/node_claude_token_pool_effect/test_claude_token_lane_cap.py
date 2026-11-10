@@ -164,6 +164,15 @@ def test_error_chain_a_limited_pool_is_not_a_cap_refusal(tmp_path: Path) -> None
     drawn = resolve(handler, lanes(acct_a=1))
     assert drawn.refusal is None
     assert drawn.all_limited is True
+    # The same for the two refusals about the count itself: with nothing usable there is nothing to refuse.
+    assert resolve(handler, None).refusal is None
+    unread = pool(tmp_path / "unread", "acct-a", cap_read=False)
+    unread.handle(
+        ModelClaudeTokenPoolRequest(
+            operation="mark_limited", label="acct-a", seconds=3600
+        )
+    )
+    assert resolve(unread, lanes(acct_a=0)).refusal is None
 
 
 class _Pipe(io.StringIO):

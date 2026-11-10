@@ -408,6 +408,10 @@ class HandlerClaudeTokenPool:
             for entry in pool["tokens"]
             if not entry.get("revoked_at") and (entry.get("until") or "") <= now
         ]
+        if not usable:
+            # Nothing usable is the answer it always was (an empty pool, or every token limited or
+            # revoked), never a refusal: a refusal says a usable token exists.
+            return None, None, None, False
         counted = request.lane_counts
         if counted is not None and not self._lane_cap_read:
             return (
@@ -455,8 +459,8 @@ class HandlerClaudeTokenPool:
                     None,
                     entry["label"] in drained,
                 )
-        at_cap = tuple(e["label"] for e in usable if e not in open_labels)
-        if at_cap and cap is not None:
+        if not open_labels and cap is not None:
+            at_cap = tuple(e["label"] for e in usable)
             return (
                 None,
                 None,

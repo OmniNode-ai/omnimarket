@@ -362,6 +362,55 @@ def test_the_draw_at_the_cap_answers_refused_with_the_pools_code(
     assert "oat01" not in drawn.detail
 
 
+class Answering:
+    """A host that answers one fixed output to every command."""
+
+    def __init__(self, stdout: str) -> None:
+        self.stdout = stdout
+
+    def run(
+        self, argv: Sequence[str], timeout_seconds: float
+    ) -> ModelHostCommandResult:
+        return ModelHostCommandResult(exit_code=0, stdout=self.stdout, stderr="")
+
+
+def test_the_refused_exit_alone_is_a_refusal_whatever_the_line_says(
+    tmp_path: Path,
+) -> None:
+    host = Host(tmp_path)
+    transport = SshLaneHostTransport(
+        ssh_argv=["ssh"],
+        host_run_root=str(tmp_path / "runs"),
+        call_timeout_seconds=60,
+        detach_argv=["env"],
+        login_pool=ModelEngineLoginPool(
+            module=POOL_MODULE,
+            python_relative=".test-venv/bin/python",
+            roots=(str(host.root),),
+            draw_timeout_seconds=60,
+        ),
+        runner=Answering("POOL-RC=5\nTraceback: something else on the last line\n"),
+    )
+    drawn = transport.draw_login(LOCAL)
+    assert (drawn.state, drawn.refusal) == ("refused", "unread")
+
+
+class MissingLedger:
+    def read_text(self) -> str:
+        raise FileNotFoundError("no ledger yet")
+
+
+def test_a_ledger_nobody_has_written_counts_no_lanes() -> None:
+    steer = HandlerPoolSteering(
+        steering=ON,
+        ledger=MissingLedger(),
+        run=Verdict(VERDICT_RESULT),
+        now=lambda: T0,
+    ).handle()
+    assert steer is not None
+    assert (steer.drain_labels, steer.lane_counts) == (("acct-a",), ())
+
+
 def test_the_engines_own_resolve_carries_the_arguments_of_the_draw(
     tmp_path: Path,
 ) -> None:

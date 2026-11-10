@@ -14,6 +14,10 @@ off (how it ships) this handler answers ``None`` and the draw is what it was. Sw
 A verdict that cannot be had (the command fails, times out or prints something else) steers nothing: the
 start goes ahead with an empty drain list and says why. A missing verdict never blocks a lane; the lane cap,
 which the pool holds the counts against, is what refuses one. Labels only pass through here, never a token.
+
+The count is a reading, not a reservation: two starts that count at the same moment both see the same
+number, so the cap can be passed by the number of starts that draw together, and a lane that outlives the
+age bound without a closing row is no longer counted. The cap bounds a pile-up; it is not an exact limit.
 """
 
 from __future__ import annotations
@@ -147,10 +151,14 @@ class HandlerPoolSteering:
         drain, detail = self._drain_labels(
             steering.verdict_argv, steering.verdict_timeout_seconds
         )
+        try:
+            ledger_text = self._ledger.read_text()
+        except FileNotFoundError:
+            ledger_text = ""  # a ledger nobody has written to holds no open CLAIM
         return ModelEngineLoginSteer(
             drain_labels=drain,
             lane_counts=count_open_lanes(
-                self._ledger.read_text(),
+                ledger_text,
                 now=self._now(),
                 max_age_seconds=steering.open_claim_max_age_seconds,
             ),
