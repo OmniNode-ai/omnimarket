@@ -236,9 +236,15 @@ class HandlerPrLandingTickOrchestrator:
         return result
 
     def _written_record_repository(self, request: ModelTickRequest) -> str | None:
-        """The repository act mode writes the recorded decision for, or None when it may not."""
+        """The repository whose recorded decision the tick writes, or None when it may not.
+
+        Act mode and observe mode both write it (OMN-23514): the snapshot step's records carry no
+        recorded decision, so observe mode for the cutover repository refused every record. The
+        record is the old controller's no action for a repository it rules out of scope; observe
+        mode still performs nothing.
+        """
         if (
-            request.mode is EnumTickMode.ACT
+            request.mode in (EnumTickMode.ACT, EnumTickMode.OBSERVE)
             and self._cutover_repository is not None
             and self._cutover_repository in self._script_out_of_scope
         ):

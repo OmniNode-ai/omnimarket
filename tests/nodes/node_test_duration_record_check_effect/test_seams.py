@@ -8,7 +8,8 @@ Each test fails when either side of its seam changes shape:
 * record       the node writes the record in the bytes the planner's `record` writes, and the
                planner then counts the file as recorded
 * timer        the real timer's number == the planner's per-file sum of a pytest-split durations file
-* git          the real added-files source reads a staged addition and a base-ref addition
+* git          the real added-files source reads a staged addition, a base-ref
+               addition, and a merge commit's both-parent additions
 * wiring       the pre-commit hook and the CI step run the same module the refusal prints
 """
 
@@ -185,6 +186,39 @@ def test_seam_git_the_real_source_reads_staged_and_base_ref_additions(
     assert source.added_files(str(tmp_path), "start") == ("tests/unit/test_added.py",)
     assert source.added_files(str(tmp_path), None) == ()
     assert source.added_files(str(tmp_path), "no-such-ref") is None
+
+
+def test_seam_git_a_merge_commit_reads_only_the_additions_this_change_made(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A hook exports these and they override `git -C`; the adapter under test must read tmp_path.
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(key, raising=False)
+    _git(tmp_path, "init", "-q", "-b", "base")
+    (tmp_path / "keep.txt").write_text("k", encoding="utf-8")
+    _git(tmp_path, "add", "keep.txt")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    _git(tmp_path, "checkout", "-q", "-b", "other")
+    from_other = tmp_path / "tests" / "unit" / "test_from_other.py"
+    from_other.parent.mkdir(parents=True)
+    from_other.write_text("def test_x():\n    pass\n", encoding="utf-8")
+    _git(tmp_path, "add", "tests/unit/test_from_other.py")
+    _git(tmp_path, "commit", "-q", "-m", "other")
+    _git(tmp_path, "checkout", "-q", "-b", "mine", "base")
+    mine_committed = tmp_path / "tests" / "unit" / "test_mine_committed.py"
+    mine_committed.parent.mkdir(parents=True, exist_ok=True)
+    mine_committed.write_text("def test_x():\n    pass\n", encoding="utf-8")
+    _git(tmp_path, "add", "tests/unit/test_mine_committed.py")
+    _git(tmp_path, "commit", "-q", "-m", "mine")
+    _git(tmp_path, "merge", "--no-commit", "--no-ff", "other")
+    mine_staged = tmp_path / "tests" / "unit" / "test_mine_staged.py"
+    mine_staged.parent.mkdir(parents=True, exist_ok=True)
+    mine_staged.write_text("def test_x():\n    pass\n", encoding="utf-8")
+    _git(tmp_path, "add", "tests/unit/test_mine_staged.py")
+    source = SourceAddedFilesGit()
+    assert source.added_files(str(tmp_path), None) == (
+        "tests/unit/test_mine_staged.py",
+    )
 
 
 def test_seam_wiring_the_hook_and_the_ci_step_run_the_module_the_refusal_prints() -> (
