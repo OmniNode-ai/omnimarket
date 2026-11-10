@@ -101,6 +101,8 @@ def build_real(
             call_timeout_seconds=settings.host_call_timeout_seconds,
             detach_argv=settings.detach_argv,
             path_prefix=settings.host_path_prefix,
+            registry_root_candidates=settings.registry_root_candidates,
+            registry_marker=settings.registry_marker,
             login_pool=ModelEngineLoginPool(
                 module=settings.login_pool_module,
                 python_relative=settings.login_pool_python_relative,

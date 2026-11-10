@@ -19,6 +19,7 @@ remote_lane_start:
   receipt_dir: /var/lib/example/remote-lanes
   host_run_root: /var/lib/example/lane-runs
   registry_root_candidates: [/srv/example/registry]
+  registry_marker: example_marker_dir
   ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
   # Starts the engine in a session of its own; a host with no setsid binary names a shim.
   detach_argv: [setsid]

@@ -66,6 +66,8 @@ class ModelRemoteLaneStartSettings(BaseModel):
     receipt_dir: str = Field(min_length=1)
     host_run_root: str = Field(min_length=1)
     registry_root_candidates: tuple[str, ...]
+    # The directory a registry root holds (the runner's marker), so a candidate that is not one is skipped.
+    registry_marker: str = Field(min_length=1)
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
     # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin

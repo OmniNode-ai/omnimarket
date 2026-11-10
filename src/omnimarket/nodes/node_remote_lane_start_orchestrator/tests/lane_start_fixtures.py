@@ -63,6 +63,7 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "receipt_dir": "/unused",
         "host_run_root": "/runs",
         "registry_root_candidates": ["/registry"],
+        "registry_marker": "example_marker_dir",
         "ssh_argv": ["ssh"],
         "detach_argv": ["setsid"],
         "host_path_prefix": "",

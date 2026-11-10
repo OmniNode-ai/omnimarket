@@ -135,6 +135,14 @@ def pool_python_sh(pool: ModelEngineLoginPool) -> str:
     )
 
 
+#: A literal path (a registry root, the marker directory, the run root) written into a host script unquoted.
+_LITERAL_PATH = re.compile(r"[A-Za-z0-9_./-]+")
+
+#: The runner script's exit for a host that holds no registry root, and for run directories that could not be made.
+NO_REGISTRY_ROOT_EXIT = 96
+RUN_DIRS_REFUSED_EXIT = 70
+
+
 class SshLaneHostTransport:
     """Prepare, start, read and stop a lane's engine on a host with one shell script per call."""
 
@@ -149,6 +157,8 @@ class SshLaneHostTransport:
         detach_argv: Sequence[str],
         path_prefix: str = "",
         login_pool: ModelEngineLoginPool | None = None,
+        registry_root_candidates: Sequence[str] = (),
+        registry_marker: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
         if not _PATH_PREFIX.fullmatch(path_prefix):
@@ -165,6 +175,21 @@ class SshLaneHostTransport:
         self._detach = " ".join(shlex.quote(a) for a in detach_argv)
         self._timeout = call_timeout_seconds
         self._pool = login_pool
+        for candidate in registry_root_candidates:
+            if not _LITERAL_PATH.fullmatch(candidate):
+                raise ValueError(
+                    f"remote_lane_start.registry_root_candidates {candidate!r}: only path characters"
+                )
+        if registry_marker and not _LITERAL_PATH.fullmatch(registry_marker):
+            raise ValueError(
+                f"remote_lane_start.registry_marker {registry_marker!r}: only path characters"
+            )
+        if not _LITERAL_PATH.fullmatch(self._root):
+            raise ValueError(
+                f"remote_lane_start.host_run_root {host_run_root!r}: only path characters"
+            )
+        self._candidates = tuple(registry_root_candidates)
+        self._marker = registry_marker
         self._runner = runner or SubprocessHostCommandExecutor()
 
     def run_dir(self, run_id: str) -> str:
@@ -349,12 +374,63 @@ class SshLaneHostTransport:
     def resolve_registry_root(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneRegistryRootResult:
-        return ModelLaneRegistryRootResult(error=self._not_run("resolve_registry_root"))
+        """The runner script's ``omni_home_script``: the first candidate that holds the marker directory.
+
+        Same lines, same printed ``REMOTE-OMNI-HOME <path>`` or ``REMOTE-OMNI-HOME-NONE`` and exit 96.
+        """
+        if not self._candidates or not self._marker:
+            return ModelLaneRegistryRootResult(
+                error=self._not_run("resolve_registry_root")
+            )
+        tries = " ".join(shlex.quote(c) for c in self._candidates)
+        script = "\n".join(
+            [
+                'H=""',
+                f"for d in {tries}; do",
+                f'  if [ -n "$d" ] && [ -d "$d/{self._marker}" ]; then H="$d"; break; fi',
+                "done",
+                f'if [ -z "$H" ]; then echo "REMOTE-OMNI-HOME-NONE $(hostname): none of {" ".join(self._candidates)} holds {self._marker}"; exit {NO_REGISTRY_ROOT_EXIT}; fi',
+                'echo "REMOTE-OMNI-HOME $H"',
+            ]
+        )
+        result = self._sh(request.host, script, request.timeout_seconds)
+        found = next(
+            (
+                line.split(" ", 1)[1].strip()
+                for line in result.stdout.splitlines()
+                if line.startswith("REMOTE-OMNI-HOME ")
+            ),
+            None,
+        )
+        if result.exit_code == 0 and found:
+            return ModelLaneRegistryRootResult(registry_root=found)
+        return ModelLaneRegistryRootResult(
+            error=(
+                result.stdout or result.stderr or f"exit {result.exit_code}"
+            ).strip()[-300:]
+        )
 
     def prepare_run_dirs(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneRunDirsResult:
-        return ModelLaneRunDirsResult(error=self._not_run("prepare_run_dirs"))
+        """The runner script's ``scratch_script``: the run directory and its ``.ctx`` beside it, made together."""
+        run = self.run_dir(request.run_id)
+        script = "\n".join(
+            [
+                f'W="{run}"; C="{run}.ctx"',
+                f'mkdir -p "$W" "$C" || exit {RUN_DIRS_REFUSED_EXIT}',
+                'echo "REMOTE-HOME $HOME"',
+            ]
+        )
+        result = self._sh(request.host, script, request.timeout_seconds)
+        if result.exit_code == 0 and "REMOTE-HOME " in result.stdout:
+            return ModelLaneRunDirsResult(run_dir=run, context_dir=f"{run}.ctx")
+        return ModelLaneRunDirsResult(
+            error=(
+                result.stderr or result.stdout or f"exit {result.exit_code}"
+            ).strip()[-300:]
+            or f"exit {result.exit_code}"
+        )
 
     def stage_ledger_snapshot(
         self, request: ModelLaneStageInputRequest
