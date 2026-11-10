@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -23,14 +24,14 @@ from tests.nodes.node_lane_closeout_sweep_effect.test_golden_chain_lane_closeout
 
 pytestmark = pytest.mark.unit
 
-REAL_RUN = subprocess.run
+REAL_RUN: Any = subprocess.run
 LSOF_OUT = "p176\nfcwd\nn/\np389\nfcwd\nn/Users/x/lab-run/runs/rlane-a-1a2b3c\n"
 
 
 def fake_lsof(stdout: str, code: int = 0) -> object:
     def run(argv: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
         if argv[0] != "lsof":  # the sweep's git calls share the subprocess module
-            return REAL_RUN(argv, **kw)  # type: ignore[no-any-return,call-overload]
+            return REAL_RUN(argv, **kw)
         assert argv[:2] == ["lsof", "-a"]
         return subprocess.CompletedProcess(argv, code, stdout, "")
 
@@ -58,7 +59,7 @@ def test_a_host_that_cannot_run_lsof_says_it_cannot_say(
 
     def missing(argv: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
         if argv[0] != "lsof":
-            return REAL_RUN(argv, **kw)  # type: ignore[no-any-return,call-overload]
+            return REAL_RUN(argv, **kw)
         raise FileNotFoundError(argv[0])
 
     monkeypatch.setattr(handler.subprocess, "run", missing)
