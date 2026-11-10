@@ -28,7 +28,7 @@
         "outcome": "refused",
         "score": 0.0,
         "mechanical": true,
-        "detail": "no answer and no recoverable candidate; rc=1; terminal: status=failed; error_message=no model you chose finished the task; do the task in this session (reason: quality_veto; last error: Inference call exceeded its total deadline: provider call timed out after 120.001s against a resolv; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-haokddfl/runs/e7803f56-a939-4bba-9a29-6e49e76a1823/result.txt /tmp/ladder-R3b-04-haokddfl/runs/e7803f56-a939-4bba-9a29-6e49e76a1823/receipt.json /tmp/ladder-R3b-04-haokddfl/runs/e7803f56-a939-4bba-9a29-6e49e76a1823/run.json state_root=/tmp/ladder-R3b-04-haokddfl",
+        "detail": "no answer and no recoverable candidate; rc=1; terminal: status=failed; error_message=no model you chose finished the task; do the task in this session (reason: quality_veto; last error: Inference call exceeded its total deadline: provider call timed out after 120.001s against a resolv; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/result.txt /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/receipt.json /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/run.json state_root=/tmp/ladder-R3b-04-haokddfl",
         "sub_scores": {},
         "checklist": {}
       },
@@ -57,7 +57,7 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "no answer and no recoverable candidate; rc=1; terminal: status=failed; error_message=no model you chose finished the task; do the task in this session (reason: quality_veto; last error: Inference call exceeded its total deadline: provider call timed out after 120.001s against a resolv; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-haokddfl/runs/e7803f56-a939-4bba-9a29-6e49e76a1823/result.txt /tmp/ladder-R3b-04-haokddfl/runs/e7803f56-a939-4bba-9a29-6e49e76a1823/receipt.json /tmp/ladder-R3b-04-haokddfl/runs/e7803f56-a939-4bba-9a29-6e49e76a1823/run.json state_root=/tmp/ladder-R3b-04-haokddfl",
+      "notes": "no answer and no recoverable candidate; rc=1; terminal: status=failed; error_message=no model you chose finished the task; do the task in this session (reason: quality_veto; last error: Inference call exceeded its total deadline: provider call timed out after 120.001s against a resolv; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/result.txt /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/receipt.json /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/run.json state_root=/tmp/ladder-R3b-04-haokddfl",
       "backend": null,
       "difficulty": null,
       "task_type": "review",

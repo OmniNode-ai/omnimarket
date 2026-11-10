@@ -265,7 +265,7 @@
         "outcome": "refused",
         "score": 0.0,
         "mechanical": true,
-        "detail": "no receipt and no recoverable candidate; rc=1; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/result.txt /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/receipt.json /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/run.json state_root=/tmp/ladder-R3b-04-6tbtems3",
+        "detail": "no receipt and no recoverable candidate; rc=1; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-6tbtems3/runs/<uuid>/result.txt /tmp/ladder-R3b-04-6tbtems3/runs/<uuid>/receipt.json /tmp/ladder-R3b-04-6tbtems3/runs/<uuid>/run.json state_root=/tmp/ladder-R3b-04-6tbtems3",
         "sub_scores": {},
         "checklist": {}
       },
@@ -294,7 +294,7 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "no receipt and no recoverable candidate; rc=1; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/result.txt /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/receipt.json /tmp/ladder-R3b-04-6tbtems3/runs/7a428ac8-7e67-48fd-9b43-c5ebf4f30f67/run.json state_root=/tmp/ladder-R3b-04-6tbtems3",
+      "notes": "no receipt and no recoverable candidate; rc=1; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-6tbtems3/runs/<uuid>/result.txt /tmp/ladder-R3b-04-6tbtems3/runs/<uuid>/receipt.json /tmp/ladder-R3b-04-6tbtems3/runs/<uuid>/run.json state_root=/tmp/ladder-R3b-04-6tbtems3",
       "backend": null,
       "difficulty": null,
       "task_type": "review",
