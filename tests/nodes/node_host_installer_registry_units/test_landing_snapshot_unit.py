@@ -16,13 +16,20 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
 from tests.nodes.node_host_installer_registry_units.test_registry_units import (
     BREW_PYTHON,
     Recorder,
-    canonical,  # noqa: F401
     make_checkout,
     plist_of,
     request,
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def canonical(tmp_path: Path) -> Path:
+    path = tmp_path / "omni" / "omnimarket"
+    make_checkout(path)
+    return path
+
 
 UNIT = "landing-snapshot"
 ENTRY = "src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py"
