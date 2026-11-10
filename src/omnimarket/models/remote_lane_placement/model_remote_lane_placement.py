@@ -175,7 +175,8 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     # and the decision is as before. A class in ``observe`` mode refuses nothing.
     stop_gate: ModelStopGateFacts | None = None
     # The inputs the lane's brief needs on its host, each named ``<kind>:<value>`` (``map-entry:<lane>``,
-    # ``clone:<repo>``, ``patch:<path>``, ``plan-branch:<branch>``). A host takes the lane only when its
+    # ``clone:<repo>``, ``patch:<path>``, ``plan-branch:<branch>``, and for a target the brief reads over,
+    # ``route:h201`` or ``route:broker-admin:dev``). A host takes the lane only when its
     # reading's ``present_inputs`` holds every one. Empty: an old producer's request, placed as before.
     required_inputs: tuple[str, ...] = ()
     # The host a repair lane repairs (OMN-23389). A repair lane never runs on the host it repairs: that host is

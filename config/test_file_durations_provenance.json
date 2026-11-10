@@ -215,5 +215,12 @@
     "basis": "test files the record did not hold, each entered at the median of the record's positive entries (0.17 s); no measurement, existing entries left as they were",
     "runner": "none; entered by lane durregen-1025 on a lab host from the file list scripts/ci/merge_test_durations.py file_weights reports as unrecorded; the next CI refresh replaces these entries",
     "base_sha": "be2d853fd6b5742ebdbd99c52c75d0ea4e44ec17"
+  },
+  "supplement_omn22868_lab_fill": {
+    "recorded_on": "2026-11-09",
+    "files_added": 58,
+    "basis": "files the record did not hold, each the sum of its measured pytest per-test durations from one serial run of those files with -m 'not kafka'; existing entries left as they were",
+    "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "72f7015b7109e0d0b41c5b6e835426480b775934"
   }
 }
