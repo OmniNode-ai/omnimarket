@@ -189,14 +189,14 @@ def test_projection_contract_exposes_the_column_and_terminal_owns_it() -> None:
     assert "turn_count" in _TERMINAL_OWNED_COLUMNS
 
 
-def test_only_migration_0068_adds_turn_count_and_ships_a_rollback() -> None:
+def test_only_migration_0069_adds_turn_count_and_ships_a_rollback() -> None:
     migrations = _NODE / "migrations"
     adders = [
         path.name
         for path in sorted(migrations.glob("*.sql"))
         if re.search(r"ADD COLUMN[^;]*\bturn_count\b", path.read_text())
     ]
-    assert adders == ["0068_delegation_events_turn_count.sql"]
+    assert adders == ["0069_delegation_events_turn_count.sql"]
     sql = (migrations / adders[0]).read_text()
     assert "ADD COLUMN IF NOT EXISTS turn_count INTEGER;" in sql
     assert "NOT NULL" not in sql

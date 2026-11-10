@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS delegation_events (
     requested_model         TEXT,
     queue_wait_ms           INTEGER,
     execution_ms            INTEGER,
-    -- OMN-18534: nullable total inference calls of the terminal (0068).
+    -- OMN-18534: nullable total inference calls of the terminal (0069).
     turn_count              INTEGER
 )
 """

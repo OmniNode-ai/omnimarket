@@ -374,7 +374,7 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     requested_model: str | None = Field(default=None)
     queue_wait_ms: int | None = Field(default=None, ge=0, strict=True)
     execution_ms: int | None = Field(default=None, ge=0, strict=True)
-    # OMN-18534: the terminal's total inference calls (migration 0068); 0 is a
+    # OMN-18534: the terminal's total inference calls (migration 0069); 0 is a
     # delegation that failed before any turn, None is a count nobody reported.
     turn_count: int | None = Field(default=None, ge=0, strict=True)
     quality_gates_checked: list[str] | None = Field(default=None)
@@ -2303,7 +2303,7 @@ def _stamp_terminal_dispositions(
 
 
 def _stamp_terminal_turn_count(row: dict[str, object], turn_count: int | None) -> None:
-    """Name the terminal's total inference calls; a reported zero is stored (0068)."""
+    """Name the terminal's total inference calls; a reported zero is stored (0069)."""
     if turn_count is not None:
         row["turn_count"] = turn_count
 

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-18534: apply 0068 and read the real terminal turn count.
+"""OMN-18534: apply 0069 and read the real terminal turn count.
 
 Real-Postgres twin of the turn-count unit tests, using the live migration set
 and DelegationProjectionRunner.project_event(). The database is the
@@ -31,7 +31,7 @@ from tests.unit.delegation.test_terminal_turn_count_omn18534 import (
 )
 
 _SELECT = "SELECT turn_count FROM delegation_events WHERE correlation_id = $1"
-_MIGRATION = _MIGRATIONS_DIR / "0068_delegation_events_turn_count.sql"
+_MIGRATION = _MIGRATIONS_DIR / "0069_delegation_events_turn_count.sql"
 
 
 @pytest.mark.integration

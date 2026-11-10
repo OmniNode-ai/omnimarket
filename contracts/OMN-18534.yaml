@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-18534
 title: 'W7-2: Turn count is recorded per delegation as a first-class metric'
-summary: 'Migration 0068 adds a nullable turn_count column to delegation_events. Both terminal writers store the terminal''s attempts_count in it: the total inference calls including escalated rungs, retries and compliance repairs, 0 for a delegation that failed before any turn. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy of 0068 lands first in its own pull request.'
+summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the terminal''s attempts_count in it: the total inference calls including escalated rungs, retries and compliance repairs, 0 for a delegation that failed before any turn. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy of 0068 lands first in its own pull request.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -27,13 +27,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn18534-typed-column-ac1
-  description: Migration 0068 adds the nullable integer turn_count column idempotently with a rollback and is the only migration that adds it; the terminal writes it as a stored column, and the local sqlite store declares it before any terminal is projected.
+  description: Migration 0069 adds the nullable integer turn_count column idempotently with a rollback and is the only migration that adds it; the terminal writes it as a stored column, and the local sqlite store declares it before any terminal is projected.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "only_migration_0068 or declares_a_nullable_integer_column or different_counts"
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "only_migration_0069 or declares_a_nullable_integer_column or different_counts"
     cwd: .
 - id: dod-omn18534-escalated-path-ac2
   description: A single-turn and an escalated delegation store different counts; the escalated record carries the total calls (3) and not the escalation count (1), on the delegate-skill and the canonical terminal.
@@ -63,7 +63,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "projection_contract_exposes or async_runner"
     cwd: .
 - id: dod-omn18534-integration-proof
-  description: On a lab host at the pushed head, runs the turn count unit tests and the real-Postgres twin through the lab work runner; the twin applies migration 0068 to a disposable schema, projects an escalated terminal (3 calls), a refused-before-dispatch terminal (0) and a canonical terminal, and reads the column back. Hosted CI runs the same twin against its Postgres service; only the local Done gate runs this unbound check.
+  description: On a lab host at the pushed head, runs the turn count unit tests and the real-Postgres twin through the lab work runner; the twin applies migration 0069 to a disposable schema, projects an escalated terminal (3 calls), a refused-before-dispatch terminal (0) and a canonical terminal, and reads the column back. Hosted CI runs the same twin against its Postgres service; only the local Done gate runs this unbound check.
   source: manual
   execution_scope: local_done_gate
   checks:
