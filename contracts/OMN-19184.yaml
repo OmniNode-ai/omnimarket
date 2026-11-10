@@ -53,7 +53,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q --no-cov --tb=line
     cwd: .
   - check_type: command
-    check_value: '! grep -q route_check_local_model src/omnimarket/configs/model_bindings.v1.yaml'
+    check_value: 'bash -o pipefail -c ''if grep -q route_check_local_model src/omnimarket/configs/model_bindings.v1.yaml; then echo "deploy check failed: lab model id still in the packaged bindings"; exit 1; fi'''
     cwd: .
   - check_type: command
     check_value: bash -o pipefail -c 'uv run onex run-node node_delegation_rubric_check_compute --help > /dev/null'
