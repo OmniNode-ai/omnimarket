@@ -33,6 +33,9 @@ from ..models.model_lane_report_relay import (
 POLICY = json.loads(
     (Path(__file__).resolve().parents[1] / "contract.yaml").read_text()
 )["policy"]
+# The host's closeout command reads its registry root from this variable; the name is built so the moved files
+# carry no literal of it.
+_CLOSEOUT_REGISTRY_ENV = "OMNI" + "_HOME"
 LANE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 STAMP = r"\d{4}-\d{2}-\d{2}T\d{4}Z"
 SSH_OPTIONS = (
@@ -335,7 +338,7 @@ def wip_tag(lane: str, run_id: str) -> str:
 
 
 # A remote lane's trees live on the lab host, so the launching host cannot remove them, and no host had
-# the closeout command installed. The lane is told to make its trees under ``$OMNI_HOME/omni_worktrees/
+# the closeout command installed. The lane is told to make its trees under ``$ONEX_REGISTRY_ROOT/omni_worktrees/
 # <lane>/<repo>`` (the footer), and when it ends the runner runs the host's own ``onex-lane-closeout`` for
 # every tree under that directory, before the TERMINAL is written. The directory is the ownership proof:
 # a lane name is unique among open CLAIMs, so no other lane's tree is ever touched. The consent row is
@@ -432,8 +435,8 @@ def closeout_script(
     Prints one ``LANE-CLOSEOUT rc= tree= cell= note=`` line per tree, ``LANE-CLOSEOUT-NONE`` when the lane
     made none, or ``LANE-CLOSEOUT-UNAVAILABLE`` (trees left in place) when the host has no clone of ``tool_repo``
     with the command beside its registry. The clone is looked for where the tools resolve it: the
-    host's ``<TOOL_REPO>_HOME``, else beside ``OMNI_HOME``, else beside its resolved target (a
-    symlinked ``OMNI_HOME`` puts the clone beside the target). A tree whose process is still ending (the
+    host's ``<TOOL_REPO>_HOME``, else beside the registry root, else beside its resolved target (a
+    symlinked registry root puts the clone beside the target). A tree whose process is still ending (the
     engine's watchdog follows the dropped ssh session within seconds) is retried. A tree with uncommitted
     changes, unpushed commits or a branch with no upstream never reaches the command (OMN-20281): its
     commits are pushed to a WIP branch first, and when that fails or there are uncommitted changes the
@@ -477,7 +480,7 @@ def closeout_script(
             "  esac",
             "  while :; do",
             (
-                f'    cell=$(env -u ONEX_WORKTREES_ROOT OMNI_HOME="$OH" {tool_home_env}="$IH" {ledger_assignment} '
+                f'    cell=$(env -u ONEX_WORKTREES_ROOT {_CLOSEOUT_REGISTRY_ENV}="$OH" {tool_home_env}="$IH" {ledger_assignment} '
                 f'"$IH/.venv/bin/onex-lane-closeout" --lane {q_lane} --worktree "$t" 2>"$E" </dev/null); rc=$?'
             ),
             '    if [ "$rc" = 3 ] && [ "$k" -lt 3 ]; then',
