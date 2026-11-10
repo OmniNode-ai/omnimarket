@@ -9,6 +9,7 @@ remaining provisioning steps are still answered "not run by the ssh transport" (
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from omnibase_spi.contracts.services import ModelLaneHostRef, ModelLaneHostStepR
 
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
     ModelHostCommandResult,
+    ProtocolHostCommandRunner,
     SshLaneHostTransport,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.tests.recorded_runner_steps import (
@@ -34,7 +36,9 @@ class Recorder:
         self.answer = answer
         self.argvs: list[list[str]] = []
 
-    def run(self, argv, timeout_seconds):  # type: ignore[no-untyped-def]
+    def run(
+        self, argv: Sequence[str], timeout_seconds: float
+    ) -> ModelHostCommandResult:
         self.argvs.append(list(argv))
         return self.answer
 
@@ -45,7 +49,9 @@ def step(host: ModelLaneHostRef = REMOTE) -> ModelLaneHostStepRequest:
     )
 
 
-def transport(runner, root: str = "/srv/example/runs") -> SshLaneHostTransport:  # type: ignore[no-untyped-def]
+def transport(
+    runner: ProtocolHostCommandRunner | None, root: str = "/srv/example/runs"
+) -> SshLaneHostTransport:
     return SshLaneHostTransport(
         ssh_argv=["ssh"],
         host_run_root=root,

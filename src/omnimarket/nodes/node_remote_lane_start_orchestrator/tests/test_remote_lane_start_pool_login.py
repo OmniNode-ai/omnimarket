@@ -16,6 +16,7 @@ import hashlib
 import stat
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from omnibase_spi.contracts.services import (
     ModelLaneReadEngineExitRequest,
     ModelLaneStartEngineRequest,
 )
+from pydantic import SecretStr
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
@@ -71,7 +73,9 @@ class SpyHostCommands:
     def __init__(self) -> None:
         self.seen: list[str] = []
 
-    def run(self, argv, timeout_seconds):  # type: ignore[no-untyped-def]
+    def run(
+        self, argv: Sequence[str], timeout_seconds: float
+    ) -> ModelHostCommandResult:
         done = SubprocessHostCommandExecutor().run(argv, timeout_seconds)
         self.seen.append(" ".join(argv) + "\n" + done.stdout + "\n" + done.stderr)
         return ModelHostCommandResult(
@@ -121,9 +125,7 @@ class Host:
         )
 
     @staticmethod
-    def _wrap(token: str):  # type: ignore[no-untyped-def]
-        from pydantic import SecretStr
-
+    def _wrap(token: str) -> SecretStr:
         return SecretStr(token)
 
     def limit(self, label: str) -> None:
