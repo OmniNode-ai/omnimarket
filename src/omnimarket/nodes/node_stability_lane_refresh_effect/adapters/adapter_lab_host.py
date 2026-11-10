@@ -54,7 +54,7 @@ class FileAppliedPinStore:
         return str(path)
 
 
-class SubprocessRefreshRunner:
+class SubprocessRefreshExecutor:
     """Runs the refresh script with the overlay's environment laid over this process's."""
 
     def run(
@@ -126,5 +126,5 @@ __all__ = [
     "FilePinSource",
     "GitTagCheck",
     "HttpLaneHealth",
-    "SubprocessRefreshRunner",
+    "SubprocessRefreshExecutor",
 ]

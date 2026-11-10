@@ -7,7 +7,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import RecordingRunner
+from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import (
+    RecordingExecutor,
+)
 from omnimarket.nodes.node_stability_lane_refresh_effect.models import (
     EnumStabilityRefreshOutcome as Outcome,
 )
@@ -89,7 +91,9 @@ def test_stability_pin_execute_records_the_applied_set() -> None:
 
 
 def test_stability_pin_failed_refresh_records_nothing_and_returns_its_code() -> None:
-    rig = Rig(runner=RecordingRunner(ModelRunOutcome(return_code=2, output_tail="no")))
+    rig = Rig(
+        runner=RecordingExecutor(ModelRunOutcome(return_code=2, output_tail="no"))
+    )
     result = rig.handler.handle(command(execute=True))
     assert result.outcome is Outcome.REFRESH_FAILED
     assert result.exit_code == 2

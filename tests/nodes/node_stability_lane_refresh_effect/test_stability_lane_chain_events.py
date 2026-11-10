@@ -17,7 +17,9 @@ from typing import Any
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
-from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import RecordingRunner
+from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import (
+    RecordingExecutor,
+)
 from omnimarket.nodes.node_stability_lane_refresh_effect.handlers.handler_stability_lane_refresh import (
     answer_command,
     load_topics,
@@ -150,7 +152,7 @@ def test_error_chain_requested_set_without_bump_is_a_refusal() -> None:
 
 
 def test_error_chain_refresh_that_fails_ends_in_a_failed_event() -> None:
-    rig = Rig(runner=RecordingRunner(ModelRunOutcome(return_code=2, output_tail="x")))
+    rig = Rig(runner=RecordingExecutor(ModelRunOutcome(return_code=2, output_tail="x")))
     events = run(rig)
     assert [t for t, _ in events] == [
         TOPICS["stability_refresh_pin_accepted"],

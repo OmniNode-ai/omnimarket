@@ -7,7 +7,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_in_mem
     InMemoryHealth,
     InMemoryPinSource,
     InMemoryTags,
-    RecordingRunner,
+    RecordingExecutor,
     UnreadablePinSource,
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_lab_host import (
@@ -15,7 +15,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_lab_ho
     FilePinSource,
     GitTagCheck,
     HttpLaneHealth,
-    SubprocessRefreshRunner,
+    SubprocessRefreshExecutor,
 )
 
 __all__ = [
@@ -27,7 +27,7 @@ __all__ = [
     "InMemoryHealth",
     "InMemoryPinSource",
     "InMemoryTags",
-    "RecordingRunner",
-    "SubprocessRefreshRunner",
+    "RecordingExecutor",
+    "SubprocessRefreshExecutor",
     "UnreadablePinSource",
 ]

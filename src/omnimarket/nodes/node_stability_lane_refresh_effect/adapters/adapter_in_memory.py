@@ -42,7 +42,7 @@ class InMemoryAppliedPinStore:
         return f"memory://bump-pin-{len(self.rendered)}"
 
 
-class RecordingRunner:
+class RecordingExecutor:
     """Records every refresh call; a lane is recreated only by a call recorded here."""
 
     def __init__(self, outcome: ModelRunOutcome | None = None) -> None:
@@ -84,6 +84,6 @@ __all__ = [
     "InMemoryHealth",
     "InMemoryPinSource",
     "InMemoryTags",
-    "RecordingRunner",
+    "RecordingExecutor",
     "UnreadablePinSource",
 ]

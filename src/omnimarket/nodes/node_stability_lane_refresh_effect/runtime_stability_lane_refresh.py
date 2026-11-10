@@ -28,7 +28,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import (
     FilePinSource,
     GitTagCheck,
     HttpLaneHealth,
-    SubprocessRefreshRunner,
+    SubprocessRefreshExecutor,
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.handlers.handler_stability_lane_refresh import (
     EXIT_REFUSED_NOT_RELEASE_TAG,
@@ -47,7 +47,7 @@ def build_handler() -> HandlerStabilityLaneRefresh:
         overlay=overlay,
         pin_source=FilePinSource(overlay.pin_file),
         applied=FileAppliedPinStore(overlay.state_dir),
-        runner=SubprocessRefreshRunner(),
+        runner=SubprocessRefreshExecutor(),
         tags=GitTagCheck(overlay.registry_root, overlay.health_timeout_seconds),
         health=HttpLaneHealth(overlay.health_url, overlay.health_timeout_seconds),
     )

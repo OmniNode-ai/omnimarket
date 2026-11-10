@@ -16,7 +16,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_locat
 
 from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import (
     FileAppliedPinStore,
-    SubprocessRefreshRunner,
+    SubprocessRefreshExecutor,
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.runtime_stability_lane_refresh import (
     main,
@@ -142,7 +142,7 @@ def test_cli_without_an_overlay_exits_3(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_runner_reports_a_timeout_as_124() -> None:
-    outcome = SubprocessRefreshRunner().run(["sleep", "5"], {}, 1)
+    outcome = SubprocessRefreshExecutor().run(["sleep", "5"], {}, 1)
     assert outcome.return_code == 124
 
 

@@ -9,7 +9,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import (
     InMemoryHealth,
     InMemoryPinSource,
     InMemoryTags,
-    RecordingRunner,
+    RecordingExecutor,
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.handlers.handler_stability_lane_refresh import (
     HandlerStabilityLaneRefresh,
@@ -77,9 +77,9 @@ class Rig:
         applied: ModelReleasePinSet | None = None,
         tags: set[tuple[str, str]] | None = None,
         health: ModelLaneHealthReading | None = None,
-        runner: RecordingRunner | None = None,
+        runner: RecordingExecutor | None = None,
     ) -> None:
-        self.runner = runner or RecordingRunner()
+        self.runner = runner or RecordingExecutor()
         self.store = InMemoryAppliedPinStore(applied)
         self.handler = HandlerStabilityLaneRefresh(
             overlay=overlay(),
