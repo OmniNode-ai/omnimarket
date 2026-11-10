@@ -14,7 +14,7 @@ requirements:
       - id: AC1
         statement: "AC1: config/test_file_durations.json records all 57 test files that the development branch leaves out today, each with a measured time -- falsifier: pytest tests/unit/test_ci_duration_record_supplement_omn23527.py -q fails at the merge base and passes at the head"
       - id: AC2
-        statement: "AC2: the freshness test passes on the development branch with the limit of 50 unchanged -- falsifier: pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q reports fewer than 50 unrecorded files"
+        statement: "AC2: the freshness test passes on the development branch with the limit of 50 unchanged -- falsifier: pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py tests/unit/test_ci_duration_record_supplement_omn23527.py -q fails at the merge base, where the supplement test file is absent, and at the head reports fewer than 50 unrecorded files"
 evidence_requirements:
   - kind: tests
     description: >-
@@ -37,13 +37,13 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23526-ac2-freshness
     description: >-
-      The freshness test passes with the limit of 50 unchanged; on dev it reads 57 unrecorded and fails.
+      The freshness test passes with the limit of 50 unchanged, run together with the supplement test so the control fails at the merge base, where the supplement test file does not exist.
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q -n 0 --no-cov
+        check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py tests/unit/test_ci_duration_record_supplement_omn23527.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23526-durations-record
     description: >-
