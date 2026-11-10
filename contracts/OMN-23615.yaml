@@ -37,10 +37,17 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_read_narrowed_without_start.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn23615-integration-proof"
-    description: "Run the narrowed-without-start tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The one-row kind read timed on the dev runtime (AC4) is read after the deploy agent rolls the merged code."
+  - id: "dod-omn23615-integration-hosted"
+    description: "Hosted proxy for AC4: the narrowed-without-start tests show the store is asked for the matching rows only and answers as the whole read does. At the merge base the budget and error tests fail, so the control fails there. The lab run is the unbound local item below, because the hosted must-fail control can never run a local_done_gate item."
     source: "manual"
     binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_read_narrowed_without_start.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23615-integration-proof"
+    description: "Run the narrowed-without-start tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the hosted proxy above binds AC4. The one-row kind read timed on the dev runtime (AC4) is read after the deploy agent rolls the merged code."
+    source: "manual"
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
