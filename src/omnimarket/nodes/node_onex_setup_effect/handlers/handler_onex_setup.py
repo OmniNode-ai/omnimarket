@@ -419,7 +419,10 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
     provider and the model named; nothing is passed to it but the backend id.
     """
     from omnimarket.handlers import handler_model_keys as model_keys
-    from omnimarket.handlers.handler_local_model_setup import add_local_model
+    from omnimarket.handlers.handler_local_model_setup import (
+        HandlerLocalModelSetup,
+        ModelLocalModelSetupRequest,
+    )
     from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
         ModelSetupRefusedError,
     )
@@ -428,7 +431,9 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
     model = request.model or ""
     try:
         if provider in KEYLESS_PROVIDERS:
-            result = add_local_model(request.url, model)
+            result = HandlerLocalModelSetup().handle(
+                ModelLocalModelSetupRequest(url=request.url, model=model)
+            )
         else:
             key = request.key.get_secret_value() if request.key is not None else ""
             result = model_keys.add_key(provider, key, (model,), url=request.url)
