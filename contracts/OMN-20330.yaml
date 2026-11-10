@@ -1,0 +1,80 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20330"
+title: "onboarding: write the developer model overlay for native, local stack and lab stack"
+summary: >
+  node_model_overlay_write_effect writes the developer's model overlay for the
+  mode being set up: the native overrides file the native loader merges, and a
+  bifrost_lane_overlay.v3 lane overlay for the local compose stack. The lab
+  stack's own-key mode is refused (ruling Q4). No overlay holds a key reference.
+  `onex models overlay` is the command onboarding calls. The ollama block of the
+  base contract gains parameter_count, context_window and max_tokens per row
+  (ruling G4).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20330-native"
+    statement: "Onboarding writes a valid native overlay at the path the contract names."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: Onboarding writes a valid overlay file for native mode at the path the overlay comment names"
+  - id: "req-omn20330-local-stack"
+    statement: "Onboarding writes a v3 lane overlay for the local stack that the renderer accepts."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: Onboarding writes a v3 lane overlay for the local stack that passes render_bifrost_delegation_contract"
+  - id: "req-omn20330-no-key"
+    statement: "No written overlay names a key."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: No developer key appears in any written overlay"
+evidence_requirements:
+  - kind: "tests"
+    description: "Overlay write node tests pass"
+    command: "uv run pytest tests/nodes/node_model_overlay_write_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20330-ac1-native-overlay"
+    description: "Native overlay written to a temp path and read back by the native loader, which binds both local rungs to the Ollama default. Fails at the merge base, which has no node."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_model_overlay_write_effect -q --no-cov -k 'native'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20330-ac2-renderer-accepts"
+    description: "Local-stack overlay written, then render_bifrost_delegation_contract run over it with the packaged base contract; the rendered backends carry the host.docker.internal endpoint and the model. Fails at the merge base."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_model_overlay_write_effect -q --no-cov -k 'renderer or container'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20330-ac3-no-key"
+    description: "Both written overlays hold neither secret_ref nor credential; with the named injected break (the renderer emits a secret_ref) the write is refused and the store stays empty, and with the guard emptied the break reaches the store."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_model_overlay_write_effect -q --no-cov -k 'no_key_reference or injected_break or without_the_guard'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20330-deploy-probe"
+    description: "Deploy probe. Run the overlay write node tests at the checked-out commit. They fail at the merge base, which has no such node."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_model_overlay_write_effect -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20330-integration-proof"
+    description: "Run the shipped `onex models overlay` command on a lab host at the pushed head for native and for the local stack, then run the renderer over the local-stack file and grep both files for secret_ref. The command does not exist at the merge base, so this is red there. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-20330 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_model_overlay_write_effect -q --no-cov"
+        cwd: "."
