@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23416
+title: The fill reads the needs cell of a stopped lane's closing row and puts it in the continuation's brief
+summary: ModelRecordStopped declares the needs field the floor compute writes into floor.stopped, the candidates compute puts a typed ask in the continuation's brief (an unparsed or missing cell adds nothing), and a seam test drives the writer's closing row through the stopped compute into the brief on the in-memory bus and the real broker.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23416-needs-reader
+  statement: A stopped lane whose closing row carries a typed needs cell gets a continuation brief that names the ask, and the cell reaches the brief through the writer's row, the stopped compute and the candidates compute without a rename on either side.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the candidates compute reads the needs field of a stopped entry and puts it in the continuation brief, with a failing control on the unfixed reader -- falsifier: uv run pytest on src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_stopped_needs.py fails on the unfixed reader'
+  - id: AC2
+    statement: 'AC2: a seam test drives the writer''s closing row through the stopped compute into the brief and fails when either side renames the cell, on the in-memory bus and the real broker -- falsifier: uv run pytest on tests/nodes/node_floor_fill_candidates_compute/test_join_closing_row_needs_to_fill.py with a planted rename fails'
+evidence_requirements:
+- kind: tests
+  description: The reader tests (golden, error chain, control) and the join test between the closing row writer, the stopped compute and the candidates compute
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_stopped_needs.py tests/nodes/node_floor_fill_candidates_compute/test_join_closing_row_needs_to_fill.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23416-needs-reader
+  description: Runs the reader tests. A stopped entry carrying a needs cell gets the ask in its brief; at the merge base the entry's needs field is dropped by the record model, so the golden tests fail there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_stopped_needs.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-needs-join
+  description: Runs the join test of the writer's closing row, the stopped compute and the candidates compute, with a planted rename of the cell on the row and of the field in the record, each reading broken; the in-memory leg runs everywhere and the Redpanda leg runs against the broker FLOOR_FILL_PARITY_BOOTSTRAP names.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_fill_candidates_compute/test_join_closing_row_needs_to_fill.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-integration-proof-lab
+  description: Runs the reader tests and the join test at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The live read of the fill on the dev runtime is a separate step recorded in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23416 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_stopped_needs.py tests/nodes/node_floor_fill_candidates_compute/test_join_closing_row_needs_to_fill.py -q --no-cov -p no:randomly'
+    cwd: .
