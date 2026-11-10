@@ -5,6 +5,7 @@ name: node_release_candidate_verify_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
 
 description: >
   OMN-23343 (MVP plan task M13). Defines the launch candidate manifest (omnibase-core, omnibase-infra
@@ -41,7 +42,7 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 60000
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
 
 terminal_event: onex.evt.omnimarket.release-candidate-verified.v1
 
