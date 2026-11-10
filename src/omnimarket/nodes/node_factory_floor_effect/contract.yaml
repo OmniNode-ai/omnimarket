@@ -94,6 +94,12 @@ runtime:
   # The Phoenix base URL the floor reads its trace count and newest span age from; unset draws the reading unread.
   phoenix_url_env: ONEX_FACTORY_FLOOR_PHOENIX_URL
   ledger_window_days: 14
+  # The reader's row source for every read of this node and of the unresolved step (OMN-23606). On a host where the bus is the
+  # ledger's record the reader's default is the bus read, which the ledger node refuses past its 917,516-byte answer bound (the
+  # 14-day window is 222 MB, three of the four unresolved reads 8.7 to 55.8 MB) after loading the whole table, and only then falls
+  # back to the file: measured 2026-11-10 on h202, one unresolved read 35.5 s by default and 9.5 s with the source named, the same
+  # 5,593 rows. Naming the file skips the refused attempt.
+  ledger_source: file
   # The reader cuts each row's text at this many characters (its own default drops the sentence a CLAIM carries).
   ledger_cut_chars: 1200
   # The reader returns 14 days (57 MB) in 8 s in the foreground and 69 s as the Background-class module tick runs it on a Mac at load 56.

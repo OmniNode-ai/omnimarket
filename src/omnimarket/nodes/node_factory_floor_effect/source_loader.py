@@ -316,6 +316,7 @@ def read_ledger_rows(
     window_days: int,
     cut_chars: int,
     timeout_seconds: int,
+    source: str,
     plugin_root: Path | None,
     plugin_root_env: str,
     ledger_rows_file: Path | None,
@@ -332,7 +333,7 @@ def read_ledger_rows(
             f"{plugin_root_env} is not set: export the plugin root or supply ledger_rows_file"
         )
     reader = plugin_root / "scripts" / "onex_ledger.py"
-    query = ["query", "--since", f"{window_days}d", "--archives"]
+    query = ["query", "--source", source, "--since", f"{window_days}d", "--archives"]
     query += ["--limit", "1000000", "--cut", str(cut_chars)]
     return _run_ledger_reader(reader, query, timeout_seconds, kinds)
 
@@ -342,6 +343,7 @@ def read_unresolved_rows(
     reads: tuple[tuple[str, str], ...],
     cut_chars: int,
     timeout_seconds: int,
+    source: str,
     plugin_root: Path | None,
     plugin_root_env: str,
     stand_in_file: Path | None,
@@ -378,7 +380,16 @@ def read_unresolved_rows(
 
     def one(read: tuple[str, str]) -> tuple[ModelFloorLedgerRow, ...]:
         kind, grep = read
-        query = ["query", "--archives", "--kind", kind, "--grep", grep]
+        query = [
+            "query",
+            "--source",
+            source,
+            "--archives",
+            "--kind",
+            kind,
+            "--grep",
+            grep,
+        ]
         query += ["--limit", "1000000", "--cut", str(cut_chars)]
         return _run_ledger_reader(reader, query, timeout_seconds, all_kinds)
 

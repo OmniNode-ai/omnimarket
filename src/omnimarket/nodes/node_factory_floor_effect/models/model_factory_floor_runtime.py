@@ -133,6 +133,8 @@ class ModelFactoryFloorRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     phoenix_url_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
+    # The reader's ``--source`` for every ledger read (file, db or compare).
+    ledger_source: str = Field(min_length=1)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
     # The row kinds the effect keeps from the window.

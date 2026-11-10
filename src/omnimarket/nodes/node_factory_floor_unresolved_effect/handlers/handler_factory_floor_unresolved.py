@@ -50,6 +50,7 @@ class HandlerFactoryFloorUnresolved:
         rows = read_unresolved_rows(
             reads=tuple((read.kind, read.grep) for read in self._overlay.reads),
             cut_chars=runtime.ledger_cut_chars,
+            source=runtime.ledger_source,
             timeout_seconds=self._overlay.read_timeout_seconds,
             plugin_root=Path(request.plugin_root) if request.plugin_root else None,
             plugin_root_env=runtime.plugin_root_env,
