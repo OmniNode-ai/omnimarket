@@ -16,7 +16,7 @@ by a reader that does not share its code path.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Literal
 
@@ -93,6 +93,15 @@ def live_lanes(
                 or (cause_id and cause_id in lane.owns)
             )
         )
+    )
+
+
+def _resolved_after_last_seen(cause: ModelFloorCauseIn) -> bool:
+    """True when a STATUS row reported the cause resolved at or after its newest row: it ended, on evidence."""
+    return (
+        cause.resolved_at is not None
+        and cause.last_seen is not None
+        and cause.resolved_at >= cause.last_seen
     )
 
 
@@ -493,6 +502,7 @@ class HandlerFloorSimple:
             # A piece starts on a go, as step 0, or when its own start criterion reads true (RULING 2026-11-07T12:20:46Z).
             admitted = (
                 (go is not None and n <= go)
+                or n in r.go_pieces
                 or n in ov.rebuild.step0_pieces
                 or (n in criteria and set(criteria[n].after_working) <= working)
             )
@@ -758,6 +768,7 @@ class HandlerFloorSimple:
             owners: tuple[str, ...] = (),
             prs: tuple[str, ...] = (),
             last_seen: datetime | None = None,
+            resolved_at: datetime | None = None,
         ) -> None:
             declared = tuple(dict.fromkeys((*owners, *ov.owners.get(cid, ()))))
             out.append(
@@ -773,6 +784,7 @@ class HandlerFloorSimple:
                         "prs": prs,
                         "needs_operator": cid in ov.needs_operator,
                         "last_seen": last_seen,
+                        "resolved_at": resolved_at,
                     }
                 )
             )
@@ -800,7 +812,9 @@ class HandlerFloorSimple:
                 item.size_unit,
                 item.tickets,
                 last_seen=item.last_seen,
+                resolved_at=item.resolved_at,
             )
+        self._delegation_idle(r, add)
         for name, ok in sorted(r.sources_read.items()):
             if not ok:
                 add(
@@ -864,6 +878,39 @@ class HandlerFloorSimple:
         return out
 
     @staticmethod
+    def _delegation_idle(r: ModelFloorSimpleInput, add: Callable[..., None]) -> None:
+        """The delegation:idle row (OMN-23313): operator-owned delegation tickets that can start, and who is on them.
+
+        The sources hand over only the tickets the operator owns, under a delegation epic, whose start criterion reads
+        true. A ticket is idle when no live lane is on it (``live_lanes``: its own ticket or a ``parent_ticket=``). The row
+        owns the idle tickets, so it draws red while any has no lane, and owns every ticket once each has one, so it draws
+        amber then. The overlay's ``causes.owners`` entry for the row adds the tickets whose lanes work on the row itself.
+        """
+        spec = r.overlay.causes.delegation_idle
+        if spec is None or not r.delegation_tickets:
+            return
+        tickets = tuple(dict.fromkeys(t.ticket for t in r.delegation_tickets))
+        idle = tuple(t for t in tickets if not live_lanes(r.lanes, (t,)))
+        shown = ", ".join((idle or tickets)[:6])
+        more = len(idle or tickets) - 6
+        tail = f"; and {more} more" if more > 0 else ""
+        detail = (
+            f"{len(idle)} of {len(tickets)} operator-owned delegation tickets can start and have no lane on them: "
+            f"{shown}{tail}."
+            if idle
+            else f"All {len(tickets)} operator-owned delegation tickets that can start have a lane: {shown}{tail}."
+        )
+        add(
+            "delegation:idle",
+            spec.title,
+            detail,
+            len(idle) or len(tickets),
+            "delegation tickets",
+            tickets,
+            owners=idle or tickets,
+        )
+
+    @staticmethod
     def _stoppage_detail(item: ModelFloorCauseIn, r: ModelFloorSimpleInput) -> str:
         """What a stoppage row says: how often, how long ago, whether it is still occurring, and which cost is real.
 
@@ -876,7 +923,10 @@ class HandlerFloorSimple:
         if item.last_seen is not None:
             age = max(int((r.now - item.last_seen).total_seconds()), 0)
             seen = f"last seen {_ago(age)}"
-            if ov.still_occurring_within_s is not None:
+            if item.resolved_at is not None and _resolved_after_last_seen(item):
+                resolved_age = max(int((r.now - item.resolved_at).total_seconds()), 0)
+                seen += f", resolved {_ago(resolved_age)} by a STATUS row, no row since"
+            elif ov.still_occurring_within_s is not None:
                 seen += (
                     ", still occurring"
                     if age <= ov.still_occurring_within_s
@@ -910,6 +960,9 @@ class HandlerFloorSimple:
             occurring = (
                 age <= within if age is not None and within is not None else None
             )
+            # A STATUS row that reported the stoppage resolved after its newest row is the evidence it ended, whatever the window.
+            if _resolved_after_last_seen(c):
+                occurring = False
             # A stoppage that stopped and needs nobody is a fact about the past: listed with its age, not red.
             state = (
                 "quiet"
@@ -936,6 +989,7 @@ class HandlerFloorSimple:
                         "last_seen": c.last_seen,
                         "last_seen_age_s": age,
                         "still_occurring": occurring,
+                        "resolved_at": c.resolved_at,
                     }
                 )
             )
@@ -1073,7 +1127,7 @@ class HandlerFloorSimple:
                 (
                     x.piece
                     for x in rows
-                    if x.piece <= go
+                    if (x.piece <= go or x.piece in r.go_pieces)
                     and x.piece not in ov.rebuild.step0_pieces
                     and x.status != "working"
                 ),
@@ -1103,4 +1157,5 @@ class HandlerFloorSimple:
             headline=headline,
             next_text=next_text,
             go_given_through=go,
+            go_pieces=r.go_pieces,
         )
