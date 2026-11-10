@@ -252,6 +252,20 @@ runtime:
     timeout_seconds: 90
     module: omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5
     args: ["run"]
+  # OMN-22936: join J6 (piece 6 to piece 7). Each piece 6 golden reading the journal does not show piece 7 answering gets one stop
+  # on a test piece in the in-memory gate store, its durable and projected audit row read back, the next send of that piece
+  # refused by the store and a send of another test piece admitted, and piece 7's chain on the journal under the reading's
+  # correlation id; a reading already answered stops nothing. Once per window it also writes piece 7's own error chain, the
+  # fence drill (a stop with no answer by its deadline leaves the send refused), as a drill chain. It joins the concurrent group, so
+  # it adds nothing past the slowest member (90 s); the drill holds a stop's commit for the overlay's silence (a few seconds).
+  # Not required: when it fails the floor still reads and J6 stays unpassed.
+  - name: join_j6
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_gate_store_effect.runtime_join_j6
+    args: ["run"]
   # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
   # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
   # writes the same file in milliseconds; a failed rollup leaves the copy's file.
