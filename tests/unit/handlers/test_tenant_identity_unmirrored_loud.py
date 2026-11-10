@@ -21,11 +21,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.handlers.local_identity_mirror import write_mirror_row
 from omnimarket.handlers.routing import delegation_backend_resolution
-from omnimarket.local_deployment.tenant_identity import (
-    _ensure_tables_on,
-    _write_mirror_row,
-)
+from omnimarket.local_deployment.tenant_identity import _ensure_tables_on
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     EnumNamedTestRunStatus,
@@ -165,7 +163,7 @@ def _mirror(db_path: Path, *, slug: str, tenant_uuid: UUID) -> None:
 
     adapter = SqliteDatabaseAdapter(db_path)
     _ensure_tables_on(adapter)
-    _write_mirror_row(
+    write_mirror_row(
         adapter, tenant_uuid=tenant_uuid, tenant_slug=slug, now=datetime.now(tz=UTC)
     )
 
