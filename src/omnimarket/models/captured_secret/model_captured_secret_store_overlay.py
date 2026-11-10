@@ -14,7 +14,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from omnimarket.models.secret_store.plain_http_rule import validate_plain_http_hosts
 
 #: The block name inside ``~/.onex/config.yaml``. The hook producer in
 #: omniclaude reads the same block, with its own writer identity keys.
@@ -37,6 +39,9 @@ class ModelCapturedSecretStoreOverlay(BaseModel):
     #: The writer requires it; the reader does not read it yet.
     provider: str | None = Field(default=None, min_length=1)
     infisical_addr: str = Field(min_length=1, pattern=r"^https?://")
+    #: Hosts the store may be reached at over plain http, beside loopback. The
+    #: same rule as the secret_store block's key of this name (OMN-23193).
+    plain_http_hosts: tuple[str, ...] = ()
     project_id: uuid.UUID
     environment_slug: str = Field(min_length=1)
     secret_path: str = Field(min_length=1, pattern=r"^/")
@@ -52,6 +57,11 @@ class ModelCapturedSecretStoreOverlay(BaseModel):
     #: digest is HMAC-SHA256 of a value under it, so equal values deduplicate
     #: and the bus never carries an unsalted hash of a low-entropy secret.
     reference_key_ref: str | None = Field(default=None, min_length=1)
+
+    @field_validator("plain_http_hosts")
+    @classmethod
+    def _hosts_parse(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_plain_http_hosts(value)
 
 
 def load_captured_secret_store_overlay(

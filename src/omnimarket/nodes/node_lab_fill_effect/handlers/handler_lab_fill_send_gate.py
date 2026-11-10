@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import re
 
+from omnimarket.handlers.rules_lab_fill_closer import closer_route
+
 from ..models.model_lab_fill_send_gate import (
     EnumLabFillSendVerdict,
     ModelLabFillSendGateRequest,
@@ -39,14 +41,28 @@ class HandlerLabFillSendGate:
     def handle(
         self, request: ModelLabFillSendGateRequest
     ) -> ModelLabFillSendGateResult:
-        merged = tuple(sorted(set(request.merged_prs)))
-        if merged and request.kind not in request.exempt_kinds:
+        route = closer_route(
+            request.ticket,
+            request.kind,
+            merged_prs=request.merged_prs,
+            built=request.built,
+            exempt_kinds=request.exempt_kinds,
+            closer=request.closer,
+        )
+        if route is not None:
             # Whether the ticket is done is the closer's question, not a code lane's.
+            what = ",".join(route.prs) or route.lane
             return ModelLabFillSendGateResult(
-                verdict=EnumLabFillSendVerdict.IMPLEMENTATION_MERGED,
-                detail=f"implementation merged in {','.join(merged)}",
-                routed_to=request.closer,
-                merged_prs=merged,
+                verdict=EnumLabFillSendVerdict(route.reason.value),
+                detail=(
+                    f"implementation merged in {what}"
+                    if route.prs
+                    else f"already built, falsifiers passed in {route.lane}: {route.evidence}"
+                ),
+                routed_to=route.closer,
+                merged_prs=route.prs,
+                lane=route.lane,
+                evidence=route.evidence,
             )
         needed = brief_needs_hosts(
             request.brief, request.fact_hosts, request.needs_hosts
