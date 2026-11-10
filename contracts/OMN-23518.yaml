@@ -40,3 +40,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lane_process
         cwd: .
+  - id: dod-omn23518-integration-proof
+    description: The re-pinned work-contract corpus loads against the new uv.lock on a lab host at the pushed head.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23518 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_model_work_contract.py -q --no-cov
+        cwd: .
