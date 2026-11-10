@@ -1,8 +1,8 @@
 schema_version: "1.0.0"
 ticket_id: OMN-23055
-title: Step 0 row 3, the gate store on Postgres and the order writer
+title: Step 0 row 3, the gate store on Postgres
 summary: >-
-  Builds the parts of rebuild step 0 row 3 that need no deployment value: the gate store's Postgres backend (schema only by the node's two migrations, one row lock per request, the same rules as the in-memory twin, passing the frozen 8-check contract suite on a real Postgres with 3 named breaks failing it), node_order_advance_effect (the order writer, with golden and error chain events, restart, fencing and 2 named breaks). The start admission effect is built on omnimarket#5539 under OMN-22939. Every setting is in an overlay whose shape ships as an example with synthetic values. This does not make row 3 read true on the running system: that needs the gate_store and order_writer overlay values and the database connection from the deployment owner. Row 7's job-start source node is OMN-22897 on its own pull request.
+  Builds the part of rebuild step 0 row 3 that needs no deployment value: the gate store's Postgres backend (schema only by the node's two migrations, one row lock per request, the same rules as the in-memory twin, passing the frozen 8-check contract suite on a real Postgres with 3 named breaks failing it). The order writer, node_order_advance_effect, is the node merged on dev under OMN-22938; this change carries no copy of it and its tests live with that node. The start admission effect is built on omnimarket#5539 under OMN-22939. Every setting is in an overlay whose shape ships as an example with synthetic values. This does not make row 3 read true on the running system: that needs the gate_store and order_advance overlay values and the database connection from the deployment owner. Row 7's job-start source node is OMN-22897 on its own pull request.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -16,8 +16,8 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: >-
-      The two node test directories: the gate store contract suite on the twin and on Postgres with the named breaks, and the order writer chains.
-    command: uv run --frozen pytest tests/nodes/node_gate_store_effect tests/nodes/node_order_advance_effect -q -n 0 --no-cov
+      The gate store test directory: the contract suite on the twin and on Postgres with the named breaks.
+    command: uv run --frozen pytest tests/nodes/node_gate_store_effect -q -n 0 --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -33,43 +33,21 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_gate_store_effect -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-omn23055-order-writer
-    description: >-
-      The order writer advances a test order, reports complete, waits on a piece that is not ready, continues from the store after a restart, is fenced by a handover between its read and its write, and is refused on another holder's record unless the overlay allows takeover; the golden chain and four error chains pass and 2 named breaks turn them red.
-    source: manual
-    binds_ac:
-      - AC1
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_order_advance_effect -q -n 0 --no-cov
-        cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-deploy-omn23055-node-dispatch
-    description: >-
-      Each new node's contract loads and its handler answers its golden chain on the in-memory bus profile, which hosted CI can run; the Postgres profile is read on the lab.
-    source: manual
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_order_advance_effect/test_order_advance.py -q -n 0 --no-cov -k "golden_chain"
-        cwd: ${OMNI_HOME}/omnimarket
-    binds_ac: []
   - id: dod-deploy-omn23055-live-content
     description: >-
-      The pushed head carries the two new handlers on the repository, read live from GitHub at the head commit; each check fails when its handler class is absent at that commit.
+      The pushed head carries the new Postgres gate store on the repository, read live from GitHub at the head commit; each check fails when its handler class is absent at that commit.
     source: manual
     checks:
       - check_type: command
         check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_gate_store_effect/handlers/store_postgres.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class PostgresGateStore'
         cwd: ${OMNI_HOME}/omnimarket
-      - check_type: command
-        check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_order_advance_effect/handlers/handler_order_advance.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerOrderAdvance'
-        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23055-integration-proof
     description: >-
-      The pushed head ran the two node test directories on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+      The pushed head ran the gate store test directory on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
         check_value: |-
-          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane step0-rows-f-0210 -- uv run --frozen pytest tests/nodes/node_gate_store_effect tests/nodes/node_order_advance_effect -q -n 0 --no-cov
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane step0-rows-f-0210 -- uv run --frozen pytest tests/nodes/node_gate_store_effect -q -n 0 --no-cov
         cwd: .

@@ -1,13 +1,24 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The order writer: ``handle(ModelOrderAdvanceRequest) -> ModelOrderAdvanceResult``.
+"""The order writer: ``handle(ModelOrderAdvanceRequest) -> ModelOrderAdvanceResult`` (OMN-22938).
 
-One tick reads the gate store, claims the holder record when it is the writer's to claim (a
-fenced handover at the epoch it read), and advances the order by one position when the piece
-at the current position reads ready. Every write carries a step key, ``run_key/advance/<n>``
-or ``run_key/handover/<epoch>``, so a replayed tick writes nothing twice. A tick that finds
-itself fenced reports it and writes nothing; the next tick reads again. The store and the
-readiness read are injected; the in-memory readiness is the default and the overlay selects it.
+One tick of one writer (rebuild plan section 7.5, the holder):
+
+* read the gate store's holder, epoch and order position; a writer that is not the holder writes nothing.
+* make at most one change to the piece at the order position: ``started`` when it has no record, ``live`` when its
+  golden and error tests, its join tests and one live readback pass, ``in_comparison`` on the next tick, then
+  ``kept`` once the comparison window has run and read kept, or ``rolled_back`` the moment it reads rolled back.
+* advance the gate store's order by one position only when the piece is ``kept``; a rolled-back piece holds the order.
+
+Every write is keyed ``run_key/...`` and fenced: a record write carries the writer's adopted token and the order
+advance carries the epoch it was decided at, so a second writer with a stale fence is refused at both. A restart
+rebuilds the next change from the stores alone, never from memory, so no change is repeated; a kill between the
+``kept`` record and the order advance is finished by the next tick under the same key.
+
+A fallback writer takes over with ``take_over``, a fenced handover written in the gate store. It is refused when
+the current holder runs on the fallback's own host: the holder and its fallback never share a host.
+
+The gate store and the records are injected; the backend and the comparison window are the ``order_advance`` overlay.
 """
 
 from __future__ import annotations
@@ -25,33 +36,35 @@ from omnimarket.models.model_gate_store import (
     ModelGateStoreResult,
 )
 from omnimarket.models.model_order_advance import (
+    EnumComparisonReading,
+    EnumOrderAdvanceOperation,
     EnumOrderAdvanceOutcome,
-    EnumOrderReadinessBackend,
+    EnumPieceRecordOperation,
+    EnumPieceRecordOutcome,
+    EnumPieceState,
+    EnumRunEngineBackend,
     ModelOrderAdvanceFailure,
+    ModelOrderAdvancePolicy,
     ModelOrderAdvanceRequest,
     ModelOrderAdvanceResult,
-    ModelOrderWriterPolicy,
+    ModelPieceEvidence,
+    ModelPieceRecord,
+    ModelPieceRecordRequest,
+    holder_host,
+    holder_id,
+)
+from omnimarket.nodes.node_order_advance_effect.handlers.records_in_memory import (
+    InMemoryPieceRecords,
 )
 from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
-from omnimarket.protocols.protocol_order_readiness import ProtocolOrderReadiness
+from omnimarket.protocols.protocol_piece_records import ProtocolPieceRecords
 
 CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
-OP = EnumGateStoreOperation
-OUT = EnumOrderAdvanceOutcome
+_OK = frozenset({EnumPieceRecordOutcome.OK, EnumPieceRecordOutcome.DUPLICATE})
 
 
-class OrderReadinessNotBuiltError(RuntimeError):
-    """The overlay selected a readiness read that is not built; nothing answers in its place."""
-
-
-class InMemoryOrderReadiness:
-    """The readiness the overlay lists; the twin the tests and the first install use."""
-
-    def __init__(self, ready: tuple[str, ...]) -> None:
-        self._ready = frozenset(ready)
-
-    def is_ready(self, piece: str) -> bool:
-        return piece in self._ready
+class OrderWriterBackendNotBuiltError(RuntimeError):
+    """The overlay selected a backend that is not built; nothing answers in its place."""
 
 
 def load_topics(path: Path = CONTRACT) -> dict[str, str]:
@@ -60,142 +73,301 @@ def load_topics(path: Path = CONTRACT) -> dict[str, str]:
     return dict(contract["topics"])
 
 
-def build_readiness(policy: ModelOrderWriterPolicy) -> ProtocolOrderReadiness:
-    """The readiness read the overlay names; refuses one that is not built."""
-    if policy.readiness_backend is EnumOrderReadinessBackend.IN_MEMORY:
-        return InMemoryOrderReadiness(policy.ready_pieces)
-    raise OrderReadinessNotBuiltError(
-        f"order readiness backend {policy.readiness_backend.value} is not built"
+def build_records(policy: ModelOrderAdvancePolicy) -> ProtocolPieceRecords:
+    """The records backend the overlay names; refuses one that is not built."""
+    if policy.run_engine_backend is EnumRunEngineBackend.TIMER_STORE:
+        return InMemoryPieceRecords()
+    raise OrderWriterBackendNotBuiltError(
+        f"order writer backend {policy.run_engine_backend.value} is not built"
     )
 
 
+def plan_transition(
+    record: ModelPieceRecord | None,
+    evidence: ModelPieceEvidence,
+    now: float,
+    policy: ModelOrderAdvancePolicy,
+) -> EnumPieceState | None:
+    """The one change this tick makes to the piece, or none."""
+    state = record.state if record is not None else None
+    if state is None:
+        return EnumPieceState.STARTED
+    if state is EnumPieceState.STARTED:
+        shown = evidence.tests_pass and evidence.joins_pass and evidence.readback_pass
+        return EnumPieceState.LIVE if shown else None
+    if state is EnumPieceState.LIVE:
+        return EnumPieceState.IN_COMPARISON
+    if state is EnumPieceState.IN_COMPARISON:
+        if evidence.comparison is EnumComparisonReading.ROLLED_BACK:
+            return EnumPieceState.ROLLED_BACK
+        if evidence.comparison is EnumComparisonReading.KEPT:
+            live_at = record.live_at if record is not None else None
+            if live_at is not None and now - live_at >= policy.comparison_seconds:
+                return EnumPieceState.KEPT
+    return None
+
+
 class HandlerOrderAdvance:
-    """One tick of the writer on the injected gate store and readiness."""
+    """One writer's tick or take-over over the injected gate store and piece records."""
 
     def __init__(
         self,
         store: ProtocolGateStore,
-        readiness: ProtocolOrderReadiness,
-        policy: ModelOrderWriterPolicy,
+        records: ProtocolPieceRecords,
+        policy: ModelOrderAdvancePolicy,
         order: tuple[str, ...],
     ) -> None:
+        if policy.run_engine_backend is not EnumRunEngineBackend.TIMER_STORE:
+            raise OrderWriterBackendNotBuiltError(
+                f"order writer backend {policy.run_engine_backend.value} is not built"
+            )
         self._store = store
-        self._readiness = readiness
+        self._records = records
         self._policy = policy
         self._order = order
 
-    def _write(
-        self, request: ModelOrderAdvanceRequest, op: OP, key: str, **fields: object
-    ) -> ModelGateStoreResult:
-        return self._store.transact(
-            ModelGateStoreRequest.model_validate(
-                {
-                    "correlation_id": request.correlation_id,
-                    "operation": op,
-                    "step_key": key,
-                    "now": request.now,
-                    **fields,
-                }
-            )
-        )
+    def handle(self, request: ModelOrderAdvanceRequest) -> ModelOrderAdvanceResult:
+        """Run the request; a refusal is an answer, a store that cannot answer raises."""
+        if request.operation is EnumOrderAdvanceOperation.TAKE_OVER:
+            return self._take_over(request)
+        return self._tick(request)
+
+    # ---- reads and answers ----
 
     def _read(self, request: ModelOrderAdvanceRequest) -> ModelGateStoreResult:
         return self._store.transact(
             ModelGateStoreRequest(
                 correlation_id=request.correlation_id,
-                operation=OP.READ,
-                now=request.now,
+                operation=EnumGateStoreOperation.READ,
             )
         )
 
-    @staticmethod
-    def _result(
+    def _answer(
+        self,
         request: ModelOrderAdvanceRequest,
         outcome: EnumOrderAdvanceOutcome,
-        state: ModelGateStoreResult,
-        next_piece: str | None = None,
+        snap: ModelGateStoreResult,
         detail: str = "",
+        piece: str | None = None,
+        piece_state: EnumPieceState | None = None,
+        order_position: int | None = None,
     ) -> ModelOrderAdvanceResult:
         return ModelOrderAdvanceResult(
             correlation_id=request.correlation_id,
+            operation=request.operation,
             outcome=outcome,
-            order_position=state.order_position,
-            epoch=state.epoch,
-            holder=state.holder,
-            next_piece=next_piece,
+            epoch=snap.epoch,
+            order_position=(
+                snap.order_position if order_position is None else order_position
+            ),
+            holder=snap.holder,
+            piece=piece,
+            piece_state=piece_state,
             detail=detail,
         )
 
-    def handle(self, request: ModelOrderAdvanceRequest) -> ModelOrderAdvanceResult:
-        """Read, claim the holder record if it is ours to claim, advance one position if ready."""
-        me, run_key = self._policy.holder, self._policy.run_key
-        state = self._read(request)
-        if state.holder != me:
-            if (
-                state.holder is not None
-                and not self._policy.takes_over_from_other_holder
-            ):
-                return self._result(
-                    request,
-                    OUT.REFUSED,
-                    state,
-                    detail=f"{state.holder} holds the record",
-                )
-            claim = self._write(
-                request,
-                OP.HANDOVER,
-                f"{run_key}/handover/{state.epoch}",
-                holder=me,
-                expected_epoch=state.epoch,
+    def _holder_token(self, holder: str) -> int | None:
+        return self._records.transact(
+            ModelPieceRecordRequest(
+                operation=EnumPieceRecordOperation.READ, holder=holder
             )
-            if claim.outcome not in (
-                EnumGateStoreOutcome.OK,
-                EnumGateStoreOutcome.DUPLICATE,
-            ):
-                return self._result(
-                    request, OUT.HANDOVER_REFUSED, claim, detail=claim.outcome.value
-                )
-            state = self._read(request)
-            if state.holder != me:
-                return self._result(
+        ).holder_token
+
+    def _ensure_token(
+        self, request: ModelOrderAdvanceRequest, me: str, epoch: int
+    ) -> int | None:
+        """The writer's adopted fence token; adopts the store's epoch when the holder has none."""
+        token = self._holder_token(me)
+        if token is not None:
+            return token
+        adopted = self._records.transact(
+            ModelPieceRecordRequest(
+                operation=EnumPieceRecordOperation.ADOPT,
+                step_key=f"{request.run_key}/adopt/{me}/{epoch}",
+                holder=me,
+                fence_token=epoch,
+            )
+        )
+        return epoch if adopted.outcome in _OK else None
+
+    # ---- take over ----
+
+    def _take_over(self, request: ModelOrderAdvanceRequest) -> ModelOrderAdvanceResult:
+        me = holder_id(request.host, request.writer_id)
+        snap = self._read(request)
+        if snap.holder == me:
+            token = self._ensure_token(request, me, snap.epoch)
+            if token is None:
+                return self._answer(
                     request,
-                    OUT.FENCED,
-                    state,
-                    detail="the holder changed after the claim",
+                    EnumOrderAdvanceOutcome.REFUSED_FENCE,
+                    snap,
+                    "a newer token was adopted",
                 )
-        position = state.order_position
+            return self._answer(
+                request, EnumOrderAdvanceOutcome.IDLE, snap, "already the holder"
+            )
+        if snap.holder is not None and holder_host(snap.holder) == request.host:
+            return self._answer(
+                request,
+                EnumOrderAdvanceOutcome.REFUSED_PLACEMENT,
+                snap,
+                "the holder and its fallback never run on one host",
+            )
+        if request.expected_epoch is None:
+            return self._answer(
+                request,
+                EnumOrderAdvanceOutcome.REFUSED_INVALID,
+                snap,
+                "a take-over carries the epoch it was decided at",
+            )
+        handed = self._store.transact(
+            ModelGateStoreRequest(
+                correlation_id=request.correlation_id,
+                operation=EnumGateStoreOperation.HANDOVER,
+                step_key=f"{request.run_key}/takeover/{request.expected_epoch}/{me}",
+                holder=me,
+                expected_epoch=request.expected_epoch,
+            )
+        )
+        if handed.outcome is EnumGateStoreOutcome.DUPLICATE:
+            handed = self._read(request)
+            won = handed.holder == me
+        else:
+            won = handed.outcome is EnumGateStoreOutcome.OK
+        if not won:
+            return self._answer(
+                request,
+                EnumOrderAdvanceOutcome.REFUSED_FENCE,
+                handed,
+                f"the store answered {handed.outcome.value}: {handed.detail}",
+            )
+        if self._ensure_token(request, me, handed.epoch) is None:
+            return self._answer(
+                request,
+                EnumOrderAdvanceOutcome.REFUSED_FENCE,
+                handed,
+                "a newer token was adopted",
+            )
+        return self._answer(request, EnumOrderAdvanceOutcome.TAKEN_OVER, handed)
+
+    # ---- tick ----
+
+    def _tick(self, request: ModelOrderAdvanceRequest) -> ModelOrderAdvanceResult:
+        me = holder_id(request.host, request.writer_id)
+        snap = self._read(request)
+        if snap.holder != me:
+            return self._answer(
+                request,
+                EnumOrderAdvanceOutcome.REFUSED_NOT_HOLDER,
+                snap,
+                f"the holder is {snap.holder}",
+            )
+        token = self._ensure_token(request, me, snap.epoch)
+        if token is None:
+            return self._answer(
+                request,
+                EnumOrderAdvanceOutcome.REFUSED_FENCE,
+                snap,
+                "a newer token was adopted",
+            )
+        position = snap.order_position
         if position >= len(self._order):
-            return self._result(request, OUT.COMPLETE, state)
+            return self._answer(request, EnumOrderAdvanceOutcome.COMPLETE, snap)
         piece = self._order[position]
-        if not self._readiness.is_ready(piece):
-            return self._result(request, OUT.WAITING, state, piece, "piece not ready")
-        advanced = self._write(
+        record = self._records.transact(
+            ModelPieceRecordRequest(
+                operation=EnumPieceRecordOperation.READ, piece=piece, holder=me
+            )
+        ).record
+        planned = plan_transition(record, request.evidence, request.now, self._policy)
+        state = record.state if record is not None else None
+        if planned is not None:
+            written = self._records.transact(
+                ModelPieceRecordRequest(
+                    operation=EnumPieceRecordOperation.WRITE,
+                    step_key=f"{request.run_key}/{piece}/{planned.value}",
+                    now=request.now,
+                    piece=piece,
+                    to_state=planned,
+                    holder=me,
+                    fence_token=token,
+                )
+            )
+            if written.outcome not in _OK:
+                outcome = (
+                    EnumOrderAdvanceOutcome.REFUSED_FENCE
+                    if written.outcome is EnumPieceRecordOutcome.REFUSED_FENCE
+                    else EnumOrderAdvanceOutcome.REFUSED_INVALID
+                )
+                return self._answer(
+                    request, outcome, snap, written.detail, piece, state
+                )
+            state = planned
+        if state is not EnumPieceState.KEPT:
+            outcome = (
+                EnumOrderAdvanceOutcome.ADVANCED
+                if planned is not None
+                else EnumOrderAdvanceOutcome.IDLE
+            )
+            return self._answer(request, outcome, snap, "", piece, state)
+        return self._advance(request, me, snap, piece)
+
+    def _advance(
+        self,
+        request: ModelOrderAdvanceRequest,
+        me: str,
+        snap: ModelGateStoreResult,
+        piece: str,
+    ) -> ModelOrderAdvanceResult:
+        target = snap.order_position + 1
+        moved = self._store.transact(
+            ModelGateStoreRequest(
+                correlation_id=request.correlation_id,
+                operation=EnumGateStoreOperation.ADVANCE_ORDER,
+                step_key=self._advance_key(request, target, snap.epoch),
+                holder=me,
+                expected_epoch=snap.epoch,
+                order_position=target,
+            )
+        )
+        if moved.outcome is EnumGateStoreOutcome.DUPLICATE:
+            moved = self._read(request)
+            done = moved.order_position == target
+        else:
+            done = moved.outcome is EnumGateStoreOutcome.OK
+        if not done:
+            return self._answer(
+                request,
+                EnumOrderAdvanceOutcome.REFUSED_FENCE,
+                moved,
+                f"the store answered {moved.outcome.value}: {moved.detail}",
+                piece,
+                EnumPieceState.KEPT,
+            )
+        return self._answer(
             request,
-            OP.ADVANCE_ORDER,
-            f"{run_key}/advance/{position + 1}",
-            holder=me,
-            expected_epoch=state.epoch,
-            order_position=position + 1,
+            EnumOrderAdvanceOutcome.ADVANCED,
+            moved,
+            "",
+            piece,
+            EnumPieceState.KEPT,
+            order_position=target,
         )
-        if advanced.outcome in (
-            EnumGateStoreOutcome.OK,
-            EnumGateStoreOutcome.DUPLICATE,
-        ):
-            return self._result(request, OUT.ADVANCED, advanced, piece)
-        if advanced.outcome is EnumGateStoreOutcome.REFUSED_FENCE:
-            return self._result(request, OUT.FENCED, advanced, piece, advanced.detail)
-        return self._result(
-            request, OUT.REFUSED, advanced, piece, advanced.outcome.value
-        )
+
+    @staticmethod
+    def _advance_key(request: ModelOrderAdvanceRequest, target: int, epoch: int) -> str:
+        """One advance to a position at an epoch; a replay at the same epoch is the same step."""
+        return f"{request.run_key}/advance/{target}@{epoch}"
 
 
 def answer_command(
     payload: bytes, handler: HandlerOrderAdvance, topics: dict[str, str]
 ) -> list[tuple[str, bytes]]:
-    """One tick command in, the event it produces out, as (topic, JSON bytes).
+    """One command message in, the events it produces out, each as (topic, JSON bytes).
 
-    A payload that is not a request, or a store that cannot answer, is a typed failure event
-    naming the failure, never dropped and never retried silently.
+    A payload that is not a request, or a store that cannot answer, is answered with a typed
+    failure event naming the failure, never dropped and never retried silently.
     """
     try:
         request = ModelOrderAdvanceRequest.model_validate_json(payload)
@@ -217,7 +389,7 @@ def answer_command(
         return [(topics["order_advance_failed"], failure.model_dump_json().encode())]
     return [
         (
-            topics["order_advanced"],
+            topics["order_advance_answered"],
             json.dumps(result.model_dump(mode="json"), sort_keys=True).encode(),
         )
     ]

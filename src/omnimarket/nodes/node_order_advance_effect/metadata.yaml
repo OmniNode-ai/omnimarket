@@ -1,6 +1,6 @@
 name: node_order_advance_effect
 version: "0.1.0"
-description: "the order writer: on a timer, as the holder, advances the gate store's order one position when the piece reads ready"
+description: "the order writer: advances a test order from the gate store's piece records on a timer, fenced, restart-safe, never on the holder's host for its fallback"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -16,7 +16,7 @@ capabilities:
 dependencies: []
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "gate-store", "holder", "order"]
+tags: ["effect", "order-writer", "gate-store", "holder"]
 pack: "routing"
 display_name: "Order Advance Effect"
 node_role: "effect"

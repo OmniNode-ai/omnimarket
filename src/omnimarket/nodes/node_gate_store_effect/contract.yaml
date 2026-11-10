@@ -46,6 +46,12 @@ cli_handlers:
     handler:
       name: HandlerGateStoreJoinJ6
       module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6
+  # The J6 run (OMN-22936) is the join's caller: it runs from the publish cycle's join_j6 step
+  # (runtime_join_j6), in process, and answers each piece 6 golden reading with a stop and piece 7's chain.
+  - operation: join_j6_run
+    handler:
+      name: HandlerGateStoreJoinJ6Run
+      module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6_run
 
 descriptor:
   node_archetype: effect
