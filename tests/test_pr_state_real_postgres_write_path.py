@@ -13,6 +13,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote_plus
 from uuid import uuid4
 
 import asyncpg
@@ -38,12 +39,28 @@ MIGRATION = (
 )
 
 
+def _dsn() -> str | None:
+    if "INTEGRATION_POSTGRES_DSN" in os.environ:
+        dsn = os.environ["INTEGRATION_POSTGRES_DSN"]
+        if not dsn.strip():
+            raise ValueError("INTEGRATION_POSTGRES_DSN is empty")
+        return dsn
+    password = os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    )
+    if not password:
+        return None
+    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+    port = os.environ.get("INTEGRATION_POSTGRES_PORT", "5432")
+    user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
+    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+    return f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
+
+
 async def _connect_or_skip() -> asyncpg.Connection:
-    if "INTEGRATION_POSTGRES_DSN" not in os.environ:
-        pytest.skip("INTEGRATION_POSTGRES_DSN is not configured for OMN-19999")
-    dsn = os.environ["INTEGRATION_POSTGRES_DSN"]
-    if not dsn.strip():
-        raise ValueError("INTEGRATION_POSTGRES_DSN is empty")
+    dsn = _dsn()
+    if dsn is None:
+        pytest.skip("no Postgres connection variables configured for OMN-19999")
     try:
         connection = await asyncpg.connect(dsn, timeout=5)
     except (OSError, TimeoutError, asyncpg.PostgresError):
@@ -113,7 +130,7 @@ async def test_ddl_and_all_bound_fields_survive_a_merged_lifecycle() -> None:
         assert row["state"] == "merged"
         assert row["last_digest"] == row["digest"] == merged.digest
         assert row["observed_at"].isoformat() == "2026-09-28T11:00:00+00:00"
-        assert set(row) == set(type(merged).model_fields) | {"last_digest"}
+        assert set(row.keys()) == set(type(merged).model_fields) | {"last_digest"}
 
 
 @pytest.mark.integration
