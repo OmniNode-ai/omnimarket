@@ -10,6 +10,7 @@ its part and the run still publishes and writes its row.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -21,6 +22,9 @@ import pytest
 from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
     HandlerDailyLine,
 )
+from omnimarket.nodes.node_daily_line_effect.handlers import (
+    handler_daily_line_run as run_module,
+)
 from omnimarket.nodes.node_daily_line_effect.handlers import schedule as sched
 from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run import (
     HandlerDailyLineRun,
@@ -28,6 +32,7 @@ from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run imp
     count_open_claims,
     load_runtime,
     read_floor_record,
+    write_atomic,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
@@ -290,6 +295,40 @@ def test_schedule_run_a_floor_piece_with_no_reading_state_reads_unknown_with_the
     assert publication.line.startswith(
         "Piece 1, code graph: UNKNOWN (2 nightly runs in 24 hours), joined to piece 2, hosts, by J1: passed;"
     )
+
+
+def test_schedule_run_a_floor_piece_with_no_reading_state_is_listed_unknown_not_read(
+    tmp_path: Path,
+) -> None:
+    home = _home(tmp_path, floor=_floor(NOW, reading_state=None))
+    rows: list[str] = []
+    publication = _runner(home, _read(2), rows).run()
+    assert publication.unknown_parts == ("piece1",)
+    assert "unknown=piece1 | " in rows[0]
+
+
+def test_schedule_overlapping_publications_each_complete_without_sharing_a_temporary_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "out" / "daily-line.json"
+    real_replace = os.replace
+    nested: list[bool] = []
+
+    def replace_after_a_second_run(
+        source: str | os.PathLike[str], destination: str | os.PathLike[str]
+    ) -> None:
+        if not nested:
+            nested.append(True)
+            write_atomic(target, '{"run": "second"}\n')
+        real_replace(source, destination)
+
+    monkeypatch.setattr(run_module.os, "replace", replace_after_a_second_run)
+    write_atomic(target, '{"run": "first"}\n')
+    assert json.loads(target.read_text(encoding="utf-8")) in (
+        {"run": "first"},
+        {"run": "second"},
+    )
+    assert [path.name for path in target.parent.iterdir()] == [target.name]
 
 
 @pytest.mark.parametrize(
