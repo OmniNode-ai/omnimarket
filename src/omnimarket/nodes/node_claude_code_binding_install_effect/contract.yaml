@@ -41,11 +41,23 @@ handler_routing:
   routing_strategy: payload_type_match
   handlers:
     - handler:
+        name: HandlerGatewayHookInstall
+        module: omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_gateway_hook_install
+      event_model:
+        name: ModelGatewayHookInstallRequest
+        module: omnimarket.nodes.node_claude_code_binding_install_effect.models.model_gateway_hook_install
+    - handler:
         name: HandlerClaudeCodeBindingInstall
         module: omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install
       event_model:
         name: ModelCompactionBindingInstallRequest
         module: omnimarket.nodes.node_claude_code_binding_install_effect.models
+    - handler:
+        name: HandlerClaudeGatewaySettings
+        module: omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_claude_gateway_settings
+      event_model:
+        name: ModelClaudeGatewaySettingsRequest
+        module: omnimarket.nodes.node_claude_code_binding_install_effect.models.model_claude_gateway_settings
 
 descriptor:
   node_archetype: effect
@@ -55,6 +67,9 @@ descriptor:
   runtime_profiles: [effects]
 
 capabilities:
+  - name: claude_code.gateway_binding
+    description: Observe, enable and safely disable the user's authenticated ONEX gateway binding
+    version: 1.0.0
   - name: hook.claude_code.binding_install
     description: Install the rendered Claude Code binding for this host
     version: 1.0.0
@@ -73,6 +88,14 @@ runtime_dispatch:
 terminal_event: onex.evt.omnimarket.claude-code-binding-installed.v1
 
 metadata:
+  gateway_hook_profile:
+    - event: UserPromptSubmit
+      timeout_seconds: 30
+      on_failure: block
+    - event: PreToolUse
+      matcher: "^(Agent|Task)$"
+      timeout_seconds: 30
+      on_failure: block
   author: OmniNode Team
   license: MIT
   ticket: OMN-18531

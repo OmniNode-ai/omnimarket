@@ -139,3 +139,1662 @@ entries:
     reason: >-
       onex setup --help documents the walk; onex --help names it as the
       quickstart.
+
+lab_onboarding:
+  source_repository: OmniNode-ai/omniclaude
+  source_revision: 628da25322e1b1635c0b54fe9dbfbbf7357115b2
+  audit_scope: Surface coverage only. Planned entries are not runtime integration evidence.
+  sources:
+  - id: walk
+    fixture: lab_onboarding_8c1b3e5e.txt
+    git_blob: 8c1b3e5e60f7f124fc5d1fb10e7bc6affcaa038e
+    fixture_sha256: 3c1e0c64eb256f6567e0e432262fa9183fab66768ce0bc4b580a6a2639364d7a
+    redacted_lines: [1208, 1820, 1858, 1859, 1866, 1869]
+    redaction: Private repository references are replaced in the public audit copy. All 273 inventoried capabilities are preserved; git_blob identifies the original audited source.
+  - id: preflight
+    fixture: onboarding_preflight_caf4b1a8.txt
+    git_blob: caf4b1a8fa85fea42c4db0644539f5dc954bba3f
+    fixture_sha256: 24ca661a7af42089d761289c88300853ad472b6205013ce548bbd75520ba71b2
+  - id: model-config
+    fixture: onboarding_model_config_c378a729.txt
+    git_blob: c378a729561d06b46bfbdab5bbee83c08975de60
+    fixture_sha256: cb87c9a79e7f1f47e6265b9adfb9a087fb0d4c154035cb9f56d2c16a1ce84bba
+  entries:
+  - source: model-config
+    kind: function
+    identifier: _ollama_config
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: model-config
+    kind: function
+    identifier: _place_local_url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: model-config
+    kind: function
+    identifier: handle
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: add_model_res
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: anchor_time
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: anchored_commit
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: ask_keys
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: ask_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: ask_ollama_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: ask_url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: catalogue_row
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: checkout_anchored
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: choose_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: chosen_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: clone_at_anchor
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: comma_list
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: confirm_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: docker_url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: drop_unlisted
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: ensure_local_url_onex
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: finish_name
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: finish_name_like
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: finish_sound
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: finish_sound_consent
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: in_user_shell
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: is_workspace_onex
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: key_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: leftover
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: leftovers_interfering
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: list_in_order
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: list_recommended_first
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: local_url_add_args
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: local_url_answers
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: local_url_base
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: local_url_endpoint
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: local_url_supported
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: local_url_unreachable
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: local_url_valid
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: mark_local_url_overrides
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: masked
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: model_config
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: model_result
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: offered_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: ollama_config
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: ollama_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: omnimarket_file
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: onex_order
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: parse_model_choice
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: parse_ordered_choice
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: pipx_home
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: place_local_url_on_ladder
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: point_bundle_at_local_url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: point_stack_at_local_url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: prepare_local_url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: prepare_profile_edits
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: probe_listed
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: probe_model
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: profile_comment_out
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: profile_leftover_lines
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: profile_set_aside
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: profile_syntax_ok
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: proven_pin
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: put_first
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: real_path
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: recommended_basis
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: recommended_order
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: report_leftovers
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: result_line
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: resume_banner
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: retire_lab_model_overrides
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: routing_overlay_in_place
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: row
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: save_choices
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: saved_choice
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: set_aside_leftovers
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: set_aside_one
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: set_chosen_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: settle_leftovers
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: settle_local_url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: settle_models
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: setup_model
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: shell_onex_answer
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: shell_onex_kind
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: shell_onex_path
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: shell_onex_version
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: shell_runs_workspace_onex
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: stop_local_url_unanswered
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: survey_leftovers
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: tilde
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: to_ere
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: user_shell
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: uv_tool_dir
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: vm_notice
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: preflight
+    kind: function
+    identifier: write_routing_overlay
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: .omninode-dev-setup
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: .onex-dispatch-venv
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: bifrost_overrides.yaml
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: choices
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: claude-plugin-registration
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: delegation.sqlite
+    owner: 'onex setup: verify'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: docker-local-env
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: docker-settings
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: model-credential-store
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: onex-symlink
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: phases.v2.done
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: proven-floor-stamp
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: routing_overlay.yaml
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: run-log-status
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: runtime_config.yaml
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: shell-profile
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: stack-tenant-and-secrets
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: stack.anchor
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: artifact
+    identifier: workspace-config-git
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --compat-url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --containers
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --developer
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --help
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --local-model
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --local-url
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --no-containers
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --ollama-model
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --preflight-only
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --provider
+    owner: 'onex setup: model selection'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --restart
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --set-aside
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: flag
+    identifier: --workspace
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: a_an
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: accept_docker_terms
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: accepted_backend
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: arch
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ask_docker
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ask_docker_terms
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: avail_mem_gb
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: bind_workspace_env
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: boot_resources_ok
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: brew_bin
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: brew_install
+    owner: 'onex setup: prerequisites'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: cause_of
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: check
+    owner: 'onex setup: verify'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: claude_bin
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: cleanup
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: clear_keys
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: clone_behind_note
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: clone_default_branch
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: clone_fix
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: clone_problem
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: clone_state
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: clone_where
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: commit_workspace_runtime_config
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: commits_behind
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: compose_ok
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: config_git
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: count_words
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: cpu_count
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: delegate_hello
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: disk_free_gb
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: dispatch_venv_current
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: docker_awaits_terms
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: docker_has_resources
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: docker_installed
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: docker_ready
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: docker_settings_file
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: docker_state
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: download
+    owner: 'onex setup: prerequisites'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: drop_model
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: elapsed
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ensure_stack_tenant
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ensure_sudo
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: foreign_clones
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: has_model
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: hr
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: in_list
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: in_menu_order
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: install_claude_code
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: install_clt
+    owner: 'onex setup: prerequisites'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: install_ollama
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: internal_plugins_reachable
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: is_admin
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: is_done
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: is_rosetta
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: is_stored
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: is_vm
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: key_looks_like
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: key_page
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: keyed_models
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: labels
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: last_log_lines
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: link_onex
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: load_ollama_config
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: load_onboarding_preflight
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: local_stack_running
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: log
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: macos_version
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: main
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: mark_done
+    owner: 'onex setup: state and resume'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: models_cmd
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: needs_admin
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: no_shadow
+    owner: 'onex setup: verify'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: notify
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ollama_bin
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ollama_has_model
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ollama_overrides_ours
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ollama_up
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: onex_run
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: os_name
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: passed_models
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: pending_key
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase0
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase1
+    owner: 'onex setup: prerequisites'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase1_verified
+    owner: 'onex setup: prerequisites'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase2
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase2_verified
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase3
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase4
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase5
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase6
+    owner: 'onex setup: verify'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase_fail
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase_pass
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase_skip
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: phase_start
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: plugin_installed
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: point_bundle_model
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: port_busy
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: print_ladder
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: profile_block_names_legacy_home
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: provider_label
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: quit_setup
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: ram_gb
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: read_secret
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: receipt_field
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: record_model_status
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: refuse_foreign_workspace
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: register_key_in_stack
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: rerun_note
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: restart_docker
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: result_of
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: retry
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: retry_capture
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: run_logged
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: say
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: sed_inplace
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: set_pending_key
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: set_result
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: settle_models_unattended
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: settle_ollama
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: setup_ollama
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: size_docker
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: sqlite_rows
+    owner: 'onex setup: verify'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: stack_delegate
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: stack_healthy
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: stamp_proven_floor
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: start_ollama
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: step
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: stored_key_providers
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: sync_clone
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: usage
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: uses_key
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: uv_bin
+    owner: 'onex setup: prerequisites'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: wait_for_docker
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: wait_until
+    owner: 'onex setup: completion'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: workspace_floor
+    owner: 'onex setup: verify'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: workspace_runtime_config_anchored
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: workspace_runtime_config_present
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: write_ollama_overrides
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: write_profile_block
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: function
+    identifier: write_workspace_runtime_config
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: phase
+    identifier: phase0
+    owner: 'onex setup: preflight'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: phase
+    identifier: phase1
+    owner: 'onex setup: prerequisites'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: phase
+    identifier: phase2
+    owner: 'onex setup: workspace'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: phase
+    identifier: phase3
+    owner: 'onex setup: delegation'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: phase
+    identifier: phase4
+    owner: 'onex setup: docker'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: phase
+    identifier: phase5
+    owner: 'onex setup: claude integration'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.
+  - source: walk
+    kind: phase
+    identifier: phase6
+    owner: 'onex setup: verify'
+    disposition: planned
+    reason: Behavior migration and real proof are required before integration.

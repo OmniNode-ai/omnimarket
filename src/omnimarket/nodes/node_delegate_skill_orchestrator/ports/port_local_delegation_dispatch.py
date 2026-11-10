@@ -141,6 +141,9 @@ from omnimarket.handlers.handler_capability_start import (
     resolve_capability_cell_reader,
 )
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
+from omnimarket.handlers.local_snapshot_publisher import (
+    LocalEvidenceNoRepublishPublisher as _LocalEvidenceNoRepublishPublisher,
+)
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
     byok_backend_retry_wait_seconds,
@@ -419,7 +422,6 @@ from omnimarket.pricing import (
     resolve_baseline_model,
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
-from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.sqlite_metering_summary import (
     InProcessMeteringRefreshPublisher,
@@ -1611,34 +1613,6 @@ def resolve_delegation_backend(
         task_type, backend_id=backend_id
     )
     return substitute_local_byok_route(resolved)
-
-
-class _LocalEvidenceNoRepublishPublisher:
-    """The local port's snapshot publisher: it republishes nothing (OMN-19193).
-
-    The delegation projection republishes each row it writes onto a snapshot
-    topic that a LANE's projection API serves from. The local port's evidence
-    store is not that lane's store, and the only broker this process could name
-    is the ambient ``KAFKA_BOOTSTRAP_SERVERS`` -- on the operator's machine, the
-    stability-test proof lane. Publishing a local row there would serve a row the
-    lane's database does not hold. So the local port declares this publisher
-    rather than inheriting the Kafka default.
-
-    Nothing that works is lost: the Kafka default was called from inside the
-    ``RuntimeLocal`` loop, where ``asyncio.run`` refused every call. An evidence
-    target bound by overlay to a shared database (OMN-14015) is not republished
-    either; that store's own lane writer owns its exposure. Reaching the shared
-    projection is a transport decision, made by the runtime configuration that
-    picks this port or the bus port, not by this republish.
-    """
-
-    def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
-        logger.debug(
-            "local delegation evidence: snapshot delta for %s not republished "
-            "(the local evidence store backs no lane projection exposure)",
-            message.topic,
-        )
-        return False
 
 
 class LocalDelegationDispatchPort:

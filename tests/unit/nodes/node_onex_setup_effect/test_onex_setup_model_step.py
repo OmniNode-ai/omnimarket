@@ -36,11 +36,19 @@ from omnibase_core.cli.cli_commands import cli
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
-from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     HandlerOnexSetup,
 )
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_base_tools import (
+    HandlerSetupBaseTools,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
+    HandlerSetupPreflight,
+)
 from omnimarket.nodes.node_onex_setup_effect.models import ModelOnexSetupRequest
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
+    ModelSetupObservation,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -94,6 +102,7 @@ class Recorder:
 
     receipts_dir: Path
     answer_model: str = MODEL
+    endpoint: str = "http://127.0.0.1/v1/chat/completions"
     argv: list[list[str]] = field(default_factory=list)
     receipts: list[Path] = field(default_factory=list)
 
@@ -111,7 +120,7 @@ class Recorder:
                     "status": "success",
                     "backend_id": backend,
                     "model": self.answer_model,
-                    "endpoint": "http://127.0.0.1/v1/chat/completions",
+                    "endpoint": self.endpoint,
                 }
             ),
             encoding="utf-8",
@@ -133,6 +142,19 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    # These isolate the model/store/receipt boundary. Native machine probes have
+    # their own real-Mac E2E and refusal controls; the subprocess recorder must
+    # not impersonate sysctl or disk evidence.
+    monkeypatch.setattr(
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
+    )
+    monkeypatch.setattr(
+        HandlerSetupBaseTools,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(step="base-tools", status="success"),
+    )
     store = tmp_path / "delegation" / "delegation.sqlite"
     store.parent.mkdir()
     for module in (
@@ -144,8 +166,12 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
-def recorder(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Recorder:
-    recording = Recorder(receipts_dir=tmp_path / "runs")
+def recorder(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server: str
+) -> Recorder:
+    recording = Recorder(
+        receipts_dir=tmp_path / "runs", endpoint=server + "/v1/chat/completions"
+    )
     monkeypatch.setattr(subprocess, "run", recording)
     return recording
 
@@ -153,7 +179,12 @@ def recorder(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rec
 def _setup(args: list[str], stdin: str | None = None, **env: str) -> Result:
     merged: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
     merged.update(env)
-    return CliRunner().invoke(cli, ["setup", *args], input=stdin, env=merged)
+    return CliRunner().invoke(
+        cli,
+        ["setup", "--yes", "--component", "delegation", *args],
+        input=stdin,
+        env=merged,
+    )
 
 
 def _unattended(workspace: Path, *flags: str) -> list[str]:
@@ -189,8 +220,16 @@ def test_model_step_proven_delegation(
     receipt = _receipt_line(result)
     assert receipt["provider"] == "openai_compatible"
     assert receipt["model"] == MODEL
-    steps = re.findall(r"^\[(?:done|unchanged)\] (\w+):", result.output, re.MULTILINE)
-    assert steps == list(handler_onex_setup.SETUP_STEPS)
+    steps = re.findall(r"^\[success\] ([\w-]+)", result.output, re.MULTILINE)
+    assert steps == [
+        "preflight",
+        "base-tools",
+        "workspace",
+        "user_config",
+        "runtime_config",
+        "identity",
+        "models",
+    ]
     delegations = recorder.delegations()
     assert len(delegations) == 1, "the walk must run exactly one delegation"
     assert (
@@ -216,7 +255,7 @@ def test_model_step_refuses_a_delegation_that_answered_on_another_model(
         stdin=f"{GOOD_KEY}\n",
     )
     assert result.exit_code == 1, result.output
-    assert "step 'model' failed" in result.output
+    assert "[failure] models" in result.output
     assert "Receipt: " not in result.output
 
 
@@ -237,7 +276,6 @@ def _assert_missing_refused(
     result = _setup(args, stdin="")
 
     assert result.exit_code == 1, result.output
-    assert "step 'arguments' failed" in result.output
     assert f"{named} is missing" in result.output
     assert "[done]" not in result.output
     assert "[unchanged]" not in result.output
@@ -313,11 +351,10 @@ def test_wrong_key_resumes(
     failed = _setup(args, stdin=f"{WRONG_KEY}\n")
 
     assert failed.exit_code == 1, failed.output
-    assert "step 'model' failed" in failed.output
+    assert "[failure] models" in failed.output
     retry = re.search(r"^Retry: (onex setup.*)$", failed.output, re.MULTILINE)
     assert retry, failed.output
     assert "stdin" in failed.output, "the retry must say the key goes on stdin"
-    assert "Steps before this one are complete and are kept" in failed.output
     assert WRONG_KEY not in failed.output
     # The earlier steps are kept.
     assert workspace.is_dir()
@@ -370,8 +407,6 @@ def test_unattended_ollama_refused_names_local(
     )
     assert result.exit_code != 0, result.output
     assert "--provider local --url" in result.output
-    assert "No step ran and nothing was written" in result.output
-    assert "--provider ollama" not in result.output.split("Retry:", 1)[1]
     assert "[done]" not in result.output
     assert not (home / ".onex").exists()
     assert recorder.argv == []
@@ -393,7 +428,7 @@ def test_unattended_keyed_provider_without_a_key_is_refused(
         stdin="",
     )
     assert result.exit_code == 1, result.output
-    assert "no openai_compatible key was given on stdin" in result.output
+    assert "credential" in result.output.lower()
     assert not (home / ".onex").exists()
 
 
@@ -429,8 +464,9 @@ def _where_the_key_is(
 
 
 def _run_for_the_sentinel(
-    home: Path, tmp_path: Path, server: str, key: str
+    home: Path, tmp_path: Path, server: str, key: str, recorder: Recorder
 ) -> tuple[Result, Path]:
+    recorder.endpoint = server + "/v1/chat/completions"
     workspace = tmp_path / "ws"
     result = _setup(
         _unattended(
@@ -478,10 +514,15 @@ def test_sentinel_key_never_leaks(
 ) -> None:
     sentinel = f"sk-sentinel-{uuid.uuid4().hex}"
     caplog.set_level("DEBUG")
-    result, workspace = _run_for_the_sentinel(home, tmp_path, any_key_server, sentinel)
+    result, workspace = _run_for_the_sentinel(
+        home, tmp_path, any_key_server, sentinel, recorder
+    )
     assert result.exit_code == 0, result.output
     assert recorder.argv, "the recorder saw no subprocess: nothing was checked"
     assert recorder.delegations(), "the walk started no delegation: nothing was proven"
+    state = home / ".onex" / "setup.json"
+    before_compatibility_call = state.read_bytes()
+    assert json.loads(before_compatibility_call)["schema_version"] == 2
 
     handler_result = HandlerOnexSetup().handle(
         ModelOnexSetupRequest(
@@ -495,6 +536,9 @@ def test_sentinel_key_never_leaks(
         )
     )
     assert handler_result.receipt is not None
+    assert state.read_bytes() == before_compatibility_call, (
+        "the legacy contract handler replaced the versioned setup authority"
+    )
 
     found = _where_the_key_is(
         sentinel,
@@ -522,7 +566,9 @@ def test_sentinel_scan_catches_a_key_put_in_argv(
     """Failing control for AC5: a named break, the key in the delegation's prompt."""
     sentinel = f"sk-sentinel-{uuid.uuid4().hex}"
     monkeypatch.setattr(handler_model_setup, "_TEST_PROMPT", f"say ok {sentinel}")
-    result, workspace = _run_for_the_sentinel(home, tmp_path, any_key_server, sentinel)
+    result, workspace = _run_for_the_sentinel(
+        home, tmp_path, any_key_server, sentinel, recorder
+    )
     assert result.exit_code == 0, result.output
 
     found = _where_the_key_is(

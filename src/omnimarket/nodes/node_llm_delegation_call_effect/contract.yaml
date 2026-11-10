@@ -355,6 +355,14 @@ externally_produced_topics:
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
+    - operation: "serve_claude_gateway"
+      event_model:
+        name: "ModelClaudeGatewayConfig"
+        module: "omnimarket.models.delegation.model_claude_gateway"
+      handler:
+        name: "HandlerClaudeGateway"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_gateway"
+      description: "Standalone CLI lifecycle for native Claude ingress; uses canonical routing, secret resolution, artifacts and local projections. No direct-provider fallback."
     - operation: "execute_delegation_target"
       event_type: "omnimarket.delegation-target-execute"
       event_model:

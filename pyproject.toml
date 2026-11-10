@@ -1517,6 +1517,7 @@ lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_co
 # onboarding walk a CLI user needs from omnibase install.sh. omnibase_core names it as the root
 # quickstart. Discovered over installed distributions like the groups above.
 setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"
+claude = "omnimarket.nodes.node_claude_code_binding_install_effect.cli_gateway:claude_group"
 # OMN-19998: `onex lab claude-token` -- store, deploy, probe and rotate a lab
 # host's Claude token by reference (node_lab_claude_token_effect). Discovered
 # over installed distributions like the groups above.

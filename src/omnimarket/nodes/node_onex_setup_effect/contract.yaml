@@ -12,19 +12,17 @@ node_type: EFFECT_GENERIC
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  The onboarding walk a developer needs after installing the ONEX CLI: create the workspace
-  root, choose the install path (local by default, docker on request) and check what it needs,
-  write the user config when there is none, and write the workspace runtime configuration.
-  The last step, model, stores the user's key (Gemini, OpenRouter, OpenAI, an OpenAI-compatible
-  endpoint by URL, or a local model server by URL; Ollama is reached as local by URL) through the
-  handler onex models add uses, runs one delegation pinned to it and reads its receipt back; the
-  walk ends only when that delegation answered on the provider and model named. The unattended
-  form, onex setup --no-interactive --workspace DIR --provider P --model M [--url URL] with the
-  key on stdin, names every choice and refuses, before any step runs, the one that is missing.
-  Every step but model is idempotent and every write atomic, so a second run changes nothing and
-  a run that stopped at a failed step resumes from it (model stores the key and proves a
-  delegation again). A failure names its one fix and the retry command. setup_step_inventory.yaml beside this contract records which omnibase
-  install.sh step this walk took over, which stayed with install.sh and which was dropped.
+  One typed reconciliation engine for interactive and unattended machine setup.
+  Native resource checks precede base-tool installation, workspace/configuration,
+  local identity and the existing pinned model proof. Selected dashboard and Claude
+  plugin/hook components use their canonical lifecycle and settings owners. Verify
+  observes without provisioning; repair resumes failed effects. Unchanged observations
+  preserve completed state, while atomic per-effect checkpoints retain interrupted
+  progress under one lock. The v1 request/result handler is a compatibility adapter to
+  that same engine and never writes the old state format. Selections without an
+  installed component adapter refuse before mutations. The additive legacy inventory
+  beside this contract distinguishes integrated capabilities from remaining migration
+  work; this experimental node does not yet implement the complete lab walk.
 
 input_model: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup.ModelOnexSetupRequest
 
@@ -41,6 +39,54 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
+    - operation: onex_setup.base_tools
+      handler:
+        name: HandlerSetupBaseTools
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_base_tools
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_base_tools
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.claude_component
+      handler:
+        name: HandlerSetupClaude
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_claude_request.ModelSetupClaudeRequest
+    - operation: onex_setup.dashboard
+      handler:
+        name: HandlerSetupDashboard
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_dashboard
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_dashboard
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.command
+      handler:
+        name: HandlerSetupCommand
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_command_request.ModelSetupCommandRequest
+    - operation: onex_setup.reconcile
+      handler:
+        name: HandlerSetupWorkflow
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.component
+      handler:
+        name: HandlerSetupEnvironment
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_step_request.ModelSetupStepRequest
+    - operation: onex_setup.import_legacy
+      handler:
+        name: HandlerSetupLegacyImport
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_legacy_import
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_legacy_import
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_legacy_import_request.ModelSetupLegacyImportRequest
+    - operation: onex_setup.preflight
+      handler:
+        name: HandlerSetupPreflight
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
     - operation: onex_setup.run_walk
       handler:
         name: HandlerOnexSetup
@@ -60,7 +106,7 @@ descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
-  timeout_ms: 300000
+  timeout_ms: 7200000
   runtime_profiles: [effects]
 
 terminal_event: onex.evt.omnimarket.onex-setup-completed.v1
