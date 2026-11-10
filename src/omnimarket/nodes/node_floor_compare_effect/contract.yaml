@@ -45,6 +45,7 @@ descriptor:
     - appends emission events to the floor's journal under the state directory
     - writes the comparison file the publish copies to the serving host
     - appends each live rebuild piece's day-7 verdict once to the verdict record the piece measures overlay names
+    - reads the repository names overlay (the file ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY names, else the host's own under the state directory, else overlay.repository_names.yaml) and the registry's clone list and writes every per-repository key of the comparison under the registry's canonical repository name (OMN-23134); the history file keeps each source's spelling
     - reads the node's deployment overlay (the category grouping of the page) from ONEX_SKILL_OVERLAY_ROOTS
 
 input_model:
@@ -77,6 +78,9 @@ runtime:
   simple_relpath: .claude_scratch/factory-floor/floor-simple.json
   record_relpath: .claude_scratch/factory-floor/factory-floor.json
   history_relpath: .onex_state/floor-compare/history.jsonl
+  # The repository names overlay (OMN-23134): ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY names one, else this file under the registry home
+  # when it exists, else the node's overlay.repository_names.yaml. A host that holds a private repository's old or new name keeps it here.
+  repository_names_overlay_relpath: .onex_state/floor-compare/repository-names.yaml
   output_relpath: .claude_scratch/factory-floor/floor-compare.json
   # The category grouping of the page (which keys belong to which card) is deployment data, not code: it is the overlay
   # <root>/node_floor_compare_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS, or the file the variable names.

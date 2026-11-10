@@ -138,6 +138,9 @@ class ModelReadingReadRetry(BaseModel):
     passes: int = Field(ge=0)
     #: Seconds before each pass, so a bus that was slow has time to answer.
     pause_seconds: int = Field(ge=0)
+    #: Seconds one cycle may spend on source reads that failed (the attempts and the pauses between them). Once spent, a read is
+    #: tried once, and the first such read that fails stops the cycle's later reads (read-budget-spent). Absent, no budget.
+    budget_seconds: int | None = Field(default=None, ge=1)
 
 
 class ModelTwoBackendReading(BaseModel):

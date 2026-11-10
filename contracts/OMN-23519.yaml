@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-23519
+title: The hourly reading job stops spending its whole time allowance on failed reads
+summary: The reading writer overlay's read_retry gains an optional budget_seconds, the seconds one cycle may spend on source reads that failed. Once spent, a read is tried once and not again, and the first such read that fails stops the cycle's later reads, which read read-budget-spent at once, so a stalled read bus cannot run the unit to its 600 s start limit and leave the later pieces unwritten. The value is the overlays repository's; the allowance itself is unchanged.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23519-read-budget
+  statement: The reading writer bounds the seconds one cycle spends on failed source reads by an overlay value, names the stop, and leaves a transient stall costing only the query whose read failed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a run whose source reads all stall ends inside the unit limit with every declared piece in the result and the stopped reads named read-budget-spent, and the same run without the budget runs past the limit -- falsifier: test_read_budget_omn23119.py -k stalled with handler_reading_writer.py at origin/dev'
+  - id: AC2
+    statement: 'AC2: the budget is the overlay value read_retry.budget_seconds, optional and positive, and the handler holds no number for it; with no budget the writer reads as before -- falsifier: test_read_budget_omn23119.py -k "overlay_value or optional_and_positive or no_budget"'
+  - id: AC3
+    statement: 'AC3: golden and error chain event tests and the seam test to the floor pass, and the seam test turns red when the reason token is renamed -- falsifier: test_join_read_budget_to_floor_omn23519.py -k renamed_token with the handler token changed'
+  - id: AC4
+    statement: 'AC4: integrated: after merge and with the lab overlay carrying the budget, the next onex-reading-hourly run on its host ends with a WINDOW line pieces=18 inside the 600 s limit, and the served board shows reading_age_s under 7200 for pieces 1 to 16 and 18 -- falsifier: a journal line start operation timed out for onex-reading-hourly, or one of those pieces reading_age_s over 7200 on two board publishes'
+evidence_requirements:
+- kind: tests
+  description: The budget test, the seam test to the floor, and the exemplar retry test the change must not break
+  command: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_read_budget_omn23119.py tests/nodes/node_reading_writer_effect/test_join_read_budget_to_floor_omn23519.py tests/nodes/node_reading_writer_effect/test_source_read_retry_omn23119.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23519-budget-bounds-a-stall
+  description: A stalled bus with the budget ends inside the 600 s unit limit with all three declared pieces in the result, the stopped reads named read-budget-spent and the chain events typed; without the budget the same run passes the limit. With handler_reading_writer.py at origin/dev four of the nine tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_read_budget_omn23119.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23519-overlay-value
+  description: The budget is an optional positive overlay field, no number for it is in the handler, and the exemplar retry tests still pass with no budget.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_read_budget_omn23119.py tests/nodes/node_reading_writer_effect/test_source_read_retry_omn23119.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23519-seam-to-floor
+  description: The reading rows the writer appends after the budget is spent are read by the floor's own reader as UNKNOWN with the named reason; renaming the token turns the control red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_join_read_budget_to_floor_omn23519.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23519-unit-limit-proxy
+  description: AC4 hosted proxy. The stalled-bus run ends inside the reading unit's start limit, read from the node contract's schedule block (600 s), with every declared piece in the result; without the budget it passes the limit. The lab readback of the running unit and the served board is the local_done_gate item below, which binds no criterion because the hosted must-fail control can never run a local_done_gate item. The lab readback of the running unit's journal (no start operation timed out line) and of the served board's reading ages is recorded in the pull request.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_read_budget_omn23119.py -k "stayed_inside or stays_inside or runs_past" -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23519-integration-proof-lab
+  description: Runs the budget and seam tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23519 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_read_budget_omn23119.py tests/nodes/node_reading_writer_effect/test_join_read_budget_to_floor_omn23519.py -q --no-cov -p no:randomly'
+    cwd: .
