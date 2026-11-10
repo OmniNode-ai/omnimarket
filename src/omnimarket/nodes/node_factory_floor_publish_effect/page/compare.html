@@ -7,76 +7,90 @@
 <style>
 :root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-main{max-width:760px;margin:0 auto;padding:20px 16px 32px}
-.now{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--grey);border-radius:8px;padding:16px 18px}
-.now.red{border-left-color:var(--red)}.now.amber{border-left-color:var(--amber)}.now.green{border-left-color:var(--green)}
-.now h1{font-size:22px;line-height:1.3;margin:0 0 6px;font-weight:650}.now p{margin:0;color:var(--mute)}.now p.age{margin-top:6px;font-size:13px}.now p.age.old{color:var(--red);font-weight:650}
+main{max-width:960px;margin:0 auto;padding:20px 16px 32px}
 .frozen{background:var(--red);color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-weight:650}
-.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
-.num{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
-.num b{display:block;font-size:26px;font-weight:650;line-height:1.1}.num span{font-size:13px;color:var(--mute)}
-.num.unread b{color:var(--red)}
-h2{font-size:14px;font-weight:650;margin:20px 0 8px}
-.row{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start}
-.dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--grey)}
-.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}.dot.quiet{background:var(--grey)}
-.row b{font-weight:600}.row small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
-.strip{display:grid;grid-template-columns:repeat(18,1fr);gap:3px}
-.p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center}
-.p.cur{background:var(--blue);color:#fff;font-weight:650}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
-.piece{margin-top:8px;font-size:14px;color:var(--mute)}.piece b{color:var(--ink);font-weight:600}
-.line{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);font-size:14px}
-.line .n{flex:none;width:1.8em;color:var(--mute);text-align:right}.line .t{flex:1}.line .t small{color:var(--mute)}.line .a{flex:none;color:var(--mute);font-size:12px}
-.line.red .t b{color:var(--red)}.line.amber .t b{color:var(--amber)}.line.grey{color:var(--mute)}
-.rule{margin-top:14px;font-size:13px;color:var(--mute)}.rule.bad{color:var(--red);font-weight:650}
+.frozen.warn{background:var(--amber)}
 a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
-@media(max-width:480px){.now h1{font-size:19px}.num b{font-size:22px}.nums{gap:6px}.num{padding:10px}}
 .tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line)}
 .tabs a{padding:8px 14px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--mute);font-size:15px;font-weight:650}
 .tabs a[aria-selected="true"]{background:var(--card);border-color:var(--line);color:var(--ink);margin-bottom:-1px}
-.hs{font-size:13px;color:var(--mute);margin:0 0 10px}
-.hcards{display:grid;gap:10px}
-.hcard{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:8px;min-width:0}
-.hcard.out{border-style:dashed}
-.hcard.unread{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,#e6e8eb 6px 7px),var(--card)}
-.hcard.stale,.hcard.refusing{border-left:6px solid var(--amber)}
-.mtop{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap}.mtop b{font-size:18px}.mtop .pill{margin-left:auto}
-.pill{font-size:12px;font-weight:650;padding:3px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
-.pill.ok{color:var(--green)}.pill.warn{color:var(--amber)}.pill.idle{color:var(--mute)}
-.hwhy{margin:0;font-size:13px;color:var(--mute);overflow-wrap:anywhere}
-.capline{margin:0;font-size:14px}.unread{font-style:italic;color:var(--mute)}.sub{margin:0;font-size:13px;font-weight:650;color:var(--mute)}
-.slots{display:flex;flex-wrap:wrap;gap:3px}.slots i{width:12px;height:12px;border-radius:3px;background:#e6e8eb}.slots i.used{background:var(--blue)}.slots i.over{outline:2px solid var(--red);outline-offset:1px}
-.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
-.hcell{display:grid;gap:2px;font-size:13px;color:var(--mute);min-width:0}.hcell .v{font-size:15px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.hcell .v.unread{font-weight:400;font-style:italic;color:var(--mute);font-size:13px}.chip{margin-left:6px;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--amber);color:#fff}
-.hocc{display:grid;gap:2px;font-size:14px;margin:0;padding:0;list-style:none}.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}.hocc li span:last-child{color:var(--mute);font-size:13px}
-
-.sw{display:flex;gap:6px;margin:0 0 12px}
-.sw button{appearance:none;font:inherit;font-size:15px;font-weight:650;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--mute);cursor:pointer}
+.hs{font-size:13px;color:var(--mute);margin:0 0 12px}
+.sw{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
+button{appearance:none;font:inherit;cursor:pointer}
+.sw button{font-size:15px;font-weight:650;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--mute)}
 .sw button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 14px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
-.tile b{display:block;font-size:24px;line-height:1.1}.tile span{font-size:13px;color:var(--mute)}
-.tile.better b{color:var(--green)}.tile.worse b{color:var(--red)}
-.mv{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--grey);border-radius:8px;padding:10px 14px;margin-bottom:6px}
-.mv.better{border-left-color:var(--green)}.mv.worse{border-left-color:var(--red)}.mv.unread{border-style:dashed}
-.mv b{font-weight:600}.mv .vals{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:14px;margin-top:3px}.mv .vals span{color:var(--mute)}.mv .vals strong{color:var(--ink)}
-.mv small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
-.verdict{font-size:12px;font-weight:650;padding:2px 7px;border-radius:999px;border:1px solid currentColor;margin-left:6px;white-space:nowrap}
-.verdict.better{color:var(--green)}.verdict.worse{color:var(--red)}.verdict.unread{color:var(--mute)}
-@media(max-width:480px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--grey);border-radius:8px;padding:12px 14px;display:grid;gap:8px;align-content:start;min-width:0}
+.card.better{border-left-color:var(--green)}.card.worse{border-left-color:var(--red)}.card.mixed{border-left-color:var(--amber)}.card.unread,.card.empty{border-left-style:dashed}
+.card h2{font-size:17px;line-height:1.25;margin:0;font-weight:650}
+.cnt{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0;padding:0;list-style:none}
+.cnt li{background:var(--bg);border-radius:6px;padding:6px 4px;text-align:center;min-width:0}
+.cnt b{display:block;font-size:22px;line-height:1.1}.cnt span{font-size:12px;color:var(--mute)}
+.cnt .b b{color:var(--green)}.cnt .w b{color:var(--red)}
+.cnt .u{border:1px dashed var(--grey);background:transparent}.cnt .u b{color:var(--mute);font-style:italic}
+.card p{margin:0;font-size:14px;color:var(--ink);overflow-wrap:anywhere}.card p.none{color:var(--mute);font-style:italic}
+.card button{justify-self:start;font-size:13px;font-weight:650;color:var(--blue);background:none;border:0;padding:2px 0}
+.details{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.details>summary{cursor:pointer;padding:12px 14px;font-weight:650;font-size:16px;list-style:none;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.details>summary::-webkit-details-marker{display:none}
+.details>summary::before{content:"\25b6";font-size:12px;color:var(--mute)}.details[open]>summary::before{content:"\25bc"}
+.details>summary small{font-weight:400;color:var(--mute);font-size:13px}
+.dctl{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:0 14px 12px}
+.dctl label{display:grid;gap:2px;font-size:12px;color:var(--mute);font-weight:650;min-width:0}
+.dctl input,.dctl select{font:inherit;font-size:15px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);min-width:0;width:100%}
+#dbody{padding:0 14px 14px}
+.dinfo{font-size:13px;color:var(--mute);margin:0 0 8px}
+.dt{width:100%;border-collapse:collapse;font-size:14px}
+.dt th{text-align:left;font-size:12px;color:var(--mute);padding:4px 6px;border-bottom:1px solid var(--line)}
+.dt td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+.dt .nm{font-weight:600}.dt .ct{color:var(--mute)}
+.dt .unread{font-style:italic;color:var(--mute)}
+.verdict{font-size:12px;font-weight:650;padding:2px 7px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.verdict.better{color:var(--green)}.verdict.worse{color:var(--red)}.verdict.same,.verdict.unread{color:var(--mute)}
+.pager{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap}
+.pager button{font-size:14px;font-weight:650;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.pager button[disabled]{color:var(--grey);cursor:default}
+.pager span{font-size:13px;color:var(--mute)}
+.empty-row{padding:14px 4px;color:var(--mute)}
+@media(max-width:640px){
+ main{padding:14px 10px 24px}
+ .dctl{grid-template-columns:1fr 1fr}.dctl label:first-child{grid-column:1/-1}
+ .dt thead{display:none}
+ .dt,.dt tbody,.dt tr,.dt td{display:block;width:100%}
+ .dt tr{border:1px solid var(--line);border-radius:8px;margin-bottom:8px;padding:6px 8px}
+ .dt td{border:0;padding:2px 0;display:flex;justify-content:space-between;gap:12px}
+ .dt td::before{content:attr(data-l);color:var(--mute);font-size:12px;flex:none}
+ .dt td.nm{display:block}.dt td.nm::before{content:none}
+}
 </style></head><body><main>
 <div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" href="index.html#process">Process</a><a role="tab" href="index.html#machines">Machines</a><a role="tab" id="tab-compare" href="compare.html" aria-selected="true">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html">Delegation</a></div>
-<div id="app"><div class="frozen">Reading the comparison...</div></div>
+<div id="alert"><div class="frozen">Reading the comparison...</div></div>
+<div id="sw" class="sw" role="group" aria-label="Compare with"></div>
+<p id="intro" class="hs"></p>
+<div id="cards" class="cards"></div>
+<details id="details" class="details">
+<summary>Details <small id="dsum">every number, with a search</small></summary>
+<div class="dctl">
+<label>Search<input id="q" type="search" placeholder="Name or category" autocomplete="off"></label>
+<label>Category<select id="cat"></select></label>
+<label>Result<select id="ver"><option value="">All results</option><option value="worse">Worse</option><option value="better">Better</option><option value="same">The same</option><option value="unread">Unread</option></select></label>
+<label>Sort by<select id="sort"><option value="big">Biggest change first</option><option value="small">Smallest change first</option><option value="name">Name</option></select></label>
+</div>
+<div id="dbody" aria-live="polite"></div>
+</details>
+<div class="more"><a href="index.html">Back to the floor</a></div>
 </main>
 <script>
 "use strict";
 const DATA = "floor-compare.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000;
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
-let doc = null, failure = "";
+const $ = id => document.getElementById(id);
+let doc = null, failure = "", catSig = null;
+const st = {q: "", cat: "", ver: "", sort: "big", page: 1};
 const DAYS = () => (doc ? doc.windows.map(w => String(w.days)) : ["1", "7", "30"]);
 const pick = () => { const h = String(location.hash || "").replace(/^#/, ""); return DAYS().includes(h) ? h : "1"; };
+const MARK = {better: "✓ Better", worse: "▼ Worse", same: "– Same", unread: "? Unread"};
 // A refresh replaces the document only when draw can render it; otherwise the last usable one stays and the failure is shown.
 const renderable = d => !!d && typeof d === "object" && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.windows) && d.windows.length > 0
   && d.windows.every(w => !!w && !!w.counts && Array.isArray(w.worse) && Array.isArray(w.better) && Array.isArray(w.unread));
@@ -90,32 +104,105 @@ async function load(){
   } catch (e) { failure = String(e.message || e); }
   draw();
 }
-const mv = (l, kind) => `<div class="mv ${kind}"><b>${esc(l.words)}</b> <span class="verdict ${kind}">${kind === "better" ? "\u2713 Better" : kind === "worse" ? "\u25bc Worse" : "? Unread"}</span>
-  <div class="vals"><span>Old: <strong>${esc(l.old_text)}</strong></span><span>New: <strong>${esc(l.new_text)}</strong></span><span>${esc(l.direction_text)}</span></div>
-  ${l.old_read_at ? `<small>Old value read ${esc(l.old_read_at)}</small>` : ""}</div>`;
-function box(title, lines, kind, empty){
-  return `<h2>${title}</h2>` + (lines.length ? lines.map(l => mv(l, kind)).join("") : `<div class="row"><div><small>${empty}</small></div></div>`);
+const win = () => doc.windows.find(x => String(x.days) === pick()) || doc.windows[0];
+const cards = w => Array.isArray(w.categories) ? w.categories : null;
+const titleOf = (w, id) => { const c = (cards(w) || []).find(x => x.id === id); return c ? c.title : ""; };
+const rowsOf = w => Array.isArray(w.details) ? w.details : [];
+
+function drawCard(c, label){
+  const none = c.total === 0;
+  const counts = none ? "" : `<ul class="cnt"><li class="b"><b>${c.better}</b><span>better</span></li><li class="w"><b>${c.worse}</b><span>worse</span></li><li><b>${c.same}</b><span>the same</span></li><li class="u"><b>${c.unread}</b><span>unread</span></li></ul>`;
+  return `<section class="card ${esc(c.lean)}" data-cat="${esc(c.id)}"><h2>${esc(c.title)}</h2>${counts}<p class="${none || c.lean === "unread" ? "none" : ""}">${esc(c.biggest_change)}</p>`
+    + (none ? "" : `<button type="button" data-act="see" data-cat="${esc(c.id)}">See these numbers</button>`) + `</section>`;
+}
+function fillSelect(w){
+  const list = cards(w) || [];
+  const sig = list.map(c => c.id + ":" + c.title).join("|");
+  if (sig === catSig) return;
+  catSig = sig;
+  const el = $("cat");
+  el.innerHTML = `<option value="">All categories</option>` + list.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join("");
+  if (!list.some(c => c.id === st.cat)) st.cat = "";
+  el.value = st.cat;
+}
+function matches(w, r){
+  if (st.cat && r.category !== st.cat) return false;
+  if (st.ver && r.verdict !== st.ver) return false;
+  const q = st.q.trim().toLowerCase();
+  return !q || (r.name + " " + r.key + " " + titleOf(w, r.category)).toLowerCase().includes(q);
+}
+// The biggest move first; a number with no reading has no size and stays last in either direction.
+const order = {
+  big: (a, b) => (a.size == null) - (b.size == null) || (b.size || 0) - (a.size || 0) || a.name.localeCompare(b.name),
+  small: (a, b) => (a.size == null) - (b.size == null) || (a.size || 0) - (b.size || 0) || a.name.localeCompare(b.name),
+  name: (a, b) => a.name.localeCompare(b.name),
+};
+function drawRow(w, r, label){
+  const un = t => t === "unread" ? `<span class="unread">unread</span>` : esc(t);
+  return `<tr><td class="nm">${esc(r.name)}</td><td class="ct" data-l="Category">${esc(titleOf(w, r.category) || "-")}</td>`
+    + `<td data-l="${esc(label)} ago">${un(r.old_text)}</td><td data-l="Now">${un(r.new_text)}</td>`
+    + `<td data-l="Change">${esc(r.change_text)}</td><td data-l="Result"><span class="verdict ${esc(r.verdict)}">${MARK[r.verdict] || esc(r.verdict)}</span></td></tr>`;
+}
+function drawDetails(w){
+  const all = rowsOf(w), size = Math.max(1, Number(doc.details_page_size) || 25);
+  const hit = all.filter(r => matches(w, r)).sort(order[st.sort] || order.big);
+  const pages = Math.max(1, Math.ceil(hit.length / size));
+  st.page = Math.min(Math.max(1, st.page), pages);
+  const from = (st.page - 1) * size, shown = hit.slice(from, from + size);
+  let h = `<p class="dinfo">${hit.length === all.length ? `${all.length} numbers` : `${hit.length} of ${all.length} numbers match`}`
+    + (hit.length ? `, showing ${from + 1} to ${from + shown.length}` : "") + `. A number with no reading from ${esc(w.label)} ago is unread, never zero.</p>`;
+  if (!all.length) h = `<p class="empty-row">This comparison file carries no details yet; it is rewritten every few minutes.</p>`;
+  else if (!hit.length) h += `<p class="empty-row">No number matches. <button type="button" data-act="clear">Clear the search and filters</button></p>`;
+  else h += `<table class="dt"><thead><tr><th>Number</th><th>Category</th><th>${esc(w.label)} ago</th><th>Now</th><th>Change</th><th>Result</th></tr></thead><tbody>`
+    + shown.map(r => drawRow(w, r, w.label)).join("") + `</tbody></table>`;
+  if (hit.length > size) h += `<div class="pager"><button type="button" data-act="prev"${st.page <= 1 ? " disabled" : ""}>Previous</button><span>Page ${st.page} of ${pages}</span><button type="button" data-act="next"${st.page >= pages ? " disabled" : ""}>Next</button></div>`;
+  $("dbody").innerHTML = h;
+  $("dsum").textContent = all.length ? `${all.length} numbers, searchable, ${pages > 1 ? pages + " pages" : "one page"}` : "none yet";
+}
+function drawAlert(){
+  if (!doc) {
+    $("alert").innerHTML = `<div class="frozen">The comparison cannot be read (${esc(failure)}). Nothing below can be trusted.</div>`;
+    return;
+  }
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
+  const limit = FALLBACK_MAX_AGE_S, w = win();
+  document.title = (failure || age > limit ? "STALE " : "") + "Factory floor: better and worse than " + w.label + " ago";
+  let a = "";
+  if (failure) a += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the comparison from ${ago(age)}.</div>`;
+  else if (age > limit) a += `<div class="frozen">The comparison is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  if (doc.categories_error) a += `<div class="frozen warn">The category cards are not drawn: ${esc(doc.categories_error)} The numbers are all in the details below.</div>`;
+  $("alert").innerHTML = a;
 }
 function draw(){
-  const app = document.getElementById("app");
-  if (!doc) { app.innerHTML = `<div class="frozen">The comparison cannot be read (${esc(failure)}). Nothing below can be trusted.</div>`; return; }
-  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
-  const limit = FALLBACK_MAX_AGE_S;
-  const cur = pick(), w = doc.windows.find(x => String(x.days) === cur) || doc.windows[0];
-  document.title = (failure || age > limit ? "STALE " : "") + "Factory floor: better and worse than " + w.label + " ago";
-  let h = "";
-  if (failure) h += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the comparison from ${ago(age)}.</div>`;
-  else if (age > limit) h += `<div class="frozen">The comparison is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
-  h += `<div class="sw" role="group" aria-label="Compare with">` + doc.windows.map(x => `<button type="button" data-days="${x.days}" aria-pressed="${String(x.days) === String(w.days)}">${esc(x.label)}</button>`).join("") + `</div>`;
-  h += `<p class="hs">What is better and what is worse now than ${esc(w.label)} ago. History: ${doc.history_points} dated readings${doc.oldest_point ? ", the oldest from " + esc(doc.oldest_point) : ""}. A number with no reading from then is listed as unread, never as zero. Record read ${ago(age)}.</p>`;
-  h += `<div class="tiles"><div class="tile better"><b>${w.counts.better}</b><span>\u2713 better</span></div><div class="tile worse"><b>${w.counts.worse}</b><span>\u25bc worse</span></div><div class="tile"><b>${w.counts.same}</b><span>\u2013 the same</span></div><div class="tile"><b>${w.counts.unread}</b><span>? unread</span></div></div>`;
-  h += box("\u25bc Got worse", w.worse, "worse", "Nothing got worse.");
-  h += box("\u2713 Got better", w.better, "better", "Nothing got better.");
-  h += box("? No reading to compare", w.unread, "unread", "Every number has a reading from then.");
-  h += `<div class="more"><a href="index.html">Back to the floor</a></div>`;
-  app.innerHTML = h;
-  for (const b of app.querySelectorAll(".sw button")) b.addEventListener("click", () => { location.hash = b.dataset.days; });
+  drawAlert();
+  if (!doc) {
+    for (const id of ["sw", "intro", "cards", "dbody"]) $(id).innerHTML = "";
+    return;
+  }
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000)), w = win();
+  $("sw").innerHTML = doc.windows.map(x => `<button type="button" data-act="days" data-days="${x.days}" aria-pressed="${String(x.days) === String(w.days)}">${esc(x.label)}</button>`).join("");
+  $("intro").textContent = `What is better and what is worse now than ${w.label} ago. History: ${doc.history_points} dated readings${doc.oldest_point ? ", the oldest from " + doc.oldest_point : ""}. A number with no reading from then is counted as unread, never as zero. Record read ${ago(age)}.`;
+  const list = cards(w);
+  $("cards").innerHTML = list ? list.map(c => drawCard(c, w.label)).join("") : (doc.categories_error ? "" : `<div class="frozen warn">This comparison file was written before the category roll-up existed; it is rewritten every few minutes.</div>`);
+  if (doc.categories_error && !st.opened) { st.opened = true; $("details").open = true; }
+  fillSelect(w);
+  drawDetails(w);
 }
-window.addEventListener("hashchange", draw);
-load(); setInterval(load, REFRESH_MS); setInterval(draw, 10000);
+function act(el){
+  const d = el.dataset || {};
+  if (d.act === "days") location.hash = d.days;
+  else if (d.act === "see") { st.cat = d.cat; st.page = 1; $("cat").value = d.cat; $("details").open = true; draw(); if ($("details").scrollIntoView) $("details").scrollIntoView({behavior: "smooth", block: "start"}); }
+  else if (d.act === "prev") { st.page -= 1; drawDetails(win()); }
+  else if (d.act === "next") { st.page += 1; drawDetails(win()); }
+  else if (d.act === "clear") { st.q = ""; st.cat = ""; st.ver = ""; st.page = 1; $("q").value = ""; $("cat").value = ""; $("ver").value = ""; drawDetails(win()); }
+}
+const delegate = e => { const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null; if (el) act(el); };
+for (const id of ["sw", "cards", "dbody"]) $(id).addEventListener("click", delegate);
+const refilter = (key, id) => () => { st[key] = $(id).value; st.page = 1; if (doc) drawDetails(win()); };
+$("q").addEventListener("input", refilter("q", "q"));
+$("cat").addEventListener("change", refilter("cat", "cat"));
+$("ver").addEventListener("change", refilter("ver", "ver"));
+$("sort").addEventListener("change", refilter("sort", "sort"));
+window.addEventListener("hashchange", () => { st.page = 1; if (doc) draw(); });
+load(); setInterval(load, REFRESH_MS); setInterval(drawAlert, 10000);
 </script></body></html>

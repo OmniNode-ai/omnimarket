@@ -51,11 +51,12 @@ _AFTER_NEWEST_RUN = timedelta(microseconds=1)
 VISIBLE_TENANTS_SQL = (
     "SELECT DISTINCT tenant_id::text AS tenant_id FROM public.delegation_events"
 )
-# OMN-19970: the dev seed's rows are never in a stored figure.
+# OMN-19970: the dev seed's rows are never in a stored figure. OMN-23169: nor are
+# typed synthetic (experiment) rows.
 RECORDS_SQL = (
     f"SELECT {', '.join((*METERING_COLUMNS, METERING_CAUSE_COLUMN))} "
     "FROM public.delegation_events "
-    "WHERE tenant_id::text = $1 AND data_source <> 'fixture'"
+    "WHERE tenant_id::text = $1 AND data_source <> 'fixture' AND data_source <> 'experiment'"
 )
 STORED_ALL_SQL = (
     "SELECT pricing_manifest_version FROM public.metering_summary "

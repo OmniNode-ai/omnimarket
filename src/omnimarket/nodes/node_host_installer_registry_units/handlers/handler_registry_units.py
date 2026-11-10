@@ -32,6 +32,7 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
@@ -329,6 +330,14 @@ class HandlerRegistryUnits:
             )
             if supplied:
                 filled[str(name)] = supplied
+        for name in unit.get("environment_refuse_worktree_paths") or []:
+            offending = [
+                entry
+                for entry in filled.get(str(name), "").split(os.pathsep)
+                if under_worktrees(entry)
+            ]
+            if offending:
+                raise UnitRootRefusedError(request.unit, offending)
         if request.mode == "install":
             for name in unit.get("required_environment_inputs") or []:
                 if not filled.get(str(name)):
