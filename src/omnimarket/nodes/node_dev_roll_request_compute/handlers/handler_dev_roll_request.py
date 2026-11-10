@@ -93,6 +93,7 @@ def decide_dev_roll(facts: ModelDevRollFacts, policy: ModelDevRollPolicy) -> Res
             oldest_pending_merged_at=oldest,
             longest_wait_seconds=wait,
             refused_events=tuple(refused),
+            released_failed_roll_job_id=None,
         )
 
     if oldest is None:
@@ -108,12 +109,26 @@ def decide_dev_roll(facts: ModelDevRollFacts, policy: ModelDevRollPolicy) -> Res
         )
         if now < interval_end:
             return hold(EnumDevRollHoldReason.MIN_START_INTERVAL, interval_end)
+    released_failed_roll_job_id: str | None = None
     if last is not None:
         if last.health is not EnumDevRollHealth.HEALTHY or last.healthy_since is None:
-            return hold(EnumDevRollHoldReason.PREVIOUS_ROLL_NOT_HEALTHY, None)
-        healthy_end = last.healthy_since + timedelta(seconds=policy.healthy_for_seconds)
-        if now < healthy_end:
-            return hold(EnumDevRollHoldReason.PREVIOUS_ROLL_NOT_HEALTHY, healthy_end)
+            release_at = (
+                None
+                if last.finished_at is None
+                else last.finished_at
+                + timedelta(seconds=policy.failed_roll_release_after_seconds)
+            )
+            if release_at is None or now < release_at:
+                return hold(EnumDevRollHoldReason.PREVIOUS_ROLL_NOT_HEALTHY, release_at)
+            released_failed_roll_job_id = last.job_id
+        else:
+            healthy_end = last.healthy_since + timedelta(
+                seconds=policy.healthy_for_seconds
+            )
+            if now < healthy_end:
+                return hold(
+                    EnumDevRollHoldReason.PREVIOUS_ROLL_NOT_HEALTHY, healthy_end
+                )
 
     git_ref = newest.get(policy.build_context_repository, policy.fallback_git_ref)
     return ModelDevRollDecided(
@@ -136,6 +151,7 @@ def decide_dev_roll(facts: ModelDevRollFacts, policy: ModelDevRollPolicy) -> Res
         oldest_pending_merged_at=oldest,
         longest_wait_seconds=wait,
         refused_events=tuple(refused),
+        released_failed_roll_job_id=released_failed_roll_job_id,
     )
 
 

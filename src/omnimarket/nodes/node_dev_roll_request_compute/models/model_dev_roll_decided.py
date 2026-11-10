@@ -24,7 +24,11 @@ from omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_reques
 
 
 class ModelDevRollDecided(BaseModel):
-    """In shadow mode ``would_request`` records what a live node would send."""
+    """In shadow mode ``would_request`` records what a live node would send.
+
+    ``released_failed_roll_job_id`` names the failed previous roll whose hold this
+    decision released after the declared bound; it is only set on ``roll_now``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -40,12 +44,17 @@ class ModelDevRollDecided(BaseModel):
     oldest_pending_merged_at: datetime | None
     longest_wait_seconds: int = Field(ge=0)
     refused_events: tuple[ModelDevRollEventRefused, ...]
+    released_failed_roll_job_id: str | None = None
 
     @model_validator(mode="after")
     def _action_matches_fields(self) -> ModelDevRollDecided:
         if self.action is EnumDevRollAction.ROLL_NOW:
             if self.would_request is None or self.hold_reason is not None:
                 raise ValueError("roll_now needs a request and no hold reason")
-        elif self.hold_reason is None or self.would_request is not None:
-            raise ValueError("hold needs a reason and no request")
+        elif (
+            self.hold_reason is None
+            or self.would_request is not None
+            or self.released_failed_roll_job_id is not None
+        ):
+            raise ValueError("hold needs a reason, no request and no released roll")
         return self

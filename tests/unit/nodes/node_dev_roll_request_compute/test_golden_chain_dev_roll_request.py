@@ -16,6 +16,7 @@ import pytest
 
 from omnimarket.nodes.node_dev_roll_request_compute.models import (
     EnumDevRollAction,
+    EnumDevRollHealth,
     EnumDevRollHoldReason,
     ModelDevRollDecided,
     ModelDevRollPolicy,
@@ -29,7 +30,7 @@ from tests.unit.nodes.node_dev_roll_request_compute.chain_support import (
     envelope,
     on,
 )
-from tests.unit.nodes.node_dev_roll_request_compute.conftest import facts, tip
+from tests.unit.nodes.node_dev_roll_request_compute.conftest import facts, roll, tip
 
 pytestmark = pytest.mark.unit
 
@@ -78,3 +79,28 @@ async def test_golden_hold_is_published_as_decided(policy: ModelDevRollPolicy) -
     assert decided.action is EnumDevRollAction.HOLD
     assert decided.hold_reason is EnumDevRollHoldReason.WINDOW_OPEN
     assert decided.would_request is None
+
+
+async def test_golden_failed_roll_past_the_bound_is_released_and_named(
+    policy: ModelDevRollPolicy,
+) -> None:
+    dispatch, transport, broker, _topics = chain(policy)
+    failed = roll(
+        started_ago=7000,
+        finished_ago=3700,
+        health=EnumDevRollHealth.UNHEALTHY,
+        healthy_ago=None,
+    )
+    request = facts((tip(age_seconds=3000),), failed)
+    await transport.send(
+        COMMAND_TOPIC,
+        key=KEY,
+        value=envelope(request.model_dump(mode="json"), uuid4()),
+        headers={},
+    )
+    assert await dispatch.drain() == 1
+    (out,) = on(broker, DECIDED_TOPIC)
+    decided = ModelDevRollDecided.model_validate(out.payload)
+    assert decided.action is EnumDevRollAction.ROLL_NOW
+    assert decided.released_failed_roll_job_id == "job-1"
+    assert on(broker, REFUSED_TOPIC) == []

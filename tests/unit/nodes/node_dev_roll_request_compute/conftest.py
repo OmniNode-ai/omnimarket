@@ -29,6 +29,7 @@ POLICY_DOC: dict[str, object] = {
     "batch_window_seconds": 1800,
     "min_start_interval_seconds": 1800,
     "healthy_for_seconds": 600,
+    "failed_roll_release_after_seconds": 3600,
     "known_repositories": ["omnimarket", "omnibase_infra"],
     "build_context_repository": "omnibase_infra",
     "fallback_git_ref": "origin/dev",

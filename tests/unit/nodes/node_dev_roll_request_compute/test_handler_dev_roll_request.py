@@ -125,13 +125,35 @@ def test_a_previous_roll_not_yet_healthy_for_the_bound_holds_until_it_is(
 @pytest.mark.parametrize(
     "health", [EnumDevRollHealth.UNHEALTHY, EnumDevRollHealth.UNKNOWN]
 )
-def test_a_previous_roll_not_read_healthy_holds_with_no_time(
+def test_a_failed_roll_inside_the_release_bound_holds_until_the_bound(
     policy: ModelDevRollPolicy, health: EnumDevRollHealth
 ) -> None:
-    last = roll(started_ago=5000, finished_ago=4000, health=health, healthy_ago=None)
+    last = roll(started_ago=5000, finished_ago=1000, health=health, healthy_ago=None)
     d = _decided(decide_dev_roll(facts((tip(age_seconds=3000),), last), policy))
     assert d.hold_reason is EnumDevRollHoldReason.PREVIOUS_ROLL_NOT_HEALTHY
-    assert d.hold_until is None
+    assert d.hold_until == NOW - timedelta(seconds=1000) + timedelta(seconds=3600)
+    assert d.released_failed_roll_job_id is None
+
+
+@pytest.mark.parametrize(
+    "health", [EnumDevRollHealth.UNHEALTHY, EnumDevRollHealth.UNKNOWN]
+)
+def test_a_failed_roll_past_the_release_bound_releases_the_hold(
+    policy: ModelDevRollPolicy, health: EnumDevRollHealth
+) -> None:
+    last = roll(started_ago=5000, finished_ago=3700, health=health, healthy_ago=None)
+    d = _decided(decide_dev_roll(facts((tip(age_seconds=3000),), last), policy))
+    assert d.action is EnumDevRollAction.ROLL_NOW
+    assert d.released_failed_roll_job_id == "job-1"
+
+
+def test_a_healthy_roll_releases_no_failed_roll(
+    policy: ModelDevRollPolicy,
+) -> None:
+    last = roll(started_ago=5000, finished_ago=3700, healthy_ago=3700)
+    d = _decided(decide_dev_roll(facts((tip(age_seconds=3000),), last), policy))
+    assert d.action is EnumDevRollAction.ROLL_NOW
+    assert d.released_failed_roll_job_id is None
 
 
 def test_a_roll_healthy_for_the_bound_and_spaced_rolls_now(

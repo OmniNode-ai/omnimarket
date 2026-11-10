@@ -22,6 +22,7 @@ class ModelDevRollPolicy(BaseModel):
     batch_window_seconds: int = Field(gt=0)
     min_start_interval_seconds: int = Field(gt=0)
     healthy_for_seconds: int = Field(gt=0)
+    failed_roll_release_after_seconds: int = Field(gt=0)
     known_repositories: tuple[str, ...] = Field(min_length=1)
     build_context_repository: str = Field(min_length=1)
     fallback_git_ref: str = Field(min_length=1)
