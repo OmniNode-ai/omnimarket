@@ -26,6 +26,16 @@ modes:
   replay: the same comparison over recorded tick snapshots
   act: perform the decision's actions through the GitHub landing effect; refused unless the overlay enables it
 steps:
+  - id: snapshot
+    node: node_pr_landing_snapshot_effect
+    command_topic: onex.cmd.omnimarket.pr-landing-snapshot-requested.v1
+    role: >-
+      fills each PR's GraphQL node id and its head's failed workflow run ids from the PR
+      watcher (overlay failed_conclusions), and records the tick's facts with its decision on
+      onex.evt.omnimarket.pr-landing-tick-snapshot-recorded.v1, one record per tick, which the
+      tick orchestrator's replay source reads (OMN-23409). Still to build in it: the batched
+      live read, the process table and the worker result files into ModelLandingFacts (the
+      inventory's to_build rows naming this node)
   - id: ledger_facts
     node: node_pr_landing_ledger_facts_compute
     command_topic: onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1
@@ -71,7 +81,7 @@ steps:
     node: node_pr_landing_github_effect
     command_topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
     role: the only GitHub write (merge pinned to the head, rerun, update-branch, arm, disarm)
-    writer: GithubEffectTickWriter of node_pr_landing_tick_orchestrator (merge is arm or enqueue at the head; other action kinds are refused as not a GitHub write; an action outside the cutover repository is refused; the PR node id and the head's failed run ids are read from the tick facts, pr_node_id and failed_run_ids of each PR, which the snapshot step fills)
+    writer: GithubEffectTickWriter of node_pr_landing_tick_orchestrator (merge is arm or enqueue at the head; other action kinds are refused as not a GitHub write; an action outside the cutover repository is refused; the PR node id and the head's failed run ids are read from the tick facts, pr_node_id and failed_run_ids of each PR, which the snapshot step fills from the watcher)
   - id: superseded_sweep
     node: node_superseded_run_cancel_effect
     command_topic: onex.cmd.omnimarket.superseded-run-sweep-requested.v1
@@ -92,9 +102,6 @@ steps:
     command_topic: onex.cmd.omnimarket.pr-landing-tick-compare-requested.v1
     role: runs the chain for one tick and emits the compared or failed event
 to_build:
-  - id: snapshot
-    node: node_pr_landing_snapshot_effect
-    what: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts, and the per-PR write facts the writer needs (GraphQL node id, the head's failed run ids, merge-queue base)
   - id: worker_lease
     node: node_pr_landing_worker_lease_effect
     what: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr

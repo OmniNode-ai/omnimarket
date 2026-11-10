@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23409
+title: The landing workflow's snapshot step fills each tick's facts, with the pull request node id and failed run ids, and records them on the bus
+summary: A snapshot step of the composed landing workflow, node_pr_landing_snapshot_effect, fills each pull request's GraphQL node id and its head's failed workflow run ids from the PR watcher (injected records, or the watcher state file the overlay names) and publishes the tick's facts with its decision as one ModelTickSnapshot per tick on the recorded topic, which the tick orchestrator's replay source reads; a later tick never replaces an earlier one.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23409-snapshot-step
+  statement: The snapshot step fills the node id and the failed run ids from the declared watcher source and records the facts of every tick on the bus, each tick recoverable after the next.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a snapshot step of the composed landing workflow reads each tick''s facts from the declared sources, fills the node id and failed run ids, and records the facts of every tick on the bus, with a failing control where a tick''s facts are not recoverable after the next tick -- falsifier: uv run pytest on the landing snapshot step''s tests with two consecutive ticks fails on a snapshot that keeps only the last'
+evidence_requirements:
+- kind: tests
+  description: The landing snapshot step's tests (two consecutive ticks both recoverable from the recorded topic through the tick orchestrator's replay source, the keep-only-last failing control, node id and failed run id fill from the watcher, golden and error chains with named mutations, the overlay backends)
+  command: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23409-snapshot-step
+  description: Runs the landing snapshot step's tests. Two consecutive ticks (725 and 726 of the recorded replay fixture) go through the step with a watcher record per pull request; after the second tick both ticks read back from the recorded topic through the tick orchestrator's own replay source, each pull request carrying the node id and only the failed-conclusion run ids of its own tick, and both replay equal with no write. A record log that keeps only the last tick loses the first and the recovery check fails (failing control keep_only_last). An unreadable watcher and a refused record each end in the failed event with no record; the golden and error chain tests go red under their named mutations.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23409-integration-proof-lab
+  description: Runs the landing snapshot step's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23409 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect -q --no-cov -p no:randomly'
+    cwd: .

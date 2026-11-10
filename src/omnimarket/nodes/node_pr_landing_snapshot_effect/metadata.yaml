@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_landing_snapshot_effect
+version: "0.1.0"
+description: "The landing tick's facts, with the PR node id and failed run ids filled from the watcher, recorded on the bus per tick"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_snapshot_effect: "omnimarket.nodes.node_pr_landing_snapshot_effect"
+capabilities:
+  standalone: true
+  # false until the landing tick sends it a snapshot command on the runtime.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr-landing", "landing-tick", "snapshot"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Snapshot Effect"
+node_role: "effect"
