@@ -138,7 +138,6 @@ from omnimarket.models.delegation.model_entry_tier_share import (
 from omnimarket.models.delegation.model_escalation_transitions import (
     ModelTaskClassTransitions,
 )
-from omnimarket.models.delegation.model_shrink_retry import ModelShrinkRetryCaps
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT as DELEGATION_MAX_TOKENS_HARD_LIMIT,
@@ -2451,36 +2450,6 @@ def resolve_task_class_max_escalations(task_type: str) -> int | None:
         _tier_order_from_contract(config, entry, include_registered=False)
     )
     return raw + added
-
-
-def resolve_task_class_shrink_caps(task_type: str) -> ModelShrinkRetryCaps | None:
-    """Resolve the rubric-failure ladder's caps for ``task_type`` (OMN-20172).
-
-    Read from ``escalation_policy`` in the same contract both delegation paths
-    route by. None when the class declares no ``max_config_swaps``,
-    ``max_split_depth`` and ``unit_attempts_per_unit`` (as integers) and a ``shrink_unit_prompt`` holding
-    ``{source}``,
-    so a class that declares no caps neither swaps nor shrinks and goes straight
-    to its next responder: the caps are a property of the contract and the
-    policy holds none of its own.
-    """
-    contract = _get_task_class_contract()
-    entry = _task_class_entry(contract, task_type)
-    if entry is None:
-        return None
-    escalation = entry.get("escalation_policy")
-    if not isinstance(escalation, dict):
-        return None
-    ints = {
-        key: escalation.get(key)
-        for key in ("max_config_swaps", "max_split_depth", "unit_attempts_per_unit")
-    }
-    unit_prompt = escalation.get("shrink_unit_prompt")
-    if any(not isinstance(v, int) or isinstance(v, bool) for v in ints.values()):
-        return None
-    if not isinstance(unit_prompt, str) or "{source}" not in unit_prompt:
-        return None
-    return ModelShrinkRetryCaps.model_validate({**ints, "unit_prompt": unit_prompt})
 
 
 class TaskClassTransitionsError(ValueError):

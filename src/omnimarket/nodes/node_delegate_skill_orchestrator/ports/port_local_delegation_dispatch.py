@@ -372,13 +372,15 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
-    resolve_task_class_shrink_caps,
     resolve_task_class_tier_order,
     resolve_task_class_transitions,
     shipped_house_credential_refs,
     sibling_backend_available_in_tier,
     tier_for_backend,
     tier_max_retries,
+)
+from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shrink_retry_caps import (
+    resolve_task_class_shrink_caps,
 )
 from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shrink_retry_policy import (
     next_best_configuration,

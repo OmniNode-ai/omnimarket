@@ -867,25 +867,6 @@ class ModelTaskClassEscalationPolicy(BaseModel):
 
     max_escalations: int | None = None
     paid_from_size_band: Literal["S", "M", "L"] | None = None
-    max_config_swaps: int | None = Field(
-        default=None,
-        ge=0,
-        description="Configuration swaps on the same model and backend a rubric failure may take (OMN-20172).",
-    )
-    max_split_depth: int | None = Field(
-        default=None,
-        ge=0,
-        description="How deep a rubric-failed request may be split before it escalates (OMN-20172).",
-    )
-    unit_attempts_per_unit: int | None = Field(
-        default=None,
-        ge=1,
-        description="Unit attempts allowed per unit of a split before the chain escalates (OMN-20172).",
-    )
-    shrink_unit_prompt: str | None = Field(
-        default=None,
-        description="The prompt of one unit of a split; {source} is only that unit's slice (OMN-20172).",
-    )
     tier_order: tuple[str, ...] | None = Field(
         default=None,
         description="The closed, ordered set of routing tiers this class may use.",
