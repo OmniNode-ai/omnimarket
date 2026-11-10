@@ -277,6 +277,15 @@ inputs:
     producer: the gate store overlay and the overlay home's gate commits
     replacement: {node: node_gate_store_effect, topic: onex.snapshot.projection.join-j6.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-join-j6-projection
+  - id: join_j7_check_run
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the join J7 overlay, overlay_join_j7.yaml)
+    read_by: [node_lab_check_run_effect]
+    steps: [join_j7]
+    producer: the join J7 overlay and the lab check run node's golden stop drill readings
+    replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-join-j7-projection
   - id: network_reads
     order: 21
     class: http
