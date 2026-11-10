@@ -12,6 +12,11 @@ from unittest.mock import Mock
 import pytest
 
 from omnimarket import github_api
+from omnimarket.models.model_release_asset_retry_policy import (
+    load_release_asset_retry_policy,
+)
+
+_POLICY = load_release_asset_retry_policy()
 
 _URL = "https://github.com/example/project/releases/download/v1/bundle.tar.gz"
 
@@ -33,7 +38,7 @@ def test_gateway_failure_retries_and_writes_the_successful_response(
     assert target.read_bytes() == b"release bytes"
     assert failed_body.closed
     assert opening.call_count == 2
-    assert sleeping.call_args_list == [((0.5,), {})]
+    assert sleeping.call_args_list == [((_POLICY.delays_seconds[0],), {})]
     request = opening.call_args.args[0]
     assert request.full_url == _URL
     assert request.method == "GET"
@@ -44,7 +49,8 @@ def test_gateway_retries_stop_and_preserve_an_existing_destination(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     failures = [
-        urllib.error.HTTPError(_URL, 504, "gateway", {}, io.BytesIO()) for _ in range(3)
+        urllib.error.HTTPError(_URL, 504, "gateway", {}, io.BytesIO())
+        for _ in range(_POLICY.attempts)
     ]
     opening = Mock(side_effect=failures)
     sleeping = Mock()
@@ -58,8 +64,8 @@ def test_gateway_retries_stop_and_preserve_an_existing_destination(
 
     assert caught.value.status_code == 504
     assert caught.value.__cause__ is failures[-1]
-    assert opening.call_count == 3
-    assert sleeping.call_args_list == [((0.5,), {}), ((1.0,), {})]
+    assert opening.call_count == _POLICY.attempts
+    assert sleeping.call_args_list == [((d,), {}) for d in _POLICY.delays_seconds]
     assert target.read_bytes() == b"existing"
 
 

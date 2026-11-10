@@ -63,6 +63,10 @@ OVERLAY = ModelFloorSimpleOverlay.model_validate(
     overlay_text("node_floor_simple_compute")
 )
 FLOOR_PIECE = OVERLAY.rebuild.lab_state_piece
+# These measured counts predate J5's judging bound (OMN-23086); the bound has its own tests, so these judge every chain.
+UNBOUNDED_JOINS = tuple(
+    j.model_copy(update={"judged_since": None}) for j in OVERLAY.joins
+)
 
 # The measured counts of the 93 broken chains read from the served floor record: findings per join, and the rows.
 ROW_CHAINS = {
@@ -154,7 +158,7 @@ def fold(
             now=NOW,
             emissions=tuple(events),
             pieces=OVERLAY.pieces,
-            joins=OVERLAY.joins,
+            joins=UNBOUNDED_JOINS,
             freshness_max_age_s=OVERLAY.freshness_max_age_s,
             error_max_age_s=OVERLAY.error_receipt_max_age_s,
             chain_deadline_s=OVERLAY.chain_deadline_s,
@@ -260,7 +264,9 @@ def test_golden_the_tick_hands_the_receipt_the_contracts_declared_chains() -> No
         sink.emit(event)
     rt = load_runtime()
     # A go of 6 admits pieces 1 to 6, so J0 (into piece 1) and J5 (into piece 6) are judged as they are on the floor.
-    receipts = HandlerFloorSimpleTick._receipts(sink, OVERLAY, NOW, rt, 6, ())
+    receipts = HandlerFloorSimpleTick._receipts(
+        sink, OVERLAY.model_copy(update={"joins": UNBOUNDED_JOINS}), NOW, rt, 6, ()
+    )
     assert len(receipts.findings) == 29
     assert by_subject(receipts)["J0"] == 0
     assert by_subject(receipts)["J5"] == JOIN_FAILURES["J5"]

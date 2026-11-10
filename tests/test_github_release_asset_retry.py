@@ -13,6 +13,11 @@ from unittest.mock import Mock, call
 import pytest
 
 from omnimarket import github_api
+from omnimarket.models.model_release_asset_retry_policy import (
+    load_release_asset_retry_policy,
+)
+
+_POLICY = load_release_asset_retry_policy()
 
 pytestmark = pytest.mark.unit
 
@@ -43,7 +48,7 @@ def test_gateway_failure_recovers_before_writing_asset(
 
     assert destination.read_bytes() == b"verified later"
     assert open_url.call_count == failures + 1
-    assert sleep.call_args_list == [call(0.5 * 2**i) for i in range(failures)]
+    assert sleep.call_args_list == [call(d) for d in _POLICY.delays_seconds[:failures]]
     for request_call in open_url.call_args_list:
         assert request_call.args[0].get_method() == "GET"
         assert request_call.args[0].full_url == _URL
@@ -51,7 +56,7 @@ def test_gateway_failure_recovers_before_writing_asset(
 
 
 @pytest.mark.parametrize("status", [502, 503, 504])
-def test_persistent_gateway_failure_stops_after_three_attempts(
+def test_persistent_gateway_failure_stops_after_the_declared_attempts(
     status: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     error = _http_error(status)
@@ -66,8 +71,8 @@ def test_persistent_gateway_failure_stops_after_three_attempts(
 
     assert refused.value.status_code == status
     assert refused.value.__cause__ is error
-    assert open_url.call_count == 3
-    assert sleep.call_args_list == [call(0.5), call(1.0)]
+    assert open_url.call_count == _POLICY.attempts
+    assert sleep.call_args_list == [call(d) for d in _POLICY.delays_seconds]
     assert not destination.exists()
 
 
