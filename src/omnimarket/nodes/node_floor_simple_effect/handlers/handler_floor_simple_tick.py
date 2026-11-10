@@ -35,6 +35,7 @@ from omnimarket.handlers.floor_projection import (
 )
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    find_node_overlay,
     load_structured_overlay,
 )
 from omnimarket.models.floor_17a import (
@@ -92,6 +93,9 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources impor
     CommandMvpRunSource,
     ProtocolMvpRunSource,
     RecordMvpRunSource,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.owner_source import (
+    check_owner_source,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
@@ -565,6 +569,10 @@ class HandlerFloorSimpleTick:
             env,
             file_env=rt.lab_overlay.file_env,
         )
+        if lab_ov.owner_source is not None:
+            floor_path = self._floor_overlay_path(rt, env)
+            if floor_path is not None:
+                check_owner_source(floor_path, lab_ov.owner_source)
         goal_scope = self._load_goal_scope(rt, env)
         try:
             doc, canary = self._cycle(
@@ -619,6 +627,18 @@ class HandlerFloorSimpleTick:
             red_rule=doc.red_rule.state,
             emitted=emitted(),
             canary=canary,
+        )
+
+    @staticmethod
+    def _floor_overlay_path(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> Path | None:
+        """The file the floor overlay was loaded from, found the way ``load_structured_overlay`` finds it."""
+        pinned = env.get(rt.floor_overlay.file_env, "").strip()
+        return (
+            Path(pinned)
+            if pinned
+            else find_node_overlay(rt.floor_overlay.overlay_id, env)
         )
 
     def _close_abandoned(
