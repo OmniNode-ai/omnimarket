@@ -44,17 +44,8 @@ def _load(module: str) -> Any:
         importlib.util.find_spec("pydantic") is None
         or importlib.util.find_spec("yaml") is None
     ) and __name__ == "__main__":
-        again = [
-            "uv",
-            "run",
-            "--no-project",
-            "--with",
-            "pydantic",
-            "--with",
-            "pyyaml",
-            "python",
-            "-m",
-        ]
+        with_ = [a for dep in ("pydantic", "pyyaml") for a in ("--with", dep)]
+        again = ["uv", "run", "--no-project", *with_, "python", "-m"]
         os.execvp(
             "uv", [*again, "scripts.hooks.pytest_full_suite_host_guard", *sys.argv[1:]]
         )
@@ -124,25 +115,15 @@ def _decide(
     private_rel: str = PRIVATE_TABLE_REL,
 ) -> Any:
     """The node's answer for a host and login over the table as read (OMN-23367)."""
-    return (
-        _node()
-        .HandlerPytestFullSuiteHostGuard()
-        .handle(
-            _node().ModelPytestFullSuiteHostGuardRequest(
-                table_text=table_text,
-                login_overlay_text=_io().login_overlay_text(
-                    env, LOGIN_OVERLAY_NAME, OVERLAY_ROOTS_ENV
-                ),
-                login=resolve_local_login() if login is None else login,
-                host=host,
-                env_overrides={
-                    k: v for k, v in env.items() if k.startswith("PREPUSH_")
-                },
-                legacy_override_by_label=_io().legacy_override_by_label(env),
-                private_table_rel=private_rel,
-                host_table_rel=HOST_TABLE_REL,
-            )
-        )
+    return _io().decide(
+        table_text,
+        env,
+        host=host,
+        login=resolve_local_login() if login is None else login,
+        private_table_rel=private_rel,
+        host_table_rel=HOST_TABLE_REL,
+        overlay_name=LOGIN_OVERLAY_NAME,
+        roots_env=OVERLAY_ROOTS_ENV,
     )
 
 
