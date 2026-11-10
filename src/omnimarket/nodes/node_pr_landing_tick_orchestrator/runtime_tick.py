@@ -19,6 +19,7 @@ read; nothing was compared.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 
@@ -42,6 +43,9 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orches
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overlay import (
     ModelTickOrchestratorOverlay,
 )
+
+PROBE_FLAG = "--probe"
+PROBE_STATUS = "probe_ok"
 
 
 def run_once(
@@ -87,8 +91,26 @@ def run_once(
     return (1 if failed else 0), line
 
 
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="omnimarket.nodes.node_pr_landing_tick_orchestrator.runtime_tick",
+        description="One pass of the landing tick orchestrator: compare the recorded tick snapshots through the node path",
+    )
+    parser.add_argument(
+        PROBE_FLAG,
+        action="store_true",
+        help="Start check: exit 0 and print one status line without loading an overlay, reading the bus or writing a file",
+    )
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
-    del argv
+    """--probe exits 0 after one status line, before loading the overlay or running the pass."""
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.probe:
+        sys.stdout.write(json.dumps({"status": PROBE_STATUS}, sort_keys=True) + "\n")
+        return 0
     try:
         overlay = load_tick_overlay()
         code, line = run_once(overlay)
