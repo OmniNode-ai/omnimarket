@@ -80,8 +80,8 @@ handler_routing:
       handler:
         name: HandlerRunningVsMergedAlarm
         module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm
-      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_running_vs_merged_alarm.ModelRunningVsMergedRequest
-      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_running_vs_merged_alarm.ModelRunningVsMergedResult
+      input_model: omnimarket.models.model_running_vs_merged_alarm.ModelRunningVsMergedRequest
+      output_model: omnimarket.models.model_running_vs_merged_alarm.ModelRunningVsMergedResult
 descriptor:
   node_archetype: compute
   purity: pure

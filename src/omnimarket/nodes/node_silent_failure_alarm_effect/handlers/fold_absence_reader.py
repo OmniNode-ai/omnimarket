@@ -23,12 +23,12 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
-from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm import (
-    request_from_fleet,
-)
-from omnimarket.nodes.node_silent_failure_alarm_compute.models import (
+from omnimarket.models.model_running_vs_merged_alarm import (
     ModelFleetFoldAbsence,
     ModelRunningVsMergedRequest,
+)
+from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm import (
+    request_from_fleet,
 )
 
 from ..models import ModelHostDriftDeclaration
