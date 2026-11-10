@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+title: The narrowed-test-selection weight bound moves into a selector node, so the baselined scripts/ci files do not grow
+ticket_id: OMN-23296
+summary: >-
+  A change to tests/nodes plus tests/unit got two unplanned Tests (Split 2/2) shards of about 24,000 tests each,
+  because the shard count came from the number of selected paths. node_test_selection_selector_compute now decides
+  the shard count and the weight bound from the estimated test time (recorded per-file seconds): ceil(estimate /
+  target_shard_seconds) shards, never fewer than the old path-count rule, and the planned 20-shard full-suite matrix
+  when a narrowed run would need more than max_narrowed_shards or the recorded durations cannot be read.
+  scripts/ci/detect_test_paths.py calls the node and its code-line count does not grow, nor do test_selection_loader.py
+  or test_selection_models.py. No check, test or timeout is widened or removed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23296-selector-node
+  statement: A selector node sizes a narrowed test selection from estimated test time, and the CI script calls it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a selector node decides the narrowed selection''s shard count and weight bound from estimated test time, and scripts/ci/detect_test_paths.py calls it and does not grow -- falsifier: uv run pytest tests -q -k test_selection_selector in omnimarket, plus the Canonical File Shape check passing on the PR'
+  - id: AC2
+    statement: 'AC2: no Tests (Split 2/2) run on a narrowed selection is estimated past the shard bound -- falsifier: uv run pytest tests -q -k shard_bound, failing on the old script'
+evidence_requirements:
+- kind: tests
+  description: The selector node's unit tests, golden and error chain events, and the script's shard-bound tests; the shard-bound tests fail on the old script.
+  command: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_test_selection_selector_compute tests/test_golden_chain_test_selection_selector_compute.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23296-ac1-selector-node
+  description: The selector node's unit tests pass (shard count from seconds, the path-count floor, escalation when too heavy or when durations are unread), with its golden and error chain events.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute tests/test_golden_chain_test_selection_selector_compute.py -q --no-cov
+    cwd: .
+- id: dod-omn23296-ac2-shard-bound
+  description: Every narrowed selection over each adjacency module plus tests/unit/ or tests/nodes/ is estimated at or under the target seconds per shard, the heavy selection takes the 20-shard matrix, and a policy sized by path count alone (the failing control) gives two shards of over 1,000 recorded seconds each. These tests fail on the old script.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q --no-cov -k shard_bound
+    cwd: .
+- id: dod-omn23296-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23296 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_test_selection_selector_compute tests/test_golden_chain_test_selection_selector_compute.py -q --no-cov
+    cwd: .
+- id: dod-deploy-omn23296-selector-handler
+  description: >-
+    The selector node's handler is present in the tree this change ships, read through gh api at the checked-out commit so hosted CI can run it before merge; its golden chain, error chain and bad-payload failure event run in tests/test_golden_chain_test_selection_selector_compute.py.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_test_selection_selector_compute/handlers/handler_test_selection_selector.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerTestSelectionSelector" > /dev/null'
+    cwd: .

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The settings of node_test_selection_selector_compute (OMN-23296). No value is set in code.
+#
+#   target_shard_seconds    estimated test seconds one shard of a narrowed selection carries.
+#                           360 is the full suite's own per-shard share (about 7160 recorded
+#                           seconds over its 20 planned shards).
+#   max_narrowed_shards     most shards a narrowed selection may take. A selection that needs more
+#                           than this (its estimate is over max_narrowed_shards * target_shard_seconds,
+#                           1800 seconds today) runs as the planned full-suite matrix instead.
+#                           tests/nodes/ with tests/unit/ is about 4,100 seconds and ran as two
+#                           unplanned shards of about 24,000 tests each, 45 to 77 minutes.
+#   durations_path          recorded per-file seconds, relative to the repository root.
+#   path_count_shards       the older rule, kept as a floor: [up to this many selected paths, shards].
+#   path_count_max_shards   shards for more paths than the last rung.
+target_shard_seconds: 360
+max_narrowed_shards: 5
+durations_path: config/test_file_durations.json
+path_count_shards:
+  - [2, 1]
+  - [5, 2]
+  - [10, 3]
+  - [16, 4]
+path_count_max_shards: 5
