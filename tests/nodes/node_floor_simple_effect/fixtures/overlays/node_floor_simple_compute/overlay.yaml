@@ -47,6 +47,25 @@ joins:
   - {id: J17, from_piece: 17, to_piece: 18, label: "the floor to onboarding"}
   - {id: J-cycle, from_piece: 14, to_piece: 9, label: "review back to landing"}
 
+# What READY means for a rebuild piece (OMN-23081; operator ruling 2026-11-08 05:08:55Z: "We're supposed to be integrating every
+# piece that we can. That is what ready is."). A piece reads READY only when it is in scope, its own reading is WORKING and every
+# join that counts for it, at either end, reads a passing state. A join counts when both of its pieces are in scope. A piece
+# with a working reading and a join that does not pass reads "working, not integrated" (amber), never ready. Every counted join
+# that does not pass is a red row (join:<id>) with its owner tickets under causes.owners, so it gets a worker the first time it
+# appears. Change the scope or the requirement here and the floor changes; nothing of this is in code.
+readiness:
+  # The pieces of the goal's scope: 1 to 6 (the rebuild's first run), 8 and 9 (CI and landing), 17 (the floor, step 0).
+  in_scope_pieces: [1, 2, 3, 4, 5, 6, 8, 9, 17]
+  # A piece needs at least this many counted joins, so a piece whose joins all leave the scope is never ready by having none.
+  min_joins: 1
+  # The join states that count as PASS: golden and error chains both ended as the contract says.
+  passing_join_states: [passed]
+  # Which side of a join a chain finding blames (from is the upstream piece, to the downstream one).
+  finding_sides:
+    downstream_started_before_upstream_succeeded: to
+    downstream_started_after_upstream_failed: to
+    downstream_missing_typed_failure: to
+
 # The rebuild strip. Piece 17 is step 0 (17a) and its reading is the lab state.
 rebuild:
   # The go is read from the ledger's RULING rows, never set here: a ruling on ticket OMN-22478 by the orchestrator lane whose
@@ -82,7 +101,7 @@ numbers:
 # Cause wording and owners. A cause draws red only when no live lane is on one of its tickets, or it needs the operator.
 # owners maps a cause id to the tickets whose lanes work on it. needs_operator lists the causes only the operator can clear.
 causes:
-  max_shown: 5
+  max_shown: 12
   pr_classes:
     red: Pull requests have red checks
     queue-stuck: Pull requests are stuck in the merge queue
@@ -98,7 +117,15 @@ causes:
     "alarm:undelivered": A lab alarm has no delivery receipt
   # No ticket owns a pull request class. A lane is on a class when it works on one of the class's pull requests (its
   # pr field); the shared landing ticket is on every landing lane and says nothing about which cause a lane is on.
-  owners: {}
+  owners:
+    # The joins between pieces in scope (OMN-23081). Each one that is broken or never run is a red row with these owners.
+    "join:J0": [OMN-23022]
+    "join:J1": [OMN-23082]
+    "join:J2": [OMN-23083]
+    "join:J3": [OMN-23084]
+    "join:J4": [OMN-23085]
+    "join:J5": [OMN-23086]
+    "join:J8": [OMN-23087]
   # Stoppages whose logged cost is the reporter's estimate of idle capacity (free slots times the next interval, or an
   # estimated short-fall), not lost work that anything measured: the floor leaves the figure out.
   estimated_cost_stoppages:
