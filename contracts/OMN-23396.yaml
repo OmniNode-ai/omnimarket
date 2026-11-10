@@ -31,6 +31,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_hosts_from_lab_table.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn23396-all-table-hosts-written
+  description: Runs the command over planted tables whose rows are written on every available host, skipped when the table marks them unavailable, read when they carry the real table's other columns, and alarm with no heartbeat when one host cannot be reached. This is the hosted stand-in for AC2; the live readback on the Mac is the local Done gate item below. A hosted job cannot run a local_done_gate item at the merge base, so that item binds no criterion.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_hosts_from_lab_table.py -q --no-cov -p no:randomly -k "unavailable_is_skipped or real_tables_other_columns or every_host_down"
+    cwd: .
 - id: dod-omn23396-regression
   description: The publisher's golden chain (a failed read records a failure and a recovery publishes) and the node entrypoint binding still pass. Binds no criterion; a regression check.
   source: manual
@@ -41,8 +50,6 @@ dod_evidence:
 - id: dod-omn23396-install-readback
   description: After the branch is installed on the launching Mac through the declared installer, one run of ai.omninode.prrp-snapshot-publish writes captured_at dated that day on every available row of the lab host table, h051 and h202 included, and its err log holds no ALARM line. Hosted CI cannot reach the Mac or the lab hosts, so only the local Done gate runs this unbound check.
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
