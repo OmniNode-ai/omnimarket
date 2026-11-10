@@ -110,6 +110,8 @@ def build_real(
             closeout_ledger_env=settings.closeout_ledger_env,
             closeout_registry_env=settings.closeout_registry_env,
             plugin_store=settings.plugin_store,
+            runtime_config_text=settings.provisioning.runtime_config_text,
+            runtime_config_target=settings.provisioning.runtime_config_target,
             ledger_write_via=settings.ledger_write_via,
             guard_host_source=lane_guard_host_source(),
             login_pool=ModelEngineLoginPool(
