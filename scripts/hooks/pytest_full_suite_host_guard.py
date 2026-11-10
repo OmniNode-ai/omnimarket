@@ -35,17 +35,17 @@ _SRC = str(Path(__file__).resolve().parents[2] / "src")
 _RESOLVER = Path(__file__).with_name("prepush_dispatch.sh")
 
 
+_NEEDS = ("pydantic", "yaml")
+_WITH = ("--with", "pydantic", "--with", "pyyaml")
+
+
 def _load(module: str) -> Any:
     """A module of the host guard node (OMN-23367), loaded on first use.
 
     The shell hook runs this file with no project env, so the file finds the node through this
     checkout's own src and, when pydantic or yaml is missing, runs itself again under uv with them."""
-    if (
-        importlib.util.find_spec("pydantic") is None
-        or importlib.util.find_spec("yaml") is None
-    ) and __name__ == "__main__":
-        with_ = [a for dep in ("pydantic", "pyyaml") for a in ("--with", dep)]
-        again = ["uv", "run", "--no-project", *with_, "python", "-m"]
+    if __name__ == "__main__" and not all(map(importlib.util.find_spec, _NEEDS)):
+        again = ["uv", "run", "--no-project", *_WITH, "python", "-m"]
         os.execvp(
             "uv", [*again, "scripts.hooks.pytest_full_suite_host_guard", *sys.argv[1:]]
         )
