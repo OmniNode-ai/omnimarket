@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23175
+title: Scenario R8 runs every six hours on the dev lane as an omnimarket node, a synthetic run is labelled and listed but never counted in a probe tenant's totals
+summary: The readiness plan put the R8 producer in a workflow of the cloud repository. The scenario's logic lives in omnimarket as node_delegation_scenario_r8_effect, scheduled every six hours by its own timer, and the cloud repository's workflow delegation-readiness-r8-synthetic-not-counted.yml runs the node so the board reads the scenario's scheduled runs. In a probe tenant only this scenario uses, one run reads the totals, sends one synthetic run (traffic class synthetic, source surface readiness_probe) and one organic control, waits until the tenant's Runs list holds both correlation ids and reads the totals again. It holds when the synthetic row is labelled synthetic and listed and the run, token, spend and savings totals rose by exactly the organic run's values. A lane that counts a synthetic run is refused. It writes one ledger STATUS row (the row the green-days reading counts) and emits the result on the bus.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23175-r8-synthetic-not-counted
+  statement: The synthetic row is labelled synthetic and listed on Runs, and the run, token, spend and savings totals rose by exactly the organic control's values.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the committed R8 inputs pass their own schema test -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r8_effect/test_r8_inputs.py -q`'
+  - id: AC2
+    statement: 'AC2: a run against a lane that counts a synthetic run exits red for that reason and a run against a lane that keeps it out of the totals shows the expected colour -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r8_effect/test_golden_chain_scenario_r8_effect.py -q`'
+evidence_requirements:
+- kind: tests
+  description: The R8 inputs schema tests and the golden and error chain tests pass.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23175-ac1-inputs
+  description: Runs the inputs schema tests. The committed inputs parse into the typed model, reject an unknown key, ask for the synthetic run with its source surface and for the organic control with neither, and the contract's lane block names every total and every run field.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_r8_inputs.py -q --no-cov
+    cwd: .
+- id: dod-omn23175-ac2-chains
+  description: Runs the golden and error chain tests. The in-memory lane model and the real HTTP backend with an injected tenant API both show the scenario green; a lane that counts a synthetic run, a synthetic row labelled organic, a synthetic run missing from Runs, an organic control with no values, a response without a declared key, a delegate command that names no correlation id, unreadable inputs, a failing ledger append and a failing bus emit each turn the run red for their own reason.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_golden_chain_scenario_r8_effect.py -q --no-cov
+    cwd: .
+- id: dod-omn23175-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23175 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect -q --no-cov
+    cwd: .
