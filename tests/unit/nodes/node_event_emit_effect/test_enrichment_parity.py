@@ -241,7 +241,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # OMN-21320 registers delegation.run_step, held byte-identical by the same
     # assertion: 103 -> 104. OMN-22016 registers additive.miss, the miss record
     # of an additive call, held byte-identical by the same assertion: 104 -> 105.
-    assert len(event_types) == 105, (
+    # OMN-23213 registers the C32 probe's local-auth-boundary-probe-completed
+    # run event, held byte-identical by the same assertion: 105 -> 106.
+    assert len(event_types) == 106, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
@@ -282,7 +284,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 98 -> 106: OMN-21112's eight compaction events each fan out to exactly one topic.
     # 106 -> 107: OMN-21320's delegation.run_step fans out to exactly one topic.
     # 107 -> 108: OMN-22016's additive.miss fans out to exactly one topic.
-    assert total_old == total_new == 108
+    # 108 -> 109: OMN-23213's c32.auth_boundary_probe.completed fans out to exactly one topic.
+    assert total_old == total_new == 109
     enriched = sum(
         1
         for msgs in new_by_event.values()
@@ -293,7 +296,7 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     keyed = sum(1 for msgs in new_by_event.values() for m in msgs if m.key is not None)
     # 65 -> 70: every published record is unconditionally enriched, so this
     # count tracks total_new exactly (OMN-17019 C9 registry growth).
-    assert enriched == 108, f"only {enriched}/108 new-path messages were enriched"
+    assert enriched == 109, f"only {enriched}/109 new-path messages were enriched"
     # 2 of the 67 registered events declare no partition_key_field; the daemon
     # publishes those with a null key, so 68 is the correct non-null count.
     # All five OMN-17019 obligation kinds declare partition_key_field:
@@ -316,7 +319,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 103 -> 104: OMN-21320's delegation.run_step declares partition_key_field
     # correlation_id.
     # 104 -> 105: OMN-22016's additive.miss declares partition_key_field profile.
-    assert keyed == 105, f"only {keyed}/105 new-path messages carried a partition key"
+    # 105 -> 106: OMN-23213's c32.auth_boundary_probe.completed declares partition_key_field criterion.
+    assert keyed == 106, f"only {keyed}/106 new-path messages carried a partition key"
 
 
 # ---------------------------------------------------------------------------

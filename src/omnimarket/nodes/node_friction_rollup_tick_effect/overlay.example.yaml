@@ -32,5 +32,8 @@ needs_ticket_budget_chars: 900
 # The command that appends one row: it runs `<command> <ledger> --append <row>`.
 appender_command: [onex-ledger]
 appender_timeout_seconds: 60
-# The class rules and class owners the compute node ships (relative to this file); the tick passes them to the rollup.
-class_rules_path: "../node_friction_rollup_compute/overlay.example.yaml"
+# The class rules and class owners are the overlay home's: <root>/<class_overlay_id>/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS, or the file the variable class_overlay_file_env names. When neither supplies them the tick still
+# finishes and says class-rules=unapplied with the cause (exit 3).
+class_overlay_id: node_friction_rollup_compute
+class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY

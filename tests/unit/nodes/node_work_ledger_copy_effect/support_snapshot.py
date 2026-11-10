@@ -90,11 +90,13 @@ def snapshot_handler(
     topic: Sequence[ModelLedgerRow] | None = None,
     projection: Sequence[ModelLedgerRow] | None = None,
     store_host: str = DRILL_HOST,
+    local_host: str | None = None,
     topic_source: ProtocolLedgerRowSource | None = None,
 ) -> HandlerWorkLedgerSnapshot:
     return HandlerWorkLedgerSnapshot(
         source_host=SOURCE_HOST,
         store_host=store_host,
+        local_host=local_host or store_host,
         topic=topic_source or MemoryRowSource(rows() if topic is None else topic),
         projection=MemoryRowSource(rows() if projection is None else projection),
         store=store,
@@ -108,9 +110,11 @@ def drill_handler(
     probe: FakeProbe | None = None,
     reporter: FakeDrillReporter | None = None,
     drill_host: str = DRILL_HOST,
+    local_host: str | None = None,
 ) -> HandlerWorkLedgerRestoreDrill:
     return HandlerWorkLedgerRestoreDrill(
         drill_host=drill_host,
+        local_host=local_host or drill_host,
         source_host=SOURCE_HOST,
         source_port=SOURCE_PORT,
         store=store,
