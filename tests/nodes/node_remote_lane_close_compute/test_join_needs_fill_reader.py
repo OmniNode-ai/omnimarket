@@ -68,8 +68,8 @@ UNTYPED = (
     "LANE_RESULT outcome=blocked\n" + DELEGATION
 )
 CELL = "rerun:omnibase_core#2302"
-# The producer fields the fill does not read today; the fill's change reads needs and shrinks this set.
-NOT_READ_BY_THE_FILL = {"needs", "age_minutes"}
+# The producer fields the fill does not read today.
+NOT_READ_BY_THE_FILL = {"age_minutes"}
 
 
 def stopped_entry(rows: dict[str, str]) -> dict[str, Any]:
@@ -145,19 +145,13 @@ def test_golden_the_typed_ask_reaches_the_fill_as_a_listed_lane_naming_needs() -
     assert "needs" in entry["names"]
 
 
-def test_seam_pin_the_fill_does_not_read_the_needs_cell_yet() -> None:
-    """Pins the reading: the fill carries the cell only as text inside the predecessor's last rows, never as a typed ask.
-
-    ``ModelRecordStopped`` has no ``needs`` field, so the action and target are not a value the brief states; they reach the
-    continuation lane only because the ending row's own text (``needs=<cell>``) is among the rows the brief quotes. The fill
-    reader change (a ``needs`` field and a sentence in the brief) flips this test; update it in that pull request.
-    """
+def test_seam_the_fill_reads_the_needs_cell_as_a_typed_field() -> None:
+    """The fill reads the cell: ``ModelRecordStopped`` carries ``needs`` and the brief's lead states it."""
     [candidate] = fill_reads(in_process()["typed"])
-    lead, _, quoted = candidate.brief.partition("The predecessor's last rows:")
+    lead, _, _quoted = candidate.brief.partition("The predecessor's last rows:")
 
-    assert "needs" not in ModelRecordStopped.model_fields
-    assert CELL not in lead
-    assert f"needs={CELL}" in quoted
+    assert "needs" in ModelRecordStopped.model_fields
+    assert CELL in lead
 
 
 def test_seam_the_producer_fields_the_fill_does_not_read_are_the_named_ones() -> None:
