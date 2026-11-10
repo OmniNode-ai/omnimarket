@@ -25,15 +25,12 @@ def _contract() -> dict[str, Any]:
     return loaded
 
 
-def test_contract_is_pure_and_routes_both_operations_to_callable_handlers() -> None:
+def test_contract_is_pure_and_routes_its_operation_to_a_callable_handler() -> None:
     contract = _contract()
     assert contract["node_type"] == "compute"
     assert contract["descriptor"]["purity"] == "pure"
     handlers = contract["handler_routing"]["handlers"]
-    assert [h["operation"] for h in handlers] == [
-        "decide_stall_responses",
-        "sum_lab_idle_cost",
-    ]
+    assert [h["operation"] for h in handlers] == ["decide_stall_responses"]
     for entry in handlers:
         module = importlib.import_module(entry["handler"]["module"])
         assert callable(getattr(module, entry["handler"]["name"])().handle)
