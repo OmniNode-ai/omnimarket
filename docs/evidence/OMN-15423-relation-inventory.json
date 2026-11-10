@@ -4943,6 +4943,8 @@
         "node_delegation_dod_verify_request_compute",
         "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
+        "node_delegation_events_defect_scan_compute",
+        "node_delegation_events_defect_scan_effect",
         "node_dod_verify",
         "node_factory_floor_publish_effect",
         "node_lab_secret_store_override_effect",
