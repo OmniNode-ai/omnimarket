@@ -253,3 +253,23 @@ def test_committed_baseline_has_no_stale_baseline_entry() -> None:
         repo_root / "scripts" / "validation" / "unimported_handler_baseline.txt",
     )
     assert stale == []
+
+
+_BASELINE_CEILING = 61
+
+
+@pytest.mark.unit
+def test_baseline_entry_count_does_not_grow_past_the_recorded_ceiling() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    baseline = repo_root / "scripts" / "validation" / "unimported_handler_baseline.txt"
+    entries = [
+        line
+        for line in baseline.read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    count = len(entries)
+    assert count <= _BASELINE_CEILING, (
+        f"unimported handler baseline holds {count} entries, which exceeds the "
+        f"recorded ceiling of {_BASELINE_CEILING}; shrink the baseline instead of "
+        "growing it"
+    )

@@ -39,13 +39,13 @@ dod_evidence:
     check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
     cwd: .
 - id: dod-omn23335-baseline-count
-  description: Counts the entries left in the baseline file after this slice; the number is 61, down from 67 at the merge base, and the PR body states it.
+  description: Runs the focused test selected by baseline_entry_count. The baseline file holds at most 61 entries, the count after this slice and down from 67 at the merge base, so the test fails on the merge base. The PR body states the count.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: test "$(grep -vcE '^[[:space:]]*(#|$)' scripts/validation/unimported_handler_baseline.txt)" -eq 61
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k baseline_entry_count
     cwd: .
 - id: dod-omn23335-dead-handler-regression
   description: Runs the whole file of dead-handler tests, which still pass with the scan moved into src/omnimarket/handlers. A regression check, so it binds no criterion.
