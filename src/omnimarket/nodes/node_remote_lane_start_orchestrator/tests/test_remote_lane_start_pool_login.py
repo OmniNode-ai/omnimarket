@@ -65,7 +65,7 @@ def fake_token(seed: str) -> str:
     return "sk-ant-" + "oat01-" + (seed * 64)[:96]
 
 
-class SpyRunner:
+class SpyHostCommands:
     """The production executor, recording every argv and every answer so a leak can be searched for."""
 
     def __init__(self) -> None:
@@ -133,7 +133,9 @@ class Host:
             )
         )
 
-    def transport(self, runner: SpyRunner, run_root: Path) -> SshLaneHostTransport:
+    def transport(
+        self, runner: SpyHostCommands, run_root: Path
+    ) -> SshLaneHostTransport:
         return SshLaneHostTransport(
             ssh_argv=["ssh"],
             host_run_root=str(run_root),
@@ -165,7 +167,7 @@ def test_the_login_draw_skips_a_limited_label_first_in_the_pool(
 ) -> None:
     three_accounts(host)
     host.limit("acct-a")
-    runner = SpyRunner()
+    runner = SpyHostCommands()
     drawn = host.transport(runner, tmp_path / "runs").draw_login(LOCAL)
     assert drawn.state == "drawn"
     assert drawn.label == "acct-b"
@@ -177,7 +179,7 @@ def test_the_login_draw_controls_take_the_first_label_when_none_is_limited(
     # The failing control of the test above: with nothing limited the same pool draws its first label,
     # so the skip is the pool node's doing and the assertion above can fail.
     three_accounts(host)
-    drawn = host.transport(SpyRunner(), tmp_path / "runs").draw_login(LOCAL)
+    drawn = host.transport(SpyHostCommands(), tmp_path / "runs").draw_login(LOCAL)
     assert drawn.label == "acct-a"
 
 
@@ -187,7 +189,7 @@ def test_the_login_draw_answers_none_when_every_label_is_limited(
     three_accounts(host)
     for label in ("acct-a", "acct-b", "acct-c"):
         host.limit(label)
-    drawn = host.transport(SpyRunner(), tmp_path / "runs").draw_login(LOCAL)
+    drawn = host.transport(SpyHostCommands(), tmp_path / "runs").draw_login(LOCAL)
     assert (drawn.state, drawn.label) == ("none", None)
 
 
@@ -213,7 +215,7 @@ def test_the_engine_runs_on_the_drawn_token_and_no_token_leaves_the_host(
 ) -> None:
     three_accounts(host)
     host.limit("acct-a")
-    runner = SpyRunner()
+    runner = SpyHostCommands()
     run_root = tmp_path / "runs"
     transport = host.transport(runner, run_root)
     workdir = tmp_path / "work"
