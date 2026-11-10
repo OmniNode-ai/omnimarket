@@ -54,5 +54,5 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
       - check_type: command
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/config/test_file_durations_provenance.json?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q supplement_omn23526"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/config/test_file_durations_provenance.json?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep supplement_omn23526 > /dev/null"
     binds_ac: []
