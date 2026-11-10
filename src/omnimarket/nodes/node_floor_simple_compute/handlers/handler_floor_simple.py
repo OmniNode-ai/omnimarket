@@ -48,6 +48,9 @@ from omnimarket.models.floor_17a.model_worklist import (
     WorklistKind,
 )
 
+# The one row that names the open pull requests citing no ticket; the overlay's `causes.titles` may reword it.
+UNTICKETED_PRS_ID = "prs:no-ticket"
+
 
 def _ago(seconds: int | None) -> str:
     if seconds is None:
@@ -1156,6 +1159,16 @@ class HandlerFloorSimple:
                     r.pr_class_tickets.get(cls, ()),
                     prs=r.pr_class_prs.get(cls, ()),
                 )
+        if r.unticketed_prs:
+            add(
+                UNTICKETED_PRS_ID,
+                "Pull requests cite no ticket",
+                f"{len(r.unticketed_prs)} open pull requests name no ticket in the title or a Ticket line of the body.",
+                len(r.unticketed_prs),
+                "pull requests",
+                (),
+                prs=r.unticketed_prs,
+            )
         for item in r.stoppages:
             if item.id in ov.ignore_stoppages:
                 continue

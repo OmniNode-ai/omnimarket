@@ -1,0 +1,27 @@
+{
+  "comment": "OMN-18339 review counterexample. Each response is the bundle's own accepted list from before the scorer changed, joined by single spaces. None contains a JSON object. Under the substring scorer every one passed; under the workflow_request scorer every one must FAIL. legacy_exact_match holds the retired scorer config so a test can show the control: the old scorer still passes these.",
+  "responses": {
+    "R3b-01": "run_focused_tests omnibase_core tests/unit/validation/test_occ_merge_eligibility.py",
+    "R3b-02": "reproduce_failing_run 34748103920 omnibase_infra",
+    "R3b-03": "read_and_answer scripts/check_dockerfile_pins.py omnibase_infra",
+    "R3b-04": "apply_patch_and_test omnimarket tests/unit/cost/test_usage_normalizer_omn13621.py"
+  },
+  "legacy_exact_match": {
+    "R3b-01": {
+      "accepted": ["run_focused_tests", "omnibase_core", "tests/unit/validation/test_occ_merge_eligibility.py"],
+      "forbidden": ["reproduce_failing_run", "apply_patch_and_test", "verify_ticket_evidence"]
+    },
+    "R3b-02": {
+      "accepted": ["reproduce_failing_run", "34748103920", "omnibase_infra"],
+      "forbidden": ["run_focused_tests", "select_impacted_tests", "read_and_answer"]
+    },
+    "R3b-03": {
+      "accepted": ["read_and_answer", "scripts/check_dockerfile_pins.py", "omnibase_infra"],
+      "forbidden": ["run_focused_tests", "apply_patch_and_test", "reproduce_failing_run"]
+    },
+    "R3b-04": {
+      "accepted": ["apply_patch_and_test", "omnimarket", "tests/unit/cost/test_usage_normalizer_omn13621.py"],
+      "forbidden": ["run_focused_tests", "reproduce_failing_run", "select_impacted_tests"]
+    }
+  }
+}
