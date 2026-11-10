@@ -1,0 +1,122 @@
+schema_version: 1.0.0
+ticket_id: OMN-22850
+title: 'The floor-task ticket mint: node_floor_task_ticket_payload_compute and node_floor_task_ticket_effect'
+summary: 'Two new nodes. node_floor_task_ticket_payload_compute is a pure compute that builds the create payload of one floor task''s ticket from the plan text (title, parent, verbatim criteria, Gate line, Definition of done block, Floor key line; no project, label or pillar) or returns NEEDS-SPEC, NO-PARENT or PLAN-UNREAD. node_floor_task_ticket_effect finds or creates the one ticket through ProtocolFloorTicketStore: search by the Floor key line first, create once, read back, fail closed and retry on the next tick, and judge an entry ticket.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22850-floor-task-ticket-mint
+  statement: The stopped-line fill has no node that builds the ticket of a floor task from its plan text or mints it once, searching before creating, with a deadline on every Linear call.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A ready task whose plan text has criteria with falsifiers, an integration check and a header ticket yields exactly one create whose payload passes the gate (the stubbed `node_create_ticket` runs the real gate and accepts it) and carries the parent, the verbatim criteria, the `Definition of done` block and the `Floor key:` line -- falsifier: `-k mint_payload_passes_gate`.'
+  - id: AC2
+    statement: 'AC2: A task whose text lacks a falsifier, an integration check or a header ticket returns `NEEDS-SPEC` (naming the parts) or `NO-PARENT` and makes zero Linear calls; a payload the gate refuses makes no ticket -- falsifier: `-k mint_needs_spec`, `-k mint_no_parent` and `-k mint_gate_refusal`, asserting the stub''s call list.'
+  - id: AC3
+    statement: 'AC3: Search comes before create: a task whose key already has a usable matching issue creates nothing and uses it; one whose only matches are Done, Canceled or an umbrella creates one ticket -- falsifier: `-k mint_search_before_create`, counting creates in the stub. An open match with a project or a delegation label creates nothing, uses nothing and ends `ticket-refused:old-fill-visible` -- falsifier: `-k mint_old_fill_visible_refused`.'
+  - id: AC4
+    statement: 'AC4: A create, search or read that exceeds the deadline ends the mint for the tick with no ticket and no lane; the next tick searches first, uses the late issue when the search returns it and creates once when it returns nothing -- falsifier: `-k mint_timeout_retries_next_tick`, with the stub''s search returning the late issue in one case and nothing in the other, and `-k mint_readback_after_create` (a create followed by an unreadable read-back, and by a read-back that is Canceled, store nothing and send no lane).'
+  - id: AC5
+    statement: 'AC5: With a late-completing create and a lagging search, two tickets exist for the key and the orchestrator''s pass (T13) starts exactly one lane for it -- falsifier: `-k duplicate_ticket_one_lane`, counting issues, launches and CLAIMs (lands with T13).'
+  - id: AC6
+    statement: 'AC6: *The old fill cannot pick a minted ticket.* `plan_ticket_backlog` (the one Linear-ticket rule of the generated source of both copies of the old fill, P18) run on the facts of a minted ticket (status Backlog, empty project, no labels, no pillar, a description holding the `Floor key:` line, in the shape the plugin passes it) returns no item and one `not-pillar` drop; the same facts with a `delegation` label, and again with a current-sprint project, return an item (the control: the test reaches the gate); and the payload compute emits no project, no label and no pillar -- falsifier: `-k floor_ticket_dropped_by_old_rule`, `-k floor_ticket_control_admitted` and `-k payload_has_no_source_fields`. A change to that rule that admits Backlog tickets fails the first of them and names the rule.'
+  - id: AC7
+    statement: 'AC7: G-NODE holds for both nodes, and the payload compute''s verdicts (payload, `NEEDS-SPEC`, `NO-PARENT`) are equal on the two legs -- falsifier: `-k floor_task_ticket_parity` with the Redpanda receipt in the PR body.'
+evidence_requirements:
+- kind: tests
+  description: The focused suites of the two floor-task ticket nodes and their composition.
+  command: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22850-ac1
+  description: AC1 a ready task yields exactly one create whose payload the gate accepts and that carries the parent, the criteria, the Definition of done block and the Floor key line (the stubbed node_create_ticket runs its own gate, the omnibase_core validator, in process, on every runner).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "mint_payload_passes_gate"
+    cwd: .
+- id: dod-omn22850-ac2
+  description: AC2 NEEDS-SPEC and NO-PARENT make zero store calls and a gate refusal makes no ticket.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "mint_needs_spec or mint_no_parent or mint_gate_refusal"
+    cwd: .
+- id: dod-omn22850-ac3
+  description: AC3 search comes before create, and an old-fill-visible match is refused.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "mint_search_before_create or mint_old_fill_visible_refused"
+    cwd: .
+- id: dod-omn22850-ac4
+  description: AC4 a call past the deadline ends the mint for the tick, the next tick uses the late issue or creates once, and a bad read-back stores nothing.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "mint_timeout_retries_next_tick or mint_readback_after_create"
+    cwd: .
+- id: dod-omn22850-ac5
+  description: 'AC5 the half of the criterion that exists in this change: a late create and a lagging search leave two tickets for the key (the orchestrator''s one-lane half is -k duplicate_ticket_one_lane in the T13 change and lands with it).'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "lagging_search_after_a_late_create"
+    cwd: .
+- id: dod-omn22850-ac6
+  description: AC6 the old fill's ticket rule drops a minted ticket and admits the controls, and the payload sets no project, label or pillar.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "floor_ticket_dropped_by_old_rule or floor_ticket_control_admitted or payload_has_no_source_fields"
+    cwd: .
+- id: dod-omn22850-ac7
+  description: 'AC7 G-NODE: both contracts load, the injected protocol resolves into omnibase_spi, the overlay key is declared and refused when missing, and the in-memory leg of the payload compute equals the in-process verdicts.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly -k "contract_loads or seams_in_spi or missing_key_refused or config_variation or floor_task_ticket_parity"
+    cwd: .
+- id: dod-omn22850-ac1-real-gate
+  description: AC1 the stubbed node_create_ticket runs the omnibase_core ticket-creation validator in process and accepts the payload; the same gate refuses a payload whose criteria lose their falsifiers.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_task_ticket tests/nodes/node_create_ticket/test_core_ticket_guard.py -q --no-cov --tb=line -p no:randomly -k "mint_payload_passes_gate or mint_gate_refusal_by_the_real_gate or core_guard"
+    cwd: .
+- id: dod-omn22850-ac7-redpanda
+  description: AC7 the Redpanda leg equals the in-memory leg on the payload compute's scenarios. The hosted verifier has no lab broker, so this unbound check belongs to the local Done gate; its receipt is in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env FLOOR_FILL_PARITY_BOOTSTRAP="$FLOOR_FILL_PARITY_BOOTSTRAP" uv run pytest tests/nodes/node_floor_task_ticket -q --no-cov -p no:randomly -m "floor_fill_parity and kafka"
+    cwd: .
+- id: dod-omn22850-integration-proof
+  description: 'The focused command exits 0 on a lab host through lab-work: the two floor-task ticket nodes'' suites and their composition. The task''s lab step is none until T8 (the live mint of one real ready floor task), so the focused command is the proof. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-focused-22850 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_task_ticket_effect src/omnimarket/nodes/node_floor_task_ticket_payload_compute tests/nodes/node_floor_task_ticket -q --no-cov
+    cwd: .
