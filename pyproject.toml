@@ -390,6 +390,7 @@ node_branch_protection_audit_effect = "omnimarket.nodes.node_branch_protection_a
 node_branch_prune_effect = "omnimarket.nodes.node_branch_prune_effect"
 node_brief_compact_compute = "omnimarket.nodes.node_brief_compact_compute"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
+node_broker_acl_overlay_render_compute = "omnimarket.nodes.node_broker_acl_overlay_render_compute"
 node_broker_acl_reconcile_effect = "omnimarket.nodes.node_broker_acl_reconcile_effect"
 node_broker_auth_refusal_reading_effect = "omnimarket.nodes.node_broker_auth_refusal_reading_effect"
 node_broker_load_reading_effect = "omnimarket.nodes.node_broker_load_reading_effect"
