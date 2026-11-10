@@ -41,7 +41,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_omn19986_local_identity_node.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/test_omn19998_local_identity_reader_optout.py -q --no-cov -n 0 -p no:randomly -k unchanged
     cwd: .
 - id: dod-omn23596-ac3-hosted
   description: 'Hosted proxy for AC3: with the opt-out in the contract, the exposure is still discovered and served, the served row is the stored row, another tenant''s row is never served, and the catalogue lists the exposure. The live read on the dev runtime is the unbound local item below, because the dev runtime can only carry this change after it merges.'
@@ -50,7 +50,15 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/projection/test_omn19986_local_identity_served.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/test_omn19998_local_identity_reader_optout.py -q --no-cov -n 0 -p no:randomly -k still_discovered
+    cwd: .
+- id: dod-omn23596-existing-served-tests
+  description: The existing node and served-exposure tests still pass with the opt-out in place.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn19986_local_identity_node.py tests/projection/test_omn19986_local_identity_served.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23596-integration-proof
   description: The pushed head ran the served-exposure tests on a lab host through the lab work runner and exited 0. The read of the topic on the running dev runtime after the merge installs is recorded in the pull request, because hosted CI cannot reach the lab.

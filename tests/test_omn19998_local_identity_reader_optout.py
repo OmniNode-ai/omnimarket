@@ -25,3 +25,22 @@ def test_bus_backed_exposure_declares_a_reasoned_reader_opt_out() -> None:
     assert isinstance(reason, str)
     assert reason.strip()
     assert "onex.snapshot.projection.local-identity.v1" in reason
+
+
+def test_opt_out_leaves_the_exposure_bus_backed_and_keyed_unchanged() -> None:
+    """The opt-out is additive: the shape the node published before is intact."""
+    projection_api = yaml.safe_load(CONTRACT.read_text())["projection_api"]
+    assert projection_api["bus_backed"] is True
+    assert projection_api["key_columns"] == ["tenant_id"]
+    assert projection_api["tenant_column"] == "tenant_id"
+    assert projection_api["consumers"] == "none"
+
+
+def test_opted_out_exposure_is_still_discovered_for_serving() -> None:
+    """With the opt-out declared the topic is still in the discovered topic map."""
+    from omnimarket.projection.discovery import build_projection_topic_map
+
+    topic = "onex.snapshot.projection.local-identity.v1"
+    assert topic in build_projection_topic_map()
+    projection_api = yaml.safe_load(CONTRACT.read_text())["projection_api"]
+    assert projection_api["consumers"] == "none"
