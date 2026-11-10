@@ -20,6 +20,7 @@ from tests.nodes.node_friction_rollup_tick_effect.tick_support import (
     observed,
     run_case,
     tick_diff,
+    timer_row,
     without_additive,
 )
 
@@ -59,7 +60,7 @@ def test_node_writes_the_timers_files_and_row(
             assert (state / "latest.md").read_text(encoding="utf-8") == tick[
                 "markdown_text"
             ]
-        assert result.status_row == tick["row"]
+        assert timer_row(result.status_row, state) == tick["row"]
 
 
 def test_recorded_fixture_exercises_trend_needs_ticket_and_missing_archive() -> None:
