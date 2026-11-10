@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Owner Map Publish Effect (OMN-23391)
+#
+# One pass on the landing controller's host: read the controller's own state (its landing leases and the cause leases that hold
+# shared reds), turn it into the owner map and publish it as the owner_map floor projection, stamped with the time it was read.
+# The floor takes the owner of each pull request from that projection and never from a copy of the file on the machine that
+# publishes the page. A state that cannot be read publishes nothing, so the projection ages and the floor reads it unknown.
+name: node_floor_owner_map_publish_effect
+contract_name: node_floor_owner_map_publish_effect
+node_name: node_floor_owner_map_publish_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Publishes the landing controller's owner map as a floor projection with the time it was read.
+
+handler:
+  module: omnimarket.nodes.node_floor_owner_map_publish_effect.handlers.handler_floor_owner_map_publish
+  class: HandlerFloorOwnerMapPublish
+  input_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  side_effects:
+    - reads the landing controller's state file under the directory the environment names
+    - publishes the owner map on the owner map snapshot topic
+    - appends a start and a success or a typed failure to the floor emission journal under the registry home
+
+input_model:
+  name: ModelFloorProjectionPublishRequest
+  module: omnimarket.models.floor_projection
+  description: The directory of the controller's state.
+output_model:
+  name: ModelFloorProjectionPublishResult
+  module: omnimarket.models.floor_projection
+  description: Whether the map was published, and when it was read.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_floor_owner_map_publish_effect, from a unit on the landing controller's host (the unit is declared in the overlays repository).
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-owner-map.v1
+externally_consumed_topics:
+  # The floor reads it through node_floor_projection_read_effect.
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-owner-map.v1
+
+runtime:
+  home_env: OMNI_HOME
+  overlay: {overlay_id: node_floor_owner_map_publish_effect, file_env: ONEX_FLOOR_OWNER_MAP_OVERLAY}
+  # The landing controller's state: <state_dir_env, else ~/state_dir_fallback>/state_name.
+  state_dir_env: LANDING_STATE_DIR
+  state_dir_fallback: .local/state/omni/landing
+  state_name: state.json
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.floor-owner-map.v1
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  piece: 17
+  chain: node_floor_owner_map_publish_effect:publish_floor_owner_map
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-23391

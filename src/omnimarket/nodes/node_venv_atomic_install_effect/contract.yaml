@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_venv_atomic_install_effect
+node_type: EFFECT_GENERIC
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Install only the packages whose locked version moved into a staging directory
+  and exchange each package's units with the live venv in place. Every exchange is
+  journalled before it runs; a failure restores every exchanged unit from the
+  journal, and a journal left by a dead pass is undone before the next pass starts.
+input_model:
+  name: ModelVenvAtomicInstallRequest
+  module: omnimarket.nodes.node_venv_atomic_install_effect.models.model_venv_atomic_install
+output_model:
+  name: ModelVenvAtomicInstallResult
+  module: omnimarket.nodes.node_venv_atomic_install_effect.models.model_venv_atomic_install
+handler:
+  module: omnimarket.nodes.node_venv_atomic_install_effect.handlers.handler_venv_atomic_install
+  class: HandlerVenvAtomicInstall
+  input_model: omnimarket.nodes.node_venv_atomic_install_effect.models.model_venv_atomic_install.ModelVenvAtomicInstallRequest
+  output_model: omnimarket.nodes.node_venv_atomic_install_effect.models.model_venv_atomic_install.ModelVenvAtomicInstallResult
+entrypoint:
+  name: NodeVenvAtomicInstallEffect
+  module: omnimarket.nodes.node_venv_atomic_install_effect
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_venv_atomic_install_effect.handlers.handler_venv_atomic_install:HandlerVenvAtomicInstall
+  handlers:
+    - operation: install
+      topic: onex.cmd.omnimarket.venv-atomic-install-requested.v1
+      handler:
+        name: HandlerVenvAtomicInstall
+        module: omnimarket.nodes.node_venv_atomic_install_effect.handlers.handler_venv_atomic_install
+terminal_event: onex.evt.omnimarket.venv-atomic-install-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.venv-atomic-install-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.venv-atomic-install-requested.v1]
+  publish_topics: [onex.evt.omnimarket.venv-atomic-install-completed.v1]
+externally_consumed_topics:
+  - onex.evt.omnimarket.venv-atomic-install-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 600000
+metadata:
+  transport_type: inmemory
+  related_tickets:
+    - OMN-22712

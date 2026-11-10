@@ -15,12 +15,12 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.model_dev_deploy_reading import (
+    ModelDevDeployReadingRequest,
+)
 from omnimarket.models.model_reading import EnumReadingVerdict as V
 from omnimarket.nodes.node_dev_deploy_reading_compute.handlers import (
     handler_dev_deploy_reading as module,
-)
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
-    ModelDevDeployReadingRequest,
 )
 from tests.nodes.node_dev_deploy_reading_compute.dev_deploy_support import (
     SHA_A,
