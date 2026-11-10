@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models of the moved ledger reader."""
 
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_reader import (
     EnumReaderEventKind,
     EnumReaderParity,
@@ -10,7 +11,6 @@ from omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_re
     ModelCommandReadRoute,
     ModelInMemoryReadRoute,
     ModelPointAnswer,
-    ModelPointQuery,
     ModelReaderEvent,
     ModelReaderEvents,
     ModelReaderOverlay,

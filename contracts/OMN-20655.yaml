@@ -84,3 +84,20 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_pr_reader_dod_closeout_sweep_compute.py::test_failing_control_a_ref_off_the_default_branch_is_still_refused -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD5"]
+  - id: "dod-omn20655-contractless-reserve-only"
+    description: "With no_contract_only_by_reserve true, contractless tickets take only the reserve slots; the failing control with the setting off fills the run with them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_contractless_selection_dod_closeout_sweep_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD1"]
+  - id: "dod-omn20655-reserve-integration-proof"
+    description: "On the lab runtime that carries this node, scope_bundle over 6 tickets of which 2 have contracts selects the 2 plus the reserve of 2 contractless, not all 6."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: |-
+          onex run-node node_dod_closeout_sweep_compute --input '{"kind": "scope_bundle", "date": "2026-11-08", "scope_candidates": [{"id": "OMN-1", "state": "In Review", "sources": ["started"], "last_closeout_comment_at": ""}, {"id": "OMN-2", "state": "In Review", "sources": ["started"], "last_closeout_comment_at": ""}, {"id": "OMN-3", "state": "In Review", "sources": ["started"], "last_closeout_comment_at": ""}, {"id": "OMN-4", "state": "In Review", "sources": ["started"], "last_closeout_comment_at": ""}, {"id": "OMN-5", "state": "In Review", "sources": ["started"], "last_closeout_comment_at": ""}, {"id": "OMN-6", "state": "In Review", "sources": ["started"], "last_closeout_comment_at": ""}], "scope_pr_state": [{"id": "OMN-1", "merged": ["omnimarket#1"], "open": [], "error": ""}, {"id": "OMN-2", "merged": ["omnimarket#1"], "open": [], "error": ""}, {"id": "OMN-3", "merged": ["omnimarket#1"], "open": [], "error": ""}, {"id": "OMN-4", "merged": ["omnimarket#1"], "open": [], "error": ""}, {"id": "OMN-5", "merged": ["omnimarket#1"], "open": [], "error": ""}, {"id": "OMN-6", "merged": ["omnimarket#1"], "open": [], "error": ""}], "scope_text_state": [], "scope_contract_state": [{"id": "OMN-1", "has_contract": true}, {"id": "OMN-2", "has_contract": true}, {"id": "OMN-3", "has_contract": false}, {"id": "OMN-4", "has_contract": false}, {"id": "OMN-5", "has_contract": false}, {"id": "OMN-6", "has_contract": false}], "max_candidates": 6}' | grep -q '"no_contract"'
+        cwd: "${OMNI_HOME}/omnimarket"
