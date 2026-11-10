@@ -1,0 +1,123 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 103 and seed -3947483339147147147 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 3978437] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DelegationShrinkRetry.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module DelegationShrinkRetry
+Starting... (2026-11-09 09:08:59)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-09 09:09:00.
+Error: Invariant DepthAtMostMax is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ deliveries = 0
+/\ depth = 0
+/\ shrank = FALSE
+/\ swaps = 0
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "first"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 0
+
+State 2: <FirstTry line 85, col 13 to line 92, col 45 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 0
+/\ shrank = FALSE
+/\ swaps = 0
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "failed"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 0
+
+State 3: <Swap line 94, col 9 to line 99, col 73 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 0
+/\ shrank = FALSE
+/\ swaps = 1
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "failed"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 0
+
+State 4: <Split line 101, col 10 to line 105, col 42 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 1
+/\ shrank = TRUE
+/\ swaps = 1
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "units"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 0
+
+State 5: <RunUnits line 107, col 13 to line 112, col 70 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 1
+/\ shrank = TRUE
+/\ swaps = 1
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "unitfail"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 2
+
+State 6: <Resplit line 114, col 12 to line 117, col 55 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 2
+/\ shrank = TRUE
+/\ swaps = 1
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "units"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 0
+
+State 7: <RunUnits line 107, col 13 to line 112, col 70 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 2
+/\ shrank = TRUE
+/\ swaps = 1
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "unitfail"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 2
+
+State 8: <Resplit line 114, col 12 to line 117, col 55 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 3
+/\ shrank = TRUE
+/\ swaps = 1
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "units"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 0
+
+50 states generated, 46 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 2).
+Finished in 00s at (2026-11-09 09:09:00)
+exit=12

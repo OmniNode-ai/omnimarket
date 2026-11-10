@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The broker lag read keeps reporting when the overlay has no effects_held block (OMN-23304).
+"""The broker lag read keeps reporting when the overlay has no effects_held block (OMN-23340).
 
 On 2026-11-09 the effects-held condition (OMN-23106) made ``effects_held`` a required overlay key.
 The deployed overlay had no such block, so every scheduled broker-lag run exited 1 with
