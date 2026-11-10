@@ -10,19 +10,19 @@ rules routes the same facts to alert-only, proving the verdict depends on the ru
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision import (
+from omnimarket.events.plugin_revision import (
     EnumPluginDriftVerdict,
     ModelPluginProbeFacts,
+)
+from omnimarket.events.plugin_rules import (
+    EnumPluginRulesOutcome,
+    ModelPluginRulesResult,
 )
 from omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.handlers.handler_plugin_revision_check import (
     HandlerHostDriftPluginRevisionCheck,
 )
 from omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.models.model_plugin_revision_check import (
     EnumPluginRevisionCheckOutcome,
-)
-from omnimarket.nodes.node_host_drift_plugin_rules_effect.models.model_plugin_rules import (
-    EnumPluginRulesOutcome,
-    ModelPluginRulesResult,
 )
 
 NAME = "onex-overlays@omninode-internal"

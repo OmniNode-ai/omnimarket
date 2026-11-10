@@ -8,14 +8,14 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules import (
-    HandlerHostDriftPluginRules,
-)
-from omnimarket.nodes.node_host_drift_plugin_rules_effect.models.model_plugin_rules import (
+from omnimarket.events.plugin_rules import (
     EnumPluginRulesOutcome as Outcome,
 )
-from omnimarket.nodes.node_host_drift_plugin_rules_effect.models.model_plugin_rules import (
+from omnimarket.events.plugin_rules import (
     ModelPluginRulesRequest,
+)
+from omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules import (
+    HandlerHostDriftPluginRules,
 )
 
 

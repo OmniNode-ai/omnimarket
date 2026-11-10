@@ -10,13 +10,18 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_plugin_revision import (
-    HandlerHostDriftPluginRevision,
-)
-from omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision import (
+from omnimarket.events.plugin_revision import (
     ModelPluginProbeFacts,
     ModelPluginRevisionFacts,
     ModelPluginRevisionVerdict,
+)
+from omnimarket.events.plugin_rules import (
+    EnumPluginRulesOutcome,
+    ModelPluginRulesRequest,
+    ModelPluginRulesResult,
+)
+from omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_plugin_revision import (
+    HandlerHostDriftPluginRevision,
 )
 from omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.models.model_plugin_revision_check import (
     EnumPluginRevisionCheckOutcome,
@@ -24,11 +29,6 @@ from omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.models.model_
 )
 from omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules import (
     HandlerHostDriftPluginRules,
-)
-from omnimarket.nodes.node_host_drift_plugin_rules_effect.models.model_plugin_rules import (
-    EnumPluginRulesOutcome,
-    ModelPluginRulesRequest,
-    ModelPluginRulesResult,
 )
 
 

@@ -14,6 +14,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.events.plugin_revision import (
+    EnumPluginDriftVerdict,
+    ModelPluginRevisionFacts,
+    ModelPluginSyncRule,
+)
+from omnimarket.events.plugin_rules import (
+    ModelPluginRulesRequest,
+)
 from omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers import (
     handler_plugin_revision as handler_module,
 )
@@ -21,16 +29,8 @@ from omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_p
     HandlerHostDriftPluginRevision,
     rule_for,
 )
-from omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision import (
-    EnumPluginDriftVerdict,
-    ModelPluginRevisionFacts,
-    ModelPluginSyncRule,
-)
 from omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules import (
     HandlerHostDriftPluginRules,
-)
-from omnimarket.nodes.node_host_drift_plugin_rules_effect.models.model_plugin_rules import (
-    ModelPluginRulesRequest,
 )
 
 OVERLAYS = "onex-overlays@omninode-internal"

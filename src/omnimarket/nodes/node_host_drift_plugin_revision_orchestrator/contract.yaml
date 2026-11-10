@@ -17,14 +17,14 @@ description: Compose the plugin rules effect and the revision compute into one h
   revision check (OMN-20689).
 input_model:
   name: ModelPluginProbeFacts
-  module: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision
+  module: omnimarket.events.plugin_revision
 output_model:
   name: ModelPluginRevisionChecked
   module: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.models.model_plugin_revision_check
 handler:
   module: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.handlers.handler_plugin_revision_check
   class: HandlerHostDriftPluginRevisionCheck
-  input_model: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision.ModelPluginProbeFacts
+  input_model: omnimarket.events.plugin_revision.ModelPluginProbeFacts
   output_model: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.models.model_plugin_revision_check.ModelPluginRevisionChecked
 handler_routing:
   routing_strategy: payload_type_match
@@ -34,7 +34,7 @@ handler_routing:
       module: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.handlers.handler_plugin_revision_check
     event_model:
       name: ModelPluginProbeFacts
-      module: omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision
+      module: omnimarket.events.plugin_revision
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.host-drift-plugin-revision-check-requested.v1
