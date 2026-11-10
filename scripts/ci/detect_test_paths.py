@@ -9,6 +9,13 @@ import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
+    HandlerTestSelectionSelector,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
+    ModelSelectorRequest,
+)
 from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 from scripts.ci.test_selection_models import (
     EnumFullSuiteReason,
@@ -191,14 +198,19 @@ def compute_selection(
     # docstring on ModelAdjacencyMap.always_selected_paths.
     if not any(path == TEST_PREFIX for path in selected):
         selected = sorted(set(selected) | set(config.always_selected_paths))
-    split_count = _split_count_for(selected)
+    # OMN-23296: shard count and weight bound come from estimated test time.
+    decision = HandlerTestSelectionSelector(None, load_policy()).handle(
+        ModelSelectorRequest(selected_paths=tuple(selected), repo_root=str(root))
+    )
+    if decision.split_count is None:
+        return _full_suite(EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY)
 
     return ModelTestSelection(
         selected_paths=selected,
-        split_count=split_count,
+        split_count=decision.split_count,
         is_full_suite=False,
         full_suite_reason=None,
-        matrix=list(range(1, split_count + 1)),
+        matrix=list(range(1, decision.split_count + 1)),
     )
 
 
@@ -210,19 +222,6 @@ def _full_suite(reason: EnumFullSuiteReason) -> ModelTestSelection:
         full_suite_reason=reason,
         matrix=list(range(1, 21)),
     )
-
-
-def _split_count_for(selected_paths: list[str]) -> int:
-    n = len(selected_paths)
-    if n <= 2:
-        return 1
-    if n <= 5:
-        return 2
-    if n <= 10:
-        return 3
-    if n <= 16:
-        return 4
-    return 5
 
 
 def main(argv: list[str] | None = None) -> int:

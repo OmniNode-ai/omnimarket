@@ -35,6 +35,17 @@ handler_routing:
         name: HandlerLabCheckRunEffect
         module: omnimarket.nodes.node_lab_check_run_effect.handlers.handler_lab_check_run_effect
 
+# Not a runtime-dispatched handler: the J7 run (OMN-23420) takes the ledger source, the emission sink, the rule, the
+# overlay and the twin rigs as constructor parameters, so handler_routing would quarantine it at boot. It is the join's
+# caller: it runs from the publish cycle's join_j7 step (runtime_join_j7), in process, and answers each piece 7 golden
+# reading with a send past a stop whose lab check posts on a test head. Bound here so the contract owns it (the J6 run
+# in node_gate_store_effect is bound the same way).
+cli_handlers:
+  - operation: join_j7_run
+    handler:
+      name: HandlerLabCheckRunJoinJ7Run
+      module: omnimarket.nodes.node_lab_check_run_effect.handlers.handler_lab_check_run_join_j7_run
+
 # HandlerLabCheckRunEffect takes the overlay, the check-run API, the emission sink, an http transport and a clock as
 # constructor parameters; each defaults to the backend the overlay names.
 

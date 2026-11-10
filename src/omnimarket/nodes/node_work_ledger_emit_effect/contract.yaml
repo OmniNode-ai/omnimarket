@@ -37,6 +37,13 @@ output_model:
   module: omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_result
   description: "Whether the typed event is durable, its topic, or the typed refusal."
 
+# OMN-23152, rebuild plan 4.3 step 1: a row reaches the bus only after the judge (the work-ledger append
+# effect) accepted it and gave it a ledger_seq. The emit refuses a row that states no sequence, or
+# whose sequence the judge's acceptance record does not hold, with a typed refusal and nothing spooled.
+judge_gate:
+  require_acceptance: true
+  refusal_prefix: "unjudged-row-refused"
+
 descriptor:
   node_archetype: effect
   purity: effectful

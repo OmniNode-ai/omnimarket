@@ -5,7 +5,8 @@
 Before this the emit read ``KAFKA_BOOTSTRAP_SERVERS`` through the shared emit effect, so on a host whose env
 file holds no broker it answered ``KeyError('KAFKA_BOOTSTRAP_SERVERS')``. Each test drives the node's
 production wiring (``HandlerWorkLedgerEmit()`` with no injected emitter) over real overlay and lane files in
-a scratch config root. The first test fails at the merge base: the module it patches does not exist there,
+a scratch config root; the judge gate is the open test gate, since these tests are about the broker, not the gate
+(its own proof is test_emit_only_after_judge_accepts.py). The first test fails at the merge base: the module it patches does not exist there,
 and without the patch the base raises the KeyError.
 """
 
@@ -27,6 +28,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 from tests.unit.nodes.node_work_ledger_emit_effect.declared_broker_support import (
     OpenInmemoryBus,
     install_emit_lane,
@@ -46,7 +48,7 @@ async def test_the_emit_dials_the_declared_lane_with_no_broker_variable(
     bus = OpenInmemoryBus()
     route_declared_bus(monkeypatch, bus)
 
-    result = HandlerWorkLedgerEmit().handle(
+    result = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE).handle(
         ModelWorkLedgerEmitRequest(row=rows["CLAIM"])
     )
 
@@ -62,7 +64,7 @@ def test_a_missing_declaration_is_a_typed_refusal_naming_the_overlay(
 ) -> None:
     install_emit_lane(tmp_path, monkeypatch, None)
 
-    result = HandlerWorkLedgerEmit().handle(
+    result = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE).handle(
         ModelWorkLedgerEmitRequest(row=rows["CLAIM"])
     )
 
@@ -82,7 +84,7 @@ def test_the_ambient_broker_variable_never_selects_the_broker(
     install_emit_lane(tmp_path, monkeypatch, None)
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", loopback_broker())
 
-    result = HandlerWorkLedgerEmit().handle(
+    result = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE).handle(
         ModelWorkLedgerEmitRequest(row=rows["CLAIM"])
     )
 
@@ -123,7 +125,7 @@ def test_a_test_process_never_dials_a_declared_broker_that_is_not_loopback(
     bus = OpenInmemoryBus()
     route_declared_bus(monkeypatch, bus)
 
-    result = HandlerWorkLedgerEmit().handle(
+    result = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE).handle(
         ModelWorkLedgerEmitRequest(row=rows["CLAIM"])
     )
 

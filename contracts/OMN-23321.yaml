@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23321
+title: Piece 7 measure_windows op and the andon_threshold overlay
+summary: node_andon_threshold_compute measures each census class's rolling 24 hour windows from recorded friction (operation measure_windows), the per-class threshold is read from the andon_threshold overlay with its hash and recalibration date, and a planted friction burst stops only the piece that originated it in one evaluation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23321-measure-windows
+  statement: Each census class's window counts are computed from recorded friction, and the per-class threshold is read from the overlay with its hash and recalibration date.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the measure_windows op computes each census class''s window from recorded friction, and the andon threshold per class is read from the overlay with its hash and recalibration date -- falsifier: uv run pytest tests -q -k measure_windows in omnimarket, failing with the overlay value removed'
+- id: req-omn23321-burst-origin
+  statement: A planted friction burst stops only its originating piece within one evaluation.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a planted friction burst stops only its originating piece within one tick -- falsifier: uv run pytest tests -q -k andon_burst_stops_origin, failing when the stop spreads to another piece'
+evidence_requirements:
+- kind: tests
+  description: The node tests and the criteria tests pass
+  command: uv run --frozen pytest tests/nodes/node_andon_threshold_compute src/omnimarket/nodes/node_andon_threshold_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23321-measure-windows
+  description: Measures the rolling windows from recorded friction, freezes them into the andon_threshold overlay text, loads the overlay with the node's own loader and reads the thresholds, the hash and the recalibration date; a copy with a class value removed and the old hash is refused, and an absent overlay is refused.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_andon_threshold_compute -q --no-cov -k measure_windows
+    cwd: .
+- id: dod-omn23321-burst-origin
+  description: Plants a burst of one class in one piece and reads that the decision stops that piece alone and leaves the others admitted; two pieces sharing the class, each under the threshold, both stay admitted (the failing control for a stop that spreads).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_andon_threshold_compute -q --no-cov -k andon_burst_stops_origin
+    cwd: .
+- id: dod-omn23321-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23321 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_andon_threshold_compute src/omnimarket/nodes/node_andon_threshold_compute -q --no-cov
+    cwd: .

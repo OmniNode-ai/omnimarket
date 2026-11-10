@@ -26,6 +26,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 from tests.unit.nodes.node_projection_work_ledger.test_work_ledger_writer import (
     _FakeDb,
     _writer,
@@ -56,7 +57,9 @@ async def _emit(
     install_emit_lane(tmp_path, monkeypatch, {"type": "kafka", "lane": "dev"})
     bus = OpenInmemoryBus()
     route_declared_bus(monkeypatch, bus)
-    result = HandlerWorkLedgerEmit().handle(ModelWorkLedgerEmitRequest(row=row))
+    result = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE).handle(
+        ModelWorkLedgerEmitRequest(row=row)
+    )
     assert result.accepted is True
     assert result.topic is not None
     published = await bus.published(result.topic)
