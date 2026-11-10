@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_start_path_drill_effect
+version: 1.0.0
+description: Enumerates every start path in a census, drives a planted refused start and a control start through the start-admission effect on each, and appends one reading row with the count refused and admitted plus the observe-log rows.
+pack: operator_tooling
+node_role: effect
+display_name: Start Path Drill Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_start_path_drill_effect: omnimarket.nodes.node_start_path_drill_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- omnibase-infra>=0.38.3
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- reading
+- drill
