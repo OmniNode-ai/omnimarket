@@ -66,6 +66,7 @@ def write_legacy_base(out_dir: Path) -> None:
     """A snapshot and sidecar as the node wrote them before it held the parts: no ``attachments``, no ``children``."""
     doc = {
         "operator": VIEWER,
+        "ancestors": [],
         "issues": [
             {
                 "id": f"OMN-{n}",
