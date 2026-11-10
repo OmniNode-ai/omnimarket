@@ -71,6 +71,12 @@ class ModelRemoteLaneStartSettings(BaseModel):
     # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin
     # directory); "" adds nothing. The runner script exports the same prefix before each host step.
     host_path_prefix: str
+    # The host's Claude token pool, drawn through node_claude_token_pool_effect (OMN-23425): the runner exports the
+    # first unlimited pool token as the engine's login; a lane that skipped the pool ran on the host login, which
+    # may be at its limit while a pool label is not.
+    login_pool_module: str = Field(min_length=1)
+    login_pool_python_relative: str = Field(min_length=1)
+    login_draw_timeout_seconds: float = Field(gt=0)
     ledger_append_argv: tuple[str, ...] = Field(min_length=1)
     # OMN-22848: "bus" on a host whose ledger of record is the bus, where a direct
     # file append from anyone but the ledger serve is refused; "local" otherwise.

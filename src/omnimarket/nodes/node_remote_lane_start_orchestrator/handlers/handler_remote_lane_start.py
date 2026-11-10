@@ -22,6 +22,9 @@ from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transpo
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
 )
+from omnimarket.nodes.node_remote_lane_start_effect.models.model_engine_login import (
+    ModelEngineLoginPool,
+)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     ModelRemoteLaneStartRequest,
     ModelRemoteLaneStartResult,
@@ -98,6 +101,12 @@ def build_real(
             call_timeout_seconds=settings.host_call_timeout_seconds,
             detach_argv=settings.detach_argv,
             path_prefix=settings.host_path_prefix,
+            login_pool=ModelEngineLoginPool(
+                module=settings.login_pool_module,
+                python_relative=settings.login_pool_python_relative,
+                roots=settings.registry_root_candidates,
+                draw_timeout_seconds=settings.login_draw_timeout_seconds,
+            ),
         )
         return RemoteLaneStartOrchestrator(
             settings=settings,
@@ -105,6 +114,7 @@ def build_real(
             ledger=ledger,
             ledger_reader=ledger_file,
             host=HandlerRemoteLaneStartEffect(transport),
+            login=transport,
             receipts=FileReceiptSink(settings.receipt_dir),
             echo=echo,
             sleep=sleep,

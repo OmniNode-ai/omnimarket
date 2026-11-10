@@ -49,6 +49,12 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.nodes.node_remote_lane_start_effect.models.model_engine_login import (
+    LABEL_PATTERN,
+    ModelEngineLoginDraw,
+    ModelEngineLoginPool,
+)
+
 #: What every provisioning step of the protocol answers from this transport: the frozen runner
 #: script still performs these host steps, so the node does not issue them yet (OMN-22848).
 STEP_NOT_RUN_BY_NODE = "{op}: not run by the ssh transport; the frozen onex_remote_lane script still performs this step"
@@ -116,6 +122,19 @@ class SubprocessHostCommandExecutor:
 _PATH_PREFIX = re.compile(r"(?:[A-Za-z0-9_./:-]|\$[A-Za-z_][A-Za-z0-9_]*)*")
 
 
+#: The pool node's status line ends ``label=<label>`` for the token it chose; a refusal ends ``chosen=none``.
+_DRAWN_LABEL = re.compile(r"(?:^|\s)label=(" + LABEL_PATTERN[1:-1] + r")\s*$")
+
+
+def pool_python_sh(pool: ModelEngineLoginPool) -> str:
+    """Shell that sets ``CPY`` to the first registry root's dispatch interpreter (empty when none), as the runner does."""
+    tries = " ".join(shlex.quote(r.rstrip("/")) for r in pool.roots)
+    return (
+        f'CPY=""; for r in {tries}; do '
+        f'if [ -x "$r/{pool.python_relative}" ]; then CPY="$r/{pool.python_relative}"; break; fi; done; '
+    )
+
+
 class SshLaneHostTransport:
     """Prepare, start, read and stop a lane's engine on a host with one shell script per call."""
 
@@ -129,6 +148,7 @@ class SshLaneHostTransport:
         call_timeout_seconds: float,
         detach_argv: Sequence[str],
         path_prefix: str = "",
+        login_pool: ModelEngineLoginPool | None = None,
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
         if not _PATH_PREFIX.fullmatch(path_prefix):
@@ -144,6 +164,7 @@ class SshLaneHostTransport:
         self._root = host_run_root.rstrip("/")
         self._detach = " ".join(shlex.quote(a) for a in detach_argv)
         self._timeout = call_timeout_seconds
+        self._pool = login_pool
         self._runner = runner or SubprocessHostCommandExecutor()
 
     def run_dir(self, run_id: str) -> str:
@@ -197,6 +218,38 @@ class SshLaneHostTransport:
             prepared=True, registry_root=root, workdir=workdir
         )
 
+    def draw_login(self, host: ModelLaneHostRef) -> ModelEngineLoginDraw:
+        """Ask the host's token pool node which login the engine would run on; the answer is a label, never a value.
+
+        The pool node's ``resolve`` writes the chosen token to stdout and its status line, with the label,
+        to stderr. Here stdout goes to /dev/null on the host and only the last stderr line comes back, so
+        no token crosses the ssh session or this process. The pool skips limited and revoked labels in its
+        draw order; a pool that resolves nothing leaves the host login, as the runner's fallback does.
+        """
+        if self._pool is None:
+            return ModelEngineLoginDraw(state="none", detail="no login pool configured")
+        script = (
+            f"{self._path}{pool_python_sh(self._pool)}"
+            f'if [ -z "$CPY" ]; then echo "POOL-RC=none"; exit 0; fi; '
+            f'line=$("$CPY" -m {shlex.quote(self._pool.module)} resolve 2>&1 >/dev/null); rc=$?; '
+            f'echo "POOL-RC=$rc"; printf "%s\\n" "$line" | tail -n 1'
+        )
+        result = self._sh(host, script, self._pool.draw_timeout_seconds)
+        lines = result.stdout.strip().splitlines()
+        if result.exit_code != 0 or len(lines) < 2 or lines[-2] != "POOL-RC=0":
+            return ModelEngineLoginDraw(
+                state="none",
+                detail=(lines[-2] if len(lines) >= 2 else f"exit {result.exit_code}")[
+                    :120
+                ],
+            )
+        found = _DRAWN_LABEL.search(lines[-1])
+        if found is None:
+            return ModelEngineLoginDraw(
+                state="none", detail="no label in the pool line"
+            )
+        return ModelEngineLoginDraw(label=found.group(1), state="drawn")
+
     def start_engine_detached(
         self, request: ModelLaneStartEngineRequest
     ) -> ModelLaneStartEngineResult:
@@ -204,8 +257,18 @@ class SshLaneHostTransport:
         q = shlex.quote
         env = " ".join(q(f"{k}={v}") for k, v in request.environment)
         engine = " ".join(q(a) for a in request.engine_argv)
+        # The engine's login is drawn by the pool node on the host, in the engine's own shell: the token
+        # is exported there and appears in no command line, as the runner exports it.
+        login = (
+            "unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN; "
+            + pool_python_sh(self._pool)
+            + f'if [ -n "$CPY" ] && CP=$("$CPY" -m {q(self._pool.module)} resolve 2>/dev/null); '
+            'then export CLAUDE_CODE_OAUTH_TOKEN="$CP"; fi; unset CP; '
+            if self._pool is not None
+            else ""
+        )
         inner = (
-            f"{self._path}cd {q(request.workdir)} || exit 126; "
+            f"{self._path}cd {q(request.workdir)} || exit 126; {login}"
             f"env {env} {engine} > {q(run + '/engine.log')} 2>&1 < /dev/null; "
             f"echo $? > {q(run + '/exit.tmp')}; mv {q(run + '/exit.tmp')} {q(run + '/exit')}"
         )
@@ -376,4 +439,5 @@ __all__ = [
     "ProtocolHostCommandRunner",
     "SshLaneHostTransport",
     "SubprocessHostCommandExecutor",
+    "pool_python_sh",
 ]

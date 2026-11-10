@@ -15,10 +15,15 @@ requirements:
     statement: 'AC2: the overlay key remote_lane_start.host_path_prefix is required, an empty string adds nothing, and the ssh transport exports the prefix before the prepare and start scripts and refuses a prefix with characters beyond path characters and $NAME references -- falsifier: `-k ssh_transport_path_prefix`.'
   - id: AC3
     statement: 'AC3: the seam between the floor fill orchestrator and the lane start entry is pinned: every flag the fill passes is accepted by the entry, the fill fills exactly four placeholders, and the six flags the fill does not supply are the pinned gap, and the CLAIM and TERMINAL carry the worktree cell the ledger grammar requires -- falsifier: `-k "fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane"`.'
+  - id: AC4
+    statement: 'AC4: the lane start draws its engine login through the host token pool node (resolve, in draw order, skipping limited labels) as the runner does, exports it only inside the engine shell, and records the label drawn (never a token value) on the CLAIM as login=<label> -- falsifier: the file test_remote_lane_start_pool_login.py, red when a limited label is first in the pool and the draw does not skip it.'
 evidence_requirements:
 - kind: tests
   description: The focused tests of both lane start nodes.
   command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder or ssh_transport_path_prefix or fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane'
+- kind: tests
+  description: The pool login tests, run against the real pool node under a real shell.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
@@ -50,6 +55,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane'
+    cwd: .
+- id: dod-OMN-23425-ac4
+  description: The draw skips a limited label first in the pool, the engine runs on the drawn token with none on any command line, and the CLAIM carries login=<label>.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
     cwd: .
 - id: dod-OMN-23425-integration-proof
   description: One real lane was started on a lab host by the start nodes (the entry run through onex run-node) and its CLAIM row, which carries the node's claim text, reads back from the work ledger.

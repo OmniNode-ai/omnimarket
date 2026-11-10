@@ -72,6 +72,9 @@ from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_plac
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
 )
+from omnimarket.nodes.node_remote_lane_start_effect.protocols.protocol_engine_login_draw import (
+    ProtocolEngineLoginDraw,
+)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     EXIT_CODES,
     EnumRemoteLaneStartOutcome,
@@ -173,6 +176,7 @@ class RemoteLaneStartOrchestrator:
         ledger: HandlerWorkLedgerAppendEffect,
         ledger_reader: ProtocolLedgerReader,
         host: HandlerRemoteLaneStartEffect,
+        login: ProtocolEngineLoginDraw | None = None,
         placement: HandlerRemoteLanePlacement | None = None,
         close: HandlerRemoteLaneResult | None = None,
         receipts: ProtocolReceiptSink | None = None,
@@ -187,6 +191,7 @@ class RemoteLaneStartOrchestrator:
         self._ledger = ledger
         self._reader = ledger_reader
         self._host = host
+        self._login = login
         self._placement = placement or HandlerRemoteLanePlacement()
         self._close = close or HandlerRemoteLaneResult()
         self._receipts = receipts or InMemoryReceiptSink()
@@ -272,6 +277,22 @@ class RemoteLaneStartOrchestrator:
         if request.escalation_reason:
             cells.append(f"escalation_reason={request.escalation_reason}")
         return cells
+
+    def _login_cells(self, host: ModelLaneHostRef) -> list[str]:
+        """The CLAIM's ``login=`` cell: the label the host's token pool node draws for the engine, or ``none``.
+
+        The draw is the pool node's own ``resolve`` (first unlimited label in draw order, limited and revoked
+        labels skipped); the cell carries the label only, never a token value. A start with no draw wired
+        (the in-memory default) writes no cell.
+        """
+        if self._login is None:
+            return []
+        drawn = self._login.draw_login(host)
+        self._say(
+            f"login host={host.name} label={drawn.label or 'none'}"
+            + (f" ({drawn.detail})" if drawn.detail else "")
+        )
+        return [f"login={drawn.label or 'none'}"]
 
     def _worktree_path(self, request: ModelRemoteLaneStartRequest) -> str:
         return f"{self._s.host_run_root.rstrip('/')}/{request.run_id}/{request.repo}"
@@ -475,6 +496,7 @@ class RemoteLaneStartOrchestrator:
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
             self._worktree_cell(request),
+            *self._login_cells(host_ref),
         ]
         claim_row, appended = self._append(
             request,

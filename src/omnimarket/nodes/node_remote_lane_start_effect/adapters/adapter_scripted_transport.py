@@ -15,6 +15,7 @@ from typing import ClassVar, Literal
 from omnibase_spi.contracts.services import (
     ModelLaneChangeList,
     ModelLaneCloseoutCells,
+    ModelLaneHostRef,
     ModelLaneHostStepRequest,
     ModelLaneHostStepResult,
     ModelLaneLedgerOutboxRows,
@@ -37,6 +38,10 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_remote_lane_start_effect.models.model_engine_login import (
+    ModelEngineLoginDraw,
+)
+
 #: The calls that start an engine on a host; the CLAIM must precede the first of them.
 ENGINE_START_CALLS = ("prepare_worktree", "start_engine_detached")
 
@@ -55,6 +60,27 @@ class ModelScriptedTransportScript(BaseModel):
     log_lines: tuple[str, ...] = ()
     stop_confirmed: bool = True
     stop_exit_code: int | None = 143
+
+
+class ScriptedLoginDraw:
+    """The in-memory engine login draw: answers the labels it was given in order, then ``none``; logs each draw."""
+
+    synchronous_execution: ClassVar[bool] = True
+
+    def __init__(
+        self, labels: tuple[str | None, ...], calls: list[str] | None = None
+    ) -> None:
+        self._labels = list(labels)
+        self.calls: list[str] = calls if calls is not None else []
+
+    def draw_login(self, host: ModelLaneHostRef) -> ModelEngineLoginDraw:
+        self.calls.append(f"host:draw_login host={host.name}")
+        label = self._labels.pop(0) if self._labels else None
+        if label is None:
+            return ModelEngineLoginDraw(
+                state="none", detail="scripted: no usable token"
+            )
+        return ModelEngineLoginDraw(label=label, state="drawn")
 
 
 class ScriptedLaneHostTransport:

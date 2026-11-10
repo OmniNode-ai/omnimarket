@@ -24,6 +24,11 @@ remote_lane_start:
   detach_argv: [setsid]
   # Put before the host's PATH in every host script (a non-interactive ssh shell lacks the user bin directory).
   host_path_prefix: "$HOME/.local/bin:/usr/local/bin"
+  # The host's Claude token pool: the engine's login is drawn through this node on the placed host (first
+  # unlimited label in the pool's draw order), and the label drawn rides on the CLAIM as login=<label>.
+  login_pool_module: example.token_pool_node
+  login_pool_python_relative: .example-venv/bin/python
+  login_draw_timeout_seconds: 30
   # The ledger writer's argv prefix; the ledger path from --ledger follows it.
   ledger_append_argv: [example-ledger-writer]
   # bus where the host's ledger of record is the bus (a direct file append is refused there).
