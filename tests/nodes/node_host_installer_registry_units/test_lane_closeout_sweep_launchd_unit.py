@@ -6,15 +6,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     load_units,
 )
 from tests.nodes.node_host_installer_registry_units.test_log_directory import (
+    BREW_PYTHON,
     READER,
     READER_ENTRY,
-    brew_python,  # noqa: F401  (autouse fixture, re-exported so it applies here)
     render,
 )
+
+
+@pytest.fixture(autouse=True)
+def brew_python(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
+        lambda path: path == BREW_PYTHON,
+    )
+
 
 SWEEP = "lane-closeout-sweep"
 SWEEP_ENTRY = "src/omnimarket/nodes/node_lane_closeout_sweep_effect/runtime_lane_closeout_sweep.py"
