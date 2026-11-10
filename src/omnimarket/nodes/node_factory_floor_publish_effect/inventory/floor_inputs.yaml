@@ -268,6 +268,15 @@ inputs:
     producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
+  - id: delegation_route_reads
+    order: 20
+    class: file
+    where: .onex_state/floor-delegation/route-reads.json
+    read_by: [node_floor_delegation_effect]
+    steps: [delegation_tracker]
+    producer: node_floor_delegation_effect itself (the routes stage writes the delegations per hour by route between cycles)
+    replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-route-reads.v1, status: new}
+    ticket: OMN-23381
   - id: beta_board_reads
     order: 21
     class: file
@@ -289,12 +298,12 @@ inputs:
   - id: join_j7_lab_check_run
     order: 21
     class: command
-    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (answers piece 7's golden stop drill readings in an in-memory twin)
+    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the ledger source and the lab check run overlay, overlay_join_j7.yaml)
     read_by: [node_lab_check_run_effect]
     steps: [join_j7]
-    producer: piece 7's stop drill readings and the lab check's in-memory twin
+    producer: the lab check run overlay and the ledger's golden stop drill readings
     replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
-    ticket: NEED-CHILD-TICKET:floor-join-j7-projection
+    ticket: OMN-23420
   - id: network_reads
     order: 21
     class: http
