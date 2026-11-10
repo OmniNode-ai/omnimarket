@@ -69,6 +69,10 @@ event_bus:
     - "onex.intent.platform.runtime-tick.v1"
   publish_topics:
     - "onex.evt.omnimarket.work-state-projected.v1"
+  # No node in the graph consumes the projected event yet: the floor and the lab fill read the projection file. The event is the
+  # runtime's observable proof that the projection ran and what it could not read; a consuming node is a follow-up of OMN-22935.
+  externally_consumed_topics:
+    - "onex.evt.omnimarket.work-state-projected.v1"
 
 published_events:
   - event_type: ModelWorkStateProjectedEvent
