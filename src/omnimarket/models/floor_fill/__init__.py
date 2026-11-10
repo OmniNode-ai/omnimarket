@@ -83,6 +83,11 @@ from omnimarket.models.floor_fill.model_floor_fill_state import (
     ModelFloorFillState,
     line_and_task,
 )
+from omnimarket.models.floor_fill.model_start_criterion import (
+    ModelFloorStartCriterion,
+    ModelStartCriterionParse,
+    ModelStartPrerequisite,
+)
 
 __all__: list[str] = [
     "EnumFloorFillDropReason",
@@ -123,7 +128,10 @@ __all__: list[str] = [
     "ModelFloorFillTicketStored",
     "ModelFloorFillUnticketable",
     "ModelFloorRecordRead",
+    "ModelFloorStartCriterion",
     "ModelFloorTaskPayloadVerdict",
+    "ModelStartCriterionParse",
+    "ModelStartPrerequisite",
     "ModelStoppedLaneReport",
     "line_and_task",
     "line_of_key",

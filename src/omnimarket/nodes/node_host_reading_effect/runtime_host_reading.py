@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import inspect
 import os
+import signal
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -217,6 +218,12 @@ def _join_j2(arguments: Sequence[str]) -> int:
     parser.add_argument("--kafka-bootstrap", default=None)
     parser.add_argument("--workspace-root", default=os.environ.get("OMNI_HOME"))
     parser.add_argument("--host", action="append", default=None)
+    parser.add_argument(
+        "--deadline-seconds",
+        type=float,
+        default=None,
+        help="the bound on the hosts' runs, inside the step's own time limit: a host still open at it closes its chains typed",
+    )
     args = parser.parse_args(list(arguments))
     if args.bus == "inmemory":
         sys.stderr.write(
@@ -240,6 +247,10 @@ def _join_j2(arguments: Sequence[str]) -> int:
     )
 
     async def main() -> tuple[bool, list[str]]:
+        # A terminate cancels the run, so every host closes its open chains typed before the process ends.
+        run = asyncio.current_task()
+        if run is not None:
+            asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, run.cancel)
         async with open_lab_run_bus(
             bus=cast(BusKind, args.bus),
             lane=args.bus_lane,
@@ -261,7 +272,7 @@ def _join_j2(arguments: Sequence[str]) -> int:
                     caller=caller,
                     sink=JsonlEmissionSink(Path(home) / join.emission_journal_relpath),
                     backend="real" if args.bus == "kafka" else "in_memory",
-                ).run_hosts(hosts)
+                ).run_hosts(hosts, deadline_seconds=args.deadline_seconds)
             finally:
                 await caller.stop()
         lines = [
@@ -281,6 +292,11 @@ def _join_j2(arguments: Sequence[str]) -> int:
         ok, lines = asyncio.run(main())
     except LabRunBusError as exc:
         sys.stderr.write(f"J2-BUS-FAILED {exc}\n")
+        return 1
+    except asyncio.CancelledError:
+        sys.stderr.write(
+            "J2-TERMINATED the run was cancelled; its open chains were closed typed\n"
+        )
         return 1
     sys.stdout.write("\n".join(lines) + "\n")
     return 0 if ok else 1

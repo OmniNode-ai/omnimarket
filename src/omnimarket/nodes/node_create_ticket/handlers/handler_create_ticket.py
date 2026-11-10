@@ -58,7 +58,6 @@ from omnimarket.handlers.handler_lane_intake import (
     ModelLaneIntakePolicy,
     declared_lane,
     lane_caller,
-    read_lane_intake_policy,
     resolve_label_id,
     stamp_description,
 )
@@ -679,12 +678,22 @@ class HandlerCreateTicket:
     def _get_guard(self, lane: str = "") -> TicketGuardProtocol:
         if self._injectable_guard is not None:
             return self._injectable_guard
-        return InstalledPluginTicketGuard(locate_ticket_guard(), lane)
+        # The gate is the omnibase_core validator, run in process (OMN-22850); it needs no
+        # installed plugin. ``lane`` is the filing lane's identity ("" declares none).
+        from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+            CoreTicketGuard,
+        )
+
+        return CoreTicketGuard(lane)
 
     def _get_lane_intake_policy(self) -> ModelLaneIntakePolicy:
         if self._injectable_lane_intake_policy is not None:
             return self._injectable_lane_intake_policy
-        return read_lane_intake_policy(locate_ticket_guard())
+        from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+            core_lane_intake_policy,
+        )
+
+        return core_lane_intake_policy()
 
     def _assert_lane_actor(self, surface: str) -> None:
         """Refuse a write whose credential is not the declared lane actor (OMN-20355).

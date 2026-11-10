@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Broker Authentication Refusal Reading Effect (OMN-19044, AC-4)
+#
+# Reads the dev broker's own log for authentication refusals (kafka_authentication_exception: a client that
+# dials a SASL listener and sends a request before it authenticates) over a window, and appends one reading
+# row. Before this, such a client surfaced only in the broker's own warnings. The window, the needle and the
+# bar are overlay values. It writes reading rows and nothing else: a reading is never a gate, a stop or an
+# admission, and the node never changes the broker.
+name: node_broker_auth_refusal_reading_effect
+contract_name: node_broker_auth_refusal_reading_effect
+node_name: node_broker_auth_refusal_reading_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The reading of the dev broker's authentication refusals. WORKING when the refusals in the window are at or
+  under the bar, NOT_WORKING when over (the row names the count, the first and last time, the minutes that held
+  any and the first line), UNKNOWN when the broker's log cannot be read.
+
+handler:
+  module: omnimarket.nodes.node_broker_auth_refusal_reading_effect.handlers.handler_broker_auth_refusal
+  class: HandlerBrokerAuthRefusal
+  input_model: omnimarket.nodes.node_broker_auth_refusal_reading_effect.models.model_broker_auth_refusal.ModelBrokerAuthRefusalCommand
+
+# HandlerBrokerAuthRefusal takes the overlay, host, log source, appender and clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, broker-log-read]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelBrokerAuthRefusalCommand
+  module: omnimarket.nodes.node_broker_auth_refusal_reading_effect.models.model_broker_auth_refusal
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelBrokerAuthRefusalResult
+  module: omnimarket.nodes.node_broker_auth_refusal_reading_effect.models.model_broker_auth_refusal
+  description: The verdict, the counted refusals, the bar and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.broker-auth-refusal-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  broker_auth_refusal_requested: onex.cmd.omnimarket.broker-auth-refusal-requested.v1
+  broker_auth_refusal_written: onex.evt.omnimarket.broker-auth-refusal-written.v1
+  broker_auth_refusal_failed: onex.evt.omnimarket.broker-auth-refusal-failed.v1
+  broker_auth_refusal_run_completed: onex.evt.omnimarket.broker-auth-refusal-run-completed.v1
+  broker_auth_refusal_run_failed: onex.evt.omnimarket.broker-auth-refusal-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.broker-auth-refusal-written.v1
+  - onex.evt.omnimarket.broker-auth-refusal-failed.v1
+  - onex.evt.omnimarket.broker-auth-refusal-run-completed.v1
+  - onex.evt.omnimarket.broker-auth-refusal-run-failed.v1
+
+overlay:
+  node: node_broker_auth_refusal_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_broker_auth_refusal_reading_effect.overlay.ModelBrokerAuthRefusalOverlay
+
+metadata:
+  ticket: OMN-19044
+  transport_type: inmemory

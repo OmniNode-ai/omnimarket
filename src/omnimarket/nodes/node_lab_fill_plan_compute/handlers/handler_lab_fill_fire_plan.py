@@ -59,7 +59,11 @@ class HandlerLabFillFirePlan:
         probes = tuple(
             ModelLabFillHostProbe(
                 name=name,
-                runner_slots=max(0, reading.max_units - reading.running_units),
+                runner_slots=(
+                    0
+                    if reading.capacity_refusal
+                    else max(0, reading.max_units - reading.running_units)
+                ),
                 login_claude=CLAUDE_LOGIN_TOOL in reading.tools,
                 codex_ok=CODEX_TOOL in reading.tools,
             )
