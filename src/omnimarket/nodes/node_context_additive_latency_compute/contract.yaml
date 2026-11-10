@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Additive context profile latency qualification (OMN-21134), plan task TC.12.
+# The runner that drives 20 cold and 20 warm round trips per additive profile through the adapter
+# from two hosts is the caller; this node only tabulates and proposes.
+# Requests carry timings and labels only, no package text.
+name: context_additive_latency_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Tabulate p50, p95 and max per additive profile, host and temperature, propose each
+  profile's latency_budget_ms from the worst p95 of the hosts that can carry the row
+  (never above the profile's cap), list a host over the cap as not promotable there, and
+  withhold every proposal when a profile, host or cell is missing.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: qualify_additive_latency
+      handler:
+        name: HandlerAdditiveLatency
+        module: omnimarket.nodes.node_context_additive_latency_compute.handlers.handler_additive_latency
+      input_model: omnimarket.nodes.node_context_additive_latency_compute.models.model_additive_latency.ModelAdditiveLatencyRequest
+      output_model: omnimarket.nodes.node_context_additive_latency_compute.models.model_additive_latency.ModelAdditiveLatencyResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.context-additive-latency-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.context-additive-latency-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-additive-latency-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.context-additive-latency-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-additive-latency-completed.v1
+
+metadata:
+  ticket: OMN-21134
+  transport_type: kafka
