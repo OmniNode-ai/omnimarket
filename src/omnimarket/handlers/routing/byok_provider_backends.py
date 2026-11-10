@@ -336,6 +336,14 @@ class ModelByokProviderBackend(BaseModel):
     #: silent default would hide it. ``0`` is a legitimate declaration meaning
     #: "do not retry"; an absent field is a mis-shaped row and is refused.
     max_retries: int = Field(ge=0)
+    #: OMN-23176. Seconds the local dispatch waits before each same-route re-issue
+    #: of a transient failure (the ``max_retries`` budget). C29 run 42639763864
+    #: spent all three OpenRouter attempts in 5.5 s against an upstream that
+    #: answered "temporarily rate-limited upstream. Please retry shortly", so the
+    #: budget was spent inside one throttle window. ``0`` declares no wait, which
+    #: is what a row that does not name the field gets; a retry whose wait does
+    #: not fit the run's remaining time is not issued.
+    retry_wait_seconds: float = Field(default=0.0, ge=0, le=120)
     timeout_ms: int | None = Field(default=None, gt=0)
     max_tokens: int | None = Field(default=None, gt=0)
     #: OMN-21257. The request-body field ``endpoint_url`` takes the completion
@@ -1064,6 +1072,16 @@ def byok_backend_max_retries(backend_ref: str | None) -> int | None:
     return backend.max_retries if backend is not None else None
 
 
+def byok_backend_retry_wait_seconds(backend_ref: str | None) -> float:
+    """Return the declared wait before each same-route re-issue of ``backend_ref``.
+
+    ``0.0`` for a ref the catalogue does not declare or a row that declares no
+    wait: the re-issue then goes out at once, as it did before OMN-23176.
+    """
+    backend = resolve_byok_backend_by_id(backend_ref)
+    return backend.retry_wait_seconds if backend is not None else 0.0
+
+
 def byok_declared_price_per_1m(
     endpoint_url: str | None, model_name: str
 ) -> tuple[Decimal, Decimal] | None:
@@ -1246,6 +1264,7 @@ __all__: list[str] = [
     "ModelCatalogueParityGap",
     "byok_automatic_plans",
     "byok_backend_max_retries",
+    "byok_backend_retry_wait_seconds",
     "byok_declared_price_per_1m",
     "byok_limit_counter_key",
     "byok_provider_plans",

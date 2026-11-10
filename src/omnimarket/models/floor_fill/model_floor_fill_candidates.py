@@ -19,6 +19,7 @@ from omnimarket.models.floor_fill.model_start_criterion import (
     M0Verdict,
     ModelFloorStartCriterion,
 )
+from omnimarket.models.model_factory_floor_input import ItemState
 
 OVERLAY_KEYS = (
     "max_age_minutes",
@@ -282,8 +283,7 @@ class ModelRecordItem(BaseModel):
 
     id: str
     kind: str
-    # ``integrating`` is merged work still being shown running on dev; the publisher's ItemState declares it too.
-    state: Literal["done", "integrating", "active", "prep", "wait", "stop"]
+    state: ItemState
     note: str = ""
     prs: tuple[str, ...] = ()
 
