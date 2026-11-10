@@ -29,6 +29,7 @@ from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.adapter_comm
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.handler_pr_landing_liveness_read import (
     HandlerPrLandingLivenessRead,
+    build_reader,
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.liveness_read_errors import (
     LivenessReadError,
@@ -139,6 +140,29 @@ def test_error_chain_an_unreadable_read_publishes_the_failed_event_and_names_no_
     assert isinstance(event, ModelLivenessReadFailed)
     assert event.detail == "the reader timed out"
     assert event.head_sha == HEAD
+
+
+COMPLETED_TOPIC = "onex.evt.omnimarket.pr-landing-liveness-read-completed.v1"
+FAILED_TOPIC = "onex.evt.omnimarket.pr-landing-liveness-read-failed.v1"
+CONTRACT = EXAMPLE.parent / "contract.yaml"
+
+
+def test_the_example_overlay_publishes_on_the_contract_topics() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text())
+    assert set(contract["event_bus"]["publish_topics"]) == {
+        COMPLETED_TOPIC,
+        FAILED_TOPIC,
+    }
+    overlay = load_overlay(explicit=_document())
+    assert overlay.topics.completed == COMPLETED_TOPIC
+    assert overlay.topics.failed == FAILED_TOPIC
+
+
+def test_build_reader_takes_the_reader_the_overlay_names() -> None:
+    command = _overlay()
+    assert isinstance(build_reader(command, {}), CommandLivenessReader)
+    inmemory = _overlay(reader={"backend": "inmemory"})
+    assert isinstance(build_reader(inmemory, {}), InMemoryLivenessReader)
 
 
 def test_the_example_overlay_loads_with_every_key() -> None:

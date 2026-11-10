@@ -100,13 +100,28 @@ class HandlerPrLandingLivenessRead:
         )
 
 
+def _command_reader(
+    overlay: ModelLivenessReadOverlay, environ: Mapping[str, str]
+) -> ProtocolLivenessReader:
+    return CommandLivenessReader(overlay, environ)
+
+
+def _inmemory_reader(
+    overlay: ModelLivenessReadOverlay, environ: Mapping[str, str]
+) -> ProtocolLivenessReader:
+    del overlay, environ
+    return InMemoryLivenessReader({})
+
+
+# The overlay's reader.backend names the reader; the names are the overlay model's literal set.
+_READERS = {"command": _command_reader, "inmemory": _inmemory_reader}
+
+
 def build_reader(
     overlay: ModelLivenessReadOverlay, environ: Mapping[str, str]
 ) -> ProtocolLivenessReader:
     """The reader the overlay selects."""
-    if overlay.reader.backend == "command":
-        return CommandLivenessReader(overlay, environ)
-    return InMemoryLivenessReader({})
+    return _READERS[overlay.reader.backend](overlay, environ)
 
 
 __all__ = ["HandlerPrLandingLivenessRead", "build_reader"]
