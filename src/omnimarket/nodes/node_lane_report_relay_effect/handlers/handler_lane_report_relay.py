@@ -335,11 +335,12 @@ def wip_tag(lane: str, run_id: str) -> str:
 
 
 # A remote lane's trees live on the lab host, so the launching host cannot remove them, and no host had
-# the closeout command installed. The lane is told to make its trees under ``$OMNI_HOME/omni_worktrees/
-# <lane>/<repo>`` (the footer), and when it ends the runner runs the host's own ``onex-lane-closeout`` for
-# every tree under that directory, before the TERMINAL is written. The directory is the ownership proof:
-# a lane name is unique among open CLAIMs, so no other lane's tree is ever touched. The consent row is
-# the operator's of 2026-09-30T15:01:08Z, read by the command from the lane's ledger snapshot.
+# the closeout command installed. The lane is told to make its trees under the registry root, at
+# ``omni_worktrees/<lane>/<repo>`` (the footer), and when it ends the runner runs the host's own
+# ``onex-lane-closeout`` for every tree under that directory, before the TERMINAL is written. The
+# directory is the ownership proof: a lane name is unique among open CLAIMs, so no other lane's tree is
+# ever touched. The consent row is the operator's of 2026-09-30T15:01:08Z, read by the command from the
+# lane's ledger snapshot.
 CLOSEOUT_LINE_RE = re.compile(
     r"^LANE-CLOSEOUT rc=(\d+) tree=(\S+) cell=(\S*)(?: note=(.*))?$"
 )
@@ -424,6 +425,7 @@ def closeout_script(
     *,
     tool_repo: str,
     ledger_env: str,
+    registry_env: str,
     retry_s: int = 6,
     keep: Sequence[str] = (),
 ) -> str:
@@ -432,8 +434,8 @@ def closeout_script(
     Prints one ``LANE-CLOSEOUT rc= tree= cell= note=`` line per tree, ``LANE-CLOSEOUT-NONE`` when the lane
     made none, or ``LANE-CLOSEOUT-UNAVAILABLE`` (trees left in place) when the host has no clone of ``tool_repo``
     with the command beside its registry. The clone is looked for where the tools resolve it: the
-    host's ``<TOOL_REPO>_HOME``, else beside ``OMNI_HOME``, else beside its resolved target (a
-    symlinked ``OMNI_HOME`` puts the clone beside the target). A tree whose process is still ending (the
+    host's ``<TOOL_REPO>_HOME``, else beside the registry root, else beside its resolved target (a
+    symlinked registry root puts the clone beside the target). A tree whose process is still ending (the
     engine's watchdog follows the dropped ssh session within seconds) is retried. A tree with uncommitted
     changes, unpushed commits or a branch with no upstream never reaches the command (OMN-20281): its
     commits are pushed to a WIP branch first, and when that fails or there are uncommitted changes the
@@ -447,6 +449,10 @@ def closeout_script(
     if not re.fullmatch(r"[A-Z][A-Z0-9_]*", ledger_env):
         raise ValueError(
             f"closeout_script: ledger_env {ledger_env!r}: an upper-case variable name"
+        )
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", registry_env):
+        raise ValueError(
+            f"closeout_script: registry_env {registry_env!r}: an upper-case variable name"
         )
     ledger_assignment = f'{ledger_env}="$C/ledger/{ledger_name}"' if ledger_name else ""
     q_lane = shlex.quote(lane)
@@ -477,7 +483,7 @@ def closeout_script(
             "  esac",
             "  while :; do",
             (
-                f'    cell=$(env -u ONEX_WORKTREES_ROOT OMNI_HOME="$OH" {tool_home_env}="$IH" {ledger_assignment} '
+                f'    cell=$(env -u ONEX_WORKTREES_ROOT {registry_env}="$OH" {tool_home_env}="$IH" {ledger_assignment} '
                 f'"$IH/.venv/bin/onex-lane-closeout" --lane {q_lane} --worktree "$t" 2>"$E" </dev/null); rc=$?'
             ),
             '    if [ "$rc" = 3 ] && [ "$k" -lt 3 ]; then',

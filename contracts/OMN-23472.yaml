@@ -46,9 +46,16 @@ dod_evidence:
   description: The start node started one real lane on a lab host with the overlay from the overlays repository, read from the lane's CLAIM row.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: onex ledger query --query rows --kind CLAIM --term 'node_remote_lane_start_orchestrator' --since 2026-11-10T06:00:00Z | grep -q 'node_remote_lane_start_orchestrator'
+    cwd: .
+- id: dod-OMN-23472-ac3
+  description: The hosted reading of AC3, the start node run end to end through its pool and transport against the overlay document and the real wiring; the live lab-host run is the integration-proof item.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start.py src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_real_wiring.py -q --no-cov --tb=line
     cwd: .

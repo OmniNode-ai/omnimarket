@@ -23,8 +23,10 @@ remote_lane_start:
   # The repository directory holding the host's lane-closeout command, beside the registry root (optional; empty leaves
   # the closeout step to the runner script).
   closeout_tool_repo: example_tools
-  # The variable that closeout command reads the lane's ledger copy path from (both closeout keys, or neither).
+  # The variable that closeout command reads the lane's ledger copy path from (all three closeout keys, or none).
   closeout_ledger_env: EXAMPLE_LEDGER_FILE
+  # The variable that closeout command reads the registry root from (all three closeout keys, or none).
+  closeout_registry_env: EXAMPLE_REGISTRY_ROOT
   # Where the host keeps installed plugin trees, one directory per tree (optional; empty leaves the step to the runner).
   plugin_store: $HOME/example-store/plugins
   ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
