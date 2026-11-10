@@ -111,6 +111,7 @@ class EnumRepoWriteRefusal(StrEnum):
     GITHUB_REFUSED = "github_refused"
     CREDENTIAL_UNAVAILABLE = "credential_unavailable"
     TRANSPORT_ERROR = "transport_error"
+    IDEMPOTENCY_KEY_CONFLICT = "idempotency_key_conflict"
 
 
 _PR_SCOPED = frozenset(
