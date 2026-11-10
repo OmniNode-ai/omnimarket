@@ -1,0 +1,22 @@
+name: node_order_advance_effect
+version: "0.1.0"
+description: "the order writer: advances a test order from the gate store's piece records on a timer, fenced, restart-safe, never on the holder's host for its fallback"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_order_advance_effect: "omnimarket.nodes.node_order_advance_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "order-writer", "gate-store", "holder"]
+pack: "routing"
+display_name: "Order Advance Effect"
+node_role: "effect"

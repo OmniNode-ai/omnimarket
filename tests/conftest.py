@@ -1309,3 +1309,18 @@ def compaction_bus():
     yield factory
     for harness in reversed(harnesses):
         harness.close()
+
+
+@pytest.fixture
+def host_capacity_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """The ``host_capacity`` overlay at the starting values the node ships as its example (OMN-23337)."""
+    example = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_host_capacity_compute/overlay.example.yaml"
+    )
+    root = tmp_path / "overlay_roots"
+    target = root / "host_capacity" / "overlay.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    return target

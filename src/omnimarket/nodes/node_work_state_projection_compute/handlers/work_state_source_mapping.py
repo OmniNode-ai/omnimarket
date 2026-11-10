@@ -95,6 +95,20 @@ def plan_tasks_from_text(
     return tasks
 
 
+def _assignee_of(issue: Mapping[str, Any], operator: object, alias: str) -> str | None:
+    """The assignee a snapshot issue names: ``assigneeId`` or ``assignee`` (a string, or a mapping with an id or a name).
+
+    The snapshot's own ``operator`` reads as the rules' alias, so a reader asks "is this the operator's" with one overlay
+    value and never with a user id.
+    """
+    raw = issue.get("assigneeId") or issue.get("assignee")
+    if isinstance(raw, Mapping):
+        raw = raw.get("id") or raw.get("name")
+    if not raw:
+        return None
+    return alias if operator and str(raw) == str(operator) else str(raw)
+
+
 def tickets_from_linear_snapshot(
     snapshot: Mapping[str, Any], rules: ModelWorkStateRules
 ) -> list[ModelTicketSource]:
@@ -116,6 +130,9 @@ def tickets_from_linear_snapshot(
                 project_id=str(issue.get("projectId") or ""),
                 # Old snapshot files carry neither key; `parent` is the spelling the projection's own fixtures use.
                 parent=issue.get("parentId") or issue.get("parent") or None,
+                assignee=_assignee_of(
+                    issue, snapshot.get("operator"), rules.operator_assignee_alias
+                ),
                 requires=tuple(refs),
             )
         )

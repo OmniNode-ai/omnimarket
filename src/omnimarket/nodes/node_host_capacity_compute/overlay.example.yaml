@@ -1,0 +1,19 @@
+# host_capacity/overlay.yaml (OMN-23337): the limits lab host admission and slot caps are judged against.
+# Shape and the starting values chosen from the readings in the pull request; the deployment owner holds
+# the real file in the overlays repository. No limit is written in code.
+#
+# Admission bars (per logical core, and per share of total memory):
+max_load_per_core: 0.25
+min_free_memory_ratio: 0.10
+# The load per core the slot headroom is counted up to (the lane placement's lab load per core):
+slot_load_per_core: 1.0
+# Swap bars, in KB/s (the throughput tick's host-swapping bounds):
+max_swap_kb_s: 100000
+max_swap_in_kb_s: 20000
+# What one further lane is charged:
+cores_per_slot: 2.0
+memory_per_slot_gb: 2.0
+# The cap is held between the floor and the ceiling; a host named under `hosts` has its own pair.
+slot_floor: 1
+slot_ceiling_per_core: 0.5
+hosts: {}

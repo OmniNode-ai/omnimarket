@@ -1,0 +1,94 @@
+{
+  "name": "node_lane_gh_read_scan_compute",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Name every line of a lane-facing text that tells a lane to run a GitHub read or a gh pr create through gh, with the onex scm verb or local reader that answers it (RULING 2026-10-10T18:17:36Z). The pure reader behind the dispatch brief-shape refusal gh-read-refused and each repository's whole-tree check of its skills and prompt templates.",
+  "input_model": {
+    "name": "ModelGhReadScanRequest",
+    "module": "omnimarket.models.model_gh_read_scan"
+  },
+  "output_model": {
+    "name": "ModelGhReadScanResult",
+    "module": "omnimarket.models.model_gh_read_scan"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan:HandlerGhReadScan",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerGhReadScan",
+          "module": "omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan"
+        },
+        "topic": "onex.cmd.omnimarket.lane-gh-read-scan-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeLaneGhReadScanCompute",
+    "module": "omnimarket.nodes.node_lane_gh_read_scan_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "the dispatch brief-shape refusal before placement; each repository's lane-text check"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan",
+    "class": "HandlerGhReadScan",
+    "input_model": "omnimarket.models.model_gh_read_scan.ModelGhReadScanRequest",
+    "output_model": "omnimarket.models.model_gh_read_scan.ModelGhReadScanResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.lane-gh-read-scan-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.lane-gh-read-scan-completed.v1",
+      "onex.evt.omnimarket.lane-gh-read-scan-failed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.lane-gh-read-scan-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.lane-gh-read-scan-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.lane-gh-read-scan-completed.v1",
+    "onex.evt.omnimarket.lane-gh-read-scan-failed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}

@@ -216,6 +216,8 @@ class _Draft:
     check: str | None = None
     commitment: ModelCommitmentSource | None = None
     needs_ticket: bool = False
+    assignee: str | None = None
+    parent: str | None = None
 
 
 def ticket_in_scope(
@@ -283,6 +285,8 @@ class HandlerWorkStateProjection:
                 scope=EnumScopeStatus.IN_SCOPE
                 if ticket_in_scope(t.ticket_id, scope, by_id, max_hops, by_ancestor)
                 else EnumScopeStatus.PAUSED,
+                assignee=t.assignee,
+                parent=t.parent,
             )
         for p in request.plan_tasks:
             key = f"plan:{p.plan}#{p.task_id}"
@@ -537,6 +541,8 @@ class HandlerWorkStateProjection:
                     left=left,
                     owner=d.commitment.owner if d.commitment else None,
                     needs_ticket=d.needs_ticket,
+                    assignee=d.assignee,
+                    parent=d.parent,
                 )
             )
 
