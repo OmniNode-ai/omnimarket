@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23426
+title: The single picture of all work in progress is refreshed on a schedule and proven by its own tests
+summary: node_work_state_projection_scheduled_effect subscribes the runtime tick, gates on the schedule overlay's run_interval_seconds, runs the projector profile the overlay binds (unread, the in-memory default, or file_sources, which runs node_work_state_projection_effect's read, project and atomic write) and publishes one compact event on onex.evt.omnimarket.work-state-projected.v1. The contract declares that topic under externally_consumed_topics, where the topic graph validator reads it. Its tests are a golden chain, an error chain, seam tests against the floor and the lab fill readers, the topic seams and an in-memory bus round trip, each with a failing control.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23426-scheduled-projection
+  statement: The work-state projection refreshes on the runtime's schedule from an overlay-held cadence and projector profile, and its tests fail when the model, the topics or the projection file path change on either side.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket pull request 5690 carries this ticket''s contract with evidence naming the scheduled-node tests, its reds are fixed forward on the exact head, and it merges with overlays pull request 183 -- falsifier: uv run pytest on the scheduled projection node''s tests and its seam tests with a planted model rename'
+  - id: AC2
+    statement: 'AC2: integrated: the scheduled projection node runs in the lab runtime on its schedule and two consecutive refreshes are read there -- falsifier: the projection''s two newest refresh records read from the lab runtime'
+evidence_requirements:
+- kind: tests
+  description: The scheduled work-state projection node's golden chain, error chain, seam, topic and bus round trip tests.
+  command: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23426-ac1-scheduled-node-tests
+  description: Runs every test of the scheduled work-state projection node. The golden chain (a due tick projects and returns the compact event, a tick inside the interval returns nothing), the error chain (an absent schedule overlay and a failing projector leave the last-run time where it was), the seam tests against the floor's and the lab fill's readers of the projection file (a lane whose CLAIM names a ticket shows after one publish, the control without the ticket cell leaves it unowned, a projection missing a field is refused), the topic seams (the runtime tick topic the scheduled floor also subscribes, the terminal topic no other node publishes, the terminal topic declared externally consumed where the topic graph validator reads it, with the control that nests it under event_bus) and the in-memory bus round trip all pass. The directory does not exist at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23426-ac1-projection-model-seam
+  description: Runs the seam test file alone. It reads the projection file path from the effect node's contract output, the floor's and the lab fill's defaults, and validates the projection JSON through both readers; moving the effect's output path fails four tests, and renaming the projected event model's item_count field fails eight tests of the directory (the golden chain and the seam tests).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_seam_projection_file_floor_and_fill.py tests/nodes/node_work_state_projection_scheduled_effect/test_contract_topics.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23426-integration-proof-lab
+  description: Runs the scheduled projection node's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The runtime refresh read of AC2 is recorded on the ticket after the node runs in the lab runtime.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23426 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23426-ac2-real-broker-refresh-lab
+  description: 'Runs the scheduled projection node''s bus round trip on a real broker at the pushed head: two consecutive due ticks are published to the runtime tick topic and two projected events are read from the terminal topic, with the schedule gate between them. It refuses to pass when WORK_STATE_PARITY_BOOTSTRAP names no broker (the skip would otherwise exit 0). Hosted CI has no lab broker, so only the local Done gate runs this unbound item. The read of the two newest refreshes in the lab runtime itself is recorded on the ticket after the node runs there.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: 'test -n "$WORK_STATE_PARITY_BOOTSTRAP" && env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_bus_roundtrip_work_state_projected.py -q --no-cov -p no:randomly -m "work_state_parity and kafka"'
+    cwd: .

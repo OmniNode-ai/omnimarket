@@ -8,9 +8,12 @@ terminal event is not published, or when a second node publishes the same termin
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 
+from omnimarket.validators.contract_topic_graph import parse_contract
 from tests.nodes.node_work_state_projection_scheduled_effect.support import SRC
 
 pytestmark = pytest.mark.unit
@@ -58,3 +61,26 @@ def test_the_output_model_the_contract_names_is_the_event_the_handler_returns() 
     out = _contract(NODE)["output_model"]
     assert out["name"] == ModelWorkStateProjectedEvent.__name__
     assert out["module"] == ModelWorkStateProjectedEvent.__module__
+
+
+def test_the_terminal_topic_is_declared_externally_consumed_where_the_graph_validator_reads_it() -> (
+    None
+):
+    parsed = parse_contract(SRC / NODE / "contract.yaml", "omnimarket")
+    assert parsed is not None
+    assert TERMINAL in parsed.externally_consumed
+
+
+def test_control_the_declaration_nested_under_event_bus_is_not_read(
+    tmp_path: Path,
+) -> None:
+    loaded = _contract(NODE)
+    loaded["event_bus"]["externally_consumed_topics"] = loaded.pop(
+        "externally_consumed_topics"
+    )
+    contract = tmp_path / NODE / "contract.yaml"
+    contract.parent.mkdir()
+    contract.write_text(yaml.safe_dump(loaded), encoding="utf-8")
+    parsed = parse_contract(contract, "omnimarket")
+    assert parsed is not None
+    assert TERMINAL not in parsed.externally_consumed
