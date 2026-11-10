@@ -65,6 +65,12 @@ benchmark:
   min_paired_tasks: 10
   token_absent_marker: UNKNOWN
 
+route:
+  local_model_id: Qwen3.8-27B
+  caller_lane: context-benchmark-1715
+  ticket: OMN-21896
+  transport_flags: "--bus kafka --lane dev --locus deployed-lane"
+
 terminal_event: onex.evt.omnimarket.context-benchmark-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.context-benchmark-requested.v1

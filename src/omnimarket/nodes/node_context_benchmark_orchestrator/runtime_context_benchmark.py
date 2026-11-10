@@ -36,7 +36,6 @@ from omnimarket.nodes.node_context_benchmark_orchestrator.models.model_context_b
 )
 
 _PILOT = Path(__file__).parent / "pilot" / "pilot_tasks.yaml"
-_QWEN = "Qwen3.8-27B"
 
 
 def materialize_pilot(dest: Path) -> list[ModelBenchmarkTask]:
@@ -46,6 +45,13 @@ def materialize_pilot(dest: Path) -> list[ModelBenchmarkTask]:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body, encoding="utf-8")
     return [ModelBenchmarkTask.model_validate(t) for t in spec["tasks"]]
+
+
+def load_route_settings() -> dict[str, str]:
+    contract = yaml.safe_load(
+        (Path(__file__).parent / "contract.yaml").read_text(encoding="utf-8")
+    )
+    return contract["route"]
 
 
 def lane_spec(name: str) -> ModelBenchmarkLaneSpec:
@@ -65,7 +71,8 @@ def lane_spec(name: str) -> ModelBenchmarkLaneSpec:
         )
     if name == "qwen":
         return ModelBenchmarkLaneSpec(
-            lane=EnumBenchmarkLane.DELEGATE_ROUTE, model_id=_QWEN
+            lane=EnumBenchmarkLane.DELEGATE_ROUTE,
+            model_id=load_route_settings()["local_model_id"],
         )
     if name.startswith("route:"):
         backend = name.split(":", 1)[1]
@@ -90,10 +97,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-root", default=os.environ.get("ONEX_STATE_DIR"))
     parser.add_argument(
         "--route-flags",
-        default="--bus kafka --lane dev --locus deployed-lane",
+        default=load_route_settings()["transport_flags"],
         help="transport flags for onex delegate",
     )
     args = parser.parse_args(argv)
+    route_settings = load_route_settings()
 
     scratch, out = Path(args.scratch), Path(args.out)
     scratch.mkdir(parents=True, exist_ok=True)
@@ -120,8 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     route = LaneDelegateRoute(
         onex_bin=args.onex_bin or "",
         state_root=Path(args.state_root or "."),
-        lane="context-benchmark-1715",
-        ticket="OMN-21896",
+        lane=route_settings["caller_lane"],
+        ticket=route_settings["ticket"],
         transport_flags=tuple(args.route_flags.split()),
     )
     handler = HandlerContextBenchmark(runners={EnumBenchmarkLane.DELEGATE_ROUTE: route})

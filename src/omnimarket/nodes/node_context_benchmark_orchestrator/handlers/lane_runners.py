@@ -253,17 +253,28 @@ _RUN_ID = re.compile(
     r"/runs/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
 )
 _FILE_BLOCK = re.compile(r"^### (\S+)\n```[A-Za-z0-9_+-]*\n(.*?)\n```", re.S | re.M)
+_BARE_FENCE = re.compile(r"^```[A-Za-z0-9_+-]*\n(.*?)\n```", re.S | re.M)
 
 
 def route_prompt(
     task: ModelBenchmarkTask, workdir: Path, context_text: str | None
 ) -> str:
+    guidance = (
+        f"Repository guidance:\n---\n{context_text}\n---\n\n" if context_text else ""
+    )
+    if len(task.edit_files) == 1:
+        rel = task.edit_files[0]
+        text = (workdir / rel).read_text(encoding="utf-8")
+        shown = f"Current file {rel}:\n```\n{text}\n```"
+        return (
+            f"{guidance}Task for a small Python repository: {task.prompt}\n\n"
+            f"{shown}\n\n"
+            "Reply with the complete new content of "
+            f"{rel} as one fenced code block and nothing else."
+        )
     shown = "\n\n".join(
         f"### {rel}\n```\n{(workdir / rel).read_text(encoding='utf-8')}\n```"
         for rel in task.edit_files
-    )
-    guidance = (
-        f"Repository guidance:\n---\n{context_text}\n---\n\n" if context_text else ""
     )
     return (
         f"{guidance}Task for a small Python repository: {task.prompt}\n\n"
@@ -275,11 +286,21 @@ def route_prompt(
 
 def apply_file_blocks(output: str, task: ModelBenchmarkTask, workdir: Path) -> int:
     """Write the returned files; only ``edit_files`` may be written."""
+    blocks = _FILE_BLOCK.findall(output)
     written = 0
-    for rel, body in _FILE_BLOCK.findall(output):
+    for rel, body in blocks:
         if rel in task.edit_files:
             (workdir / rel).write_text(body + "\n", encoding="utf-8")
             written += 1
+    # A one-file task asked for a single bare fence; with no "### path" block
+    # anywhere in the reply, the first fenced block is that file's new content.
+    if not blocks and len(task.edit_files) == 1:
+        match = _BARE_FENCE.search(output)
+        if match is not None:
+            (workdir / task.edit_files[0]).write_text(
+                match.group(1) + "\n", encoding="utf-8"
+            )
+            return 1
     return written
 
 
