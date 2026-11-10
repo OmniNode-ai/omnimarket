@@ -197,6 +197,10 @@ class ModelFloorLedgerRow(BaseModel):
     head: str = ""
     ruling: str = ""
     mechanism: str = ""
+    # The closing row's typed needs= cell as written (``<action>:<target>`` or ``unparsed``) and its report= cell: what
+    # the lane found and what it asks for next (OMN-23417).
+    needs: str = ""
+    report: str = ""
 
     _utc = field_validator("ts")(_aware)
 

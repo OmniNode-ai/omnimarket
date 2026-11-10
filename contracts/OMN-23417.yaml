@@ -1,0 +1,79 @@
+schema_version: 1.0.0
+ticket_id: OMN-23417
+title: A finished worker's closing record carries what it found and what it needs next
+summary: The remote lane's close node computes a typed needs cell (action and target from the contract's enum, or unparsed with the message kept) and the lane's report text, and the lane start orchestrator's row writer forwards both onto the TERMINAL it appends. The stopped-lane compute reads them back. Fix R1 of the diagnosed-red-stays-red plan.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23417-closing-row-needs
+  statement: A remote lane's closing row carries a typed needs cell and the lane's report text, forwarded from the close node through the row writer, and a close is never refused for a missing or malformed cell.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the remote lane''s closing row carries a typed needs cell (action and target from the contract''s enum, or unparsed with the message kept) and the lane''s report text, forwarded from the close node through the runner''s row writer, with a failing control where a final message naming a rerun produces a row without the cell on the unfixed path -- falsifier: uv run pytest on the end-to-end close test (close node, runner, real ledger writer) fails on the unfixed runner'
+  - id: AC2
+    statement: 'AC2: the seam between the close node, the runner''s row writer and the stopped-lane compute has a join test that fails when the cell''s shape changes on either side, run on the in-memory bus and the real broker -- falsifier: uv run pytest on that join test with a planted field rename'
+  - id: AC3
+    statement: 'AC3: integrated: on a lab host, a real lane that ends blocked writes a closing row whose needs cell and report text are read back from the ledger -- falsifier: the row read from the ledger after the drill'
+evidence_requirements:
+- kind: tests
+  description: The close node's needs tests, the end-to-end closing-row test and the join test (in-memory bus leg)
+  command: uv run --frozen pytest tests/nodes/node_remote_lane_close_compute src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_closing_row_needs.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23417-close-node-needs
+  description: Runs the close node's needs and report tests, the golden and error chains of the typed cell. The module the tests import (lane_needs and the policy loader) is absent at the merge base, so the file fails to import there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_lane_needs_omn23417.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23417-end-to-end-close
+  description: Runs a lane's final message through the close node, the orchestrator and the ledger writer's grammar. A blocked lane naming a rerun writes needs=rerun:omnibase_core#2302 and its report; the control with the forwarding dropped writes neither. The TERMINAL rows are read back from the ledger rows the writer was handed, which is the hosted-runnable read of AC3; the drill on a lab host is the unbound dod-omn23417-integration-proof-lab item.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_closing_row_needs.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23417-join-in-memory
+  description: Runs the join test on the in-memory bus; the planted renames and the reshape of the cell read broken.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23417-join-real-broker
+  description: Runs the join test on a plaintext lab Redpanda broker the caller started for the proof (never the dev lane's). Hosted CI cannot reach it, so only the local Done gate runs this item; it is bound to no criterion, the hosted join items above carry AC2.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env CLOSING_ROW_PARITY_BOOTSTRAP="$CLOSING_ROW_PARITY_BOOTSTRAP" uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py -m closing_row_parity -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23417-join-fill-reader
+  description: Runs the join of the stopped lane's needs cell and the fill that continues it (the fill's reader is lane contfill's omnimarket#5699 change); the pin reads the fill carrying the cell only inside the quoted rows, and the planted renames read broken.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_needs_fill_reader.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23417-integration-proof-lab
+  description: Runs the stopped-lane reader over the ledger the lab drill's lane wrote, at the pushed head on a lab host through the lab work runner. The drill itself (a real lane ending blocked, its TERMINAL read back) is recorded in the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23417 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py -q --no-cov -p no:randomly'
+    cwd: .
