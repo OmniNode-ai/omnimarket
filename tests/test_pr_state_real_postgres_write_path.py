@@ -130,7 +130,7 @@ async def test_ddl_and_all_bound_fields_survive_a_merged_lifecycle() -> None:
         assert row["state"] == "merged"
         assert row["last_digest"] == row["digest"] == merged.digest
         assert row["observed_at"].isoformat() == "2026-09-28T11:00:00+00:00"
-        assert set(row) == set(type(merged).model_fields) | {"last_digest"}
+        assert set(row.keys()) == set(type(merged).model_fields) | {"last_digest"}
 
 
 @pytest.mark.integration
