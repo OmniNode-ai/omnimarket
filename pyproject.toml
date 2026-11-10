@@ -2032,4 +2032,5 @@ markers = [
     "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
     "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus (needs FLOOR_FILL_PARITY_BOOTSTRAP for the Redpanda leg)",
     "work_state_parity: the work-state projection projects the same items on the in-memory bus and on a Redpanda bus (needs WORK_STATE_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "join_j7_parity: the J7 refusal seam answers the same on the in-memory bus and on a Redpanda bus (needs JOIN_J7_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]
