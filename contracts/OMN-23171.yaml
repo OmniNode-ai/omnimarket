@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-23171
+title: The delegation scenarios' scheduled results are read for eight UTC days and each scenario's consecutive green days is reported, by omnimarket nodes
+summary: The readiness plan put this reading in the beta board of the cloud repository. It now lives in omnimarket. node_delegation_scenario_days_compute counts, per scenario, the consecutive complete UTC days ending yesterday that are green (only scheduled results fill a slot, the latest attempt per slot decides it, every completed conclusion but success and any run unfinished for more than two hours is not green, a day needs 20 of 24 hourly slots, 4 of 4 every six hours, 1 of 1 daily). node_delegation_scenario_days_effect pages through the scenarios' ledger STATUS rows for the window on a timer of its own, publishes the rows keyed by scenario id, writes one STATUS row and journals the result; a page that does not answer or a read cut at its page limit makes every row red. node_delegation_scenario_r2_effect is scenario R2 (a local model added after onboarding) as a node scheduled hourly on the lab, writing the result rows the reading counts. The day count is a parameter of the request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23171-scenario-green-days
+  statement: Each scenario's green days is counted from its recorded scheduled results, and a history that was not read to its end is red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: from recorded histories, 5 full green days gives 5, a day with 19 of 24 hourly slots settled counts 0, a cancelled slot is not green, and a slot filled only by a manual run counts as unsettled -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_days_compute/test_green_days.py -q`'
+  - id: AC2
+    statement: 'AC2: a read that stops early is red -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_days_compute/test_green_days.py -q -k unreadable_is_red`'
+evidence_requirements:
+- kind: tests
+  description: The green-days tests, the reading node's golden and error chain tests and scenario R2's golden and error chain tests pass.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_days_compute tests/nodes/node_delegation_scenario_days_effect tests/nodes/node_delegation_scenario_r2_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23171-ac1-tests
+  description: Runs the green-days tests. Five full green days give 5; a day with 19 of 24 hourly slots settled gives 0 and one with 20 gives 1; a cancelled, failed, timed out, skipped or startup-failed slot ends the streak; a slot with only a manual run is unsettled; the latest attempt of a slot decides it; a run in progress for over two hours fails and a younger one is unsettled; the day count is a parameter.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_days_compute/test_green_days.py -q --no-cov
+    cwd: .
+- id: dod-omn23171-ac2-unreadable-is-red
+  description: Runs the unreadable-is-red tests. A history flagged as not read to its end gives every declared scenario a red, unreadable row with zero green days, though the same results read complete give 5.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_days_compute/test_green_days.py -q --no-cov -k unreadable_is_red
+    cwd: .
+- id: dod-omn23171-reading-and-r2-chains
+  description: Runs the golden and error chain tests of the reading node (a page that does not answer and a read cut at max_pages make every row red; foreign and malformed rows change nothing; a rerun rewrites the same rows) and of scenario R2 (four named breaks each turn it red; a missing setting is a failure that runs no command; the key never leaves stdin).
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_days_effect tests/nodes/node_delegation_scenario_r2_effect -q --no-cov
+    cwd: .
+- id: dod-omn23171-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23171 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_days_compute tests/nodes/node_delegation_scenario_days_effect tests/nodes/node_delegation_scenario_r2_effect -q --no-cov
+    cwd: .

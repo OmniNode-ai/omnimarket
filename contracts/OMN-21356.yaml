@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-21356
+title: node_event_emit_effect exits 1 with FileNotFoundError when a second emitter on the host has already quarantined the same ACL-refused record
+summary: The quarantine and ack races between emitters sharing one spool directory were fixed on dev (a record a peer already moved or acked is not an error). This change adds the three missing concurrency tests, each shown failing when the fix is removed, so the three criteria are held by tests that can fail.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21356-spool-races
+  statement: Two emitters on one host share one spool directory, and a record a peer already quarantined, acked or published is not an error for the other.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: SpoolOutbox.quarantine raises nothing when another process has already moved the same record into quarantine, and leaves the record and its reason file in quarantine -- falsifier: uv run pytest tests/ -q -m "not kafka" -k quarantine_concurrent, a test that moves the record into quarantine between list_pending and quarantine and fails today with FileNotFoundError'
+  - id: AC2
+    statement: 'AC2: an emit whose own appended record is quarantined by a concurrent backlog drain exits 0 and its result names the record as quarantined, not published -- falsifier: uv run pytest tests/ -q -m "not kafka" -k concurrent_drain_reports_quarantined, which fails today because the handler raises out of handle'
+  - id: AC3
+    statement: 'AC3: a concurrent ack of a record another process already acked or moved raises nothing -- falsifier: uv run pytest tests/ -q -m "not kafka" -k ack_concurrent'
+evidence_requirements:
+- kind: tests
+  description: The three concurrency tests of the spool and the handler. Seven of the eight fail when the race handling in spool_outbox.py is removed (the eighth is the positive control).
+  command: uv run --frozen pytest tests/unit/nodes/node_event_emit_effect/test_spool_concurrency_omn21356.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21356-quarantine-concurrent
+  description: Runs the quarantine_concurrent tests. A peer quarantines the record between this process listing it and quarantining it, and eight threads quarantine one record at once; nothing raises, one record and one reason file are left in quarantine and no temp reason file remains. Fails with FileNotFoundError when the race handling is removed.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_event_emit_effect/test_spool_concurrency_omn21356.py -q --no-cov -p no:randomly -k quarantine_concurrent
+    cwd: .
+- id: dod-omn21356-concurrent-drain
+  description: Runs the concurrent_drain_reports_quarantined tests. A peer's backlog drain quarantines the emit's own record while the broker refuses it; handle returns, the result is published false with quarantined_count 1 and no topics published, and the record and its reason are in quarantine. A positive control without a peer reads the same count.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_event_emit_effect/test_spool_concurrency_omn21356.py -q --no-cov -p no:randomly -k concurrent_drain_reports_quarantined
+    cwd: .
+- id: dod-omn21356-ack-concurrent
+  description: Runs the ack_concurrent tests. An ack of a record a peer already acked, one a peer moved into quarantine (the quarantined copy is left alone), eight simultaneous acks, and an emit whose record a peer drain published and acked all raise nothing.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_event_emit_effect/test_spool_concurrency_omn21356.py -q --no-cov -p no:randomly -k ack_concurrent
+    cwd: .
+- id: dod-omn21356-regression
+  description: The spool outbox and the quarantine tests that already exist still pass. A regression check that binds no criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_event_emit_effect/test_spool_outbox.py tests/unit/nodes/node_event_emit_effect/test_quarantine_payload_too_large_omn19513.py -q --no-cov -p no:randomly
+    cwd: .

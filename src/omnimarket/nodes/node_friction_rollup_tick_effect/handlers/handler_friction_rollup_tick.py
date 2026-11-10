@@ -9,12 +9,14 @@ handler, run in process; the pure decisions of the tick are in ``friction_rollup
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.friction_rollup import (
     ModelFrictionClassOwner,
     ModelFrictionClassRule,
@@ -41,7 +43,6 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_
     top_classes,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_io import (
-    load_class_rules,
     load_settings,
     prune_reports,
     read_previous,
@@ -49,6 +50,7 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_
     write_atomic,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick import (
+    ModelFrictionClassOverlay,
     ModelFrictionRollupTickRequest,
     ModelFrictionRollupTickResult,
     ModelFrictionRollupTickSettings,
@@ -75,9 +77,9 @@ class HandlerFrictionRollupTick:
         self,
         appender: ProtocolLedgerAppender | None = None,
         settings: ModelFrictionRollupTickSettings | None = None,
-        settings_dir: Path | None = None,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
-        self._settings_dir = settings_dir if settings_dir is not None else NODE_DIR
+        self._environ = environ
         self._settings = (
             settings if settings is not None else load_settings(DEFAULT_OVERLAY)
         )
@@ -97,10 +99,16 @@ class HandlerFrictionRollupTick:
     def _class_rules(
         self,
     ) -> tuple[list[ModelFrictionClassRule], list[ModelFrictionClassOwner], str | None]:
-        """The rules the compute node ships, or empty lists and the note that says why they are unapplied."""
-        path = self._settings_dir / self._settings.class_rules_path
+        """The overlay home's rules, or empty lists and the note that says why they are unapplied."""
         try:
-            rules, owners = load_class_rules(path)
+            overlay = load_structured_overlay(
+                self._settings.class_overlay_id,
+                ModelFrictionClassOverlay,
+                self._environ,
+                file_env=self._settings.class_overlay_file_env,
+            )
+            rules = list(overlay.class_rules)
+            owners = list(overlay.class_owners)
             parse_class_rules((r.name, r.owner, r.pattern) for r in rules)
             parse_class_owners((o.class_name, o.owner) for o in owners)
         except (ImportError, OSError, UnicodeError, ValueError, ValidationError) as exc:
