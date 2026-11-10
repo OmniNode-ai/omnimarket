@@ -80,6 +80,14 @@ schedule:
     randomized_delay: 60s
     persistent: true
     description: hourly, thirty-five minutes past
+  # A red hourly run is read again on its own short timer while the seam stays unanswered, so a
+  # redeploy that lands just before the hourly run does not hold piece 3 red for the whole hour
+  # (OMN-23201). The seam's deadline and the reading's freshness bound are unchanged.
+  recheck:
+    unit_name: onex-seam-deadline-recheck
+    interval: 5min
+    attempts: 6
+    description: every five minutes, re-reads only while the last hourly run read red, six times at most
 
 overlay:
   node: node_seam_deadline_probe_effect

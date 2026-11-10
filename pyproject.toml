@@ -1298,6 +1298,7 @@ node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orche
 node_temp_retention_effect = "omnimarket.nodes.node_temp_retention_effect"
 node_test_generator = "omnimarket.nodes.node_test_generator"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
+node_test_selection_selector_compute = "omnimarket.nodes.node_test_selection_selector_compute"
 node_test_selector_reading_compute = "omnimarket.nodes.node_test_selector_reading_compute"
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
