@@ -52,9 +52,8 @@ dod_evidence:
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: "grep -q 'journal_upstream' src/omnimarket/nodes/node_join_refusal_effect/overlay.py"
-    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_join_refusal_effect/test_join_refusal_journal_upstream.py -q --no-cov
 - id: dod-omn23084-integration-proof
   description: The J3 golden tests run on a lab host at the pushed head and the lab run is recorded in the pull request body.
   source: manual

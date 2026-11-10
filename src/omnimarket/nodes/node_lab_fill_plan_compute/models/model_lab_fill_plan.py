@@ -14,6 +14,12 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from omnimarket.handlers.rules_lab_fill_closer import CLOSER_EXEMPT_KINDS, CLOSER_NODE
+from omnimarket.models.lab_fill.model_lab_fill_closer import (
+    ModelLabFillBuiltReport,
+    ModelLabFillCloserRoute,
+)
+
 from .model_lab_fill_machinery import ModelLabFillMachineryPolicy
 from .model_lab_fill_plan_config import (
     ModelLabFillHeadroomPolicy,
@@ -125,6 +131,13 @@ class ModelLabFillDispatchPlanRequest(BaseModel):
     fenced: tuple[str, ...] = ()
     # The machinery tier's ranking policy; left out, the node contract's.
     machinery: ModelLabFillMachineryPolicy | None = None
+    # OMN-23376: what the caller read about work already built, before any lane is planned. The merged pull requests that name each
+    # ticket (the PR watcher's and each canonical clone's, joined by the caller) and the lanes' own already-built reports. A ticket
+    # either names goes to the closer and is not dispatched; a lane of an exempt kind is never stopped by a merge.
+    merged_prs: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+    built_reports: tuple[ModelLabFillBuiltReport, ...] = ()
+    closer_exempt_kinds: tuple[str, ...] = CLOSER_EXEMPT_KINDS
+    closer: str = CLOSER_NODE
 
 
 class ModelLabFillDispatchPlanResult(BaseModel):
@@ -136,6 +149,8 @@ class ModelLabFillDispatchPlanResult(BaseModel):
     skipped: tuple[ModelLabFillSkipEntry, ...]
     deferred: tuple[ModelLabFillSkipEntry, ...]
     budget: int
+    # OMN-23376: the tickets handed to the closer instead of a lane, each with its evidence.
+    closer: tuple[ModelLabFillCloserRoute, ...] = ()
 
 
 class ModelLabFillCandidateChoiceRequest(BaseModel):
