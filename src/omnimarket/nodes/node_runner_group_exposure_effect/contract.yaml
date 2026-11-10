@@ -105,6 +105,20 @@ schedule:
     persistent: true
     description: hourly, thirty-five minutes past
 
+# The App credentials the node resolves, at run time, to mint a fresh installation token for each
+# run (the overlay's token_mint names which of these refs it uses). Resolved through the secret
+# store; never read from a file, never logged.
+secrets:
+  ONEX_PR_READER_APP_ID:
+    description: "Read-only GitHub App id the run mints its installation token with."
+    required: false
+  ONEX_PR_READER_APP_PRIVATE_KEY:
+    description: "Signing key of that App; never logged."
+    required: false
+  ONEX_PR_READER_INSTALLATION_ID:
+    description: "Installation id of that App on the organization."
+    required: false
+
 overlay:
   node: node_runner_group_exposure_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

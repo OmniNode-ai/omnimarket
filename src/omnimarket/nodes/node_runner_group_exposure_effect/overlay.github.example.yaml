@@ -14,3 +14,4 @@ source:
   token_env: EXAMPLE_GROUP_READ_TOKEN
   max_calls: 40
   timeout_seconds: 10
+  token_mint: null

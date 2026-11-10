@@ -25,6 +25,8 @@ class EnumExposureReadFailure(StrEnum):
     ORG_READ_DENIED = "org-read-denied"
     BUDGET_EXHAUSTED = "budget-exhausted"
     UNREADABLE = "unreadable"
+    #: The App token could not be minted for this run.
+    TOKEN_UNAVAILABLE = "token-unavailable"
 
 
 class ModelRunnerGroupFacts(BaseModel):

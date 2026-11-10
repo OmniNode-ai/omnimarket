@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.models.runner_group_exposure import EnumExposureReadFailure
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
@@ -173,9 +174,7 @@ def test_injected_break_a_public_trigger_writes_a_not_working_row(trigger: str) 
 # -- error chain ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "failure", ["org-read-denied", "unreadable", "budget-exhausted"]
-)
+@pytest.mark.parametrize("failure", [f.value for f in EnumExposureReadFailure])
 def test_error_chain_an_unread_group_writes_an_unknown_row_and_fails_the_run(
     failure: str,
 ) -> None:

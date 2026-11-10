@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import SecretStr
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_reading import EnumReadingVerdict
@@ -32,6 +33,9 @@ from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner
     SUBJECT_READ_AGE,
     SUBJECTS,
 )
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters.app_token_minter import (
+    AppTokenMinter,
+)
 from omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe import (
     HandlerExposureProbe,
     load_topics,
@@ -42,7 +46,11 @@ from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_pr
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
     NODE_NAME,
+    ModelGithubAppMint,
     load_overlay,
+)
+from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_token_minter import (
+    ExposureTokenUnavailableError,
 )
 from tests.node_overlay_support import install_node_overlay
 
@@ -227,6 +235,7 @@ def _probe(
             "group_id": 7,
             "group_labels": ["example-private-group"],
             "token_env": TOKEN_ENV,
+            "token_mint": None,
             "max_calls": max_calls,
             "timeout_seconds": 5,
         }
@@ -425,7 +434,7 @@ def test_an_incomplete_in_memory_overlay_refuses(
         load_overlay()
 
 
-@pytest.mark.parametrize("key", ["token_env", "max_calls", "api_base"])
+@pytest.mark.parametrize("key", ["token_env", "token_mint", "max_calls", "api_base"])
 def test_a_github_overlay_without_a_key_refuses_and_names_it(
     key: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -453,3 +462,138 @@ def test_contract_declares_the_probe_topics() -> None:
     assert topics["probe_requested"].startswith("onex.cmd.omnimarket.")
     assert topics["probe_completed"].startswith("onex.evt.omnimarket.")
     assert topics["probe_failed"].startswith("onex.evt.omnimarket.")
+
+
+# -- a token minted for each run (OMN-19998) -----------------------------------------------------
+
+STALE_TOKEN = "stale-token-value-0123456789"
+FRESH_TOKEN = "fresh-token-value-9876543210"
+MINT = {
+    "app_id_ref": "EXAMPLE_APP_ID",
+    "private_key_ref": "EXAMPLE_APP_PRIVATE_KEY",
+    "installation_id_ref": "EXAMPLE_APP_INSTALLATION_ID",
+}
+
+
+class _FakeMinter:
+    """The seam the node mints through: a fixed token, or the typed failure."""
+
+    def __init__(self, token: str | None) -> None:
+        self._token = token
+        self.orgs: list[str] = []
+
+    def mint(self, *, org: str, mint: ModelGithubAppMint) -> str:
+        self.orgs.append(org)
+        if self._token is None:
+            raise ExposureTokenUnavailableError("the mint was refused (GitHubApiError)")
+        return self._token
+
+
+def _minted(
+    server: _Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    minter: _FakeMinter,
+) -> HandlerExposureProbe:
+    """A github overlay that names token_mint, with a STALE token left in token_env."""
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    monkeypatch.setenv(TOKEN_ENV, STALE_TOKEN)
+    server.scenario = Scenario()
+    source = {
+        "backend": "github",
+        "api_base": f"http://127.0.0.1:{server.server_address[1]}",
+        "org": "example-org",
+        "group_id": 7,
+        "group_labels": ["example-private-group"],
+        "token_env": TOKEN_ENV,
+        "token_mint": MINT,
+        "max_calls": 60,
+        "timeout_seconds": 5,
+    }
+    install_node_overlay(
+        monkeypatch, tmp_path, NODE_NAME, {"settings": SETTINGS, "source": source}
+    )
+    return HandlerExposureProbe(minter=minter)
+
+
+def test_golden_chain_the_minted_token_is_the_one_sent_not_the_stale_one(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failing control: on the base the overlay key is refused and the stale token is sent."""
+    minter = _FakeMinter(FRESH_TOKEN)
+    result = _run(_minted(server, tmp_path, monkeypatch, minter))
+    assert result.reading.verdict is EnumReadingVerdict.WORKING
+    assert minter.orgs == ["example-org"]
+    assert server.seen_auth
+    assert set(server.seen_auth) == {f"Bearer {FRESH_TOKEN}"}
+
+
+def test_error_chain_a_failed_mint_reads_unknown_and_makes_no_call(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = _run(_minted(server, tmp_path, monkeypatch, _FakeMinter(None)))
+    _assert_unknown(result, EnumExposureReadFailure.TOKEN_UNAVAILABLE)
+    assert result.calls == 0
+    assert server.seen_auth == []
+
+
+def test_the_minted_token_is_in_no_result_and_no_log(
+    server: _Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    result = _run(_minted(server, tmp_path, monkeypatch, _FakeMinter(FRESH_TOKEN)))
+    assert FRESH_TOKEN not in result.model_dump_json()
+    assert FRESH_TOKEN not in caplog.text
+
+
+def test_the_app_minter_names_the_ref_that_does_not_resolve_and_no_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved = {"EXAMPLE_APP_ID": "123456", "EXAMPLE_APP_PRIVATE_KEY": "key-material"}
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_runner_group_exposure_effect.adapters.app_token_minter.resolve_api_key",
+        lambda ref, **_: SecretStr(resolved[ref]) if ref in resolved else None,
+    )
+    with pytest.raises(ExposureTokenUnavailableError) as raised:
+        AppTokenMinter().mint(org="example-org", mint=ModelGithubAppMint(**MINT))
+    assert "EXAMPLE_APP_INSTALLATION_ID" in str(raised.value)
+    assert "123456" not in str(raised.value)
+    assert "key-material" not in str(raised.value)
+
+
+def test_the_app_minter_mints_with_what_the_refs_resolve_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved = {
+        "EXAMPLE_APP_ID": "123456",
+        "EXAMPLE_APP_PRIVATE_KEY": "key-material",
+        "EXAMPLE_APP_INSTALLATION_ID": "42",
+    }
+    seen: dict[str, object] = {}
+
+    def _mint(**kwargs: object) -> str:
+        seen.update(kwargs)
+        return FRESH_TOKEN
+
+    base = (
+        "omnimarket.nodes.node_runner_group_exposure_effect.adapters.app_token_minter"
+    )
+    monkeypatch.setattr(
+        f"{base}.resolve_api_key", lambda ref, **_: SecretStr(resolved[ref])
+    )
+    monkeypatch.setattr(f"{base}.mint_installation_token", _mint)
+    token = AppTokenMinter().mint(org="example-org", mint=ModelGithubAppMint(**MINT))
+    assert token == FRESH_TOKEN
+    assert seen["app_id"] == "123456"
+    assert seen["installation_id"] == 42
+    assert seen["org"] == "example-org"
+
+
+def test_the_app_overlay_example_loads_with_its_refs() -> None:
+    document = yaml.safe_load(
+        (NODE_DIR / "overlay.github-app.example.yaml").read_text()
+    )
+    assert document["source"]["token_mint"] == MINT

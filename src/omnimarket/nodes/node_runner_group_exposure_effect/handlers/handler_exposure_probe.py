@@ -17,10 +17,14 @@ from typing import Any
 import yaml
 
 from omnimarket.models.runner_group_exposure import (
+    EnumExposureReadFailure,
     ModelRunnerGroupExposureRequest,
 )
 from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure import (
     HandlerRunnerGroupExposure,
+)
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters.app_token_minter import (
+    AppTokenMinter,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.adapters.github_group_source import (
     GithubGroupSource,
@@ -34,15 +38,21 @@ from omnimarket.nodes.node_runner_group_exposure_effect.handlers.http_transport 
 from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe import (
     ModelExposureProbeRequest,
     ModelExposureProbeResult,
+    ModelGroupRead,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
     ModelExposureProbeOverlay,
+    ModelGithubSource,
     ModelInMemorySource,
     load_overlay,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_group_source import (
     ProtocolGroupSource,
     ProtocolHttpGet,
+)
+from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_token_minter import (
+    ExposureTokenUnavailableError,
+    ProtocolTokenMinter,
 )
 
 _CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -60,24 +70,46 @@ class HandlerExposureProbe:
         overlay: ModelExposureProbeOverlay | None = None,
         http_get: ProtocolHttpGet | None = None,
         environ: Mapping[str, str] | None = None,
+        minter: ProtocolTokenMinter | None = None,
     ) -> None:
         self._overlay = overlay
         self._http_get = http_get
         self._environ = environ
+        self._minter = minter
 
-    def _source(self, overlay: ModelExposureProbeOverlay) -> ProtocolGroupSource:
+    def _source(
+        self, overlay: ModelExposureProbeOverlay, environ: Mapping[str, str]
+    ) -> ProtocolGroupSource:
         source = overlay.source
         if isinstance(source, ModelInMemorySource):
             return InMemoryGroupSource(source.fixture)
         return GithubGroupSource(
-            source,
-            self._http_get or UrllibHttpTransport(),
-            os.environ if self._environ is None else self._environ,
+            source, self._http_get or UrllibHttpTransport(), environ
         )
+
+    def _read(
+        self, overlay: ModelExposureProbeOverlay, request: ModelExposureProbeRequest
+    ) -> ModelGroupRead:
+        """One read. A source that names ``token_mint`` gets a token minted for this run first."""
+        environ = os.environ if self._environ is None else self._environ
+        source = overlay.source
+        if isinstance(source, ModelGithubSource) and source.token_mint is not None:
+            try:
+                token = (self._minter or AppTokenMinter()).mint(
+                    org=source.org, mint=source.token_mint
+                )
+            except ExposureTokenUnavailableError:
+                return ModelGroupRead(
+                    read_at=request.now,
+                    calls=0,
+                    read_failure=EnumExposureReadFailure.TOKEN_UNAVAILABLE,
+                )
+            environ = {**environ, source.token_env: token}
+        return self._source(overlay, environ).read(now=request.now)
 
     def handle(self, request: ModelExposureProbeRequest) -> ModelExposureProbeResult:
         overlay = self._overlay or load_overlay(self._environ)
-        read = self._source(overlay).read(now=request.now)
+        read = self._read(overlay, request)
         reading = HandlerRunnerGroupExposure().handle(
             ModelRunnerGroupExposureRequest(
                 correlation_id=request.correlation_id,

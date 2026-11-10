@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the real-backend overlay that mints a fresh installation token from the
+# secret-store refs it names (no value is stored; the refs are environment-variable names).
+settings:
+  public_reach_events: [pull_request_target, pull_request, issue_comment]
+  max_age_seconds: 3600
+source:
+  backend: github
+  api_base: http://192.0.2.10:8080
+  org: example-org
+  group_id: 7
+  group_labels: [example-private-group]
+  token_env: EXAMPLE_GROUP_READ_TOKEN
+  token_mint:
+    app_id_ref: EXAMPLE_APP_ID
+    private_key_ref: EXAMPLE_APP_PRIVATE_KEY
+    installation_id_ref: EXAMPLE_APP_INSTALLATION_ID
+  max_calls: 40
+  timeout_seconds: 10

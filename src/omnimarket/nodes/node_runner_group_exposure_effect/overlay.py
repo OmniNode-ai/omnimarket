@@ -6,7 +6,8 @@ Found at ``<root>/node_runner_group_exposure_effect/overlay.yaml`` under a root 
 ``ONEX_SKILL_OVERLAY_ROOTS``. The package ships two examples with synthetic values: an in-memory
 source (the default way to run it) and a GitHub source. Nothing here has a default: an absent key
 refuses the load and names it. The token is never stored: ``token_env`` names the environment
-variable that holds it.
+variable that holds it; when ``token_mint`` is set the node mints a fresh token from the
+secret-store refs it names and exposes it under ``token_env``.
 """
 
 from __future__ import annotations
@@ -53,6 +54,16 @@ class ModelInMemorySource(BaseModel):
     fixture: ModelInMemoryFixture
 
 
+class ModelGithubAppMint(BaseModel):
+    """The secret-store refs the node resolves to mint a fresh installation token."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    app_id_ref: str = Field(min_length=1)
+    private_key_ref: str = Field(min_length=1)
+    installation_id_ref: str = Field(min_length=1)
+
+
 class ModelGithubSource(BaseModel):
     """The GitHub source: the REST API, read only."""
 
@@ -66,6 +77,9 @@ class ModelGithubSource(BaseModel):
     group_labels: tuple[str, ...] = Field(min_length=1)
     #: The NAME of the environment variable holding the read token; the value is never stored.
     token_env: str = Field(min_length=1)
+    #: When set, the node mints a fresh token from these refs and exposes it under ``token_env``;
+    #: null reads the token from ``token_env`` as before.
+    token_mint: ModelGithubAppMint | None
     #: Calls one read may make; the call past it is not made.
     max_calls: int = Field(ge=1)
     timeout_seconds: float = Field(gt=0)
@@ -159,6 +173,7 @@ __all__ = [
     "ModelExposurePublish",
     "ModelExposureReadingOverlay",
     "ModelExposureSource",
+    "ModelGithubAppMint",
     "ModelGithubSource",
     "ModelInMemoryFixture",
     "ModelInMemorySource",
