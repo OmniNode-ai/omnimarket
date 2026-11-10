@@ -213,7 +213,8 @@ async def test_real_markdown_and_typed_pair_reconcile_one_immutable_row(
     assert rows[0]["row_id"] == ROW_ID
     assert rows[0]["event_id"] == EVENT_ID
     assert rows[0]["raw_row"] == RAW_ROW
-    assert rows[0]["source"] == "onex-ledger"
+    # The emit node defaults to the ledger-emit source (OMN-23488); onex-ledger rows carry a ledger_seq.
+    assert rows[0]["source"] == "ledger-emit"
     assert rows[0]["record"] == dump_work_ledger_line(inbound.to_record())
 
 
@@ -440,7 +441,9 @@ async def test_simultaneous_legacy_and_typed_delivery_has_one_safe_identity(
         "raw_row": RAW_ROW,
         "row_id": ROW_ID,
         "event_id": ROW_ID,
-        "source": "onex-ledger",
+        # A legacy delivery with no ledger_seq comes from the backfill source; the
+        # projection refuses a live onex-ledger row without one (OMN-23488).
+        "source": "ledger-emit",
     }
     for seed in range(6):
         await conn.execute(
