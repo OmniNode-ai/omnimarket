@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from omnimarket.models.model_reading import (
     EnumReadingOutcome,
     EnumReadingVerdict,
+    ModelReadingPieceOutcome,
     ModelReadingWindowCommand,
     ModelReadingWindowResult,
 )
@@ -103,7 +104,9 @@ def _run(
     return result
 
 
-def _by_piece(result: ModelReadingWindowResult) -> dict[int, object]:
+def _by_piece(
+    result: ModelReadingWindowResult,
+) -> dict[int, ModelReadingPieceOutcome]:
     return {piece.piece: piece for piece in result.pieces}
 
 
@@ -115,8 +118,8 @@ def test_golden_final_pass_reads_late() -> None:
     pieces = result.pieces
     assert [piece.piece for piece in pieces] == [1, 6, 15]
     late = _by_piece(result)[6]
-    assert late.verdict is EnumReadingVerdict.WORKING  # type: ignore[attr-defined]
-    assert late.ledger == "written"  # type: ignore[attr-defined]
+    assert late.verdict is EnumReadingVerdict.WORKING
+    assert late.ledger == "written"
     assert all(not piece.ledger.startswith("append-failed") for piece in pieces)
     # the piece was written once, after the pieces that came after it in the order
     rows = [line for line in ledger.lines if "src=reading" in line]
@@ -129,7 +132,7 @@ def test_golden_the_same_stall_without_the_key_leaves_the_piece_unreadable() -> 
     fake = FakeClock()
     ledger = StalledLedger(fake, fail_from=FIRST_READ_AT, fail_count=FIRST_READ_FAILS)
     result = _run(ledger, fake, None)
-    assert _by_piece(result)[6].outcome is EnumReadingOutcome.SOURCE_UNREADABLE  # type: ignore[attr-defined]
+    assert _by_piece(result)[6].outcome is EnumReadingOutcome.SOURCE_UNREADABLE
 
 
 def test_golden_a_clean_run_with_the_key_pauses_never_and_defers_nothing() -> None:
