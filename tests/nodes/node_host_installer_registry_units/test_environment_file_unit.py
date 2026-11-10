@@ -103,6 +103,7 @@ def test_install_renders_the_environment_file_line_and_an_hourly_timer(
         expected_revision=revision,
         path_overrides={},
         ledger_host_name="h201",
+        workspace_config_root=str(tmp_path / "config"),
     )
     result = HandlerRegistryUnits(run).handle(request)
     assert result.status == "success", result.stderr
@@ -111,6 +112,7 @@ def test_install_renders_the_environment_file_line_and_an_hourly_timer(
     timer = (unit_dir / f"{LABEL}.timer").read_text(encoding="utf-8")
     assert f"EnvironmentFile=-{tmp_path}/home/{ENVIRONMENT_FILE}" in service
     assert '"ONEX_HOST_NAME=h201"' in service
+    assert f'"ONEX_WORKSPACE_CONFIG_ROOT={tmp_path}/config"' in service
     assert (
         '"-m" "omnimarket.nodes.node_delegation_scenario_r2_effect.runtime_scenario_r2_tick"'
         in service
@@ -147,6 +149,7 @@ def test_an_install_without_the_required_host_name_is_refused(tmp_path: Path) ->
             project_path=str(path),
             expected_revision=revision,
             path_overrides={},
+            workspace_config_root=str(tmp_path / "config"),
         )
     )
     assert result.status == "failure"
@@ -156,7 +159,12 @@ def test_an_install_without_the_required_host_name_is_refused(tmp_path: Path) ->
 def test_an_environment_file_outside_the_home_is_refused(tmp_path: Path) -> None:
     unit = load_units()[UNIT]
     handler = HandlerRegistryUnits(base.Recorder())
-    request = base.request(tmp_path, unit=UNIT, path_overrides={})
+    request = base.request(
+        tmp_path,
+        unit=UNIT,
+        path_overrides={},
+        workspace_config_root=str(tmp_path / "config"),
+    )
     for declared in ("../x", "/etc/scenario-r2.env"):
         with pytest.raises(ValueError, match="relative to the home"):
             handler.render_systemd(
@@ -196,4 +204,23 @@ def test_a_checkout_without_the_tick_entry_file_is_refused(tmp_path: Path) -> No
         )
     )
     assert result.status == "failure"
+    assert not (tmp_path / "home/.config/systemd/user" / f"{LABEL}.timer").exists()
+
+
+def test_an_install_without_the_lane_config_root_is_refused(tmp_path: Path) -> None:
+    """Error chain: the ledger append opens the lane bus from the config root, so an install that names none is refused."""
+    path, revision = _checkout(tmp_path)
+    result = HandlerRegistryUnits(base.Recorder()).handle(
+        base.request(
+            tmp_path,
+            unit=UNIT,
+            mode="install",
+            project_path=str(path),
+            expected_revision=revision,
+            path_overrides={},
+            ledger_host_name="h201",
+        )
+    )
+    assert result.status == "failure"
+    assert "workspace_config_root" in result.stderr
     assert not (tmp_path / "home/.config/systemd/user" / f"{LABEL}.timer").exists()

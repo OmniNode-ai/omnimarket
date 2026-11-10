@@ -286,6 +286,8 @@ units:
       # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
       PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     environment_inputs:
       ONEX_HOST_NAME: ledger_host_name
     required_environment_inputs: [ONEX_HOST_NAME]
