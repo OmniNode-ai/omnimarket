@@ -12,12 +12,14 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from omnimarket.handlers.delegation_readiness_scenario import scenario_main
+from omnimarket.models.model_delegation_scenario import EnumScenarioTrigger
 from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.handler_scenario_r8 import (
     NODE_MODULE,
+    HandlerScenarioR8,
     build_runner,
     load_schedule,
 )
@@ -43,6 +45,15 @@ def _split_record(argv: Sequence[str]) -> tuple[list[str], Path | None]:
     return rest, record
 
 
+def _build_with(
+    record: Path | None,
+) -> Callable[[EnumScenarioTrigger], HandlerScenarioR8]:
+    def _build(trigger: EnumScenarioTrigger) -> HandlerScenarioR8:
+        return build_runner(trigger=trigger, record=record)
+
+    return _build
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     rest, record = _split_record(sys.argv[1:] if argv is None else argv)
     return scenario_main(
@@ -51,5 +62,5 @@ def main(argv: Sequence[str] | None = None) -> int:
         node_module=NODE_MODULE,
         scenario_id="R8",
         schedule=load_schedule(),
-        build=lambda trigger: build_runner(trigger=trigger, record=record),
+        build=_build_with(record),
     )
