@@ -91,6 +91,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources impor
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
+    disk_expected_hosts,
     load_record,
     merge_lanes,
     overlay_store_events,
@@ -758,7 +759,12 @@ class HandlerFloorSimpleTick:
                 read_runner_groups(
                     home / rt.sources.runner_fleet_relpath, lab_ov, record
                 ),
-                read_disk(lane_dir / rt.sources.pool_receipt, lab_ov),
+                read_disk(
+                    lane_dir / rt.sources.pool_receipt,
+                    lab_ov,
+                    now,
+                    disk_expected_hosts(record, lab_ov),
+                ),
                 read_queue_age(watcher, lab_ov),
                 read_deploy_lag(record, now, lab_ov),
                 read_broker_lag(

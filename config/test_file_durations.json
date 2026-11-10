@@ -1067,6 +1067,7 @@
   "tests/nodes/node_floor_simple_effect/test_cycle_exits_floor_simple.py": 1.3,
   "tests/nodes/node_floor_simple_effect/test_delegation_idle_board_omn23313.py": 1.0,
   "tests/nodes/node_floor_simple_effect/test_delegation_rate_row_floor_simple.py": 0.422,
+  "tests/nodes/node_floor_simple_effect/test_disk_card_unread_host_floor_simple.py": 0.5,
   "tests/nodes/node_floor_simple_effect/test_error_chain_floor_simple.py": 0.24,
   "tests/nodes/node_floor_simple_effect/test_go_by_subject_floor_simple.py": 1.0,
   "tests/nodes/node_floor_simple_effect/test_go_state_floor_simple.py": 0.25,
