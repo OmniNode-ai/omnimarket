@@ -158,6 +158,9 @@ config:
     next_step_markers: ["next step", "next:", "what is left", "left to do", "still to do", "not yet", "not installed", "not proven", "follow-up", "follow up", "needs "]
     # A lane name ends in its start time (floor-reds-1300, asks-1220, runners-r2-0930); the name without it is the stem.
     lane_stem_suffix: '-\d{4}(?:-[a-z0-9]+)?$'
+    # Parent steps from a lane's ticket up to a ticket-rule root, read through the Linear snapshot's child ids; the same
+    # bound as max_depth in the goal_scope_ticket_rule overlay.
+    scope_max_depth: 6
     rows_kept: 4
     row_chars: 400
     report_path_template: .claude_scratch/reports/{lane}/result.md

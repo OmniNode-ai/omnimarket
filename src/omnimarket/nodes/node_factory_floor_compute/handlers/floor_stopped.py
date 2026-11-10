@@ -71,7 +71,36 @@ def _stem(lane: str, cfg: ModelFloorStoppedConfig) -> str:
     return re.sub(cfg.lane_stem_suffix, "", lane)
 
 
-def _in_scope(row: ModelFloorLedgerRow, request: ModelFactoryFloorRequest) -> bool:
+def _parents(request: ModelFactoryFloorRequest) -> dict[str, str]:
+    """Each ticket the Linear snapshot lists as a child, with the issue that lists it."""
+    parents: dict[str, str] = {}
+    for issue in request.linear:
+        for child in issue.children:
+            parents.setdefault(child.upper(), issue.id.upper())
+    return parents
+
+
+def _ticket_in_scope(
+    ticket: str, listed: set[str], parents: dict[str, str], max_depth: int
+) -> bool:
+    """The ticket is listed, or a listed ticket is within ``max_depth`` parent steps above it."""
+    seen: set[str] = set()
+    current = ticket.upper()
+    for _ in range(max_depth + 1):
+        if current in listed:
+            return True
+        seen.add(current)
+        current = parents.get(current, "")
+        if not current or current in seen:
+            return False
+    return False
+
+
+def _in_scope(
+    row: ModelFloorLedgerRow,
+    request: ModelFactoryFloorRequest,
+    lane_rows: Sequence[ModelFloorLedgerRow],
+) -> bool:
     scope = request.goal_scope
     if scope is None:
         return False
@@ -79,9 +108,15 @@ def _in_scope(row: ModelFloorLedgerRow, request: ModelFactoryFloorRequest) -> bo
         ticket.upper()
         for ticket in (*scope.in_scope_tickets, *request.scope_ticket_roots)
     }
-    return any(ticket.upper() in listed for ticket in row.tickets) or any(
-        scope.classify(pr) == "in_scope" for pr in row.prs
-    )
+    parents = _parents(request)
+    depth = request.config.stopped.scope_max_depth
+    return any(
+        _ticket_in_scope(ticket, listed, parents, depth)
+        for ticket in (
+            *row.tickets,
+            *(t for r in lane_rows for t in r.parent_tickets),
+        )
+    ) or any(scope.classify(pr) == "in_scope" for pr in row.prs)
 
 
 def _claimed_since(
@@ -158,7 +193,7 @@ def build_stopped(
                 ModelFloorStoppedSkip(lane=lane, outcome=outcome, cause=cause)
             )
 
-        if not _in_scope(ended, request):
+        if not _in_scope(ended, request, rows):
             skip("out-of-scope")
             continue
         text = _said(ended)
