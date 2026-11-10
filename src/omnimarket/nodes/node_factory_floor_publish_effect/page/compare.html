@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Factory floor: better and worse</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" id="icon-svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:20px 16px 32px}
+.frozen{background:var(--red);color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-weight:650}
+.frozen.warn{background:var(--amber)}
+a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
+.tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+.tabs a{padding:8px 14px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--mute);font-size:15px;font-weight:650}
+.tabs a[aria-selected="true"]{background:var(--card);border-color:var(--line);color:var(--ink);margin-bottom:-1px}
+.hs{font-size:13px;color:var(--mute);margin:0 0 12px}
+.sw{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
+button{appearance:none;font:inherit;cursor:pointer}
+.sw button{font-size:15px;font-weight:650;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--mute)}
+.sw button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--grey);border-radius:8px;padding:12px 14px;display:grid;gap:8px;align-content:start;min-width:0}
+.card.better{border-left-color:var(--green)}.card.worse{border-left-color:var(--red)}.card.mixed{border-left-color:var(--amber)}.card.unread,.card.empty{border-left-style:dashed}
+.card h2{font-size:17px;line-height:1.25;margin:0;font-weight:650}
+.cnt{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0;padding:0;list-style:none}
+.cnt li{background:var(--bg);border-radius:6px;padding:6px 4px;text-align:center;min-width:0}
+.cnt b{display:block;font-size:22px;line-height:1.1}.cnt span{font-size:12px;color:var(--mute)}
+.cnt .b b{color:var(--green)}.cnt .w b{color:var(--red)}
+.cnt .u{border:1px dashed var(--grey);background:transparent}.cnt .u b{color:var(--mute);font-style:italic}
+.card p{margin:0;font-size:14px;color:var(--ink);overflow-wrap:anywhere}.card p.none{color:var(--mute);font-style:italic}
+.card button{justify-self:start;font-size:13px;font-weight:650;color:var(--blue);background:none;border:0;padding:2px 0}
+.details{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.details>summary{cursor:pointer;padding:12px 14px;font-weight:650;font-size:16px;list-style:none;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.details>summary::-webkit-details-marker{display:none}
+.details>summary::before{content:"\25b6";font-size:12px;color:var(--mute)}.details[open]>summary::before{content:"\25bc"}
+.details>summary small{font-weight:400;color:var(--mute);font-size:13px}
+.dctl{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:0 14px 12px}
+.dctl label{display:grid;gap:2px;font-size:12px;color:var(--mute);font-weight:650;min-width:0}
+.dctl input,.dctl select{font:inherit;font-size:15px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);min-width:0;width:100%}
+#dbody{padding:0 14px 14px}
+.dinfo{font-size:13px;color:var(--mute);margin:0 0 8px}
+.dt{width:100%;border-collapse:collapse;font-size:14px}
+.dt th{text-align:left;font-size:12px;color:var(--mute);padding:4px 6px;border-bottom:1px solid var(--line)}
+.dt td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+.dt .nm{font-weight:600}.dt .ct{color:var(--mute)}
+.dt .unread{font-style:italic;color:var(--mute)}
+.verdict{font-size:12px;font-weight:650;padding:2px 7px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.verdict.better{color:var(--green)}.verdict.worse{color:var(--red)}.verdict.same,.verdict.unread{color:var(--mute)}
+.pager{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap}
+.pager button{font-size:14px;font-weight:650;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.pager button[disabled]{color:var(--grey);cursor:default}
+.pager span{font-size:13px;color:var(--mute)}
+.empty-row{padding:14px 4px;color:var(--mute)}
+@media(max-width:640px){
+ main{padding:14px 10px 24px}
+ .dctl{grid-template-columns:1fr 1fr}.dctl label:first-child{grid-column:1/-1}
+ .dt thead{display:none}
+ .dt,.dt tbody,.dt tr,.dt td{display:block;width:100%}
+ .dt tr{border:1px solid var(--line);border-radius:8px;margin-bottom:8px;padding:6px 8px}
+ .dt td{border:0;padding:2px 0;display:flex;justify-content:space-between;gap:12px}
+ .dt td::before{content:attr(data-l);color:var(--mute);font-size:12px;flex:none}
+ .dt td.nm{display:block}.dt td.nm::before{content:none}
+}
+</style></head><body><main>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" href="index.html#process">Process</a><a role="tab" href="index.html#machines">Machines</a><a role="tab" id="tab-compare" href="compare.html" aria-selected="true">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html">Delegation</a></div>
+<div id="alert"><div class="frozen">Reading the comparison...</div></div>
+<div id="sw" class="sw" role="group" aria-label="Compare with"></div>
+<p id="intro" class="hs"></p>
+<div id="cards" class="cards"></div>
+<details id="details" class="details">
+<summary>Details <small id="dsum">every number, with a search</small></summary>
+<div class="dctl">
+<label>Search<input id="q" type="search" placeholder="Name or category" autocomplete="off"></label>
+<label>Category<select id="cat"></select></label>
+<label>Result<select id="ver"><option value="">All results</option><option value="worse">Worse</option><option value="better">Better</option><option value="same">The same</option><option value="unread">Unread</option></select></label>
+<label>Sort by<select id="sort"><option value="big">Biggest change first</option><option value="small">Smallest change first</option><option value="name">Name</option></select></label>
+</div>
+<div id="dbody" aria-live="polite"></div>
+</details>
+<div class="more"><a href="index.html">Back to the floor</a></div>
+</main>
+<script>
+"use strict";
+const DATA = "floor-compare.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000;
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
+const $ = id => document.getElementById(id);
+let doc = null, failure = "", catSig = null;
+const st = {q: "", cat: "", ver: "", sort: "big", page: 1};
+const DAYS = () => (doc ? doc.windows.map(w => String(w.days)) : ["1", "7", "30"]);
+const pick = () => { const h = String(location.hash || "").replace(/^#/, ""); return DAYS().includes(h) ? h : "1"; };
+const MARK = {better: "✓ Better", worse: "▼ Worse", same: "– Same", unread: "? Unread"};
+// A refresh replaces the document only when draw can render it; otherwise the last usable one stays and the failure is shown.
+const renderable = d => !!d && typeof d === "object" && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.windows) && d.windows.length > 0
+  && d.windows.every(w => !!w && !!w.counts && Array.isArray(w.worse) && Array.isArray(w.better) && Array.isArray(w.unread));
+async function load(){
+  try {
+    const r = await fetch(DATA, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const next = await r.json();
+    if (!renderable(next)) throw new Error("the comparison has no renderable shape or no valid generated_at");
+    doc = next; failure = "";
+  } catch (e) { failure = String(e.message || e); }
+  draw();
+}
+const win = () => doc.windows.find(x => String(x.days) === pick()) || doc.windows[0];
+const cards = w => Array.isArray(w.categories) ? w.categories : null;
+const titleOf = (w, id) => { const c = (cards(w) || []).find(x => x.id === id); return c ? c.title : ""; };
+const rowsOf = w => Array.isArray(w.details) ? w.details : [];
+
+function drawCard(c, label){
+  const none = c.total === 0;
+  const counts = none ? "" : `<ul class="cnt"><li class="b"><b>${c.better}</b><span>better</span></li><li class="w"><b>${c.worse}</b><span>worse</span></li><li><b>${c.same}</b><span>the same</span></li><li class="u"><b>${c.unread}</b><span>unread</span></li></ul>`;
+  return `<section class="card ${esc(c.lean)}" data-cat="${esc(c.id)}"><h2>${esc(c.title)}</h2>${counts}<p class="${none || c.lean === "unread" ? "none" : ""}">${esc(c.biggest_change)}</p>`
+    + (none ? "" : `<button type="button" data-act="see" data-cat="${esc(c.id)}">See these numbers</button>`) + `</section>`;
+}
+function fillSelect(w){
+  const list = cards(w) || [];
+  const sig = list.map(c => c.id + ":" + c.title).join("|");
+  if (sig === catSig) return;
+  catSig = sig;
+  const el = $("cat");
+  el.innerHTML = `<option value="">All categories</option>` + list.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join("");
+  if (!list.some(c => c.id === st.cat)) st.cat = "";
+  el.value = st.cat;
+}
+function matches(w, r){
+  if (st.cat && r.category !== st.cat) return false;
+  if (st.ver && r.verdict !== st.ver) return false;
+  const q = st.q.trim().toLowerCase();
+  return !q || (r.name + " " + r.key + " " + titleOf(w, r.category)).toLowerCase().includes(q);
+}
+// The biggest move first; a number with no reading has no size and stays last in either direction.
+const order = {
+  big: (a, b) => (a.size == null) - (b.size == null) || (b.size || 0) - (a.size || 0) || a.name.localeCompare(b.name),
+  small: (a, b) => (a.size == null) - (b.size == null) || (a.size || 0) - (b.size || 0) || a.name.localeCompare(b.name),
+  name: (a, b) => a.name.localeCompare(b.name),
+};
+function drawRow(w, r, label){
+  const un = t => t === "unread" ? `<span class="unread">unread</span>` : esc(t);
+  return `<tr><td class="nm">${esc(r.name)}</td><td class="ct" data-l="Category">${esc(titleOf(w, r.category) || "-")}</td>`
+    + `<td data-l="${esc(label)} ago">${un(r.old_text)}</td><td data-l="Now">${un(r.new_text)}</td>`
+    + `<td data-l="Change">${esc(r.change_text)}</td><td data-l="Result"><span class="verdict ${esc(r.verdict)}">${MARK[r.verdict] || esc(r.verdict)}</span></td></tr>`;
+}
+function drawDetails(w){
+  const all = rowsOf(w), size = Math.max(1, Number(doc.details_page_size) || 25);
+  const hit = all.filter(r => matches(w, r)).sort(order[st.sort] || order.big);
+  const pages = Math.max(1, Math.ceil(hit.length / size));
+  st.page = Math.min(Math.max(1, st.page), pages);
+  const from = (st.page - 1) * size, shown = hit.slice(from, from + size);
+  let h = `<p class="dinfo">${hit.length === all.length ? `${all.length} numbers` : `${hit.length} of ${all.length} numbers match`}`
+    + (hit.length ? `, showing ${from + 1} to ${from + shown.length}` : "") + `. A number with no reading from ${esc(w.label)} ago is unread, never zero.</p>`;
+  if (!all.length) h = `<p class="empty-row">This comparison file carries no details yet; it is rewritten every few minutes.</p>`;
+  else if (!hit.length) h += `<p class="empty-row">No number matches. <button type="button" data-act="clear">Clear the search and filters</button></p>`;
+  else h += `<table class="dt"><thead><tr><th>Number</th><th>Category</th><th>${esc(w.label)} ago</th><th>Now</th><th>Change</th><th>Result</th></tr></thead><tbody>`
+    + shown.map(r => drawRow(w, r, w.label)).join("") + `</tbody></table>`;
+  if (hit.length > size) h += `<div class="pager"><button type="button" data-act="prev"${st.page <= 1 ? " disabled" : ""}>Previous</button><span>Page ${st.page} of ${pages}</span><button type="button" data-act="next"${st.page >= pages ? " disabled" : ""}>Next</button></div>`;
+  $("dbody").innerHTML = h;
+  $("dsum").textContent = all.length ? `${all.length} numbers, searchable, ${pages > 1 ? pages + " pages" : "one page"}` : "none yet";
+}
+function drawAlert(){
+  if (!doc) {
+    $("alert").innerHTML = `<div class="frozen">The comparison cannot be read (${esc(failure)}). Nothing below can be trusted.</div>`;
+    return;
+  }
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
+  const limit = FALLBACK_MAX_AGE_S, w = win();
+  document.title = (failure || age > limit ? "STALE " : "") + "Factory floor: better and worse than " + w.label + " ago";
+  let a = "";
+  if (failure) a += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the comparison from ${ago(age)}.</div>`;
+  else if (age > limit) a += `<div class="frozen">The comparison is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  if (doc.categories_error) a += `<div class="frozen warn">The category cards are not drawn: ${esc(doc.categories_error)} The numbers are all in the details below.</div>`;
+  $("alert").innerHTML = a;
+}
+function draw(){
+  drawAlert();
+  if (!doc) {
+    for (const id of ["sw", "intro", "cards", "dbody"]) $(id).innerHTML = "";
+    return;
+  }
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000)), w = win();
+  $("sw").innerHTML = doc.windows.map(x => `<button type="button" data-act="days" data-days="${x.days}" aria-pressed="${String(x.days) === String(w.days)}">${esc(x.label)}</button>`).join("");
+  $("intro").textContent = `What is better and what is worse now than ${w.label} ago. History: ${doc.history_points} dated readings${doc.oldest_point ? ", the oldest from " + doc.oldest_point : ""}. A number with no reading from then is counted as unread, never as zero. Record read ${ago(age)}.`;
+  const list = cards(w);
+  $("cards").innerHTML = list ? list.map(c => drawCard(c, w.label)).join("") : (doc.categories_error ? "" : `<div class="frozen warn">This comparison file was written before the category roll-up existed; it is rewritten every few minutes.</div>`);
+  if (doc.categories_error && !st.opened) { st.opened = true; $("details").open = true; }
+  fillSelect(w);
+  drawDetails(w);
+}
+function act(el){
+  const d = el.dataset || {};
+  if (d.act === "days") location.hash = d.days;
+  else if (d.act === "see") { st.cat = d.cat; st.page = 1; $("cat").value = d.cat; $("details").open = true; draw(); if ($("details").scrollIntoView) $("details").scrollIntoView({behavior: "smooth", block: "start"}); }
+  else if (d.act === "prev") { st.page -= 1; drawDetails(win()); }
+  else if (d.act === "next") { st.page += 1; drawDetails(win()); }
+  else if (d.act === "clear") { st.q = ""; st.cat = ""; st.ver = ""; st.page = 1; $("q").value = ""; $("cat").value = ""; $("ver").value = ""; drawDetails(win()); }
+}
+const delegate = e => { const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null; if (el) act(el); };
+for (const id of ["sw", "cards", "dbody"]) $(id).addEventListener("click", delegate);
+const refilter = (key, id) => () => { st[key] = $(id).value; st.page = 1; if (doc) drawDetails(win()); };
+$("q").addEventListener("input", refilter("q", "q"));
+$("cat").addEventListener("change", refilter("cat", "cat"));
+$("ver").addEventListener("change", refilter("ver", "ver"));
+$("sort").addEventListener("change", refilter("sort", "sort"));
+window.addEventListener("hashchange", () => { st.page = 1; if (doc) draw(); });
+load(); setInterval(load, REFRESH_MS); setInterval(drawAlert, 10000);
+</script></body></html>

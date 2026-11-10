@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -194,6 +196,51 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         return paths
 
     # -- live use -----------------------------------------------------------------------------
+    def _live_build_lock(self) -> str:
+        """The first declared build lock that is held and younger than the declared age, else ''.
+
+        The deploy agent takes these mkdir locks from staging through its last image build; its holder
+        record's time (the directory's, without one) is the age, the reclaim rule the agent applies. A
+        holder on this host whose process is gone is reclaimable at once, as the agent reclaims it.
+        """
+        now = time.time()
+        for relative in self.declaration.build_lock_dirs:
+            lock = self.registry_root / relative
+            if not lock.is_dir():
+                continue
+            holder = lock / "holder"
+            try:
+                age = now - (holder if holder.is_file() else lock).stat().st_mtime
+            except OSError:
+                continue  # an unreadable age is not evidence of a live build
+            if age > self.declaration.build_lock_max_age_seconds:
+                continue
+            if self._holder_is_gone(holder):
+                continue
+            return lock.name
+        return ""
+
+    @staticmethod
+    def _holder_is_gone(holder: Path) -> bool:
+        """True only when the record names this host and a process that is not running."""
+        try:
+            fields = dict(
+                line.partition("=")[::2]
+                for line in holder.read_text(encoding="utf-8").splitlines()
+            )
+            pid = int(fields.get("pid", ""))
+        except (OSError, UnicodeError, ValueError):
+            return False  # no readable record proves nothing about the build
+        if fields.get("host") != socket.gethostname():
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except (OSError, OverflowError):
+            return False  # PermissionError means alive; other errors prove nothing
+        return False
+
     def _open_claim_naming(self, clone: Path) -> str:
         """The lane of an open CLAIM that names the clone's path, else an empty string."""
         ledger = self._env.get("ONEX_LEDGER_PATH", "")
@@ -281,11 +328,21 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
 
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
+        building = self._live_build_lock()
+        if building:
+            return outcome(
+                skipped, f"an image build holds {building}: converged after it ends"
+            )
         branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
         if not branch:
             return self._reattach_detached(clone, refused_for, outcome)
         if branch not in self.declaration.tracking_branches:
-            return outcome(skipped, f"checked out on {branch}, not a tracking branch")
+            # A canonical clone parked on a lane branch serves that branch to every reader and the
+            # engine refuses it on every run, so it is returned to its remote default branch the
+            # same way a detached HEAD is reattached (OMN-23032).
+            return self._reattach_detached(
+                clone, refused_for, outcome, parked_on=branch
+            )
         if refused_for < self.age:
             return outcome(
                 skipped,
@@ -313,8 +370,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             ).splitlines()
             if c
         ]
-        if not dirty:
-            return outcome(skipped, "no tracked changes: the refusal has another cause")
+        if not dirty and not commits:
+            return outcome(
+                skipped,
+                "no tracked changes or local commits: the refusal has another cause",
+            )
         lane = self._open_claim_naming(clone)
         if lane:
             return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
@@ -328,9 +388,10 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             more = f" and {len(items) - listed} more" if len(items) > listed else ""
             return ", ".join(items[:listed]) + more
 
-        dropped = f"{len(dirty)} tracked path(s) ({named(dirty)})"
+        parts = [f"{len(dirty)} tracked path(s) ({named(dirty)})"] if dirty else []
         if commits:
-            dropped += f" and {len(commits)} local commit(s) ({named(commits)})"
+            parts.append(f"{len(commits)} local commit(s) ({named(commits)})")
+        dropped = " and ".join(parts)
         note = f"dropped, not saved: {dropped}; converged to {target[:12]}"
         script = self.registry_root / self.declaration.converge_script
         try:
@@ -377,6 +438,8 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         clone: Path,
         refused_for: int,
         outcome: Callable[..., ModelDirtyConvergeOutcome],
+        *,
+        parked_on: str = "",
     ) -> ModelDirtyConvergeOutcome:
         """Reattach a clone left on a detached HEAD to its tracking branch (OMN-20344).
 
@@ -387,10 +450,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         """
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
+        where = f"on {parked_on}" if parked_on else "detached"
         if refused_for < self.detached_age:
             return outcome(
                 skipped,
-                f"detached for {refused_for}s, below the declared {int(self.detached_age)}s",
+                f"{where} for {refused_for}s, below the declared {int(self.detached_age)}s",
             )
         # A raw ref can name a missing object. Require the commit before allowing
         # the converge script to move HEAD and potentially lose its only reference.
@@ -428,7 +492,8 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
                 f"; {len(only_here)} commit(s) reachable only from it "
                 f"({', '.join(only_here[:listed])}{more}) saved as patches by the script"
             )
-        note = f"reattached from a detached HEAD at {before[:12]}{kept}"
+        origin = f"the lane branch {parked_on}" if parked_on else "a detached HEAD"
+        note = f"reattached from {origin} at {before[:12]}{kept}"
         script = self.registry_root / self.declaration.converge_script
         try:
             done = self._run(

@@ -1,0 +1,19 @@
+{
+  "source": {
+    "SKILL.md": "# Drain skill\n",
+    "landing_decision.pin.json": "{\"revision\": \"recorded\"}\n",
+    "landing_worker_policy.json": "{\"ledger_error_chars\": 1400}\n",
+    "goal_contract_map.json": "{\"schema\": 1, \"names\": [\"current\"]}\n",
+    "landing_floors.json": "{\"default_per_hour\": 3}\n",
+    "scripts/landing_worker_run.py": "from pathlib import Path\nPOLICY = Path(__file__).resolve().parents[1] / 'landing_worker_policy.json'\n",
+    "scripts/lane_priority_classes.json": "{\"default\": 1}\n"
+  },
+  "installed": {
+    "SKILL.md": "# Drain skill\n",
+    "landing_decision.pin.json": "{\"revision\": \"recorded\"}\n",
+    "goal_contract_map.json": "{\"schema\": 1, \"names\": [\"stale\"]}\n",
+    "landing_floors.json": "{\"default_per_hour\": 1}\n",
+    "scripts/landing_worker_run.py": "from pathlib import Path\nPOLICY = Path(__file__).resolve().parents[1] / 'landing_worker_policy.json'\n",
+    "scripts/lane_priority_classes.json": "{\"default\": 1}\n"
+  }
+}

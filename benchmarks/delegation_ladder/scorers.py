@@ -35,6 +35,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
+from omnimarket.handlers.vendor_compat import vendor_compat
+from omnimarket.handlers.workflow_request_score import (
+    same_literal,
+    score_workflow_request,
+)
 
 TestRunner = Callable[[Path, str, int], tuple[int, str]]
 
@@ -308,6 +313,10 @@ def normalize_answer(text: str) -> str:
 def score_exact_match(response: str, config: dict[str, object]) -> ModelScore:
     """Held-answer match: every accepted form present, every forbidden absent."""
     answer, _ = split_answer(response)
+    if "expected_workflow" in config:
+        return ModelScore(
+            **score_workflow_request(answer, config, FIXTURES).model_dump()
+        )
     normalized = normalize_answer(answer)
     accepted = [normalize_answer(x) for x in _strs(config, "accepted")]
     forbidden = [normalize_answer(x) for x in _strs(config, "forbidden")]
@@ -625,6 +634,7 @@ def score_patch_apply_and_test(
 # --------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def git_text(*args: str) -> str:
@@ -661,13 +671,12 @@ def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> No
 
 def run_tree_test(tree: Path, test_path: str, timeout_s: int) -> tuple[int, str]:
     """Run one repository test file against ``tree/src``; return ``(rc, output)``."""
-    env = {
-        **os.environ,
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPATH": str(tree / "src"),
-    }
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     argv = [sys.executable, "-m", "pytest", test_path, "-q", "-x", "--no-header"]
     argv += ["-p", "no:cacheprovider", "-o", "addopts="]
+    failure = vendor_compat(tree, env)
+    if failure is not None:
+        return failure
     try:
         completed = subprocess.run(
             argv,
@@ -808,19 +817,6 @@ _LITERAL_PREFIX_RE = re.compile(
 )
 
 
-def _same_literal(a: object, b: object) -> bool:
-    """Equality that does not let ``True == 1`` or ``1 == 1.0`` through."""
-    if type(a) is not type(b):
-        return False
-    if isinstance(a, dict) and isinstance(b, dict):
-        return a.keys() == b.keys() and all(_same_literal(a[k], b[k]) for k in a)
-    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
-        return len(a) == len(b) and all(
-            _same_literal(x, y) for x, y in zip(a, b, strict=True)
-        )
-    return bool(a == b)
-
-
 def _literal_candidates(answer: str) -> list[str]:
     """The answer as given, unfenced, and each line, so wrapping does not decide."""
     text = answer.strip()
@@ -851,7 +847,7 @@ def score_literal_equals(response: str, config: dict[str, object]) -> ModelScore
             got = ast.literal_eval(candidate)
         except (ValueError, SyntaxError, MemoryError, RecursionError):
             continue
-        if _same_literal(got, expected):
+        if same_literal(got, expected):
             return ModelScore(
                 outcome=EnumOutcome.PASS,
                 score=1.0,

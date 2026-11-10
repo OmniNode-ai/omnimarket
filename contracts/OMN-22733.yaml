@@ -1,0 +1,87 @@
+schema_version: 1.0.0
+ticket_id: OMN-22733
+title: The reading writer's hourly verb fails every piece and exits 1 when the ledger read command names a missing interpreter
+summary: >-
+  The overlays repository already carries the fix for the h053 unit (the schedule host venv is omnimarket/.venv and no value names
+  an omni_worktrees path; overlays#28). The h053 unit is installed from the registry root and its 2026-11-09T14:15Z run wrote 18 rows.
+  What was missing is a test of the last criterion through the hourly verb: a read command naming a missing interpreter reports every
+  piece as failed, exits 1 and reads no piece as WORKING. This change adds that test; no source file changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22733-overlay-and-unit
+  statement: The h053 reading unit installs from the registry root omnimarket clone and the omnibase_infra venv, never from a worktree.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the overlay''s h053 schedule host venv is omnimarket/.venv and no unit_environment value or venv holds a path segment omni_worktrees -- falsifier: load the overlay through ModelReadingOverlay and assert no value holds omni_worktrees, which fails on main today'
+  - id: AC2
+    statement: 'AC2: after schedule install on h053 the rendered onex-reading-hourly.service names no omni_worktrees path in ExecStart, WorkingDirectory or Environment -- falsifier: systemctl --user cat onex-reading-hourly.service piped to grep omni_worktrees exits 1'
+  - id: AC3
+    statement: 'AC3: the next hourly run on h053 writes a reading row for every piece -- falsifier: onex ledger query rows with lane reading-writer after the run, counting 18 rows for the window and zero append-failed lines in the unit log'
+- id: req-omn22733-missing-interpreter
+  statement: A missing read command interpreter is a failed run, never a quiet one.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: with the read command pointed at a missing interpreter the run reports every piece as failed and exits 1 -- falsifier: run the hourly verb on h053 with ONEX_LEDGER_BUS_READ_COMMAND naming a missing path and read the WINDOW line failed=18'
+evidence_requirements:
+- kind: tests
+  description: The hourly verb with a read command naming a missing path, through the CLI tests of the reading writer node.
+  command: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_cli.py -q --no-cov -k missing_read_command
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22733-ac1-overlay
+  description: >-
+    The overlay on the overlays repository's main names omnimarket/.venv for h053 and no uncommented line of it holds omni_worktrees
+    (the overlays gate tests/test_overlay_roots.py holds the same rule for every unit overlay).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: bash -c '! git -C "$OMNI_HOME/overlays" show origin/main:overlays/node_reading_writer_effect/overlay.yaml | grep -v "^[[:space:]]*#" | grep omni_worktrees'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov -k "venv or without_a_venv"
+    cwd: .
+- id: dod-omn22733-ac2-unit
+  description: The rendered unit on h053, drop-ins included, names no omni_worktrees path.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: bash -c '! systemctl --user cat onex-reading-hourly.service | grep omni_worktrees'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov -k "installed_unit_runs"
+    cwd: .
+- id: dod-omn22733-ac3-window
+  description: >-
+    The hourly verb, run through the CLI on the file route with a stub append command over the healthy fixture window, prints one READING
+    line per declared piece with ledger=written, no append-failed line, a WINDOW line reading failed=0 write=yes, and writes one row per
+    piece. The test is new on this branch, so it does not exist at the merge base and the control fails there.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  # Lab reading of the same criterion, kept as a comment because the log lives only on the h053 host and the hosted runner cannot read it:
+  #   grep -c "WINDOW start=2026-11-09T13:00:00Z pieces=18 failed=0 write=yes" "$OMNI_HOME/.onex_state/reading-writer/reading-writer.out.log"
+  # the 14:15Z run of 2026-11-09 on h053 printed that WINDOW line (evidence in the pull request body).
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_cli.py -q --no-cov -k every_piece_written
+    cwd: .
+- id: dod-omn22733-ac4-missing-interpreter
+  description: >-
+    The CLI test runs the hourly verb on the command read route with a read command naming a path that is not there: exit 1, one READING
+    line per declared piece, failed equal to the piece count, no WORKING verdict in the output or the appended rows.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_cli.py -q --no-cov -k missing_read_command
+    cwd: .

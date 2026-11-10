@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
@@ -99,8 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     # The operator-only gate comes first: no file is published to a server that does not carry it. A refusal there
     # withdraws the operator-only reports, is reported, and does not hold the shared pages back (the exit code stays 2).
     gate_refused = False
+    # The serving hosts whose connection did not open: the three steps share the list, so a down host costs one connect timeout (OMN-23081).
+    unreachable: set[str] = set()
+    run_start = time.monotonic()
+    access_start = run_start
+    access_seconds = 0.0
     try:
-        access = HandlerOperatorAccess().handle(
+        access = HandlerOperatorAccess(unreachable=unreachable).handle(
             ModelOperatorAccessRequest(
                 home=a.registry_home, skip_reports=a.skip_reports
             )
@@ -112,11 +118,15 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"REFUSED operator-access: {exc}\n")
         gate_refused = True
     else:
+        access_seconds = time.monotonic() - access_start
         sys.stdout.write(
             f"operator-access: admitted_devices={access.admitted_devices} "
             f"include={access.include_sha256[:12]} changed={access.include_changed} "
-            f"published={len(access.published)} files unread={','.join(access.unread) or 'none'}\n"
+            f"published={len(access.published)} files unread={','.join(access.unread) or 'none'} "
+            f"seconds={access_seconds:.0f}\n"
         )
+        for host, reason in access.failed_targets.items():
+            sys.stderr.write(f"operator-access: host {host} not served: {reason}\n")
     request = ModelFactoryFloorPublishRequest(
         home=a.registry_home,
         state_dir=a.state_dir,
@@ -124,12 +134,16 @@ def main(argv: list[str] | None = None) -> int:
         refresh_delegation=a.refresh_delegation,
     )
     floor_refused = False
+    publisher = HandlerFactoryFloorPublish(unreachable=unreachable)
+    publish_seconds = 0.0
+    publish_start = time.monotonic()
     try:
-        result = HandlerFactoryFloorPublish().handle(request)
+        result = publisher.handle(request)
     except (PublishRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor-publish: {exc}\n")
         floor_refused = True
     else:
+        publish_seconds = time.monotonic() - publish_start
         for step in result.steps:
             if step.status == "failed":
                 sys.stderr.write(
@@ -138,20 +152,45 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(
             f"factory-floor-publish: published={','.join(result.published)} "
             f"record={result.generated_at} sha256={result.data_sha256[:12]} "
-            f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'}\n"
+            f"steps={','.join(f'{s.name}:{s.status}:{s.seconds:.0f}s' for s in result.steps) or 'skipped'} "
+            f"after_publish={','.join(f'{s.name}:{s.status}:{s.seconds:.0f}s' for s in result.after_publish) or 'none'} "
+            f"served_to={','.join(result.served_to) or 'none'} "
+            f"failed_targets={','.join(result.failed_targets) or 'none'} "
+            f"cycle_seconds={result.cycle_seconds:.0f} "
+            f"phases={','.join(f'{k}:{v:.0f}s' for k, v in result.phase_seconds.items())}\n"
         )
+
+    def record_tick(reports_seconds: float) -> None:
+        """The served status names the seconds of the whole tick, so a slow gate or reports site is seen too (OMN-22699)."""
+        try:
+            publisher.record_tick(
+                {
+                    "operator_access": access_seconds,
+                    "floor_publish": publish_seconds,
+                    "reports_site": reports_seconds,
+                    "run": time.monotonic() - run_start,
+                }
+            )
+        except PublishRefusedError as exc:
+            sys.stderr.write(f"factory-floor-publish: tick seconds not served: {exc}\n")
+
     if a.skip_reports:
+        record_tick(0.0)
         return 2 if gate_refused or floor_refused else 0
+    reports_start = time.monotonic()
     try:
-        reports = HandlerReportsPublish().handle(
+        reports = HandlerReportsPublish(unreachable=unreachable).handle(
             ModelReportsPublishRequest(home=a.registry_home)
         )
     except (PublishRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED reports-site-publish: {exc}\n")
+        record_tick(time.monotonic() - reports_start)
         return 2
+    record_tick(time.monotonic() - reports_start)
     sys.stdout.write(
         f"reports-site-publish: published={len(reports.published)} files "
         f"unread={','.join(reports.unread) or 'none'} manifest={reports.manifest_sha256[:12]} "
-        f"index={reports.index_url}\n"
+        f"index={reports.index_url} seconds={time.monotonic() - reports_start:.0f} "
+        f"run_seconds={time.monotonic() - run_start:.0f}\n"
     )
     return 2 if gate_refused or floor_refused else 0

@@ -1,0 +1,23 @@
+name: node_lab_state_alarm_effect
+version: "0.1.0"
+description: "The lab-state alarm with a delivery receipt read back, and the hosted canary verdict"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_state_alarm_effect: "omnimarket.nodes.node_lab_state_alarm_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "observability", "floor", "OMN-19998"]
+pack: "pipeline"
+display_name: "Lab State Alarm"
+node_role: "effect"

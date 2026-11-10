@@ -25,8 +25,12 @@ from pydantic import ValidationError
 from omnimarket.nodes.node_agent_review_gate_accept_effect.handlers.handler_gate_accept import (
     HandlerGateAccept,
 )
+from omnimarket.nodes.node_agent_review_gate_accept_effect.handlers.handler_receipt_gate import (
+    HandlerReceiptGate,
+)
 from omnimarket.nodes.node_agent_review_gate_accept_effect.models import (
     ModelGateAcceptRequest,
+    ModelReceiptGateRequest,
 )
 from omnimarket.nodes.node_agent_review_gate_accept_effect.protocols import (
     ProtocolReceiptVerifier,
@@ -44,23 +48,41 @@ def main(
     parser.add_argument("--repository", required=True)
     parser.add_argument("--pull-request", required=True, type=int)
     parser.add_argument("--head-sha", required=True)
-    parser.add_argument("--voter-result-path", required=True)
+    parser.add_argument("--voter-result-path")
+    parser.add_argument("--receipt-only", action="store_true")
+    parser.add_argument("--wait-seconds", type=float, default=0)
+    parser.add_argument("--poll-seconds", type=float, default=10)
     parser.add_argument("--step-output-path", required=True)
     parser.add_argument("--step-summary-path", required=True)
     args = parser.parse_args(argv)
+    handler = HandlerGateAccept(reviews=reviews, verifier=verifier)
     try:
-        request = ModelGateAcceptRequest(
-            repository=args.repository,
-            pull_request=args.pull_request,
-            head_sha=args.head_sha,
-            voter_result_path=args.voter_result_path,
-            step_output_path=args.step_output_path,
-            step_summary_path=args.step_summary_path,
-        )
+        if args.receipt_only:
+            receipt_request = ModelReceiptGateRequest(
+                repository=args.repository,
+                pull_request=args.pull_request,
+                head_sha=args.head_sha,
+                step_output_path=args.step_output_path,
+                step_summary_path=args.step_summary_path,
+                wait_seconds=args.wait_seconds,
+                poll_seconds=args.poll_seconds,
+            )
+            result = HandlerReceiptGate(handler).handle(receipt_request)
+        else:
+            if not args.voter_result_path:
+                parser.error("--voter-result-path is required unless --receipt-only")
+            request = ModelGateAcceptRequest(
+                repository=args.repository,
+                pull_request=args.pull_request,
+                head_sha=args.head_sha,
+                step_output_path=args.step_output_path,
+                step_summary_path=args.step_summary_path,
+                voter_result_path=args.voter_result_path,
+            )
+            result = handler.handle(request)
     except ValidationError as exc:
         sys.stderr.write(f"gate accept: the input is not accepted: {exc}\n")
         return 2
-    result = HandlerGateAccept(reviews=reviews, verifier=verifier).handle(request)
     sys.stderr.write(result.summary_line + "\n")
     return 0
 

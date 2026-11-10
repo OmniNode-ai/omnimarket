@@ -1,0 +1,22 @@
+name: node_stop_escalation_effect
+version: "0.1.0"
+description: "one escalation row and one alarm with a delivery receipt for an andon stop not cleared after stale_after_hours; the stop stays open"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_stop_escalation_effect: "omnimarket.nodes.node_stop_escalation_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "andon", "stop", "escalation"]
+pack: "routing"
+display_name: "Stop Escalation Effect"
+node_role: "effect"

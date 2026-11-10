@@ -22,6 +22,7 @@ from .fakes import (
     FakeBlocks,
     FakeChecks,
     FakeClock,
+    FakeMerged,
     FakeOwners,
     FakeRunner,
 )
@@ -67,6 +68,7 @@ def _handler(
     )
     launch = HandlerLabFillLaunch(
         premise_gate=FakePremiseGate(),
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=approved,
         blocks=blocks or FakeBlocks(),

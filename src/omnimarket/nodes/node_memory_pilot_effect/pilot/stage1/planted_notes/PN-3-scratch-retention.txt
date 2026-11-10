@@ -1,0 +1,3 @@
+# Planted note PN-3 (synthetic test fixture)
+
+Host note dated 2026-11-01. Files in the scratch area of the second pool host are kept for 19 days before the cleanup job removes them. The number comes from the longest nightly job, which reads 17 days of history, plus 2 days of slack. The first pool host keeps its scratch files for 7 days because its disk is smaller. Neither window applies to the shared knowledge base.

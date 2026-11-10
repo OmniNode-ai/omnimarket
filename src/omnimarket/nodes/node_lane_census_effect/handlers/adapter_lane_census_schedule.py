@@ -24,6 +24,7 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
     not_configured_message,
 )
+from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.models.model_lane_census import (
     ModelLaneCensusHostRow,
     ModelLaneCensusSchedule,
@@ -254,6 +255,7 @@ class LaneCensusScheduler:
                 registry_path=resolve_registry_path(self.environ),
                 config_root=config_root,
             )
+            refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except NodeOverlayError as exc:
             return ModelLaneCensusScheduleResult(exit_code=1, stderr=f"{exc}\n")
         except ValueError as exc:

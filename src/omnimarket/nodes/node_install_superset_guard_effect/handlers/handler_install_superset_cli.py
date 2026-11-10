@@ -16,6 +16,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.install_file_list import (
+    SupersetError,
+    git,
+    resolve,
+    text,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, resolve_setting
 
 from ..models.model_install_superset import (
@@ -24,14 +30,7 @@ from ..models.model_install_superset import (
     ModelSupersetRequest,
     ModelSupersetResult,
 )
-from .handler_install_superset import (
-    HandlerInstallSuperset,
-    SupersetError,
-    git,
-    resolve,
-    text,
-    tree_differences,
-)
+from .handler_install_superset import HandlerInstallSuperset, tree_state
 
 PLUGIN_INSTALL_OVERLAY = "plugin_install"
 PLUGIN_INSTALL_FIELDS = frozenset({"ledger_ticket"})
@@ -114,11 +113,11 @@ def live_commit(
     commit, origin = named_live_commit(a, record, superset)
     try:
         commit = resolve(repo, commit)
-        compared, differ = tree_differences(
-            repo, commit, str(superset.get("prefix") or prefix), install_dir
-        )
+        compared, differ, lost = tree_state(repo, commit, prefix, install_dir, superset)
     except SupersetError as exc:
         raise RefusalError(f"LIVE-COMMIT-UNKNOWN: {exc}") from exc
+    if lost:
+        raise RefusalError(HandlerInstallSuperset.lost_message(commit, origin, lost))
     if not compared or differ:
         detail = f"{len(differ)} of {compared} file(s) differ: {', '.join(differ[:8])}"
         raise RefusalError(

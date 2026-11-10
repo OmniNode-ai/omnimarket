@@ -39,6 +39,7 @@ from .fakes import (
     FakeBlocks,
     FakeChecks,
     FakeClock,
+    FakeMerged,
     FakeOwners,
     FakeRunner,
 )
@@ -96,6 +97,7 @@ def _tick(
     clock = FakeClock()
     launch = HandlerLabFillLaunch(
         premise_gate=FakePremiseGate(),
+        merged=FakeMerged(),
         checks=checks,
         approved=approved,
         blocks=FakeBlocks(),

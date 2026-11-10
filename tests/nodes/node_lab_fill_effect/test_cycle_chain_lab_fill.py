@@ -62,6 +62,7 @@ from .fakes import (
     FakeChecks,
     FakeClock,
     FakeLedgerReader,
+    FakeMerged,
     FakeOwners,
     FakePlacement,
     FakeReceipts,
@@ -228,6 +229,7 @@ def test_a_cycle_places_one_lane_and_writes_its_status_row(tmp_path: Path) -> No
     runner = FakeRunner()
     launched = HandlerLabFillLaunch(
         premise_gate=FakePremiseGate(),
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=FakeApproved(),
         blocks=FakeBlocks(),

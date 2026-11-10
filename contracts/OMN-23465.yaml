@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23465
+title: The ledger is read once per refresh of the single picture of all work in progress
+summary: The work-state projection effect's ledger source asks the ledger for all its row types in one batch (read_queries) instead of one read per row type, and falls back to one read per row type for a source without the batch port. Its test holds both sides, with the per-row-type read as the failing control.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23465-ledger-single-pass
+  statement: One pass of the work-state projection reads the ledger once for all its row types, and the projection it writes is unchanged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket pull request 5692 carries this ticket''s contract with evidence naming the single-pass ledger read test, and its reds are fixed forward on the exact head -- falsifier: uv run pytest on tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py fails at the merge base, where the single-pass read does not exist'
+  - id: AC2
+    statement: 'AC2: one projection pass asks the ledger for all its row types in a single pass and the projection it writes is unchanged -- falsifier: the failing control in the same test file, where a ledger source without the batch port is read once per row type, shows the per-row-type read this replaces'
+  - id: AC3
+    statement: 'AC3: integrated: the scheduled work-state projection node running in the lab runtime refreshes with one ledger read per pass and two consecutive refreshes are read there -- falsifier: the projection''s two newest refresh records read from the lab runtime'
+evidence_requirements:
+- kind: tests
+  description: The single-pass ledger read test and its failing control.
+  command: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23465-ac1-single-pass-test
+  description: Runs the single-pass ledger read test. A ledger source with the batch port is asked for every row type in one call, and the control (a source without the batch port) is read once per row type. The test file does not exist at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23465-ac3-scheduled-single-pass
+  description: Runs the single-pass test with the scheduled node's in-memory two-refresh round trip. The single-pass test file does not exist at the merge base, so the command fails there. The read of the two newest refreshes in the lab runtime itself is recorded on the ticket after the node runs there.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py tests/nodes/node_work_state_projection_scheduled_effect/test_bus_roundtrip_work_state_projected.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23465-integration-proof-lab
+  description: Runs the single-pass ledger read test and the scheduled node's two-refresh round trip at the pushed head on a lab host through the lab work runner.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23465 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py tests/nodes/node_work_state_projection_scheduled_effect/test_bus_roundtrip_work_state_projected.py -q --no-cov -p no:randomly'
+    cwd: .

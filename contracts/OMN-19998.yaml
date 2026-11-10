@@ -6,6 +6,26 @@ is_seam_ticket: false
 interface_change: true
 interfaces_touched: [events, public_api]
 requirements:
+  - id: req-omn19998-floor-current-gate
+    statement: The floor uses the newest verdict across the gate's configured wave spellings and names a failed check's recorded cause.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: later subjects 0, G0 and W0 supersede the October 31 failure by timestamp; the November 2 failure cause and date reach the line blocker, passing verdicts clear it, and an overlay can change the wave spelling -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-floor-stop-ownership
+    statement: Manifest and fallback table lines attribute failing CI only to their own PR work.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the recorded dependency update and other-ticket PRs are excluded from a ticketed task; title and branch matches retain genuine red stops, inferred owned PRs reach fallback items, and unread explicit links remain visible -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-job-exit-finding
+    statement: A job exit declared as a finding opens a finding episode and directs the repair lane to the reported condition.
+    acceptance:
+      - id: AC11
+        statement: 'Declared finding exits retain a failing alarm, name the finding in the episode, friction row, alert and dispatch brief, and decide deterministically; undeclared exits retain failed-exit behavior -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py -q --no-cov -n 0'
+  - id: req-omn19998-job-log-accounting
+    statement: Failed lane reads that never attempt bus publication release their reservations, and default log windows use the existing gateway byte cap.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: eight recorded entrypoint import crashes leave all eight reads available; pre-publication bus failures release their reservations, publication and unknown outcomes remain charged, concurrent refunds preserve other charges, shared hits stay free, and default log tails and windows use 65536 bytes while explicit smaller windows remain unchanged -- falsifier: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q --no-cov'
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
     acceptance:
@@ -43,6 +63,11 @@ requirements:
         statement: 'AC8: recorded quiet-host incidents retain their alarm; each safe host repair preserves backlog, persists a cooldown and requires a newer post-attempt event for capture recovery; unknown reads, cycling broker failures, failed installs and stale or future readbacks never report recovery -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0'
       - id: AC9
         statement: 'AC9: the installed alarm node is discovered and routes its declared bus command to a correlated terminal event; the existing registry installer renders its clean branch checkout, configuration path and revision -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"'
+  - id: req-omn19998-workspace-lab-hosts
+    statement: Lab placement discovers the declared workspace config owner's host overlay without a manual overlay-root export.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: remote and developer workspace configurations supply lab_hosts after explicit sources; invalid selected sources still refuse, and host availability, load, memory and tool admission still apply -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-delegation-floor-read
     statement: The floor reads delegation projection events through the node's public runtime without circular handler imports.
     acceptance:
@@ -149,6 +174,16 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
+  - id: req-omn19998-floor-worker-occupancy
+    statement: A finished receipt or an absent worker process removes an unclosed claim from worker occupancy; silence alone does not.
+    acceptance:
+      - id: AC8
+        statement: 'Finished receipts and dead runner or controller process readings occupy no slots, while live quiet workers and unread process sources remain visible; older receipts cannot close a reclaimed lane and both pages label inactive workers separately.'
+  - id: req-omn19998-floor-cloud-source
+    statement: The floor reads current cloud account state through the existing cloud placement node and records the evidence behind stopped lines.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the read-only node snapshot exposes selected account fields from v2 state, supports a reachable host command, and keeps failures unread without publishing diagnostics; dependency release-note links do not stop unrelated tasks, a ticket-linked red PR still stops its task, and a failed gate names its recorded cause and date -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov'
   - id: req-omn19998-floor-publish-interval
     statement: The existing floor publisher keeps large process series off the shared floor payload, retains lossless report detail, and renders a prepared timer environment with its declared projection host.
     acceptance:
@@ -196,7 +231,23 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: a higher-ranked host missing a required plan branch is passed over for a host holding every input; missing, unchecked and pinned-host inputs refuse placement, while full pools and requests needing no inputs retain their prior outcomes -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_brief_input_placement.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-auto-wire-test-budget
+    statement: The in-process auto-wiring test, which wires every node contract in one pass, keeps its own pytest timeout so a growing node count does not fail the shard that runs it.
+    acceptance:
+      - id: AC14
+        statement: 'AC14: test_every_node_auto_wires_in_process carries its own pytest timeout of at least 900 seconds with the thread method, and a test without the marker reads as having no budget -- falsifier: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-heal-read-truncated-body
+    statement: A heal read whose response body arrives cut short is retried like a gateway error, and a write never is.
+    acceptance:
+      - id: AC15
+        statement: 'AC15: a read that gets "unexpected end of JSON input" is retried and succeeds on a later attempt, and a write that gets it is attempted once -- falsifier: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated'
 evidence_requirements:
+  - kind: tests
+    description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
+    command: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly
+  - kind: tests
+    description: Floor PR ownership regressions exercise the watcher source adapter and the contract handler for manifest and fallback table lines.
+    command: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
     command: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
@@ -211,6 +262,38 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-floor-current-gate
+    description: Replays the October 31 and November 2 subject mismatch through parse_ledger_text and HandlerFactoryFloor.handle. Positive pass and fail controls cover each spelling and configurable aliases. This scoped proof does not assert controller timer criteria or that the alignment gate passes.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-floor-current-gate-deploy
+    description: Hosted smoke exercises the production ledger adapter and contract-loaded configuration through the floor handler; no live gate or ledger is mutated.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_gate_verdict_readback.py -q --no-cov -n 0 -p no:randomly -k latest_gate_alias
+        cwd: .
+  - id: dod-omn19998-floor-stop-ownership
+    description: The recorded dependency-update title and branch no longer stop an unrelated ticket's line. Owned red PRs still stop with their check and evidence named; unread explicit links remain visible. This scoped proof does not assert the controller timer criteria.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-floor-stop-ownership-deploy
+    description: Hosted smoke loads the recorded watcher shape through the production source adapter and invokes HandlerFactoryFloor.handle with its contract configuration. It needs no broker, host installation or credential.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stop_pr_ownership.py -q --no-cov -n 0 -p no:randomly -k recorded-dependency-update
+        cwd: .
   - id: dod-omn19998-remote-ref-before-send
     description: Replay the unpushed branch case through the contract-bound ref handler and local Git adapter. The default branch and typed refusal assertions fail against the base handler; the pushed branch is the positive control. This scoped proof does not assert the controller timer criteria or adoption by an external caller.
     source: manual
@@ -250,6 +333,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k runtime_bus_profile -q
+        cwd: .
   - id: dod-omn19998-lab-host-toolchain
     description: Replay the recorded missing-tool and masked-zero shapes through the existing parity and provisioning handlers, including a real POSIX shell, overlay installer re-probes and working-version controls. Does not assert the unrelated controller timer criteria or live host installation.
     source: manual
@@ -282,6 +366,25 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
         cwd: .
+  - id: dod-omn19998-job-log-accounting
+    description: Replay the recorded eight import crashes through the lane node and real subprocess boundary, then read and cache a repaired result. Positive controls retain charges after dispatch and for corrupt receipts; concurrent failures release only their own reservations. This proof does not assert the unrelated controller timer criteria.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/scm/test_onex_scm_command.py -q --no-cov -k dispatch_receipt
+        cwd: .
+  - id: dod-omn19998-job-log-accounting-deploy
+    description: Hosted wiring smoke runs the budget node, its subprocess command, the real SCM CLI, canonical in-memory runtime discovery and adapter, declared bus topics and gateway handler against a recorded HTTP log. The failure line outside the old tail is returned, and a repeat performs no second read. Only credential lookup and external HTTP are replaced; no live installation is asserted.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q --no-cov -k canonical_runtime_bus
+        cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
     source: manual
@@ -313,6 +416,14 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly -k timer_persists
+        cwd: .
+  - id: dod-omn19998-job-exit-finding
+    description: Replay the recorded floor job exit 1 through the job-exit decision handler and the alarm effect brief writer, including undeclared exit controls. This scoped alarm regression does not assert the controller timer criteria. The test file is absent at the merge base.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py -q --no-cov -n 0
         cwd: .
   - id: dod-omn19998-publish-recovery
     description: Local bare remotes reproduce the recorded head-moved, non-fast-forward and generic push-failed interleavings, conflicts, repeated overlapping phase commits, branch collisions and bounded head movement. These tests exercise publish recovery and do not assert the controller timer criteria.
@@ -385,6 +496,27 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-workspace-lab-hosts
+    description: Recorded missing-overlay environment shapes resolve the declared config owner's host table; explicit-source precedence and refusals, environment isolation and placement admission have positive and negative controls.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/test_node_overlay_reader_structured.py tests/test_routing_sources_omn20601.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-workspace-lab-hosts-deploy
+    description: Hosted wiring smoke invokes the lab-work run command over an in-memory bus with capacity advertisements. Workspace discovery places the eligible host and refuses the unavailable host with exit 75. No live host install or current pool capacity is asserted.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -n 0 -p no:randomly -k the_run_command_refuses_an_unavailable_host_that_advertises_and_places_the_other
         cwd: .
   - id: dod-omn19998-deploy-ledger-additive-wire
     description: Hosted serialization and deployment smoke uses the real bus caller and host with an in-memory transport and the pre-field host model, plus outbox replay and set-field refusal. The future optional-field test fails at the merge base because its null field is serialized. This is a hosted wiring smoke, not a live host installation readback.
@@ -655,6 +787,37 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
         cwd: .
+  - id: dod-omn19998-floor-cloud-source
+    description: Focused tests exercise the existing cloud node handler, source command boundary and floor compute handler, including selected-field output, read-only state, malformed input, diagnostic suppression and positive controls for real red PRs. This evidence does not assert a live publisher installation or the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-worker-occupancy
+    description: Focused regressions start from the named missing-terminal workers, finished receipt, and hostless cause claims. They retain live and unread quiet workers and reject previous-run evidence. This slice does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_dead_worker_occupancy.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-worker-occupancy-deploy
+    description: Hosted CLI smoke reads the declared lane sources and writes the floor record through the existing effect and compute handlers. Live controller-host installation remains a separate readback.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-floor-phoenix-timer-env
     description: The timer-environment test fails before this change because the factory-floor-publish unit declares no Phoenix variable, so launchd ticks read the floor with it unset and draw the Phoenix row unread. Live capture into Phoenix is not asserted here.
     source: manual
@@ -678,6 +841,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"
+        cwd: .
   - id: dod-omn19998-brief-frozen-destinations
     description: Replays the recorded source and test destination gap with data-only controls through the existing dispatch node. Original controller rules, locks and host timer criteria remain unproven by this slice.
     source: manual
@@ -693,6 +857,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -n 0 -p no:randomly -k canonical_runtime_bus
+        cwd: .
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual
@@ -724,4 +889,28 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_brief_input_placement.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-auto-wire-test-budget
+    description: The source of the in-process auto-wiring test is read for its own pytest timeout of at least 900 seconds with the thread method, with a positive and a negative control on the reader. The 482 s lab read under the shard's coverage flags is in the pull request body.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-auto-wire-test-budget-deploy
+    description: Hosted smoke reads the real test module from the checked-in tree, not a fixture, for the marker and its method. No live host is asserted.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_auto_wire_test_budget_omn19998.py -q --no-cov -n 0 -p no:randomly -k wiring_test_has_its_own_timeout_budget
+        cwd: .
+  - id: dod-omn19998-heal-read-truncated-body
+    description: AC15 runs the two truncated-body tests; the read test fails at the merge base because the gateway pattern names only HTTP 502, 503 and 504, and the write test is the control that a write is attempted once.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated
         cwd: .

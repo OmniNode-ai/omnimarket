@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-22923
+title: 'Piece 17b: the customer-facing health line is computed from the floor''s own readings by the product verdict node, and a stale reading turns it NOT WORKING'
+summary: The product floor verdict node gains the operation decide_customer_health. It reads the floor record's piece rows, judges each required reading by its own age against its own maximum age, and returns one health line with the reading ages it used. A reading older than its limit makes the line NOT WORKING and names the reading; a piece with no reading is UNKNOWN. The floor cycle writes the line into floor-simple.json and the served page draws it with its own age. The pieces on the customer path, the title and the line's own bound are an overlay. No bound is changed and nothing is muted.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22923-health-line
+  statement: The customer health line is computed from the same piece readings the floor draws, carries the reading ages it used, and a stale reading makes it NOT WORKING.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the product verdict node reads the floor record''s piece readings and returns one health line with the reading ages it used -- falsifier: uv run pytest tests/unit/nodes/node_product_floor_verdict_compute -q'
+  - id: AC2
+    statement: 'AC2: a reading older than its max age makes the line NOT WORKING and names the reading -- falsifier: uv run pytest tests/unit/nodes/node_product_floor_verdict_compute -q -k stale_reading'
+  - id: AC3
+    statement: 'AC3: the line is published in the floor record and the served page shows it with its age -- falsifier: curl -s the served floor-simple.json and read the health line field'
+evidence_requirements:
+- kind: tests
+  description: The health line unit tests, the cycle tests and the page tests, golden and error chains with the named breaks.
+  command: uv run --frozen pytest tests/unit/nodes/node_product_floor_verdict_compute tests/unit/nodes/node_floor_simple_effect/test_customer_health_line_tick.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22923-ac1
+  description: The health line unit tests pass on the branch, golden and error chains, with the injected breaks caught.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_product_floor_verdict_compute -q --no-cov
+- id: dod-omn22923-ac2
+  description: The stale reading tests pass on the branch, and fail with the age test turned off.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_product_floor_verdict_compute tests/unit/nodes/node_floor_simple_effect/test_customer_health_line_tick.py -q --no-cov -k stale_reading
+- id: dod-omn22923-ac3
+  description: The cycle writes the line into the floor record and the page tests draw it with its age.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_customer_health_line_tick.py -q --no-cov
+- id: dod-omn22923-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22923 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_product_floor_verdict_compute tests/unit/nodes/node_floor_simple_effect/test_customer_health_line_tick.py tests/nodes/node_floor_simple_compute -q --no-cov

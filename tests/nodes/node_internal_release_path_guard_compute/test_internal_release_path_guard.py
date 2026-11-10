@@ -191,6 +191,7 @@ def test_lab_fill_checks_before_writing_or_launching(
         FakeBlocks,
         FakeChecks,
         FakeClock,
+        FakeMerged,
         FakePremiseGate,
         FakeRunner,
     )
@@ -198,6 +199,7 @@ def test_lab_fill_checks_before_writing_or_launching(
     runner = FakeRunner()
     result = HandlerLabFillLaunch(
         premise_gate=FakePremiseGate(),
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=FakeApproved(),
         blocks=FakeBlocks(),

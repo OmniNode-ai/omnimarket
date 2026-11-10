@@ -1,6 +1,6 @@
 ---
 name: projection_work_ledger
-contract_version: {major: 1, minor: 1, patch: 1}
+contract_version: {major: 1, minor: 1, patch: 2}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
@@ -83,14 +83,41 @@ event_bus:
     - onex.evt.omnimarket.work-ledger-correction.v2
   publish_topics:
     - onex.evt.omnimarket.projection-work-ledger-applied.v1
+    # OMN-22915, L12: every row the judge accepted, once, with its sequence; retention -1 below.
+    - onex.evt.omnimarket.work-ledger-row-accepted.v1
   dlq_topics:
     - onex.dlq.omnimarket.projection-work-ledger-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-work-ledger-applied.v1
+  # The rebuild (node_work_ledger_reducer_compute) reads it; the projection, render and mirror subscriptions move to it at L12's cutover.
+  - onex.evt.omnimarket.work-ledger-row-accepted.v1
+
+# The broker declaration of the accepted-row topic (OMN-22915, L12). It is the ledger's second copy
+# on the bus: it never expires and has no size cap, and one partition makes the offset the order.
+published_events:
+  - event_type: ModelAcceptedRowEvent
+    topic: onex.evt.omnimarket.work-ledger-row-accepted.v1
+    description: One row the judge accepted, with its ledger_seq, or legacy_ordinal for bootstrap history.
+    topic_config:
+      partitions: 1
+      kafka_config:
+        "cleanup.policy": "delete"
+        "retention.ms": "-1"
+        "retention.bytes": "-1"
 
 work_ledger:
   ledger_id: rolling-work-ledger
+  # onex-ledger is the live dual-write source: a row of a listed source with no
+  # ledger_seq is a write to a ledger file that is not the canonical one, and is
+  # refused to the poison dead-letter topic. The backfill source ledger-emit is
+  # not listed.
+  sequence_required_sources: [onex-ledger]
+
+# OMN-23152, rebuild plan 4.3 step 1: the unjudged-row reading counts projected rows with no ledger_seq
+# over this window; it reads RED above zero and names each emitter by source and lane.
+unjudged_reading:
+  window_seconds: 86400
 
 db_io:
   db_tables:
@@ -100,6 +127,12 @@ db_io:
       migration: "0000_create_work_ledger.sql"
       access: write
       role: work_ledger_rows
+    - name: work_ledger_seq_conflicts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0009_work_ledger_seq_unique.sql"
+      access: write
+      role: work_ledger_seq_conflicts
     - name: work_ledger_state
       database_ref: application
       schema: omninode_internal
@@ -113,3 +146,50 @@ db_io:
 
 metadata:
   transport_type: kafka
+
+# OMN-19998: typed scenarios the golden and error chain tests are generated from. The
+# writer returns the count of rows it wrote and the runtime publishes that on the applied
+# event; a database failure makes the writer raise, which the runtime turns into silence,
+# so the error half is a refusal that says why.
+chain_scenarios:
+  schema_version: 1
+  success_topic: onex.evt.omnimarket.projection-work-ledger-applied.v1
+  failures:
+    - name: write_failed
+      topic: onex.dlq.omnimarket.projection-work-ledger-malformed.v1
+  bindings:
+    - name: ledger_db
+      target: ATTRIBUTE
+      attribute: _db
+      role: REDUCER_STATE
+      in_memory_factory: omnimarket.handlers.chain_scenarios.doubles:recording_ledger_db
+  cases:
+    - case_name: golden_claim_event_is_folded_into_state
+      kind: GOLDEN
+      input:
+        topic: onex.evt.omnimarket.work-ledger-claim.v1
+        payload:
+          _topic: onex.evt.omnimarket.work-ledger-claim.v1
+          raw_row: "2026-09-28T10:00:00Z | CLAIM | lane=alpha | ticket=OMN-1 | est ~1 lane-hours; displaces x; (OMN-1) | work"
+      expected_events:
+        - topic: onex.evt.omnimarket.projection-work-ledger-applied.v1
+          fields: {rows_upserted: 2}
+      state_updates:
+        - binding: ledger_db
+          target: work_ledger_state
+          key: "claim:alpha"
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: One CLAIM row is one log row plus one open-claim entity keyed claim:alpha, so two rows are written and reported on the applied event.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID, SKIPPED_REDUCER_UPDATE]
+  refusals:
+    - applies_to: ERROR
+      subject: write_failed
+      kind: FAILURE_NOT_TYPED
+      reason: WorkLedgerProjectionWriter lets a database error propagate out of handle(), and the runtime adapter reports a raised handler as no event at all, so no typed failure event, ledger row or reading can be asserted.
+      unblocked_by: OMN-19998
+    - applies_to: ERROR
+      subject: unsequenced_live_row
+      kind: FAILURE_NOT_TYPED
+      reason: WorkLedgerProjectionWriter raises PoisonEventError for a live-source row with no ledger_seq; the runtime routes it to the poison DLQ topic, so no typed failure event is published for a chain test to assert
+      unblocked_by: OMN-19998

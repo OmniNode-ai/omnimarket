@@ -1,0 +1,410 @@
+{
+ "source": {
+  "plan": "the base-first stopgap plan (an internal document), the falsifier of its error-handling piece",
+  "quoted_text": "Replay the 14 Codex lanes that died of a full disk between 19:23Z and 19:26Z on 11-04 [M]",
+  "rebuild_plan_row": "section 3.5 row 13: a bad-batch replay set (the 14 full-disk deaths are quoted from the base-first plan, source unread; verifying the set is the piece's first task)",
+  "quoted_count": 14,
+  "terminal_outcome": "failed",
+  "host": "h051",
+  "window_start": "2026-11-04T19:23:00Z",
+  "window_end": "2026-11-04T19:26:59Z"
+ },
+ "verdict": {
+  "corrected_count": 16,
+  "engine_nonzero_count": 14,
+  "unmatched_quoted": [],
+  "quoted_entries_individually_named": false,
+  "note": "The plan names no lane, run or thread for its 14, so no death can be matched to a quoted entry one by one. The ledger holds 16 failed Codex remote-lane TERMINAL rows on h051 in the window; 14 of them ended with a nonzero engine exit code and 2 ended with engine exit 0 and a failed landing. 14 is the nonzero-exit subset and is offered as a likely reading, not as the plan's source. The corrected count of the set is 16.",
+  "cause_attested_per_lane": false,
+  "cause_note": "No death row names a disk or space error. The full disk is attested for the host (the lane tmpfs on h051 filled at 19:23Z, was full until 20:45Z) by the cause_evidence rows, not for each lane."
+ },
+ "deaths": [
+  {
+   "ts": "2026-11-04T19:23:23Z",
+   "lane": "pfix-2062-r-1744",
+   "run": "rlane-pfix-2062-r-1744-51b091",
+   "codex_thread": "01a1a7ac-fec8-7480-adea-20f5b6d81183",
+   "engine_rc": 143,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T17:47:45Z",
+   "req": "926db416-e70d-4915-be31-5dc6d0b4c899",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16592,
+   "status_row": {
+    "ts": "2026-11-04T19:23:28Z",
+    "status": "lane-error",
+    "req": "feeadb28-5076-4863-a5d6-e6bc6ca847e9"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:24:24Z",
+   "lane": "goal-6-rules-cd-1858",
+   "run": "rlane-goal-6-rules-cd-1858-6b414c",
+   "codex_thread": "01a1a7fe-ea00-7c30-92fe-776cf585e06b",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:17:11Z",
+   "req": "2d528f67-37af-4a9f-a356-79151557b578",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16605,
+   "status_row": {
+    "ts": "2026-11-04T19:24:29Z",
+    "status": "lane-error",
+    "req": "d1d56865-49ae-49d0-8fe6-ab3d6c330eb9"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:24:34Z",
+   "lane": "h051-retention-1925",
+   "run": "rlane-h051-retention-1925-ec7a61",
+   "codex_thread": "01a1a802-d919-7de3-b929-500260067719",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:21:27Z",
+   "req": "cd8181e7-145f-41ef-b5e2-43ba1862079a",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16607,
+   "status_row": {
+    "ts": "2026-11-04T19:24:38Z",
+    "status": "lane-error",
+    "req": "56113670-c23b-4e9e-9003-f175d22760c1"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:24:38Z",
+   "lane": "omniweb-routing-policy-1905",
+   "run": "rlane-omniweb-routing-policy-1905-76855c",
+   "codex_thread": "01a1a7f1-e117-7411-847a-af37871426aa",
+   "engine_rc": 0,
+   "landing_shape": "push-failed",
+   "closes_claim": "2026-11-04T19:03:00Z",
+   "req": "4900a6af-7224-4f60-90ed-0567582c5d98",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16610,
+   "status_row": {
+    "ts": "2026-11-04T19:24:43Z",
+    "status": "landing-failed",
+    "req": "b529fc9e-7d9f-450a-840a-b66e9cea81d6"
+   },
+   "shape": "engine-ok-landing-failed"
+  },
+  {
+   "ts": "2026-11-04T19:24:46Z",
+   "lane": "dispatch-entry-1916",
+   "run": "rlane-dispatch-entry-1916-7b3ce6",
+   "codex_thread": "01a1a7fe-b222-7ac0-8d6a-2a5800025139",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:16:56Z",
+   "req": "12849f7c-6a23-40a6-a0c9-0fe00e8c15cb",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16614,
+   "status_row": {
+    "ts": "2026-11-04T19:24:50Z",
+    "status": "lane-error",
+    "req": "7bdacd26-839b-4c39-ba0f-9d98cbf923cd"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:42Z",
+   "lane": "linear-snapshot-1920",
+   "run": "rlane-linear-snapshot-1920-d62bec",
+   "codex_thread": "01a1a7f6-a2e6-7443-8bd1-7dc7694dd937",
+   "engine_rc": 1,
+   "landing_shape": "hook-preflight-blocked",
+   "closes_claim": "2026-11-04T19:08:11Z",
+   "req": "d1936194-053c-488a-9ca7-8e029cc57d52",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16628,
+   "status_row": {
+    "ts": "2026-11-04T19:26:48Z",
+    "status": "landing-failed",
+    "req": "07886478-7d94-4d66-ad82-1a9e220598d1"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:42Z",
+   "lane": "pr-5067-1925",
+   "run": "rlane-pr-5067-1925-a4fb78",
+   "codex_thread": "01a1a803-12f0-7202-9ed7-cc9d9a25a337",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:21:43Z",
+   "req": "c916cdf3-7274-4578-bce8-473e422a9967",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16629,
+   "status_row": {
+    "ts": "2026-11-04T19:26:49Z",
+    "status": "lane-error",
+    "req": "0f23dffc-1e53-436b-bf29-f01088c04fb1"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:43Z",
+   "lane": "pfix-1528-r-1744",
+   "run": "rlane-pfix-1528-r-1744-04f200",
+   "codex_thread": "01a1a7af-023a-7ac1-88a9-d847ae28b33a",
+   "engine_rc": 143,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T17:49:54Z",
+   "req": "c51943db-8cca-424a-8900-6021c24ddab3",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16630,
+   "status_row": {
+    "ts": "2026-11-04T19:26:49Z",
+    "status": "lane-error",
+    "req": "7dfd3d2a-71b8-41bd-9b5f-d25af86e20a4"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:43Z",
+   "lane": "goal-1-rail-1915",
+   "run": "rlane-goal-1-rail-1915-97725c",
+   "codex_thread": "01a1a7fc-c9a8-7912-9879-94b189670999",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:13:31Z",
+   "req": "940378a3-f04f-4126-ad19-c4e92309fbe6",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16631,
+   "status_row": {
+    "ts": "2026-11-04T19:26:50Z",
+    "status": "lane-error",
+    "req": "2acd127c-d570-4711-bd43-e4ff690489c9"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:44Z",
+   "lane": "pr-3152-1859",
+   "run": "rlane-pr-3152-1859-1a56a1",
+   "codex_thread": "01a1a7f6-709d-7300-9db1-46329b8711be",
+   "engine_rc": 0,
+   "landing_shape": "commit-hook-failed",
+   "closes_claim": "2026-11-04T19:07:56Z",
+   "req": "f5e87942-38c4-4d6f-96d8-c6020e8cbf02",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16632,
+   "status_row": {
+    "ts": "2026-11-04T19:26:51Z",
+    "status": "landing-failed",
+    "req": "4df81cc1-4284-4c09-acd7-9fd2a2698afd"
+   },
+   "shape": "engine-ok-landing-failed"
+  },
+  {
+   "ts": "2026-11-04T19:26:44Z",
+   "lane": "goal-5-stop-gate-1900",
+   "run": "rlane-goal-5-stop-gate-1900-ade83b",
+   "codex_thread": "01a1a7f8-925f-7031-ac60-0797ca77efb4",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:09:40Z",
+   "req": "f53b84fc-2f1f-4d9f-b9a7-db969ecbcdce",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16633,
+   "status_row": {
+    "ts": "2026-11-04T19:26:52Z",
+    "status": "lane-error",
+    "req": "e29f208d-bcca-4e2e-8745-4b59fff78c25"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:44Z",
+   "lane": "goal-6-brief-check-r-1845",
+   "run": "rlane-goal-6-brief-check-r-1845-5f2ce9",
+   "codex_thread": "01a1a7db-98eb-7443-a9ac-51c13107f704",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T18:38:37Z",
+   "req": "80343d92-6cb8-4d41-b36c-2dc35cbccfda",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16634,
+   "status_row": {
+    "ts": "2026-11-04T19:26:53Z",
+    "status": "lane-error",
+    "req": "884f7810-2389-4bab-bdd3-5b6bff7e6759"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:44Z",
+   "lane": "pr-5682-1859",
+   "run": "rlane-pr-5682-1859-54e630",
+   "codex_thread": "01a1a7f4-d0c4-7e93-ab2e-1c03aea9d18a",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:06:11Z",
+   "req": "159554af-4ea0-4e40-ada0-32e0f1217468",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16635,
+   "status_row": {
+    "ts": "2026-11-04T19:26:54Z",
+    "status": "lane-error",
+    "req": "988f8868-c633-4990-b377-5f6fa3df77be"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:44Z",
+   "lane": "goal-3-transition-1845",
+   "run": "rlane-goal-3-transition-1845-0a57b7",
+   "codex_thread": "01a1a7db-5c47-71f1-be51-f22f5c23e612",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T18:38:23Z",
+   "req": "b2cf2541-cd71-4133-8236-5773518d1082",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16636,
+   "status_row": {
+    "ts": "2026-11-04T19:26:55Z",
+    "status": "lane-error",
+    "req": "bd68eeef-1ef0-4408-acd5-909d4e1757e5"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:45Z",
+   "lane": "pfix-1074-r-1744",
+   "run": "rlane-pfix-1074-r-1744-350fdf",
+   "codex_thread": "01a1a7b0-229b-7581-9e51-f39b6e2f7e0b",
+   "engine_rc": 143,
+   "landing_shape": "push-hook-refused",
+   "closes_claim": "2026-11-04T17:50:51Z",
+   "req": "06a67c95-cd09-43ee-83d9-10cfc03f423b",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16637,
+   "status_row": {
+    "ts": "2026-11-04T19:26:56Z",
+    "status": "landing-failed",
+    "req": "9775a79c-19b6-4437-8be9-dbacf65e9751"
+   },
+   "shape": "engine-died"
+  },
+  {
+   "ts": "2026-11-04T19:26:47Z",
+   "lane": "goal-1-match-1900",
+   "run": "rlane-goal-1-match-1900-856c35",
+   "codex_thread": "01a1a7f8-0265-72b1-9dcd-bb466335d368",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:09:22Z",
+   "req": "59440ae3-c37a-440d-8616-6a214d504c85",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16638,
+   "status_row": {
+    "ts": "2026-11-04T19:26:58Z",
+    "status": "lane-error",
+    "req": "9ae80e30-d65e-4ffa-8ba0-1e4b201c62c2"
+   },
+   "shape": "engine-died"
+  }
+ ],
+ "adjacent_outside_window": [
+  {
+   "ts": "2026-11-04T19:28:12Z",
+   "lane": "contract-adopt-1750",
+   "run": "rlane-contract-adopt-1750-47db76",
+   "codex_thread": "01a1a7b2-cbc1-7773-acc1-80c15f7ffd67",
+   "engine_rc": 143,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T17:52:37Z",
+   "req": "4d18a80d-efaa-42d6-ba38-2e55ae6dfd53",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16676,
+   "status_row": {
+    "ts": "2026-11-04T19:28:18Z",
+    "status": "lane-error",
+    "req": "3d895c6e-13f4-4480-bede-d90f7c6b4e71"
+   }
+  },
+  {
+   "ts": "2026-11-04T19:28:20Z",
+   "lane": "sandbox-mount-1750",
+   "run": "rlane-sandbox-mount-1750-8e2930",
+   "codex_thread": "01a1a7b2-86f8-7771-99c5-207c7c4cb4f7",
+   "engine_rc": 143,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T17:52:51Z",
+   "req": "48731016-506a-4735-89fd-b2e28aebcbcb",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16681,
+   "status_row": {
+    "ts": "2026-11-04T19:28:25Z",
+    "status": "lane-error",
+    "req": "99361dde-db90-4ca9-887e-d62520c90eeb"
+   }
+  },
+  {
+   "ts": "2026-11-04T19:30:52Z",
+   "lane": "pr-4808-1900",
+   "run": "rlane-pr-4808-1900-44ef52",
+   "codex_thread": "01a1a7f8-e20b-79e1-9e4b-b15d0d077dc8",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:10:38Z",
+   "req": "52576f8c-62e7-4955-82a9-fbe3cb2c1d1b",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16708,
+   "status_row": {
+    "ts": "2026-11-04T19:30:57Z",
+    "status": "lane-error",
+    "req": "dd9b201e-cd79-47a3-80a0-af719dacb5c8"
+   }
+  },
+  {
+   "ts": "2026-11-04T19:33:53Z",
+   "lane": "pr-3153-1859",
+   "run": "rlane-pr-3153-1859-c2c376",
+   "codex_thread": "01a1a7f4-9b7c-7910-b6d5-65c22b175466",
+   "engine_rc": 1,
+   "landing_shape": null,
+   "closes_claim": "2026-11-04T19:05:56Z",
+   "req": "412a827b-28c6-4e2a-bcee-e1d71ad074e3",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16720,
+   "status_row": {
+    "ts": "2026-11-04T19:33:56Z",
+    "status": "lane-error",
+    "req": "259b19f8-8be0-4250-b26f-e4c75520ebc4"
+   }
+  }
+ ],
+ "cause_evidence": [
+  {
+   "kind": "host-cause",
+   "ts": "2026-11-04T19:54:09Z",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 16979,
+   "lane": "disk-triage-1955",
+   "req": "42dc110e-8822-4bd8-8131-69e384213b7d",
+   "quote": "read-only disk space triage of h200 h051 h053 h101 h105 h106 h201 after the 19:23Z h051 lane tmpfs fill"
+  },
+  {
+   "kind": "host-cause",
+   "ts": "2026-11-04T20:55:49Z",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 17701,
+   "lane": "disk-triage-1955",
+   "req": "1a896d7c-f8fb-496c-9d7c-c0f233acb3b2",
+   "quote": "h051 lane tmpfs 90 percent at 19:55 then falling"
+  },
+  {
+   "kind": "host-cause",
+   "ts": "2026-11-04T20:53:08Z",
+   "ledger_file": "ROLLING_WORK_LEDGER_2026-11-04-split.md",
+   "ledger_line": 17670,
+   "lane": "h051-sandbox-claude-2055",
+   "req": "6eff1840-93c4-47af-90ff-3e40ee45d235",
+   "quote": "the lane tmpfs, which was full until 20:45Z (lane output 20:26Z: failed to write to a file under the uv cache: No space left on device (os error 28))"
+  }
+ ]
+}

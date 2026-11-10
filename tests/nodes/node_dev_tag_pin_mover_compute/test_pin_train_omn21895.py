@@ -398,4 +398,6 @@ def test_gates_unchanged_over_the_changed_file_list() -> None:
         "move_dev_tag_pin",
         "select_dev_tag_pin_set",
         "run_dev_tag_pin_train",
+        # OMN-22497: the pure green verdict the train's oracle calls.
+        "judge_dev_tag_green",
     ]
