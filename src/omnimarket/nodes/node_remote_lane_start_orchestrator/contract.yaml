@@ -31,7 +31,9 @@ contract_version:
 node_version: "0.1.0"
 description: >
   Starts one lab lane on the Claude engine: refuses any other shape (unsupported-shape) before
-  any placement or CLAIM, places it (no-host, exit 75), appends its CLAIM (claim-refused or
+  any placement or CLAIM, places it (no-host, exit 75), draws its login from the host's token pool
+  (login-refused, exit 75, when the pool refuses the start at its lanes-per-label cap; nothing is
+  claimed), appends its CLAIM (claim-refused or
   already-claimed, exit 70, before any host call), starts the engine detached (start-unresolved:
   no TERMINAL, exit 1), supervises it and appends one TERMINAL. A stop request ends the engine and
   closes the lane only when the stop is confirmed (exit 143); a survivor leaves the CLAIM open.

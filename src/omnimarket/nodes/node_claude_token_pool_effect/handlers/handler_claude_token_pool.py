@@ -44,6 +44,7 @@ from pydantic import SecretStr
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
     ModelClaudeTokenPoolEntry,
+    ModelClaudeTokenPoolRefusal,
     ModelClaudeTokenPoolRequest,
     ModelClaudeTokenPoolResult,
 )
@@ -128,7 +129,13 @@ class HandlerClaudeTokenPool:
         status_path: Path | None = None,
         host: str | None = None,
         now: Callable[[], datetime] = _utc_now,
+        lane_cap: int | None = None,
+        lane_cap_read: bool = True,
     ) -> None:
+        #: The overlay's lanes-per-label cap (``None``: no cap), and whether the overlay holding it was read
+        #: on this host. The runtime reads both from the overlay; no cap is spelled here.
+        self._lane_cap = lane_cap
+        self._lane_cap_read = lane_cap_read
         self._store = store or LocalByokCredentialStore()
         self._pool_path = pool_path or self._store.db_path.parent / POOL_FILE_NAME
         self._status_path = status_path or STATUS_MIRROR
@@ -159,11 +166,15 @@ class HandlerClaudeTokenPool:
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
             chosen, token = (None, None)
+            refusal: ModelClaudeTokenPoolRefusal | None = None
+            fallback = False
             if request.operation == "resolve":
-                chosen, token = self._resolve(pool)
+                chosen, token, refusal, fallback = self._resolve(pool, request)
             if request.operation != "status" and not request.dry_run:
                 _write_private(self._pool_path, pool)
-            result = self._result(request.operation, pool, chosen, token, alert, synced)
+            result = self._result(
+                request.operation, pool, chosen, token, alert, synced
+            ).model_copy(update={"refusal": refusal, "drained_fallback": fallback})
             if not request.dry_run:
                 _write_private(
                     self._status_path,
@@ -382,11 +393,55 @@ class HandlerClaudeTokenPool:
             f"omnimarket.nodes.node_claude_token_pool_effect add --label {label} --force`"
         )
 
-    def _resolve(self, pool: dict[str, Any]) -> tuple[str | None, SecretStr | None]:
+    def _resolve(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[str | None, SecretStr | None, ModelClaudeTokenPoolRefusal | None, bool]:
+        """The token a NEW lane start runs on: the label, its value, a refusal, and whether it is a drained fallback.
+
+        A limited or revoked label is never returned. Of the rest, a label at the overlay's lane cap is
+        out; a label in ``drain_labels`` is skipped while another label is left and is used (as a
+        fallback) when it is the only one. Draw order decides among equals, as before.
+        """
         now = _stamp(self._now())
-        for entry in pool["tokens"]:
-            if entry.get("revoked_at") or (entry.get("until") or "") > now:
-                continue
+        usable = [
+            entry
+            for entry in pool["tokens"]
+            if not entry.get("revoked_at") and (entry.get("until") or "") <= now
+        ]
+        counted = request.lane_counts
+        if counted is not None and not self._lane_cap_read:
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="lane_cap_unread",
+                    detail="the caller passed lane counts and this host's pool overlay, which holds the lane cap, was not read",
+                ),
+                False,
+            )
+        cap = self._lane_cap
+        if cap is not None and counted is None:
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="lane_counts_missing",
+                    cap=cap,
+                    detail=f"the overlay caps a label at {cap} lanes and the caller passed no lane counts",
+                ),
+                False,
+            )
+        lanes = {row.label: row.lanes for row in counted or ()}
+        open_labels = [
+            entry
+            for entry in usable
+            if cap is None or lanes.get(entry["label"], 0) < cap
+        ]
+        drained = frozenset(request.drain_labels)
+        ordered = [e for e in open_labels if e["label"] not in drained] + [
+            e for e in open_labels if e["label"] in drained
+        ]
+        for entry in ordered:
             value = asyncio.run(
                 self._store.get_secret(SECRET_REF_PREFIX + entry["label"])
             )
@@ -394,8 +449,26 @@ class HandlerClaudeTokenPool:
                 pool["current"] = entry["label"]
                 # every draw is a lane about to start under the token: count it, so "unused" means undrawn
                 self._count_use(entry)
-                return entry["label"], SecretStr(value)
-        return None, None
+                return (
+                    entry["label"],
+                    SecretStr(value),
+                    None,
+                    entry["label"] in drained,
+                )
+        at_cap = tuple(e["label"] for e in usable if e not in open_labels)
+        if at_cap and cap is not None:
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="label_lane_cap",
+                    cap=cap,
+                    labels=at_cap,
+                    detail=f"every usable label already runs {cap} lanes or more: {', '.join(at_cap)}",
+                ),
+                False,
+            )
+        return None, None, None, False
 
     def _result(
         self,

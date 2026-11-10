@@ -22,7 +22,7 @@ import binascii
 import re
 import shlex
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import ClassVar, Protocol
 
@@ -56,6 +56,7 @@ from omnimarket.models.engine_login import (
     LABEL_PATTERN,
     ModelEngineLoginDraw,
     ModelEngineLoginPool,
+    ModelEngineLoginSteer,
 )
 from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
     CHANGES_LINE_RE,
@@ -148,6 +149,11 @@ _PATH_PREFIX = re.compile(r"(?:[A-Za-z0-9_./:-]|\$[A-Za-z_][A-Za-z0-9_]*)*")
 
 #: The pool node's status line ends ``label=<label>`` for the token it chose; a refusal ends ``chosen=none``.
 _DRAWN_LABEL = re.compile(r"(?:^|\s)label=(" + LABEL_PATTERN[1:-1] + r")\s*$")
+
+
+#: The pool node's exit when it holds a usable token and refuses the start, and the code its line then ends with.
+POOL_START_REFUSED_EXIT = 5
+_REFUSED_START = re.compile(r"(?:^|\s)refusal=([a-z_]+)\s*$")
 
 
 def pool_python_sh(pool: ModelEngineLoginPool) -> str:
@@ -258,6 +264,7 @@ class SshLaneHostTransport:
         detach_argv: Sequence[str],
         path_prefix: str = "",
         login_pool: ModelEngineLoginPool | None = None,
+        login_steer: Callable[[], ModelEngineLoginSteer | None] | None = None,
         registry_root_candidates: Sequence[str] = (),
         registry_marker: str = "",
         guard_host_source: str = "",
@@ -328,6 +335,10 @@ class SshLaneHostTransport:
         self._detach = " ".join(shlex.quote(a) for a in detach_argv)
         self._timeout = call_timeout_seconds
         self._pool = login_pool
+        # Account steering (OMN-23636): asked once, at the draw, and the same arguments go to the engine's own
+        # resolve. No steer wired, or a steer that answers None (the overlay switch is off), adds nothing.
+        self._steer = login_steer
+        self._resolve_arguments = ""
         for candidate in registry_root_candidates:
             if not _LITERAL_PATH.fullmatch(candidate):
                 raise ValueError(
@@ -415,14 +426,29 @@ class SshLaneHostTransport:
         """
         if self._pool is None:
             return ModelEngineLoginDraw(state="none", detail="no login pool configured")
+        steer = self._steer() if self._steer is not None else None
+        self._resolve_arguments = (
+            ""
+            if steer is None
+            else "".join(f" {shlex.quote(a)}" for a in steer.resolve_arguments())
+        )
         script = (
             f"{self._path}{pool_python_sh(self._pool)}"
             f'if [ -z "$CPY" ]; then echo "POOL-RC=none"; exit 0; fi; '
-            f'line=$("$CPY" -m {shlex.quote(self._pool.module)} resolve 2>&1 >/dev/null); rc=$?; '
+            f'line=$("$CPY" -m {shlex.quote(self._pool.module)} resolve{self._resolve_arguments} 2>&1 >/dev/null); rc=$?; '
             f'echo "POOL-RC=$rc"; printf "%s\\n" "$line" | tail -n 1'
         )
         result = self._sh(host, script, self._pool.draw_timeout_seconds)
         lines = result.stdout.strip().splitlines()
+        refused = _REFUSED_START.search(lines[-1]) if len(lines) >= 2 else None
+        if (
+            result.exit_code == 0
+            and refused is not None
+            and lines[-2] == f"POOL-RC={POOL_START_REFUSED_EXIT}"
+        ):
+            return ModelEngineLoginDraw(
+                state="refused", refusal=refused.group(1), detail=lines[-1][:200]
+            )
         if result.exit_code != 0 or len(lines) < 2 or lines[-2] != "POOL-RC=0":
             return ModelEngineLoginDraw(
                 state="none",
@@ -449,7 +475,7 @@ class SshLaneHostTransport:
         login = (
             "unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN; "
             + pool_python_sh(self._pool)
-            + f'if [ -n "$CPY" ] && CP=$("$CPY" -m {q(self._pool.module)} resolve 2>/dev/null); '
+            + f'if [ -n "$CPY" ] && CP=$("$CPY" -m {q(self._pool.module)} resolve{self._resolve_arguments} 2>/dev/null); '
             'then export CLAUDE_CODE_OAUTH_TOKEN="$CP"; fi; unset CP; '
             if self._pool is not None
             else ""
