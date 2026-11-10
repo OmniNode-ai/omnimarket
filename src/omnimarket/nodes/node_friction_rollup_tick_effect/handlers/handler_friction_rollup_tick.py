@@ -38,6 +38,7 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_
     log_line,
     needs_ticket,
     render_summary_markdown,
+    report_directory_reference,
     stamp,
     status_row,
     top_classes,
@@ -149,10 +150,11 @@ class HandlerFrictionRollupTick:
             if request.archive_dir
             else ledger.parent / settings.archive_subdir
         )
+        registry_root = Path(request.registry_root)
         state_dir = (
             Path(request.state_dir)
             if request.state_dir
-            else Path(request.registry_root) / settings.state_subdir
+            else registry_root / settings.state_subdir
         )
         try:
             now = parse_iso8601(request.now) if request.now else datetime.now(UTC)
@@ -205,7 +207,15 @@ class HandlerFrictionRollupTick:
         }
         if rules_note is not None:
             document["class_rules"] = rules_note.removeprefix("class-rules=")
-        row = status_row(now, current, summary, report_name, settings, rules_note)
+        row = status_row(
+            now,
+            current,
+            summary,
+            report_name,
+            settings,
+            rules_note,
+            report_directory_reference(state_dir, registry_root, settings),
+        )
         json_text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         markdown_text = render_summary_markdown(now, current, summary, settings)
         done_code = 0 if rules_note is None else 3
