@@ -400,6 +400,24 @@ class HandlerFloorReceipt:
                     )
                 elif b.kind == "golden" and b.ended_at is not None:
                     golden_at = max(filter(None, (golden_at, b.ended_at)))
+                elif (
+                    jdef.names_failed_answers
+                    and b.kind == "error"
+                    and b.ended_at is not None
+                    and not b.drill
+                ):
+                    failed = sorted(
+                        {
+                            e.failure_code or "none"
+                            for e in b.events
+                            if e.phase == "failure"
+                        }
+                    )
+                    find(
+                        "downstream_failed_after_upstream_succeeded",
+                        cid,
+                        f"B answered A's success with a typed failure: {', '.join(failed)}",
+                    )
             if a_fails:
                 if b is None:
                     waited = _age(now, a_fails[-1].emitted_at) or 0

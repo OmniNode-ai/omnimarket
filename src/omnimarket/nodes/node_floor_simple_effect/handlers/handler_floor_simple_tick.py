@@ -120,6 +120,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     record_stoppages,
     work_state_from_payload,
     work_state_lanes,
+    work_state_unticketed_prs,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent import (
     deploy_agent_events,
@@ -979,6 +980,7 @@ class HandlerFloorSimpleTick:
             pr_class_counts=watcher.class_counts if watcher else {},
             pr_class_tickets=watcher.class_tickets if watcher else {},
             pr_class_prs=watcher.class_prs if watcher else {},
+            unticketed_prs=work_state_unticketed_prs(work_state) if work_state else (),
             friction_as_of=self._friction_as_of(
                 home / rt.sources.friction_report_relpath
             ),
