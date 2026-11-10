@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values: the shape of the gate_store overlay with the Postgres backend. The deployment's
+# overlay lives at <root>/gate_store/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS and its
+# numbers belong to the deployment owner: the piece names, the limits, the lifetime and the order below
+# are examples only. The DSN is read from the variable dsn_env names; its value is never written here.
+backend: postgres
+limits:
+  example_piece_one: 3
+  example_piece_two: 2
+reservation_ttl_seconds: 60
+order:
+  - example_piece_one
+  - example_piece_two
+postgres:
+  dsn_env: EXAMPLE_GATE_STORE_DSN
+  schema_name: omninode_internal
+  connect_timeout_seconds: 5
+  lock_timeout_ms: 5000
