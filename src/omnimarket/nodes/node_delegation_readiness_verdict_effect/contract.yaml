@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Readiness Verdict Effect (OMN-23181, readiness plan A2: the shippable verdict)
+#
+# One hourly run reads the scenarios' STATUS rows (the same ledger point read as node_delegation_scenario_days_effect),
+# has node_delegation_readiness_verdict_compute decide, and publishes the verdict. PASS only when for every declared
+# scenario the consecutive green UTC days reach required_green_days, no slot failed today (UTC), and the latest DUE slot
+# has a successful scheduled run. The bar (7, the operator's decision) and the due-slot grace are settings of this
+# contract, not constants of the code. A read that did not finish makes every scenario red. The CLI `run` exits 0 only on
+# PASS and names each scenario that misses on stdout.
+name: node_delegation_readiness_verdict_effect
+contract_name: node_delegation_readiness_verdict_effect
+node_name: node_delegation_readiness_verdict_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the scenarios' recorded results from the ledger, decides the shippable verdict with
+  node_delegation_readiness_verdict_compute, writes delegation-readiness-verdict.json, appends one STATUS row
+  (verdict=pass|fail, misses=) and emits the result on the bus. The node's own systemd user timer (`schedule install`)
+  runs it hourly, after the green-days node.
+
+handler:
+  module: omnimarket.nodes.node_delegation_readiness_verdict_effect.handlers.handler_readiness_verdict_run
+  class: HandlerReadinessVerdictRun
+  input_model: omnimarket.models.model_delegation_readiness_verdict.ModelReadinessVerdictRunCommand
+
+# Not a runtime-dispatched handler: HandlerReadinessVerdictRun takes its contract runtime block, paths, ledger read and
+# append routes, event sink and clock as constructor parameters, so the node runs through its own CLI and schedule.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [file-write, ledger-append, bus-publish]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelReadinessVerdictRunCommand
+  module: omnimarket.models.model_delegation_readiness_verdict
+  description: One run of the readiness verdict; it carries no value.
+output_model:
+  name: ModelReadinessVerdict
+  module: omnimarket.models.model_delegation_readiness_verdict
+  description: PASS or FAIL with one row per scenario (green days, failed today, latest due slot) and every miss.
+
+terminal_event: onex.evt.omnimarket.delegation-readiness-verdict-published.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.delegation-readiness-verdict-published.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-readiness-verdict-published.v1
+
+runtime:
+  home_env: OMNI_HOME
+  # The ledger is on the bus: results are read as `rows` point queries and the STATUS row is one bus append. Each command
+  # is named by a variable the deployment sets; nothing here reads or names the ledger file.
+  ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+  ledger_read_timeout_seconds: 120
+  ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  ledger_append_timeout_seconds: 60
+  host_env: ONEX_HOST_NAME
+  bus_emit_command_env: ONEX_BUS_EMIT_COMMAND
+  # Every event is journalled here; when the deployment names a bus produce command in bus_emit_command_env it also gets the event.
+  event_journal_relpath: .onex_state/delegation-readiness-verdict/events.jsonl
+  bus_emit_timeout_seconds: 60
+  published_relpath: .claude_scratch/delegation-readiness/delegation-readiness-verdict.json
+  # The shippable bar: seven consecutive green UTC days (operator decision). The window is one day longer so the bar is
+  # reachable and stays a separate setting from the window.
+  required_green_days: 7
+  window_days: 8
+  stale_after_hours: 2
+  # A slot is due once its cadence's grace has passed: the latest due slot is the one that contains (now - grace).
+  due_grace_hours:
+    hourly: 2
+    every_6h: 8
+    daily: 26
+  rows_page_size: 500
+  max_pages: 40
+  ticket: OMN-23181
+  lane: node_delegation_readiness_verdict_effect
+  # The nine scenarios of the readiness plan (2.2) with their cadence and the lane each one's results are written under.
+  scenarios:
+    - {scenario_id: R1, cadence: hourly, lane: node_delegation_scenario_r1}
+    - {scenario_id: R2, cadence: hourly, lane: node_delegation_scenario_r2_effect}
+    - {scenario_id: R3, cadence: every_6h, lane: node_delegation_scenario_r3}
+    - {scenario_id: R4, cadence: every_6h, lane: node_delegation_scenario_r4}
+    - {scenario_id: R5, cadence: hourly, lane: node_delegation_scenario_r5}
+    - {scenario_id: R6, cadence: daily, lane: node_delegation_scenario_r6}
+    - {scenario_id: R7, cadence: every_6h, lane: node_delegation_scenario_r7}
+    - {scenario_id: R8, cadence: every_6h, lane: node_delegation_scenario_r8}
+    - {scenario_id: R9, cadence: hourly, lane: node_delegation_scenario_r9}
+
+# Hourly at minute 35 UTC, after the green-days node (minute 20).
+schedule:
+  unit_name: onex-delegation-readiness-verdict
+  state_directory: .onex_state/delegation-readiness-verdict
+  timeout_seconds: 300
+  unit_environment: [ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  cadence:
+    on_calendar: "*-*-* *:35:00"
+    time_zone: UTC
+    randomized_delay: 0s
+    persistent: true
+    description: the delegation readiness verdict, decided hourly at minute 35
+
+metadata:
+  ticket: OMN-23181
+  transport_type: inmemory

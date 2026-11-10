@@ -15,6 +15,8 @@ from omnimarket.nodes.node_floor_compare_effect.handlers.handler_floor_compare i
     load_runtime,
 )
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
+    ModelCompareCategory,
+    ModelFloorCompareOverlay,
     ModelSnapshot,
 )
 
@@ -23,6 +25,23 @@ FIXTURE = (
     / "src/omnimarket/nodes/node_factory_floor_publish_effect/tests/fixtures/floor_simple_served_2026-11-06T1838Z.json"
 )
 RT = load_runtime()
+# A planted grouping for the tests: the real one is the deployment overlay and is not packaged with the code.
+OVERLAY = ModelFloorCompareOverlay(
+    categories=(
+        ModelCompareCategory(
+            id="landing",
+            title="Landing and merges",
+            prefixes=("merges", "open_prs", "git_merges:"),
+        ),
+        ModelCompareCategory(
+            id="alarms",
+            title="Alarms and lab health",
+            prefixes=("red_rows", "alarm:", "alarms_total"),
+        ),
+        ModelCompareCategory(id="pieces", title="Rebuild pieces", prefixes=("piece:",)),
+    ),
+    other=ModelCompareCategory(id="other", title="Other numbers"),
+)
 NOW = datetime(2026, 11, 7, 18, 30, tzinfo=UTC)
 
 

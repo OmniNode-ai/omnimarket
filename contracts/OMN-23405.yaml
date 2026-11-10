@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23405
+title: The landing workflow's act-mode tick writer lands through the GitHub landing effect, and one repository runs on the workflow
+summary: The landing tick facts carry each pull request's GraphQL node id and its head's failed run ids, and the act-mode tick writer reads them from the tick's own facts to send arm or enqueue pinned to the head, rerun of the failed runs and update branch at the head as commands of the GitHub landing effect only. The tick orchestrator's overlay names the one cutover repository and the effect mode act mode needs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23405-tick-writer
+  statement: The tick facts carry the pull request node id and the failed run ids, and the act-mode tick writer sends each merge, rerun and branch update as a command of the GitHub landing effect pinned to the head, or refuses it by name.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the tick facts carry the pull request node id and failed run ids, and the act-mode tick writer arms or enqueues pinned to the head through the GitHub landing effect only -- falsifier: uv run pytest tests for the landing tick writer with a facts fixture lacking the node id fails on the unfixed facts model'
+evidence_requirements:
+- kind: tests
+  description: The act-mode tick writer test (tick facts with the node id and failed run ids, arm and enqueue pinned to the head on the effect's own command topic, the named refusals, the overlay's cutover and mode for act)
+  command: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_github_writer.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23405-tick-writer
+  description: Runs the act-mode tick writer test. Tick facts carrying a node id and failed run ids load; a recorded tick whose decision merges two PRs, in an enabled act mode, sends two arm commands on the GitHub landing effect's own command topic, each pinned to its head with the node id from the tick facts; tick facts with no node id send nothing and name no_node_id; an action outside the cutover repository, a non-GitHub action, a missing run id and a moved head are each refused by name; an overlay enabling act without a cutover repository or mode is refused. The facts model refuses the node id field at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_github_writer.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23405-integration-proof-lab
+  description: Runs the act-mode tick writer test at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23405 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_github_writer.py -q --no-cov -p no:randomly'
+    cwd: .

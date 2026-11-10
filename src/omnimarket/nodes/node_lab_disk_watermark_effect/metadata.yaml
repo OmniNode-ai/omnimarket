@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_disk_watermark_effect
+version: 0.1.0
+description: >
+  Disk watermark of a lab pool host: writes its reading and pages past the declared page mark; marks, volumes and the
+  reading file come from the overlay.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_disk_watermark_effect: omnimarket.nodes.node_lab_disk_watermark_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- in_process
+pack: operator_tooling
+display_name: Lab Disk Watermark Effect
+node_role: effect

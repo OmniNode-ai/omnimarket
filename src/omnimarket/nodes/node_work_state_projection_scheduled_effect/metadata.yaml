@@ -1,0 +1,24 @@
+name: node_work_state_projection_scheduled_effect
+version: "0.1.0"
+description: "Runs the work-state projection on a declared schedule in the runtime and emits a compact projected event"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_state_projection_scheduled_effect: "omnimarket.nodes.node_work_state_projection_scheduled_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "work-state", "projection", "OMN-22935"]
+pack: "pipeline"
+display_name: "Work State Projection Scheduled"
+node_role: "effect"
