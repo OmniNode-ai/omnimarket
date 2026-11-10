@@ -86,6 +86,10 @@ class ModelRemoteLaneHostReading(BaseModel):
     # The inputs of the request's ``required_inputs`` the placement reader found on this host. None: the
     # reader did not check them, which keeps the host off a lane that needs inputs (fail closed).
     present_inputs: tuple[str, ...] | None = None
+    # The hosts this host reached over ssh when the reader took its reading (OMN-23389). A lane that repairs
+    # another host runs here only when the repair target is in this list. None: the reader did not try, which
+    # keeps the host off a repair lane (fail closed).
+    ssh_reach: tuple[str, ...] | None = None
 
 
 class ModelRemoteLaneAttempt(BaseModel):
@@ -174,6 +178,10 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     # ``clone:<repo>``, ``patch:<path>``, ``plan-branch:<branch>``). A host takes the lane only when its
     # reading's ``present_inputs`` holds every one. Empty: an old producer's request, placed as before.
     required_inputs: tuple[str, ...] = ()
+    # The host a repair lane repairs (OMN-23389). A repair lane never runs on the host it repairs: that host is
+    # off the pick whatever its admission reading says, a pin to it names the target and not the run host, and
+    # the lane runs on a host whose reading reached the target over ssh. None: an ordinary lane, placed as before.
+    repair_target: str | None = Field(default=None, min_length=1)
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):
@@ -236,3 +244,5 @@ class ModelRemoteLanePlacementResult(BaseModel):
     # ``stop_gate``'s answer for the engine when the request carried stop facts, whatever the outcome
     # (an observed stop is named here and refuses nothing).
     stop_gate: ModelStopGateResult | None = None
+    # A repair lane pinned to its target is placed elsewhere; this line names the pin and why it was not kept.
+    repair_pin_refused: str | None = None

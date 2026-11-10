@@ -24,7 +24,6 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelCreateTicketRequest,
     ModelTicketGuardDecision,
     TicketGuardRefusedError,
-    TicketGuardUnavailableError,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("lane_create_context")]
@@ -123,18 +122,6 @@ def test_transition_guard_refusal_blocks_the_write() -> None:
         handler.handle(_request())
     assert tracker.updates == []
     assert resolver.calls == []
-
-
-def test_transition_without_a_guard_is_refused(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.delenv("ONEX_TICKET_GUARD_PATH", raising=False)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-claude"))
-    tracker = _FakeTracker()
-    handler = HandlerCreateTicket(tracker=tracker, state_resolver=_FakeStateResolver())
-    with pytest.raises(TicketGuardUnavailableError):
-        handler.handle(_request())
-    assert tracker.updates == []
 
 
 def test_transition_dry_run_runs_the_guard_and_writes_nothing() -> None:

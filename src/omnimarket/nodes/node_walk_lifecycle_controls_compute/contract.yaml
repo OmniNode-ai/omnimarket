@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_walk_lifecycle_controls_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Grade the lifecycle of the call recorder against an Endpoint Security observer
+  stream, with the walk's positive controls. Pure compute over text the caller
+  supplies: the observer's exec, fork and exit events decide which process
+  identities (pid and pidversion, never pid alone) belong to each tree, and the
+  recorder's lines must cover every exec and fork the observer saw. Control trees
+  that the recorder cannot see must read blind, and the graded tree's forked child,
+  rejected connect and cache-served lookup controls must hold. The blocked
+  destination, lookup name and forked-child call name come from the overlay.
+input_model:
+  name: ModelLifecycleControlsRequest
+  module: omnimarket.nodes.node_walk_lifecycle_controls_compute.models.model_lifecycle_controls
+  description: Trees with their recorder lines, the observer stream, the capture evidence and the settings.
+output_model:
+  name: ModelLifecycleControlsResult
+  module: omnimarket.nodes.node_walk_lifecycle_controls_compute.models.model_lifecycle_controls
+  description: The lifecycle_controls verdict, its failed reasons and one result per tree.
+handler:
+  module: omnimarket.nodes.node_walk_lifecycle_controls_compute.handlers.handler_lifecycle_controls
+  class: HandlerLifecycleControls
+  input_model: omnimarket.nodes.node_walk_lifecycle_controls_compute.models.model_lifecycle_controls.ModelLifecycleControlsRequest
+  output_model: omnimarket.nodes.node_walk_lifecycle_controls_compute.models.model_lifecycle_controls.ModelLifecycleControlsResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_walk_lifecycle_controls_compute.handlers.handler_lifecycle_controls:HandlerLifecycleControls
+  handlers:
+  - operation: grade_lifecycle_controls
+    handler:
+      name: HandlerLifecycleControls
+      module: omnimarket.nodes.node_walk_lifecycle_controls_compute.handlers.handler_lifecycle_controls
+    input_model: omnimarket.nodes.node_walk_lifecycle_controls_compute.models.model_lifecycle_controls.ModelLifecycleControlsRequest
+    output_model: omnimarket.nodes.node_walk_lifecycle_controls_compute.models.model_lifecycle_controls.ModelLifecycleControlsResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 10000
+terminal_event: onex.evt.omnimarket.walk-lifecycle-controls-graded.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.walk-lifecycle-controls-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.walk-lifecycle-controls-graded.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.walk-lifecycle-controls-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.walk-lifecycle-controls-graded.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.walk-lifecycle-controls-graded.v1
+# The blocked destination, lookup name and forked-child call name come from
+# <root>/node_walk_lifecycle_controls_compute/overlay.yaml; there is no packaged default.
+overlay:
+  id: node_walk_lifecycle_controls_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: kafka
+  description: Lifecycle grading of the call recorder against the observer, with positive controls.
+  author: OmniNode Team
+  created: '2026-11-08'
+  tags:
+  - compute
+  - walk
+  - operator_tooling
+  - OMN-23204
+  related_tickets:
+  - OMN-23204

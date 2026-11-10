@@ -130,12 +130,21 @@ def test_token_pool_has_its_own_acceptance_bound_evidence() -> None:
         None,
     )
     assert requirement is not None, "the token pool needs its own acceptance criterion"
-    acceptance = {item["id"] for item in requirement["acceptance"]}
     own = [
         item
         for item in contract["dod_evidence"]
         if item["id"].startswith("dod-omn17427-claude-token-pool-")
     ]
+    # The live ticket never carried the token pool's criterion, so the contract
+    # retires it (OMN-19998): the label leaves the requirement's acceptance list and
+    # stays named by the retirement entries of the items that were bound to it.
+    acceptance = {item["id"] for item in requirement.get("acceptance", [])} or {
+        entry["label"]
+        for item in contract["dod_evidence"]
+        for entry in item.get("supersedes_ac_binding", [])
+        if entry["item"].startswith("dod-omn17427-claude-token-pool-")
+    }
+    assert acceptance, "the token pool's criterion is declared or retired by name"
     bound = [item for item in own if set(item.get("binds_ac", [])) == acceptance]
     selectors = {
         check["check_value"].split()[3]

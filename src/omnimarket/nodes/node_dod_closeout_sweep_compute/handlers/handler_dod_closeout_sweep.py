@@ -31,6 +31,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
     ground_state,
     read_receipts,
     zero_flip_alert,
+    zero_flip_reading,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_rules import (
     merged_prs,
@@ -988,6 +989,7 @@ def complete_run(
         completion_rows=rows,
         zero_flip_streak=length,
         top_deferral_reason=reason,
+        zero_flip_reading=zero_flip_reading(request.run_summary, request.clock_utc),
         zero_flip_alert=zero_flip_alert(
             request.run_summary,
             length,

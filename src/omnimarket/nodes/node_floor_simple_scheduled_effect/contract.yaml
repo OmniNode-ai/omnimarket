@@ -1,0 +1,89 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Simple Scheduled (OMN-23072, slice 1 of the floor as a runtime projection)
+#
+# The simple floor computed inside the one runtime on a declared schedule, with no Mac launchd job. The runtime
+# scheduler emits onex.intent.platform.runtime-tick.v1 far more often than the floor needs; the handler gates on the
+# schedule overlay's run_interval_seconds with an in-process last-run time (the idiom of node_dead_letter_prune_effect),
+# reads the floor's inputs through the reading source the overlay names, computes the document with
+# node_floor_simple_compute's HandlerFloorSimple and returns it. The runtime publishes the result on the terminal
+# topic; node_floor_document_reducer holds the latest document and node_floor_page_api_effect serves it.
+name: node_floor_simple_scheduled_effect
+contract_name: node_floor_simple_scheduled_effect
+node_name: node_floor_simple_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Computes the simple floor document on a declared schedule inside the runtime and emits it as an event. A reading
+  that is not available is drawn as unread by the compute and is never zero. The cadence, the reading source and the
+  floor overlay are the schedule overlay's; this contract and the handler hold no value.
+
+handler:
+  module: omnimarket.nodes.node_floor_simple_scheduled_effect.handlers.handler_floor_simple_scheduled
+  class: HandlerFloorSimpleScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: floor_simple.scheduled_compute
+      handler:
+        name: HandlerFloorSimpleScheduled
+        module: omnimarket.nodes.node_floor_simple_scheduled_effect.handlers.handler_floor_simple_scheduled
+      handler_module: omnimarket.nodes.node_floor_simple_scheduled_effect.handlers.handler_floor_simple_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the schedule overlay's run_interval_seconds since the last scheduled run; when due, read the floor
+        inputs, compute the document and return it.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelFloorSimpleDocumentEvent
+  module: omnimarket.models.floor_17a.model_floor_document_event
+  description: The computed floor document with the tick time it was computed for.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  side_effects:
+    - reads the floor inputs through the reading source the schedule overlay names
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "floor_simple.scheduled_compute"
+
+terminal_event: onex.evt.omnimarket.floor-simple-document.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.floor-simple-document.v1"
+
+published_events:
+  - event_type: ModelFloorSimpleDocumentEvent
+    topic: onex.evt.omnimarket.floor-simple-document.v1
+    description: "One computed simple floor document."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-simple-document.v1
+
+# Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_floor_simple_scheduled_effect, file_env: ONEX_FLOOR_SCHEDULE_OVERLAY, model: omnimarket.models.floor_17a.model_floor_document_event.ModelFloorScheduleOverlay}
+  floor_overlay: {file_env: ONEX_FLOOR_SIMPLE_OVERLAY, model: omnimarket.models.floor_17a.model_floor_17a.ModelFloorSimpleOverlay}
+
+metadata:
+  ticket: OMN-23072
+  transport_type: kafka
