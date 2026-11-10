@@ -96,6 +96,7 @@ descriptor:
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
   - reads the runner projection's saved observation inside the deployed runtime and mirrors it to the floor input, or writes an unread cause when the producer cannot be read
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
+  - OMN-23227: writes every one of those files first to a local copy under the registry home (the overlay's local_copy_relpath), then to each serving host the overlay names, each host on its own; a host that fails never stops another, a host whose connection did not open is skipped for the rest of the run, and the served status names the hosts that missed files (the operator-only reports are not copied locally)
   - writes a timestamped snapshot of the record under the history subdirectory on the serving host, and removes past-window snapshots beyond the declared count there
   - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
   - reads the tailnet status on the publishing host, writes the operator-only allowed-address include to the access directory beside the serving directory, reloads the web server container and reads its configuration back over ssh

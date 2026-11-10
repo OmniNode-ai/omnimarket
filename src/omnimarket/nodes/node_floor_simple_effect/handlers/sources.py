@@ -11,7 +11,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -44,6 +44,7 @@ from omnimarket.models.work_state_projection import (
 TICKET = re.compile(r"\bOMN-\d+\b")
 SIZE_UNITS = {"K": 1 / 1024 / 1024, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
 TAIL_BYTES = 400_000
+CACHED_CELL = re.compile(r"\bcached=(\d+(?:\.\d+)?)s\b")
 # No admission record given: the lists alone decide. ``None`` instead is a record that could not be read.
 NO_ADMISSIONS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
@@ -771,7 +772,38 @@ def _free_gb(entry: str, key: str) -> float | None:
     return float(match.group(1)) * SIZE_UNITS[match.group(2)] if match else None
 
 
-def read_disk(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def _cached_s(rest: str) -> float:
+    """Seconds the host's cell text was already old when the receipt was written (the probe's ``cached=<n>s`` cell), else 0."""
+    match = CACHED_CELL.search(rest)
+    return float(match.group(1)) if match else 0.0
+
+
+def disk_expected_hosts(
+    record: Mapping[str, Any] | None, overlay: ModelLabStateOverlay
+) -> tuple[str, ...]:
+    """The hosts the pool receipt must hold a disk line for: every machine of the floor record that is not declared out or
+    in repair and that the overlay does not list as unprobed. A host the receipt lacks is unread, never absent."""
+    if record is None:
+        return ()
+    machines = [m for m in record["floor"].get("machines", []) if isinstance(m, dict)]
+    return tuple(
+        host
+        for m in machines
+        if (host := str(m.get("host", "")))
+        and str(m.get("state", "")) not in overlay.declared_host_states
+        and host not in overlay.disk_unprobed_hosts
+    )
+
+
+def read_disk(
+    path: Path,
+    overlay: ModelLabStateOverlay,
+    now: datetime | None = None,
+    expected_hosts: Sequence[str] = (),
+) -> ModelLabSourceRead:
+    """A host is above the bar only when every disk figure the overlay names is read, no older than the source's bound
+    and at or over the bar. A figure that is unread, a host the receipt holds no line for, and a figure older than its
+    bound count as not above the bar (OMN-23224); the bar is the overlay's and is not changed here."""
     source = _by_kind(overlay, "disk")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -787,21 +819,40 @@ def read_disk(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
     subjects: list[ModelLabSubject] = []
     for entry in readings:
         host, _, rest = str(entry).partition(":")
-        free = [f for k in overlay.disk_keys if (f := _free_gb(rest, k)) is not None]
-        if not free:
-            subjects.append(
-                ModelLabSubject(name=host, ok=False, note="no disk figure in the read")
+        figures = {k: _free_gb(rest, k) for k in overlay.disk_keys}
+        free = [f for f in figures.values() if f is not None]
+        unread = [k for k, f in figures.items() if f is None]
+        age_s = _cached_s(rest) + (
+            max((now - started).total_seconds(), 0.0) if now is not None else 0.0
+        )
+        low = min(free) if free else None
+        why: list[str] = []
+        if unread:
+            why.append(f"{', '.join(unread)} unread in the pool receipt")
+        if low is not None and low < floor:
+            why.append(f"{low:.1f} GB free, under the {floor:g} GB floor")
+        if age_s > source.max_age_s:
+            why.append(
+                f"reading {age_s:.0f} s old, over the {source.max_age_s} s bound"
             )
-            continue
-        low = min(free)
         subjects.append(
             ModelLabSubject(
                 name=host,
-                ok=low >= floor,
-                value=round(low, 1),
-                note=f"{low:.1f} GB free{'' if low >= floor else f', under the {floor:g} GB floor'}",
+                ok=not why,
+                value=None if low is None else round(low, 1),
+                note="; ".join(why) if why else f"{low:.1f} GB free",
             )
         )
+    held = {s.name for s in subjects}
+    subjects.extend(
+        ModelLabSubject(
+            name=missing,
+            ok=False,
+            note="no line in the pool receipt, so its disk is unread",
+        )
+        for missing in expected_hosts
+        if missing not in held
+    )
     if not subjects:
         return _unread(source.id, "the pool receipt holds no host")
     low_hosts = [s.name for s in subjects if not s.ok]

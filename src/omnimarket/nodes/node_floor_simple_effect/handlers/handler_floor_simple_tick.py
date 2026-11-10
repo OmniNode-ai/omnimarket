@@ -92,6 +92,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources impor
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
+    disk_expected_hosts,
     load_record,
     merge_lanes,
     overlay_store_events,
@@ -162,12 +163,26 @@ OWN_CONTRACT = NODE_DIR / "contract.yaml"
 T = TypeVar("T")
 
 
-class ModelServeOverlay(BaseModel):
-    """The one fact this node reads from the publish node's overlay: where the page answers."""
+class ModelServeTarget(BaseModel):
+    """Another serving host of the publish node's overlay: where it answers (OMN-23081)."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     serve_url: str
+
+
+class ModelServeOverlay(BaseModel):
+    """The facts this node reads from the publish node's overlay: where the page answers, on every serving host."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    serve_url: str
+    extra_targets: tuple[ModelServeTarget, ...] = ()
+
+    @property
+    def serve_urls(self) -> tuple[str, ...]:
+        """Every serving host's address, the overlay's first host first: the served page is read from the first that answers."""
+        return (self.serve_url, *(t.serve_url for t in self.extra_targets))
 
 
 class ModelSourcePaths(BaseModel):
@@ -760,7 +775,12 @@ class HandlerFloorSimpleTick:
                 read_runner_groups(
                     home / rt.sources.runner_fleet_relpath, lab_ov, record
                 ),
-                read_disk(lane_dir / rt.sources.pool_receipt, lab_ov),
+                read_disk(
+                    lane_dir / rt.sources.pool_receipt,
+                    lab_ov,
+                    now,
+                    disk_expected_hosts(record, lab_ov),
+                ),
                 read_queue_age(watcher, lab_ov),
                 read_deploy_lag(record, now, lab_ov),
                 read_broker_lag(
@@ -1205,15 +1225,19 @@ class HandlerFloorSimpleTick:
             return self._served
 
         def read() -> set[str] | None:
-            url = self._served_url(rt, env)
-            if url is None:
-                return None
-            return fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+            for url in self._served_urls(rt, env):
+                ids = fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+                if ids is not None:
+                    return ids
+            return None
 
         return read
 
     @staticmethod
-    def _served_url(rt: ModelFloorSimpleRuntime, env: Mapping[str, str]) -> str | None:
+    def _served_urls(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> tuple[str, ...]:
+        """The served record's address on each serving host, in the overlay's order; empty when the overlay is unread."""
         try:
             serve = load_structured_overlay(
                 rt.serve_overlay.overlay_id,
@@ -1222,8 +1246,10 @@ class HandlerFloorSimpleTick:
                 file_env=rt.serve_overlay.file_env,
             )
         except NodeOverlayError:
-            return None
-        return serve.serve_url.rstrip("/") + "/" + rt.served_record_name
+            return ()
+        return tuple(
+            url.rstrip("/") + "/" + rt.served_record_name for url in serve.serve_urls
+        )
 
     @staticmethod
     def _planted_offline(
@@ -1293,12 +1319,16 @@ class HandlerFloorSimpleTick:
             return "skipped_drill"
         read = self._served_times
         if read is None:
-            url = self._served_url(rt, env)
-            if url is None:
+            urls = self._served_urls(rt, env)
+            if not urls:
                 return "unpublished_no_serve_address"
 
             def read_served() -> tuple[datetime | None, datetime | None] | None:
-                return fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                for url in urls:
+                    times = fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                    if times is not None:
+                        return times
+                return None
 
             read = read_served
         times = read()

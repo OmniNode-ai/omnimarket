@@ -38,6 +38,7 @@ from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspac
 from omnimarket.models.floor_projection import (
     ModelFloorProjectionBundle,
     ModelFloorProjectionReadOverlay,
+    ModelFloorProjectionTickRequest,
     ModelFloorProjectionTickResult,
 )
 from omnimarket.nodes.node_floor_projection_read_effect.handlers import (
@@ -102,7 +103,9 @@ async def run(
     chain.start()
     handler = HandlerFloorProjectionRead(source=source, overlay=overlay, clock=clock)
     try:
-        bundle: ModelFloorProjectionBundle = await handler.handle()
+        bundle: ModelFloorProjectionBundle = await handler.handle(
+            ModelFloorProjectionTickRequest(home=str(home))
+        )
     except Exception as exc:
         chain.failure("projection_read_failed", type(exc).__name__)
         raise
