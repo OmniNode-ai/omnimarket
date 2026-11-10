@@ -85,8 +85,11 @@ def measured_correct_ceiling(
     operation. A pair the overlay does not name has no ceiling (it was never
     measured), and an install no overlay root names the overlay on declares no
     ceilings at all. An overlay that is present but unreadable or invalid raises
-    :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`, never a default.
+    :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`, never a default. A backend that is not named
+    (an empty reference) has no ceiling.
     """
+    if not backend_ref:
+        return None
     try:
         overlay = load_structured_overlay(
             CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ

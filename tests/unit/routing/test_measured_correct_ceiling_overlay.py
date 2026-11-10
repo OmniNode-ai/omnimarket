@@ -212,6 +212,17 @@ def test_absent_overlay_declares_no_ceiling_and_broken_overlay_raises(
     assert not isinstance(error.value, NodeOverlayNotFoundError)
 
 
+def test_an_unnamed_backend_has_no_ceiling_where_the_overlay_names_one() -> None:
+    """An empty backend reference declares no ceiling and does not raise; the fixture overlay is in force here.
+
+    The delegate skill's terminal path reaches this read with no backend named (OMN-18925's schema-invalid terminal
+    test): the request model refuses an empty backend, so the reader answers ``None`` before building it.
+    """
+    assert ceiling_module.measured_correct_ceiling(_CODER, _TASK) == _CEILING
+    assert ceiling_module.measured_correct_ceiling("", _TASK) is None
+    assert exceeds_measured_correct_ceiling("", _TASK, _CEILING + 1) is False
+
+
 def test_old_packaged_value_as_a_break_un_does_the_lowered_control(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
