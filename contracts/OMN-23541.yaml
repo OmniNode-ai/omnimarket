@@ -43,6 +43,14 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_floor_delegation_effect/test_seam_ledger_bounded_rows.py tests/nodes/node_floor_delegation_effect/test_seam_ledger_read_node.py -q --no-cov -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: dod-omn23541-ac4-hosted-proxy
+    description: "AC4 hosted proxy: a rows query with no start is answered bounded, with the window start and days on the answer; the lab readback on the dev runtime after a roll is the integrated proof."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_default_window_omn23541.py -k golden_no_since -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
   - id: dod-omn23541-integration-proof
     description: The pushed head ran the bounded read tests and the seam tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual
@@ -51,4 +59,3 @@ dod_evidence:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23541 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_default_window_omn23541.py tests/nodes/node_floor_delegation_effect/test_seam_ledger_bounded_rows.py -q --no-cov'
         cwd: .
-    binds_ac: ["AC4"]
