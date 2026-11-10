@@ -283,6 +283,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     TENANT_OVERLAY_TIER_NAME,
     describe_no_higher_tier_available,
     is_free_tier,
+    lead_backend_refs,
     next_eligible_tier,
     quota_blocked_backend_refs,
     resolve_task_class_max_escalations,
@@ -4990,6 +4991,26 @@ class HandlerDelegationWorkflow:
         ):
             return None
         workflow.local_retry_count += 1
+
+        # OMN-23329: a lead rung (the small local model placed first in its tier)
+        # that missed the quality gate is not retried on itself. Excluding it for
+        # the rest of this workflow lands the retry on the tier's next rung.
+        decision_in_flight = workflow.routing_decision
+        missed_ref = (
+            decision_in_flight.selected_backend_ref
+            if decision_in_flight is not None
+            else ""
+        )
+        if (
+            cause is EnumEscalationCause.QUALITY_GATE_REFUSED
+            and missed_ref
+            and missed_ref in lead_backend_refs()
+            and missed_ref not in workflow.transport_failed_backend_refs
+        ):
+            workflow.transport_failed_backend_refs = (
+                *workflow.transport_failed_backend_refs,
+                missed_ref,
+            )
 
         # Bank this rejected draft's spend + served tokens BEFORE the inference
         # reset below discards ``workflow.inference_*``. For a free tier the cost is
