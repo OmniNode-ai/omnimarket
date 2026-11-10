@@ -14,19 +14,36 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers import (
+    handler_plugin_revision as handler_module,
+)
 from omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_plugin_revision import (
     HandlerHostDriftPluginRevision,
-    load_plugin_sync_rules,
     rule_for,
 )
 from omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision import (
     EnumPluginDriftVerdict,
     ModelPluginRevisionFacts,
+    ModelPluginSyncRule,
+)
+from omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules import (
+    HandlerHostDriftPluginRules,
+)
+from omnimarket.nodes.node_host_drift_plugin_rules_effect.models.model_plugin_rules import (
+    ModelPluginRulesRequest,
 )
 
 OVERLAYS = "onex-overlays@omninode-internal"
 OMNI = "omni@omninode-internal"
 OLD, TIP = "a" * 40, "b" * 40
+
+
+def overlay_rules() -> tuple[ModelPluginSyncRule, ...]:
+    """The packaged overlay's rules, read by the rules effect and handed to the compute as input."""
+    result = HandlerHostDriftPluginRules().handle(
+        ModelPluginRulesRequest(correlation_id="test")
+    )
+    return result.rules
 
 
 def facts(**over: object) -> ModelPluginRevisionFacts:
@@ -38,6 +55,7 @@ def facts(**over: object) -> ModelPluginRevisionFacts:
         "installed_revision": OLD,
         "merged_tip": TIP,
         "tip_in_installed": False,
+        "rules": overlay_rules(),
     }
     base.update(over)
     return ModelPluginRevisionFacts.model_validate(base)
@@ -107,7 +125,7 @@ def test_golden_version_differs_with_unresolvable_revision_falls_back_to_update(
 
 
 def test_golden_omni_rules_keep_their_order_and_lane_bounds() -> None:
-    rules = load_plugin_sync_rules()
+    rules = overlay_rules()
     modified = rule_for(
         rules, f"plugin:{OMNI}", "installed 1 merged 1; tree modified against x"
     )
@@ -164,16 +182,19 @@ def test_error_malformed_facts_are_refused() -> None:
         facts(unknown_field=1)
 
 
-def test_error_a_rule_set_with_a_safe_rule_and_no_action_is_refused(
-    tmp_path: Path,
-) -> None:
-    bad = tmp_path / "rules.yaml"
-    bad.write_text(
-        "schema: host-drift-plugin-sync-rules.v1\n"
-        "rules:\n  - {match: 'plugin:*', kinds: [plugin], sync_class: SAFE}\n"
-    )
-    with pytest.raises(ValueError, match="names an action"):
-        load_plugin_sync_rules(bad)
-    bad.write_text("schema: nope\nrules: []\n")
-    with pytest.raises(ValueError, match="unsupported"):
-        load_plugin_sync_rules(bad)
+def test_error_rules_are_required_input_not_read_from_a_file() -> None:
+    """The compute is handed its rules: facts without them are refused, and with none it only alerts."""
+    payload = facts().model_dump()
+    del payload["rules"]
+    with pytest.raises(ValidationError):
+        ModelPluginRevisionFacts.model_validate(payload)
+    verdict = HandlerHostDriftPluginRevision().handle(facts(rules=()))
+    assert verdict.verdict == EnumPluginDriftVerdict.DRIFT
+    assert verdict.sync_action is None
+
+
+def test_the_handler_reads_no_file_and_carries_no_purity_suppression() -> None:
+    source = Path(handler_module.__file__ or "").read_text(encoding="utf-8")
+    assert "import yaml" not in source
+    assert "read_text" not in source
+    assert "node-purity-ok" not in source

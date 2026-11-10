@@ -50,7 +50,7 @@ descriptor:
 metadata:
   transport_type: kafka
   ticket: OMN-20689
-  description: Plugin drift by revision; the plugin sync rules are the overlay plugin_sync_policy.yaml.
+  description: Plugin drift by revision; the plugin sync rules arrive in the input, read from their overlay by node_host_drift_plugin_rules_effect.
   tags:
   - host-drift
 terminal_event: onex.evt.omnimarket.host-drift-plugin-revision-decided.v1

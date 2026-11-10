@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_host_drift_plugin_revision_compute
 version: 1.0.0
-description: Decide a plugin's host drift by installed revision, not version string, and route it through the plugin sync rules.
+description: Decide a plugin's host drift by installed revision, not version string, and route it through the plugin sync rules it is handed.
 pack: distributed_validation
 node_role: compute
 display_name: Host Drift Plugin Revision Compute
@@ -20,7 +20,6 @@ capabilities:
   side_effect_class: pure
 dependencies:
 - pydantic>=2.0.0
-- pyyaml>=6.0
 authors:
 - OmniNode Platform Team
 license: MIT

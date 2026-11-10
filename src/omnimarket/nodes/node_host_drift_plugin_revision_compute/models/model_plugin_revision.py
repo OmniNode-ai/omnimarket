@@ -14,7 +14,19 @@ class EnumPluginDriftVerdict(StrEnum):
     DRIFT = "DRIFT"
 
 
-class ModelPluginRevisionFacts(BaseModel):
+class ModelPluginSyncRule(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    match: str
+    kinds: tuple[str, ...]
+    observed_contains: tuple[str, ...] = ()
+    sync_class: str
+    action: str | None = None
+    alert_only_observed: tuple[str, ...] = ()
+    between_lanes: bool = False
+
+
+class ModelPluginProbeFacts(BaseModel):
     """What the host-side probe measured about one installed plugin.
 
     The probe reads git and the installed record; this node only decides. A plugin is behind
@@ -59,6 +71,18 @@ class ModelPluginRevisionFacts(BaseModel):
     )
 
 
+class ModelPluginRevisionFacts(ModelPluginProbeFacts):
+    """The compute's whole input: the probe facts and the plugin sync rules to route them through.
+
+    The rules are read from their overlay by node_host_drift_plugin_rules_effect and handed in by
+    node_host_drift_plugin_revision_orchestrator; this node never reads a file (OMN-20689).
+    """
+
+    rules: tuple[ModelPluginSyncRule, ...] = Field(
+        description="the plugin sync rules in first-match order; none routes every drift to alert only"
+    )
+
+
 class ModelPluginRevisionVerdict(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -71,16 +95,4 @@ class ModelPluginRevisionVerdict(BaseModel):
         default=None,
         description="the policy action the observed text routes to; None is alert-only",
     )
-    between_lanes: bool = False
-
-
-class ModelPluginSyncRule(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    match: str
-    kinds: tuple[str, ...]
-    observed_contains: tuple[str, ...] = ()
-    sync_class: str
-    action: str | None = None
-    alert_only_observed: tuple[str, ...] = ()
     between_lanes: bool = False

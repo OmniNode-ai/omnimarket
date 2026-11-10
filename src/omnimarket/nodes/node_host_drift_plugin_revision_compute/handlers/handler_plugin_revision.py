@@ -4,15 +4,13 @@
 
 Moved from the frozen internal host-drift package (RULING 2026-11-03T18:40:27Z): the plugin-behind and plugin-stale
 wording, the version-or-revision composition and the plugin rules of the host-drift sync policy.
-The probe that reads git stays host-side and hands this node typed facts.
+The probe that reads git stays host-side and hands this node typed facts; the rules arrive in the
+facts, read from their overlay by node_host_drift_plugin_rules_effect (this handler reads no file).
 """
 
 from __future__ import annotations
 
 from fnmatch import fnmatchcase
-from pathlib import Path
-
-import yaml
 
 from omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugin_revision import (
     EnumPluginDriftVerdict,
@@ -21,26 +19,7 @@ from omnimarket.nodes.node_host_drift_plugin_revision_compute.models.model_plugi
     ModelPluginSyncRule,
 )
 
-POLICY_PATH = Path(__file__).resolve().parents[1] / "plugin_sync_policy.yaml"
-RULES_SCHEMA = "host-drift-plugin-sync-rules.v1"
 KIND_PLUGIN = "plugin"
-
-
-def load_plugin_sync_rules(path: Path = POLICY_PATH) -> tuple[ModelPluginSyncRule, ...]:
-    """The plugin sync rules from the overlay, in first-match order."""
-    text = path.read_text(encoding="utf-8")  # node-purity-ok: overlay load
-    payload = yaml.safe_load(text)
-    if not isinstance(payload, dict) or payload.get("schema") != RULES_SCHEMA:
-        raise ValueError(f"unsupported plugin sync rules schema in {path.name}")
-    rules = tuple(
-        ModelPluginSyncRule.model_validate(r) for r in payload.get("rules", ())
-    )
-    for rule in rules:
-        if (rule.sync_class == "SAFE") != bool(rule.action):
-            raise ValueError(
-                "a SAFE rule names an action; an ALERT_ONLY rule names none"
-            )
-    return rules
 
 
 def rule_for(
@@ -85,9 +64,6 @@ def behind_note(facts: ModelPluginRevisionFacts) -> str:
 class HandlerHostDriftPluginRevision:
     """Pure compute: typed probe facts to a drift verdict, its observed text and its sync action."""
 
-    def __init__(self, rules: tuple[ModelPluginSyncRule, ...] | None = None) -> None:
-        self._rules = rules if rules is not None else load_plugin_sync_rules()
-
     def handle(self, request: ModelPluginRevisionFacts) -> ModelPluginRevisionVerdict:
         facts = request
         observed = f"installed {','.join(facts.installed_versions)} merged {facts.merged_version}"
@@ -120,7 +96,7 @@ class HandlerHostDriftPluginRevision:
         action = None
         between = False
         if verdict == EnumPluginDriftVerdict.DRIFT:
-            rule = rule_for(self._rules, f"plugin:{facts.name}", text)
+            rule = rule_for(facts.rules, f"plugin:{facts.name}", text)
             if rule is not None and rule.sync_class == "SAFE":
                 action, between = rule.action, rule.between_lanes
         return ModelPluginRevisionVerdict(
