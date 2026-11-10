@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runtime_boot_set_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Judge one runtime boot against the boot set its deployment declares (one-runtime plan, T28). A deployment
+  with no declared set, a declared name no contract announces, a contract attached or a topic subscribed outside the
+  declared set, and a declared contract left unattached each read FAIL with the rule named; a boot that was not read
+  reads UNKNOWN and fails. The verdict carries the ONEX_RUNTIME_NODE_SELECTION value the deployment overlay hands the
+  runtime. The declared set, the catalog and the observation are data the caller passes in.
+input_model:
+  name: ModelRuntimeBootSetRequest
+  module: omnimarket.models.model_runtime_boot_set
+output_model:
+  name: ModelRuntimeBootSetVerdict
+  module: omnimarket.models.model_runtime_boot_set
+handler:
+  module: omnimarket.nodes.node_runtime_boot_set_compute.handlers.handler_runtime_boot_set
+  class: HandlerRuntimeBootSet
+  input_model: omnimarket.models.model_runtime_boot_set.ModelRuntimeBootSetRequest
+  output_model: omnimarket.models.model_runtime_boot_set.ModelRuntimeBootSetVerdict
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_runtime_boot_set_compute.handlers.handler_runtime_boot_set:HandlerRuntimeBootSet
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerRuntimeBootSet
+      module: omnimarket.nodes.node_runtime_boot_set_compute.handlers.handler_runtime_boot_set
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+topics:
+  boot_set_judge_requested: onex.cmd.omnimarket.runtime-boot-set-judge-requested.v1
+  boot_set_judged: onex.evt.omnimarket.runtime-boot-set-judged.v1
+  boot_set_violated: onex.evt.omnimarket.runtime-boot-set-violated.v1
+  boot_set_judge_failed: onex.evt.omnimarket.runtime-boot-set-judge-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.runtime-boot-set-judged.v1
+  - onex.evt.omnimarket.runtime-boot-set-violated.v1
+  - onex.evt.omnimarket.runtime-boot-set-judge-failed.v1
+runtime_dispatch:
+  external_trigger: Direct Python invocation, or the judge-requested command, with the deployment's declared boot set,
+    the contract catalog and one boot's observation.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Judge one runtime boot against the boot set its deployment declares; work outside the set, no set, an
+    unannounced name or a dropped declared contract reads FAIL, an unread boot reads UNKNOWN and fails.
+  author: OmniNode Team
+  created: '2026-11-09'
+  tags:
+  - compute
+  - runtime-boot-set-compute
+  - OMN-23366
+  related_tickets:
+  - OMN-23366
