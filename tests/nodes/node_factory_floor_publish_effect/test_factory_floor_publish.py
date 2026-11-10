@@ -392,6 +392,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             JOIN_J5,
             JOIN_J6,
             FLOOR_DELEGATION,
+            FLOOR_SIMPLE,
         ]
     )
     assert calls[-2] == FACTORY
@@ -431,6 +432,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "friction_classed",
         "join_refusal",
         "delegation_tracker",
+        "mvp_launch_reads",
     ]
     assert steps["factory_floor"].concurrent is False
 
