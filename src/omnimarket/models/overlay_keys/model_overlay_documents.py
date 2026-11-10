@@ -126,6 +126,10 @@ class ModelLabHostRow(_ModelOverlayBase):
     fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
+    # The host is admitted as a Tart VM host of the clean-VM walk (OMN-23204): its admission receipt names the tart version,
+    # the image digest and the probe results. Omitted means not admitted. Independent of ``roles``, whose declaration makes the
+    # table require one desired-publisher.
+    tart: bool = False
     available: bool = True
     roles: (
         tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None

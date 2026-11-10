@@ -71,11 +71,11 @@ def _job_and_drill(
     tmp_path: Path, runner: RecordingRunner
 ) -> tuple[ModelSnapshotOverlay, ModelSnapshotResult, ModelDrillResult]:
     overlay = _overlay(tmp_path)
-    made = create_handler_work_ledger_snapshot(overlay, {}, run=runner).handle(
-        snapshot_request()
-    )
+    made = create_handler_work_ledger_snapshot(
+        overlay, _ENVIRONMENT, run=runner, local_host=overlay.store.host
+    ).handle(snapshot_request())
     drilled = create_handler_work_ledger_restore_drill(
-        overlay, _ENVIRONMENT, run=runner
+        overlay, _ENVIRONMENT, run=runner, local_host=overlay.drill.host
     ).handle(drill_request(None))
     return overlay, made, drilled
 

@@ -28,13 +28,13 @@ from omnimarket.handlers.github_pr_graphql import (
     normalize_open_pr_rollup,
     normalize_review_threads,
 )
+from omnimarket.models import model_release_asset_retry_policy as retry_policy
 
 _GITHUB_REST = GITHUB_REST_URL
 _GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
 _GITHUB_API_VERSION = "2026-03-10"
 _REQUEST_TIMEOUT = 30.0
-_ASSET_DOWNLOAD_ATTEMPTS = 3
-_ASSET_RETRY_STATUSES = frozenset({502, 503, 504})
+_ASSET_RETRY_POLICY = retry_policy.load_release_asset_retry_policy()
 
 
 class GitHubApiError(RuntimeError):
@@ -88,8 +88,10 @@ def download_release_asset(url: str, to: Path) -> None:
     The caller is responsible for deciding whether the bytes are acceptable.
     Nothing here verifies them.
 
-    Gateway failures (502, 503, 504) get at most three GET attempts, with
-    half-second then one-second delays. Other failures are returned immediately.
+    Gateway failures get the attempts and delays declared in
+    ``configs/release_asset_retry.v1.yaml``. The release host's edge replays a
+    cold gateway failure for more than a minute, so the declared delays add up
+    to more than that window. Other failures are returned immediately.
 
     Raises:
         GitHubApiError: On a non-https URL, or any HTTP or network failure.
@@ -98,19 +100,17 @@ def download_release_asset(url: str, to: Path) -> None:
         raise GitHubApiError(f"refusing a non-https asset URL: {url}")
     to.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, method="GET")
-    for attempt in range(_ASSET_DOWNLOAD_ATTEMPTS):
+    attempts = _ASSET_RETRY_POLICY.attempts
+    for attempt in range(attempts):
         try:
             with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
                 to.write_bytes(resp.read())
             return
         except urllib.error.HTTPError as exc:
-            if (
-                exc.code not in _ASSET_RETRY_STATUSES
-                or attempt == _ASSET_DOWNLOAD_ATTEMPTS - 1
-            ):
+            if exc.code not in _ASSET_RETRY_POLICY.statuses or attempt == attempts - 1:
                 raise GitHubApiError(str(exc), status_code=exc.code) from exc
             exc.close()
-            time.sleep(0.5 * 2**attempt)
+            time.sleep(_ASSET_RETRY_POLICY.delays_seconds[attempt])
         except (urllib.error.URLError, OSError) as exc:
             raise GitHubApiError(str(exc)) from exc
 

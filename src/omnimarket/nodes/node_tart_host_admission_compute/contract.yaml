@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tart_host_admission_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: 0.1.0
+description: Admit a lab Mac as the clean-VM walk's Tart host. Plans the route that puts the probe key and the probe Claude subscription credential into the guest's RAM disk (named by overlay, delivered on stdin at run time, never in the image), grades the route's evidence (reachable from the guest, absent from the stopped VM's disk image with a positive control, absent from logs), and writes the admission receipt that admits a host only when every probe result is present and admitting and dated after the go.
+input_model:
+  name: ModelAdmissionRequest
+  module: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission
+output_model:
+  name: ModelAdmissionReceipt
+  module: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission
+handler:
+  module: omnimarket.nodes.node_tart_host_admission_compute.handlers.handler_host_admission
+  class: HandlerHostAdmission
+  input_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelAdmissionRequest
+  output_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelAdmissionReceipt
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_tart_host_admission_compute.handlers.handler_host_admission:HandlerHostAdmission
+  handlers:
+  - operation: admit_host
+    handler:
+      name: HandlerHostAdmission
+      module: omnimarket.nodes.node_tart_host_admission_compute.handlers.handler_host_admission
+    input_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelAdmissionRequest
+    output_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelAdmissionReceipt
+  - operation: plan_credential_route
+    handler:
+      name: HandlerCredentialRoutePlan
+      module: omnimarket.nodes.node_tart_host_admission_compute.handlers.handler_host_admission
+    input_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelCredentialPlanRequest
+    output_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelCredentialPlan
+  - operation: grade_credential_route
+    handler:
+      name: HandlerCredentialRouteGrade
+      module: omnimarket.nodes.node_tart_host_admission_compute.handlers.handler_host_admission
+    input_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelCredentialGradeRequest
+    output_model: omnimarket.nodes.node_tart_host_admission_compute.models.model_host_admission.ModelCredentialGrade
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct invocation by the weekly walk and the floor lanes: plan the guest credential route, grade its evidence, and admit a Tart host."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+metadata:
+  transport_type: local
+  description: Tart host admission for the clean-VM walk, invoked directly.
+  author: OmniNode Team
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+# GUEST CREDENTIAL ROUTE (OMN-23204). The route's settings are an overlay
+# (<root>/node_tart_host_admission_compute/overlay.yaml), never a packaged default:
+#   credentials      each probe credential by name, the secret store key name that holds its value, and the file it
+#                    occupies on the guest's RAM disk. No value is declared anywhere in the repository.
+#   ramdisk_volume, ramdisk_mount_point   the volume name and the guest path of the RAM disk the credentials live on (nothing on the data volume).
+#   ramdisk_megabytes, tart_path
+# The runner resolves each secret_ref from the secret store at delivery and writes the value to the delivery step's
+# stdin (tart exec -i); the value is never an argument, never in a log and never in a receipt. After the walk the VM is
+# stopped and its disk image is scanned for each value; a control value deliberately written to the data volume must be
+# found by the same scan, or the scan is blind and the route reads not_proven.

@@ -26,6 +26,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cmp_to_key
 
+from omnimarket.handlers.rules_lab_fill_closer import closer_route
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillCloserRoute
+
 from ..models import (
     ModelLabFillDispatchItem,
     ModelLabFillDispatchPlanRequest,
@@ -360,6 +363,7 @@ class HandlerLabFillDispatchPlan:
         cfg = request.config
         fenced = set(request.fenced)
         skipped: list[ModelLabFillSkipEntry] = []
+        routed: list[ModelLabFillCloserRoute] = []
         ok: list[dict[str, object]] = []
         for candidate in request.candidates:
             if (
@@ -372,7 +376,23 @@ class HandlerLabFillDispatchPlan:
             if why:
                 skipped.append(_entry(candidate, cfg, why))
             elif isinstance(candidate, dict):
-                ok.append(normalize_pr(candidate))
+                # OMN-23376: work a merged change or a lane's own report already carries is the closer's, not a lane's.
+                ticket = text_of(candidate.get("ticket"))
+                route = closer_route(
+                    ticket,
+                    text_of(candidate.get("kind")),
+                    merged_prs=request.merged_prs.get(ticket, ()),
+                    built=request.built_reports,
+                    exempt_kinds=request.closer_exempt_kinds,
+                    closer=request.closer,
+                )
+                if route is None:
+                    ok.append(normalize_pr(candidate))
+                elif ticket not in {r.ticket for r in routed}:
+                    routed.append(route)
+                    skipped.append(_entry(candidate, cfg, route.reason.value))
+                else:
+                    skipped.append(_entry(candidate, cfg, "duplicate"))
         # A stable sort keeps the approved file's value order inside the approved tier.
         priority = kind_priority(request.machinery or machinery_policy())
         ok.sort(key=cmp_to_key(lambda x, y: _compare(x, y, priority, cfg)))
@@ -523,4 +543,6 @@ class HandlerLabFillDispatchPlan:
             skipped=tuple(skipped),
             deferred=tuple(deferred),
             budget=budget,
+            # Set only when there is a route, so a plan with none answers the keys the workflow reads today.
+            **({"closer": tuple(routed)} if routed else {}),
         )
