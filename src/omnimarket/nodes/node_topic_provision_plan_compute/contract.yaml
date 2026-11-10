@@ -1,65 +1,94 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-name: node_topic_provision_plan_compute
-node_type: COMPUTE_GENERIC
+#
+# ONEX Node Contract
+# Node: NodeTopicProvisionPlanCompute
+#
+# Decide which broker topics a runtime must provision ("provision on demand"): a
+# topic is provisioned only for a contract that the running runtime profile
+# actually loads, instead of every contract installed. Pure, deterministic, no
+# I/O in the handler.
+#
+# The rule is one of three modes:
+#   all                  - every contract provisions (the legacy baseline).
+#   profile              - a contract provisions iff the active profile is in
+#                          its runtime_profiles.
+#   profile_and_manifest - profile match AND the contract name is in the lane
+#                          manifest.
+#
+# This node deletes nothing and creates nothing: it only decides which topics
+# to provision. The decision is a pure function of the request.
+name: "node_topic_provision_plan_compute"
+contract_name: "node_topic_provision_plan_compute"
+node_name: "node_topic_provision_plan_compute"
 lifecycle: experimental
-node_version: {major: 1, minor: 0, patch: 0}
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
 description: >
-  Plan the broker topics to create: a topic is provisioned only for a contract that a
-  running profile loads (the caller passes the loaded contract names), and the rule —
-  which topic kinds count, the partitions a not-yet-created topic gets and the partition
-  bar the plan is held under — comes from the node overlay, never from code.
+  Pure definition-B decision of which broker topics a runtime must provision.
+  Reads the request (contracts, active profile, lane manifest, live topics,
+  and the provision rule) and returns the plan: the sorted unique topics to
+  provision, the contracts that load, the contracts skipped with their reason,
+  and the live-topic counts (under rule, outside rule, undeclared).
+  Deterministic in any input order. Fail-closed on its own coverage
+  invariants: an empty lane manifest in PROFILE_AND_MANIFEST mode, a lane
+  manifest naming an unknown contract, or an unknown profile in non-ALL mode
+  raises TopicProvisionRuleError, which runtime_dispatch reports on the
+  declared failure terminal event.
 input_model:
-  name: ModelTopicProvisionPlanRequest
-  module: omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan
+  name: "ModelTopicProvisionRequest"
+  module: "omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request"
+  description: "Contracts, active profile, lane manifest, live topics, and the provision rule."
 output_model:
-  name: ModelTopicProvisionPlanResult
-  module: omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan
-handler_routing:
-  routing_strategy: operation_match
-  default_handler: omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan:HandlerTopicProvisionPlan
-  handlers:
-    - operation: handle
-      handler:
-        name: HandlerTopicProvisionPlan
-        module: omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan
-      topic: onex.cmd.omnimarket.topic-provision-plan-requested.v1
-entrypoint:
-  name: NodeTopicProvisionPlanCompute
-  module: omnimarket.nodes.node_topic_provision_plan_compute
-execution:
-  deterministic: true
-  side_effects: false
-  caller: the topic provision runner, when a running profile's loaded contract names are resolved
-contract_version: {major: 1, minor: 0, patch: 0}
-version: {major: 1, minor: 0, patch: 0}
+  name: "ModelTopicProvisionPlan"
+  module: "omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan"
+  description: "Topics to provision, contracts loaded and skipped, live-topic counts."
 handler:
-  module: omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan
-  class: HandlerTopicProvisionPlan
-  input_model: omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan.ModelTopicProvisionPlanRequest
-  output_model: omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan.ModelTopicProvisionPlanResult
-event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.topic-provision-plan-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.topic-provision-plan-completed.v1
+  module: "omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan"
+  class: "HandlerTopicProvisionPlan"
+  input_model: "omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request.ModelTopicProvisionRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan:HandlerTopicProvisionPlan"
+  handlers:
+    - operation: "plan_topic_provision"
+      handler:
+        name: "HandlerTopicProvisionPlan"
+        module: "omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan"
 runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.topic-provision-plan-requested.v1
+  command_topic: "onex.cmd.omnimarket.topic-provision-plan-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.topic-provision-plan-completed.v1"
+    failure: "onex.evt.omnimarket.topic-provision-plan-failed.v1"
+consumed_events:
+  - event_type: ModelTopicProvisionRequest
+    topic: "onex.cmd.omnimarket.topic-provision-plan-requested.v1"
+    description: The command the provisioner sends this node; declared here so the platform topic provisioner (ContractTopicExtractor reads consumed_events, not runtime_dispatch) creates the topic on the broker.
 descriptor:
   node_archetype: compute
   purity: pure
+  idempotent: true
+  timeout_ms: 1000
   runtime_profiles:
     - main
-  idempotent: true
-  timeout_ms: 5000
 replay:
-  requires_validator_version: true
-  timestamp_authority: ingest_sequence
   deterministic: true
-terminal_event: onex.evt.omnimarket.topic-provision-plan-completed.v1
 metadata:
-  transport_type: inmemory
-externally_consumed_topics:
-  - onex.evt.omnimarket.topic-provision-plan-completed.v1
-runtime_profiles:
-  - main
+  description: "Pure decision core of the topic provision plan."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-10"
+  tags:
+    - compute
+    - topic-provision
+    - pure
+config:
+  rule:
+    mode: profile_and_manifest

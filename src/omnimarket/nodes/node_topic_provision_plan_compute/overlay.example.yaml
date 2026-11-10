@@ -1,15 +1,23 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# The shape of the topic provision rule; the real values live in the overlays repository,
-# never in this package. Copy this file to <root>/node_topic_provision_plan_compute/overlay.yaml
-# there and name that root in ONEX_SKILL_OVERLAY_ROOTS. There is no packaged fallback: with no
-# overlay selected the node refuses to plan rather than guess a rule.
 #
-#   include_subscribe_topics  a loaded contract's subscribe topics count toward the plan
-#   include_publish_topics    a loaded contract's publish topics count toward the plan
-#   default_partitions        partitions a not-yet-created topic gets
-#   partition_bar             the broker's declared partition bar the plan is held under
-include_subscribe_topics: true
-include_publish_topics: true
-default_partitions: 1
-partition_bar: 1000
+# Example overlay for node_topic_provision_plan_compute.
+#
+# Copy to overlay.yaml and adjust. All values are placeholders; no host names.
+#
+# mode: the provision rule mode (all, profile, or profile_and_manifest).
+#   When set, this overrides the contract's config.rule.mode.
+# profile: the active runtime profile name (e.g. main, staging, ci).
+# lane_manifest: the list of contract names this lane provisions.
+#   Required for profile_and_manifest mode; must be non-empty.
+# contract_roots: directories to scan for contract.yaml files.
+# bootstrap_env: the environment variable name holding the broker address,
+#   used by the read-only dry run to count live topics.
+mode: profile_and_manifest
+profile: main
+lane_manifest:
+  - example-contract-a
+  - example-contract-b
+contract_roots:
+  - /path/to/contracts
+bootstrap_env: BROKER_ADDRESS

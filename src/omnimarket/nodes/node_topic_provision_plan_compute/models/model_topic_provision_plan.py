@@ -1,65 +1,36 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Typed rule, request and plan for provisioning broker topics on demand (OMN-23614).
-
-A topic is created only for a contract that a running profile loads. The profile
-and the lane manifest decide which contracts are loaded (the caller resolves them
-and passes the names); the rule below comes from the contract's config block and
-the node overlay, never from code.
-"""
-
-from typing import Literal
+"""The output of the topic provision plan."""
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+    EnumTopicProvisionMode,
+    EnumTopicSkipReason,
+)
 
-class ModelTopicProvisionRule(BaseModel):
+
+class ModelTopicProvisionSkip(BaseModel):
+    """One contract that the active rule did not load, with its reason."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    include_subscribe_topics: bool
-    include_publish_topics: bool
-    default_partitions: int = Field(ge=1)  # partitions a not-yet-created topic gets
-    partition_bar: int = Field(ge=1)  # the broker's declared partition bar
+    contract_name: str = Field(min_length=1)
+    reason: EnumTopicSkipReason
 
 
-class ModelContractTopics(BaseModel):
+class ModelTopicProvisionPlan(BaseModel):
+    """The topics to provision and the live-topic accounting under the rule."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    contract_name: str
-    subscribe_topics: tuple[str, ...] = ()
-    publish_topics: tuple[str, ...] = ()
-
-
-class ModelLiveTopic(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    partitions: int = Field(ge=1)
-
-
-class ModelTopicProvisionPlanRequest(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    rule: ModelTopicProvisionRule
-    contracts: tuple[ModelContractTopics, ...]  # every contract the registry holds
-    loaded_contract_names: tuple[str, ...]  # contracts the profile and manifest load
-    live_topics: tuple[ModelLiveTopic, ...]  # topics on the broker now (list only)
-
-
-class ModelTopicProvisionPlanResult(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    status: Literal["planned", "refused"]
-    refusal_reasons: tuple[str, ...] = ()
-    topics_to_provision: tuple[str, ...] = ()  # sorted: the topics the rule allows
-    excluded_contracts: tuple[str, ...] = ()  # registry contracts no profile loads
-    contracts_total: int = 0
-    contracts_loaded: int = 0
-    live_topics_total: int = 0
-    live_topics_inside_rule: int = 0  # live and allowed by the rule
-    live_topics_outside_rule: int = 0  # live and allowed by no loaded contract
-    topics_to_create: int = 0  # allowed by the rule and not live yet
-    would_exist_topics: int = 0  # inside the rule plus to-create
-    projected_partitions: int = 0  # live partitions inside the rule plus new ones
-    partition_bar: int = 0
-    under_partition_bar: bool = False
+    profile: str
+    mode: EnumTopicProvisionMode
+    topics_to_provision: tuple[str, ...]
+    contracts_loaded: tuple[str, ...]
+    contracts_skipped: tuple[ModelTopicProvisionSkip, ...]
+    declared_topic_count: int
+    live_topic_count: int
+    live_topics_under_rule: int
+    live_topics_outside_rule: int
+    live_topics_undeclared: int

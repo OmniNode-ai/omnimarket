@@ -1450,6 +1450,7 @@ node_topic_activity_sampler_effect = "omnimarket.nodes.node_topic_activity_sampl
 node_topic_archive_effect = "omnimarket.nodes.node_topic_archive_effect"
 node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_effect"
 node_topic_never_produced_compute = "omnimarket.nodes.node_topic_never_produced_compute"
+node_topic_provision_dry_run_effect = "omnimarket.nodes.node_topic_provision_dry_run_effect"
 node_topic_provision_plan_compute = "omnimarket.nodes.node_topic_provision_plan_compute"
 node_trajectory_evaluation_effect = "omnimarket.nodes.node_trajectory_evaluation_effect"
 node_transcript_chunk_compute = "omnimarket.nodes.node_transcript_chunk_compute"

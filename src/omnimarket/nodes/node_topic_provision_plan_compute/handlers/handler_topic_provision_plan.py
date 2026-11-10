@@ -1,74 +1,156 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Plan the broker topics a running profile's loaded contracts need (OMN-23614).
+"""HandlerTopicProvisionPlan: decide which broker topics a runtime must provision.
 
-A topic is created only for a contract a running profile loads: the caller resolves
-which contracts the profile and the lane manifest load and passes the names, and this
-handler unions the rule-allowed topics of the loaded contracts only. A loaded name no
-registry contract holds is refused by name, and an empty loaded set is refused outright
-— the plan never provisions on a guess. The rule itself (which topic kinds count, the
-partitions a not-yet-created topic gets, the partition bar) comes from the node overlay,
-never from code.
+Definition-B compute: ``handle(request: ModelTopicProvisionRequest) -> ModelTopicProvisionPlan``.
+Pure and deterministic: no I/O, no clock. The same request gives byte-identical
+plans in any input order.
+
+Rules:
+- ALL: every contract provisions (the legacy baseline).
+- PROFILE: a contract provisions iff the active profile is in its runtime_profiles.
+- PROFILE_AND_MANIFEST: profile match AND the contract name is in the lane manifest.
+
+Skip reasons:
+- OUTSIDE_PROFILE: the profile is not in the contract's runtime_profiles.
+- NOT_IN_LANE_MANIFEST: the contract name is not in the lane manifest.
+
+Refusals (TopicProvisionRuleError):
+- PROFILE_AND_MANIFEST with an empty lane_manifest.
+- lane_manifest names a contract not among request.contracts.
+- mode is not ALL and the profile is not spelled in any contract's runtime_profiles.
 """
 
 from __future__ import annotations
 
-from ..models.model_topic_provision_plan import (
-    ModelTopicProvisionPlanRequest,
-    ModelTopicProvisionPlanResult,
+from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+    EnumTopicProvisionMode,
+    EnumTopicSkipReason,
+)
+from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan import (
+    ModelTopicProvisionPlan,
+    ModelTopicProvisionSkip,
+)
+from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request import (
+    ModelTopicProvisionRequest,
 )
 
 
+class TopicProvisionRuleError(ValueError):
+    """Raised when the provision rule cannot be applied to the given request."""
+
+
+def plan_topic_provision(
+    request: ModelTopicProvisionRequest,
+) -> ModelTopicProvisionPlan:
+    """Compute which topics to provision under the given rule.
+
+    Deterministic in any input order.
+    """
+    mode = request.rule.mode
+    contracts = request.contracts
+    profile = request.profile
+    lane_manifest = request.lane_manifest
+    live_topics = request.live_topics
+
+    # Refusal checks.
+    if mode == EnumTopicProvisionMode.PROFILE_AND_MANIFEST and not lane_manifest:
+        raise TopicProvisionRuleError(
+            "PROFILE_AND_MANIFEST mode requires a non-empty lane_manifest; "
+            "a lane that names nothing must not silently provision nothing."
+        )
+
+    known_names = {c.contract_name for c in contracts}
+    unknown = sorted(n for n in lane_manifest if n not in known_names)
+    if unknown:
+        raise TopicProvisionRuleError(
+            f"lane_manifest names contracts not among request.contracts: {unknown}"
+        )
+
+    if mode != EnumTopicProvisionMode.ALL:
+        any_profile_match = any(profile in c.runtime_profiles for c in contracts)
+        if not any_profile_match:
+            raise TopicProvisionRuleError(
+                f"profile {profile!r} is not spelled in any contract's runtime_profiles; "
+                "an unknown profile must refuse, not provision nothing."
+            )
+
+    # Collect all declared topics across ALL contracts (for declared_topic_count).
+    all_declared_topics: set[str] = set()
+    for contract in contracts:
+        all_declared_topics.update(contract.topics)
+    declared_topic_count = len(all_declared_topics)
+
+    # Determine which contracts load under the rule.
+    loaded_contracts: list[str] = []
+    skipped: list[ModelTopicProvisionSkip] = []
+
+    for contract in contracts:
+        name = contract.contract_name
+        if mode == EnumTopicProvisionMode.ALL:
+            loaded_contracts.append(name)
+        elif mode == EnumTopicProvisionMode.PROFILE:
+            if profile in contract.runtime_profiles:
+                loaded_contracts.append(name)
+            else:
+                skipped.append(
+                    ModelTopicProvisionSkip(
+                        contract_name=name,
+                        reason=EnumTopicSkipReason.OUTSIDE_PROFILE,
+                    )
+                )
+        else:  # PROFILE_AND_MANIFEST
+            if profile not in contract.runtime_profiles:
+                skipped.append(
+                    ModelTopicProvisionSkip(
+                        contract_name=name,
+                        reason=EnumTopicSkipReason.OUTSIDE_PROFILE,
+                    )
+                )
+            elif name not in lane_manifest:
+                skipped.append(
+                    ModelTopicProvisionSkip(
+                        contract_name=name,
+                        reason=EnumTopicSkipReason.NOT_IN_LANE_MANIFEST,
+                    )
+                )
+            else:
+                loaded_contracts.append(name)
+
+    # Compute topics_to_provision: union of topics of loaded contracts, sorted unique.
+    topics_to_provision: set[str] = set()
+    for contract in contracts:
+        if contract.contract_name in loaded_contracts:
+            topics_to_provision.update(contract.topics)
+    topics_sorted = tuple(sorted(topics_to_provision))
+
+    # Live topic counts.
+    live_topic_count = len(live_topics)
+    live_set = set(live_topics)
+    live_topics_under_rule = len(live_set & set(topics_sorted))
+    live_topics_outside_rule = live_topic_count - live_topics_under_rule
+    live_topics_undeclared = len(live_set - all_declared_topics)
+
+    contracts_loaded = tuple(sorted(loaded_contracts))
+    contracts_skipped = tuple(sorted(skipped, key=lambda s: s.contract_name))
+
+    return ModelTopicProvisionPlan(
+        profile=profile,
+        mode=mode,
+        topics_to_provision=topics_sorted,
+        contracts_loaded=contracts_loaded,
+        contracts_skipped=contracts_skipped,
+        declared_topic_count=declared_topic_count,
+        live_topic_count=live_topic_count,
+        live_topics_under_rule=live_topics_under_rule,
+        live_topics_outside_rule=live_topics_outside_rule,
+        live_topics_undeclared=live_topics_undeclared,
+    )
+
+
 class HandlerTopicProvisionPlan:
-    def handle(
-        self, request: ModelTopicProvisionPlanRequest
-    ) -> ModelTopicProvisionPlanResult:
-        names = sorted(set(request.loaded_contract_names))
-        known = {contract.contract_name for contract in request.contracts}
-        if not names:
-            return ModelTopicProvisionPlanResult(
-                status="refused",
-                refusal_reasons=("no_loaded_contracts",),
-                contracts_total=len(request.contracts),
-            )
-        unknown = tuple(
-            f"unknown_loaded_contract:{name}" for name in names if name not in known
-        )
-        if unknown:
-            return ModelTopicProvisionPlanResult(
-                status="refused",
-                refusal_reasons=unknown,
-                contracts_total=len(request.contracts),
-            )
-        loaded = set(names)
-        rule = request.rule
-        allowed: set[str] = set()
-        for contract in request.contracts:
-            if contract.contract_name not in loaded:
-                continue
-            if rule.include_subscribe_topics:
-                allowed.update(contract.subscribe_topics)
-            if rule.include_publish_topics:
-                allowed.update(contract.publish_topics)
-        live_names = {topic.name for topic in request.live_topics}
-        live_inside = [topic for topic in request.live_topics if topic.name in allowed]
-        topics_to_create = len(allowed - live_names)
-        projected_partitions = (
-            sum(topic.partitions for topic in live_inside)
-            + rule.default_partitions * topics_to_create
-        )
-        return ModelTopicProvisionPlanResult(
-            status="planned",
-            topics_to_provision=tuple(sorted(allowed)),
-            excluded_contracts=tuple(sorted(known - loaded)),
-            contracts_total=len(request.contracts),
-            contracts_loaded=len(loaded),
-            live_topics_total=len(request.live_topics),
-            live_topics_inside_rule=len(live_inside),
-            live_topics_outside_rule=len(live_names - allowed),
-            topics_to_create=topics_to_create,
-            would_exist_topics=len(live_inside) + topics_to_create,
-            projected_partitions=projected_partitions,
-            partition_bar=rule.partition_bar,
-            under_partition_bar=projected_partitions <= rule.partition_bar,
-        )
+    """Definition-B handler: ``handle(request) -> ModelTopicProvisionPlan``."""
+
+    def handle(self, request: ModelTopicProvisionRequest) -> ModelTopicProvisionPlan:
+        """Plan which topics to provision under the rule."""
+        return plan_topic_provision(request)
