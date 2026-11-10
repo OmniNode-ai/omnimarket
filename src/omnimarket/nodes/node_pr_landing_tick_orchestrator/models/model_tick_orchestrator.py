@@ -85,6 +85,14 @@ class ModelTickResult(BaseModel):
         default=0,
         description="Merges, arms and reruns the tick performed. Observe and replay: 0.",
     )
+    recorded_written: bool = Field(
+        default=False,
+        description=(
+            "Act mode wrote the recorded decision itself: the cutover repository is one the old "
+            "controller rules out of scope, so its recorded decision is no action, and the "
+            "comparison covers that repository's subjects only (OMN-23458)."
+        ),
+    )
     failure_reason: EnumTickFailureReason | None = None
     failure_detail: str = ""
 

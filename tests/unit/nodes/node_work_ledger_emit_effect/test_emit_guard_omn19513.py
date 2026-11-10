@@ -35,6 +35,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 
 pytestmark = pytest.mark.unit
 
@@ -69,9 +70,10 @@ class _FakePublisher:
 
 def _handler(tmp_path: Path, publisher: _FakePublisher) -> HandlerWorkLedgerEmit:
     return HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE,
         emitter=HandlerEventEmitEffect(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=publisher
-        )
+        ),
     )
 
 
@@ -113,7 +115,8 @@ def test_the_spool_only_lane_is_not_a_publish(
     monkeypatch.setenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", "true")
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", LOOPBACK_BOOTSTRAP)
     result = HandlerWorkLedgerEmit(
-        emitter=HandlerEventEmitEffect(spool=SpoolOutbox(tmp_path / "spool"))
+        judge_gate=OPEN_JUDGE_GATE,
+        emitter=HandlerEventEmitEffect(spool=SpoolOutbox(tmp_path / "spool")),
     ).handle(ModelWorkLedgerEmitRequest(row=CLAIM))
     assert result.accepted is True
     assert result.published is False

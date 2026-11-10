@@ -13,6 +13,11 @@
 #   lane_live_hours          a lane with no closing row is live this long after its newest row
 #   receipt_ended_statuses   lane receipt statuses that mean the engine has ended
 #   plan                     how a plan file spells a task, its ticket, its start criterion and done
+#   scope_chain_max_hops     parent hops above a ticket that scope reads: the ticket and this many ancestors are checked
+#                            against the goal's roots and projects (default 6)
+#   pr_body_ticket_pattern   a pull request body line that names its ticket (group `ticket`)
+#   ticketless_pr_exempt_author_patterns  regular expressions on a pull request's author: a match is never flagged
+#                            for citing no ticket (bots that open dependency bumps)
 #   source_budgets           one row per source (ledger, pr-watcher, linear, plans, receipts, readings, commitments): timeout_seconds
 #                            is the wait for one read attempt, attempts how many are made, budget_seconds the most wall
 #                            time the source may take in a run, and max_stale_age_seconds how old its last snapshot may
@@ -35,6 +40,9 @@ plan:
   requires_pattern: '^\s*-\s*\*\*(?:Start criterion|Depends on|Requires):\*\*\s*(?P<refs>.+?)\s*$'
   ticket_pattern: '\*\*Ticket:\*\*\s*(?P<ticket>[A-Z][A-Z0-9]+-\d+)'
   done_pattern: '^\s*-\s*\*\*Status:\*\*\s*(?:done|merged)\b'
+scope_chain_max_hops: 6
+pr_body_ticket_pattern: '(?im)^\s*Ticket:\s*(?P<ticket>[A-Z][A-Z0-9]+-\d+)'
+ticketless_pr_exempt_author_patterns: ['\[bot\]$']
 source_budgets:
   ledger: {timeout_seconds: 20, budget_seconds: 30, attempts: 2, max_stale_age_seconds: 1800}
   pr-watcher: {timeout_seconds: 5, budget_seconds: 10, attempts: 2, max_stale_age_seconds: 900}
