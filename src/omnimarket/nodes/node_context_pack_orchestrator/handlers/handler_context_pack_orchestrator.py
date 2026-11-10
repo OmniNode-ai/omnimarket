@@ -589,7 +589,16 @@ class HandlerContextPackOrchestrator:
         pack = built.context_pack
         assembly_hash = _assembly_hash(pack)
 
-        refs = self._chunk_refs(entries_by_factor)
+        # The builder drops a content duplicate (OMN-21125), so a ref computed
+        # from the raw entries can name a chunk the pack no longer carries and
+        # fail the render UNKNOWN_CHUNK_REF. Keep only the refs of the chunks
+        # the pack holds, in the order the entries produced them.
+        pack_chunk_ids = {chunk.chunk_id for chunk in pack.chunks}
+        refs = tuple(
+            ref
+            for ref in self._chunk_refs(entries_by_factor)
+            if ref.chunk_id in pack_chunk_ids
+        )
         unrecorded = entries_by_factor.get(
             EnumContextFactor.OPERATOR_WORDS_UNRECORDED, ()
         )
