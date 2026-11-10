@@ -173,6 +173,10 @@ class DecisionBus:
             }
         ).encode()
 
+    def reply_topic(self, raw: bytes) -> str:
+        """A raised decision goes out on the failure terminal, a taken one on success."""
+        return self.topic_failure if "error" in json.loads(raw) else self.topic_decision
+
     def _answered(self, raw: bytes) -> None:
         reply = json.loads(raw)
         future = self.waiting.pop(reply["id"], None)
@@ -208,7 +212,8 @@ class InmemoryDecisionBus(DecisionBus):
         await self.bus.start()
 
         async def on_facts(message: Any) -> None:
-            await self._send(self.topic_decision, self.serve(message.value))
+            reply = self.serve(message.value)
+            await self._send(self.reply_topic(reply), reply)
 
         async def on_decision(message: Any) -> None:
             self._answered(message.value)
@@ -216,9 +221,10 @@ class InmemoryDecisionBus(DecisionBus):
         await self.bus.subscribe(
             self.topic_facts, on_message=on_facts, group_id="decision-node"
         )
-        await self.bus.subscribe(
-            self.topic_decision, on_message=on_decision, group_id="controller"
-        )
+        for terminal in (self.topic_decision, self.topic_failure):
+            await self.bus.subscribe(
+                terminal, on_message=on_decision, group_id="controller"
+            )
 
     async def _send(self, topic: str, body: bytes) -> None:
         self.carried.append(topic)
@@ -271,6 +277,8 @@ class RedpandaDecisionBus(DecisionBus):
             on_message=on_facts,
             group_id=f"landing-chain-node-{self.run_id}",
         )
+        # The dev principal's grants name the success terminal only (OMN-23395), so the
+        # broker-backed bus carries every reply there and never touches the failure topic.
         await self.kafka.subscribe(
             self.topic_decision,
             on_message=on_decision,
