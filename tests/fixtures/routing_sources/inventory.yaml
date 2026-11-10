@@ -199,6 +199,8 @@ not_routing_resolution_sites:
     reason: locates the exposure probe overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the runner group source, the reading schedule and ledger locations and selects no delegation backend, model or tier
   - site: "src/omnimarket/nodes/node_broker_load_reading_effect/runtime_broker_load.py:find_node_overlay(NODE_NAME)"
     reason: locates the broker load overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the broker load schedule and reading locations and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_start_path_drill_effect/runtime_start_path_drill.py:find_node_overlay(NODE_NAME)"
+    reason: locates the start-path drill overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the start-path census, the drill gate and the schedule host and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
     reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(NODE_NAME)"
