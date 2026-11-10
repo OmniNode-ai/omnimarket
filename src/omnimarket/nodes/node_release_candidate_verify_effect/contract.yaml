@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_release_candidate_verify_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
+
+description: >
+  OMN-23343 (MVP plan task M13). Defines the launch candidate manifest (omnibase-core, omnibase-infra
+  and omnimarket versions with wheel sha256 and RECORD, the plugin version and file hashes, the
+  protected console scripts, the dashboard bundle and the launch-required changes) and verifies it:
+  an installed environment (RECORD files and hashes, the protected entry-point groups, protected
+  console-script owners and the generated launcher rebuilt from an admitted installer template), a
+  plugin install by content, the manifest against what PyPI serves, and the cut against its required
+  changes by ancestry. A mismatch is refused with the file, entry point or launcher line named. The
+  release train publishes the candidate; this node never releases or tags. Every setting is in the
+  overlay (overlay.default.yaml is the in-memory profile).
+
+input_model: omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_candidate_verify_request.ModelReleaseCandidateVerifyRequest
+output_model: omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_candidate_verify_result.ModelReleaseCandidateVerifyResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: verify
+      handler:
+        name: HandlerReleaseCandidateVerify
+        module: omnimarket.nodes.node_release_candidate_verify_effect.handlers.handler_release_candidate_verify
+      event_model:
+        name: ModelReleaseCandidateVerifyRequest
+        module: omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_candidate_verify_request
+
+handler:
+  module: omnimarket.nodes.node_release_candidate_verify_effect.handlers.handler_release_candidate_verify
+  class: HandlerReleaseCandidateVerify
+  input_model: omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_candidate_verify_request.ModelReleaseCandidateVerifyRequest
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.release-candidate-verified.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.release-candidate-verify-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.release-candidate-verified.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.release-candidate-verify-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.release-candidate-verified.v1
+
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-23343]
+  description: "Read-only effect node: an installed environment, a plugin install, PyPI or the cut either matches the candidate manifest or is refused with the mismatch named"

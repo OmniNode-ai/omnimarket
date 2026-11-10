@@ -67,6 +67,9 @@ class ModelJoinJ5Overlay(BaseModel):
     projection: ModelJ5Projection
     #: How many unanswered piece 5 golden chains one run answers, newest first.
     max_appends_per_run: int = Field(ge=1)
+    #: The run's own time limit (OMN-23591). It sits inside the publish step's time limit (the ``join_j5`` step of
+    #: ``node_factory_floor_publish_effect``), so a run still open at it closes its chain typed before the step kills it.
+    run_deadline_seconds: int = Field(ge=1)
     #: Whether this overlay may run a named injected break (the join's failing control).
     allow_injected_break: bool
     injected_fault: str = Field(min_length=1)

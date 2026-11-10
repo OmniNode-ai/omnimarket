@@ -72,6 +72,13 @@ from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_plac
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
 )
+from omnimarket.nodes.node_remote_lane_start_effect.protocols.protocol_engine_login_draw import (
+    ProtocolEngineLoginDraw,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_provisioning import (
+    EnumLaneProvisioningPhase,
+    ModelLaneProvisioningRecord,
+)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     EXIT_CODES,
     EnumRemoteLaneStartOutcome,
@@ -79,6 +86,10 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_la
     ModelRemoteLaneStartRequest,
     ModelRemoteLaneStartResult,
     ModelRemoteLaneStartSettings,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.orchestration.provisioning import (
+    LaneProvisioner,
+    ProvisioningState,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
     HandlerWorkLedgerAppendEffect,
@@ -173,6 +184,7 @@ class RemoteLaneStartOrchestrator:
         ledger: HandlerWorkLedgerAppendEffect,
         ledger_reader: ProtocolLedgerReader,
         host: HandlerRemoteLaneStartEffect,
+        login: ProtocolEngineLoginDraw | None = None,
         placement: HandlerRemoteLanePlacement | None = None,
         close: HandlerRemoteLaneResult | None = None,
         receipts: ProtocolReceiptSink | None = None,
@@ -187,6 +199,7 @@ class RemoteLaneStartOrchestrator:
         self._ledger = ledger
         self._reader = ledger_reader
         self._host = host
+        self._login = login
         self._placement = placement or HandlerRemoteLanePlacement()
         self._close = close or HandlerRemoteLaneResult()
         self._receipts = receipts or InMemoryReceiptSink()
@@ -197,8 +210,34 @@ class RemoteLaneStartOrchestrator:
         self._requesting_host = requesting_host
         self._lines: list[str] = []
         self._started_at = self._clock()
+        self._provisioner = LaneProvisioner(
+            plan=settings.provisioning, host=host, echo=self._say
+        )
+        self._prov = ProvisioningState()
+        self._engine_started = False
 
     # -------------------------------------------------------------- helpers
+
+    def _provision(
+        self,
+        phase: EnumLaneProvisioningPhase,
+        request: ModelRemoteLaneStartRequest,
+        receipt: ModelRemoteLaneStartReceipt,
+        host_ref: ModelLaneHostRef,
+        claim_row: str,
+    ) -> ModelLaneProvisioningRecord | None:
+        """Run the plan's steps of one phase; the receipt keeps every step's record, and a fatal failure comes back."""
+        failed = self._provisioner.run_phase(
+            phase,
+            self._prov,
+            request=request,
+            host_ref=host_ref,
+            claim_row=claim_row,
+            engine_started=self._engine_started,
+        )
+        receipt.provisioning = list(self._prov.records)
+        self._receipts.write(receipt)
+        return failed
 
     def _say(self, line: str) -> None:
         self._lines.append(line)
@@ -272,6 +311,34 @@ class RemoteLaneStartOrchestrator:
         if request.escalation_reason:
             cells.append(f"escalation_reason={request.escalation_reason}")
         return cells
+
+    def _login_cells(
+        self, host: ModelLaneHostRef, receipt: ModelRemoteLaneStartReceipt
+    ) -> list[str]:
+        """The CLAIM's ``login=`` cell: the label the host's token pool node draws for the engine, or ``none``.
+
+        The draw is the pool node's own ``resolve`` (first unlimited label in draw order, limited and revoked
+        labels skipped); the cell carries the label only, never a token value. A start with no draw wired
+        (the in-memory default) writes no cell. The receipt names the drawn label (OMN-23550).
+        """
+        if self._login is None:
+            return []
+        drawn = self._login.draw_login(host)
+        receipt.login = drawn.label
+        self._say(
+            f"login host={host.name} label={drawn.label or 'none'}"
+            + (f" ({drawn.detail})" if drawn.detail else "")
+        )
+        return [f"login={drawn.label or 'none'}"]
+
+    def _worktree_path(self, request: ModelRemoteLaneStartRequest) -> str:
+        return f"{self._s.host_run_root.rstrip('/')}/{request.run_id}/{request.repo}"
+
+    def _worktree_cell(self, request: ModelRemoteLaneStartRequest) -> str:
+        """The CLAIM's worktree cell the ledger grammar requires (OMN-20148): the run's checkout, or none."""
+        if request.repo:
+            return f"worktree={self._worktree_path(request)}"
+        return "worktree=none"
 
     @staticmethod
     def _delegation_cell(decided: Any, status: str, engine_rc: int | None) -> str:
@@ -373,6 +440,8 @@ class RemoteLaneStartOrchestrator:
     def run(self, request: ModelRemoteLaneStartRequest) -> ModelRemoteLaneStartResult:
         self._lines = []
         self._started_at = self._clock()
+        self._prov = ProvisioningState()
+        self._engine_started = False
         receipt = ModelRemoteLaneStartReceipt(
             lane=request.lane,
             run_id=request.run_id,
@@ -474,6 +543,8 @@ class RemoteLaneStartOrchestrator:
             f"est ~{self._est_hours(request)} lane-hours; displaces {self._s.displaces}; ({request.ticket})",
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
+            self._worktree_cell(request),
+            *self._login_cells(host_ref, receipt),
         ]
         claim_row, appended = self._append(
             request,
@@ -503,6 +574,30 @@ class RemoteLaneStartOrchestrator:
             f"CLAIM {claim_row.split(' | ', 1)[0]} lane={request.lane} host={host_ref.name}"
         )
         self._state(receipt, "claimed", claim_row=claim_row)
+
+        # (3b) Provision the host around the engine, in the overlay's order; a failed fatal step ends the start
+        # with a closing row and no engine (the runner's own refusals), a failed other step is only recorded.
+        fatal = self._provision(
+            EnumLaneProvisioningPhase.BEFORE_ENGINE,
+            request,
+            receipt,
+            host_ref,
+            claim_row,
+        )
+        if fatal is not None:
+            why = fatal.error or fatal.detail or fatal.status
+            self._say(
+                f"REMOTE-LANE-PROVISION-FAILED lane={request.lane} host={host_ref.name} step={fatal.step}: {why[:300]}"
+            )
+            return self._close_lane(
+                request,
+                receipt,
+                host_ref,
+                claim_row,
+                engine_rc=1,
+                message=f"provisioning failed at {fatal.step}: {why}",
+                outcome=EnumRemoteLaneStartOutcome.START_FAILED,
+            )
 
         # (4) Start.
         workdir = f"{self._s.host_run_root.rstrip('/')}/{request.run_id}"
@@ -570,6 +665,7 @@ class RemoteLaneStartOrchestrator:
                 message=f"engine did not start: {started.error}",
                 outcome=EnumRemoteLaneStartOutcome.START_FAILED,
             )
+        self._engine_started = True
         self._state(receipt, "running", session_id=started.session_id, workdir=workdir)
 
         # (5) Supervise.
@@ -682,6 +778,15 @@ class RemoteLaneStartOrchestrator:
         message: str | None,
         outcome: EnumRemoteLaneStartOutcome,
     ) -> ModelRemoteLaneStartResult:
+        # The runner's closing steps that read the host before the closing row: stop the guard, drain its spool,
+        # relay the reports, read the queued rows and the lane's changes, close out the worktrees.
+        self._provision(
+            EnumLaneProvisioningPhase.BEFORE_CLOSE,
+            request,
+            receipt,
+            host_ref,
+            claim_row,
+        )
         decided = self._close.handle(
             ModelRemoteLaneResultRequest(
                 engine_exit_code=engine_rc, final_message=message, engine=request.engine
@@ -724,6 +829,17 @@ class RemoteLaneStartOrchestrator:
                 "friction=none",
                 f"closes-CLAIM={claim_stamp}",
                 f"outcome={lane_outcome}",
+                *(
+                    # The closeout step's own cells when it ran; otherwise the tree is left, and the row says so.
+                    list(self._prov.closeout_cells)
+                    or (
+                        [
+                            f"worktree=kept:{self._worktree_path(request)}:left on the host, no closeout step runs yet"
+                        ]
+                        if request.repo
+                        else []
+                    )
+                ),
                 *head[2:],
                 self._delegation_cell(decided, final_status, engine_rc),
                 *(f"{k}={v}" for k, v in sorted(decided.ledger_cells.items())),
@@ -741,6 +857,15 @@ class RemoteLaneStartOrchestrator:
             EnumWorkLedgerAppendStatus.ACCEPTED,
             EnumWorkLedgerAppendStatus.DUPLICATE,
         )
+        if durable:
+            # Once the closing row is durable the runner holds the run directory and retains its artifacts.
+            self._provision(
+                EnumLaneProvisioningPhase.AFTER_CLOSE,
+                request,
+                receipt,
+                host_ref,
+                claim_row,
+            )
         if not durable:
             self._say(
                 f"REMOTE-LANE-LEDGER-REFUSED lane={request.lane} kind={kind} rc={appended.exit_code}: {appended.message[-300:]}"

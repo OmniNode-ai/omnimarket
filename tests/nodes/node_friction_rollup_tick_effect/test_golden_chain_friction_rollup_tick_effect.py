@@ -53,6 +53,7 @@ from tests.nodes.node_friction_rollup_tick_effect.tick_support import (
     observed,
     request_for,
     tick_diff,
+    timer_row,
 )
 from tests.runtime_local_compat import RuntimeLocal
 
@@ -147,9 +148,8 @@ async def test_golden_chain_appends_the_timers_row_through_the_real_command(
     result = runtime.handler_result
     assert isinstance(result, ModelFrictionRollupTickResult)
     assert (result.state, result.exit_code, result.status) == ("OK", 0, "success")
-    assert (stub_dir / "appended.txt").read_text(encoding="utf-8").splitlines() == [
-        FIRST["row"]
-    ]
+    appended = (stub_dir / "appended.txt").read_text(encoding="utf-8").splitlines()
+    assert [timer_row(row, tmp_path / "reports") for row in appended] == [FIRST["row"]]
     assert tick_diff(FIRST, observed(result, tmp_path / "reports")) == []
     reports = sorted(p.name for p in (tmp_path / "reports").iterdir())
     assert reports == [
@@ -270,7 +270,9 @@ def test_successful_append_hands_the_row_to_the_fake(tmp_path: Path) -> None:
     result = HandlerFrictionRollupTick(appender=fake).handle(
         request_for(tmp_path, ledger, NOW)
     )
-    assert fake.rows == [(ledger, FIRST["row"])]
+    assert [(path, timer_row(row, tmp_path / "state")) for path, row in fake.rows] == [
+        (ledger, FIRST["row"])
+    ]
     assert (result.exit_code, result.state) == (0, "OK")
 
 

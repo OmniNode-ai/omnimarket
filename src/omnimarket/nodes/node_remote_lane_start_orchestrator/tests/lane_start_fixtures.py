@@ -17,6 +17,7 @@ from omnibase_spi.contracts.services import (
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
     ModelScriptedTransportScript,
     ScriptedLaneHostTransport,
+    ScriptedLoginDraw,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
@@ -62,8 +63,14 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "receipt_dir": "/unused",
         "host_run_root": "/runs",
         "registry_root_candidates": ["/registry"],
+        "registry_marker": "example_marker_dir",
+        "provisioning": {},
         "ssh_argv": ["ssh"],
         "detach_argv": ["setsid"],
+        "host_path_prefix": "",
+        "login_pool_module": "example.token_pool_node",
+        "login_pool_python_relative": ".example-venv/bin/python",
+        "login_draw_timeout_seconds": 5,
         "ledger_append_argv": ["fixture-ledger"],
         "ledger_write_via": "bus",
         "ledger_writer_principal": PRINCIPAL,
@@ -170,6 +177,7 @@ class Rig:
         cfg: ModelRemoteLaneStartSettings | None = None,
         calls: list[str] | None = None,
         now: datetime = T0,
+        login_labels: tuple[str | None, ...] | None = None,
     ) -> None:
         self.calls: list[str] = calls if calls is not None else []
         self.ledger_path = tmp / "ledger.md"
@@ -198,6 +206,9 @@ class Rig:
             ),
             ledger_reader=LocalLedgerFile(self.ledger_path),
             host=HandlerRemoteLaneStartEffect(self.transport),
+            login=None
+            if login_labels is None
+            else ScriptedLoginDraw(login_labels, self.calls),
             receipts=self.receipts,
             echo=self.printed.append,
             clock=lambda: now,

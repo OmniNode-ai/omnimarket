@@ -58,6 +58,10 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     ModelScenarioSchedule,
     ProtocolScenarioEventSink,
 )
+from omnimarket.handlers.delegation_scenario_settings import (
+    ProtocolSettingStore,
+    fill_overlay_settings,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -101,6 +105,9 @@ class ModelR5Runtime(ModelReadinessRuntime):
     """The contract's ``runtime`` block: the shared keys, the leg backend of this scenario and the probe key's variable."""
 
     model_backend: Literal["real", "inmemory"]
+    #: The variable that, when set in the unit's environment file to ``real`` or ``inmemory``, overrides ``model_backend``
+    #: for that run; unset keeps the contract's value; any other value is a refusal. Read by ``build_runner`` only.
+    model_backend_env: str = Field(min_length=1)
     #: The variable that carries the paid OpenRouter probe key; its value is read at run time only.
     openrouter_probe_key_env: str = Field(min_length=1)
 
@@ -658,10 +665,27 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    settings_store: ProtocolSettingStore | None = None,
+    settings_home: Path | None = None,
 ) -> HandlerScenarioR5:
     """The production wiring: the registry home, the bus commands and the contract's backend profile."""
     runtime = load_runtime()
-    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
+    environment = fill_overlay_settings(
+        dict(os.environ if env is None else env),  # ONEX_FLAG_EXEMPT
+        runtime.settings_overlay_relpath,
+        node_dir=NODE_DIR,
+        store=settings_store,
+        home=settings_home,
+    )
+    # The unit's environment file may override the contract's model backend for this one run: `real` or `inmemory` is
+    # honoured, unset keeps the contract's value and any other value refuses the tick (exit 65, conclusion `refused`).
+    override = environment.get(runtime.model_backend_env, "").strip()
+    if override:
+        if override not in ("real", "inmemory"):
+            raise RuntimeError(
+                f"{runtime.model_backend_env} must be 'real' or 'inmemory', not {override!r}"
+            )
+        runtime = runtime.model_copy(update={"model_backend": override})
     home = Path(environment[runtime.home_env])
     work_dir = home / runtime.work_relpath
     fresh_home = work_dir / FRESH_HOME_DIRNAME
