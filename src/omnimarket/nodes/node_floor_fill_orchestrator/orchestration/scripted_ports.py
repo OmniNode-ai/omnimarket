@@ -18,6 +18,7 @@ from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidatesRequest,
     ModelFloorRecordRead,
+    ModelFloorStartCriterion,
     ModelFloorTaskPayloadVerdict,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
@@ -179,6 +180,21 @@ class ScriptedTickets:
                             )
                         )
         return out
+
+    def start_criteria(self, floor_record: str) -> Sequence[ModelFloorStartCriterion]:
+        try:
+            record = ModelFloorRecordRead.model_validate_json(floor_record)
+        except (ValidationError, ValueError):
+            return ()
+        return [
+            ModelFloorStartCriterion(
+                line_id=line.line_id, task_id=item.id, start_when="Start when: none"
+            )
+            for line in record.lines
+            for station in line.stations
+            for item in station.items
+            if item.state == "prep" and item.note.startswith("ready")
+        ]
 
     def entry_ticket_verdicts(
         self, tickets: Mapping[str, str]
