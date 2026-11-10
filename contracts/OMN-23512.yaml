@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-23512
+title: The floor input inventory names join_j7 and the delegation route reads (omnimarket)
+summary: >-
+  OMN-23391 (AC1) built the floor input inventory and the test that holds it to the floor contracts: every step the publish
+  contract runs, and every path the eight floor nodes' contracts declare, must be named by a row, and a step or a path added
+  with no row fails the build. Two changes landed on dev without their rows. OMN-23420 (omnimarket#5696, merged
+  2026-11-10T07:17:27Z) added the `join_j7` step to the publish contract, and OMN-23381 declared
+  `route_reads_relpath: .onex_state/floor-delegation/route-reads.json` on the delegation contract. Measured at dev
+  3ea67734f, `test_every_step_the_publish_runs_has_a_row` asserts `['join_j7'] == []` and
+  `test_every_path_the_floor_contracts_declare_is_in_a_row` asserts
+  `['node_floor_delegation_effect: .onex_state/floor-delegation/route-reads.json'] == []`, so Tests (Split 14/20) is red on
+  26 open omnimarket pull requests and omnimarket merged 0 in the hour to 09:20Z. This adds the two rows and touches no
+  other file: no contract, no handler and no runtime behaviour changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23512-floor-inventory-names-every-step-and-path
+  statement: The floor input inventory names every step the publish contract runs and every path the eight floor contracts declare, and both new rows carry the full row shape the inventory's own test requires.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the inventory names the `join_j7` step, so no step the publish contract runs is without a row -- falsifier: the inventory test failing at the merge base, where the step list carries join_j7 and no row names it, and passing at the head'
+  - id: AC2
+    statement: 'AC2: the inventory names `.onex_state/floor-delegation/route-reads.json`, so no path the eight floor contracts declare is without a row -- falsifier: the same test failing at the merge base on the delegation path and passing at the head'
+  - id: AC3
+    statement: 'AC3: both new rows carry an order, a class, a where, a read_by, a steps list, a producer, a replacement node with a snapshot topic and a ticket matching the inventory''s own ticket pattern -- falsifier: the row-shape cases run over every row of the file'
+evidence_requirements:
+- kind: tests
+  description: The floor input inventory test, which fails at the merge base on both the missing step and the missing path, and passes with the two rows added.
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q -n 0 --no-cov
+dod_evidence:
+- id: dod-omn23512-ac1-join-j7-row
+  description: >-
+    The inventory test fails at the merge base, where the publish contract's step list carries join_j7 and no row names it,
+    and passes at this head, where the join_j7_lab_check_run row names it. The negative control in the same file, which adds
+    an unlisted step and expects exactly that step back, fails at the base as an echo of this and passes at the head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q -n 0 --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23512-ac2-route-reads-row
+  description: >-
+    The same test fails at the merge base on the delegation contract's route_reads_relpath, which no row's `where` names, and
+    passes at this head, where the delegation_route_reads row names it.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q -n 0 --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23512-ac3-row-shape-holds
+  description: >-
+    The row-shape cases in the same file run over every row of the inventory and fail any row whose ticket does not match the
+    inventory's ticket pattern or whose replacement carries no snapshot topic, so neither new row can pass with a field
+    missing or misspelled.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q -n 0 --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23512-integration-proof
+  description: >-
+    The pushed head runs the inventory test on a lab host through the lab work runner and exits 0, so the inventory this
+    change edits is read against the floor contracts on a live surface and not only in this checkout. The floor publish reads
+    this file at runtime through importlib.resources, so the proof runs the packaged tree rather than the working copy.
+    Hosted omnimarket CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23512 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q --no-cov'
+    cwd: .
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''

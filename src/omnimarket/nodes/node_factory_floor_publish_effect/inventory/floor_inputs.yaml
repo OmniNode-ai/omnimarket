@@ -259,6 +259,19 @@ inputs:
     producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
+  # OMN-23381 declared route_reads_relpath on the delegation contract and this row was not written with it, so the inventory
+  # test failed on every open pull request. The routes stage writes the hour counts per backend route here and the tracker
+  # reads them only while they are newer than routes_max_age_min, which is the staleness a projection carrying its own time
+  # removes.
+  - id: delegation_route_reads
+    order: 20
+    class: file
+    where: .onex_state/floor-delegation/route-reads.json
+    read_by: [node_floor_delegation_effect]
+    steps: [delegation_tracker]
+    producer: node_floor_delegation_effect itself (the routes stage's hour counts, kept between cycles)
+    replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-route-reads.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-delegation-route-reads-projection
   - id: beta_board_reads
     order: 21
     class: file
@@ -277,6 +290,18 @@ inputs:
     producer: the gate store overlay and the overlay home's gate commits
     replacement: {node: node_gate_store_effect, topic: onex.snapshot.projection.join-j6.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-join-j6-projection
+  # OMN-23420 added the join_j7 step to the publish contract and this row was not written with it, so the inventory test
+  # failed on every open pull request. The join reads its own overlay and piece 7's golden stop drill readings from the
+  # ledger route the overlay names; it is not required, so a failed read leaves J7 unpassed and the floor still reads.
+  - id: join_j7_lab_check_run
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the J7 join overlay, node_lab_check_run_join_j7/overlay.yaml under a ONEX_SKILL_OVERLAY_ROOTS root, and the ledger route that overlay names)
+    read_by: [node_lab_check_run_effect]
+    steps: [join_j7]
+    producer: the J7 join overlay and piece 7's golden stop drill readings on the ledger
+    replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-join-j7-projection
   - id: network_reads
     order: 21
     class: http
