@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Pilot Measurement Effect (OMN-23619, piece 16 of the base-first rebuild)
+#
+# Reads each pilot the overlay declares: the pilot's frozen pass bar and its measured result (through
+# the result port the overlay names), and runs the existing pilot manifest check on the pair -- always,
+# with no results when the result is unreadable, missing or stale, so a pilot with no frozen bar or a
+# wrong bar hash is refused whether or not it was measured. It appends one piece 16 reading row and
+# emits the piece's chain. It writes reading rows and nothing else: a reading is never a gate, a stop
+# or an admission.
+name: node_pilot_measurement_effect
+contract_name: node_pilot_measurement_effect
+node_name: node_pilot_measurement_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The measurement read of every pilot the overlay declares. Each pilot is refused (no frozen bar, a
+  wrong bar hash, a bar frozen after the start), rejected (a measured result that misses its frozen
+  bar), accepted, or unmeasured (a result that is unreadable, missing or stale). Any refused pilot
+  reads NOT_WORKING; any unmeasured pilot reads UNKNOWN; any rejected pilot reads the overlay's
+  rejected_reading; every pilot measured and within its bar reads WORKING. A row names failing
+  pilots by name and finding, never by value.
+
+handler:
+  module: omnimarket.nodes.node_pilot_measurement_effect.handlers.handler_pilot_measurement
+  class: HandlerPilotMeasurement
+  input_model: omnimarket.nodes.node_pilot_measurement_effect.models.model_pilot_measurement.ModelPilotMeasurementCommand
+
+# HandlerPilotMeasurement takes the overlay, host, result source, appender and clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, emission-journal-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelPilotMeasurementCommand
+  module: omnimarket.nodes.node_pilot_measurement_effect.models.model_pilot_measurement
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelPilotMeasurementResult
+  module: omnimarket.nodes.node_pilot_measurement_effect.models.model_pilot_measurement
+  description: The verdict, each pilot's outcome, the counts and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.pilot-measurement-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  pilot_measurement_requested: onex.cmd.omnimarket.pilot-measurement-requested.v1
+  pilot_measurement_written: onex.evt.omnimarket.pilot-measurement-written.v1
+  pilot_measurement_failed: onex.evt.omnimarket.pilot-measurement-failed.v1
+  pilot_measurement_run_completed: onex.evt.omnimarket.pilot-measurement-run-completed.v1
+  pilot_measurement_run_failed: onex.evt.omnimarket.pilot-measurement-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.pilot-measurement-written.v1
+  - onex.evt.omnimarket.pilot-measurement-failed.v1
+  - onex.evt.omnimarket.pilot-measurement-run-completed.v1
+  - onex.evt.omnimarket.pilot-measurement-run-failed.v1
+
+# What proves this reading works, and what turns it red. The plan's built-in-quality rule reads this.
+reading:
+  piece: 16
+  states: [WORKING, NOT_WORKING, UNKNOWN]
+  falsifiers:
+    - id: AC1
+      test: tests/nodes/node_pilot_measurement_effect/test_pilot_measurement_reading.py
+    - id: AC2
+      test: tests/nodes/node_pilot_measurement_effect/test_pilot_measurement_chain_events.py
+
+# The node's hourly schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on a host the overlay names, removed by `schedule uninstall` (the rollback).
+schedule:
+  unit_name: onex-pilot-measurement-hourly
+  state_directory: .onex_state/pilot-measurement
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:20:00"
+    randomized_delay: 60s
+    persistent: true
+    description: hourly, twenty minutes past
+overlay:
+  node: node_pilot_measurement_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_pilot_measurement_effect.overlay.ModelPilotMeasurementOverlay
+
+metadata:
+  ticket: OMN-23619
+  transport_type: inmemory
