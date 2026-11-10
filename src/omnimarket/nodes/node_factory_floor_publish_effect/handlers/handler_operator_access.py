@@ -33,6 +33,7 @@ from pathlib import Path, PurePosixPath
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
     NODE_NAME,
+    SSH_CONNECTION_ERROR,
     PublishRefusedError,
     Runner,
     copy_to_server,
@@ -111,8 +112,11 @@ def render_include(addresses: Sequence[str]) -> str:
 class HandlerOperatorAccess:
     """Boundary of the operator-only publish: the tailnet read, the include, the reload and the copies happen here."""
 
-    def __init__(self, runner: Runner = run_process) -> None:
+    def __init__(
+        self, runner: Runner = run_process, unreachable: set[str] | None = None
+    ) -> None:
         self._run = runner
+        self._unreachable: set[str] = unreachable if unreachable is not None else set()
 
     def handle(
         self,
@@ -134,19 +138,60 @@ class HandlerOperatorAccess:
             raise PublishRefusedError(
                 f"{rt.home_env} is not set (fail fast, no default): export it or pass --omni-home"
             )
+        now = request.now or datetime.now(UTC)
+        results: list[ModelOperatorAccessResult] = []
+        failed: dict[str, str] = {}
+        for target in overlay.targets:
+            # Each serving host has its own gate: one host down or refusing leaves the others served (OMN-23081).
+            if target.ssh_target in self._unreachable:
+                failed[target.ssh_target] = "unreachable earlier in this run; skipped"
+                continue
+            try:
+                results.append(
+                    self._handle_target(
+                        rt,
+                        overlay.for_target(target),
+                        home_value,
+                        now,
+                        request.skip_reports,
+                    )
+                )
+            except PublishRefusedError as exc:
+                failed[target.ssh_target] = str(exc)
+        if not results:
+            raise PublishRefusedError("; ".join(f"{t}: {r}" for t, r in failed.items()))
+        first = results[0]
+        return first.model_copy(
+            update={
+                "published": tuple(
+                    dict.fromkeys(n for r in results for n in r.published)
+                ),
+                "unread": tuple(dict.fromkeys(n for r in results for n in r.unread)),
+                "failed_targets": failed,
+            }
+        )
+
+    def _handle_target(
+        self,
+        rt: ModelFactoryFloorPublishRuntime,
+        overlay: ModelFactoryFloorPublishOverlay,
+        home_value: str,
+        now: datetime,
+        skip_reports: bool,
+    ) -> ModelOperatorAccessResult:
+        """The gate and the operator-only files of the one serving host ``overlay`` names."""
         try:
             include, changed, count = self._build_gate(rt, overlay)
         except PublishRefusedError as exc:
+            if overlay.ssh_target in self._unreachable:
+                # The host did not answer: its private files cannot be withdrawn now, and it serves nothing while it is down.
+                raise
             self._withdraw(rt, overlay)
             raise PublishRefusedError(
                 f"the operator-only reports are withdrawn from the serving directory: {exc}"
             ) from exc
         published, unread = (
-            ((), ())
-            if request.skip_reports
-            else self._publish(
-                rt, overlay, home_value, request.now or datetime.now(UTC)
-            )
+            ((), ()) if skip_reports else self._publish(rt, overlay, home_value, now)
         )
         return ModelOperatorAccessResult(
             admitted_devices=count,
@@ -167,6 +212,8 @@ class HandlerOperatorAccess:
             None,
             rt.transport.transfer_timeout_seconds,
         )
+        if done.returncode == SSH_CONNECTION_ERROR:
+            self._unreachable.add(overlay.ssh_target)
         return done.returncode, done.stdout, done.stderr
 
     def _build_gate(
@@ -215,6 +262,7 @@ class HandlerOperatorAccess:
                 access.include_name,
                 include,
                 root=access_dir,
+                unreachable=self._unreachable,
             )
         container = shlex.quote(access.container_name)
         code, _, _ = self._remote(
@@ -281,7 +329,14 @@ class HandlerOperatorAccess:
                 if payload is None:
                     unread.append(f"{entry.id}:{item.remote}")
                     continue
-                copy_to_server(self._run, rt, overlay, item.remote, payload)
+                copy_to_server(
+                    self._run,
+                    rt,
+                    overlay,
+                    item.remote,
+                    payload,
+                    unreachable=self._unreachable,
+                )
                 published.append(item.remote)
             for page in entry.pages:
                 copy_to_server(
@@ -290,6 +345,7 @@ class HandlerOperatorAccess:
                     overlay,
                     page.remote,
                     HandlerReportsPublish.read_page(page.page_relpath),
+                    unreachable=self._unreachable,
                 )
                 published.append(page.remote)
             manifest_entries.append(
@@ -304,7 +360,14 @@ class HandlerOperatorAccess:
             sort_keys=True,
             indent=1,
         ).encode("utf-8")
-        copy_to_server(self._run, rt, overlay, rt.operator_reports.manifest, manifest)
+        copy_to_server(
+            self._run,
+            rt,
+            overlay,
+            rt.operator_reports.manifest,
+            manifest,
+            unreachable=self._unreachable,
+        )
         published.append(rt.operator_reports.manifest)
         return tuple(published), tuple(unread)
 
