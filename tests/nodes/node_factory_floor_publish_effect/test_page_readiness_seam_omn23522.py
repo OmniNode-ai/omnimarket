@@ -10,6 +10,7 @@ page's word table is revisited.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import get_args
@@ -101,3 +102,21 @@ def test_error_a_field_renamed_in_the_model_fails_the_seam() -> None:
         for name, info in ModelFloorPieceRow.model_fields.items()
     }
     assert missing_fields({**real, ModelFloorPieceRow: renamed}) == ["p.integration"]
+
+
+def test_golden_the_computed_record_carries_what_the_page_draws() -> None:
+    """The record the compute node writes, as the served JSON, holds every cell the page reads (a broken J2 piece pair)."""
+    from tests.nodes.node_floor_simple_compute.test_readiness_omn23081 import board
+
+    served = json.loads(board({"J2": "broken"}).model_dump_json())
+    pieces = {p["piece"]: p for p in served["pieces"]}
+    assert pieces[1]["integration"] == "ready"
+    assert pieces[1]["ready"] is True
+    assert pieces[2]["integration"] == "working_not_integrated"
+    assert pieces[2]["blocking_joins"] == ["J2"]
+    assert pieces[7]["integration"] == "not_working"
+    joins = {j["id"]: j for p in served["pieces"] for j in p["joins"]}
+    assert joins["J2"]["counted"] is True
+    assert "counted" in joins["J14"]
+    # The line under the strip is the record's own text; it names the pieces that work and are not integrated.
+    assert "work but are not integrated (pieces 2, 3)" in served["readiness"]["text"]
