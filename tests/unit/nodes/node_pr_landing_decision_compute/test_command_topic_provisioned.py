@@ -24,6 +24,16 @@ NODE_DIR = (
 )
 
 
+WORKFLOW = (
+    Path(__file__).parents[4]
+    / "src"
+    / "omnimarket"
+    / "contracts"
+    / "landing_workflow"
+    / "landing_workflow.v1.yaml"
+)
+
+
 def _contract() -> dict[str, Any]:
     return yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
 
@@ -38,6 +48,20 @@ def test_provisioner_extracts_the_command_topic() -> None:
 def test_command_topic_is_the_chain_topic() -> None:
     assert decision_topics()["command"] == COMMAND_TOPIC
     assert _contract()["runtime_dispatch"]["command_topic"] == COMMAND_TOPIC
+
+
+def test_command_topic_is_the_composed_workflow_topic() -> None:
+    """The landing workflow's decision step names the topic the node declares.
+
+    The step is found by its node, not its place, so a step added beside it by
+    another piece (the snapshot step) does not move this read.
+    """
+    steps = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["steps"]
+    decision_steps = [
+        step for step in steps if step["node"] == "node_pr_landing_decision_compute"
+    ]
+
+    assert [step["command_topic"] for step in decision_steps] == [COMMAND_TOPIC]
 
 
 def test_declaration_adds_no_wiring() -> None:
