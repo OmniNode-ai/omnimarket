@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Cross Repo Order Gate Compute
+# Direct invocation only: no event bus or terminal event.
+name: "node_cross_repo_order_gate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Whether a change split across repositories may land yet. A pull request that declares Lands-After (or that a
+  sibling declares Lands-Before) is held until every predecessor reads MERGED; a predecessor that is open, closed
+  unmerged or unread, and a declaration that names no repository and number, each hold. Names the unmerged
+  predecessors so the controller can name the owning change instead of sending a worker. Pure: it reads nothing and
+  writes nothing.
+input_model:
+  name: "ModelCrossRepoOrderGateRequest"
+  module: "omnimarket.nodes.node_cross_repo_order_gate_compute.models.model_cross_repo_order_gate"
+  description: "Typed inputs for the cross-repository order gate."
+output_model:
+  name: "ModelCrossRepoOrderGateResult"
+  module: "omnimarket.nodes.node_cross_repo_order_gate_compute.models.model_cross_repo_order_gate"
+  description: "Typed result of the cross-repository order gate."
+handler:
+  module: "omnimarket.nodes.node_cross_repo_order_gate_compute.handlers.handler_cross_repo_order_gate"
+  class: "HandlerCrossRepoOrderGate"
+  input_model: "omnimarket.nodes.node_cross_repo_order_gate_compute.models.model_cross_repo_order_gate.ModelCrossRepoOrderGateRequest"
+  output_model: "omnimarket.nodes.node_cross_repo_order_gate_compute.models.model_cross_repo_order_gate.ModelCrossRepoOrderGateResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_cross_repo_order_gate_compute.handlers.handler_cross_repo_order_gate:HandlerCrossRepoOrderGate"
+  handlers:
+    - operation: "order_gate"
+      handler:
+        name: "HandlerCrossRepoOrderGate"
+        module: "omnimarket.nodes.node_cross_repo_order_gate_compute.handlers.handler_cross_repo_order_gate"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler with PR bodies and supplied watcher states."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Cross Repo Order Gate Compute — pure policy with no external transport."
+  author: "OmniNode Team"
+  created: "2026-11-09"
+  tags: ['compute', 'cross-repo-order-gate', 'OMN-23345']
+  related_tickets: ['OMN-23345']

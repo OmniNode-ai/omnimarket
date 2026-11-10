@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Events Defect Scan Effect (OMN-23331)
+#
+# Reads the last day of delegation_events (the in-memory source by default, the dev postgres over ssh by overlay), runs the
+# node_delegation_events_defect_scan_compute node over the rows and the owner-set bounds, and appends the one STATUS row of the
+# scan to the rolling ledger. A daily systemd user timer (`schedule install`) runs it. It writes a ledger row and nothing else: a
+# reading is never a gate, a stop or an admission, and the node never writes delegation_events.
+name: node_delegation_events_defect_scan_effect
+contract_name: node_delegation_events_defect_scan_effect
+node_name: node_delegation_events_defect_scan_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The delegation_events defect scan of the last day as a ledger row. A NOT WORKING reading still writes its row (the row is the
+  reading); rows that cannot be read write an UNKNOWN row naming why, and a row that cannot be appended is a failed run.
+
+handler:
+  module: omnimarket.nodes.node_delegation_events_defect_scan_effect.handlers.handler_delegation_events_defect_scan_run
+  class: HandlerDelegationEventsDefectScanRun
+  input_model: omnimarket.nodes.node_delegation_events_defect_scan_effect.models.model_defect_scan_run.ModelDefectScanCommand
+
+# HandlerDelegationEventsDefectScanRun takes the overlays, the host, the row source, the appender and the clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, postgres-read-over-ssh]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDefectScanCommand
+  module: omnimarket.nodes.node_delegation_events_defect_scan_effect.models.model_defect_scan_run
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelDefectScanRunResult
+  module: omnimarket.nodes.node_delegation_events_defect_scan_effect.models.model_defect_scan_run
+  description: The verdict, the three defect counts, the broken bounds and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.delegation-events-defect-scan-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  defect_scan_run_requested: onex.cmd.omnimarket.delegation-events-defect-scan-run-requested.v1
+  defect_scan_run_started: onex.evt.omnimarket.delegation-events-defect-scan-run-started.v1
+  defect_scan_run_completed: onex.evt.omnimarket.delegation-events-defect-scan-run-completed.v1
+  defect_scan_run_failed: onex.evt.omnimarket.delegation-events-defect-scan-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-events-defect-scan-run-started.v1
+  - onex.evt.omnimarket.delegation-events-defect-scan-run-completed.v1
+  - onex.evt.omnimarket.delegation-events-defect-scan-run-failed.v1
+
+overlay:
+  node: node_delegation_events_defect_scan_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_delegation_events_defect_scan_effect.overlay.ModelDefectScanEffectOverlay
+
+# Once a day at 06:15 UTC, as a systemd user timer: the calendar spec names its time zone. `schedule install` writes the units and
+# carries the variables named here and the ones the effect overlay names; `schedule uninstall` removes them.
+schedule:
+  unit_name: onex-delegation-events-defect-scan
+  state_directory: .onex_state/delegation-events-defect-scan
+  timeout_seconds: 300
+  unit_environment: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME]
+  cadence:
+    on_calendar: "*-*-* 06:15:00"
+    time_zone: UTC
+    randomized_delay: 0s
+    persistent: true
+    description: the daily delegation_events defect scan, 06:15 UTC
+
+metadata:
+  ticket: OMN-23331
+  transport_type: inmemory

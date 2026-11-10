@@ -6,7 +6,13 @@ from __future__ import annotations
 
 import threading
 
+from omnimarket.models.model_gate_store import (
+    EnumGateStoreOperation,
+    ModelGateStoreRequest,
+    ModelGateStoreResult,
+)
 from omnimarket.models.model_gate_store_join_j6 import ModelJoinJ6AuditRow
+from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
 
 
 class InMemoryJoinJ6AuditSink:
@@ -52,3 +58,32 @@ class InMemoryJoinJ6Projection:
         """Every projected row of one piece."""
         with self._lock:
             return [r for r in self._rows.values() if r.piece == piece]
+
+
+class DroppingJoinJ6AuditSink(InMemoryJoinJ6AuditSink):
+    """Injected break ``drop-audit-row``: the sink reports the append and keeps nothing (the join's failing control)."""
+
+    def append_if_absent(self, row: ModelJoinJ6AuditRow) -> bool:
+        return True
+
+
+class UnansweringStopGateStore:
+    """The fence drill's injected fault: a stop's commit gets no answer for ``hold_seconds``, then the call raises.
+
+    Every other operation is the wrapped store's own, so a send of another piece is decided by the real store.
+    """
+
+    def __init__(self, inner: ProtocolGateStore, hold_seconds: float) -> None:
+        self._inner = inner
+        self._hold = hold_seconds
+        self._release = threading.Event()
+
+    def transact(self, request: ModelGateStoreRequest) -> ModelGateStoreResult:
+        if request.operation is EnumGateStoreOperation.RECORD_SAFETY:
+            self._release.wait(timeout=self._hold)
+            raise TimeoutError("released after the join gave up")
+        return self._inner.transact(request)
+
+    def release(self) -> None:
+        """Let the held commit return now (a run's cleanup)."""
+        self._release.set()
