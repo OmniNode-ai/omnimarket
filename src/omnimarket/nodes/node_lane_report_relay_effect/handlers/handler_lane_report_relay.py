@@ -225,7 +225,7 @@ def workdir_guard_function() -> str:
     deletes anything: ``ok`` (nothing would be lost), ``wip <branch>`` (the commits were pushed to
     ``wip/<tag>``) or ``keep <reason>`` (the tree must stay). ``base`` is the sha a detached worktree was
     made at and ``url`` the push target for it; both empty means the tree's own ``origin``."""
-    return 'rl_guard() {\n  t="$1"; tag="$2"; base="$3"; url="$4"\n  s=$(git -C "$t" status --porcelain 2>/dev/null) || { echo "keep status-unreadable"; return; }\n  if [ -n "$s" ]; then echo "keep uncommitted-changes"; return; fi\n  br=$(git -C "$t" symbolic-ref -q --short HEAD 2>/dev/null)\n  if [ -n "$br" ]; then\n    if git -C "$t" rev-parse -q --verify \'@{u}\' >/dev/null 2>&1; then\n      n=$(git -C "$t" rev-list --count \'@{u}..HEAD\' 2>/dev/null) || { echo "keep upstream-unreadable"; return; }\n      if [ "$n" = 0 ]; then echo ok; return; fi\n      why=unpushed-commits\n    else why=no-upstream; fi\n  elif [ -n "$base" ]; then\n    n=$(git -C "$t" rev-list --count HEAD "^$base" 2>/dev/null) || { echo "keep base-unreadable"; return; }\n    if [ "$n" = 0 ]; then echo ok; return; fi\n    why=unpushed-commits\n  else\n    n=$(git -C "$t" rev-list --count HEAD --not --remotes 2>/dev/null) || { echo "keep remotes-unreadable"; return; }\n    if [ "$n" = 0 ]; then echo ok; return; fi\n    why=unpushed-commits\n  fi\n  dest="${url:-origin}"\n  if GIT_TERMINAL_PROMPT=0 git -C "$t" push -q "$dest" "HEAD:refs/heads/wip/$tag" >/dev/null 2>&1; then\n    echo "wip wip/$tag"\n  else\n    echo "keep $why-push-failed"\n  fi\n}'
+    return 'rl_guard() {\n  t="$1"; tag="$2"; base="$3"; url="$4"\n  s=$(git -C "$t" status --porcelain 2>/dev/null) || { echo "keep status-unreadable"; return; }\n  if [ -n "$s" ]; then echo "keep uncommitted-changes"; return; fi\n  br=$(git -C "$t" symbolic-ref -q --short HEAD 2>/dev/null)\n  if [ -n "$br" ]; then\n    if git -C "$t" rev-parse -q --verify \'@{u}\' >/dev/null 2>&1; then\n      n=$(git -C "$t" rev-list --count \'@{u}..HEAD\' 2>/dev/null) || { echo "keep upstream-unreadable"; return; }\n      if [ "$n" = 0 ]; then echo ok; return; fi\n      why=unpushed-commits\n    else\n      n=$(git -C "$t" rev-list --count HEAD --not --remotes 2>/dev/null) || { echo "keep remotes-unreadable"; return; }\n      if [ "$n" = 0 ]; then echo ok; return; fi\n      why=no-upstream\n    fi\n  elif [ -n "$base" ]; then\n    n=$(git -C "$t" rev-list --count HEAD "^$base" 2>/dev/null) || { echo "keep base-unreadable"; return; }\n    if [ "$n" = 0 ]; then echo ok; return; fi\n    why=unpushed-commits\n  else\n    n=$(git -C "$t" rev-list --count HEAD --not --remotes 2>/dev/null) || { echo "keep remotes-unreadable"; return; }\n    if [ "$n" = 0 ]; then echo ok; return; fi\n    why=unpushed-commits\n  fi\n  dest="${url:-origin}"\n  if GIT_TERMINAL_PROMPT=0 git -C "$t" push -q "$dest" "HEAD:refs/heads/wip/$tag" >/dev/null 2>&1; then\n    echo "wip wip/$tag"\n  else\n    echo "keep $why-push-failed"\n  fi\n}'
 
 
 def guarded_cleanup(cleanup: str, *, tag: str, base: str, url: str) -> str:
@@ -276,6 +276,30 @@ def hold_run_dir_guard(cleanup: str, *, lane: str, registry_root: str) -> str:
             "EOF",
             "fi",
             rest,
+        ]
+    )
+
+
+CHANGES_LINE_RE = re.compile(r"^LANE-CHANGES tree=(\S+) file=(.+)$")
+
+
+def changes_script(lane: str, registry_root: str) -> str:
+    """Remote shell (POSIX sh): print ``LANE-CHANGES tree= file=`` for every file each of the lane's trees changed
+    against its base (commits since the merge base with the default branch, plus uncommitted changes). It runs
+    before the closeout, which removes the trees. It writes nothing and fails nothing (moved from the runner, OMN-23425)."""
+    return "\n".join(
+        [
+            f'OH={shlex.quote(registry_root)}; D="$OH/omni_worktrees/"{shlex.quote(lane)}',
+            workdir_guard_function(),
+            'if [ ! -d "$D" ]; then exit 0; fi',
+            LANE_TREES_SH,
+            'printf "%s\\n" "$TREES" | while read -r n; do',
+            '  [ -n "$n" ] || continue; t="$D/$n"',
+            '  base=$(git -C "$t" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)',
+            '  { git -C "$t" diff --name-only "$base"...HEAD 2>/dev/null; git -C "$t" status --porcelain 2>/dev/null | cut -c4-; } |',
+            '    sort -u | while read -r f; do [ -n "$f" ] && echo "LANE-CHANGES tree=$t file=$f"; done',
+            "done",
+            "exit 0",
         ]
     )
 
