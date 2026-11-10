@@ -43,3 +43,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py tests/nodes/node_work_state_projection_scheduled_effect/test_bus_roundtrip_work_state_projected.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn23465-integration-proof-lab
+  description: Runs the single-pass ledger read test and the scheduled node's two-refresh round trip at the pushed head on a lab host through the lab work runner.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23465 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py tests/nodes/node_work_state_projection_scheduled_effect/test_bus_roundtrip_work_state_projected.py -q --no-cov -p no:randomly'
+    cwd: .
