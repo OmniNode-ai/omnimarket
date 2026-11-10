@@ -280,7 +280,8 @@ class ModelRecordItem(BaseModel):
 
     id: str
     kind: str
-    state: Literal["done", "active", "prep", "wait", "stop"]
+    # ``integrating`` is merged work still being shown running on dev; the publisher's ItemState declares it too.
+    state: Literal["done", "integrating", "active", "prep", "wait", "stop"]
     note: str = ""
     prs: tuple[str, ...] = ()
 

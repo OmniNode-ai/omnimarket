@@ -313,8 +313,8 @@ class _View:
         return self._criterion_refusal(line_id, item.id)
 
     def _occupied_cause(self, line_id: str, item: ModelRecordItem) -> str:
-        if item.state == "done":
-            return "done"
+        if item.state in ("done", "integrating"):
+            return item.state
         if item.kind != LANE_KIND:
             return f"not-a-lane:{item.kind}"
         if item.state in ("active", "stop"):
