@@ -1,6 +1,6 @@
 ---
 name: projection_work_ledger
-contract_version: {major: 1, minor: 1, patch: 1}
+contract_version: {major: 1, minor: 1, patch: 2}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
@@ -108,6 +108,11 @@ published_events:
 
 work_ledger:
   ledger_id: rolling-work-ledger
+  # onex-ledger is the live dual-write source: a row of a listed source with no
+  # ledger_seq is a write to a ledger file that is not the canonical one, and is
+  # refused to the poison dead-letter topic. The backfill source ledger-emit is
+  # not listed.
+  sequence_required_sources: [onex-ledger]
 
 db_io:
   db_tables:
@@ -171,4 +176,9 @@ chain_scenarios:
       subject: write_failed
       kind: FAILURE_NOT_TYPED
       reason: WorkLedgerProjectionWriter lets a database error propagate out of handle(), and the runtime adapter reports a raised handler as no event at all, so no typed failure event, ledger row or reading can be asserted.
+      unblocked_by: OMN-19998
+    - applies_to: ERROR
+      subject: unsequenced_live_row
+      kind: FAILURE_NOT_TYPED
+      reason: WorkLedgerProjectionWriter raises PoisonEventError for a live-source row with no ledger_seq; the runtime routes it to the poison DLQ topic, so no typed failure event is published for a chain test to assert
       unblocked_by: OMN-19998

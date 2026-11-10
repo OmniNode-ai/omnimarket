@@ -74,6 +74,7 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_proje
     ModelWorkLedgerProjectionResult,
 )
 from omnimarket.projection.envelope import strip_runner_injected_keys
+from omnimarket.projection.error_classification import PoisonEventError
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -161,6 +162,17 @@ _UPSERT_QUESTION = f"""
 _T = TypeVar("_T")
 
 
+class UnsequencedLiveRowError(PoisonEventError, WorkLedgerFoldError):
+    """A live dual-write source row arrived with no ledger_seq (OMN-23488).
+
+    A row of a source listed in ``sequence_required_sources`` that carries no
+    ``ledger_seq`` is a write to a ledger file that is not the canonical one.
+    Refused before any database statement, so the runtime classifies it POISON
+    and routes it to the poison DLQ topic instead of projecting it. The backfill
+    source (ledger-emit) is not listed and still projects unsequenced.
+    """
+
+
 class HandlerProjectionWorkLedger:
     """The PURE half: one row event in, its log record and state ops out."""
 
@@ -216,6 +228,21 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             self._contract["work_ledger"]
         )
         self._dispatch_lock = threading.Lock()
+
+    @property
+    def poison_dlq_topics(self) -> list[str]:
+        """OMN-23488: an escaped POISON row (an unsequenced live row) goes to the contract's DLQ."""
+        return list(self._contract["event_bus"]["dlq_topics"])
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """Supply the runtime-owned publisher to the base-class DLQ path (as node_projection_hook_ledger does)."""
+        publish = await self.get_publish_fn()
+        if publish is None:
+            raise RuntimeError(
+                f"node_projection_work_ledger: no publisher for POISON DLQ topic {topic}"
+                " -- the record cannot be quarantined"
+            )
+        await publish(topic, value)
 
     @property
     def topics(self) -> list[str]:
@@ -283,6 +310,14 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         if request.ledger_id != self._config.ledger_id:
             raise WorkLedgerFoldError("configured ledger_id mismatch")
         result = fold_row(request)
+        if (
+            result.row.ledger_seq is None
+            and result.row.source in self._config.sequence_required_sources
+        ):
+            raise UnsequencedLiveRowError(
+                f"unsequenced-live-row: source {result.row.source!r} requires a "
+                f"ledger_seq; row_id {result.row.row_id}"
+            )
         expected_id = str(work_ledger_event_id(result.row.ledger_id, result.row.row_id))
         if data.get("event_id") is not None and str(data["event_id"]) not in {
             expected_id,
@@ -424,4 +459,8 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         return len(returned) + len(state.questions)
 
 
-__all__: list[str] = ["HandlerProjectionWorkLedger", "WorkLedgerProjectionWriter"]
+__all__: list[str] = [
+    "HandlerProjectionWorkLedger",
+    "UnsequencedLiveRowError",
+    "WorkLedgerProjectionWriter",
+]

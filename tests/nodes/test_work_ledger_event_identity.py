@@ -552,7 +552,9 @@ def test_noncanonical_config_and_typed_inbound_refuse_before_database(
 
     monkeypatch.setattr(AsyncpgAdapter, "connect", unexpected_connect)
     with pytest.raises(ValidationError):
-        ModelWorkLedgerProjectionConfig(ledger_id=ledger_id)
+        ModelWorkLedgerProjectionConfig(
+            ledger_id=ledger_id, sequence_required_sources=()
+        )
     data = paired_inbound().model_dump()
     data["ledger_id"] = ledger_id
     data["provenance_kind"] = "typed"

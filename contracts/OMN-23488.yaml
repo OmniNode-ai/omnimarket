@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-23488
+title: The database work log refuses lines that carry no position number
+summary: The work ledger projection refuses a row from the live dual-write source (onex-ledger) that carries no ledger_seq, routes it to the declared poison dead-letter topic with the reason unsequenced-live-row, and still projects the backfill source (ledger-emit). The sources are a contract value. The emit node's default source becomes ledger-emit, the label of what that node is, so its rows are not read as live dual-write rows.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn23488-refuse-unsequenced-live-row
+  statement: A row whose source is listed in work_ledger.sequence_required_sources and that has no ledger_seq raises a poison error before any database statement, and the runner publishes it to the contract's dead-letter topic.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the work ledger projection refuses a live-writer row (source onex-ledger) that carries no ledger_seq, sends it to the declared dead-letter topic with the reason unsequenced-live-row, and still accepts the backfill source -- falsifier: uv run pytest on tests/unit/nodes/node_projection_work_ledger/test_unsequenced_live_row_refused.py at the merge base'
+  - id: AC2
+    statement: 'AC2: the refused-source list is a contract value, not a literal in code -- falsifier: the same test with the contract value emptied accepts the row'
+  - id: AC3
+    statement: 'AC3: golden and error chain tests cover the sequenced row (accepted) and the unsequenced live row (refused with its reason) -- falsifier: the chain scenario receipts regenerated at the merge base differ'
+  - id: AC4
+    statement: 'AC4: integrated: the change runs on the dev runtime, a sequenced row still projects, and projection rows with source onex-ledger and ledger_seq NULL created after the install count 0 -- falsifier: count of work_ledger_rows with source onex-ledger, ledger_seq NULL and projected_at after the install time'
+evidence_requirements:
+- kind: tests
+  description: The unsequenced-live-row tests of node_projection_work_ledger, including the refusal, the dead-letter route, the contract value, the backfill source and the two seams.
+  command: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_unsequenced_live_row_refused.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23488-refusal-tests
+  description: Runs the refusal tests. With the refusal check switched off two of the tests fail (the refusal and the dead-letter route); with it on all pass.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_unsequenced_live_row_refused.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23488-neighbouring-projection-tests
+  description: Runs the writer, fold and event-identity tests that build the projection config and the writer.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_writer.py tests/nodes/test_work_ledger_event_identity.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23488-integration-proof-lab
+  description: Runs the refusal tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23488 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_unsequenced_live_row_refused.py -q --no-cov -p no:randomly'
+    cwd: .
