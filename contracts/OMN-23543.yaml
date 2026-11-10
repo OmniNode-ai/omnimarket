@@ -37,10 +37,11 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_retired_repository_reconcile.py -q --no-cov -p no:randomly -k "generated_virtualenv or still_refused"
     cwd: .
 - id: dod-omn23543-handler-chain
-  description: Golden and error chain through the host reconcile handler on a workspace holding the environment, plus the contract and policy model agreeing on the declared marker.
+  description: Golden and error chain through the host reconcile handler on a workspace holding the environment, plus the contract and policy model agreeing on the declared marker. These are the code paths the h051 unit runs; the unit's own next run is recorded in the pull request's Lab line and in the lab item below.
   source: manual
   binds_ac:
   - AC3
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_retired_repository_reconcile.py -q --no-cov -p no:randomly -k "virtualenv or generated_environment_marker"
