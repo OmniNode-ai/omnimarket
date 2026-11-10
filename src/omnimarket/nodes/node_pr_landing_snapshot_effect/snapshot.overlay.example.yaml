@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example overlay of node_pr_landing_snapshot_effect (OMN-23409). The deployed
+# copy lives in the overlays repository under
+# node_pr_landing_snapshot_effect/overlay.yaml; this example is the in-memory
+# default. The Redpanda profile sets backend: redpanda and bootstrap_servers.
+backend: inmemory
+record_topic: onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1
+failed_topic: onex.evt.omnimarket.pr-landing-snapshot-failed.v1
+floor_piece: 9

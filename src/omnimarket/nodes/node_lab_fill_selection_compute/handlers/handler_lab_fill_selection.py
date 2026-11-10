@@ -73,6 +73,49 @@ _UNCHANGED_OUTCOMES = frozenset({"blocked", "partial", "no-op", "noop"})
 _BUILT_OUTCOMES = frozenset({"already-built", "skipped-owned", "skipped"})
 # The fill's lane names: lab-fill-omn<n>-..., lab-fill-verify-omn<n>-... and fill-ticket-OMN-<n>-....
 _FILL_LANE = re.compile(r"^(?:lab-)?fill-(?:verify-|ticket-)?omn-?([0-9]+)-")
+_CLOSED_STATE_TYPES = frozenset({"completed", "canceled", "cancelled"})
+DELEGATION_FIRST = "delegation-first"
+
+
+def is_delegation(
+    candidate: ModelLabFillCandidateInput, deployment: ModelLabFillDeployment
+) -> bool:
+    """The ticket is one of the deployment's delegation epics or sits under one (OMN-23312).
+
+    The epics come from the overlay, never from this code; a deployment that names none has no
+    delegation work, so nothing is ranked or refused for it."""
+    epics = set(deployment.delegation_epics)
+    return bool(epics) and (
+        candidate.ticket in epics or bool(epics.intersection(candidate.parents))
+    )
+
+
+def delegation_owned(
+    candidate: ModelLabFillCandidateInput, deployment: ModelLabFillDeployment
+) -> bool:
+    """The ticket's assignee is one of the deployment's delegation owners; unassigned is no one's.
+
+    A deployment that names no owners owns every delegation ticket under its epics, whoever the
+    assignee is (RULING 2026-11-08T13:40:42Z: delegation is ours in full, so no owner filter
+    excludes a delegation ticket). Naming owners narrows that to those assignees."""
+    owners = {owner.strip().lower() for owner in deployment.delegation_owners}
+    if not owners:
+        return True
+    assignee = candidate.assignee.strip().lower()
+    return bool(assignee) and assignee in owners
+
+
+def delegation_first(
+    candidate: ModelLabFillCandidateInput, deployment: ModelLabFillDeployment
+) -> bool:
+    """An open delegation ticket of an owner whose start criterion reads true ranks ahead of every
+    other ticket source (OMN-23312). A criterion that reads false or unread does not rank."""
+    return (
+        is_delegation(candidate, deployment)
+        and delegation_owned(candidate, deployment)
+        and candidate.state_type.strip().lower() not in _CLOSED_STATE_TYPES
+        and candidate.criterion.strip().lower() == "true"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,7 +457,12 @@ class HandlerLabFillSelection:
                     replace(baseline, pr_heads=_heads(baseline.pr_heads, deployment))
                 )
         decisions = []
-        for candidate in request.candidates:
+        # Decisions follow candidate order, delegation-first tickets leading; the sort is stable, so
+        # every other candidate keeps its place (OMN-23312).
+        for candidate in sorted(
+            request.candidates,
+            key=lambda c: not delegation_first(c, deployment),
+        ):
             decision, new_baseline = self._select(
                 candidate, request, history, held, escalated, now, deployment
             )
@@ -500,6 +548,8 @@ class HandlerLabFillSelection:
             candidate, set(request.scope_repos), deployment
         )
 
+        ranked = DELEGATION_FIRST if delegation_first(candidate, deployment) else ""
+
         def decision(
             reason: EnumLabFillSkipReason | None = None,
             caller: str = "",
@@ -516,6 +566,16 @@ class HandlerLabFillSelection:
                 repo_source,
             )
 
+        if is_delegation(candidate, deployment) and not delegation_owned(
+            candidate, deployment
+        ):
+            # Delegation work belongs to its owners (RULING 2026-10-27T22:14:41Z): never select
+            # a delegation ticket someone else owns, whatever else would admit it.
+            return decision(
+                EnumLabFillSkipReason.OTHER_OWNER,
+                "other-owner:delegation",
+                candidate.assignee or "unassigned",
+            ), None
         if candidate.kind == "defect" and request.scope_repos:
             # A defect is read team-wide by its pillar label or title term, so a side project's
             # ticket can match a different repository. Exclude it
@@ -614,7 +674,7 @@ class HandlerLabFillSelection:
                 ), None
         attempts = history.attempts.get(candidate.ticket, [])
         if not attempts:
-            return decision(), None
+            return decision(caller=ranked), None
         latest = attempts[-1]
         if latest.terminal is None:
             return decision(EnumLabFillSkipReason.OWNED, "owned", latest.lane), None
@@ -637,7 +697,7 @@ class HandlerLabFillSelection:
                 "dispatch-limit:unchanged-input",
             )
         else:
-            return decision(), None
+            return decision(caller=ranked), None
         baseline = next(
             (
                 b
@@ -650,7 +710,9 @@ class HandlerLabFillSelection:
         if baseline is not None:
             changed = _changed(baseline, candidate, deployment)
             if changed:
-                return decision(detail="input-changed:" + ",".join(changed)), None
+                return decision(
+                    caller=ranked, detail="input-changed:" + ",".join(changed)
+                ), None
         repeats = _repeat_count(attempts)
         if reason is EnumLabFillSkipReason.UNCHANGED_INPUT and (
             repeats >= request.repeat_limit
@@ -662,7 +724,7 @@ class HandlerLabFillSelection:
             reason is EnumLabFillSkipReason.UNCHANGED_INPUT
             and now - latest.terminal.ts >= timedelta(hours=request.cooldown_hours)
         ):
-            return decision(detail="cooldown-elapsed:" + detail), None
+            return decision(caller=ranked, detail="cooldown-elapsed:" + detail), None
         if baseline is not None:
             return decision(reason, caller, detail), None
         read_at = _stamp(candidate.facts_read_at)
