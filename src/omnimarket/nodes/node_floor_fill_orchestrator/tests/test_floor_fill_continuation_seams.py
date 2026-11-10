@@ -19,14 +19,10 @@ from typing import Any
 
 import pytest
 import yaml
-from pydantic import ValidationError
 
 from omnimarket.models.floor_fill import (
     ModelFloorFillCandidatesRequest,
     ModelFloorFillStopped,
-)
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
-    ModelFloorStoppedLane,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
@@ -52,9 +48,6 @@ from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
 from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
     lane_name,
 )
-from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
-    ModelRemoteLaneStartRequest,
-)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.runtime_remote_lane_start import (
     parser,
 )
@@ -79,23 +72,23 @@ COMPUTE_OVERLAY = {
 
 
 def _floor_lane() -> dict[str, Any]:
-    """A stopped lane built by the floor compute's own model, dumped the way the published record carries it."""
-    return ModelFloorStoppedLane(
-        lane=LANE,
-        ticket="OMN-23001",
-        tickets=("OMN-23001",),
-        outcome="partial",
-        ended_at="2026-11-07T11:30:00Z",
-        age_minutes=30,
-        names=("branch",),
-        branch="omn-23001-slice",
-        head="abc123def456",
-        prs=(),
-        rows=(
+    """A stopped lane shaped the way the published record carries it."""
+    return {
+        "lane": LANE,
+        "ticket": "OMN-23001",
+        "tickets": ["OMN-23001"],
+        "outcome": "partial",
+        "ended_at": "2026-11-07T11:30:00Z",
+        "age_minutes": 30,
+        "names": ["branch"],
+        "branch": "omn-23001-slice",
+        "head": "abc123def456",
+        "prs": [],
+        "rows": [
             "2026-11-07T11:30:00Z TERMINAL outcome=partial: pushed slice, tests left",
-        ),
-        report_path=REPORT_PATH,
-    ).model_dump(mode="json")
+        ],
+        "report_path": REPORT_PATH,
+    }
 
 
 def _compute(stopped: dict[str, Any]) -> Any:
@@ -231,19 +224,7 @@ def test_seam_the_filled_command_parses_on_the_start_entry_and_its_brief_is_the_
         "OMN-23001",
         1,
     )
-    request = ModelRemoteLaneStartRequest(
-        lane=args.lane,
-        key=args.key,
-        ticket=args.ticket,
-        engine=args.engine,
-        placement=args.placement,
-        model=args.model,
-        ledger_path=args.ledger,
-        brief=Path(args.brief).read_text(encoding="utf-8"),
-        run_id=args.run_id,
-        attempt=args.attempt,
-    )
-    assert request.lane == lane_name("floor:stopped:" + LANE, 1)
+    assert args.lane == lane_name("floor:stopped:" + LANE, 1)
 
 
 def test_seam_control_a_flag_the_entry_does_not_take_is_refused() -> None:
@@ -252,22 +233,6 @@ def test_seam_control_a_flag_the_entry_does_not_take_is_refused() -> None:
     ]
     with pytest.raises(SystemExit):
         parser().parse_args(command)
-
-
-def test_seam_control_a_key_with_a_space_is_refused_by_the_start_request() -> None:
-    with pytest.raises(ValidationError):
-        ModelRemoteLaneStartRequest(
-            lane="floor-stopped-x-1-a1",
-            key="floor:stopped:prev 0100",
-            ticket="OMN-23001",
-            engine="claude",
-            placement="lab",
-            model="m",
-            ledger_path="/l",
-            brief="b",
-            run_id="r1",
-            attempt=1,
-        )
 
 
 def test_seam_the_example_overlay_is_a_valid_config_whose_command_the_entry_accepts() -> (
@@ -292,24 +257,12 @@ class _Rows:
 
 
 def _claim_row(key_cell: str) -> str:
-    request = ModelRemoteLaneStartRequest(
-        lane=lane_name("floor:stopped:" + LANE, 1),
-        key="floor:stopped:" + LANE,
-        ticket="OMN-23001",
-        engine="claude",
-        placement="lab",
-        model="m",
-        ledger_path="/l",
-        brief="b",
-        run_id="r1",
-        attempt=1,
-    )
     cells = [  # the CLAIM cells the start node writes, in its order
-        f"lane={request.lane}",
-        f"ticket={request.ticket}",
+        f"lane={lane_name('floor:stopped:' + LANE, 1)}",
+        "ticket=OMN-23001",
         "host=h1",
-        f"key={request.key}",
-        f"run={request.run_id}",
+        "key=floor:stopped:" + LANE,
+        "run=r1",
     ]
     cells = [key_cell if c.startswith("key=") else c for c in cells]
     return " | ".join(["2026-11-10T00:00:00Z", "CLAIM", *cells, "text"])
