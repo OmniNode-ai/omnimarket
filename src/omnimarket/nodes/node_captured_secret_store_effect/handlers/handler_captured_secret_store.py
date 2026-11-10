@@ -35,7 +35,9 @@ provider and addresses, the writer's client id and two references) with the
 values in
 ``<onex_home>/credentials.json``, refused unless mode 0600: the split
 ``onex auth login`` already uses. Nothing deployment specific is committed.
-Plain http is accepted only for a loopback store.
+Plain http is accepted only for a loopback store or a host the block's
+``plain_http_hosts`` names (the one rule in
+``omnimarket.models.secret_store.plain_http_rule``).
 
 Failure
 -------
@@ -51,9 +53,7 @@ import asyncio
 import concurrent.futures
 import hashlib
 import hmac
-import ipaddress
 import logging
-import urllib.parse
 from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,7 +62,6 @@ from typing import Any
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
-from omnimarket.handlers.network_bindings import network_host
 from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.captured_secret.model_captured_secret_store_overlay import (
     CAPTURED_SECRET_STORE_BLOCK,
@@ -73,6 +72,10 @@ from omnimarket.models.secret_store import (
     EnumSecretStoreOutcome,
     ModelSecretStoreOverlay,
     ModelSecretStoreRequest,
+)
+from omnimarket.models.secret_store.plain_http_rule import (
+    PlainHttpRefusedError,
+    require_safe_store_address,
 )
 from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
     ModelCapturedSecretStoreRequest,
@@ -96,17 +99,6 @@ TIMEOUT_SECONDS: float = load_node_timeouts("node_captured_secret_store_effect")
 )
 
 
-def _plain_http_allowed(hostname: str | None) -> bool:
-    if hostname is None:
-        return False
-    if hostname.lower() == network_host("loopback.name"):
-        return True
-    try:
-        return ipaddress.ip_address(hostname).is_loopback
-    except ValueError:
-        return False
-
-
 class CapturedSecretWriterConfigError(ValueError):
     """The writer configuration is present and unusable. Names keys, never values."""
 
@@ -117,6 +109,7 @@ class CapturedSecretWriterConfig:
 
     provider: str
     infisical_addr: str
+    plain_http_hosts: tuple[str, ...]
     project_id: str
     environment_slug: str
     secret_path: str
@@ -157,12 +150,12 @@ def load_writer_config(onex_home: Path) -> CapturedSecretWriterConfig | None:
             f"{files.config_path} block '{CAPTURED_SECRET_STORE_BLOCK}' names a "
             "writer but no provider"
         )
-    parts = urllib.parse.urlsplit(overlay.infisical_addr)
-    if parts.scheme == "http" and not _plain_http_allowed(parts.hostname):
+    try:
+        require_safe_store_address(overlay.infisical_addr, overlay.plain_http_hosts)
+    except PlainHttpRefusedError as exc:
         raise CapturedSecretWriterConfigError(
-            "infisical_addr: plain http is accepted only to a loopback host; "
-            "a remote store needs https"
-        )
+            str(exc).replace("address:", "infisical_addr:", 1)
+        ) from None
     named = {
         "writer_client_secret_ref": overlay.writer_client_secret_ref,
         "reference_key_ref": overlay.reference_key_ref,
@@ -184,6 +177,7 @@ def load_writer_config(onex_home: Path) -> CapturedSecretWriterConfig | None:
     return CapturedSecretWriterConfig(
         provider=overlay.provider,
         infisical_addr=overlay.infisical_addr.rstrip("/"),
+        plain_http_hosts=overlay.plain_http_hosts,
         project_id=str(overlay.project_id),
         environment_slug=overlay.environment_slug,
         secret_path=overlay.secret_path,
@@ -256,6 +250,7 @@ def _secret_store_node(
     overlay = ModelSecretStoreOverlay(
         provider=config.provider,
         address=config.infisical_addr,
+        plain_http_hosts=config.plain_http_hosts,
         project_id=config.project_id,
         environment=config.environment_slug,
         client_id_ref=_CLIENT_ID_REF,
