@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import subprocess
 from pathlib import Path
 
@@ -143,6 +144,18 @@ def test_the_publish_run_for_the_tag_succeeded() -> None:
     assert _publish_run_succeeded(runs, _BUMP_MERGE_COMMIT), (
         f"no successful publish-dashboard-bundle run for {_RELEASE}"
     )
+
+
+@pytest.mark.unit
+def test_the_publish_run_check_reads_the_recorded_fixture_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _refuse(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("the publish-run check opened a network connection")
+
+    monkeypatch.setattr(socket.socket, "connect", _refuse)
+    runs = json.loads(_PUBLISH_RUNS_FIXTURE.read_text(encoding="utf-8"))
+    assert _publish_run_succeeded(runs, _BUMP_MERGE_COMMIT)
 
 
 @pytest.mark.unit

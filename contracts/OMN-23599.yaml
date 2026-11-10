@@ -26,12 +26,12 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn23599-publish-run-reads-recorded-fixture"
-    description: "With HTTPS_PROXY and HTTP_PROXY pointing at a closed local port, the publish-run check passes at the head (it reads the recorded fixture) and fails at the merge base with a refused connection (it asked the public endpoint)."
+    description: "With socket connections refused, the publish-run check passes at the head (it reads the recorded fixture); at the merge base the helper it calls does not exist, so the case fails there (the failing control). The base test itself, run with HTTPS_PROXY and HTTP_PROXY pointing at a closed local port, fails with a refused connection."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "env HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_for_the_tag"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_check_reads_the_recorded_fixture"
         cwd: "."
   - id: "dod-omn23599-publish-run-control-rejects-wrong-run"
     description: "The control test builds a different commit, a failed conclusion and an empty run list from the fixture and asserts the check returns false for each; the control does not exist at the merge base."
