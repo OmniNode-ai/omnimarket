@@ -31,15 +31,23 @@ dod_evidence:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_bus_publisher.py tests/nodes/node_pr_landing_tick_orchestrator/test_runtime_tick.py -q -p no:cacheprovider
-        cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-omn23539-integration-proof-lab
+        check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_bus_publisher.py tests/nodes/node_pr_landing_tick_orchestrator/test_runtime_tick.py -q --no-cov -p no:randomly -p no:cacheprovider
+        cwd: .
+  - id: dod-omn23539-integration-hosted
     description: >-
-      Integrated: once the operator applies the dev broker grants of omnibase_infra#5880, the tick orchestrator runs once from the branch on a lab host under an overlay with publish_backend redpanda and bus_lane dev, and prints its compared line; the compared event is then read back from the dev bus lane. Hosted CI cannot reach the lab broker, so only the local Done gate runs this item.
+      Integrated, hosted proxy for AC3: run_once under an overlay with publish_backend redpanda builds the bus publisher through the injected factory and publishes the compared events the handler produces, each on a topic of the contract's publish_topics. Without the run_once wiring the test fails (measured at the stacked base: 1 failed, 4 passed). The live dev bus read is the unbound local item below, because the hosted must-fail control can never run a local_done_gate item.
     source: manual
-    execution_scope: local_done_gate
     binds_ac:
       - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_bus_publisher.py -q --no-cov -p no:randomly -p no:cacheprovider -k "run_once_publishes or redpanda_builds"
+        cwd: .
+  - id: dod-omn23539-integration-proof-lab
+    description: >-
+      Integrated: once the operator applies the dev broker grants of omnibase_infra#5880, the tick orchestrator runs once from the branch on a lab host under an overlay with publish_backend redpanda and bus_lane dev, and prints its compared line; the compared event is then read back from the dev bus lane. Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound item; the hosted proxy above binds AC3.
+    source: manual
+    execution_scope: local_done_gate
     checks:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23539 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python -m omnimarket.nodes.node_pr_landing_tick_orchestrator'
