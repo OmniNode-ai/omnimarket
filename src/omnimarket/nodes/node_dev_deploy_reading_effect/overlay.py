@@ -17,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_dev_deploy_reading import ModelLineageRule
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_dev_deploy_reading_effect"
@@ -115,6 +116,8 @@ class ModelDevDeployReadingOverlay(BaseModel):
     publish: ModelDevDeployPublish
     thresholds: ModelDevDeployThresholds
     merges: ModelMergeSettings
+    #: Whether a later commit's receipt or running sha stands in for the merge's own, and the bounds of it.
+    lineage: ModelLineageRule
     receipts: ModelReceiptSettings
     probe: ModelProbeSettings
     #: Applied only by the drill verb, whose rows are tagged so no operational read counts them.
@@ -137,6 +140,7 @@ class ModelDevDeployReadingOverlay(BaseModel):
             {
                 "thresholds": self.thresholds.model_dump(mode="json"),
                 "merges": self.merges.model_dump(mode="json"),
+                "lineage": self.lineage.model_dump(mode="json"),
                 "receipts": self.receipts.projection_url,
                 "probe": [self.probe.health_url, list(self.probe.sha_path)],
                 "max_age": self.publish.publish_max_age_seconds,
