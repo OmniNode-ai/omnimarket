@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 WorklistKind = Literal["pr", "stopped", "shared_red"]
-OwnerState = Literal["live_lane", "landing_lease", "cause_lease", "unowned"]
+OwnerState = Literal["live_lane", "landing_lease", "cause_lease", "unowned", "unknown"]
 WORKLIST_KINDS: tuple[WorklistKind, ...] = ("pr", "stopped", "shared_red")
 
 
@@ -86,6 +86,9 @@ class ModelWorklistClass(_Frozen):
     total: int
     unowned: int
     owned: int
+    # Items with no lane or lease on them while the lane list or owner map was stale or unread (OMN-23388): not counted as
+    # unowned, because the board cannot say nobody is on them.
+    unknown: int = 0
     page_size: int
     pages: tuple[tuple[ModelWorklistItem, ...], ...]
 

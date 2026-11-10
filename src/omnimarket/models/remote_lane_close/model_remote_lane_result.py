@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .model_remote_lane_first_turn_context import ModelRemoteLaneFirstTurnContext
+from .model_remote_lane_needs import ModelRemoteLaneNeeds
 from .model_remote_lane_receipt_usage import ModelRemoteLaneReceiptUsage
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -69,3 +70,5 @@ class ModelRemoteLaneResult(BaseModel):
     first_turn_context: ModelRemoteLaneFirstTurnContext
     withdrawn_by: str | None = None
     ledger_cells: dict[str, str] = Field(default_factory=dict)
+    needs: ModelRemoteLaneNeeds | None = None
+    report_text: str = ""

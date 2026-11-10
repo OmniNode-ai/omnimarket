@@ -245,7 +245,7 @@ def test_entry_exits_process_at_timeout() -> None:
 
         def build(config):
             orch = FloorFillOrchestrator(config=config, store=InMemoryFloorStateStore(), facts=Stalling(None),
-                pool=ScriptedPool(1), ledger=ScriptedLedger(), tickets=ScriptedTickets(), runner=ScriptedStarter(),
+                pool=ScriptedPool(1), ledger=ScriptedLedger(), tickets=ScriptedTickets(), runner=ScriptedStarter(), briefs=ScriptedBriefs(),
                 clock=ScriptedClock(T0),
                 candidates=HandlerFloorFillCandidates(), reducer=HandlerFloorFillReducer(), lines=HandlerFloorFillLines())
             return HandlerFloorFillCommand(config=config, orchestrator=orch,

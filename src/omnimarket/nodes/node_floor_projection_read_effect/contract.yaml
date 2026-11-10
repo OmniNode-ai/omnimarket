@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Projection Read Effect (OMN-23391)
+#
+# One pass of the floor's projection reader, run as a step of the factory floor publish: read each bus projection the
+# floor takes an input from, keep the time its producer stood by it, and write them as one bundle that the floor cycle
+# reads. A projection that cannot be read is written unread with its reason; the floor reads it as unknown and never as
+# the last value it held. Which projections, their topics and their own bounds are the overlay's.
+name: node_floor_projection_read_effect
+contract_name: node_floor_projection_read_effect
+node_name: node_floor_projection_read_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the floor's bus projections and writes them, with each one's own time, for the floor cycle. The bus is the
+  transport; the floor never reads a producer's local file for an input that has a projection.
+
+handler:
+  module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read
+  class: HandlerFloorProjectionRead
+  input_model: omnimarket.models.floor_projection.ModelFloorProjectionTickRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  side_effects:
+    - listens on each snapshot topic the overlay names for one window and folds the newest publication of each projection
+    - appends a start and a success or a typed failure to the emission journal under the registry home
+    - writes the projection bundle under the registry home
+
+input_model:
+  name: ModelFloorProjectionTickRequest
+  module: omnimarket.models.floor_projection
+  description: The registry home of one pass.
+output_model:
+  name: ModelFloorProjectionBundle
+  module: omnimarket.models.floor_projection
+  description: What each projection read, with its own time.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_floor_projection_read_effect, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+# Read by a bus client within the overlay's window, never dispatched by a runtime, so no subscription of this node. Each
+# topic is the snapshot topic of one projection; its producer declares it as a publish topic.
+snapshot_reads:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-overlay-store-fleet.v1
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-owner-map.v1
+
+runtime:
+  home_env: OMNI_HOME
+  overlay: {overlay_id: node_floor_projection_read_effect, file_env: ONEX_FLOOR_PROJECTION_OVERLAY}
+  output_relpath: .onex_state/floor-projection/projection-reads.json
+  # The floor's emission journal: the reader's golden and error chains go where the receipts are read from.
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  piece: 17
+  chain: node_floor_projection_read_effect:read_floor_projections
+  group_prefix: node_floor_projection_read_effect
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-23391

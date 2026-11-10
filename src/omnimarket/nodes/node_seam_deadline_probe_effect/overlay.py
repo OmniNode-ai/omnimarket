@@ -44,6 +44,8 @@ class ModelSeamSpec(BaseModel):
     #: runtime's typed failure terminal for a command it could not handle).
     error_keys: tuple[str, ...] = Field(min_length=1)
     deadline_seconds: float = Field(gt=0)
+    #: How long past the deadline the probe keeps reading for a late reply; 0 listens no longer.
+    late_listen_seconds: float = Field(ge=0)
     #: True when the seam's node has an on-demand path only: nothing consumes its command topic
     #: until the activation attaches it for the demand (OMN-22909).
     on_demand: bool = False

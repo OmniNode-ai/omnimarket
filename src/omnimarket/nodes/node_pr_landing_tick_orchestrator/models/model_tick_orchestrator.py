@@ -36,12 +36,18 @@ class EnumTickFailureReason(StrEnum):
 
 
 class ModelTickSnapshot(BaseModel):
-    """One recorded tick: the facts the script read, and the decision it made from them."""
+    """One recorded tick: the facts read, and the script's decision from them when one was recorded."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     facts: ModelLandingFacts
-    decision: ModelLandingDecision
+    decision: ModelLandingDecision | None = Field(
+        default=None,
+        description=(
+            "The script's decision for the tick; None for a landing snapshot step record, "
+            "which carries facts only (the tick then ends recorded_decision_missing)."
+        ),
+    )
     fair_share: bool = Field(
         default=True,
         description="Whether the script shared free slots across repositories.",

@@ -30,14 +30,23 @@ event_bus:
   subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.overlay-store-read.v1
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-overlay-store-fleet.v1
 externally_consumed_topics:
-  # The fleet verb of this node and the floor's source read it, outside the runtime.
+  # The fleet verb of this node reads it, outside the runtime.
   - onex.evt.omnimarket.overlay-store-read.v1
+  # The floor reads each host's published view of the fleet through node_floor_projection_read_effect (OMN-23391).
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-overlay-store-fleet.v1
 # Read directly by a host's bus client within read_window_s, never dispatched by a runtime, so it is no
 # subscription of this node: node_projection_overlay_store publishes it.
 snapshot_read:
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   topic: onex.snapshot.projection.overlay-store.v1
+# The tick publishes this host's view of the fleet, keyed by the projection id, so the floor does not depend on one host's file.
+fleet_projection:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.floor-overlay-store-fleet.v1
 overlay:
   node: node_overlay_store_read_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

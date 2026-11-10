@@ -97,6 +97,11 @@ class ModelHostCanaryProbeSettings(BaseModel):
     pool_admitted_marker: str = Field(min_length=1)
     #: The text by which the route's pool read says a host could not be read.
     pool_unreadable_marker: str = Field(min_length=1)
+    #: Exit codes by which the lane wrapper's stub says the host's installed copy of the lane guard
+    #: is absent, after the pool read admitted the host; empty names none (such an exit reads untyped).
+    guard_missing_exit_codes: tuple[int, ...]
+    #: The text the stub prints with that exit; both must hold for a host to end guard-missing.
+    guard_missing_marker: str = Field(min_length=1)
     #: Texts by which the route's pool read refuses a host for a reason of the host table or the
     #: load bar (out of rotation, job kinds, over the bar, hot, short of memory), after ``<host>: ``.
     #: Such a host ends parked: listed with the refusal, never a failed host. Empty parks none.
