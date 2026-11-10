@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_handoff_reads_effect
+version: 1.0.0
+description: Reads the install-first declaration overlay, the ledger STATUS rows and git ancestry for a handed-off PR and prints the verdict line.
+pack: pr_lifecycle
+node_role: effect
+display_name: PR Handoff Reads
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pr_handoff_reads_effect: omnimarket.nodes.node_pr_handoff_reads_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- pr-handoff
+- install-first

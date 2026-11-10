@@ -1,0 +1,14 @@
+# The shape of <root>/node_pr_handoff_reads_effect/overlay.yaml. Synthetic values; the deployment's document lives in the
+# overlays repository. Every key is required.
+host_install:
+  paths: ["units/*", "*/units/*", "*.service", "hooks/*", "plugins/*", "scripts/*", "*/scripts/*"]
+  repo_paths:
+    example-repo: ["src/*"]
+  excluded_paths: ["tests/*", "*/tests/*", "docs/*", "*/docs/*", "scripts/ci/*", "*/scripts/ci/*"]
+  prod_paths: ["grants/*", "prod/*"]
+  installed_cell: installed
+  observed_cell: observed
+  observed_words: [tick, ran, running, loaded, fired]
+  observed_refused: ['^\W*(\d+\s+)?(tests?|pytest|ci)\b[^.;]*\b(pass|passed|green|ok)\W*$']
+  min_observed_chars: 12
+  ruling: synthetic example

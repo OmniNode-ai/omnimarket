@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR handoff reads effect (OMN-21815, moved from the frozen plugin under OMN-19998)
+#
+# The install-proof read: loads the host_install declaration from the node's overlay, reads the ledger's STATUS rows and
+# git's ancestry of each installed revision a proof names, and asks node_pr_handoff_lab_exempt_compute for the verdict.
+# An unreadable declaration refuses (a NO line, refused true), never passes. The plugin's other reads (comments,
+# pr-text, files, inbox, ack-sweep) are not moved yet.
+name: node_pr_handoff_reads_effect
+contract_name: node_pr_handoff_reads_effect
+node_name: node_pr_handoff_reads_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads what the install-first rule needs for one PR (the overlay declaration, the ledger STATUS rows, git ancestry in
+  the canonical clone) and prints the verdict line the frozen pr-handoff plugin parses. Run as
+  `python -m omnimarket.nodes.node_pr_handoff_reads_effect < request.json`.
+
+handler:
+  module: omnimarket.nodes.node_pr_handoff_reads_effect.handlers.handler_install_proof_read
+  class: HandlerInstallProofRead
+  input_model: omnimarket.nodes.node_pr_handoff_reads_effect.models.model_install_proof_read.ModelInstallProofReadRequest
+
+# HandlerInstallProofRead takes the overlay environment and the git ancestry reader as constructor parameters, so the node
+# runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 120000
+
+input_model:
+  name: ModelInstallProofReadRequest
+  module: omnimarket.nodes.node_pr_handoff_reads_effect.models.model_install_proof_read
+  description: The PR facts the caller read, the canonical clone and the ledger path.
+output_model:
+  name: ModelInstallProofReadResult
+  module: omnimarket.nodes.node_pr_handoff_reads_effect.models.model_install_proof_read
+  description: OK, NA or NO with the one-line detail, and whether a NO is a refusal of the declaration.
+
+runtime_dispatch:
+  external_trigger: false
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_pr_handoff_reads_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory

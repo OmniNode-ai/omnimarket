@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR handoff install-first verdict (OMN-21815, moved from the frozen plugin under OMN-19998)
+#
+# handle(ModelInstallVerdictRequest) -> ModelInstallVerdict, pure: the PR's changed files, its Lab-line and STATUS-row
+# proof, the declaration and git's ancestry answers go in, one verdict (OK, NA or NO) comes out. Every list (the paths,
+# the excluded paths, the prod paths, the observation words) is the host_install document of the overlay that
+# node_pr_handoff_reads_effect loads; nothing is listed here or in the handler. The low-risk, cloud-ci and placement
+# verdicts and the terminal-check of the same plugin node are not moved yet.
+name: node_pr_handoff_lab_exempt_compute
+contract_name: node_pr_handoff_lab_exempt_compute
+node_name: node_pr_handoff_lab_exempt_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Judges whether a PR that changes what runs on a host (a host install, a unit, a tool, a hook, a plugin) carries the
+  proof that its branch revision was installed on a lab host and observed running. A declaration is required; this node
+  never reads one, so an unreadable declaration is refused upstream by the reads effect, never passed here.
+
+handler:
+  module: omnimarket.nodes.node_pr_handoff_lab_exempt_compute.handlers.handler_install_verdict
+  class: HandlerInstallVerdict
+  input_model: omnimarket.nodes.node_pr_handoff_lab_exempt_compute.models.model_install_verdict.ModelInstallVerdictRequest
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: [effects]
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 5000
+
+input_model:
+  name: ModelInstallVerdictRequest
+  module: omnimarket.nodes.node_pr_handoff_lab_exempt_compute.models.model_install_verdict
+  description: The declaration, the PR facts and git's ancestry answers.
+output_model:
+  name: ModelInstallVerdict
+  module: omnimarket.nodes.node_pr_handoff_lab_exempt_compute.models.model_install_verdict
+  description: OK, NA or NO with the one-line detail the plugin prints.
+
+runtime_dispatch:
+  external_trigger: false
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  ticket: OMN-19998

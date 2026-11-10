@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_handoff_lab_exempt_compute
+version: 1.0.0
+description: Pure install-first verdict for a handed-off PR that changes what runs on a host, from a declaration, the PR's proof lines and git's ancestry answers.
+pack: pr_lifecycle
+node_role: compute
+display_name: PR Handoff Install-First Verdict
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pr_handoff_lab_exempt_compute: omnimarket.nodes.node_pr_handoff_lab_exempt_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- pr-handoff
+- install-first

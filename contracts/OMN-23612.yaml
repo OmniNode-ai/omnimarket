@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-23612
+title: The install-first rule for handed-off changes moves into the platform code and reads its file list from a setting
+summary: The install-first verdict and its read move from the frozen pr-handoff plugin into node_pr_handoff_lab_exempt_compute and node_pr_handoff_reads_effect; the host_install declaration becomes the reads node's overlay document, an unreadable document refuses, and scripts/ci and scripts/validation join the excluded paths.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23612-install-first-move
+  statement: The install-proof decision is made by omnimarket nodes from an overlay declaration that keeps every previous path and excludes the two CI-only folders; an unreadable declaration refuses.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a changed file under scripts/ci or scripts/validation needs no install proof while any other scripts file and a host unit file still do -- falsifier: pytest tests/nodes/node_pr_handoff_lab_exempt_compute/test_install_verdict.py -q'
+  - id: AC2
+    statement: 'AC2: an overlay that is absent, empty, malformed, missing a key or invalid refuses with a NO line and never passes -- falsifier: pytest tests/nodes/node_pr_handoff_reads_effect/test_install_proof_read.py -q'
+  - id: AC3
+    statement: 'AC3: the overlays repository holds the host_install document that loads through the node''s model, with every previous path kept and the four exclusions added -- falsifier: pytest tests/test_pr_handoff_install_overlay.py -q in the overlays repository'
+  - id: AC4
+    statement: 'AC4: integrated: the node run on a lab host with the merged overlay prints NA for a scripts/ci change and NO for a launchd unit change, read from the running command output -- falsifier: python -m omnimarket.nodes.node_pr_handoff_reads_effect with ONEX_SKILL_OVERLAY_ROOTS naming the overlays checkout prints NO for the unit change'
+evidence_requirements:
+- kind: tests
+  description: The verdict and read tests of the two nodes
+  command: uv run --frozen pytest tests/nodes/node_pr_handoff_lab_exempt_compute tests/nodes/node_pr_handoff_reads_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23612-verdict
+  description: A scripts/ci or scripts/validation file needs no install proof, another scripts file and a host unit file still do, and the declaration without the exclusion (the control) still requires proof; the proof, ancestry and observation error chains each refuse.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_lab_exempt_compute/test_install_verdict.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23612-refusal
+  description: Every way the overlay can be unreadable (no root, no file, empty, not yaml, a missing key, a bad regex, an unknown key, empty paths) is a NO line with refused set, and git ancestry is read yes, no and unread in a real repository.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_reads_effect/test_install_proof_read.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23612-overlay-shape
+  description: The example overlay loads through the node's overlay model; the overlays repository carries its own test that its document loads through the same model at the pinned revision.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_reads_effect/test_install_overlay_example.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23612-cli-proxy
+  description: 'AC4 hosted proxy: the node CLI prints one NO line for a unit change and refuses an invalid request; the lab run against the merged overlay is recorded in the pull request.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_reads_effect/test_install_proof_read.py -k cli -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23612-integration-proof-lab
+  description: Runs the two nodes' tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23612 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_handoff_lab_exempt_compute tests/nodes/node_pr_handoff_reads_effect -q --no-cov -p no:randomly
+    cwd: .
