@@ -156,3 +156,47 @@ RECORDED_REAP_SCRIPT = "\n".join(
 RECORDED_DRAIN_SCRIPT = "\n".join(
     [_GUARD_PATH_LINE, _GUARD_SOURCE_LINE, 'python3 -c "$G_SRC" spool-drain']
 )
+
+
+# The runner's stdin-carrying staging steps, recorded on 2026-11-10 for run "rlane-example-000001" with the registry
+# root /srv/example/registry: ``ledger_unpack_script`` (read-only snapshot, and the bus mode that keeps the live ledger
+# file owner-writable), ``put_file`` for the prompt file, and ``runtime_config_script``. The runner's target sits in
+# the host's sibling checkout of the settings repository; the recorded text names that directory ``checkout``, the
+# value the overlay declares as ``runtime_config_target``.
+RECORDED_LEDGER_UNPACK_SCRIPT = "\n".join(
+    [
+        'LR="$HOME/lab-run"; C="$LR/runs/rlane-example-000001.ctx"',
+        'mkdir -p "$C/ledger" || exit 70',
+        'tar -xzf - -C "$C/ledger" || exit 70',
+        'chmod a-w "$C/ledger/"*.md "$C/ledger/archive/"*.md 2>/dev/null',
+        'echo "LEDGER-SNAPSHOT $C/ledger"',
+    ]
+)
+RECORDED_LEDGER_UNPACK_BUS_SCRIPT = "\n".join(
+    [
+        'LR="$HOME/lab-run"; C="$LR/runs/rlane-example-000001.ctx"',
+        'mkdir -p "$C/ledger" || exit 70',
+        'tar -xzf - -C "$C/ledger" || exit 70',
+        'chmod a-w "$C/ledger/"*.md "$C/ledger/archive/"*.md 2>/dev/null',
+        'chmod u+w "$C/ledger/example-ledger.md" || exit 70',
+        'echo "LEDGER-SNAPSHOT $C/ledger"',
+    ]
+)
+RECORDED_PUT_FILE_SCRIPT = "\n".join(
+    [
+        "set -eu",
+        'T=$(mktemp "$HOME/lab-run/runs/rlane-example-000001.ctx/prompt.md.XXXXXX")',
+        "trap 'rm -f -- \"$T\"' EXIT",
+        'cat > "$T"',
+        'mv -f -- "$T" "$HOME/lab-run/runs/rlane-example-000001.ctx/prompt.md"',
+    ]
+)
+RECORDED_RUNTIME_CONFIG_SCRIPT = "\n".join(
+    [
+        "T=/srv/example/registry/../checkout/config/onex/runtime/runtime_config.yaml",
+        'if [ -f "$T" ]; then cat >/dev/null; echo "RUNTIME-CONFIG present $T"; exit 0; fi',
+        'mkdir -p "$(dirname "$T")" || exit 70',
+        'cat > "$T.tmp.$$" && mv "$T.tmp.$$" "$T" || exit 70',
+        'echo "RUNTIME-CONFIG installed $T"',
+    ]
+)

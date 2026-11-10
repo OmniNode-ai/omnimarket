@@ -17,6 +17,8 @@ the engine and are visible in the host's process table, so a secret never goes t
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 import shlex
 import subprocess
@@ -94,22 +96,28 @@ class ModelHostCommandResult(BaseModel):
 
 class ProtocolHostCommandRunner(Protocol):
     def run(
-        self, argv: Sequence[str], timeout_seconds: float
+        self,
+        argv: Sequence[str],
+        timeout_seconds: float,
+        stdin: bytes | None = None,
     ) -> ModelHostCommandResult: ...
 
 
 class SubprocessHostCommandExecutor:
-    """Run an argv without a shell; a timeout is exit 124."""
+    """Run an argv without a shell; a timeout is exit 124. ``stdin`` bytes (a staged file) go to the command's stdin."""
 
     def run(
-        self, argv: Sequence[str], timeout_seconds: float
+        self,
+        argv: Sequence[str],
+        timeout_seconds: float,
+        stdin: bytes | None = None,
     ) -> ModelHostCommandResult:
         try:
             done = subprocess.run(
                 list(argv),
-                stdin=subprocess.DEVNULL,
+                input=stdin,
+                stdin=None if stdin is not None else subprocess.DEVNULL,
                 capture_output=True,
-                text=True,
                 timeout=timeout_seconds,
                 check=False,
             )
@@ -120,7 +128,9 @@ class SubprocessHostCommandExecutor:
                 exit_code=HOST_COMMAND_UNAVAILABLE_EXIT, stderr=str(exc)
             )
         return ModelHostCommandResult(
-            exit_code=done.returncode, stdout=done.stdout, stderr=done.stderr
+            exit_code=done.returncode,
+            stdout=done.stdout.decode("utf-8", errors="replace"),
+            stderr=done.stderr.decode("utf-8", errors="replace"),
         )
 
 
@@ -145,9 +155,24 @@ def pool_python_sh(pool: ModelEngineLoginPool) -> str:
 #: A literal path (a registry root, the marker directory, the run root) written into a host script unquoted.
 _LITERAL_PATH = re.compile(r"[A-Za-z0-9_./-]+")
 
+#: A path under the registry root, written unquoted: it starts with a path character, never a slash, and has no ``..`` hop past the root's parent.
+_RELATIVE_PATH = re.compile(r"(?:\.\./)?[A-Za-z0-9_][A-Za-z0-9_./-]*")
+
 #: The runner script's exit for a host that holds no registry root, and for run directories that could not be made.
 NO_REGISTRY_ROOT_EXIT = 96
 RUN_DIRS_REFUSED_EXIT = 70
+
+#: A file name inside the context directory: one path component, no separator, no leading dot or dash.
+_STAGED_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")
+
+#: The runner's credential screen over the launching host's runtime config (``RUNTIME_CONFIG_SECRET_RE``).
+RUNTIME_CONFIG_SECRET = re.compile(
+    r"password|passwd|secret|token|api[_-]?key|sasl_", re.IGNORECASE
+)
+#: The file mode ``put_file`` leaves (``mktemp`` makes the file 0600); only another mode adds a ``chmod``.
+STAGED_DEFAULT_MODE = 0o600
+SNAPSHOT_PRINTED = "LEDGER-SNAPSHOT "
+RUNTIME_CONFIG_PRINTED = ("RUNTIME-CONFIG installed ", "RUNTIME-CONFIG present ")
 
 #: The ledger outbox file under the run's context directory, read after the engine ends.
 OUTBOX_FILE = "ledger-outbox.rows"
@@ -208,8 +233,29 @@ class SshLaneHostTransport:
         registry_root_candidates: Sequence[str] = (),
         registry_marker: str = "",
         guard_host_source: str = "",
+        ledger_write_via: str = "local",
+        runtime_config_text: str = "",
+        runtime_config_target: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
+        if ledger_write_via not in ("local", "bus"):
+            raise ValueError(
+                f"remote_lane_start.ledger_write_via {ledger_write_via!r}: local or bus"
+            )
+        hit = RUNTIME_CONFIG_SECRET.search(runtime_config_text)
+        if hit:
+            raise ValueError(
+                f"remote_lane_start.runtime_config_text carries credential-like text ({hit.group(0)!r}); refusing to ship it"
+            )
+        self._ledger_via = ledger_write_via
+        if runtime_config_target and not _RELATIVE_PATH.fullmatch(
+            runtime_config_target
+        ):
+            raise ValueError(
+                f"remote_lane_start.runtime_config_target {runtime_config_target!r}: a relative path of path characters"
+            )
+        self._runtime_config = runtime_config_text
+        self._runtime_config_target = runtime_config_target
         if not _PATH_PREFIX.fullmatch(path_prefix):
             raise ValueError(
                 f"remote_lane_start.host_path_prefix {path_prefix!r}: only path characters and $NAME references"
@@ -253,9 +299,16 @@ class SshLaneHostTransport:
         return [*self._ssh_argv, host.target or host.name, script]
 
     def _sh(
-        self, host: ModelLaneHostRef, script: str, timeout: float | None = None
+        self,
+        host: ModelLaneHostRef,
+        script: str,
+        timeout: float | None = None,
+        stdin: bytes | None = None,
     ) -> ModelHostCommandResult:
-        return self._runner.run(self._argv(host, script), timeout or self._timeout)
+        argv = self._argv(host, script)
+        if stdin is None:
+            return self._runner.run(argv, timeout or self._timeout)
+        return self._runner.run(argv, timeout or self._timeout, stdin=stdin)
 
     def prepare_worktree(
         self, request: ModelLanePrepareWorktreeRequest
@@ -492,15 +545,89 @@ class SshLaneHostTransport:
             or f"exit {result.exit_code}"
         )
 
+    def _context_dir(self, run_id: str) -> str:
+        return f"{self.run_dir(run_id)}.ctx"
+
     def stage_ledger_snapshot(
         self, request: ModelLaneStageInputRequest
     ) -> ModelLaneStagedInput:
-        return ModelLaneStagedInput(
-            staged=False, error=self._not_run("stage_ledger_snapshot")
+        """The runner's ``ledger_unpack_script``: unpack the snapshot into ``<run>.ctx/ledger``, read-only.
+
+        ``request.name`` is the live ledger file's name and ``request.content`` the base64 of the gzip tar the
+        runner's ``build_ledger_snapshot`` makes; the host receives the decoded bytes on stdin. On a host whose
+        ledger of record is the bus (``ledger_write_via`` bus) the live ledger file stays owner-writable.
+        """
+        if not _STAGED_NAME.fullmatch(request.name):
+            return ModelLaneStagedInput(
+                staged=False,
+                error=f"stage_ledger_snapshot: {request.name!r} is not a ledger file name",
+            )
+        try:
+            archive = base64.b64decode(request.content, validate=True)
+        except (binascii.Error, ValueError):
+            return ModelLaneStagedInput(
+                staged=False,
+                error="stage_ledger_snapshot: content is not base64 of the snapshot archive",
+            )
+        ctx = self._context_dir(request.run_id)
+        script = "\n".join(
+            [
+                f'C="{ctx}"',
+                'mkdir -p "$C/ledger" || exit 70',
+                'tar -xzf - -C "$C/ledger" || exit 70',
+                'chmod a-w "$C/ledger/"*.md "$C/ledger/archive/"*.md 2>/dev/null',
+                *(
+                    [f'chmod u+w "$C/ledger/{request.name}" || exit 70']
+                    if self._ledger_via == "bus"
+                    else []
+                ),
+                'echo "LEDGER-SNAPSHOT $C/ledger"',
+            ]
         )
+        result = self._sh(request.host, script, request.timeout_seconds, stdin=archive)
+        printed = next(
+            (
+                line.strip()[len(SNAPSHOT_PRINTED) :]
+                for line in result.stdout.splitlines()
+                if line.startswith(SNAPSHOT_PRINTED)
+            ),
+            None,
+        )
+        if result.exit_code == 0 and printed:
+            return ModelLaneStagedInput(staged=True, path=printed)
+        return ModelLaneStagedInput(staged=False, error=self._failure(result))
 
     def stage_file(self, request: ModelLaneStageInputRequest) -> ModelLaneStagedInput:
-        return ModelLaneStagedInput(staged=False, error=self._not_run("stage_file"))
+        """The runner's ``put_file``: write ``request.content`` to ``<run>.ctx/<name>`` through a temp file and a rename."""
+        if not _STAGED_NAME.fullmatch(request.name):
+            return ModelLaneStagedInput(
+                staged=False,
+                error=f"stage_file: {request.name!r} is not a plain file name",
+            )
+        target = f"{self._context_dir(request.run_id)}/{request.name}"
+        script = "\n".join(
+            [
+                "set -eu",
+                f'T=$(mktemp "{target}.XXXXXX")',
+                "trap 'rm -f -- \"$T\"' EXIT",
+                'cat > "$T"',
+                *(
+                    [f'chmod {request.mode:o} "$T"']
+                    if request.mode != STAGED_DEFAULT_MODE
+                    else []
+                ),
+                f'mv -f -- "$T" "{target}"',
+            ]
+        )
+        result = self._sh(
+            request.host,
+            script,
+            request.timeout_seconds,
+            stdin=request.content.encode("utf-8"),
+        )
+        if result.exit_code == 0:
+            return ModelLaneStagedInput(staged=True, path=target)
+        return ModelLaneStagedInput(staged=False, error=self._failure(result))
 
     def ship_plugin_trees(
         self, request: ModelLaneShipPluginTreesRequest
@@ -517,9 +644,54 @@ class SshLaneHostTransport:
     def write_runtime_config(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
-        return ModelLaneHostStepResult(
-            ok=False, error=self._not_run("write_runtime_config")
+        """The runner's ``runtime_config_script``: install the launching host's runtime config on a host that has none.
+
+        The config text is the transport's ``runtime_config_text`` and its place under the registry root the
+        ``runtime_config_target`` (the overlay's values; the text is screened for credential-like text); a host's own copy is never replaced. The printed ``RUNTIME-CONFIG installed|present <path>`` line comes
+        back as the ``runtime_config`` cell.
+        """
+        if not self._runtime_config or not self._runtime_config_target:
+            return ModelLaneHostStepResult(
+                ok=False, error=self._not_run("write_runtime_config")
+            )
+        if request.registry_root is None:
+            return ModelLaneHostStepResult(
+                ok=False, error="write_runtime_config: registry root not resolved"
+            )
+        if not _LITERAL_PATH.fullmatch(request.registry_root):
+            return ModelLaneHostStepResult(
+                ok=False,
+                error=f"write_runtime_config: registry root {request.registry_root!r}: only path characters",
+            )
+        target = f"{request.registry_root}/{self._runtime_config_target}"
+        script = "\n".join(
+            [
+                f"T={shlex.quote(target)}",
+                'if [ -f "$T" ]; then cat >/dev/null; echo "RUNTIME-CONFIG present $T"; exit 0; fi',
+                'mkdir -p "$(dirname "$T")" || exit 70',
+                'cat > "$T.tmp.$$" && mv "$T.tmp.$$" "$T" || exit 70',
+                'echo "RUNTIME-CONFIG installed $T"',
+            ]
         )
+        result = self._sh(
+            request.host,
+            script,
+            request.timeout_seconds,
+            stdin=self._runtime_config.encode("utf-8"),
+        )
+        printed = next(
+            (
+                line.strip()
+                for line in result.stdout.splitlines()
+                if line.startswith(RUNTIME_CONFIG_PRINTED)
+            ),
+            None,
+        )
+        if result.exit_code == 0 and printed:
+            return ModelLaneHostStepResult(
+                ok=True, cells=(("runtime_config", printed),)
+            )
+        return ModelLaneHostStepResult(ok=False, error=self._failure(result))
 
     def drain_guard_spool(
         self, request: ModelLaneHostStepRequest

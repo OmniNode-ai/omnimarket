@@ -42,7 +42,10 @@ class Recorder:
         self.argvs: list[list[str]] = []
 
     def run(
-        self, argv: Sequence[str], timeout_seconds: float
+        self,
+        argv: Sequence[str],
+        timeout_seconds: float,
+        stdin: bytes | None = None,
     ) -> ModelHostCommandResult:
         self.argvs.append(list(argv))
         return self.answer
