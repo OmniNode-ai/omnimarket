@@ -45,7 +45,6 @@ from __future__ import annotations
 import importlib
 import importlib.resources
 import logging
-import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -98,6 +97,10 @@ from omnimarket.handlers.routing.measured_correct_ceiling import (
     load_grounding_budget_by_task_class,
     measure_grounding_input_tokens,
 )
+from omnimarket.handlers.routing.paid_gate import (
+    ALLOW_PAID_ENV as _ALLOW_PAID_ENV,
+)
+from omnimarket.handlers.routing.paid_gate import paid_gate_closed_for
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
     resolve_routing_tiers_path,
@@ -329,6 +332,7 @@ _CLOUD_BLOCKED_POLICY = "blocked"
 # zero-cost local-execution tier exempt from the cloud-blocked routing policy.
 _LOCAL_TIERS = {"local"}
 
+
 # OMN-14225: paid escalation policy = ON by default, METERED + LOGGED (never
 # SILENT). Paid (metered, cost_per_1k_tokens > 0) tiers ARE allowed — the operator's
 # GLM subscription covers them — but every paid escalation is logged prominently
@@ -342,51 +346,6 @@ _LOCAL_TIERS = {"local"}
 # the single eligibility point ``_tier_allowed_by_contract``, consulted by both the
 # routing reducer (``delta``) and the bus-less escalation loop
 # (``next_eligible_tier``/``first_eligible_tier`` via ``_tier_can_route_task``).
-_ALLOW_PAID_ENV = "ONEX_DELEGATION_ALLOW_PAID"
-_ALLOW_PAID_FALSY = frozenset({"0", "false", "no", "off"})
-_PAID_COST_TYPES = frozenset({EnumTierCostType.METERED, EnumTierCostType.BUDGETED})
-
-
-def _paid_escalation_allowed() -> bool:
-    """Return whether paid (metered) escalation is permitted — True by default.
-
-    Paid is ON unless an operator explicitly opts OUT via a falsy
-    ``ONEX_DELEGATION_ALLOW_PAID`` (0/false/no/off). Read at call time (not import
-    time) so a test or an operator can toggle it per-process. "Never silent" is met
-    by the prominent paid-escalation log at the execution boundary, not by blocking.
-    """
-    # OMN-14225: the paid-escalation opt-out is an INTENTIONAL per-process operator
-    # toggle — read at call time (not import time) so an operator or a test can flip
-    # it per process, metered + logged at the execution boundary, never a silent
-    # config path. It is exempted from the delegation env-read scanner via the inline
-    # token below; a contract-config rewrite would defeat the per-process-toggle
-    # design this gate deliberately provides.
-    raw_opt_out = os.environ.get(_ALLOW_PAID_ENV, "")  # ONEX_FLAG_EXEMPT
-    return raw_opt_out.strip().lower() not in _ALLOW_PAID_FALSY
-
-
-def _tier_is_paid(tier: ModelRoutingTier) -> bool:
-    """Return whether a rung can bill for a call (OMN-18308).
-
-    Paid means the flat per-1k figure is above zero OR the typed cost model says
-    ``metered`` or ``budgeted``. The flat figure alone let a tier typed ``budgeted``
-    with a ``0.0`` flat figure pass as free under the opt-out.
-    """
-    if tier.cost_per_1k_tokens > 0:
-        return True
-    return tier.cost is not None and tier.cost.cost_type in _PAID_COST_TYPES
-
-
-def _paid_gate_closed_for(tier: ModelRoutingTier) -> bool:
-    """Return whether ``ONEX_DELEGATION_ALLOW_PAID`` opts out AND ``tier`` is paid.
-
-    The one place the opt-out is applied: the contract predicate, the exclusion
-    report and the caller-pin path all ask it (OMN-18308: the pin path skipped the
-    predicate, so a pin on a paid rung routed there under the opt-out).
-    """
-    return _tier_is_paid(tier) and not _paid_escalation_allowed()
-
-
 def _estimate_prompt_tokens(prompt: str) -> int:
     """Estimate token count from prompt character length (4 chars/token heuristic)."""
     return len(prompt) // 4
@@ -1275,7 +1234,7 @@ def _tier_allowed_by_contract(
     # ONEX_DELEGATION_ALLOW_PAID, in which case the ladder fails closed to the free
     # tiers. Applied first (independent of the contract entry) so the opt-out covers
     # every routing surface. Free tiers (local, cheap_frontier) are always eligible.
-    if _paid_gate_closed_for(tier):
+    if paid_gate_closed_for(tier):
         return False
 
     if entry is None:
@@ -2606,7 +2565,7 @@ def _tier_exclusion_reason(
     Returns ``None`` when the tier is allowed — the two functions are pinned to
     agree by :func:`build_routing_exclusion_report`'s own regression test.
     """
-    if _paid_gate_closed_for(tier):
+    if paid_gate_closed_for(tier):
         return EnumRoutingExclusionReason.TIER_PAID_GATE_CLOSED
     if entry is None:
         if tier.name not in _LOCAL_TIERS:
@@ -3182,7 +3141,7 @@ def delta(
             # OMN-18308: a pin outranks task-class tier policy but never the
             # no-paid opt-out; a pin on a paid rung falls through to the pinned
             # refusal below instead of routing to it.
-            if requested_backend_ref is not None and _paid_gate_closed_for(tier):
+            if requested_backend_ref is not None and paid_gate_closed_for(tier):
                 continue
 
             if requested_backend_ref is not None:

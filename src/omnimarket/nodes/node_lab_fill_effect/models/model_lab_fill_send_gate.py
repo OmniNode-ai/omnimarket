@@ -16,18 +16,10 @@ from importlib import resources
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-_FROZEN = ConfigDict(frozen=True, extra="forbid")
+from omnimarket.handlers.rules_lab_fill_closer import CLOSER_EXEMPT_KINDS, CLOSER_NODE
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
 
-# A lane of these kinds works on a pull request, or is the closer's own lane, so a merged implementation does not
-# stop it: pr-red, pr-stalled and pr-land lanes act on one named pull request; dod-verify IS the closing lane; diagnose
-# belongs to the fill itself.
-CLOSER_EXEMPT_KINDS: tuple[str, ...] = (
-    "pr-red",
-    "pr-stalled",
-    "pr-land",
-    "dod-verify",
-    "diagnose",
-)
+_FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
 def _load_fact_hosts() -> tuple[str, ...]:
@@ -42,7 +34,6 @@ def _load_fact_hosts() -> tuple[str, ...]:
 
 
 DEFAULT_FACT_HOSTS: tuple[str, ...] = _load_fact_hosts()
-CLOSER_NODE = "node_dod_closeout_sweep_compute"
 
 
 class EnumLabFillSendVerdict(StrEnum):
@@ -50,6 +41,8 @@ class EnumLabFillSendVerdict(StrEnum):
 
     SEND = "send"
     IMPLEMENTATION_MERGED = "implementation-merged"
+    # OMN-23376: a lane reported the ticket already built and its falsifiers passed; the closer has the evidence.
+    ALREADY_BUILT = "already-built"
     FACT_HOST_UNREACHABLE = "fact-host-unreachable"
 
 
@@ -65,6 +58,8 @@ class ModelLabFillSendGateRequest(BaseModel):
     host: str | None = None
     # Merged pull requests that name the ticket (repo#number), companion repositories already left out.
     merged_prs: tuple[str, ...] = ()
+    # The already-built reports the ledger holds (OMN-23376); a ticket with a passing one is the closer's.
+    built: tuple[ModelLabFillBuiltReport, ...] = ()
     exempt_kinds: tuple[str, ...] = CLOSER_EXEMPT_KINDS
     # Hosts whose facts the brief may cite; a brief naming one needs a host that reaches it.
     fact_hosts: tuple[str, ...] = DEFAULT_FACT_HOSTS
@@ -87,4 +82,7 @@ class ModelLabFillSendGateResult(BaseModel):
     # The node that owns a merged ticket's close-out; set only for implementation-merged.
     routed_to: str = ""
     merged_prs: tuple[str, ...] = ()
+    # The lane that reported an already-built ticket and what it ran (OMN-23376).
+    lane: str = ""
+    evidence: str = ""
     needs_hosts: tuple[str, ...] = ()
