@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import yaml
@@ -33,14 +34,16 @@ def declaration() -> ModelInstallDeclaration:
     )
 
 
-def _request(verdict: str | None) -> ModelInstallProofRequest:
+def _request(
+    verdict: Literal["yes", "no", "unread"] | None,
+) -> ModelInstallProofRequest:
     answers = (
         ()
         if verdict is None
         else (
             ModelInstallAncestry(rev=MERGE[:12], head=HEAD, verdict=verdict, why="x"),
         )
-    )  # type: ignore[arg-type]
+    )
     return ModelInstallProofRequest(
         repo="repo-a",
         head=HEAD,
@@ -61,7 +64,8 @@ def test_golden_installed_revision_that_contains_the_head_is_ok(
 
 @pytest.mark.parametrize("verdict", ["no", "unread", None])
 def test_error_chain_a_revision_that_does_not_contain_the_head_never_passes(
-    declaration: ModelInstallDeclaration, verdict: str | None
+    declaration: ModelInstallDeclaration,
+    verdict: Literal["yes", "no", "unread"] | None,
 ) -> None:
     result = HandlerInstallProof(lambda: declaration).handle(_request(verdict))
 
