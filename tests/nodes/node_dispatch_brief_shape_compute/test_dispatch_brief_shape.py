@@ -30,6 +30,8 @@ def readers(monkeypatch):
         line for line in text.splitlines() if not line.startswith(">")
     )
     module.premise_text = lambda text: text.split(module.RULES_BLOCK_HEAD)[0]
+    module.H_3A = "## 3a. Constraints"
+    module.without_ticket_text = lambda text: text
     module.split_parts = lambda _text: ({}, ())
     module.has_contract_step = lambda _text, _ticket: False
     module.lab_mint_problems = lambda text: (
