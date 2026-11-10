@@ -523,6 +523,7 @@ node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
 node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
 node_cross_cli_originator = "omnimarket.nodes.node_cross_cli_originator"
+node_cross_repo_order_gate_compute = "omnimarket.nodes.node_cross_repo_order_gate_compute"
 node_daily_line_compute = "omnimarket.nodes.node_daily_line_compute"
 node_daily_line_effect = "omnimarket.nodes.node_daily_line_effect"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep"
@@ -614,6 +615,7 @@ node_dirty_canonical_sweep = "omnimarket.nodes.node_dirty_canonical_sweep"
 node_dispatch_brief_shape_compute = "omnimarket.nodes.node_dispatch_brief_shape_compute"
 node_dispatch_outcome_bridge_effect = "omnimarket.nodes.node_dispatch_outcome_bridge_effect"
 node_dispatch_queue_drainer = "omnimarket.nodes.node_dispatch_queue_drainer"
+node_dispatch_reading_compute = "omnimarket.nodes.node_dispatch_reading_compute"
 node_dispatch_repo_grant_compute = "omnimarket.nodes.node_dispatch_repo_grant_compute"
 node_dispatch_watchdog_orchestrator = "omnimarket.nodes.node_dispatch_watchdog_orchestrator"
 node_dispatch_worker = "omnimarket.nodes.node_dispatch_worker"
@@ -678,6 +680,8 @@ node_floor_projection_read_effect = "omnimarket.nodes.node_floor_projection_read
 node_floor_simple_compute = "omnimarket.nodes.node_floor_simple_compute"
 node_floor_simple_effect = "omnimarket.nodes.node_floor_simple_effect"
 node_floor_simple_scheduled_effect = "omnimarket.nodes.node_floor_simple_scheduled_effect"
+node_floor_task_ticket_effect = "omnimarket.nodes.node_floor_task_ticket_effect"
+node_floor_task_ticket_payload_compute = "omnimarket.nodes.node_floor_task_ticket_payload_compute"
 node_flow_measures_compute = "omnimarket.nodes.node_flow_measures_compute"
 node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
 node_friction_rollup_compute = "omnimarket.nodes.node_friction_rollup_compute"
@@ -1002,6 +1006,7 @@ node_pr_landing_ledger_facts_compute = "omnimarket.nodes.node_pr_landing_ledger_
 node_pr_landing_orchestrator = "omnimarket.nodes.node_pr_landing_orchestrator"
 node_pr_landing_order_waits_compute = "omnimarket.nodes.node_pr_landing_order_waits_compute"
 node_pr_landing_reducer = "omnimarket.nodes.node_pr_landing_reducer"
+node_pr_landing_snapshot_effect = "omnimarket.nodes.node_pr_landing_snapshot_effect"
 node_pr_landing_strict_plan_compute = "omnimarket.nodes.node_pr_landing_strict_plan_compute"
 node_pr_landing_tick_compute = "omnimarket.nodes.node_pr_landing_tick_compute"
 node_pr_landing_tick_observe_compute = "omnimarket.nodes.node_pr_landing_tick_observe_compute"
@@ -1262,6 +1267,7 @@ node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_serv
 node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_compute"
 node_standup_retrospective_compute = "omnimarket.nodes.node_standup_retrospective_compute"
 node_start_admission_effect = "omnimarket.nodes.node_start_admission_effect"
+node_start_path_drill_effect = "omnimarket.nodes.node_start_path_drill_effect"
 node_state_persist_effect = "omnimarket.nodes.node_state_persist_effect"
 node_stop_drill_effect = "omnimarket.nodes.node_stop_drill_effect"
 node_stop_escalation_effect = "omnimarket.nodes.node_stop_escalation_effect"
@@ -1364,6 +1370,7 @@ node_work_progress_alert_effect = "omnimarket.nodes.node_work_progress_alert_eff
 node_work_progress_compute = "omnimarket.nodes.node_work_progress_compute"
 node_work_state_projection_compute = "omnimarket.nodes.node_work_state_projection_compute"
 node_work_state_projection_effect = "omnimarket.nodes.node_work_state_projection_effect"
+node_work_state_projection_scheduled_effect = "omnimarket.nodes.node_work_state_projection_scheduled_effect"
 node_worker_memory_admission_compute = "omnimarket.nodes.node_worker_memory_admission_compute"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
 node_workflow_baseline_compare_compute = "omnimarket.nodes.node_workflow_baseline_compare_compute"
@@ -1549,15 +1556,15 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261109210547-8b4382a1606d" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261110042858-440ae9e031dc" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-# OMN-22472: core and infra move together; this core tag is the one infra dev-20261109210547-8b4382a1606d locks and carries omnibase_core#2258.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261108014124-2fe30fd9dc47" }
+# OMN-22472: core and infra move together; this core tag is the one infra dev-20261110042858-440ae9e031dc locks (omnibase_infra#5815) and carries the ticket validator (omnibase_core#2281) the floor-task ticket nodes import.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261109065232-cd128b790ec6" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108015921-ace601e12033" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261106074413-b4fa53dcb119" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
@@ -2045,5 +2052,6 @@ markers = [
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
     "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
     "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus (needs FLOOR_FILL_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "closing_row_parity: the remote lane's closing row (needs and report cells) joins the close node, the row writer and the stopped-lane compute the same on the in-memory bus and on a Redpanda bus (needs CLOSING_ROW_PARITY_BOOTSTRAP for the Redpanda leg)",
     "work_state_parity: the work-state projection projects the same items on the in-memory bus and on a Redpanda bus (needs WORK_STATE_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]

@@ -26,6 +26,10 @@ modes:
   replay: the same comparison over recorded tick snapshots
   act: perform the decision's actions through the GitHub landing effect; refused unless the overlay enables it
 steps:
+  - id: snapshot
+    node: node_pr_landing_snapshot_effect
+    command_topic: onex.cmd.omnimarket.pr-landing-snapshot-requested.v1
+    role: the tick's facts from the declared facts source, each PR's node id and the head's failed run ids filled from the declared write-facts source, and every tick's filled facts recorded on the bus (OMN-23409); the script's Snapshot functions that read the live state, the process table and the worker result files stay to_build rows of the inventory, ported into this node's facts source
   - id: ledger_facts
     node: node_pr_landing_ledger_facts_compute
     command_topic: onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1
@@ -92,9 +96,6 @@ steps:
     command_topic: onex.cmd.omnimarket.pr-landing-tick-compare-requested.v1
     role: runs the chain for one tick and emits the compared or failed event
 to_build:
-  - id: snapshot
-    node: node_pr_landing_snapshot_effect
-    what: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts, and the per-PR write facts the writer needs (GraphQL node id, the head's failed run ids, merge-queue base)
   - id: worker_lease
     node: node_pr_landing_worker_lease_effect
     what: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr

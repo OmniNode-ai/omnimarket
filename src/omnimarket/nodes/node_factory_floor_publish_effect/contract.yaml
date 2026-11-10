@@ -240,7 +240,9 @@ runtime:
     required: false
     timeout_seconds: 90
     module: omnimarket.nodes.node_host_reading_effect.runtime_host_reading
-    args: ["join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}"]
+    # The run's own bound sits inside the step's: a step killed at timeout_seconds cannot close the chains it started, and the floor
+    # reads each start with no terminal as start_without_terminal. A host still open at --deadline-seconds ends its chains typed.
+    args: ["join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}", "--deadline-seconds", "60"]
   # OMN-23086: join J5 (piece 5 to piece 6). Each piece 5 golden reading the journal does not show piece 6 answering gets one
   # ledger append under the identity the secret store resolves, read back from the projection, and piece 6's chain on the
   # journal under the reading's correlation id; a reading already answered appends nothing. It joins the concurrent group, so

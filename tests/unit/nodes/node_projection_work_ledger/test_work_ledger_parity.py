@@ -21,7 +21,7 @@ from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
 )
-from omnimarket.nodes.node_projection_work_ledger import parity
+from omnimarket.nodes.node_projection_work_ledger import parity, parity_unsequenced
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_parity_report import (
     EnumParityMismatchKind,
 )
@@ -232,7 +232,7 @@ class _ParityConnection:
             parity._SELECT_ROWS: "rows",
             parity._SELECT_STATE: "state",
             parity._SELECT_LATER_ROWS: "later_rows",
-            parity._SELECT_SOURCES: "sources",
+            parity_unsequenced.SELECT_SOURCES: "sources",
             parity._SELECT_RAW_ROWS: "raw_rows",
         }[query]
         if stage == self.fail_at:
@@ -376,6 +376,6 @@ def test_parity_database_reads_state_live(
         parity._SELECT_STATE,
         parity._SELECT_LATER_ROWS,
         parity._SELECT_RAW_ROWS,
-        parity._SELECT_SOURCES,
+        parity_unsequenced.SELECT_SOURCES,
     ]
     assert connection.closed
