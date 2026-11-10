@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_validator_estate_reading_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default.
+#
+#   repos_root_env   the variable holding the directory of the repository clones
+#   core_repo        the repository that holds the generic base class
+#   repos            each repository read: its ref, where validator classes live, its pre-commit config
+#   generic_format   what makes a validator canonical and generic (see overlay.py)
+#   hooks            which pre-commit blocks count as the repositories' own validators
+#   plan             the validators plan: a task is a heading line the task_pattern matches, its tickets are the ones its bold text names
+#                    plus the minted_pattern entries; a ticket counts merged when a commit on a merge_repos ref cites it
+#   schedule_hosts   hosts that install the daily systemd user timer; unit_environment is the environment the unit carries
+#   publish          the row's lane and actor, and how long a row stays fresh on the floor
+repos_root_env: EXAMPLE_CLONES_ROOT
+core_repo: example_core
+repos:
+  - {name: example_core, ref: origin/main, source_roots: [src/example_core], hook_config: .pre-commit-config.yaml}
+  - {name: example_app, ref: origin/main, source_roots: [src/example_app], hook_config: .pre-commit-config.yaml}
+generic_format:
+  base_class: ExampleValidatorBase
+  base_module_path: src/example_core/validation/validator_base.py
+  contract_subdir: contracts
+  contract_suffix: .validation.yaml
+  rules_key: rules
+  nested_key: validation
+  literal_table_min_strings: 3
+  literal_pattern_calls: [compile]
+  bus_trace_names: [ExampleTraceEmit]
+  bespoke_suffixes: [Validator, Checker]
+hooks:
+  local_repo_value: local
+  own_repo_fragments: [example-org]
+  pytest_marker: pytest
+plan:
+  repo: example_kb
+  root_env: EXAMPLE_KB_ROOT
+  ref: origin/main
+  path: plans/example-validators-plan.md
+  task_pattern: '^(?:- )?\*\*(T-?[A-Z]?\d(?:[\w.]*\w)?)'
+  ticket_pattern: 'EX-\d+'
+  minted_pattern: '(T\d+\.\d+[a-z]?) ((?:EX-\d+)(?: (?:and|to) EX-\d+)*)'
+  exclude_tickets: [EX-1]
+  merge_repos: [example_core, example_app]
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: validator-estate
+  actor: node:node_validator_estate_reading_effect
+  publish_max_age_seconds: 129600
+git_timeout_seconds: 120
+injected_fault: The core repository cannot be read, so the row carries no numbers
+schedule_hosts:
+  - {name: host-a, scheduler: systemd-user, venv: example-venv}
+unit_environment:
+  EXAMPLE_CLONES_ROOT: /var/lib/example/clones
+  EXAMPLE_KB_ROOT: /var/lib/example/kb
+  EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
+  EXAMPLE_HOST_NAME: host-a
