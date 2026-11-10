@@ -26,6 +26,8 @@ MEASURED_FILES: tuple[str, ...] = (
     "tests/nodes/node_c32_auth_boundary_probe_effect/test_c32_probe_node.py",
     "tests/nodes/node_c32_auth_boundary_probe_effect/test_probe_cases.py",
     "tests/nodes/node_context_additive_latency_compute/test_additive_latency.py",
+    "tests/nodes/node_delegated_code_edit_orchestrator/test_join_delegation_step_seam.py",
+    "tests/nodes/node_delegation_code_budget_compute/test_golden_chain_code_budget.py",
     "tests/nodes/node_dod_closeout_sweep_compute/test_closer_rank_last_examined_dod_closeout_sweep_compute.py",
     "tests/nodes/node_factory_floor_effect/test_placement_tolerant_reader.py",
     "tests/nodes/node_floor_compare_effect/test_repository_names.py",
@@ -41,9 +43,11 @@ MEASURED_FILES: tuple[str, ...] = (
     "tests/nodes/node_host_installer_registry_units/test_alarm_dispatch_command.py",
     "tests/nodes/node_host_installer_registry_units/test_landing_snapshot_unit.py",
     "tests/nodes/node_host_reading_effect/test_host_reading_overlay_venv.py",
+    "tests/nodes/node_join_refusal_effect/test_join_j6_journal_seam.py",
     "tests/nodes/node_join_refusal_effect/test_join_j7_seam.py",
     "tests/nodes/node_lab_fill_selection_compute/test_lab_fill_already_built.py",
     "tests/nodes/node_lab_idle_cost_compute/test_lab_idle_cost_contract.py",
+    "tests/nodes/node_lane_toolchain_provision_effect/test_crush_declared.py",
     "tests/nodes/node_linear_snapshot_effect/test_ancestors.py",
     "tests/nodes/node_linear_snapshot_effect/test_parent_and_project_id.py",
     "tests/nodes/node_linear_ticket_write_effect/test_join_ticket_runner_seam.py",
@@ -51,6 +55,8 @@ MEASURED_FILES: tuple[str, ...] = (
     "tests/nodes/node_pr_landing_tick_orchestrator/test_tick_facts_topic_provisioned.py",
     "tests/nodes/node_pr_landing_tick_orchestrator/test_tick_topic_reader.py",
     "tests/nodes/node_reading_writer_effect/test_append_command_stderr_kept.py",
+    "tests/nodes/node_reading_writer_effect/test_join_read_budget_to_floor_omn23519.py",
+    "tests/nodes/node_reading_writer_effect/test_read_budget_omn23119.py",
     "tests/nodes/node_reading_writer_effect/test_reading_units_overlay_venv.py",
     "tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py",
     "tests/nodes/node_remote_lane_close_compute/test_join_needs_fill_reader.py",
@@ -86,6 +92,9 @@ MEASURED_FILES: tuple[str, ...] = (
     "tests/unit/nodes/node_delegate_skill_orchestrator/test_customer_retry_wait_omn23176.py",
     "tests/unit/nodes/node_lab_check_run_effect/test_j7_caller_run.py",
     "tests/unit/nodes/node_typed_decision_effect/test_typed_decision_event_omn23334.py",
+    "tests/unit/nodes/node_work_ledger_query_effect/test_inmemory_rows_matching_exact_kinds.py",
+    "tests/unit/nodes/node_work_ledger_query_effect/test_parity_read_bounded_on_todays_ledger.py",
+    "tests/unit/nodes/node_work_ledger_query_effect/test_rows_read_narrowed_in_store.py",
     "tests/unit/test_ci_duration_record_supplement_omn23527.py",
 )
 
@@ -111,5 +120,5 @@ def test_omn23526_supplement_records_each_measured_file(test_file: str) -> None:
 def test_omn23526_supplement_has_provenance_entry() -> None:
     provenance = json.loads(PROVENANCE.read_text(encoding="utf-8"))
     entry = provenance["supplement_omn23526"]
-    assert entry["files_added"] == 53
+    assert entry["files_added"] == 28
     assert entry["ticket"] == "OMN-23526"

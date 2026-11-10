@@ -219,9 +219,9 @@
   "supplement_omn23526": {
     "ticket": "OMN-23526",
     "recorded_on": "2026-11-10",
-    "files_added": 53,
-    "basis": "Each file the record did not hold on dev 0d92c2da3b09 plus this change's own test file, summed from its measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. The ticket counted 57 absent files on dev a11e4676e82b; other changes recorded 14 of them before this merge and 10 newer files were absent, so the list in the test is the union.",
-    "runner": "lab host h053, lane sweepi37-1630, shared omnimarket venv; the next CI refresh replaces these entries",
-    "base_sha": "0d92c2da3b09eb8140836d586f800759f4c53457"
+    "files_added": 28,
+    "basis": "Each file the record did not hold on dev fa63c5f86494 plus this change's own test file: 19 summed from their measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly, and 9 newer files measured the same way on dev fa63c5f86494 and added with the record's own file_durations sum and two-decimal rounding; existing entries left as they were. The ticket counted 57 absent files on dev a11e4676e82b; other changes recorded the rest before this merge, so the list in the test is the union.",
+    "runner": "lab hosts h053 (19 files) and h051 (9 files), lanes sweepi37-1630 and dur5735-1930; the next CI refresh replaces these entries",
+    "base_sha": "fa63c5f8649431e53ee68b0337bea91bf9a59f44"
   }
 }
