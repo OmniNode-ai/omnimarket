@@ -136,6 +136,10 @@ def _schedule(args: argparse.Namespace) -> int:
         return 0
     result: ModelRetentionScheduleResult
     if args.verb == "install":
+        # A timer whose pass would refuse its declarations on every tick is never enabled.
+        declared = [row for row in overlay.hosts if row.name == args.host]
+        if declared:
+            validate_declarations(declared[0], load_bounds())
         result = scheduler.install(
             args.host,
             python=args.python,

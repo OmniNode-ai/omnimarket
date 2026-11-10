@@ -1,0 +1,89 @@
+schema_version: 1.0.0
+ticket_id: OMN-23425
+title: 'Lane start nodes refuse unfillable templates at load, carry the host PATH prefix, pin the fill seam (child of OMN-22848)'
+summary: 'Lane start nodes refuse unfillable templates at load and carry the host PATH prefix; the fill to entry seam is pinned by a test.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-child-lane-start-hardening
+  statement: The lane start entry refuses a settings value it cannot fill before any CLAIM, puts the engine on the host PATH, and pins its seam with the fill orchestrator.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a placeholder in engine_argv or claim_text that str.format cannot fill from the request fields is refused when the settings load, naming remote_lane_start.engine_argv or remote_lane_start.claim_text, and the entry exits 64 with no CLAIM row -- falsifier: `-k an_unfillable_placeholder`.'
+  - id: AC2
+    statement: 'AC2: the overlay key remote_lane_start.host_path_prefix is required, an empty string adds nothing, and the ssh transport exports the prefix before the prepare and start scripts and refuses a prefix with characters beyond path characters and $NAME references -- falsifier: `-k ssh_transport_path_prefix`.'
+  - id: AC3
+    statement: 'AC3: the seam between the floor fill orchestrator and the lane start entry is pinned: every flag the fill passes is accepted by the entry, the fill fills exactly four placeholders, and the six flags the fill does not supply are the pinned gap, and the CLAIM and TERMINAL carry the worktree cell the ledger grammar requires -- falsifier: `-k "fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane"`.'
+  - id: AC4
+    statement: 'AC4: the lane start draws its engine login through the host token pool node (resolve, in draw order, skipping limited labels) as the runner does, exports it only inside the engine shell, and records the label drawn (never a token value) on the CLAIM as login=<label> -- falsifier: the file test_remote_lane_start_pool_login.py, red when a limited label is first in the pool and the draw does not skip it.'
+  - id: AC5
+    statement: 'AC5: two of the ssh transport provisioning steps, resolve_registry_root and prepare_run_dirs, send the host the recorded runner script lines and print the runner lines, and the other 13 still answer not run by the ssh transport -- falsifier: uv run pytest on test_remote_lane_start_provisioning_parity.py and test_remote_lane_start_provisioning_ops.py in node_remote_lane_start_effect/tests, red when the transport text or the recorded runner text changes.'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of both lane start nodes.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder or ssh_transport_path_prefix or fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane'
+- kind: tests
+  description: The pool login tests, run against the real pool node under a real shell.
+  command: uv run pytest tests/nodes/node_remote_lane_start_orchestrator/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
+- kind: tests
+  description: The provisioning parity tests of the two moved steps against the recorded runner lines.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_ops.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-OMN-23425-ac1
+  description: An unfillable engine_argv or claim_text is refused at load naming its key and the entry writes no CLAIM row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder'
+    cwd: .
+- id: dod-OMN-23425-ac2
+  description: The ssh transport puts the engine on the host PATH from the overlay prefix and refuses a prefix that could run a command.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'ssh_transport_path_prefix'
+    cwd: .
+- id: dod-OMN-23425-ac3
+  description: The fill to entry seam test fails when either side changes shape.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane'
+    cwd: .
+- id: dod-OMN-23425-ac4
+  description: The draw skips a limited label first in the pool, the engine runs on the drawn token with none on any command line, and the CLAIM carries login=<label>.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_start_orchestrator/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-OMN-23425-ac5
+  description: The registry root and run directory steps of the ssh transport match the recorded runner script lines.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_ops.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-OMN-23425-integration-proof
+  description: One real lane was started on a lab host by the start nodes (the entry run through onex run-node) and its CLAIM row, which carries the node's claim text, reads back from the work ledger.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query rows --kind CLAIM --term 'via node_remote_lane_start_orchestrator' --since 2026-11-10T03:00:00Z | grep -q 'via node_remote_lane_start_orchestrator'
+    cwd: .

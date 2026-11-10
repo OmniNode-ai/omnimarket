@@ -209,11 +209,41 @@
     "runner": "lab host h201, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "06cf69041a369e222fab7c76b37e34919d947d5b"
   },
+  "supplement_omn23514": {
+    "ticket": "OMN-23514",
+    "recorded_on": "2026-11-10",
+    "files_added": 5,
+    "basis": "The five test files the landing cutover change adds, each summed from its measured pytest setup, call and teardown seconds (--durations=0 --durations-min=0, one file per run); existing entries left as they were.",
+    "runner": "lab host h051, lane p9wire6-1650; the next CI refresh replaces these entries",
+    "base_sha": "f0ada1526e0703f46e818a1bef5db612ee59b8aa"
+  },
+  "supplement_omn22848_lab_fill": {
+    "recorded_on": "2026-11-10",
+    "files_added": 55,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "af97344b3d5f6103d62193a16df7e542b17c85a6"
+  },
   "supplement_omn22868_lab_fill": {
     "recorded_on": "2026-11-09",
     "files_added": 58,
     "basis": "files the record did not hold, each the sum of its measured pytest per-test durations from one serial run of those files with -m 'not kafka'; existing entries left as they were",
     "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "72f7015b7109e0d0b41c5b6e835426480b775934"
+  },
+  "supplement_omn_prepush3_login_relative_paths": {
+    "recorded_on": "2026-11-10",
+    "files_added": 20,
+    "basis": "The test files this branch adds that the record lacked, each summed from its measured pytest setup, call and teardown seconds (--durations=0 --durations-min=0, one file per run); existing entries left as they were.",
+    "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "e5a71421bf83192402c1740be9bacd62b3b8da47"
+  },
+  "supplement_omn23526": {
+    "ticket": "OMN-23526",
+    "recorded_on": "2026-11-10",
+    "files_added": 53,
+    "basis": "Each file the record did not hold on dev 0d92c2da3b09 plus this change's own test file, summed from its measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. The ticket counted 57 absent files on dev a11e4676e82b; other changes recorded 14 of them before this merge and 10 newer files were absent, so the list in the test is the union.",
+    "runner": "lab host h053, lane sweepi37-1630, shared omnimarket venv; the next CI refresh replaces these entries",
+    "base_sha": "0d92c2da3b09eb8140836d586f800759f4c53457"
   }
 }
