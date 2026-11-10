@@ -78,6 +78,8 @@ def test_golden_stopped_lane_is_listed_from_a_record_with_integrating_items() ->
     result = run(request(floor_record=text))
     assert result.verdict == "READ"
     assert [s.lane for s in result.stopped] == ["lane-a"]
+    [line] = result.lines
+    assert dict(line.not_ready_pairs())["T1"] == "integrating"
 
 
 def test_golden_every_state_the_publisher_declares_reads() -> None:
