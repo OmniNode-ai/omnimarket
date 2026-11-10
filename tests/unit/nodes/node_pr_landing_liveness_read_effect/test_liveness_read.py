@@ -290,3 +290,30 @@ def test_the_command_reader_names_an_unset_checkout_variable(
     reader._environ = {"LIVENESS_REGISTRY": str(registry)}
     with pytest.raises(LivenessReadError, match="LIVENESS_INTERNAL"):
         reader.read(REPO, head)
+
+
+def test_the_command_reader_says_the_read_was_not_made_when_the_scan_left_the_repository_out(
+    checkout: tuple[Path, Path, str],
+) -> None:
+    """A partial scan that skipped this PR's repository is not a clean read (named break: drop the not-scanned check)."""
+    registry, internal, head = checkout
+    script = _script(
+        "import sys;"
+        "print('repository_not_scanned: omnimarket: the declaration covers this repository and the run did not scan it');"
+        "sys.exit(1)"
+    )
+    with pytest.raises(LivenessReadError, match="did not scan"):
+        _reader(registry, internal, script).read(REPO, head)
+
+
+def test_the_command_reader_reads_on_when_only_another_repository_was_not_scanned(
+    checkout: tuple[Path, Path, str],
+) -> None:
+    registry, internal, head = checkout
+    script = _script(
+        "import sys;"
+        "print('repository_not_scanned: omnidash: the declaration covers this repository and the run did not scan it');"
+        f"print('undeclared_source: omnimarket/{TIMER}: installer code with no entry');"
+        "sys.exit(1)"
+    )
+    assert _reader(registry, internal, script).read(REPO, head) == (TIMER,)

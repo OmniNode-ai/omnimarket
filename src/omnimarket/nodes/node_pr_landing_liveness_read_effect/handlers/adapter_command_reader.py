@@ -28,6 +28,7 @@ from omnimarket.nodes.node_pr_landing_liveness_read_effect.overlay import (
 )
 
 UNDECLARED_PREFIX = "undeclared_source: "
+NOT_SCANNED_PREFIX = "repository_not_scanned: "
 # Exit codes of the completeness command: 0 agree, 1 findings, 2 the check could not run.
 _READ_EXITS = (0, 1)
 
@@ -116,6 +117,14 @@ class CommandLivenessReader:
             )
         found: set[str] = set()
         for line in done.stdout.splitlines():
+            if (
+                line.startswith(NOT_SCANNED_PREFIX)
+                and line[len(NOT_SCANNED_PREFIX) :].split(": ", 1)[0] == name
+            ):
+                # a scan that left this repository out found nothing in it: the read was not made
+                raise LivenessReadError(
+                    f"the liveness reader did not scan {repository}"
+                )
             if not line.startswith(UNDECLARED_PREFIX):
                 continue
             subject = line[len(UNDECLARED_PREFIX) :].split(": ", 1)[0]
@@ -125,4 +134,4 @@ class CommandLivenessReader:
         return tuple(sorted(found))
 
 
-__all__ = ["UNDECLARED_PREFIX", "CommandLivenessReader"]
+__all__ = ["NOT_SCANNED_PREFIX", "UNDECLARED_PREFIX", "CommandLivenessReader"]

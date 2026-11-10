@@ -5,7 +5,14 @@
 reader:
   # command: run the register completeness reader; inmemory: a read recorded in the test.
   backend: command
-  argv: [onex-automation-liveness-check]
+  # The register and its sources declarations come from the overlays repository: the private checkout no
+  # longer holds them, and the reader with neither flag exits 2 (read not made).
+  argv:
+    - onex-automation-liveness-check
+    - --overlay
+    - /example/overlays/automation_liveness/overlay.yaml
+    - --sources
+    - /example/overlays/automation_liveness_sources/overlay.yaml
 checkout:
   # Environment variables naming the private checkout that holds the register, and the directory
   # holding a checkout of each repository at the PR head.

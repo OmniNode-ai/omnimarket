@@ -82,6 +82,10 @@ from tests.nodes.node_pr_landing_snapshot_effect.test_join_landing_snapshot_tick
 pytestmark = [pytest.mark.unit]
 
 TIMER = "deploy/systemd/onex-new.timer"
+# The real-broker leg's record topic: its own, never the shared RECORD_TOPIC the tick unit reads, so a
+# reader without the liveness field never meets these records. It must be provisioned on the lane and
+# granted to the lab principal before this leg can publish (a refused publish fails the leg loudly).
+JOIN_RECORD_TOPIC = "onex.evt.omnimarket.pr-landing-liveness-join-recorded.v1"
 EXAMPLE = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/overlay.example.yaml"
@@ -175,7 +179,7 @@ def test_join_the_bus_payload_carries_the_fact_field_for_field() -> None:
     assert set(first) == set(ModelLandingLivenessFacts.model_fields)
 
 
-def test_join_control_a_renamed_fact_field_is_refused_by_the_reader() -> None:
+def test_join_control_a_renamed_fact_field_is_skipped_by_the_reader() -> None:
     """A producer that renames undeclared_sources, or a decision that no longer knows it, breaks the seam."""
     _, raw, topic = _over_inmemory_bus()
     renamed = []
@@ -184,8 +188,14 @@ def test_join_control_a_renamed_fact_field_is_refused_by_the_reader() -> None:
         liveness = record["facts"]["prs"][0]["liveness"]
         liveness["undeclared_files"] = liveness.pop("undeclared_sources")
         renamed.append(json.dumps(record))
-    with pytest.raises(ValueError, match="undeclared"):
-        _read_by_the_tick_orchestrator(renamed, topic).snapshots()
+    source = _read_by_the_tick_orchestrator(renamed, topic)
+    # the reader skips the renamed shape with a typed row naming the field; no tick reaches the decision
+    assert source.snapshots() == ()
+    assert all(
+        "liveness.undeclared_files: extra_forbidden" in row.detail
+        for row in source.skipped()
+    )
+    assert len(source.skipped()) == len(TICKS)
 
 
 def test_join_control_a_fact_dropped_between_the_steps_lets_the_head_merge() -> None:
@@ -210,14 +220,16 @@ def test_join_redpanda_the_decision_holds_the_head_the_liveness_read_named() -> 
             f"Kafka not reachable: {LANE_ENV} and {ROOT_ENV} name no declared bus lane"
         )
     run = uuid.uuid4().hex
+    # its own topic, declared in both overlays: liveness-bearing records never reach the shared record
+    # topic, where a reader without the field would meet them (OMN-23529)
     recorded = _record_ticks(
         LaneBusSnapshotPublisher(lane, Path(root)),
-        RECORD_TOPIC,
+        JOIN_RECORD_TOPIC,
         facts=_facts_source(name=f"inmemory-facts-liveness-join-{run}"),
     )
     source = build_snapshot_source(
         _tick_overlay(
-            RECORD_TOPIC,
+            JOIN_RECORD_TOPIC,
             lane,
             root,
             group=f"{JOIN_GROUP_PREFIX}{run}",
