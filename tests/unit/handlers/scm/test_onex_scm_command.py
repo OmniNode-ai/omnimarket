@@ -262,6 +262,14 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
         "truncated": False,
         "text": "done",
     },
+    "job_log_fill": lambda r: {
+        "operation": "job_log_fill",
+        "repo": r.repo,
+        "job_id": r.job_id,
+        "total_bytes": 4,
+        "truncated": False,
+        "text": "done",
+    },
     "artifacts": lambda r: {
         "operation": "artifacts",
         "repo": r.repo,
@@ -463,6 +471,7 @@ _READ_ARGS: dict[str, list[str]] = {
     "run-list": [REPO, "--branch", "dev", "--limit", "5"],
     "run-view": [REPO, "--run-id", "11"],
     "job-log": [REPO, "--job-id", "12", "--tail-bytes", "1024"],
+    "job-log-fill": [REPO, "--job-id", "12", "--tail-bytes", "1024"],
     "run-download": [REPO, "--run-id", "11"],
     "release-list": [REPO],
     "pr-heads": [REPO, "--source", "bus"],
@@ -651,7 +660,7 @@ def test_run_view_returns_step_timestamps_without_an_additional_read(
     transport.assert_drained()
     assert transport.sent == [get(path)]
     declared = sorted(contract_operations(EnumScmNode.GATEWAY))
-    assert len(declared) == 18
+    assert len(declared) == 19
     assert declared == sorted(
         spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
     )

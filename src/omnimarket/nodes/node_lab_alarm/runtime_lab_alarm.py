@@ -272,6 +272,12 @@ def run_effects_held(
 ) -> int:
     """One effects-held tick."""
     settings = overlay.effects_held
+    if settings is None:
+        sys.stderr.write(
+            "LAB-ALARM-REFUSED effects_held: the overlay has no effects_held block; "
+            "the broker lag verbs do not need it\n"
+        )
+        return 1
     handler = handler or _EFFECTS_BACKEND_BUILDERS[overlay.bus.backend](
         overlay, settings, lambda: datetime.now(UTC)
     )

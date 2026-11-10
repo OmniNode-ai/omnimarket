@@ -19,11 +19,12 @@ import os
 import plistlib
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
@@ -44,6 +46,11 @@ NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
 LOCKED_MODES = frozenset({"install", "uninstall"})
 EXIT_INSTALL_IN_PROGRESS = 75
+# After an unit is unloaded, how long the install waits for a tick still holding the unit's tick lock to end by itself, then
+# how long it waits after TERM before it sends KILL (OMN-23349).
+TICK_GRACE_S = 30.0
+TICK_TERM_WAIT_S = 10.0
+TICK_POLL_S = 0.1
 
 
 class InstallInProgressError(RuntimeError):
@@ -73,11 +80,18 @@ PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
 # launchd has no run limit for a StartInterval job, so a hung run holds the job and no tick follows (the overlay store
 # refresh hung 40 minutes at 0% CPU on 2026-11-06 and the alarm opened a missed-interval episode). A unit that declares
 # run_timeout_s runs under this wrapper: it puts the command in its own process group, ends the whole group with TERM
-# and then KILL when the limit passes, and exits 124 so the job-exit alarm reads a failed exit instead of silence.
+# and then KILL when the limit passes, and exits 124 so the job-exit alarm reads a failed exit instead of silence. The
+# command's own group is outside the job's, so the TERM launchd sends the wrapper at bootout would not reach it: the
+# wrapper ends the group on TERM, INT and HUP too (exit 128 plus the signal), or an unload leaves the run orphaned beside the next
+# install's (a job-log filler tick ran 4 h 12 min that way, OMN-23349).
 TIMEOUT_PROGRAM = (
     "my $limit = shift; my $pid = fork(); defined $pid or exit 71; "
     "if (!$pid) { setpgrp(0, 0); exec @ARGV; exit 127 } "
-    "$SIG{ALRM} = sub { kill 'TERM', -$pid; sleep 5; kill 'KILL', -$pid; exit 124 }; "
+    "my $end = sub { my $code = shift; kill 'TERM', -$pid; "
+    "for (1 .. 50) { select(undef, undef, undef, 0.1); waitpid($pid, 1); kill(0, -$pid) or last } "
+    "kill 'KILL', -$pid; exit $code }; "
+    "$SIG{ALRM} = sub { $end->(124) }; "
+    "my %n = (TERM => 15, INT => 2, HUP => 1); $SIG{$_} = sub { $end->(128 + $n{$_[0]}) } for keys %n; "
     "alarm $limit; waitpid($pid, 0); "
     "exit($? & 127 ? 128 + ($? & 127) : $? >> 8)"
 )
@@ -157,6 +171,70 @@ class HandlerRegistryUnits:
                 yield
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    # ------------------------------------------------------------------ a tick the unload left running
+
+    def signal(self, pid: int, sig: int) -> None:
+        """Send a signal to a tick's process; a process already gone is not an error."""
+        with suppress(ProcessLookupError):
+            os.kill(pid, sig)
+
+    @staticmethod
+    def tick_holder(lock: Path) -> int | None:
+        """The pid a live tick wrote in the lock it holds (0 when it wrote none), or None when the lock is free."""
+        if not lock.is_file():
+            return None
+        with lock.open("a+", encoding="utf-8") as handle:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                handle.seek(0)
+                match = re.match(r"pid=(\d+)", handle.read())
+                return int(match.group(1)) if match else 0
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        return None
+
+    def wait_released(self, lock: Path, seconds: float) -> bool:
+        deadline = time.monotonic() + seconds
+        while self.tick_holder(lock) is not None:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(TICK_POLL_S)
+        return True
+
+    def stop_running_tick(
+        self, unit: dict[str, Any], request: ModelRegistryUnitsRequest
+    ) -> str:
+        """After the unit is unloaded, wait for a tick still holding its tick lock, then stop it.
+
+        A unit that declares ``tick_lock_file`` has a tick that holds that file, in the directory of its evidence
+        file, for as long as it runs. The wait is the tick's own chance to end; past it the tick the lock names gets
+        TERM, then KILL. A tick that outlives both refuses the install: loading the next unit beside it would put two
+        ticks on one state directory.
+        """
+        name = unit.get("tick_lock_file")
+        if not name:
+            return ""
+        lock = (Path(request.home) / str(unit["evidence_file"])).parent / str(name)
+        if self.tick_holder(lock) is None:
+            return ""
+        if self.wait_released(lock, TICK_GRACE_S):
+            return f"waited for the running tick holding {lock} to end\n"
+        holder = self.tick_holder(lock)
+        if holder is None:
+            return f"waited for the running tick holding {lock} to end\n"
+        if holder:
+            for sig, wait in (
+                (signal.SIGTERM, TICK_TERM_WAIT_S),
+                (signal.SIGKILL, TICK_TERM_WAIT_S),
+            ):
+                self.signal(holder, sig)
+                if self.wait_released(lock, wait):
+                    return f"stopped the running tick (pid {holder}) holding {lock}\n"
+        raise ValueError(
+            f"the running {unit['label']} tick (pid {holder or 'unknown'}) holds {lock} and did not stop; "
+            f"{unit['label']} was not loaded"
+        )
 
     # ------------------------------------------------------------------ plan
 
@@ -252,6 +330,14 @@ class HandlerRegistryUnits:
             )
             if supplied:
                 filled[str(name)] = supplied
+        for name in unit.get("environment_refuse_worktree_paths") or []:
+            offending = [
+                entry
+                for entry in filled.get(str(name), "").split(os.pathsep)
+                if under_worktrees(entry)
+            ]
+            if offending:
+                raise UnitRootRefusedError(request.unit, offending)
         if request.mode == "install":
             for name in unit.get("required_environment_inputs") or []:
                 if not filled.get(str(name)):
@@ -490,10 +576,12 @@ class HandlerRegistryUnits:
         if request.mode == "uninstall":
             stopped = self.run(["launchctl", "bootout", target])
             plist.unlink(missing_ok=True)
+            ended = self.stop_running_tick(unit, request)
             return self.result(
                 request,
                 0,
                 out=stopped.stdout
+                + ended
                 + f"removed {label} (state under {state} is left in place)\n",
             )
         if request.mode == "status":
@@ -559,6 +647,7 @@ class HandlerRegistryUnits:
             rendered.write_text(text, encoding="utf-8")
             rendered.chmod(0o600)
             self.run(["launchctl", "bootout", target])
+            ended = self.stop_running_tick(unit, request)
             shutil.move(str(rendered), str(plist))
         started = self.run(["launchctl", "bootstrap", domain, str(plist)])
         if started.returncode:
@@ -593,6 +682,7 @@ class HandlerRegistryUnits:
             0,
             out=f"installed {label}: {unit['schedule']['description']}, runs {unit['module']} from {project} at {revision}, "
             f"heartbeat {evidence}, logs in {state}\n"
+            + ended
             + (
                 f"wrote configuration {config_path}"
                 + (

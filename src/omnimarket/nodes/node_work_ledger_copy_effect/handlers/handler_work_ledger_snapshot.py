@@ -13,6 +13,8 @@ accepted-row rows alone and compares it with the projection rows, row for row an
 
 from __future__ import annotations
 
+import ipaddress
+
 from omnimarket.nodes.node_work_ledger_copy_effect.models import (
     EnumDrillOutcome,
     EnumSnapshotOutcome,
@@ -32,6 +34,16 @@ from omnimarket.nodes.node_work_ledger_copy_effect.protocols import (
     ProtocolSourceProbe,
     ProtocolTableRebuilder,
 )
+
+
+def host_key(name: str) -> str:
+    """The name two spellings of one host share: case, a trailing dot and the domain suffix do not tell hosts apart."""
+    bare = name.strip().rstrip(".").lower()
+    try:
+        ipaddress.ip_address(bare)
+    except ValueError:
+        return bare.split(".", 1)[0]
+    return bare
 
 
 def find_damaged_rows(bundle: ModelSnapshotBundle) -> tuple[str, ...]:
@@ -81,6 +93,7 @@ class HandlerWorkLedgerSnapshot:
         *,
         source_host: str,
         store_host: str,
+        local_host: str,
         topic: ProtocolLedgerRowSource,
         projection: ProtocolLedgerRowSource,
         store: ProtocolSnapshotStore,
@@ -88,6 +101,7 @@ class HandlerWorkLedgerSnapshot:
     ) -> None:
         self._source_host = source_host
         self._store_host = store_host
+        self._local_host = local_host
         self._topic = topic
         self._projection = projection
         self._store = store
@@ -95,11 +109,22 @@ class HandlerWorkLedgerSnapshot:
 
     def handle(self, request: ModelSnapshotRequest) -> ModelSnapshotResult:
         run_id = request.run_id
-        if self._store_host == self._source_host:
+        if host_key(self._store_host) == host_key(self._source_host):
             return ModelSnapshotResult(
                 run_id=run_id,
                 outcome=EnumSnapshotOutcome.REFUSED_SAME_HOST,
                 detail=f"lab storage is on the source host {self._source_host}",
+            )
+        # The store writes through this machine's filesystem: the declared store host is only where the
+        # snapshot lands when the job runs there.
+        if host_key(self._local_host) != host_key(self._store_host):
+            return ModelSnapshotResult(
+                run_id=run_id,
+                outcome=EnumSnapshotOutcome.REFUSED_NOT_STORE_HOST,
+                detail=(
+                    f"this machine is {self._local_host}, not the declared store host "
+                    f"{self._store_host}; the snapshot would not land on lab storage there"
+                ),
             )
         try:
             topic = self._topic.rows()
@@ -168,6 +193,7 @@ class HandlerWorkLedgerRestoreDrill:
         self,
         *,
         drill_host: str,
+        local_host: str,
         source_host: str,
         source_port: int,
         store: ProtocolSnapshotStore,
@@ -176,6 +202,7 @@ class HandlerWorkLedgerRestoreDrill:
         reporter: ProtocolDrillReporter,
     ) -> None:
         self._drill_host = drill_host
+        self._local_host = local_host
         self._source_host = source_host
         self._source_port = source_port
         self._store = store
@@ -206,11 +233,19 @@ class HandlerWorkLedgerRestoreDrill:
 
     def _run(self, request: ModelDrillRequest) -> ModelDrillResult:
         run_id = request.run_id
-        if self._drill_host == self._source_host:
+        if host_key(self._drill_host) == host_key(self._source_host):
             return self._result(
                 run_id,
                 EnumDrillOutcome.REFUSED_SAME_HOST,
                 "the drill runs on a host other than the source host",
+            )
+        # The reachability probe starts from this machine: it says nothing about the source host
+        # unless this machine is the declared drill host.
+        if host_key(self._local_host) != host_key(self._drill_host):
+            return self._result(
+                run_id,
+                EnumDrillOutcome.REFUSED_NOT_DRILL_HOST,
+                f"this machine is {self._local_host}, not the declared drill host {self._drill_host}",
             )
         try:
             reachable = self._probe.reachable(self._source_host, self._source_port)
