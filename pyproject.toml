@@ -563,6 +563,7 @@ node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sam
 node_delegation_events_defect_scan_compute = "omnimarket.nodes.node_delegation_events_defect_scan_compute"
 node_delegation_events_defect_scan_effect = "omnimarket.nodes.node_delegation_events_defect_scan_effect"
 node_delegation_experiment_record_compute = "omnimarket.nodes.node_delegation_experiment_record_compute"
+node_delegation_failure_explanation_compute = "omnimarket.nodes.node_delegation_failure_explanation_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_ground_truth_label_compute"
 node_delegation_health_compute = "omnimarket.nodes.node_delegation_health_compute"
