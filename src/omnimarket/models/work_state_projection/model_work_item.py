@@ -52,6 +52,17 @@ class ModelWorkItem(BaseModel):
     live_lane: str | None = None
     # What a stopped lane left (its pushed branch and head, its outcome).
     left: str | None = None
+    # A lane item only: every alias its CLAIM cells name (`ticket:OMN-1`, `cause:stoppage:x`, `pr:repo#1`, a key), so a
+    # reader that draws its own rows (the floor) attributes the lane to a row from the CLAIM and not from a typed owner.
+    attributes: tuple[str, ...] = ()
+    # Who owes the item, where the source names one (a commitment's owner).
+    owner: str | None = None
+    # A pull request only: open, not a draft, by an author the rules do not exempt, and it cites no ticket.
+    needs_ticket: bool = False
+    # A ticket item only (OMN-23313): the tracker assignee and parent ticket, so a reader that judges ownership by epic
+    # (the floor's delegation:idle row) reads them from the projection and not from a second tracker read.
+    assignee: str | None = None
+    parent: str | None = None
 
 
 __all__ = ["ModelCriterionPart", "ModelWorkItem"]

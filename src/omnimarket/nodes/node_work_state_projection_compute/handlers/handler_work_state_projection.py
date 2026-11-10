@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -37,9 +38,12 @@ from omnimarket.models.work_state_projection import (
     EnumScopeStatus,
     EnumWorkItemKind,
     EnumWorkItemState,
+    ModelAncestorSource,
+    ModelCommitmentSource,
     ModelCriterionPart,
     ModelLaneReceiptSource,
     ModelPullRequestSource,
+    ModelTicketSource,
     ModelWorkItem,
     ModelWorkScope,
     ModelWorkStateRequest,
@@ -49,9 +53,19 @@ from omnimarket.models.work_state_projection import (
 
 CLAIM = "CLAIM"
 TERMINAL = "TERMINAL"
+COMMITMENT_VERIFIED = "verified"
+COMMITMENT_REGRESSED = "regressed"
+COMMITMENT_WITHDRAWN = "withdrawn"
 OUTCOME_CELL = "outcome"
 READING_PREFIX = "reading:"
 _PR_REF = re.compile(r"^(?:[\w.-]+/)?(?P<repo>[\w.-]+)#(?P<number>\d+)$")
+
+
+def _commitment_reason(c: ModelCommitmentSource) -> str:
+    """Why an unfinished commitment is work: its check has not passed yet, or it passed and then failed."""
+    if c.status == COMMITMENT_REGRESSED:
+        return f"regressed: check failed (exit {c.last_exit}) after it passed; owed by {c.owner}"
+    return f"open: check has not passed; owed by {c.owner}"
 
 
 def pr_key(repo: str, number: int) -> str:
@@ -136,17 +150,18 @@ def _read_lanes(
         claims = [r for r in lane_rows if r.row_type == CLAIM]
         if not claims:
             continue
-        lane = _Lane(name=name, claims=claims, first=claims[0].stamp)
-        for c in claims:
-            lane.aliases |= _lane_aliases(c, rules)
         # The run is the one the newest CLAIM opened, or the first one when later CLAIMs are child claims of a run that
-        # has not closed yet: a run ends at its TERMINAL.
+        # has not closed yet: a run ends at its TERMINAL. Attribution and ordering describe that run only.
         run_start = claims[0].stamp
         for r in lane_rows:
             if r.row_type == TERMINAL and r.stamp >= run_start:
                 later = [c for c in claims if c.stamp > r.stamp]
                 if later:
                     run_start = later[0].stamp
+        run_claims = [c for c in claims if c.stamp >= run_start]
+        lane = _Lane(name=name, claims=run_claims, first=run_claims[0].stamp)
+        for c in run_claims:
+            lane.aliases |= _lane_aliases(c, rules)
         lane.after = [r for r in lane_rows if r.stamp >= run_start]
         terminal = next(
             (r for r in reversed(lane.after) if r.row_type == TERMINAL), None
@@ -199,19 +214,40 @@ class _Draft:
     scope: EnumScopeStatus = EnumScopeStatus.PAUSED
     pr: ModelPullRequestSource | None = None
     check: str | None = None
+    commitment: ModelCommitmentSource | None = None
+    needs_ticket: bool = False
+    assignee: str | None = None
+    parent: str | None = None
 
 
-def _ticket_in_scope(
-    ticket: str | None, scope: ModelWorkScope, parents: dict[str, str | None]
+def ticket_in_scope(
+    ticket: str | None,
+    scope: ModelWorkScope,
+    tickets: Mapping[str, ModelTicketSource],
+    max_hops: int,
+    ancestors: Mapping[str, ModelAncestorSource] | None = None,
 ) -> bool:
+    """Whether a ticket is in the goal's scope: it, or an ancestor up to `max_hops` parents above it, is a goal root
+    or sits in a project the goal lists (by name or by id). The walk goes upward and the first ticket that decides
+    ends it: a paused ticket on the way up wins over the root or project above it. A ticket the sources do not name
+    has no project and no parent, so the chain ends there. A ticket the open list does not hold is looked up in
+    `ancestors` (the snapshot's unassigned or closed ancestors); a ticket row wins over an ancestor row."""
     seen: set[str] = set()
-    while ticket and ticket not in seen:
+    hops = 0
+    while ticket and ticket not in seen and hops <= max_hops:
         if ticket in scope.paused_tickets:
             return False
         if ticket in scope.in_scope_tickets:
             return True
+        source = tickets.get(ticket) or (ancestors or {}).get(ticket)
+        if source is not None and any(
+            name and name in scope.in_scope_projects
+            for name in (source.project, source.project_id)
+        ):
+            return True
         seen.add(ticket)
-        ticket = parents.get(ticket)
+        ticket = source.parent if source is not None else None
+        hops += 1
     return False
 
 
@@ -221,25 +257,18 @@ class HandlerWorkStateProjection:
     def handle(self, request: ModelWorkStateRequest) -> ModelWorkStateResult:
         rules = request.rules
         scope = request.scope
-        parents = {t.ticket_id: t.parent for t in request.tickets}
-        projects = {t.ticket_id: t.project for t in request.tickets}
+        by_id = {t.ticket_id: t for t in request.tickets}
+        by_ancestor = {a.ticket_id: a for a in request.ancestors}
         done_tickets = {
             t.ticket_id
             for t in request.tickets
             if t.state_type in rules.ticket_done_state_types
         }
 
-        def ticket_scope(ticket: str | None) -> bool:
-            if ticket is None:
-                return False
-            if ticket in scope.paused_tickets:
-                return False
-            if _ticket_in_scope(ticket, scope, parents):
-                return True
-            return (
-                bool(projects.get(ticket))
-                and projects.get(ticket) in scope.in_scope_projects
-            )
+        max_hops = rules.scope_chain_max_hops
+        exempt_authors = tuple(
+            re.compile(p) for p in rules.ticketless_pr_exempt_author_patterns
+        )
 
         drafts: dict[str, _Draft] = {}
         for t in request.tickets:
@@ -254,13 +283,17 @@ class HandlerWorkStateProjection:
                 done_reason=f"ticket state type {t.state_type}",
                 requires=tuple(normalize_ref(r, rules) for r in t.requires),
                 scope=EnumScopeStatus.IN_SCOPE
-                if ticket_scope(t.ticket_id)
+                if ticket_in_scope(t.ticket_id, scope, by_id, max_hops, by_ancestor)
                 else EnumScopeStatus.PAUSED,
+                assignee=t.assignee,
+                parent=t.parent,
             )
         for p in request.plan_tasks:
             key = f"plan:{p.plan}#{p.task_id}"
             ticket_done = p.ticket is not None and p.ticket in done_tickets
-            in_scope = p.plan in scope.in_scope_plans or ticket_scope(p.ticket)
+            in_scope = p.plan in scope.in_scope_plans or ticket_in_scope(
+                p.ticket, scope, by_id, max_hops, by_ancestor
+            )
             drafts[key] = _Draft(
                 key=key,
                 kind=EnumWorkItemKind.PLAN_TASK,
@@ -282,13 +315,20 @@ class HandlerWorkStateProjection:
             in_scope = short not in scope.paused_prs and (
                 short in scope.in_scope_prs
                 or pr.repo in scope.in_scope_repos
-                or ticket_scope(pr.ticket)
+                or ticket_in_scope(pr.ticket, scope, by_id, max_hops, by_ancestor)
             )
             scope_status = (
                 EnumScopeStatus.IN_SCOPE if in_scope else EnumScopeStatus.PAUSED
             )
             if is_open and pr.ticket:
                 open_pr_of_ticket[pr.ticket].append(key)
+            cites_ticket = bool(pr.ticket or pr.body_ticket)
+            needs_ticket = (
+                is_open
+                and not pr.draft
+                and not cites_ticket
+                and not any(rx.search(pr.author) for rx in exempt_authors)
+            )
             drafts[key] = _Draft(
                 key=key,
                 kind=EnumWorkItemKind.PULL_REQUEST,
@@ -299,6 +339,7 @@ class HandlerWorkStateProjection:
                 done_reason=f"pull request {pr.state.lower()}",
                 scope=scope_status,
                 pr=pr,
+                needs_ticket=needs_ticket,
             )
             if not is_open:
                 continue
@@ -319,6 +360,26 @@ class HandlerWorkStateProjection:
                     pr=pr,
                     check=check,
                 )
+
+        for c in request.commitments:
+            key = f"commitment:{c.commitment_id}"
+            drafts[key] = _Draft(
+                key=key,
+                kind=EnumWorkItemKind.COMMITMENT,
+                title=c.ask,
+                ticket=c.ticket,
+                aliases={key},
+                done=c.status in (COMMITMENT_VERIFIED, COMMITMENT_WITHDRAWN),
+                done_reason="withdrawn"
+                if c.status == COMMITMENT_WITHDRAWN
+                else f"check passes (exit {c.last_exit})",
+                requires=tuple(normalize_ref(r, rules) for r in c.requires),
+                # An operator's ask is in scope by being asked; only a ticket the goal pauses pauses it.
+                scope=EnumScopeStatus.PAUSED
+                if c.ticket in scope.paused_tickets
+                else EnumScopeStatus.IN_SCOPE,
+                commitment=c,
+            )
 
         lanes = _read_lanes(request.ledger_rows, request.receipts, rules, request.now)
         lanes_of: dict[str, list[_Lane]] = defaultdict(list)
@@ -459,6 +520,8 @@ class HandlerWorkStateProjection:
                 reason = (
                     "start criterion reads true" if d.requires else "no prerequisite"
                 )
+                if d.commitment is not None:
+                    reason = _commitment_reason(d.commitment)
             items.append(
                 ModelWorkItem(
                     key=key,
@@ -476,6 +539,10 @@ class HandlerWorkStateProjection:
                     lanes=tuple(ln.name for ln in attributed),
                     live_lane=live_lane,
                     left=left,
+                    owner=d.commitment.owner if d.commitment else None,
+                    needs_ticket=d.needs_ticket,
+                    assignee=d.assignee,
+                    parent=d.parent,
                 )
             )
 
@@ -505,6 +572,7 @@ class HandlerWorkStateProjection:
                     lanes=(name,),
                     live_lane=name if lane.state is EnumLaneState.LIVE else None,
                     left=lane.left,
+                    attributes=tuple(sorted(lane.aliases)),
                 )
             )
 

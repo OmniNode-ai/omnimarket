@@ -18,8 +18,33 @@ class ModelTicketSource(BaseModel):
     title: str = ""
     state_type: str
     project: str = ""
+    # The tracker's id of the project, where the source carries one: scope matches a project by name or by id.
+    project_id: str = ""
     parent: str | None = None
+    # The tracker assignee as the snapshot spells it (id or name); ``None`` when the snapshot does not carry one.
+    assignee: str | None = None
     requires: tuple[str, ...] = ()
+
+
+class ModelAncestorSource(BaseModel):
+    """One ancestor the Linear snapshot names but does not list as an open issue: only its parent and project, for the
+    scope walk to read. It is never a work item."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_id: str
+    parent: str | None = None
+    project: str = ""
+    project_id: str = ""
+
+
+class ModelLinearRow(BaseModel):
+    """One row of the Linear source: an open issue, or an ancestor that only the scope walk reads. Exactly one is set."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket: ModelTicketSource | None = None
+    ancestor: ModelAncestorSource | None = None
 
 
 class ModelPlanTaskSource(BaseModel):
@@ -44,6 +69,9 @@ class ModelPullRequestSource(BaseModel):
     number: int
     title: str = ""
     ticket: str | None = None
+    # The ticket a `Ticket: <id>` line of the body names, where the title names none.
+    body_ticket: str | None = None
+    author: str = ""
     head_sha: str = ""
     state: str
     draft: bool = False
@@ -73,8 +101,31 @@ class ModelLaneReceiptSource(BaseModel):
     exit_code: int | None = None
 
 
+class ModelCommitmentSource(BaseModel):
+    """One operator ask recorded as a ledger commitment, folded by node_commitment_ledger_compute.
+
+    `status` is open (no reading yet), verified (its check passes) or regressed (its check failed after it passed).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    commitment_id: str
+    ask: str
+    owner: str
+    check: str
+    status: str
+    opened_at: datetime
+    ticket: str | None = None
+    requires: tuple[str, ...] = ()
+    last_checked_at: datetime | None = None
+    last_exit: int | None = None
+
+
 __all__ = [
+    "ModelAncestorSource",
+    "ModelCommitmentSource",
     "ModelLaneReceiptSource",
+    "ModelLinearRow",
     "ModelPlanTaskSource",
     "ModelPullRequestSource",
     "ModelReadingSource",

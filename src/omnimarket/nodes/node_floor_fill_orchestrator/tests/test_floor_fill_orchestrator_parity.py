@@ -36,10 +36,17 @@ from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models import EnumFloorFillCommand
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
+    ScriptedBriefs,
+    ScriptedFacts,
     ScriptedPool,
     ScriptedStarter,
+    floor_record,
 )
-from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import harness, overlay
+from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
+    T0,
+    harness,
+    overlay,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.floor_fill_parity]
 
@@ -52,7 +59,26 @@ OVERLAY = ModelFactoryBindingsOverlay.model_validate(
         "proof_bindings": ["inmemory", "redpanda"],
     }
 )
-CASES = ("00:four-lines", "01:one-refusing-runner", "02:degraded-read")
+CASES = (
+    "00:four-lines",
+    "01:one-refusing-runner",
+    "02:degraded-read",
+    "04:stopped-continuation",
+)
+STOPPED_REPORT_PATH = ".claude_scratch/reports/prev-0100/result.md"
+STOPPED = {
+    "lane": "prev-0100",
+    "ticket": "OMN-23001",
+    "tickets": ["OMN-23001"],
+    "outcome": "partial",
+    "ended_at": "2026-11-07T11:30:00Z",
+    "names": ["branch"],
+    "branch": "omn-23001-slice",
+    "head": "abc123def456",
+    "prs": [],
+    "rows": ["2026-11-07T11:30:00Z TERMINAL outcome=partial: pushed slice, tests left"],
+    "report_path": STOPPED_REPORT_PATH,
+}
 
 
 def run_case(name: str) -> dict[str, Any]:
@@ -64,6 +90,15 @@ def run_case(name: str) -> dict[str, Any]:
         h = harness(
             config=config,
             starter=ScriptedStarter(fail_keys=frozenset({"floor:bravo:b1"})),
+        )
+    elif name == "04:stopped-continuation":
+        h = harness(
+            config=config,
+            lines={},
+            facts=ScriptedFacts(floor_record({}, generated_at=T0, stopped=[STOPPED])),
+            briefs=ScriptedBriefs(
+                reports={STOPPED_REPORT_PATH: "PREVIOUS-RESULT-TEXT"}
+            ),
         )
     else:
         h = harness(config=config, pool=ScriptedPool(5, unreadable=True))
@@ -256,6 +291,12 @@ def test_floor_fill_orchestrator_parity_the_scenario_decides_what_the_rules_say(
     assert degraded["exit_code"] == 3
     assert degraded["lines"] == ["UNKNOWN pool-unread:no host answered"]
     assert degraded["key_results"] == []
+    stopped = rows["04:stopped-continuation"]
+    assert [r[:2] for r in stopped["key_results"]] == [
+        ["floor:stopped:prev-0100", "started"]
+    ]
+    assert stopped["status"] == "OK"
+    assert stopped["exit_code"] == 0
 
 
 def test_floor_fill_orchestrator_parity_in_memory_bus_matches_the_in_process_decisions() -> (

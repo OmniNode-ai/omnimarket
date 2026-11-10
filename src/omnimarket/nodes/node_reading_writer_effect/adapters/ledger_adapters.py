@@ -18,6 +18,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from functools import singledispatch
 from pathlib import Path
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from omnimarket.handlers import ledger_row_grammar as grammar
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
@@ -191,6 +192,18 @@ def read_queries(
     return tuple(source.read(query) for query in queries)
 
 
+def wire_correlation_id(correlation_id: str) -> str:
+    """The form a run's correlation id takes on the read command's wire: the reader's request type is a UUID.
+
+    An id that already reads as a UUID (dashed or 32 hex digits) is the same id, written dashed. Any other id is mapped to a
+    UUID by a fixed rule (version 5), so the same run id is the same wire id every time and can be traced back by the rule.
+    """
+    try:
+        return str(UUID(correlation_id))
+    except ValueError:
+        return str(uuid5(NAMESPACE_URL, f"onex:correlation:{correlation_id}"))
+
+
 class CommandLedgerRowSource:
     """Reads through the configured read command: one typed query JSON in, one answer out."""
 
@@ -213,6 +226,8 @@ class CommandLedgerRowSource:
             request["lane"] = query.lane
         if query.term is not None:
             request["term"] = query.term
+        if query.correlation_id is not None:
+            request["correlation_id"] = wire_correlation_id(query.correlation_id)
         try:
             done = subprocess.run(
                 self._argv,
@@ -302,6 +317,23 @@ def _refusal_text(done: subprocess.CompletedProcess[str]) -> str:
     return done.stderr[-400:] or "refused-without-reason"
 
 
+_STDERR_TAIL_CHARS = 400
+
+
+def _exit_error_text(done: subprocess.CompletedProcess[str]) -> str:
+    """Why the append command died on an exit nothing else claims: the code, then the stderr tail.
+
+    The scheduled unit logs only this message, so the tail travels with the code: a line such as
+    ``append-command-exit-69: bus: the lane declaration ... does not exist`` names its own cause.
+    The tail is flattened to one line and bounded, so the message stays far inside the model's
+    2000-character limit whatever the command wrote; stderr that says nothing names the code alone.
+    """
+    tail = done.stderr.strip()[-_STDERR_TAIL_CHARS:].replace("\n", " | ")
+    if not tail:
+        return f"append-command-exit-{done.returncode}"
+    return f"append-command-exit-{done.returncode}: {tail}"
+
+
 class CommandLedgerAppender:
     """Appends through the configured bus append command: rows on stdin, one JSON receipt out."""
 
@@ -343,9 +375,7 @@ class CommandLedgerAppender:
         if done.returncode == 65:
             return ModelAppendOutcome(status="refused", message=_refusal_text(done))
         if done.returncode != 0:
-            return ModelAppendOutcome(
-                status="error", message=f"append-command-exit-{done.returncode}"
-            )
+            return ModelAppendOutcome(status="error", message=_exit_error_text(done))
         last = done.stdout.strip().splitlines()[-1:] or [""]
         try:
             receipt = json.loads(last[0])

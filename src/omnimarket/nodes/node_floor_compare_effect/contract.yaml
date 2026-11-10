@@ -13,7 +13,7 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   Keeps the floor's published numbers as a dated history and writes what is better and worse than 1, 7 and 30 days ago,
@@ -45,6 +45,8 @@ descriptor:
     - appends emission events to the floor's journal under the state directory
     - writes the comparison file the publish copies to the serving host
     - appends each live rebuild piece's day-7 verdict once to the verdict record the piece measures overlay names
+    - reads the repository names overlay (the file ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY names, else the host's own under the state directory, else overlay.repository_names.yaml) and the registry's clone list and writes every per-repository key of the comparison under the registry's canonical repository name (OMN-23134); the history file keeps each source's spelling
+    - reads the node's deployment overlay (the category grouping of the page) from ONEX_SKILL_OVERLAY_ROOTS
 
 input_model:
   name: ModelFloorCompareRequest
@@ -76,12 +78,21 @@ runtime:
   simple_relpath: .claude_scratch/factory-floor/floor-simple.json
   record_relpath: .claude_scratch/factory-floor/factory-floor.json
   history_relpath: .onex_state/floor-compare/history.jsonl
+  # The repository names overlay (OMN-23134): ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY names one, else this file under the registry home
+  # when it exists, else the node's overlay.repository_names.yaml. A host that holds a private repository's old or new name keeps it here.
+  repository_names_overlay_relpath: .onex_state/floor-compare/repository-names.yaml
   output_relpath: .claude_scratch/factory-floor/floor-compare.json
+  # The category grouping of the page (which keys belong to which card) is deployment data, not code: it is the overlay
+  # <root>/node_floor_compare_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS, or the file the variable names.
+  overlay_id: node_floor_compare_effect
+  overlay_file_env: ONEX_FLOOR_COMPARE_OVERLAY
   # The history is kept 35 days so the 30-day read has its point and a margin.
   retention_days: 35
   # The tick runs every few minutes; a snapshot is stored when it is at least this far from the previous tick snapshot.
   min_gap_seconds: 1500
   max_lines_per_window: 40
+  # The page's details table shows this many rows to a page; its search and category filter run over every line of the window.
+  details_page_size: 25
   # A snapshot is the reading at now minus N days only inside the tolerance; outside it the number is unread.
   windows:
     - {days: 1, label: "1 day", tolerance_hours: 3}
@@ -155,8 +166,13 @@ runtime:
     min_alive: {ledger: 100, landing-decisions: 100, lab-alarm: 12}
     min_tick_samples: 12
     level_max_age_minutes: 90
-    ledger_env: ONEX_LEDGER_PATH
-    ledger_archive_dirname: archive
+    # The ledger is on the bus: counts come from typed row reads of the kinds below, one window of ledger_chunk_hours at a time,
+    # through the command the variable holds. A failed or truncated read leaves the ledger keys unread; nothing reads a file.
+    ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+    ledger_read_timeout_seconds: 120
+    ledger_row_limit: 5000
+    ledger_row_kinds: [CLAIM, TERMINAL, FRICTION, STATUS]
+    ledger_chunk_hours: 24
     ledger_lane_outcomes: [done, handed-off, partial, blocked, failed, skipped-owned]
     friction_umbrella_ticket: OMN-17427
     friction_rules_node: node_friction_rollup_compute

@@ -1,0 +1,49 @@
+schema_version: 1.0.0
+ticket_id: OMN-23217
+title: 'T18c control: the 14 public onex-api routes are read from the one runtime container'
+summary: A failing control that starts the runtime's HTTP server with the production mount table and requests the 14 public onex-api route identities of the T18a inventory; 8 fall through today and the strict control turns green when the last port lands.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-t18c-public-routes-control
+  statement: The public onex-api route set is read from the runtime over real HTTP, with a recorded state per identity, a named injected break and a strict control that is red until every public route is served.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the strict control requests all 14 public identities from the runtime''s HTTP server and fails while any falls through -- falsifier: uv run pytest tests/integration/onex_api_fold --runxfail -q, red today with 8 identities falling through'
+  - id: AC2
+    statement: 'AC2: the recorded served identities answer from a mount, the pending ones fall through, and an injected break (a served node left out of the runtime) stops its identity answering -- falsifier: uv run pytest tests/integration/onex_api_fold -q'
+evidence_requirements:
+- kind: tests
+  description: The onex-api fold control tests.
+  command: uv run pytest tests/integration/onex_api_fold -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23217-ac1
+  description: AC1 bound to the control test file (the strict test is expected to fail until the last port lands, so the check runs the file with the marker in place).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/onex_api_fold -q --no-cov --tb=line -k "every_onex_api_identity or record_is_the_14"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23217-ac2
+  description: AC2 bound to the served, pending and injected-break tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/onex_api_fold -q --no-cov --tb=line -k "served or pending or injected"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn23217-integration-proof
+  description: Run the onex-api fold control on a lab host at the pushed head, so the route record is read from the runtime's real HTTP server. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23217 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/integration/onex_api_fold -q --no-cov

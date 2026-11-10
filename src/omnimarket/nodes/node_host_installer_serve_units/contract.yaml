@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_installer_serve_units
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install, inspect and remove the lab-work serve process and the canonical clone refresh consumer of a Linux pool host
+  as systemd user units with their environment files (moved from the private host installer, OMN-23365). The host's serve arguments, bus lane, rank penalty, unit slots, knowledge base
+  clone and lane variables are read from its row of the lab_hosts overlay, and the roots the serve reads its overlays
+  through (ONEX_SKILL_OVERLAY_ROOTS) from this node's overlay, so a serve started from a registry root finds the
+  host_capacity overlay. A host the overlay does not list, a missing serve interpreter, a module the serve cannot import,
+  a root that is not a directory or a host with linger off is refused with a typed reason and nothing is written.
+input_model:
+  name: ModelServeUnitsRequest
+  module: omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units
+output_model:
+  name: ModelServeUnitsResult
+  module: omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units
+handler:
+  class: HandlerServeUnits
+  name: HandlerServeUnits
+  module: omnimarket.nodes.node_host_installer_serve_units.handlers.handler_serve_units
+entrypoint:
+  name: NodeHostInstallerServeUnits
+  module: omnimarket.nodes.node_host_installer_serve_units.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelServeUnitsRequest
+        module: omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units
+      handler:
+        name: HandlerServeUnits
+        module: omnimarket.nodes.node_host_installer_serve_units.handlers.handler_serve_units
+terminal_event: onex.evt.omnimarket.host-serve-unit-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-serve-unit-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.host-serve-unit-requested.v1]
+  publish_topics: [onex.evt.omnimarket.host-serve-unit-completed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.host-serve-unit-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: inmemory
+execution:
+  deterministic: false
+  side_effects: true
+# This node's own overlay (`<root>/node_host_installer_serve_units/overlay.yaml` under ONEX_SKILL_OVERLAY_ROOTS, model
+# ModelServeUnitsOverlay) holds the private values: the unit names, env files and log directories, the clones the lane
+# variables derive from, the knowledge base clone and the overlay roots each host's serve reads. A host it does not list
+# is refused unless the request names roots.
+overlay:
+  id: node_host_installer_serve_units
+# The unit declaration, moved from the private host installer contract.
+unit:
+  header: "# Written by node_host_installer_serve_units ({ticket}). Re-run it; do not hand-edit.\n"
+  unit_directory: .config/systemd/user
+  work_directory: lab-run
+  sync_engine: omniclaude/plugins/onex/hooks/lib/canonical_clone_sync.py
+  path: "{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  serve_python: omnimarket/.venv/bin/python
+  serve_cwd: omnimarket
+  templates:
+    serve: templates/serve.service.tmpl
+    clone_refresh: templates/clone-refresh.service.tmpl

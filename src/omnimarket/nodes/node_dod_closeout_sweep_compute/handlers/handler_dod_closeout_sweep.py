@@ -31,6 +31,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
     ground_state,
     read_receipts,
     zero_flip_alert,
+    zero_flip_reading,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_rules import (
     merged_prs,
@@ -42,6 +43,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_over
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rules import (
     bundle_text,
+    scope_examined_memory,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
     box_ticks,
@@ -884,10 +886,26 @@ def bundle_scope(
         request.scope_contract_state,
         request.max_candidates,
         overlay,
+        request.scope_examined,
+    )
+    examined_next = (
+        None
+        if request.scope_now is None
+        else scope_examined_memory(
+            request.scope_candidates,
+            request.scope_pr_state,
+            request.scope_text_state,
+            request.scope_contract_state,
+            request.max_candidates,
+            overlay,
+            request.scope_examined or {},
+            request.scope_now,
+        )
     )
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
         scope_bundle=json.loads(text),
+        scope_examined_next=examined_next,
     )
 
 
@@ -988,6 +1006,7 @@ def complete_run(
         completion_rows=rows,
         zero_flip_streak=length,
         top_deferral_reason=reason,
+        zero_flip_reading=zero_flip_reading(request.run_summary, request.clock_utc),
         zero_flip_alert=zero_flip_alert(
             request.run_summary,
             length,

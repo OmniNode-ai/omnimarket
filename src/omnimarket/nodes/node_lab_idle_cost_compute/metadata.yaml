@@ -1,0 +1,23 @@
+name: node_lab_idle_cost_compute
+version: "1.0.0"
+description: "Lab-idle cost: the lab-idle FRICTION cost since the last start summed for the status line (OMN-22885) -- no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_idle_cost_compute: "omnimarket.nodes.node_lab_idle_cost_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["lab-idle", "friction", "compute", "deterministic", "OMN-22885"]
+pack: "liveness"
+display_name: "Lab Idle Cost"
+node_role: "compute"

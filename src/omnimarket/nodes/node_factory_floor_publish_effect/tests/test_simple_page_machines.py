@@ -68,10 +68,15 @@ HARNESS = textwrap.dedent(
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(src)[1];
     const els = {}, listeners = {};
     const mk = id => ({id, innerHTML: "", textContent: "", hidden: false, attrs: {}, style: {}, dataset: {},
-      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}});
-    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
+      classList: {add() {}, remove() {}}, append() {}, querySelectorAll: () => [], focus() {},
+      getBoundingClientRect: () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0}),
+      setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; }, addEventListener() {}});
+    globalThis.document = {title: "", activeElement: null, body: mk("body"), documentElement: {clientWidth: 400},
+      createElement: () => mk(""), querySelector: () => null, querySelectorAll: () => [],
+      getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
     globalThis.window = {addEventListener(k, f) { (listeners[k] = listeners[k] || []).push(f); }};
-    globalThis.location = {hash: opts.hash || ""};
+    globalThis.history = {state: null, pushState() {}, replaceState() {}, back() {}};
+    globalThis.location = {hash: opts.hash || "", pathname: "/", search: ""};
     const now = Date.parse(opts.now);
     Date.now = () => now;
     globalThis.setInterval = () => 0;
@@ -267,3 +272,22 @@ def test_failing_control_the_page_without_the_machines_tab_draws_no_card() -> No
     out = _run(_served(), src=broken, hash_="#machines")
     assert _labels(out["machines"]) == []
     assert "9 hosts in the host table" not in out["machines"]
+
+
+def test_error_the_page_script_declares_no_top_level_name_twice() -> None:
+    """A second ``const``/``let`` of one name in the one script throws a SyntaxError and the whole page script dies.
+
+    This runs without node, so it holds on a host with no node (the node tests above skip there). The failing control is
+    the same script with one name declared twice.
+    """
+
+    def doubles(src: str) -> list[str]:
+        script = src[src.index("<script>") : src.rindex("</script>")]
+        names = re.findall(r"^(?:const|let)\s+([A-Za-z_$][\w$]*)\b", script, re.M)
+        return sorted({n for n in names if names.count(n) > 1})
+
+    assert doubles(SIMPLE_SRC) == []
+    # The piece-measure helper has its own name, so it cannot collide with a later top-level ``num``.
+    assert "const measureNum = (v, u)" in SIMPLE_SRC
+    assert "const num = (v, u)" not in SIMPLE_SRC
+    assert doubles("<script>\nconst num = 1;\nconst num = 2;\n</script>") == ["num"]

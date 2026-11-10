@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_factory_floor_input import (
     ModelFloorMachineDecl,
+    ModelFloorProcessDecl,
 )
 from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetDeclaration,
@@ -29,6 +30,33 @@ class ModelFactoryFloorSources(BaseModel):
     runner_fleet_relpath: str = Field(min_length=1)
     # The host-drift fleet projection node_host_drift_fleet folds (OMN-21867); the Machines tab reads each host's heartbeat from it.
     host_drift_relpath: str = Field(min_length=1)
+    # The required contexts the queue-status tick saved: a map keyed by repository (or ``repository:branch``).
+    required_contexts_relpath: str = Field(min_length=1)
+
+
+class ModelFactoryFloorSourceBars(BaseModel):
+    """Minutes after which a source reads ``stale``. One key per source the line board depends on; each is required."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    plans: int = Field(gt=0)
+    watcher: int = Field(gt=0)
+    ledger: int = Field(gt=0)
+    plans_today: int = Field(gt=0)
+    linear: int = Field(gt=0)
+    running_evidence: int = Field(gt=0)
+    required_contexts: int = Field(gt=0)
+    goal: int = Field(gt=0)
+    placement: int = Field(gt=0)
+
+
+class ModelFactoryFloorUnresolvedRead(BaseModel):
+    """One read of the ledger reader across the live ledger and every archive roll, filtered by kind and a text match, with no age limit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str = Field(min_length=1)
+    grep: str = Field(min_length=1)
 
 
 class ModelFactoryFloorLaneSources(BaseModel):
@@ -114,6 +142,13 @@ class ModelFactoryFloorRuntime(BaseModel):
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
+    # The row kinds the effect keeps from the window, and the reads that bring back unresolved rows older than it.
+    ledger_kinds: tuple[str, ...] = Field(min_length=1)
+    unresolved_reads: tuple[ModelFactoryFloorUnresolvedRead, ...] = Field(min_length=1)
+    source_max_age_min: ModelFactoryFloorSourceBars
+    # The plans repository file with the goal's rows, and the verdicts that close a row.
+    goal_relpath: str = Field(min_length=1)
+    goal_closed_verdicts: tuple[str, ...] = Field(min_length=1)
     watcher_max_age_min: int = Field(gt=0)
     manifest_suffix: str = Field(min_length=1)
     plan_header_keys: tuple[str, ...] = Field(min_length=1)
@@ -184,3 +219,8 @@ class ModelFactoryFloorOverlay(BaseModel):
     container_read_line: str = ""
     container_hosts: tuple[ModelFactoryFloorContainerHost, ...] = ()
     container_budgets: tuple[ModelLaneContainerBudgetDeclaration, ...] = ()
+    # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
+    processes: tuple[ModelFloorProcessDecl, ...]
+    roles: tuple[str, ...]
+    release_required_repos: tuple[str, ...]
+    held_gates: tuple[str, ...]

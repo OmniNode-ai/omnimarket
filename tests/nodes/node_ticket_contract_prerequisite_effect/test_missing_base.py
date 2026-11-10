@@ -250,3 +250,19 @@ def test_missing_remote_base_is_fetched_with_origin_head_present(
     assert _git(worker, "rev-parse", "origin/dev") == _git(
         tmp_path / "origin", "rev-parse", "dev"
     )
+
+
+def test_unresolvable_hook_run_ref_falls_back_to_head(tmp_path: Path) -> None:
+    """A hook-run ref from another worktree does not end the lookup at exit 128 (OMN-23283)."""
+    worker = _worker(tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-m", MODULE],
+        cwd=worker,
+        env=scrub_git_location_env(
+            {**_env(), "PRE_COMMIT_TO_REF": "0" * 40, "PRE_COMMIT_FROM_REF": "0" * 40}
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr

@@ -395,6 +395,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # local_alerts, dispatched once per consumed alert transition by runtime
     # auto-wiring; its pure fold plan, HandlerProjectionLocalAlerts, does NOT
     # declare the capability.
+    # LocalIdentityProjectionWriter (OMN-19986) is the only writer of
+    # local_identity: it composes HandlerLocalIdentityProjectionRunner once per
+    # consumed mint through the shared RuntimeProjectionWriter base; neither
+    # that runner nor the pure plan, HandlerProjectionLocalIdentity, declares it.
     # CompactionReceiptsProjectionWriter (OMN-21336) is the only writer of
     # compaction_receipts, dispatched once per consumed install-confirm-completed event by
     # runtime auto-wiring; its pure fold, HandlerProjectionCompactionReceipts,
@@ -415,6 +419,12 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # DelegationProjectionWriter (OMN-21288) is node_projection_delegation's
     # only routed handler: it composes DelegationProjectionRunner once per
     # delivery, and the runner itself does not declare the capability.
+    # AgentActionsProjectionWriter (OMN-21920) is node_projection_agent_actions'
+    # only DB writer, dispatched once per consumed event by runtime auto-wiring
+    # through the shared RuntimeProjectionWriter base.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only
+    # routed handler: it composes HandlerOverlayStoreProjectionRunner once per
+    # delivery, and the runner itself does not declare the capability.
     # ContextAuditProjectionWriter is node_projection_context_audit's only DB
     # writer, dispatched once per consumed audit event by runtime auto-wiring;
     # its pure fold, HandlerProjectionContextAudit, does NOT declare it.
@@ -422,6 +432,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # writer, dispatched once per consumed overlay event by runtime
     # auto-wiring; its pure fold does NOT declare the capability.
     assert declared == {
+        "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
@@ -433,6 +444,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ConsumerFlowProjectionWriter",
         "LocalEnvironmentProjectionWriter",
         "LocalAlertsProjectionWriter",
+        "LocalIdentityProjectionWriter",
         "DelegationEvalProjectionWriter",
         "HandlerDelegationDispositionWriter",
         "HandlerDelegationCapabilityMapWriter",

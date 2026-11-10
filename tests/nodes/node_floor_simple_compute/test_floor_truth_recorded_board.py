@@ -170,7 +170,7 @@ def test_golden_a_declared_owner_ticket_still_counts() -> None:
 
 def test_golden_the_colour_rule_holds_on_the_recorded_board() -> None:
     doc, request = board()
-    assert doc.red_rule.state == "WORKING"
+    assert doc.red_rule.violations == ()
     assert check_red_rule(doc, request.lanes).violations == ()
 
 
@@ -258,7 +258,11 @@ def test_error_piece_8_does_not_draw_green_while_its_runner_groups_are_unread() 
 def test_golden_piece_8_is_green_once_the_runner_groups_are_read() -> None:
     doc, _ = board(lab_overrides={"runner_groups": "WORKING"})
     piece = next(p for p in doc.pieces if p.piece == 8)
-    assert (piece.status, piece.draw) == ("working", "green")
+    # Working is no longer green (OMN-23081): J8 to the landing piece has not run on this board, so the piece works and is
+    # not integrated, and it draws amber until the join passes.
+    assert (piece.status, piece.draw) == ("working", "amber")
+    assert (piece.ready, piece.integration) == (False, "working_not_integrated")
+    assert piece.blocking_joins == ("J8",)
 
 
 # --- the chains: a join into a piece that does not exist is not judged, and a drill is not evidence for a join ------------
@@ -486,7 +490,7 @@ def test_error_a_stoppage_that_stopped_is_not_counted_in_the_red_sentence_or_the
     doc, request = board()
     red_ids = [c.id for c in doc.causes if c.listed and c.state == "red"]
     assert not set(red_ids) & set(stopped_ids(doc))
-    assert doc.red_rule.state == "WORKING"
+    assert doc.red_rule.violations == ()
     assert doc.red_rule.red_rows == len(red_ids) + sum(
         1 for p in doc.pieces if p.draw == "red"
     ) + sum(1 for line in doc.lab_state if line.draw == "red")

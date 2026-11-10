@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _Frozen(BaseModel):
@@ -45,6 +45,47 @@ class ModelComparisonWindow(_Frozen):
         gt=0,
         description="A snapshot counts as the reading at now minus days only inside this distance.",
     )
+
+
+class ModelCompareCategory(_Frozen):
+    """One group of lines on the page: a plain-words title and the key prefixes that belong to it (longest prefix wins)."""
+
+    id: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    title: str = Field(min_length=1)
+    prefixes: tuple[str, ...] = Field(default=())
+
+    @field_validator("prefixes")
+    @classmethod
+    def _prefixes_are_not_blank(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not p for p in value):
+            raise ValueError("a category prefix must not be empty")
+        return value
+
+
+class ModelFloorCompareOverlay(_Frozen):
+    """The category grouping of the compare page, supplied by the deployment overlay and never packaged.
+
+    ``categories`` is the fixed set the cards show, in order. A line no prefix claims goes to ``other`` so no line is ever
+    dropped from a roll-up; ``other``'s card is shown only when it holds a line.
+    """
+
+    categories: tuple[ModelCompareCategory, ...] = Field(min_length=1)
+    other: ModelCompareCategory
+
+    @model_validator(mode="after")
+    def _grouping_is_unambiguous(self) -> ModelFloorCompareOverlay:
+        ids = [c.id for c in (*self.categories, self.other)]
+        if len(set(ids)) != len(ids):
+            raise ValueError("category ids must be unique")
+        if self.other.prefixes:
+            raise ValueError("the other category claims no prefix")
+        seen: set[str] = set()
+        for category in self.categories:
+            for prefix in category.prefixes:
+                if prefix in seen:
+                    raise ValueError("a prefix is claimed by two categories")
+                seen.add(prefix)
+        return self
 
 
 class ModelBackfillSource(_Frozen):
@@ -85,8 +126,22 @@ class ModelHistorySources(_Frozen):
         ge=1,
         description="The throughput tick log needs this many samples in the window for a per-tick mean to count.",
     )
-    ledger_env: str
-    ledger_archive_dirname: str
+    ledger_read_command_env: str = Field(
+        description="The variable that holds the bus read command; the ledger is read through the bus, never from a file."
+    )
+    ledger_read_timeout_seconds: int = Field(ge=1, le=600)
+    ledger_row_limit: int = Field(
+        ge=1,
+        description="Rows one bus read may return; an answer longer than this is refused as truncated, never counted short.",
+    )
+    ledger_row_kinds: tuple[str, ...] = Field(
+        min_length=1,
+        description="The row kinds the counts read; a record of any of them marks the ledger as having recorded.",
+    )
+    ledger_chunk_hours: int = Field(
+        ge=1,
+        description="Each bus read covers this many hours, so no answer outgrows its limit.",
+    )
     ledger_lane_outcomes: tuple[str, ...]
     friction_umbrella_ticket: str
     friction_rules_node: str
@@ -116,6 +171,14 @@ class ModelFloorCompareRuntime(_Frozen):
     record_relpath: str
     history_relpath: str
     output_relpath: str
+    overlay_id: str = Field(
+        min_length=1,
+        description="The overlay that supplies the page's category grouping: <root>/<overlay_id>/overlay.yaml.",
+    )
+    overlay_file_env: str = Field(
+        min_length=1,
+        description="Environment variable naming an overlay file that takes the place of the root search.",
+    )
     retention_days: int = Field(ge=1)
     min_gap_seconds: int = Field(
         ge=0,
@@ -126,11 +189,18 @@ class ModelFloorCompareRuntime(_Frozen):
     families: tuple[ModelMetricFamily, ...] = Field(min_length=1)
     piece_rank: dict[str, int]
     stoppage_cost_pattern: str
+    details_page_size: int = Field(
+        ge=1,
+        description="Rows of the page's details table on one page; the page pages through every line of the window.",
+    )
     estimated_cost_stoppages: tuple[str, ...] = Field(
         default=(),
         description="Stoppage ids whose logged cost is an estimate of idle capacity, not lost work anything measured; the floor leaves it out, so the history does too.",
     )
     backfill: tuple[ModelBackfillSource, ...] = ()
+    repository_names_overlay_relpath: str = Field(
+        description="A host's own repository names overlay under the registry home; read when it exists and no env var names one (OMN-23134).",
+    )
     history: ModelHistorySources
     cycle_deadline_seconds: int = Field(
         gt=0,
@@ -185,6 +255,47 @@ class ModelCompareLine(_Frozen):
     direction_text: str
     words: str
     old_read_at: datetime | None = None
+    name: str = Field(
+        default="", description="The line's plain-words name, without the numbers."
+    )
+    unit: str = ""
+    category: str = Field(
+        default="", description="Id of the category the overlay puts the line in."
+    )
+
+
+class ModelCategoryCard(_Frozen):
+    """The roll-up of one category over one window: counts of every line (not only the capped lists) and one sentence."""
+
+    id: str
+    title: str
+    better: int
+    worse: int
+    same: int
+    unread: int
+    total: int
+    lean: Literal["better", "worse", "mixed", "same", "unread", "empty"]
+    sentence: str
+    biggest_change: str = Field(
+        description="The one plain sentence of the biggest move, or why there is none."
+    )
+    biggest_key: str | None = None
+
+
+class ModelDetailRow(_Frozen):
+    """One line of the details table: short, so the whole window can be searched and paged on the page."""
+
+    key: str
+    name: str
+    category: str
+    verdict: Verdict
+    old_text: str
+    new_text: str
+    change_text: str
+    size: float | None = Field(
+        description="Relative size of the move (absolute change over the old value, at least 1); null when a side is unread."
+    )
+    better_is: Polarity
 
 
 class ModelWindowComparison(_Frozen):
@@ -196,6 +307,11 @@ class ModelWindowComparison(_Frozen):
     same: int
     unread: tuple[ModelCompareLine, ...]
     counts: dict[str, int]
+    categories: tuple[ModelCategoryCard, ...] = ()
+    details: tuple[ModelDetailRow, ...] = Field(
+        default=(),
+        description="Every line of the window, biggest move first, for the page's searchable and paged table.",
+    )
 
 
 class ModelFloorComparison(_Frozen):
@@ -206,6 +322,11 @@ class ModelFloorComparison(_Frozen):
     windows: tuple[ModelWindowComparison, ...]
     # Each live rebuild piece against the old way (OMN-23081); typed by model_piece_measure.
     pieces: tuple[dict[str, Any], ...] = ()
+    details_page_size: int = Field(ge=1)
+    categories_error: str = Field(
+        default="",
+        description="Why the cards are absent (the grouping overlay is missing or invalid); empty when they are drawn.",
+    )
 
 
 class ModelFloorCompareRequest(_Frozen):
@@ -215,6 +336,7 @@ class ModelFloorCompareRequest(_Frozen):
     backfill_only: bool = False
     backfill_history: bool = False
     history_days: int | None = None
+    overlay: ModelFloorCompareOverlay | None = None
 
     @field_validator("now")
     @classmethod
@@ -234,3 +356,4 @@ class ModelFloorCompareResult(_Frozen):
     failure_detail: str = ""
     history_written: dict[str, int] = Field(default_factory=dict)
     source_notes: tuple[str, ...] = ()
+    categories_error: str = ""

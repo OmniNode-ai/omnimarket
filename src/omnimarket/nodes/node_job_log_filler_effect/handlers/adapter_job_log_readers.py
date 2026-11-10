@@ -83,13 +83,16 @@ class InMemoryJobLogReader:
         transport = None if cache_only else self._factory()
         cache = JobLogCacheTransport(self._root, transport, ttl_seconds=self._ttl)
         try:
-            return cache.handle(
+            result = cache.handle(
                 _request(repo, job_id, cache_only=cache_only, tail_bytes=self._tail)
             )
         except GitHubTransportError as exc:
             if str(exc).startswith(JOB_LOG_CACHE_MISS):
                 raise JobLogCacheMissError(str(exc)) from exc
             raise
+        if not isinstance(result, ModelJobLogTailResult):
+            raise GatewayReadError(f"gateway answered {type(result).__name__}")
+        return result
 
 
 class BusJobLogReader:

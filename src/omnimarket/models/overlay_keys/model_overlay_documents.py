@@ -83,6 +83,13 @@ VolumesRoot = Annotated[
     AfterValidator(_volumes_root),
 ]
 
+# The address of a host's iLO management processor (OMN-22870): a bare IPv4, IPv6 or DNS name, as the iLO setup verb of
+# ``node_ilo_redfish_effect`` takes it. No scheme, path, port, space or leading dash; the port and the pinned certificate live
+# in that node's own overlay.
+IloAddress = Annotated[
+    str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")
+]
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -105,10 +112,14 @@ class ModelLabHostRow(_ModelOverlayBase):
     target: NonEmptyStr
     # The address of the host's iLO (HPE management processor), for the hosts that have one. The iLO setup
     # verb of node_ilo_redfish_effect reads it, so a host is set up from its table row (OMN-22870).
-    ilo_address: NonEmptyStr | None = None
+    ilo_address: IloAddress | None = None
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The names the machine's own hook events carry as their host (its native hostname), for a row whose ``target`` or
+    # ``fallback_targets`` do not give it. The quiet-host alarm attributes a hook event to the row it names, so a host
+    # whose native name is none of its destinations (an ssh alias, an address, a tailnet name) declares it here (OMN-22778).
+    hostnames: tuple[NonEmptyStr, ...] = ()
     # The login every destination of the row is reached as, the jump host (ssh ``-J``) it is reached through, and the key file
     # offered to it (OMN-17427). Omitted: ssh's own defaults, as before. The probe and the launcher pass them; this model only
     # keeps a table that carries them from being refused whole.
@@ -122,6 +133,10 @@ class ModelLabHostRow(_ModelOverlayBase):
     fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
+    # The host is admitted as a Tart VM host of the clean-VM walk (OMN-23204): its admission receipt names the tart version,
+    # the image digest and the probe results. Omitted means not admitted. Independent of ``roles``, whose declaration makes the
+    # table require one desired-publisher.
+    tart: bool = False
     available: bool = True
     roles: (
         tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
