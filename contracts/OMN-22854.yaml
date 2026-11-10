@@ -135,6 +135,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "contract_loads or config_variation or missing_key_refused or one_writer_control"
     cwd: .
+- id: dod-omn22854-ac11-seams
+  description: 'AC11 G-NODE seams: the process effect, the lane start entry, the floor_fill_state table, the ticket seam and the overlay keys each hold against their other side; a break on either side turns a seam test red.'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_seams.py -q --no-cov --tb=line
+    cwd: .
 - id: dod-omn22854-ac11-redpanda
   description: AC11 the Redpanda leg equals the in-memory leg on the three-case scenario. The hosted verifier has no lab broker, so this unbound check belongs to the local Done gate; its receipt is in the pull request body.
   source: manual
