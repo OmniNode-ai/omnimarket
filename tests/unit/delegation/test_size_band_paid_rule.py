@@ -196,7 +196,13 @@ def test_the_contract_declares_large_only_and_the_cause_is_a_skip() -> None:
         ), name
 
 
-@pytest.mark.parametrize("prompt", [_SMALL_PROMPT, _MEDIUM_PROMPT])
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        pytest.param(_SMALL_PROMPT, id="small_stays_free"),
+        pytest.param(_MEDIUM_PROMPT, id="medium_stays_free"),
+    ],
+)
 def test_a_small_request_skips_the_paid_rung_and_goes_back_to_its_caller(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch, prompt: str
 ) -> None:
