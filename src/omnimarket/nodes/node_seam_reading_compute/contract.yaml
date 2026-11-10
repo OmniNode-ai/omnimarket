@@ -50,6 +50,20 @@ handler_routing:
         module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_seam_row_append
       input_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_row.ModelSeamRowAppendRequest
       output_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_row.ModelSeamRowAppendResult
+    - operation: list_no_producer_topics
+      topic: onex.cmd.omnimarket.no-producer-topics-list-requested.v1
+      handler:
+        name: HandlerNoProducerTopics
+        module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_no_producer_topics
+      input_model: omnimarket.nodes.node_seam_reading_compute.models.model_no_producer_topic.ModelNoProducerTopicRequest
+      output_model: omnimarket.nodes.node_seam_reading_compute.models.model_no_producer_topic.ModelNoProducerTopicList
+    - operation: gate_no_producer_join
+      topic: onex.cmd.omnimarket.no-producer-join-gate-requested.v1
+      handler:
+        name: HandlerNoProducerJoin
+        module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_no_producer_join
+      input_model: omnimarket.nodes.node_seam_reading_compute.models.model_no_producer_topic.ModelNoProducerJoinRequest
+      output_model: omnimarket.nodes.node_seam_reading_compute.models.model_no_producer_topic.ModelNoProducerJoinResult
 
 descriptor:
   node_archetype: compute
@@ -92,6 +106,13 @@ topics:
   seam_rows_append_started: onex.evt.omnimarket.seam-rows-append-started.v1
   seam_rows_appended: onex.evt.omnimarket.seam-rows-appended.v1
   seam_rows_refused: onex.evt.omnimarket.seam-rows-refused.v1
+  no_producer_topics_list_requested: onex.cmd.omnimarket.no-producer-topics-list-requested.v1
+  no_producer_topics_listed: onex.evt.omnimarket.no-producer-topics-listed.v1
+  no_producer_join_gate_requested: onex.cmd.omnimarket.no-producer-join-gate-requested.v1
+  no_producer_join_started: onex.evt.omnimarket.no-producer-join-started.v1
+  no_producer_join_refused: onex.evt.omnimarket.no-producer-join-refused.v1
+  # The join tests run a probe chain on a bus under this prefix plus a run id, never on a topic of the system.
+  no_producer_join_probe_topic: onex.evt.omnimarket.no-producer-join-probe.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.seam-reading-rendered.v1
@@ -100,6 +121,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.seam-rows-append-started.v1
   - onex.evt.omnimarket.seam-rows-appended.v1
   - onex.evt.omnimarket.seam-rows-refused.v1
+  - onex.evt.omnimarket.no-producer-topics-listed.v1
+  - onex.evt.omnimarket.no-producer-join-started.v1
+  - onex.evt.omnimarket.no-producer-join-refused.v1
 
 metadata:
   ticket: OMN-21459
