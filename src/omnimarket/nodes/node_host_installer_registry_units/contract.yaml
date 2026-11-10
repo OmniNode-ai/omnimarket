@@ -545,6 +545,44 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-join-j8/last-run.json
     state_directory: .onex_state/landing-join-j8
+  # The landing snapshot step (OMN-23458; node_pr_landing_snapshot_effect of OMN-23409): every 60 s one pass takes the tick
+  # the landing controller's facts file holds and, when that tick is not recorded yet, fills it and records it on the dev
+  # bus lane. It runs on the host that holds the controller's facts (its last-facts.json and the PR watcher state). The
+  # overlay (node_pr_landing_snapshot_effect in the overlays repository) names every path, the lane and the topics; this
+  # unit holds none of it.
+  landing-snapshot:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-snapshot
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    # A pass reads two files and publishes at most two events: it ends in seconds, so 50 s, under the 60 s interval, is a hung run.
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the step's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-snapshot/last-run.json
+    state_directory: .onex_state/landing-snapshot
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
@@ -583,6 +621,11 @@ units:
         runtime_ssh_host: {field: runtime_ssh_host, env: ONEX_RUNTIME_SSH_HOST}
         appender_root: {field: appender_root, env: ONEX_ALARM_APPENDER_ROOT}
         host_table_path: {field: host_table_path, env: ONEX_ALARM_HOST_TABLE}
+        remote_lane_runner: {field: remote_lane_runner, env: ONEX_ALARM_REMOTE_LANE_RUNNER}
+      # A key listed here is left out of the document when its placeholders have no value, so a reinstall that was
+      # never given the input keeps the configuration it had (the alarm then sends no lane and says so).
+      optional_keys:
+        - dispatch_command
       document:
         registry_root: "{registry_root}"
         ledger: "{ledger_path}"
@@ -590,6 +633,13 @@ units:
         # (appender_root), because launchd's PATH has none.
         ledger_lock: "{appender_root}/.venv/bin/onex-ledger"
         python: "{appender_root}/.venv/bin/python"
+        # The runner the alarm starts, detached, for each episode it opens: the alarm adds --brief, --lane, --model and
+        # --ticket. remote_lane_runner is the path of the remote-lane runner script of the installed omni plugin; unset,
+        # no lane is sent. The command runs under the appender's interpreter.
+        dispatch_command:
+          - "{appender_root}/.venv/bin/python"
+          - "{remote_lane_runner}"
+          - run
         # Prints <hostname>|<newest hook event UTC stamp> for each host that sent one in the last day.
         hook_events_command:
           - ssh

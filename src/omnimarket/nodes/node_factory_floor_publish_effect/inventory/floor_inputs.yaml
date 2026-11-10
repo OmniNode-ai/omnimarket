@@ -50,11 +50,12 @@ inputs:
     class: file
     where: .onex_state/work-state/work-state.json; .onex_state/work-state/snapshots (the projection's last good read of each of its sources)
     read_by: [node_floor_simple_effect]
-    steps: [floor_simple]
+    steps: [floor_simple, floor_projections]
     producer: node_work_state_projection_effect, run by the publish tick and the fill orchestrator on the Mac
     replacement: {node: node_work_state_projection_effect, topic: onex.snapshot.projection.floor-work-state.v1, status: new}
-    ticket: NEED-CHILD-TICKET:floor-lane-list-projection
-    notes: The lanes the floor draws (attributed from their CLAIM cells), the tickets a lane left stopped, the pull requests the goal's ticket rule keeps in scope, and the delegation tickets.
+    ticket: OMN-23391
+    pr: omnimarket branch omn-23391-floor-lane-list-projection
+    notes: The lanes the floor draws (attributed from their CLAIM cells), the tickets a lane left stopped, the pull requests the goal's ticket rule keeps in scope, and the delegation tickets. The projection is refused over 900000 bytes with its size, never cut. The file stays for the lab fill, which reads it too (row lab_fill_work_state_file).
   # ---- file inputs, in the order they move after those -------------------------------------------------------------------------------
   - id: pr_watcher_state
     order: 3
@@ -194,6 +195,16 @@ inputs:
     producer: node_host_drift_fleet (its persisted fold)
     replacement: {node: node_host_drift_fleet, topic: onex.snapshot.projection.host-drift-fleet.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-host-drift-projection
+  - id: lab_fill_work_state_file
+    order: 14
+    class: file
+    where: .onex_state/work-state/work-state.json (read by the lab fill's local adapters, not by the floor publish)
+    read_by: [node_lab_fill_effect]
+    steps: []
+    producer: node_work_state_projection_effect
+    replacement: {node: node_work_state_projection_effect, topic: onex.snapshot.projection.floor-work-state.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-lab-fill-work-state-projection
+    notes: Another reader of the file the lane list came from; it moves to the same projection after the floor does, so the file can then be retired.
   - id: lab_alarm_runs
     order: 15
     class: jsonl
@@ -259,6 +270,15 @@ inputs:
     producer: node_floor_delegation_effect itself (scm run-list and the routes read, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
+  - id: delegation_route_reads
+    order: 20
+    class: file
+    where: .onex_state/floor-delegation/route-reads.json
+    read_by: [node_floor_delegation_effect]
+    steps: [delegation_tracker]
+    producer: node_floor_delegation_effect itself (the routes stage writes the delegations per hour by route between cycles)
+    replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-route-reads.v1, status: new}
+    ticket: OMN-23381
   - id: beta_board_reads
     order: 21
     class: file
@@ -280,10 +300,10 @@ inputs:
   - id: join_j7_lab_check_run
     order: 21
     class: command
-    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the J7 overlay, overlay_join_j7.yaml)
+    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the ledger source and the lab check run overlay, overlay_join_j7.yaml)
     read_by: [node_lab_check_run_effect]
     steps: [join_j7]
-    producer: the J7 overlay and piece 7's golden stop drill readings
+    producer: the lab check run overlay and the ledger's golden stop drill readings
     replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
     ticket: OMN-23420
   - id: network_reads
