@@ -290,6 +290,9 @@ class HandlerSetupLocalRuntime:
                     changed=True,
                 )
         for row in rows:
+            capacity = self.observe(plan)
+            if capacity.status == "action_required":
+                return capacity.model_copy(update={"changed": True})
             if self._ready_name(row.model, self._models(base)):
                 continue
             result = self._run(

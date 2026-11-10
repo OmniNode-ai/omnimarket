@@ -194,3 +194,30 @@ def test_exit_zero_without_downloaded_model_cannot_succeed(tmp_path: Path) -> No
     vendor.provision = False
     assert vendor.adapter().handle(plan(tmp_path)).status != "success"
     assert [cmd for cmd in vendor.commands if "pull" in cmd]
+
+
+def test_disk_consumed_by_the_app_is_rechecked_before_model_download(
+    tmp_path: Path,
+) -> None:
+    vendor = Vendor(tmp_path)
+    vendor.disk = 12
+    original = vendor.run
+
+    def install_consumes_space(request: object) -> ModelSetupCommandResult:
+        result = original(request)
+        if "install" in request.argv:
+            vendor.disk = 10
+        return result
+
+    adapter = HandlerSetupLocalRuntime(
+        collect=vendor.facts,
+        locate=vendor.locate,
+        run=install_consumes_space,
+        get_json=vendor.get_json,
+        port_open=lambda _: vendor.running or vendor.foreign,
+        load_config=config,
+        app_path=vendor.app,
+        readiness_timeout_seconds=0.01,
+    )
+    assert adapter.handle(plan(tmp_path)).status == "action_required"
+    assert not [cmd for cmd in vendor.commands if "pull" in cmd]
