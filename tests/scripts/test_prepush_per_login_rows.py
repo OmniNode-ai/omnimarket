@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers import handler_prepush_login_overlay as overlay
 from scripts.hooks import pytest_full_suite_host_guard as guard
 from tests.scripts._prepush_private_table import (
     HOST_E,
@@ -33,7 +34,7 @@ ROW_WORKROOT = "/srv/onex-prepush"
 
 def _overlay(base: Path, rows: str) -> Path:
     root = base / "overlays"
-    target = root / guard.LOGIN_OVERLAY_NAME / "overlay.yaml"
+    target = root / overlay.LOGIN_OVERLAY_NAME / "overlay.yaml"
     target.parent.mkdir(parents=True)
     target.write_text(
         "# invented rows\ntable: |\n  # label login uv_abs_path workroot\n"
@@ -50,7 +51,7 @@ def _env(base: Path, rows: str | None) -> dict[str, str]:
         "PATH": os.environ.get("PATH", ""),
     }
     if rows is not None:
-        env[guard.OVERLAY_ROOTS_ENV] = str(_overlay(base, rows))
+        env[overlay.OVERLAY_ROOTS_ENV] = str(_overlay(base, rows))
     return env
 
 
@@ -93,9 +94,9 @@ def test_per_login_prepush_reader_uses_the_invoking_login_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env = _env(tmp_path, f"h051 {SECOND} {SECOND_UV} {SECOND_WORKROOT}")
-    monkeypatch.setattr(guard, "resolve_local_login", lambda: SECOND)
+    monkeypatch.setattr(overlay, "resolve_local_login", lambda: SECOND)
     assert _row(guard._table_text(REPO_ROOT, env), "h051")[5] == SECOND_UV
-    monkeypatch.setattr(guard, "resolve_local_login", lambda: FIRST)
+    monkeypatch.setattr(overlay, "resolve_local_login", lambda: FIRST)
     assert _row(guard._table_text(REPO_ROOT, env), "h051")[5] == ROW_UV
 
 
@@ -103,14 +104,14 @@ def test_per_login_prepush_decision_line_names_the_logins_own_values(
     tmp_path: Path,
 ) -> None:
     env = _env(tmp_path, f"h051 {SECOND} {SECOND_UV} {SECOND_WORKROOT}")
-    line = guard.login_decision(
+    line = overlay.login_decision(
         guard._table_text(REPO_ROOT, env, login=SECOND), host=HOST_E, login=SECOND
     )
     assert line == (
         f"prepush-guard decision: host={HOST_E} login={SECOND} row=h051 "
         f"verdict=authorized uv={SECOND_UV} workroot={SECOND_WORKROOT}"
     )
-    refused = guard.login_decision(SYNTHETIC_TABLE, host="not-a-host", login=SECOND)
+    refused = overlay.login_decision(SYNTHETIC_TABLE, host="not-a-host", login=SECOND)
     assert "verdict=refused reason=not-designated" in refused
 
 
