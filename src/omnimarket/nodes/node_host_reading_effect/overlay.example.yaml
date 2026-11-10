@@ -59,6 +59,10 @@ canary:
   wrapper_end_marker: EXAMPLE-WRAPPER-END
   pool_admitted_marker: "admitted ("
   pool_unreadable_marker: unreadable
+  # The lane wrapper's stub exits with one of these codes and prints the marker when the host's installed lane guard copy is
+  # absent, after the pool read admitted the host: such a host fails the reading with a reason that names the guard (OMN-22869).
+  guard_missing_exit_codes: [78]
+  guard_missing_marker: LANE-GUARD-MISSING
   pool_parked_markers:
     - "host table:"
     - not in the pool

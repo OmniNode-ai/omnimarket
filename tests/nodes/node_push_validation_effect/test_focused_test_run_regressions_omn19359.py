@@ -33,7 +33,7 @@ from omnimarket.nodes.node_push_validation_effect.protocols.protocol_focused_tes
     ProtocolFocusedTestRunClient,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("host_capacity_overlay")]
 
 
 class _RecordingClient(ProtocolFocusedTestRunClient, Protocol):
