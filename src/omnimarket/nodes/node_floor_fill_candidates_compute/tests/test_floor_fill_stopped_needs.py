@@ -33,8 +33,8 @@ def run(req: ModelFloorFillCandidatesRequest) -> ModelFloorFillCandidatesResult:
 def stopped_entry(**overrides: Any) -> dict[str, Any]:
     return {
         "lane": "lane-a",
-        "ticket": "OMN-23416",
-        "tickets": ["OMN-23416"],
+        "ticket": "TCK-23416",
+        "tickets": ["TCK-23416"],
         "outcome": "blocked",
         "ended_at": "2026-11-02T10:30:00Z",
         "names": ["needs"],
