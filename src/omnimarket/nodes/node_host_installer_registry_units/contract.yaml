@@ -225,6 +225,41 @@ units:
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
+  # The C32 local auth-boundary probe (node_c32_auth_boundary_probe_effect, OMN-23213, MVP launch plan task M17), once a day on
+  # a Linux lab host: a systemd user service and timer. One run starts the real `onex dashboard` in a scratch HOME, grades the
+  # five auth cases and the planted-credential search, and publishes the run on the node's result topic, where the launch
+  # reading (M1) reads C32. The profile, the onex directory and the history size are the node's overlay in the overlays
+  # repository, found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
+  c32-auth-boundary-probe:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-c32-auth-boundary-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      # The node's own timeout_ms is 1200000 (its contract); the unit ends a hung run at 1260 s and exits 124.
+      run_timeout_s: 1260
+      run_at_load: true
+      description: every 86400 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.runtime_c32_probe_tick
+    entry_file: src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
+    state_directory: .onex_state/c32-auth-boundary-probe
   # The overlay store's loader on a Linux pool host (OMN-23353): once an hour it loads the overlays the loader's overlay
   # names from this host's clone of the overlay home, and only while that clone is at the head of the branch the overlay
   # names (main), so the store is never filled from a side branch. The overlay root is that clone itself. This replaces
