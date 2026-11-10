@@ -1,0 +1,22 @@
+name: node_broker_acl_overlay_render_compute
+version: "1.0.0"
+description: "Renders the desired broker ACL rows from a permissions overlay, pure, no broker access"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_broker_acl_overlay_render_compute: "omnimarket.nodes.node_broker_acl_overlay_render_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "broker-acl", "overlay", "pure"]
+pack: "observability"
+display_name: "Broker ACL Overlay Render"
+node_role: "compute"

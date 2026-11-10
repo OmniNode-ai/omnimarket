@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeBrokerAclOverlayRender
+#
+# Pure definition-B compute: render the desired broker ACL rows from a
+# permissions overlay. No broker access, no clock, no I/O.
+#
+#   handle(ModelBrokerAclRenderRequest) -> ModelBrokerAclRenderResult
+#
+# The overlay's fields are exactly the keys of the frozen lab broker ACL
+# declaration file, so the same YAML file can also be passed to the existing
+# `onex-lab-broker-acls --declaration`.
+#
+# Experimental until the reconcile effect node consumes the rendered rows.
+name: "node_broker_acl_overlay_render_compute"
+contract_name: "node_broker_acl_overlay_render_compute"
+node_name: "node_broker_acl_overlay_render_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Renders the desired broker ACL rows from a permissions overlay. Pure, no
+  broker access. Each overlay grant becomes one driver-validated AclGrant;
+  duplicate rows are refused. Rows are sorted by (principal, resource_type,
+  pattern, name, operation).
+input_model:
+  name: "ModelBrokerAclRenderRequest"
+  module: "omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_render"
+  description: "The overlay to render into desired ACL rows."
+output_model:
+  name: "ModelBrokerAclRenderResult"
+  module: "omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_render"
+  description: "Sorted rows, row count, and the unique sorted principals."
+handler:
+  module: "omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render"
+  class: "HandlerBrokerAclOverlayRender"
+  input_model: "omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_render.ModelBrokerAclRenderRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render:HandlerBrokerAclOverlayRender"
+  handlers:
+    - operation: "render_broker_acl_overlay"
+      handler:
+        name: "HandlerBrokerAclOverlayRender"
+        module: "omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.broker-acl-overlay-render-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.broker-acl-overlay-render-completed.v1"
+    failure: "onex.evt.omnimarket.broker-acl-overlay-render-failed.v1"
+event_bus:
+  subscribe:
+    - topic: "onex.cmd.omnimarket.broker-acl-overlay-render-requested.v1"
+  publish:
+    - topic: "onex.evt.omnimarket.broker-acl-overlay-render-completed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
