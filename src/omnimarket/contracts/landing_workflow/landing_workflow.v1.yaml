@@ -1,0 +1,134 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The landing workflow composed from existing nodes (OMN-23393, rebuild piece 9).
+#
+# One landing tick as a chain of nodes, in order. Each step names an existing
+# node and the command topic its own contract declares; a step whose node is not
+# built yet is listed under to_build with the inventory rows it absorbs. The
+# script keeps landing every repository until the cutover rule below reads true
+# for one repository; the workflow then takes that repository only, and the
+# script excludes it (exclusive cutover, side effects fenced per repository).
+# The inventory that maps every controller function to these steps is
+# docs/reference/landing_controller_inventory.yaml.
+name: landing_workflow
+schema_version: 1.0.0
+ticket: OMN-23393
+piece: 9
+description: >
+  One landing tick composed from the landing nodes: read the tick's facts,
+  decide with the tested decision node (S1 to S20), fold the decision per pull
+  request, order merges and branch updates, plan the class actions, and write
+  through the single GitHub landing effect. Observe mode compares the node
+  path's decision with the script's recorded decision and writes nothing.
+modes:
+  observe: compare with the script's recorded decision; no write
+  replay: the same comparison over recorded tick snapshots
+  act: perform the decision's actions through the GitHub landing effect; refused unless the overlay enables it
+steps:
+  - id: ledger_facts
+    node: node_pr_landing_ledger_facts_compute
+    command_topic: onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1
+    role: row-only ledger facts (fixer holds, cause owners, releases, fixes, lab passes)
+  - id: order_waits
+    node: node_pr_landing_order_waits_compute
+    command_topic: onex.cmd.omnimarket.pr-landing-order-waits-requested.v1
+    role: merge-order waits from the window's ledger rows
+  - id: pr_state
+    node: node_pr_state_read_effect
+    role: the watcher's pull request state, refused past its declared age
+  - id: bounds
+    node: node_landing_tick_bounds_compute
+    role: the tick's budget, deadline and target wait
+  - id: decide
+    node: node_pr_landing_tick_compute
+    command_topic: onex.cmd.omnimarket.pr-landing-tick-decision-requested.v1
+    role: the decision with per-repository fair share over the decision node
+  - id: decision_core
+    node: node_pr_landing_decision_compute
+    command_topic: onex.cmd.omnimarket.pr-landing-decision-requested.v1
+    role: decide_landing, tested S1 to S20; the J8 lab check read
+  - id: reduce
+    node: node_pr_landing_tick_reducer
+    command_topic: onex.cmd.omnimarket.pr-landing-tick-reduce-requested.v1
+    role: the decision folded per pull request and compared with the recorded one
+  - id: strict_plan
+    node: node_pr_landing_strict_plan_compute
+    command_topic: onex.cmd.omnimarket.pr-landing-strict-plan-requested.v1
+    role: the order of merges and branch updates on strict bases
+  - id: class_plan
+    node: node_pr_landing_class_plan_compute
+    command_topic: onex.cmd.omnimarket.pr-landing-class-plan-requested.v1
+    role: class actions (stale CI Summary reruns, copy reruns, retargets) inside the quota cap
+  - id: engine
+    node: node_landing_worker_engine_compute
+    role: the engine of a fix worker at placement
+  - id: fix_route
+    node: node_fixer_dispatcher
+    command_topic: onex.cmd.omnimarket.fixer-dispatch-start.v1
+    role: routes a red, conflicted or behind pull request to its fixer
+  - id: write
+    node: node_pr_landing_github_effect
+    command_topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
+    role: the only GitHub write (merge pinned to the head, rerun, update-branch, arm, disarm)
+  - id: superseded_sweep
+    node: node_superseded_run_cancel_effect
+    command_topic: onex.cmd.omnimarket.superseded-run-sweep-requested.v1
+    role: cancels the CI runs a later push or a queue exit left behind
+  - id: exceptions
+    node: node_exception_queue_effect
+    command_topic: onex.cmd.omnimarket.exception-emit-requested.v1
+    role: a case code cannot resolve, as one typed row
+  - id: ledger_mirror
+    node: node_work_ledger_landing_mirror
+    role: the decision's STATUS row on the bus ledger
+  - id: compare
+    node: node_pr_landing_tick_observe_compute
+    command_topic: onex.cmd.omnimarket.pr-landing-tick-observe-requested.v1
+    role: node path against the live script on a copied tick
+  - id: tick
+    node: node_pr_landing_tick_orchestrator
+    command_topic: onex.cmd.omnimarket.pr-landing-tick-compare-requested.v1
+    role: runs the chain for one tick and emits the compared or failed event
+to_build:
+  - id: tick_writer
+    host_node: node_pr_landing_tick_orchestrator
+    what: an act-mode ProtocolTickWriter that sends each action as a node_pr_landing_github_effect command and reads its completed or failed event
+  - id: snapshot
+    node: node_pr_landing_snapshot_effect
+    what: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts
+  - id: worker_lease
+    node: node_pr_landing_worker_lease_effect
+    what: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr
+  - id: escalation_plan
+    node: node_pr_landing_escalation_plan_compute
+    what: the escalation and park plan and its delivery
+  - id: heal
+    node: node_pr_landing_heal_effect
+    what: window, merge-conflict and change-control re-drives over node_rebase_effect and node_ticket_contract_merge_compute
+private_nodes_to_move:
+  - node_landing_shared_base_effect
+  - node_landing_contract_heal_effect
+  - node_clean_green_merge_effect
+  - node_landing_hostile_review_compute
+  - node_landing_hostile_verdict_effect
+  - node_landing_hostile_report_effect
+  - node_landing_watcher_read_compute
+  - node_ledger_verb_error_compute
+  - node_landing_green_requeue_compute
+  - node_cause_result_read_effect
+  - node_landing_pool_capacity_compute
+  - node_idle_slot_fill_effect  # its repo-scope reads move into the omnimarket node of the same name
+  - node_landing_push_refusal_effect
+  - node_landing_worker_publish_effect
+  - node_tick_read_budget_compute
+overlay:
+  id: node_pr_landing_tick_orchestrator
+  keys:
+    act_enabled: false while the script lands the repository
+    cutover_repository: the one repository the workflow lands; absent until the cutover rule reads true
+cutover:
+  replay: every recorded scenario tick (S1 to S20 and the later S21 to S25) and every recorded live tick compares equal
+  observe: the node path compares equal with the script on live ticks of the cutover repository
+  rule: the workflow takes one repository with act_enabled true only after replay and observe hold; the script excludes that repository the same tick; 7 days measured against the script, kept if better, rolled back if worse (RULING 2026-11-06T12:05:56Z)
+  merge_path: node_pr_landing_github_effect only; no merge by hand
