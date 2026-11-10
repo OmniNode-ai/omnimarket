@@ -19,7 +19,7 @@ from omnibase_spi.protocols.lane import ProtocolLaneHostPool
 from omnimarket.models.engine_login import (
     ModelEngineLoginPool,
 )
-from omnimarket.nodes.node_lane_guard_unit_effect.handlers.handler_lane_guard_host_source import (
+from omnimarket.nodes.node_lane_guard_unit_effect.lane_guard_host_source import (
     lane_guard_host_source,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (

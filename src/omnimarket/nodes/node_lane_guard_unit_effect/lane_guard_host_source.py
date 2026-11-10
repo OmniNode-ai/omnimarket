@@ -16,9 +16,7 @@ REQUIRED_COMMANDS = ("reap", "spool-drain")
 
 def lane_guard_host_source() -> str:
     """The guard host program's text; refuses a program that is empty or no longer carries a command the nodes send."""
-    text = (Path(__file__).resolve().parent.parent / HOST_PROGRAM).read_text(
-        encoding="utf-8"
-    )
+    text = (Path(__file__).resolve().parent / HOST_PROGRAM).read_text(encoding="utf-8")
     missing = [c for c in REQUIRED_COMMANDS if f'"{c}"' not in text]
     if not text.strip() or missing:
         raise ValueError(
