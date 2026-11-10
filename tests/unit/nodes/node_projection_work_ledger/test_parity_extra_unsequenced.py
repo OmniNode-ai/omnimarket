@@ -26,6 +26,10 @@ from omnimarket.models.model_reading import (
 )
 from omnimarket.nodes.node_projection_work_ledger import parity
 from omnimarket.nodes.node_projection_work_ledger.parity import main
+from omnimarket.nodes.node_projection_work_ledger.parity_unsequenced import (
+    SELECT_SOURCES,
+    SELECT_UNSEQUENCED,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     evidence_row_from_text,
 )
@@ -156,7 +160,7 @@ class _Connection:
         self._fail = fail
 
     async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
-        if query == parity._SELECT_UNSEQUENCED:
+        if query == SELECT_UNSEQUENCED:
             if self._fail:
                 raise ConnectionError("projection unreachable")
             return [{"row_id": key} for key in self._unsequenced]
@@ -164,7 +168,7 @@ class _Connection:
             return [{"row_id": k, "row_ts": v} for k, v in self._rows.items()]
         if query == parity._SELECT_RAW_ROWS:
             return [{"row_id": _rid(raw), "raw_row": raw} for raw in ROWS]
-        if query == parity._SELECT_SOURCES:
+        if query == SELECT_SOURCES:
             return [{"source": "onex-ledger", "n": len(self._rows)}]
         return []
 
