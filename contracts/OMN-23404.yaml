@@ -20,7 +20,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The sweep tests (fill-launched, landing and remote-lane fixtures, dirty salvage, kept-and-retried, orphan, live process, the named record-write break), the lane closeout salvage tests and the unit declaration tests.
-  command: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_lane_closeout_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py -q --no-cov -m "not kafka"
+  command: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_lane_closeout_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_launchd_unit.py -q --no-cov -m "not kafka"
 emergency_bypass:
   enabled: false
   justification: ''
@@ -28,7 +28,7 @@ emergency_bypass:
 dod_evidence:
 - id: dod-omn23404-sweep-and-unit-tests
   description: >-
-    Hosted CI runs the sweep tests and the unit declaration tests. The sweep node does not exist at the merge base, so the import fails
+    Hosted CI runs the sweep tests, including the lsof working-directory reading a macOS host needs, and the systemd and launchd unit declaration tests. The sweep node does not exist at the merge base, so the import fails
     there (the failing control). The unit declaration test pins the unit name onex-lane-closeout-sweep, its 300 s tick and its 240 s limit,
     the settings the installer writes to each host.
   source: manual
@@ -36,7 +36,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py -q --no-cov -m "not kafka"
+    check_value: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_launchd_unit.py -q --no-cov -m "not kafka"
     cwd: .
 - id: dod-omn23404-integration-proof-installed-units
   description: >-

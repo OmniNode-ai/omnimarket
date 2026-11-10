@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -59,11 +60,34 @@ class _Ended:
     workdir: Path | None
 
 
+def parse_lsof_cwds(output: str) -> list[str]:
+    """The working directories named by ``lsof -a -d cwd -Fn`` output (the ``n`` lines)."""
+    return [line[1:] for line in output.splitlines() if line.startswith("n")]
+
+
+def _lsof_cwds(timeout_s: float = 30.0) -> list[str] | None:
+    """Working directories read with lsof, for a host with no /proc (macOS); None when lsof cannot say."""
+    try:
+        done = subprocess.run(
+            ["lsof", "-a", "-d", "cwd", "-Fn"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    # lsof exits 1 when some process was unreadable; the lines it did print still count
+    if done.returncode not in (0, 1) or not done.stdout:
+        return None
+    return parse_lsof_cwds(done.stdout)
+
+
 def process_cwds() -> list[str] | None:
     """The working directory of every process this user can read; None when the host cannot say."""
     proc = Path("/proc")
     if not proc.is_dir():
-        return None
+        return _lsof_cwds()
     found: list[str] = []
     for entry in proc.iterdir():
         if entry.name.isdigit():

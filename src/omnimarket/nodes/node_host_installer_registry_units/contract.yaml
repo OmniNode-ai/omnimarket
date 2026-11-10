@@ -213,6 +213,41 @@ units:
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
+  # The same sweep on a macOS lab host (OMN-23404): a launchd tick. The registry root of such a host links to an external
+  # volume launchd cannot stand in, so the job runs from a directory under the home (launchd_root) while the tick reads
+  # the real registry root for the lanes' worktrees (tick_omni_home).
+  lane-closeout-sweep:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.lane-closeout-sweep
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    # A run that outlives this many seconds is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
+    run_timeout_s: 240
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_closeout_sweep_effect.runtime_lane_closeout_sweep
+    entry_file: src/omnimarket/nodes/node_lane_closeout_sweep_effect/runtime_lane_closeout_sweep.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
+    state_directory: .onex_state/lane-closeout-sweep
+    log_directory: .local/state/omni/lane-closeout-sweep
+    launchd_root: .local/state/omni/lane-closeout-sweep
+    tick_omni_home: registry_root
   # The host-local lane closeout sweep (node_lane_closeout_sweep_effect, OMN-23375): every lab host closes out the lanes that
   # ended on it, whichever launcher started them. The paths, ages and branch prefix are the node's overlay, found under
   # ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them. The 240 s limit is under the 300 s interval.
