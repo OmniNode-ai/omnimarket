@@ -10,7 +10,6 @@ a single-use, repo/HEAD-scoped grant shared with the shell hook (OMN-16480)."""
 from __future__ import annotations
 
 import argparse
-import getpass
 import importlib
 import importlib.util
 import os
@@ -86,10 +85,7 @@ def full_suite_host_violation_message(**kwargs: Any) -> str | None:
 
 def resolve_local_login() -> str:
     """The invoking account name, which ssh(1) also uses when no user is configured."""
-    try:
-        return getpass.getuser()
-    except (KeyError, OSError):
-        return ""
+    return str(_io().local_login())
 
 
 def _raw_table_text(

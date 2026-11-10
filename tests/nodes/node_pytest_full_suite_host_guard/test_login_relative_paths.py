@@ -137,3 +137,7 @@ def test_seam_request_fields_the_guard_script_fills() -> None:
         "private_table_rel",
         "host_table_rel",
     }
+
+
+def test_local_login_is_the_invoking_account() -> None:
+    assert host_table_reader.local_login() == __import__("getpass").getuser()
