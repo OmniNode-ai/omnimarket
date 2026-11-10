@@ -253,10 +253,10 @@ inputs:
   - id: delegation_scenario_reads
     order: 20
     class: file
-    where: .onex_state/floor-delegation/scenario-runs.json
+    where: .onex_state/floor-delegation/scenario-runs.json; .onex_state/floor-delegation/route-reads.json
     read_by: [node_floor_delegation_effect]
     steps: [delegation_tracker]
-    producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
+    producer: node_floor_delegation_effect itself (scm run-list and the delegation routes stage, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
   - id: beta_board_reads
@@ -277,6 +277,15 @@ inputs:
     producer: the gate store overlay and the overlay home's gate commits
     replacement: {node: node_gate_store_effect, topic: onex.snapshot.projection.join-j6.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-join-j6-projection
+  - id: join_j7_check_run
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the lab check run overlay, overlay_join_j7.yaml)
+    read_by: [node_lab_check_run_effect]
+    steps: [join_j7]
+    producer: the lab check run overlay and the runs the caller records
+    replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-join-j7-projection
   - id: network_reads
     order: 21
     class: http
