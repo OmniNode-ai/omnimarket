@@ -19,9 +19,26 @@ remote_lane_start:
   receipt_dir: /var/lib/example/remote-lanes
   host_run_root: /var/lib/example/lane-runs
   registry_root_candidates: [/srv/example/registry]
+  registry_marker: example_marker_dir
+  # The repository directory holding the host's lane-closeout command, beside the registry root (optional; empty leaves
+  # the closeout step to the runner script).
+  closeout_tool_repo: example_tools
+  # The variable that closeout command reads the lane's ledger copy path from (all three closeout keys, or none).
+  closeout_ledger_env: EXAMPLE_LEDGER_FILE
+  # The variable that closeout command reads the registry root from (all three closeout keys, or none).
+  closeout_registry_env: EXAMPLE_REGISTRY_ROOT
+  # Where the host keeps installed plugin trees, one directory per tree (optional; empty leaves the step to the runner).
+  plugin_store: $HOME/example-store/plugins
   ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
   # Starts the engine in a session of its own; a host with no setsid binary names a shim.
   detach_argv: [setsid]
+  # Put before the host's PATH in every host script (a non-interactive ssh shell lacks the user bin directory).
+  host_path_prefix: "$HOME/.local/bin:/usr/local/bin"
+  # The host's Claude token pool: the engine's login is drawn through this node on the placed host (first
+  # unlimited label in the pool's draw order), and the label drawn rides on the CLAIM as login=<label>.
+  login_pool_module: example.token_pool_node
+  login_pool_python_relative: .example-venv/bin/python
+  login_draw_timeout_seconds: 30
   # The ledger writer's argv prefix; the ledger path from --ledger follows it.
   ledger_append_argv: [example-ledger-writer]
   # bus where the host's ledger of record is the bus (a direct file append is refused there).

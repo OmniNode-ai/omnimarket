@@ -144,9 +144,10 @@ class ModelLandingRequirements(BaseModel):
 
     An eligible head is open, in scope, non-draft and green on every required context. The reading fails
     when an eligible head has waited over ``head_max_age_seconds``; or, while at least ``waiting_threshold``
-    heads wait, when fewer than ``goal_merges_per_window`` merged inside ``merge_window_seconds``; or, while
-    fewer wait, when the daily synthetic landing canary has not landed (``canary`` names its row). A watcher
-    snapshot older than ``snapshot_max_age_seconds`` is stale and reads NOT WORKING.
+    heads wait, when fewer than ``goal_merges_per_window`` merged inside ``merge_window_seconds``. A snapshot
+    older than ``snapshot_max_age_seconds`` is stale and reads NOT WORKING. Nothing else decides: the reading is
+    real landing only, in-scope green heads merging inside the hour. The synthetic landing canary is not read
+    (RULING 2026-11-08T14:38:40Z).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -156,7 +157,10 @@ class ModelLandingRequirements(BaseModel):
     merge_window_seconds: int = Field(ge=60)
     waiting_threshold: int = Field(ge=1)
     snapshot_max_age_seconds: int = Field(ge=1)
-    canary: ModelReadingSource
+    #: Retired (RULING 2026-11-08T14:38:40Z). Accepted only so an overlay that still carries it loads while the
+    #: overlay change that drops it is merged and installed; never read by the judge nor by ``all_sources``. Remove
+    #: this field once no overlay carries it.
+    canary: ModelReadingSource | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLandingRequirements:
@@ -231,10 +235,8 @@ class ModelPieceReadingSpec(BaseModel):
 
     @property
     def all_sources(self) -> tuple[ModelReadingSource, ...]:
-        """The ledger sources of the reading: its own, and the landing canary's."""
-        if self.landing is None:
-            return self.sources
-        return (*self.sources, self.landing.canary)
+        """The ledger sources of the reading: its own. A landing requirement reads the snapshot, not rows."""
+        return self.sources
 
     @property
     def lookback_seconds(self) -> int:
