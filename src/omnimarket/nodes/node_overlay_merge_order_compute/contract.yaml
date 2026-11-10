@@ -13,7 +13,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   The merge order check between an overlay change and the code that models it. Every overlay the change
@@ -28,13 +28,14 @@ handler:
   module: omnimarket.nodes.node_overlay_merge_order_compute.handlers.handler_overlay_merge_order
   class: HandlerOverlayMergeOrder
   input_model: omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order.ModelOverlayMergeOrderCommand
+  output_model: omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order.ModelOverlayMergeOrderResult
 
 # HandlerOverlayMergeOrder takes the overlay as a constructor parameter, so the node runs through its own CLI,
 # not handler_routing.
 
 descriptor:
   node_archetype: compute
-  runtime_profiles: [effects]
+  runtime_profiles: []
   purity: pure
   idempotent: true
   side_effects: []
@@ -52,7 +53,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.overlay-merge-order-run-completed.v1
 
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: "The overlay home's ci invokes the local node through its own CLI with the overlay and the merged tree's per-overlay answers."
 
 # The topics by role; the handler's event mapping reads these and holds no topic string.
 topics:
@@ -69,3 +70,8 @@ externally_consumed_topics:
   - onex.evt.omnimarket.overlay-merge-order-decided.v1
   - onex.evt.omnimarket.overlay-merge-order-run-completed.v1
   - onex.evt.omnimarket.overlay-merge-order-run-failed.v1
+
+metadata:
+  transport_type: local
+  description: "Pure compute node: merge order check between an overlay change and the code that models it"
+  author: "OmniNode Platform Team"
