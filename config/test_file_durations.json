@@ -4504,6 +4504,7 @@
   "tests/unit/nodes/node_seam_reading_compute/test_omn22909_review_findings.py": 0.01,
   "tests/unit/nodes/node_seam_reading_compute/test_required_sender.py": 0.03,
   "tests/unit/nodes/node_secret_reading_effect/test_join_j4.py": 0.06,
+  "tests/unit/nodes/node_secret_reading_effect/test_join_j4_floor_rows.py": 0.04,
   "tests/unit/nodes/node_secret_reading_effect/test_rotation_approver.py": 0.02,
   "tests/unit/nodes/node_secret_reading_effect/test_rotation_readback.py": 0.03,
   "tests/unit/nodes/node_secret_reading_effect/test_rotation_readback_findings.py": 0.05,
