@@ -31,8 +31,23 @@ from click.testing import CliRunner, Result
 from omnibase_core.cli.cli_commands import cli
 
 from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
+from omnimarket.nodes.node_onex_setup_effect.models import (
+    ModelOnexSetupReceipt,
+    ModelOnexSetupRequest,
+)
 
 _UNSET_ENV: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
+# The model step has its own tests (tests/unit/nodes/node_onex_setup_effect); here it
+# is a stand-in that answers for whatever provider and model the walk was given.
+_MODEL_ARGS = ["--provider", "local", "--url", "http://127.0.0.1:9", "--model", "m"]
+
+
+def _answering_model_step(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
+    return ModelOnexSetupReceipt(
+        provider=request.provider or "",
+        model=request.model or "",
+        tested_at="2026-11-08T00:00:00+00:00",
+    )
 
 
 @pytest.fixture
@@ -49,10 +64,19 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     # Every prerequisite present by default; tests remove what they need to.
     monkeypatch.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(handler_onex_setup, "compose_available", lambda: True)
+    monkeypatch.setattr(handler_onex_setup, "prove_model", _answering_model_step)
     return fake_home
 
 
-def _run(args: list[str], *, prompt_input: str | None = None, **env: str) -> Result:
+def _run(
+    args: list[str],
+    *,
+    prompt_input: str | None = None,
+    model_args: bool = True,
+    **env: str,
+) -> Result:
+    if model_args and "--provider" not in args:
+        args = [*args, *_MODEL_ARGS]
     merged: dict[str, str | None] = dict(_UNSET_ENV)
     merged.update(env)
     return CliRunner().invoke(cli, ["setup", *args], input=prompt_input, env=merged)
@@ -124,8 +148,8 @@ class TestSetupWalk:
 
         assert result.exit_code == 1
         assert "Workspace root" not in result.output, "prompted without a terminal"
-        assert "step 'workspace' failed" in result.output
-        assert "--workspace" in result.output
+        assert "step 'arguments' failed" in result.output
+        assert "--workspace is missing" in result.output
         assert "export OMNIBASE_PATH" in result.output
         assert not (home / ".onex").exists(), "wrote state before the walk could run"
 
@@ -263,11 +287,26 @@ def _fix_runtime_config(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> 
     runtime.rename(runtime.with_suffix(".yaml.bak"))
 
 
+def _break_model(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> list[str]:
+    def refuse(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
+        raise handler_onex_setup._StepFailedError(
+            "model", "the provider refused the key", "check the key"
+        )
+
+    mp.setattr(handler_onex_setup, "prove_model", refuse)
+    return ["--no-interactive", "--workspace", str(workspace)]
+
+
+def _fix_model(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> None:
+    mp.setattr(handler_onex_setup, "prove_model", _answering_model_step)
+
+
 _FAILURES = {
     "workspace": (_break_workspace, _fix_workspace),
     "prerequisites": (_break_prerequisites, _fix_prerequisites),
     "user_config": (_break_user_config, _fix_user_config),
     "runtime_config": (_break_runtime_config, _fix_runtime_config),
+    "model": (_break_model, _fix_model),
 }
 
 

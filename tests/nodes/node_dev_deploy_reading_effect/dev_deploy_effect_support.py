@@ -66,6 +66,12 @@ def document(**changes: Any) -> dict[str, Any]:
             "runtime_path_globs": ["src/**", "docker/*.yml"],
             "git_timeout_seconds": 5,
         },
+        "lineage": {
+            "receipt_covers_descendant": False,
+            "probe_accepts_descendant": False,
+            "max_commits_between": 50,
+            "receipt_cover_window_seconds": 86400,
+        },
         "receipts": {
             "projection_url": "http://projection.test/rows",
             "timeout_seconds": 5,
