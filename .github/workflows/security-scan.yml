@@ -58,9 +58,14 @@ jobs:
       - name: Export requirements
         run: uv export --format requirements-txt --no-hashes --output-file requirements.txt
 
+      # Dependency Review needs the repository's Dependency graph, which is not
+      # enabled here: the action fails every pull request with "Dependency
+      # review is not supported on this repository", whatever the change is.
+      # It runs only once the repository variable DEPENDENCY_GRAPH_ENABLED is
+      # 'true'. The Safety check below still gates known vulnerabilities.
       - name: Run Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && vars.DEPENDENCY_GRAPH_ENABLED == 'true'
 
       - name: Run Safety Check
         run: |
