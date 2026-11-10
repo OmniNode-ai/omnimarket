@@ -17,11 +17,8 @@ import pytest
 from pydantic import SecretStr
 
 from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
-from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
-    KafkaEventPublisher,
-)
 from omnimarket.nodes.node_work_ledger_emit_effect.container.container_work_ledger_emit_effect import (
-    HandlerWorkLedgerDeclaredBrokerEmit,
+    DeclaredBrokerPublisher,
     declared_kafka_bus,
 )
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit import (
@@ -108,11 +105,8 @@ def test_the_sasl_secret_of_the_lane_never_reaches_the_publish_identity(
         sasl_password=SecretStr(marker),
     )
 
-    adapter = HandlerWorkLedgerDeclaredBrokerEmit(
-        broker=lambda _node: binding
-    )._build_default_adapter()
+    adapter = DeclaredBrokerPublisher(broker=lambda _node: binding)
 
-    assert isinstance(adapter, KafkaEventPublisher)
     assert adapter.publish_identity == (
         f"{loopback_broker()}|SASL_PLAINTEXT|dev-principal"
     )
