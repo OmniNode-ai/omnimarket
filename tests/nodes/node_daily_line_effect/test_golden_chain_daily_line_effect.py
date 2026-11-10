@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import ast
 import json
+import os
 import sys
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -17,10 +19,15 @@ from omnimarket.models.model_daily_line import (
     ModelDailyLinePublication,
     ModelDailyLineRunCommand,
 )
+from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
+    HandlerDailyLine,
+)
+from omnimarket.nodes.node_daily_line_effect.handlers import handler_daily_line_run
 from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run import (
     HandlerDailyLineRun,
     build_runner,
     load_runtime,
+    write_atomic,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
     InMemoryPointRead,
@@ -81,6 +88,7 @@ def _run(
         ledger=read,
         appender=rows.append,
         clock=lambda: NOW,
+        compute=HandlerDailyLine(),
     )
     return handler.handle(ModelDailyLineRunCommand()), rows, handler.published_path
 
@@ -121,6 +129,64 @@ def test_error_chain_daily_line_effect_with_no_source_still_publishes_and_writes
     assert "unknown=piece1,j1,claims | " in rows[0]
 
 
+def test_error_chain_two_overlapping_runs_do_not_share_one_temporary_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second run that starts while the first is between write and replace must not take its temporary file (Tessl, OMN-22925)."""
+    target = tmp_path / "out" / "daily-line.json"
+    real_replace = os.replace
+    entered: list[bool] = []
+
+    def replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+        if not entered:
+            entered.append(True)
+            write_atomic(target, "second\n")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(handler_daily_line_run.os, "replace", replace)
+    write_atomic(target, "first\n")
+    assert target.read_text(encoding="utf-8") == "first\n"
+    assert sorted(path.name for path in target.parent.iterdir()) == ["daily-line.json"]
+
+
+def test_error_chain_a_floor_record_piece_with_no_reading_state_reads_as_unknown(
+    tmp_path: Path,
+) -> None:
+    """A piece row with no reading_state is not a read piece 1: it is named in unknown_parts (Tessl, OMN-22925)."""
+    home = tmp_path / "registry"
+    directory = home / ".claude_scratch" / "factory-floor"
+    directory.mkdir(parents=True)
+    record = {
+        "generated_at": "2026-11-08T10:28:00+00:00",
+        "pieces": [{"piece": 1, "text": "no state here"}],
+    }
+    (directory / "floor-simple.json").write_text(json.dumps(record), encoding="utf-8")
+    publication = HandlerDailyLineRun(
+        load_runtime(),
+        home=home,
+        ledger=InMemoryPointRead({"open-claims": ModelPointAnswer(matched=1)}),
+        appender=[].append,
+        clock=lambda: NOW,
+        compute=HandlerDailyLine(),
+    ).handle(ModelDailyLineRunCommand())
+    assert "piece1" in publication.unknown_parts
+
+
+def test_golden_chain_the_run_handler_imports_no_other_nodes_handler_package() -> None:
+    """Another node's handler arrives injected; its adapters and protocols are the declared seams (Tessl, OMN-22925)."""
+    source = Path(handler_daily_line_run.__file__).read_text(encoding="utf-8")
+    imported = [
+        node.module
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom)
+        and node.module
+        and node.module.startswith("omnimarket.nodes.")
+        and not node.module.startswith("omnimarket.nodes.node_daily_line_effect")
+        and ".handlers" in node.module
+    ]
+    assert imported == []
+
+
 def test_golden_chain_daily_line_effect_runs_through_the_bus_commands_the_environment_names(
     tmp_path: Path,
 ) -> None:
@@ -136,12 +202,13 @@ def test_golden_chain_daily_line_effect_runs_through_the_bus_commands_the_enviro
     sink = tmp_path / "appended.txt"
     runtime = load_runtime()
     runner = build_runner(
+        HandlerDailyLine(),
         {
             runtime.home_env: str(home),
             runtime.ledger_read_command_env: f"{sys.executable} {script} read",
             runtime.ledger_append_command_env: f"{sys.executable} {script} append {sink}",
             runtime.host_env: "lab-host",
-        }
+        },
     )
     publication = runner.handle(ModelDailyLineRunCommand())
     assert publication.unknown_parts == ()
@@ -156,7 +223,7 @@ def test_error_chain_daily_line_effect_with_no_append_route_refuses_to_build(
 ) -> None:
     runtime = load_runtime()
     with pytest.raises(RuntimeError, match=runtime.ledger_append_command_env):
-        build_runner({runtime.home_env: str(tmp_path)})
+        build_runner(HandlerDailyLine(), {runtime.home_env: str(tmp_path)})
 
 
 def test_error_chain_daily_line_effect_with_no_read_route_reads_claims_as_unknown(
@@ -166,10 +233,11 @@ def test_error_chain_daily_line_effect_with_no_read_route_reads_claims_as_unknow
     script.write_text(FAKE_BUS, encoding="utf-8")
     runtime = load_runtime()
     runner = build_runner(
+        HandlerDailyLine(),
         {
             runtime.home_env: str(tmp_path / "registry"),
             runtime.ledger_append_command_env: f"{sys.executable} {script} append {tmp_path / 'out.txt'}",
-        }
+        },
     )
     publication = runner.handle(ModelDailyLineRunCommand())
     assert "claims" in publication.unknown_parts

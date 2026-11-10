@@ -268,6 +268,7 @@ def _scenario_result(
             if decl.source == "workflow"
             else ""
         ),
+        "read_seconds": read.read_seconds if read is not None else None,
     }
     if read is None:
         return ModelScenarioResult(
