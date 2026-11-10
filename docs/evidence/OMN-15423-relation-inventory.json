@@ -1901,6 +1901,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_local_identity",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -1911,7 +1912,8 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_local_identity/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -1940,6 +1942,7 @@
       "readers": [],
       "target_schema": "public",
       "writers": [
+        "node_projection_local_identity",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -7131,6 +7134,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_local_identity",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -7141,7 +7145,8 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_local_identity/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -7175,10 +7180,12 @@
       "partitioning": [],
       "producer": "node_projection_local_identity",
       "readers": [
+        "node_projection_local_identity",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "public",
       "writers": [
+        "node_projection_local_identity",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -9783,6 +9790,7 @@
       "accessor_nodes": [
         "node_projection_delegation",
         "node_projection_local_environment",
+        "node_projection_local_identity",
         "node_projection_run_trace",
         "node_projection_savings",
         "node_projection_tenant_registry",
@@ -9799,6 +9807,7 @@
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
         "src/omnimarket/nodes/node_projection_local_environment/contract.yaml",
+        "src/omnimarket/nodes/node_projection_local_identity/contract.yaml",
         "src/omnimarket/nodes/node_projection_run_trace/contract.yaml",
         "src/omnimarket/nodes/node_projection_savings/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
@@ -9841,6 +9850,7 @@
         "node_delegate_skill_orchestrator",
         "node_projection_delegation",
         "node_projection_local_environment",
+        "node_projection_local_identity",
         "node_projection_read_effect",
         "node_projection_run_trace",
         "node_projection_savings",
@@ -10036,6 +10046,7 @@
         "node_projection_delegation",
         "node_projection_runtime_error_fingerprints",
         "node_projection_traces",
+        "node_validator_estate_reading_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
