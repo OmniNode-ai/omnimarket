@@ -61,6 +61,10 @@ def secret_store_for(
 
     ``None`` for an unknown provider, and for a provider whose overlay lacks a
     field or identity it needs (see :func:`missing_overlay_fields`).
+
+    Raises:
+        PlainHttpRefusedError: the overlay's address is plain http to a host the
+            overlay does not allow (OMN-23193).
     """
     if overlay.provider == LOCAL_PROVIDER:
         return local_database_store.LocalDatabaseStore()
@@ -80,6 +84,7 @@ def secret_store_for(
             client_secret=client_secret,
             exchange=exchange,
             timeout_seconds=overlay.timeout_seconds,
+            plain_http_hosts=overlay.plain_http_hosts,
         )
     return None
 

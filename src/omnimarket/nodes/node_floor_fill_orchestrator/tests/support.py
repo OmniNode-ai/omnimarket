@@ -28,6 +28,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ProtocolFloorStateStore,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
+    ScriptedBriefs,
     ScriptedClock,
     ScriptedFacts,
     ScriptedLedger,
@@ -77,6 +78,21 @@ OVERLAY: dict[str, Any] = {
     "stopped_max_lanes": 2,
     "stopped_report_chars": 600,
     "stopped_continue_rule": "Continue from the predecessor's head; do not start over.",
+    "stopped_runner_command": [
+        "node-entry",
+        "--lane",
+        "{lane}",
+        "--key",
+        "{key}",
+        "--ticket",
+        "{ticket}",
+        "--attempt",
+        "{attempt}",
+        "--brief",
+        "{brief}",
+    ],
+    "stopped_reports_root": "/scripted/reports",
+    "stopped_brief_directory": "/scripted/briefs",
 }
 
 
@@ -94,6 +110,7 @@ class Harness:
     tickets: ScriptedTickets
     starter: ScriptedStarter
     clock: ScriptedClock
+    briefs: ScriptedBriefs
     extra: dict[str, Any] = field(default_factory=dict)
 
     def orchestrator(
@@ -108,6 +125,7 @@ class Harness:
             ledger=self.ledger,
             tickets=self.tickets,
             runner=runner or self.starter,
+            briefs=self.briefs,
             clock=self.clock,
             candidates=HandlerFloorFillCandidates(),
             reducer=HandlerFloorFillReducer(),
@@ -134,6 +152,7 @@ def harness(
         tickets=scripted.pop("tickets", None) or ScriptedTickets(),
         starter=scripted.pop("starter", None) or ScriptedStarter(),
         clock=clock,
+        briefs=scripted.pop("briefs", None) or ScriptedBriefs(),
     )
 
 

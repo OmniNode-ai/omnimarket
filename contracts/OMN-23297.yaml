@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23297
+title: Lane context directories on one host share one copy of the ledger archive rolls, in an omnimarket node
+summary: node_lane_ctx_ledger_dedupe_effect keeps one copy of each immutable ledger archive roll per lab host and replaces each lane context directory's roll with an atomic hard link to it after a byte comparison. Rolls that differ stay the lane's own, rolls inside the settle window are left alone, and a roll that cannot be shared publishes a refusal. Runs in process through python -m, with the runs root, store directory and settle window read from the node's overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23297-ctx-ledger-dedupe
+  statement: Each lane context directory on a host holds a name of one shared copy of each ledger archive roll instead of its own copy.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: lane context directories on one host link one shared copy of each ledger archive roll instead of copying it -- falsifier: uv run pytest tests -q -k ctx_ledger_dedupe in omnimarket, failing with the copy path restored'
+  - id: AC2
+    statement: 'AC2: on a lab host after install, two running lanes'' context directories show the same inode for an archive roll -- falsifier: stat of the roll file in both context directories on h051'
+evidence_requirements:
+- kind: tests
+  description: The ctx_ledger_dedupe tests, golden and error chain events and the copy-path control included, pass.
+  command: uv run --frozen pytest tests/nodes/node_lane_ctx_ledger_dedupe_effect -q --no-cov -k ctx_ledger_dedupe
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23297-ac1
+  description: Two lane context directories end on one inode per roll, a second pass changes nothing, differing rolls stay the lane's own, and the control with the copy path restored goes red -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_ctx_ledger_dedupe_effect -q --no-cov -k ctx_ledger_dedupe
+    cwd: .
+- id: dod-omn23297-ac2
+  description: After the branch is installed on h051, stat of one archive roll in two running lanes' context directories prints the same inode. The CLI test makes the same inode read on a scratch host; the h051 read is recorded in the pull request's Lab line.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_ctx_ledger_dedupe_effect -q --no-cov -k "ctx_ledger_dedupe_cli_reads_the_overlay_and_links"
+    cwd: .
+- id: dod-omn23297-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23297 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_ctx_ledger_dedupe_effect -q --no-cov
+    cwd: .

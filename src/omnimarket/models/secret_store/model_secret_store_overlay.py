@@ -18,7 +18,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from omnimarket.models.secret_store.plain_http_rule import validate_plain_http_hosts
 
 #: The block name inside ``<onex_home>/config.yaml``.
 SECRET_STORE_BLOCK = "secret_store"
@@ -38,6 +40,11 @@ class ModelSecretStoreOverlay(BaseModel):
     address: str | None = Field(default=None, min_length=1, pattern=r"^https?://")
     project_id: uuid.UUID | None = None
     environment: str | None = Field(default=None, min_length=1)
+    #: Hosts (names, addresses or CIDR networks) the adapter may reach over plain
+    #: http, beside loopback, which is always allowed. An https address needs no
+    #: entry. Left out, a plain-http address to any other host is refused before
+    #: a request is made (OMN-23193); the one rule is in ``plain_http_rule``.
+    plain_http_hosts: tuple[str, ...] = ()
     #: Every folder a request names is taken relative to this one.
     root_folder: str = Field(default="/", pattern=r"^/")
     #: The machine identity's client id, by reference.
@@ -53,6 +60,11 @@ class ModelSecretStoreOverlay(BaseModel):
     #: folder: the absolute path ``/<folder>/<KEY>``, relative to the root folder.
     references: dict[str, str] = Field(default_factory=dict)
     timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+
+    @field_validator("plain_http_hosts")
+    @classmethod
+    def _hosts_parse(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_plain_http_hosts(value)
 
 
 def load_secret_store_overlay(

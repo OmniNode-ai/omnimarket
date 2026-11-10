@@ -109,7 +109,9 @@ MIGRATION_113_KEY = "scope"
 
 # T11's mint result, node_floor_task_ticket_effect (OMN-22850): the states the fill reads.
 MINT_STATES = ("ticket", "refused", "unavailable")
-TICKET_SEAM_METHODS = frozenset({"payload_verdicts", "entry_ticket_verdicts", "mint"})
+TICKET_SEAM_METHODS = frozenset(
+    {"payload_verdicts", "entry_ticket_verdicts", "start_criteria", "mint"}
+)
 
 
 def _contract() -> dict[str, Any]:
