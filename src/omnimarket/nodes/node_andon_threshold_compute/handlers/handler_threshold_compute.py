@@ -28,6 +28,7 @@ class HandlerThresholdCompute:
             thresholds=dict(sorted(thresholds.items())),
             threshold_hash=freeze_hash(request.window_hours, thresholds),
             recalibrated_on=request.recalibrated_on,
+            measurement=request.measurement,
         )
         document = {
             "window_hours": freeze.window_hours,
@@ -35,6 +36,8 @@ class HandlerThresholdCompute:
             "threshold_hash": freeze.threshold_hash,
             "recalibrated_on": freeze.recalibrated_on.isoformat(),
         }
+        if freeze.measurement is not None:
+            document["measurement"] = freeze.measurement.model_dump(mode="json")
         return ModelThresholdComputeResult(
             freeze=freeze, overlay_yaml=yaml.safe_dump(document, sort_keys=True)
         )
