@@ -240,6 +240,7 @@
   "tests/ci/test_todo_format_core_owner_omn20885.py": 3.11,
   "tests/ci/test_topic_closure_gate_wiring.py": 2.01,
   "tests/ci/test_typed_decision_repository_scope_wiring_omn20780.py": 1.71,
+  "tests/ci/test_workflow_pin_move_omn_rate_limit.py": 3.5,
   "tests/classifier/test_seed_harness.py": 0.06,
   "tests/cli/test_pr_state.py": 7.92,
   "tests/contracts/test_omn19998_check_cwd.py": 0.28,
