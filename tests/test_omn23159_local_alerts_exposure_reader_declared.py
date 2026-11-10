@@ -81,6 +81,20 @@ def test_exposure_stays_bus_backed_in_the_gate_input() -> None:
     assert block["schema"] == "omnidash_analytics"
 
 
+def test_delegation_daily_exposure_declares_a_reasoned_opt_out() -> None:
+    """No reader exists for the daily aggregate (no_reader): declare the gate's opt-out."""
+    path = NODES / "node_projection_delegation" / "contract.yaml"
+    data = yaml.safe_load(path.read_text())
+    blocks = [
+        b
+        for b in data["projection_api"]["exposures"]
+        if b.get("topic") == "onex.snapshot.projection.delegation.daily.v1"
+    ]
+    assert len(blocks) == 1
+    assert blocks[0].get("consumers") == "none"
+    assert str(blocks[0].get("consumers_reason", "")).strip()
+
+
 def test_consumers_reason_never_stands_without_consumers_none() -> None:
     offenders: list[str] = []
     for contract in sorted(NODES.glob("*/contract.yaml")):
