@@ -9,10 +9,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from omnimarket.models.landing_decision import REPO_PATTERN
-from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
-    EnumLandingRedClass,
-)
+from omnimarket.models.landing_decision import REPO_PATTERN, EnumLandingRedClass
 
 OVERLAY_ID = "node_pr_landing_watcher_facts_effect"
 
