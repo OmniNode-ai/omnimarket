@@ -43,6 +43,9 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
     WorkLedgerReadError,
     load_work_ledger_query_source,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_page import (
+    rows_page,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_state_answer import (
     decode_cursor,
     encode_cursor,
@@ -150,7 +153,34 @@ class HandlerWorkLedgerQuery:
         parsed = replay.parse_rows(records)
         if request.principal is not None:
             parsed = [r for r in parsed if r.token("principal") == request.principal]
-        answer = self._answer(request, parsed, now, self._hold_stale_after)
+        if (
+            request.query is EnumWorkLedgerQueryKind.ROWS
+            and request.page_size is not None
+        ):
+            try:
+                total, page, next_cursor = rows_page(
+                    parsed,
+                    lanes=request.lanes or ((request.lane,) if request.lane else ()),
+                    page_size=request.page_size,
+                    cursor=request.cursor,
+                    kinds=request.kinds,
+                    since=request.since,
+                    ticket=request.ticket,
+                    pr=request.pr,
+                    row_ref=request.row_ref,
+                    term=request.term,
+                )
+            except WorkLedgerReadError as exc:
+                return self._fail(base, str(exc), page_size=request.page_size)
+            answer = {
+                "matched": total,
+                "rows": tuple(page),
+                "lines": tuple(r.text for r in page),
+                "page_size": request.page_size,
+                "next_cursor": next_cursor,
+            }
+        else:
+            answer = self._answer(request, parsed, now, self._hold_stale_after)
         return base.model_copy(
             update={
                 **answer,

@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_dispatch_plan import (
+    LANE_ROUTES,
     HandlerLabFillDispatchPlan,
     dod_verify_item,
     skip_reason,
@@ -24,6 +25,7 @@ from omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_lane_
 )
 from omnimarket.nodes.node_lab_fill_plan_compute.models import (
     ModelLabFillCapacityResult,
+    ModelLabFillDispatchItem,
     ModelLabFillDispatchPlanRequest,
     ModelLabFillHostCapacity,
     ModelLabFillPlanConfig,
@@ -221,7 +223,8 @@ def test_one_unchanged_verify_lane_is_still_retried_after_the_cooldown() -> None
     ] == ["OMN-2"]
 
 
-def test_dod_verify_ranks_after_every_other_kind_and_names_its_lane() -> None:
+def test_a_dod_verify_item_goes_to_the_closer_and_takes_no_slot() -> None:
+    """OMN-23376: a merged ticket is the closer's, so the plan sends no lane for it and the slot stays for other work."""
     plan = _plan(
         [dod_verify_item(_enumerated(2), "omnimarket#2"), _enumerated(9)],
         hosts=(("h201", 1),),
@@ -230,14 +233,11 @@ def test_dod_verify_ranks_after_every_other_kind_and_names_its_lane() -> None:
     assert [(i.kind, i.ticket, i.pr) for i in plan.dispatch] == [
         ("ticket", "OMN-9", "")
     ]
-    assert [(d.id, d.reason) for d in plan.deferred] == [("OMN-2", "over-cap")]
-    item = _plan([dod_verify_item(_enumerated(2), "omnimarket#2")]).dispatch[0]
-    assert (item.kind, item.lane, item.engine) == (
-        "dod-verify",
-        "lab-fill-verify-omn2-10171730",
-        "sonnet",
-    )
-    assert item.title.startswith("implementation merged in omnimarket#2: ")
+    assert plan.deferred == ()
+    assert [(r.ticket, r.reason.value) for r in plan.closer] == [
+        ("OMN-2", "implementation-merged")
+    ]
+    assert _plan([dod_verify_item(_enumerated(2), "omnimarket#2")]).dispatch == ()
 
 
 def test_dod_verify_is_scoped_as_the_kind_it_was_enumerated_as() -> None:
@@ -257,7 +257,20 @@ def test_an_ordinary_lane_for_the_same_ticket_wins_over_dod_verify() -> None:
 
 
 def test_the_dod_verify_brief_closes_only_on_a_passing_receipt() -> None:
-    item = _plan([dod_verify_item(_enumerated(2), "omnimarket#2")]).dispatch[0]
+    item = ModelLabFillDispatchItem(
+        lane="lab-fill-verify-omn2-10171730",
+        kind="dod-verify",
+        ticket="OMN-2",
+        pr="",
+        repo="omnimarket",
+        ref="",
+        title="implementation merged in omnimarket#2: t",
+        updated_at="",
+        host="h201",
+        pinned=False,
+        engine="sonnet",
+        route=LANE_ROUTES["sonnet"],
+    )
     brief = (
         HandlerLabFillLaneRender()
         .handle(
@@ -299,5 +312,6 @@ def test_replay_of_the_1730z_run_dispatches_at_least_the_free_slot_count() -> No
     after = _plan(candidates, RECORDED_HOSTS, max_lanes=RECORDED_FREE)
 
     assert len(before.dispatch) == RECORDED_ELIGIBLE
-    assert len(after.dispatch) >= RECORDED_FREE
-    assert sorted({i.host for i in after.dispatch}) == ["h101", "h201", "h202"]
+    # OMN-23376: the merged tickets the idle slots took as lanes are the closer's now; no lane is built for them.
+    assert len(after.dispatch) == RECORDED_ELIGIBLE
+    assert len(after.closer) == RECORDED_FREE - RECORDED_ELIGIBLE

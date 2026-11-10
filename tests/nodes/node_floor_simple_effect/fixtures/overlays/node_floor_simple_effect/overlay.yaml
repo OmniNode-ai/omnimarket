@@ -23,6 +23,10 @@ deploy_lag_lookback_days: 2
 require_runner_version: false
 # A host the operator declared out or in repair is not a failing host.
 declared_host_states: [out, repair]
+# A host the pool refuses only on load its own placed units explain is busy with our work, not failing (OMN-22870).
+own_load_marker: "RESERVE-OWN-LOAD"
+load_bar_markers: ["CPU-IDLE-UNDER-BAR", "LOAD-OVER-BAR"]
+refusal_separator: "; "
 # A green pull request whose merge state is one of these has a conflicting branch and cannot be armed; it is not waiting.
 conflict_merge_states: [DIRTY]
 # The host table and plan rules that split the offline runners into parked on purpose and real problems (plan section 8).

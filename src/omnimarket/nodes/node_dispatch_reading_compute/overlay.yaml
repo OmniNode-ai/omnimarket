@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Every setting of the dispatch reading (OMN-22963); a change here is a reviewed change.
+# A lane whose launching command or script path contains one of these fragments was started from a scratch script.
+scratch_script_markers:
+  - .claude_scratch
+  - /scratch/
+  - /tmp/
+  - scratchpad
+# The read is judged stale past this age and the reading is then UNKNOWN. One reading tick is 3,600 s (the hourly
+# window of the reading writer), so a read older than this misses the tick that must name an unrecorded lane.
+max_age_seconds: 1800

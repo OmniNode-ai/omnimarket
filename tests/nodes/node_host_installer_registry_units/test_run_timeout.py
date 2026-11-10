@@ -32,8 +32,10 @@ from tests.nodes.node_host_installer_registry_units.test_registry_units import (
 
 ENTRIES = {
     "factory-floor-publish": None,
+    "job-log-filler": "src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py",
     "lab-test-harness": "src/omnimarket/nodes/node_lab_test_harness_effect/runtime_lab_test_harness.py",
     "silent-failure-alarm": "src/omnimarket/nodes/node_silent_failure_alarm_effect/runtime_silent_failure_alarm.py",
+    "landing-join-j8": "src/omnimarket/nodes/node_pr_landing_decision_compute/runtime_join_j8.py",
 }
 
 
