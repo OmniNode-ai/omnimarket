@@ -187,6 +187,8 @@ not_routing_resolution_sites:
     reason: locates the directory of the iLO host overlay so a pinned certificate file can be read beside it; the overlay holds server management addresses and credential key names and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py:find_node_overlay(NODE_NAME)"
     reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_floor_simple_effect/handlers/handler_floor_simple_tick.py:find_node_overlay(rt.floor_overlay.overlay_id)"
+    reason: finds the file the floor overlay was loaded from so the tick can check the owner source declared beside it; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_floor_fill_orchestrator/runtime_floor_fill_schedule.py:find_node_overlay(NODE_NAME)"
     reason: finds the overlay file of the floor fill to read the tick host and interval for its systemd user timer; the overlay holds the fill's schedule and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_code_graph_effect/runtime_code_graph.py:find_node_overlay(NODE_NAME)"
@@ -235,6 +237,8 @@ not_routing_resolution_sites:
     reason: the served model id the route check expects a local walk to report, read from the node overlay (OMN-19184); it is the value a finished walk is compared against and selects no backend, model, tier or provider for a request
   - site: "src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py:resolve_overlay_file(REGISTRY_OVERLAY_NODE)"
     reason: the registry of models an A/B compare calls side by side, from the node overlay or a pinned file (OMN-19184); the compare harness names its own subjects and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_merged_history.py:find_node_overlay(NODE_NAME)"
+    reason: reads the extra_repos of the lab fill overlay, the private clone names the merged-history read also covers; it chooses no backend, model, tier or provider
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route

@@ -14,6 +14,10 @@
                            chain (piece 8 failed, no piece 9 event under its id) is appended to the control journal and removed
                            from the floor's; any other id is refused and nothing is moved.
 
+``--omni-home ROOT``  (every verb) the registry home that ``$OMNI_HOME`` in the overlay's paths stands for. The unit passes it, and a
+                           hand run must name the home the floor publisher was started with: the floor reads its journal under
+                           that home, and the calling shell's own ``OMNI_HOME`` may be another tree.
+
 Exit codes of ``run``: 0 both chains written; 2 the lab-bound check is still running inside its wait bound (nothing written);
 3 nothing could be judged (no overlay, stale or unreadable watcher state, no head serves the wanted end). ``tick`` exits 0
 when both ends were judged or honestly had no real head, and 3 when the state could not be judged.
@@ -56,15 +60,25 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_join
 )
 
 
-def _expand(path: str) -> Path:
-    return Path(os.path.expandvars(os.path.expanduser(path)))
+def _expand(path: str, home: Path | None = None) -> Path:
+    """Expand ``~`` and environment variables; ``$OMNI_HOME`` is the unit's ``--omni-home`` when one is given.
+
+    The floor reads its journal under the registry home its publisher was started with, so a hand run must name that
+    home with ``--omni-home`` and not lean on whatever ``OMNI_HOME`` the calling shell happens to export.
+    """
+    text = path
+    if home is not None:
+        text = text.replace("${OMNI_HOME}", str(home)).replace("$OMNI_HOME", str(home))
+    return Path(os.path.expandvars(os.path.expanduser(text)))
 
 
 def _handler(
-    overlay: ModelJoinJ8LiveOverlay, inject: EnumJ8Break | None
+    overlay: ModelJoinJ8LiveOverlay,
+    inject: EnumJ8Break | None,
+    home: Path | None = None,
 ) -> HandlerLandingJoinJ8Live:
     try:
-        state = json.loads(_expand(overlay.watcher_state_path).read_text())
+        state = json.loads(_expand(overlay.watcher_state_path, home).read_text())
     except (OSError, ValueError) as exc:
         raise WatcherStateError(f"watcher state is unreadable: {exc}") from exc
     if inject is None:
@@ -77,7 +91,7 @@ def _handler(
         journal = overlay.control_journal
     return HandlerLandingJoinJ8Live(
         subjects=WatcherLabCheckCollector(state, overlay, datetime.now(UTC), inject),
-        sink=JsonlEmissionSink(_expand(journal)),
+        sink=JsonlEmissionSink(_expand(journal, home)),
         overlay=overlay,
         policy=load_join_j8_policy(),
         clock=lambda: datetime.now(UTC),
@@ -92,7 +106,7 @@ def _emit(result: ModelJoinJ8LiveResult) -> None:
 def _run(arguments: argparse.Namespace) -> int:
     overlay = load_structured_overlay(OVERLAY_ID, ModelJoinJ8LiveOverlay)
     inject = EnumJ8Break(arguments.inject) if arguments.inject else None
-    result = _handler(overlay, inject).handle(
+    result = _handler(overlay, inject, arguments.home).handle(
         ModelJoinJ8LiveCommand(
             correlation_id=arguments.correlation_id or uuid.uuid4().hex,
             want=EnumJ8Want(arguments.want),
@@ -137,7 +151,7 @@ def write_evidence(
 
 
 def relocate_controls(
-    overlay: ModelJoinJ8LiveOverlay, cids: Sequence[str]
+    overlay: ModelJoinJ8LiveOverlay, cids: Sequence[str], home: Path | None = None
 ) -> dict[str, int]:
     """Move control chains out of the floor's journal into the control journal; all or nothing.
 
@@ -148,7 +162,7 @@ def relocate_controls(
         raise ValueError(
             "relocating control chains needs the overlay's control_journal"
         )
-    floor = _expand(overlay.emission_journal)
+    floor = _expand(overlay.emission_journal, home)
     try:
         lines = floor.read_text(encoding="utf-8").splitlines(keepends=True)
     except OSError as exc:
@@ -176,9 +190,10 @@ def relocate_controls(
         shape = seen.get(cid)
         if shape is None or shape["piece9"] or not shape["piece8_failure"]:
             raise ValueError(
-                f"{cid} is not a control chain in the floor's journal (needs a piece 8 failure and no piece 9 event); nothing moved"
+                f"{cid} is not a control chain in the floor's journal {floor} ({len(lines)} lines read; needs a piece 8 "
+                "failure and no piece 9 event); nothing moved"
             )
-    control = _expand(overlay.control_journal)
+    control = _expand(overlay.control_journal, home)
     control.parent.mkdir(parents=True, exist_ok=True)
     with control.open("a", encoding="utf-8") as handle:
         handle.writelines(moved)
@@ -190,14 +205,16 @@ def relocate_controls(
 
 def _relocate(arguments: argparse.Namespace) -> int:
     overlay = load_structured_overlay(OVERLAY_ID, ModelJoinJ8LiveOverlay)
-    sys.stdout.write(json.dumps(relocate_controls(overlay, arguments.cid)) + "\n")
+    sys.stdout.write(
+        json.dumps(relocate_controls(overlay, arguments.cid, arguments.home)) + "\n"
+    )
     return 0
 
 
-def _tick(state_dir: Path | None) -> int:
+def _tick(state_dir: Path | None, home: Path | None = None) -> int:
     """What the host unit runs: the golden end, then the error end, each its own real head and correlation id."""
     overlay = load_structured_overlay(OVERLAY_ID, ModelJoinJ8LiveOverlay)
-    handler = _handler(overlay, None)
+    handler = _handler(overlay, None, home)
     results: dict[str, ModelJoinJ8LiveResult] = {}
     for want in (EnumJ8Want.GOLDEN, EnumJ8Want.ERROR):
         result = handler.handle(
@@ -218,7 +235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "verb", nargs="?", choices=("run", "tick", "relocate-controls"), default="tick"
     )
-    parser.add_argument("--omni-home", type=Path)
+    parser.add_argument("--omni-home", dest="home", type=Path)
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--want", choices=[w.value for w in EnumJ8Want], default="any")
     parser.add_argument("--pr")
@@ -230,7 +247,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.verb == "relocate-controls":
             return _relocate(arguments)
         return (
-            _run(arguments) if arguments.verb == "run" else _tick(arguments.state_dir)
+            _run(arguments)
+            if arguments.verb == "run"
+            else _tick(arguments.state_dir, arguments.home)
         )
     except (NodeOverlayError, WatcherStateError, ValueError) as exc:
         sys.stderr.write(f"INDETERMINATE {type(exc).__name__}: {exc}\n")

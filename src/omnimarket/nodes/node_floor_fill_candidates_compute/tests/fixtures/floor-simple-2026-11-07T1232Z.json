@@ -1,0 +1,151 @@
+{
+ "schema_id": "omni.floor-simple/1",
+ "generated_at": "2026-11-07T12:32:35.560852Z",
+ "freshness_max_age_s": 900,
+ "pieces": [
+  {
+   "piece": 1,
+   "name": "Code graph",
+   "reading_state": "WORKING",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "fresh"
+  },
+  {
+   "piece": 2,
+   "name": "Hosts and capacity",
+   "reading_state": "NOT WORKING",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "stale"
+  },
+  {
+   "piece": 3,
+   "name": "Bus, runtime and seams",
+   "reading_state": "WORKING",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "fresh"
+  },
+  {
+   "piece": 4,
+   "name": "Contracts, overlays and injected dependencies",
+   "reading_state": "NOT WORKING",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "stale"
+  },
+  {
+   "piece": 5,
+   "name": "Secrets",
+   "reading_state": "WORKING",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "fresh"
+  },
+  {
+   "piece": 6,
+   "name": "Ledger and state",
+   "reading_state": "WORKING",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "fresh"
+  },
+  {
+   "piece": 7,
+   "name": "Process spine",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 8,
+   "name": "CI, runners and the central test location",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 9,
+   "name": "Landing and merge queue",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 10,
+   "name": "Install and release",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 11,
+   "name": "Dev deploy and runtime",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 12,
+   "name": "Dispatch and placement",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 13,
+   "name": "Results and tracking",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 14,
+   "name": "Review",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 15,
+   "name": "Delegation and the chain of responders",
+   "reading_state": "WORKING",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 16,
+   "name": "Context, memory and evals",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  },
+  {
+   "piece": 17,
+   "name": "Observability and the floor",
+   "reading_state": "NOT WORKING",
+   "reading_age_s": 399,
+   "reading_max_age_s": 900,
+   "freshness": "fresh"
+  },
+  {
+   "piece": 18,
+   "name": "Onboarding and the customer path",
+   "reading_state": "UNKNOWN",
+   "reading_age_s": 1028,
+   "reading_max_age_s": 7200,
+   "freshness": "none"
+  }
+ ]
+}

@@ -10,11 +10,11 @@ classes:
   to_build: a named node or handler to build in omnimarket
   dead: no production caller
 counts:
-  exists: 135
-  exists_omnimarket: 104
+  exists: 136
+  exists_omnimarket: 105
   exists_runtime: 12
   exists_private_to_move: 19
-  to_build: 77
+  to_build: 76
   dead: 6
 workflow_contract: src/omnimarket/contracts/landing_workflow/landing_workflow.v1.yaml
 rows:
@@ -1480,10 +1480,9 @@ rows:
   nodes: []
 - function: perform
   lines: 5859-5864
-  class: to_build
+  class: exists
   where: omnimarket
-  maps_to: 'BUILD tick writer: an act-mode ProtocolTickWriter for node_pr_landing_tick_orchestrator that sends each ModelLandingAction as a node_pr_landing_github_effect command (merge pinned to head, rerun,
-    update-branch, close) and reads the completed/failed event'
+  maps_to: node_pr_landing_tick_orchestrator act-mode writer GithubEffectTickWriter (handlers/tick_github_writer.py) onto node_pr_landing_github_effect; merge is arm or enqueue pinned to the head
   nodes:
   - node_pr_landing_github_effect
   - node_pr_landing_tick_orchestrator
