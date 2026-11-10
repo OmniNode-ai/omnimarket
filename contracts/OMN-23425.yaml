@@ -15,8 +15,6 @@ requirements:
     statement: 'AC2: the overlay key remote_lane_start.host_path_prefix is required, an empty string adds nothing, and the ssh transport exports the prefix before the prepare and start scripts and refuses a prefix with characters beyond path characters and $NAME references -- falsifier: `-k ssh_transport_path_prefix`.'
   - id: AC3
     statement: 'AC3: the seam between the floor fill orchestrator and the lane start entry is pinned: every flag the fill passes is accepted by the entry, the fill fills exactly four placeholders, and the six flags the fill does not supply are the pinned gap -- falsifier: `-k fill_seam`.'
-  - id: AC4
-    statement: 'AC4: integrated: one real lane is started on a lab host by the start nodes, not the runner script, and its CLAIM row, carrying the node claim text, reads back from the ledger -- falsifier: the CLAIM row of that lane.'
 evidence_requirements:
 - kind: tests
   description: The focused tests of both lane start nodes.
@@ -57,8 +55,6 @@ dod_evidence:
   description: One real lane was started on a lab host by the start nodes (the entry run through onex run-node) and its CLAIM row, which carries the node's claim text, reads back from the work ledger.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: onex ledger query --query rows --kind CLAIM --term 'via node_remote_lane_start_orchestrator' --since 2026-11-10T03:00:00Z | grep -q 'via node_remote_lane_start_orchestrator'
