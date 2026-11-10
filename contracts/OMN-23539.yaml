@@ -31,12 +31,6 @@ dod_evidence:
     source: manual
     binds_ac:
       - AC1
-    ac_bindings:
-      - label: AC1
-        criterion_hash: 735fe3ce9d593b229c66149bee8ed00b4cee6a5b878a97778411c7e8458c11f4
-        proposed_by: lane=p9wire7-1840
-        accepted_by: lane=p9drift-3210
-        accepted_at: "2026-11-10T20:21:33Z"
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_compared_grants_seam.py -q --no-cov -p no:randomly -p no:cacheprovider
