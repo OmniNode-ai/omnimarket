@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
 from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_launch import (
     HandlerLabFillLaunch,
 )
@@ -158,8 +159,8 @@ def test_merged_ticket_skip_leaves_a_ticket_with_no_merged_pr_alone(
     assert merged.calls == ["OMN-9"]
 
 
-@pytest.mark.parametrize("kind", ["pr-red", "pr-stalled", "pr-land", "dod-verify"])
-def test_merged_ticket_skip_does_not_stop_a_pr_lane_or_the_closer_lane(
+@pytest.mark.parametrize("kind", ["pr-red", "pr-stalled", "pr-land", "diagnose"])
+def test_merged_ticket_skip_does_not_stop_a_pr_lane_or_the_fills_own_lane(
     kind: str,
 ) -> None:
     gate = HandlerLabFillSendGate().handle(
@@ -251,4 +252,50 @@ def test_h200_bound_brief_naming_h2000_or_a_longer_name_is_not_h200() -> None:
 
 def test_h200_bound_brief_with_no_h200_fact_is_sent_to_any_host(tmp_path: Path) -> None:
     result = _sender(FakeRunner()).handle(_request(tmp_path, host="h053"))
+    assert result.detached is True
+
+
+def test_a_dod_verify_lane_is_the_closers_work_so_the_gate_sends_none() -> None:
+    """OMN-23376: the closer verifies a merged ticket; a lane that rebuilt a worktree and a venv to find it built was the waste."""
+    gate = HandlerLabFillSendGate().handle(
+        ModelLabFillSendGateRequest(
+            ticket="OMN-9",
+            kind="dod-verify",
+            brief="TASK: x",
+            merged_prs=("repo_a#1",),
+        )
+    )
+    assert gate.verdict is EnumLabFillSendVerdict.IMPLEMENTATION_MERGED
+    assert gate.routed_to == CLOSER_NODE
+
+
+def test_an_already_built_report_with_passing_falsifiers_sends_no_lane(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner()
+    built = (
+        ModelLabFillBuiltReport(
+            ticket="OMN-9",
+            lane="fill-ticket-OMN-9-20261109T1419Z",
+            reported_at="2026-11-09T14:29:11Z",
+            falsifiers_passed=True,
+            evidence="pytest -k ac1 exit 0 on dev a4798bc9d",
+        ),
+    )
+    result = _sender(runner, FakeMerged(built=built)).handle(_request(tmp_path))
+    assert (result.detached, result.skipped) == (False, "already-built")
+    assert result.routed_to == CLOSER_NODE
+    assert "pytest -k ac1 exit 0 on dev a4798bc9d" in result.detail
+    assert runner.calls == []
+
+
+def test_an_already_built_report_with_failing_falsifiers_does_not_stop_the_lane(
+    tmp_path: Path,
+) -> None:
+    built = (
+        ModelLabFillBuiltReport(
+            ticket="OMN-9", lane="x", reported_at="t", falsifiers_passed=False
+        ),
+    )
+    result = _sender(FakeRunner(), FakeMerged(built=built)).handle(_request(tmp_path))
     assert result.detached is True

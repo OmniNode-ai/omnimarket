@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
+    ModelFloorStartCriterion,
     ModelFloorTaskPayloadVerdict,
 )
 
@@ -131,6 +132,10 @@ class ProtocolFloorTickets(Protocol):
         """Pure: one verdict per ready task of the record. Makes no Linear call."""
         ...
 
+    def start_criteria(self, floor_record: str) -> Sequence[ModelFloorStartCriterion]:
+        """One ``Start when:`` line per ready task of the record; a task absent here has no criterion and is not ready."""
+        ...
+
     def entry_ticket_verdicts(
         self, tickets: Mapping[str, str]
     ) -> Sequence[ModelFloorEntryTicketVerdict]:
@@ -139,6 +144,19 @@ class ProtocolFloorTickets(Protocol):
 
     def mint(self, key: str) -> ModelMintResult:
         """Search by ``Floor key:`` then create; fail closed (``unavailable``) past the deadline."""
+        ...
+
+
+@runtime_checkable
+class ProtocolFloorBriefs(Protocol):
+    """The previous lane's report text, and the brief file a continuation lane's start entry reads (``--brief``)."""
+
+    def report_text(self, report_path: str) -> str | None:
+        """The report at the path the floor record names; None when there is none, ``FloorFillUnreadableError`` when it cannot be read."""
+        ...
+
+    def save_brief(self, lane: str, text: str) -> str:
+        """Write the brief of a continuation lane (its name already carries the attempt) and return its path; raises ``FloorFillUnreadableError`` when it cannot be written."""
         ...
 
 
@@ -178,6 +196,7 @@ __all__: list[str] = [
     "ModelRunOutcome",
     "ModelStateRead",
     "ProtocolFactSource",
+    "ProtocolFloorBriefs",
     "ProtocolFloorClock",
     "ProtocolFloorLedger",
     "ProtocolFloorPool",

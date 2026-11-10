@@ -1,0 +1,15 @@
+{"t":"load","call":"load","pid":1886,"pidversion":4697,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24839546323,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"posix_spawn","pid":1886,"pidversion":4697,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24839707567,"tb_numer":125,"tb_denom":3,"detail":"/tmp/control_tree"}
+{"t":"load","call":"load","pid":1887,"pidversion":4699,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24839940938,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"connect","pid":1887,"pidversion":4699,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24839949220,"tb_numer":125,"tb_denom":3,"detail":"inet 192.0.2.1:443"}
+{"t":"call","call":"posix_spawn","pid":1886,"pidversion":4697,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24864049756,"tb_numer":125,"tb_denom":3,"detail":"/tmp/control_tree"}
+{"t":"load","call":"load","pid":1889,"pidversion":4704,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24864435035,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"fork","pid":1889,"pidversion":4704,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24864443502,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"child","call":"fork","pid":1890,"pidversion":4705,"ppid":1889,"image":"/private/tmp/control_tree","mach_abs":24864466330,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"connect","pid":1890,"pidversion":4705,"ppid":1889,"image":"/private/tmp/control_tree","mach_abs":24864471126,"tb_numer":125,"tb_denom":3,"detail":"inet 192.0.2.1:443"}
+{"t":"call","call":"posix_spawn","pid":1886,"pidversion":4697,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24888646918,"tb_numer":125,"tb_denom":3,"detail":"/tmp/control_tree"}
+{"t":"load","call":"load","pid":1891,"pidversion":4707,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24889045330,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"getaddrinfo","pid":1891,"pidversion":4707,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24889057831,"tb_numer":125,"tb_denom":3,"detail":"example.com"}
+{"t":"call","call":"posix_spawn","pid":1886,"pidversion":4697,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24889286365,"tb_numer":125,"tb_denom":3,"detail":"/tmp/control_tree"}
+{"t":"load","call":"load","pid":1892,"pidversion":4709,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24889472545,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"getaddrinfo","pid":1892,"pidversion":4709,"ppid":1886,"image":"/private/tmp/control_tree","mach_abs":24889479913,"tb_numer":125,"tb_denom":3,"detail":"example.com"}

@@ -36,6 +36,7 @@ from typing import Final, Protocol
 
 import click
 import yaml
+from omnibase_infra.errors import InfraConnectionError
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
@@ -242,7 +243,7 @@ def git_credential_command(
     except GitCredentialRefusedError as exc:
         click.echo(f"onex scm git-credential: refused: {exc}", err=True)
         sys.exit(EXIT_REFUSED)
-    except LabRunBusError as exc:
+    except (LabRunBusError, InfraConnectionError) as exc:
         click.echo(f"onex scm git-credential: bus unavailable: {exc}", err=True)
         sys.exit(EXIT_BUS_UNAVAILABLE)
     except TimeoutError:
