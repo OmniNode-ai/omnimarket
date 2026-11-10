@@ -388,6 +388,75 @@ def test_symbolic_sync_or_registry_inputs_cannot_hide_retired_targets(
         retired_repository_findings(tmp_path, load_retirement_policy())
 
 
+def test_contract_declares_the_generated_environment_marker() -> None:
+    policy = load_retirement_policy()
+    assert policy.generated_directory_markers == ("pyvenv.cfg",)
+    with pytest.raises(ValueError, match="generated_directory_markers"):
+        policy.model_validate(
+            {**policy.model_dump(), "generated_directory_markers": ()}
+        )
+
+
+def test_generated_virtualenv_symlinks_are_not_sync_inputs(tmp_path: Path) -> None:
+    venv = tmp_path / "scripts/deploy-agent/.venv"
+    (venv / "lib").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    (venv / "lib64").symlink_to("lib")
+    (venv / "lib/site.py").write_text("onex_change_control\n")
+    assert retired_repository_findings(tmp_path, load_retirement_policy()) == ()
+
+
+def test_symlink_beside_a_virtualenv_is_still_refused(tmp_path: Path) -> None:
+    venv = tmp_path / "scripts/deploy-agent/.venv"
+    (venv / "lib").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    (venv / "lib64").symlink_to("lib")
+    (venv / "lib/site.py").write_text("onex_change_control\n")
+    target = tmp_path / "target"
+    target.write_text("onex_change_control\n")
+    (tmp_path / "scripts/deploy-agent/link.sh").symlink_to(target)
+    with pytest.raises(ValueError, match="symbolic"):
+        retired_repository_findings(tmp_path, load_retirement_policy())
+
+
+def test_venv_without_marker_is_still_refused(tmp_path: Path) -> None:
+    venv = tmp_path / "scripts/deploy-agent/.venv"
+    (venv / "lib").mkdir(parents=True)
+    (venv / "lib64").symlink_to("lib")
+    (venv / "lib/site.py").write_text("onex_change_control\n")
+    with pytest.raises(ValueError, match="symbolic"):
+        retired_repository_findings(tmp_path, load_retirement_policy())
+
+
+def test_host_reconcile_ignores_a_generated_virtualenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    venv = root / "omnibase_infra/scripts/deploy-agent/.venv"
+    (venv / "lib").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    (venv / "lib64").symlink_to("lib")
+    (venv / "lib/site.py").write_text("onex_change_control\n")
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert result.exit_code == 0, result.diagnostics
+    assert not any(s.surface == "retired-repository-targets" for s in result.surfaces)
+
+
+def test_host_refuses_retired_target_next_to_a_virtualenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    venv = root / "omnibase_infra/scripts/deploy-agent/.venv"
+    (venv / "lib").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    (venv / "lib64").symlink_to("lib")
+    (venv / "lib/site.py").write_text("onex_change_control\n")
+    (root / "omnibase_infra/scripts/sync.sh").write_text("clone onex_change_control\n")
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert result.exit_code == 2
+    assert any(s.surface == "retired-repository-targets" for s in result.surfaces)
+
+
 def test_host_refuses_a_retired_target_in_a_sibling_before_sync_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -98,11 +99,19 @@ def retired_repository_findings(
     def files_under(directory: Path) -> Iterator[Path]:
         if directory.is_symlink():
             raise ValueError(f"{directory}: symbolic registry input is refused")
-        for path in directory.rglob("*"):
-            if path.is_symlink():
-                raise ValueError(f"{path}: symbolic registry input is refused")
-            if path.is_file():
-                yield path
+        markers = frozenset(policy.generated_directory_markers)
+        for current, dirnames, filenames in os.walk(directory, followlinks=False):
+            if markers.intersection(filenames):
+                # A generated environment is not declared input; its own
+                # layout (lib64 -> lib) is never a sync or registry source.
+                dirnames.clear()
+                continue
+            for name in (*dirnames, *filenames):
+                path = Path(current, name)
+                if path.is_symlink():
+                    raise ValueError(f"{path}: symbolic registry input is refused")
+            for name in filenames:
+                yield Path(current, name)
 
     scripts = {
         path
