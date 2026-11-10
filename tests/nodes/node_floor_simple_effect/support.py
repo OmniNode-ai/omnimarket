@@ -143,8 +143,12 @@ def watcher(**over: Any) -> dict[str, Any]:
 
 
 def pool_receipt(free: str = "50.0G") -> dict[str, Any]:
-    entry = f"h051:cores=80,load1=4.6,disk_lanetmp={free}/97.9G/47%,disk_workdir={free}/687.9G/45%,placed=0,cap=32"
-    return {"started_at": iso(NOW - timedelta(minutes=2)), "readings": [entry]}
+    """A line for every machine of ``record`` that is read: the card counts a host the receipt holds no line for as unread."""
+    entries = [
+        f"{host}:cores=80,load1=4.6,disk_lanetmp={free}/97.9G/47%,disk_workdir={free}/687.9G/45%,placed=0,cap=32"
+        for host in ("h051", "h053")
+    ]
+    return {"started_at": iso(NOW - timedelta(minutes=2)), "readings": entries}
 
 
 def fleet(offline: int = 0) -> dict[str, Any]:
