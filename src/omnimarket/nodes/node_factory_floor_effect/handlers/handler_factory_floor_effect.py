@@ -172,6 +172,15 @@ def _file_time(path: Path) -> datetime | None:
         return None
 
 
+def _degraded_reading(
+    health: ModelFloorSourceHealth, cause: str
+) -> ModelFloorSourceHealth:
+    """A source that was read but left something out keeps its state and names what it left out."""
+    if health.state != "read" or not cause:
+        return health
+    return health.model_copy(update={"cause": cause})
+
+
 class HandlerFactoryFloorEffect:
     """Boundary of the factory floor: every read and the one write happen here, none in the compute node."""
 
@@ -395,7 +404,9 @@ class HandlerFactoryFloorEffect:
             else now
         )
         bars = rt.source_max_age_min
-        placement = read_placement(home / src.placement_relpath)
+        placement_path = home / src.placement_relpath
+        placement = read_placement(placement_path)
+        placement_read_at = _file_time(placement_path)
         health = (
             source_health(
                 source="plans",
@@ -464,11 +475,15 @@ class HandlerFactoryFloorEffect:
                 cause=goal_cause,
             ),
             # A field this revision does not know, or a row it cannot read, degrades this reading; it never refuses the run.
-            ModelFloorSourceHealth(
-                source="placement",
-                state="read" if placement.hosts else "read-empty",
-                read_at=now,
-                cause=placement.cause,
+            _degraded_reading(
+                source_health(
+                    source="placement",
+                    now=now,
+                    max_age_min=bars.placement,
+                    read_at=placement_read_at,
+                    count=len(placement.hosts) if placement_read_at else None,
+                ),
+                placement.cause,
             ),
         )
         compute_request = ModelFactoryFloorRequest(
