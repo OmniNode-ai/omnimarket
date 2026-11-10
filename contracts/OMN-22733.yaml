@@ -44,6 +44,9 @@ dod_evidence:
   - check_type: command
     check_value: bash -c '! git -C "$OMNI_HOME/overlays" show origin/main:overlays/node_reading_writer_effect/overlay.yaml | grep -v "^[[:space:]]*#" | grep omni_worktrees'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov -k "venv or without_a_venv"
+    cwd: .
 - id: dod-omn22733-ac2-unit
   description: The rendered unit on h053, drop-ins included, names no omni_worktrees path.
   source: manual
@@ -52,6 +55,9 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: bash -c '! systemctl --user cat onex-reading-hourly.service | grep omni_worktrees'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov -k "installed_unit_runs"
     cwd: .
 - id: dod-omn22733-ac3-window
   description: >-
