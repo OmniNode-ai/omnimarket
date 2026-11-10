@@ -191,6 +191,7 @@ def _fold(
                     from_piece=POLICY.from_piece,
                     to_piece=POLICY.to_piece,
                     label="secrets to ledger",
+                    names_failed_answers=True,
                 ),
             ),
             freshness_max_age_s=86400,
@@ -395,6 +396,35 @@ def test_join_j5_error_row_that_never_reaches_the_projection_fails_typed() -> No
 
 
 # --- controls: the tests above can fail ---------------------------------------------------------------------------
+
+
+def test_join_j5_error_a_piece_6_failure_after_a_piece_5_success_reads_broken_on_the_floor() -> (
+    None
+):
+    """Piece 5 answered and piece 6 then failed: the floor reads the join ``broken`` and names the break."""
+    rig = _Rig(projection_hears_ledger=False)
+    cid = uuid4().hex
+    rig.upstream_chain(cid, resolves=True)
+
+    rig.join.handle(_request(cid))
+
+    state, _, findings = _fold(rig.sink.events, NOW)
+    assert (state, findings) == (
+        "broken",
+        ["downstream_failed_after_upstream_succeeded"],
+    )
+
+
+def test_control_a_landed_answer_after_a_piece_5_success_is_not_a_finding() -> None:
+    """Piece 5 answered and piece 6 landed: the floor reads ``golden_only`` and names no break."""
+    rig = _Rig()
+    cid = uuid4().hex
+    rig.upstream_chain(cid, resolves=True)
+
+    rig.join.handle(_request(cid))
+
+    state, _, findings = _fold(rig.sink.events, NOW)
+    assert (state, findings) == ("golden_only", [])
 
 
 def test_control_the_floor_state_before_this_node_piece_5_fails_and_piece_6_is_silent() -> (
