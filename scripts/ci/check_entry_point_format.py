@@ -5,12 +5,14 @@
 
 Runs when pyproject.toml is in the changed file set. Verifies that every
 entry in [project.entry-points."onex.nodes"] is a valid dotted module path
-(no colon:ClassName — these are module-only references, not entry points).
+(no colon:ClassName — these are module-only references, not entry points)
+and that the table is sorted by node name, so two node-adding pull requests insert
+at different lines and merge without a conflict (OMN-22609).
 
 Does NOT do filesystem verification (that's the CI runtime_sweep's job).
 This check is purely syntactic — catches malformed entries before commit.
 
-Exits 1 if any entry is malformed.
+Exits 1 if any entry is malformed or the table is out of order.
 """
 
 from __future__ import annotations
@@ -39,23 +41,19 @@ def main(files: list[str]) -> int:
         config.get("project", {}).get("entry-points", {}).get("onex.nodes", {})
     )
 
-    broken = []
-    for name, module_path in entry_points.items():
-        if not VALID_MODULE_RE.match(module_path):
-            broken.append((name, module_path, "invalid dotted module path"))
-        elif ":" in module_path:
-            broken.append(
-                (
-                    name,
-                    module_path,
-                    "unexpected colon (onex.nodes uses module path, not module:class)",
-                )
-            )
-
-    if broken:
+    broken = [
+        (name, path, "invalid dotted module path")
+        for name, path in entry_points.items()
+        if not VALID_MODULE_RE.match(path)
+    ]
+    names = list(entry_points)
+    unsorted = [(a, b) for a, b in zip(names, names[1:], strict=False) if a > b]
+    if broken or unsorted:
         print("entry-point-format: malformed onex.nodes entries in pyproject.toml:\n")
         for name, path, reason in broken:
             print(f"  {name} = {path!r}  →  {reason}")
+        for a, b in unsorted:
+            print(f"  {a} is listed before {b}  →  not sorted by name (OMN-22609)")
         print("\nFAIL: fix the entry point declarations before committing.")
         return 1
 

@@ -19,6 +19,9 @@ from typing import Literal
 
 import pytest
 
+from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
+    HandlerDailyLine,
+)
 from omnimarket.nodes.node_daily_line_effect.handlers import (
     handler_daily_line_run as run_module,
 )
@@ -106,6 +109,7 @@ def _runner(
         ledger=read,
         appender=rows.append,
         clock=lambda: NOW,
+        compute=HandlerDailyLine(),
     )
 
 

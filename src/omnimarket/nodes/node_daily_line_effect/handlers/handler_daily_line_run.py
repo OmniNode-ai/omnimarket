@@ -19,7 +19,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,9 +28,9 @@ from omnimarket.models.model_daily_line import (
     ModelDailyLinePiece,
     ModelDailyLinePublication,
     ModelDailyLineRequest,
+    ModelDailyLineResult,
     ModelDailyLineRunCommand,
 )
-from omnimarket.nodes.node_daily_line_compute import HandlerDailyLine
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     CommandLedgerAppender,
 )
@@ -52,6 +52,14 @@ J1_JOIN_ID = "J1"
 PUBLISHED_MODE = 0o644
 
 LedgerAppender = Callable[[str], None]
+
+
+class ProtocolDailyLineCompute(Protocol):
+    """The computation of the line, injected by the composition root (it is another node's handler)."""
+
+    def handle(self, request: ModelDailyLineRequest) -> ModelDailyLineResult: ...
+
+
 Clock = Callable[[], datetime]
 
 
@@ -196,14 +204,14 @@ class HandlerDailyLineRun:
         ledger: ProtocolLedgerPointRead | None,
         appender: LedgerAppender,
         clock: Clock = lambda: datetime.now(UTC),
-        compute: HandlerDailyLine | None = None,
+        compute: ProtocolDailyLineCompute,
     ) -> None:
         self._runtime = runtime
         self._home = home
         self._ledger = ledger
         self._append = appender
         self._clock = clock
-        self._compute = compute or HandlerDailyLine()
+        self._compute = compute
 
     @property
     def published_path(self) -> Path:
@@ -238,7 +246,9 @@ class HandlerDailyLineRun:
         return publication
 
 
-def build_runner(env: Mapping[str, str] | None = None) -> HandlerDailyLineRun:
+def build_runner(
+    compute: ProtocolDailyLineCompute, env: Mapping[str, str] | None = None
+) -> HandlerDailyLineRun:
     """The production wiring: the registry home and the two bus commands from the environment, the rest from the contract."""
     environment = dict(os.environ if env is None else env)
     runtime = load_runtime()
@@ -267,6 +277,7 @@ def build_runner(env: Mapping[str, str] | None = None) -> HandlerDailyLineRun:
                 runtime.ledger_append_timeout_seconds,
             )
         ),
+        compute=compute,
     )
 
 

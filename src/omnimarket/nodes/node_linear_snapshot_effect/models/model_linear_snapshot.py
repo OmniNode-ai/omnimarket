@@ -3,8 +3,8 @@
 """The Linear snapshot ``linear-<UTC date>.json`` and the request and result of the node that writes it.
 
 One typed shape serves every reader of the file: the lab fill generator (``id``, ``title``,
-``description``, ``statusType``, ``assignee``, ``labels``, ``project`` per issue and the top-level
-``operator``), plans-today's identity sidecar (``operator`` is the resolved Linear user id of the
+``description``, ``statusType``, ``assignee``, ``labels``, ``project``, ``projectId``, ``parentId`` per issue and the
+top-level ``operator``), plans-today's identity sidecar (``operator`` is the resolved Linear user id of the
 signed-in subject, never the literal ``me``, and every issue names its ``assignee``) and plans-today's
 snapshot loader (``status``, ``statusType``, ``updatedAt``, ``priority``). The snapshot holds the signed-in
 subject's open issues, so every issue's ``assignee`` is the ``operator``.
@@ -49,6 +49,12 @@ class ModelSnapshotIssue(BaseModel):
     assignee: NonEmpty
     labels: tuple[str, ...] = ()
     project: str = ""
+    # The project's id, so a reader can match a project by id as well as by name; empty for an issue in no project and
+    # in a file written before the key existed.
+    project_id: str = Field(default="", alias="projectId")
+    # The identifier of the issue's parent (``OMN-22867``), null for an issue with none and in a file written before the
+    # key existed. The work list reads scope up this chain.
+    parent_id: str | None = Field(default=None, alias="parentId")
     updated_at: NonEmpty = Field(alias="updatedAt")
     description: str = ""
     priority: str | None = None
@@ -59,13 +65,27 @@ class ModelSnapshotIssue(BaseModel):
     children: tuple[str, ...] | None = None
 
 
+class ModelSnapshotAncestor(BaseModel):
+    """One ancestor of an issue that is not itself in ``issues`` (unassigned to the operator, or closed): the parent and
+    project the work list's scope walk reads. It is not an open issue and never a work item."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    id: NonEmpty
+    parent_id: str | None = Field(default=None, alias="parentId")
+    project: str = ""
+    project_id: str = Field(default="", alias="projectId")
+
+
 class ModelLinearSnapshot(BaseModel):
-    """The file: who it was read as, and that subject's open issues."""
+    """The file: who it was read as, that subject's open issues and the ancestors those issues name."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
 
     operator: NonEmpty
     issues: tuple[ModelSnapshotIssue, ...]
+    # Every ancestor of an issue that is not itself an issue, once; absent in a file written before the key existed.
+    ancestors: tuple[ModelSnapshotAncestor, ...] = ()
 
     @model_validator(mode="after")
     def _read_as_a_resolved_subject(self) -> ModelLinearSnapshot:
@@ -100,6 +120,8 @@ class ModelLinearSnapshotRequest(BaseModel):
     full_read_every_s: int = Field(default=86400, ge=1)
     #: Each incremental read starts this far before the last good read, so an update racing it is read twice, never missed.
     overlap_s: int = Field(default=600, ge=0)
+    #: How many levels of ``parent`` each issue's query selects, so a chain through an unassigned or closed ancestor reads.
+    ancestor_depth: int = Field(default=6, ge=0, le=8)
 
 
 class ModelLinearSnapshotResult(BaseModel):
