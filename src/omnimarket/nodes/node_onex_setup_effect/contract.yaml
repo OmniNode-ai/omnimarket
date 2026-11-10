@@ -47,6 +47,14 @@ handler_routing:
         module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup
       handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup
       event_model: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup.ModelOnexSetupRequest
+    # The model step registers a keyless local model server through this handler, which lives on
+    # the dispatch side so the node imports no model class from the model setup node (OMN-23207).
+    - operation: onex_setup.add_local_model
+      handler:
+        name: HandlerLocalModelSetup
+        module: omnimarket.handlers.handler_local_model_setup
+      handler_module: omnimarket.handlers.handler_local_model_setup
+      event_model: omnimarket.handlers.handler_local_model_setup.ModelLocalModelSetupRequest
 
 descriptor:
   node_archetype: effect

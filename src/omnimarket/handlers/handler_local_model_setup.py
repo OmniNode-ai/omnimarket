@@ -9,6 +9,8 @@ scans the node directories only).
 
 from __future__ import annotations
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from omnimarket.handlers.handler_model_keys import model_handler
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
@@ -28,6 +30,27 @@ def add_local_model(url: str | None, model: str) -> ModelModelTestResult | None:
     return tests[0] if tests else None
 
 
+class ModelLocalModelSetupRequest(BaseModel):
+    """One local model server to register: its base ``url`` and a model name."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    url: str | None = None
+    model: str = Field(min_length=1)
+
+
+class HandlerLocalModelSetup:
+    """Register a keyless local model server from a typed request."""
+
+    def handle(
+        self, request: ModelLocalModelSetupRequest
+    ) -> ModelModelTestResult | None:
+        """Register the request's model server and return its first test."""
+        return add_local_model(request.url, request.model)
+
+
 __all__ = [
+    "HandlerLocalModelSetup",
+    "ModelLocalModelSetupRequest",
     "add_local_model",
 ]
