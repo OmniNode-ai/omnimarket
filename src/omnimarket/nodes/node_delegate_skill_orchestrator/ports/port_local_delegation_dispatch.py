@@ -302,6 +302,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolut
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_routing_answer_judge import (
     routing_answer_judge,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_shrink_retry_caps import (
+    resolve_task_class_shrink_caps,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.quality_gate_record_recorder import (
     build_quality_gate_record,
     publish_quality_gate_record,
@@ -378,9 +381,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     sibling_backend_available_in_tier,
     tier_for_backend,
     tier_max_retries,
-)
-from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shrink_retry_caps import (
-    resolve_task_class_shrink_caps,
 )
 from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shrink_retry_policy import (
     next_best_configuration,

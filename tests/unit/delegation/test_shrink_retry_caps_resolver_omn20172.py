@@ -6,15 +6,15 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers import (
-    handler_shrink_retry_caps,
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    port_shrink_retry_caps,
 )
 
 pytestmark = pytest.mark.unit
 
 
 def test_a_class_that_declares_the_caps_resolves_them() -> None:
-    caps = handler_shrink_retry_caps.resolve_task_class_shrink_caps("document")
+    caps = port_shrink_retry_caps.resolve_task_class_shrink_caps("document")
     assert caps is not None
     assert (
         caps.max_config_swaps,
@@ -30,7 +30,7 @@ def test_a_class_that_declares_the_caps_resolves_them() -> None:
 
 def test_error_chain_an_unknown_class_declares_no_caps() -> None:
     assert (
-        handler_shrink_retry_caps.resolve_task_class_shrink_caps("no_such_class_zz")
+        port_shrink_retry_caps.resolve_task_class_shrink_caps("no_such_class_zz")
         is None
     )
 
@@ -47,6 +47,6 @@ def test_error_chain_a_class_without_a_source_slot_declares_no_caps(
         }
     }
     monkeypatch.setattr(
-        handler_shrink_retry_caps, "_task_class_entry", lambda _c, _t: entry
+        port_shrink_retry_caps, "_task_class_entry", lambda _c, _t: entry
     )
-    assert handler_shrink_retry_caps.resolve_task_class_shrink_caps("document") is None
+    assert port_shrink_retry_caps.resolve_task_class_shrink_caps("document") is None
