@@ -84,6 +84,11 @@ class ModelJoinDef(_Frozen):
     # instant is not judged, because the join's to-piece could not have answered it. A chain at or after the bound is judged
     # as ever, so a chain that is really broken stays red. ``None`` judges every chain in the window.
     judged_since: AwareDatetime | None = None
+    # Whether a to-piece typed failure under a from-piece success is a finding of this join (OMN-23086), declared by the overlay.
+    # Off, such an answer is not read (the join reads not run or error only); on, each is named with the failure's code and
+    # the join reads broken. A join with a running caller of its own turns it on, so a failed answer is told apart from a
+    # missed run.
+    names_failed_answers: bool = False
 
 
 class ModelPieceDef(_Frozen):
@@ -152,6 +157,7 @@ FindingCode = Literal[
     "downstream_started_after_upstream_failed",
     "downstream_missing_typed_failure",
     "downstream_started_before_upstream_succeeded",
+    "downstream_failed_after_upstream_succeeded",
 ]
 
 
