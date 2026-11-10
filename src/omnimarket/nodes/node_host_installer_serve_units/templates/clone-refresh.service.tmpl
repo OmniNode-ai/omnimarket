@@ -1,0 +1,24 @@
+# The per-host canonical clone refresh consumer (OMN-20496), a systemd USER unit beside the
+# serve unit. It reads the repo-merged topic and runs this host's sync command for the
+# merged repository. Restart on-failure: a clean SIGTERM stop exits 0 and stays stopped; a crash or
+# kill -9 restarts. Retry indefinitely when the broker is down at boot.
+# Rendered by node_host_installer_serve_units; the placeholders are filled from the node's overlay.
+
+[Unit]
+Description=ONEX canonical clone refresh consumer for the lab pool host (OMN-20496)
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/__ENV_FILE__
+ExecStart=/bin/bash -c 'cd "$OMNIBASE_PATH/omnimarket" && exec .venv/bin/python -m omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_serve serve --bus-lane "$CLONE_REFRESH_BUS_LANE" --host-name "$CLONE_REFRESH_HOST_NAME" --sync-command "$CLONE_REFRESH_SYNC_COMMAND"'
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=120
+KillSignal=SIGTERM
+StandardOutput=append:%h/__LOG_DIRECTORY__/serve.log
+StandardError=inherit
+SyslogIdentifier=__SYSLOG_IDENTIFIER__
+
+[Install]
+WantedBy=default.target

@@ -134,7 +134,8 @@ def _utc(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
-_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
+# The hour is 00..23: Python 3.14's fromisoformat reads T24:00:00 as the next midnight, strptime never did.
+_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}Z", re.ASCII)
 
 
 def _ledger_ts(value: str) -> datetime | None:
@@ -218,6 +219,12 @@ def parse_ledger_text(
             elif sep and key == "owns":
                 # An explicit owns= cell, the ledger MSG's routing rule: a comma list with no spaces in it.
                 fields.setdefault("owns", value.split()[0] if value.split() else "")
+            elif sep and key == "needs":
+                # The closing row's typed ask (OMN-23417): `<action>:<target>`, or `unparsed`; one token, no spaces.
+                fields.setdefault("needs", value.split()[0] if value.split() else "")
+            elif sep and key == "report":
+                # The lane's report text, one cell value written by the close node (OMN-23417).
+                fields.setdefault("report", value.strip())
             elif sep and key in {"reason", "blocker"}:
                 # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
                 fields.setdefault("reason", value.strip()[:300])
@@ -253,6 +260,8 @@ def parse_ledger_text(
             head=fields.get("head", ""),
             ruling=fields.get("ruling") or fields.get("cited-rulings", ""),
             mechanism=fields.get("mechanism-ticket", ""),
+            needs=fields.get("needs", ""),
+            report=fields.get("report", ""),
         )
         core = row.kind in kinds
         if core:
@@ -558,6 +567,7 @@ def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:
                 recurring=value.get("recurring", False),
                 tickets=value.get("tickets", ()),
                 last_seen=value.get("last_seen", ""),
+                resolved_at=value.get("resolved_at", ""),
             )
             for value in data.get("classes", [])
             if "class" in value
