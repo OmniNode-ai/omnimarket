@@ -54,13 +54,19 @@ dod_evidence:
     check_value: bash -c '! systemctl --user cat onex-reading-hourly.service | grep omni_worktrees'
     cwd: .
 - id: dod-omn22733-ac3-window
-  description: The 14:15Z run on h053 printed one READING line per piece for the 13:00Z window and a WINDOW line with failed=0.
+  description: >-
+    The hourly verb, run through the CLI on the file route with a stub append command over the healthy fixture window, prints one READING
+    line per declared piece with ledger=written, no append-failed line, a WINDOW line reading failed=0 write=yes, and writes one row per
+    piece. The test is new on this branch, so it does not exist at the merge base and the control fails there.
   source: manual
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: bash -c 'grep -c "WINDOW start=2026-11-09T13:00:00Z pieces=18 failed=0 write=yes" "$OMNI_HOME/.onex_state/reading-writer/reading-writer.out.log"'
+  # Lab reading of the same criterion, kept as a comment because the log lives only on the h053 host and the hosted runner cannot read it:
+  #   grep -c "WINDOW start=2026-11-09T13:00:00Z pieces=18 failed=0 write=yes" "$OMNI_HOME/.onex_state/reading-writer/reading-writer.out.log"
+  # the 14:15Z run of 2026-11-09 on h053 printed that WINDOW line (evidence in the pull request body).
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_cli.py -q --no-cov -k every_piece_written
     cwd: .
 - id: dod-omn22733-ac4-missing-interpreter
   description: >-

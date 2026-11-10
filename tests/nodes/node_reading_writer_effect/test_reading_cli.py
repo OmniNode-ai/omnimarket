@@ -70,6 +70,34 @@ def test_hourly_writes_one_row_per_piece_for_a_window_through_the_configured_rou
     assert len(sink.read_text(encoding="utf-8").splitlines()) == 3
 
 
+def test_hourly_window_with_every_piece_written_reports_failed_zero_and_no_append_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """OMN-22733 AC3 on a hosted runner: the hourly verb writes one reading row per declared piece, and its
+    WINDOW line reads failed=0 write=yes with no append-failed line. The lab reading of the h053 unit
+    log is a comment on the contract item, not the check.
+    """
+    sink = _deployment(tmp_path, monkeypatch)
+    start = START.strftime("%Y-%m-%dT%H:%M:%SZ")
+    code = main(["hourly", "--window-start", start])
+    out = capsys.readouterr().out
+    # the window under test holds the healthy fixture's rows: every declared piece reads, writes and exits 0
+    pieces = len(overlay_document()["pieces"])
+    assert code == 0, out
+    assert out.count("READING piece=") == pieces
+    assert out.count("ledger=written") == pieces
+    assert "append-failed" not in out
+    window = next(
+        line
+        for line in out.splitlines()
+        if line.startswith("WINDOW") and f"pieces={pieces}" in line
+    )
+    assert "failed=0 write=yes" in window
+    assert len(sink.read_text(encoding="utf-8").splitlines()) == pieces
+
+
 def test_probe_writes_nothing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
