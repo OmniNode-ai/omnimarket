@@ -48,6 +48,8 @@ from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 NODE_NAME = "node_daily_line_effect"
 J1_JOIN_ID = "J1"
+#: The published line is read by other users' tools, so it keeps the mode a plain write gives.
+PUBLISHED_MODE = 0o644
 
 LedgerAppender = Callable[[str], None]
 
@@ -130,6 +132,7 @@ def read_floor_record(
     text = own.get("text")
     return (
         ModelDailyLinePiece(
+            # An absent reading stays blank so the compute handler lists the part as not read.
             state=state if isinstance(state, str) else "",
             detail=text if isinstance(text, str) else "",
         ),
@@ -164,14 +167,15 @@ def bus_appender(
 
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    # One temporary file per call: overlapping runs never share a name, so neither can take the other's.
-    handle, name = tempfile.mkstemp(
+    # One temporary file per call, so overlapping runs never write into the same inode.
+    descriptor, name = tempfile.mkstemp(
         dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
     )
     temporary = Path(name)
     try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(text)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        temporary.chmod(PUBLISHED_MODE)
         os.replace(temporary, path)
     except BaseException:
         temporary.unlink(missing_ok=True)

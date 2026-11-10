@@ -1,0 +1,227 @@
+ticket: OMN-23044
+purpose: Every finding read in slice 0 (pull requests numbered 0 mod 6) and not fixed in this change,
+  one row each, with verdict and reason (acceptance criterion AC2). The false Critical named in the ticket
+  is listed as SKIPPED and never edited. The reason text is the lane record, kept as written.
+verdicts:
+- ALREADY-FIXED
+- REAL-NOT-FIXED
+- UNCLEAR
+- SKIPPED
+findings:
+- thread: PRRT_kwDOR6jjtc604a3M
+  pull_request: omnimarket#4848
+  severity: Major
+  verdict: REAL-NOT-FIXED
+  reason: On the PR branch head the primary-key blocks (SQL lines 207-350) still only RAISE WARNING when
+    the id column holds NULLs or duplicates and then the file completes as appl
+- thread: PRRT_kwDOR6jjtc604a3Q
+  pull_request: omnimarket#4848
+  severity: Minor
+  verdict: REAL-NOT-FIXED
+  reason: On the PR branch head, tests/test_golden_chain_projection_agent_actions.py `test_replaying_the_stream_twice_leaves_one_row_per_key`
+    (lines 154-166) asserts `second == fir
+- thread: PRRT_kwDOR6jjtc604qu4
+  pull_request: omnimarket#5334
+  severity: Critical
+  verdict: SKIPPED
+  reason: false Critical named in ticket
+- thread: PRRT_kwDOR6jjtc604qu7
+  pull_request: omnimarket#5334
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: 'Current file_list_comparison no longer skips non-directory roots: it iterates the commit''s
+    ls_tree listing and counts each expected file missing when (root / rel) is not'
+- thread: PRRT_kwDOR6jjtc604qu9
+  pull_request: omnimarket#5334
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: fresh_head now raises ValueError("fresh_head needs runtime['refresh_clone'] ...") when refresh_clone
+    is absent, instead of silently reading the local ref. Existing test p
+- thread: PRRT_kwDOR6jjtc606NXv
+  pull_request: omnimarket#5268
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: handler_floor_simple_tick.py::_receipts now reads back one abandon bound further (since - abandon_after_seconds)
+    and keeps every chain with an event inside the window, so
+- thread: PRRT_kwDOR6jjtc606NXw
+  pull_request: omnimarket#5268
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: handler_floor_receipt.py::_join_ending_at_node (lines ~305-325) now checks (ended_at - started_at)
+    > chain_deadline_s for golden/error chains, sets broken and emits downs
+- thread: PRRT_kwDOR6jjtc605ypt
+  pull_request: omnimarket#5274
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: 'The cited code (embedded rows passing when ONEX_LAB_RUN_HOSTS is unset or missing) is gone:
+    the packaged_table tests write a table to tmp_path and load it only through re'
+- thread: PRRT_kwDOR6jjtc605ypv
+  pull_request: omnimarket#5274
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: 'The test no longer rebuilds a {"hosts": ...} dict into ModelLabHostsTable; it goes through
+    resolve_lab_hosts_table -> _table_from_file, which runs ModelLabHostsTable.mode'
+- thread: PRRT_kwDOR6jjtc606LUh
+  pull_request: omnimarket#5292
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: HandlerFloorFillCommand._local sets an `expired` Event on timeout and passes it to FloorFillOrchestrator.run();
+    _Pass.check_cancelled() raises before mint, before every s
+- thread: PRRT_kwDOR6jjtc606LUj
+  pull_request: omnimarket#5292
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: core._publish rejects state_seq lower OR (equal state_seq and ctx.now < stored.observed_at)
+    with STALE-STATE, and the answer-row compare_and_set on the loaded version cov
+- thread: PRRT_kwDOR6jjtc606LUn
+  pull_request: omnimarket#5292
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: FloorFillScheduler.uninstall already returns exit_code = disabled.returncode or reloaded.returncode
+    and stderr = disabled.stderr + reloaded.stderr; a failed disable is re
+- thread: PRRT_kwDOR6jjtc606LUp
+  pull_request: omnimarket#5292
+  severity: Minor
+  verdict: UNCLEAR
+  reason: Model half already fixed (core.py imports ModelFloorFillEntry from omnimarket.models.floor_fill,
+    the shared package). The remaining sibling-handler imports (candidates, l
+- thread: PRRT_kwDOR6jjtc606LUs
+  pull_request: omnimarket#5292
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: The commit-tag/origin-dev git range check is gone; the check now enumerates every file under
+    the node directory from the working tree (_node_files), with positive and neg
+- thread: PRRT_kwDOR6jjtc604RMc
+  pull_request: omnimarket#5304
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: row_key() at model_seam_row.py already formats with %f (microseconds); existing tests cover
+    same-second distinct keys and timezone-equivalent equal keys
+- thread: PRRT_kwDOR6jjtc604RMk
+  pull_request: omnimarket#5304
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: ModelRequiredSenderRequest._consistent() already raises "a seam is demanded twice" for duplicate
+    demanded entries, so tuple order cannot decide the verdict
+- thread: PRRT_kwDOR6jjtc604RMs
+  pull_request: omnimarket#5304
+  severity: Minor
+  verdict: REAL-NOT-FIXED
+  reason: 'Partly remediated: handler_seam_deadline.py now takes the seam request/result types from shared
+    omnimarket.models.seam_reading, and no longer imports the orchestrator''s o'
+- thread: PRRT_kwDOR6jjtc6039Eh
+  pull_request: omnimarket#5316
+  severity: Minor
+  verdict: REAL-NOT-FIXED
+  reason: Real (the tick imports node_friction_rollup_compute.handlers.friction_rollup_core and handler_friction_rollup;
+    shared models already live in omnimarket.models). A correct
+- thread: PRRT_kwDOR6jjtc606FId
+  pull_request: omnimarket#5316
+  severity: Critical
+  verdict: ALREADY-FIXED
+  reason: The shared models now live in omnimarket.models.friction_rollup (no events.friction_rollup module),
+    which imports nothing from the compute package at module load (core im
+- thread: PRRT_kwDOR6jjtc604BIU
+  pull_request: omnimarket#5322
+  severity: Minor
+  verdict: UNCLEAR
+  reason: The test file's docstring and test name already say the run is a simulation ("simulated_whole_flow_replay").
+    Contract OMN-22922 AC3 still says "on the running landing pie
+- thread: PRRT_kwDOR6jjtc604BIZ
+  pull_request: omnimarket#5322
+  severity: Minor
+  verdict: REAL-NOT-FIXED
+  reason: 'The defect exists: the AC1/AC2 pytest commands skip the redpanda params when no LANDING_CHAIN_*
+    env is set and still exit 0. The fix would be adding --refuse-skips (tests'
+- thread: PRRT_kwDOR6jjtc604BId
+  pull_request: omnimarket#5322
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: run_world_chain in tests/chain/landing_chain.py already has `await bus.start()` inside the try/finally,
+    and a test for it exists (OMN-23195).
+- thread: PRRT_kwDOR6jjtc604KF9
+  pull_request: omnimarket#5328
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: NAME_AFTER_ROOT now keeps the whole run of colon/comma/semicolon characters as one name, plus
+    the pieces either side.
+- thread: PRRT_kwDOR6jjtc604KGB
+  pull_request: omnimarket#5328
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: _check_declared_path now also refuses os.path.realpath(path) != path, so a declaration under
+    a symlinked ancestor is refused.
+- thread: PRRT_kwDOR6jjtc604KGD
+  pull_request: omnimarket#5328
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: rmtree no longer uses ignore_errors; a failed deletion is recorded in errors, only bytes actually
+    freed are subtracted, and the version is not counted as removed.
+- thread: PRRT_kwDOR6jjtc604KGI
+  pull_request: omnimarket#5328
+  severity: Critical
+  verdict: ALREADY-FIXED
+  reason: load_overlay now refuses any selected document that is not a mapping before the overlay helper
+    is called, so it cannot fall through.
+- thread: PRRT_kwDOR6jjtc604KGL
+  pull_request: omnimarket#5328
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: O_DIRECTORY, checks fstat on the fd and chmods via /proc/self/fd/N, so check and change act
+    on the same inode.
+- thread: PRRT_kwDOR6jjtc604KGO
+  pull_request: omnimarket#5328
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: run_pass re-reads process references before every root and every store, so eviction no longer
+    uses a single pre-scan snapshot.
+- thread: PRRT_kwDOR6jjtc604KGU
+  pull_request: omnimarket#5328
+  severity: Major
+  verdict: UNCLEAR
+  reason: 'Partly addressed: same-user processes that refuse a read are now tracked and reported as unreadable_count,
+    so incomplete visibility is distinguishable from verified absen'
+- thread: PRRT_kwDOR6jjtc604KGY
+  pull_request: omnimarket#5328
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: run_pass calls validate_declarations (all paths and all protected-name patterns) before the
+    first removal.
+- thread: PRRT_kwDOPl_8vc605Xb6
+  pull_request: omnibase_core#2280
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: handler_effect_backends_loader.py now calls _root_unavailable_reason(root) (missing / not a
+    directory / not listable) and returns ModelLoadedContracts(root_unavailable=re
+- thread: PRRT_kwDOPl_8vc605Xb9
+  pull_request: omnibase_core#2280
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: OMN-23114 (#2288) added runtime_effect_backends.py, which builds a dispatch table from the contract's
+    own handler_routing and runs load_contracts then effect_backends, so
+- thread: PRRT_kwDOR6jjtc604a3B
+  pull_request: omnimarket#4848
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: fixed on the PR branch (derived id includes partition and offset), not on dev
+- thread: PRRT_kwDOR6jjtc604a3E
+  pull_request: omnimarket#4848
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: fixed on the PR branch (timestamp handling), not on dev
+- thread: PRRT_kwDOR6jjtc604a3I
+  pull_request: omnimarket#4848
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: fixed on the PR branch (migration scans only while a column is nullable), not on dev
+- thread: PRRT_kwDOR6jjtc606E5J
+  pull_request: omnimarket#5298
+  severity: Major
+  verdict: REAL-NOT-FIXED
+  reason: the fix edits the merged contract of OMN-22978 and its deploy probe cannot be run here
+- thread: PRRT_kwDOR6jjtc604qvB
+  pull_request: omnimarket#5334
+  severity: Minor
+  verdict: REAL-NOT-FIXED
+  reason: carried by omnimarket#5398 (shared install file-list module), which was open and armed when
+    this branch was cut
