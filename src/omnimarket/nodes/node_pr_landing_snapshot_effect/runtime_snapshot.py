@@ -4,7 +4,8 @@
 
     python -m omnimarket.nodes.node_pr_landing_snapshot_effect
 
-Reads the overlay (<root>/node_pr_landing_snapshot_effect/overlay.yaml under
+Reads the overlay (the file ONEX_LANDING_SNAPSHOT_OVERLAY_FILE pins, for a second instance such as
+the cutover repositories' unit; otherwise <root>/node_pr_landing_snapshot_effect/overlay.yaml under
 ONEX_SKILL_OVERLAY_ROOTS), takes the tick the controller's facts file holds now, and, when that
 tick is not recorded yet, fills and records it: appended to the record journal and published on
 the record topic. A tick already recorded is left alone and nothing is published. Each pass that
@@ -45,6 +46,7 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snaps
     ModelLandingSnapshotRequest,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_snapshot_overlay import (
+    OVERLAY_FILE_ENV,
     OVERLAY_ID,
     ModelSnapshotOverlay,
 )
@@ -125,7 +127,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-dir", type=Path)
     parser.parse_args(argv)
     try:
-        overlay = load_structured_overlay(OVERLAY_ID, ModelSnapshotOverlay)
+        overlay = load_structured_overlay(
+            OVERLAY_ID, ModelSnapshotOverlay, file_env=OVERLAY_FILE_ENV
+        )
         code, line = run_once(overlay)
     except (NodeOverlayError, ValueError) as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}

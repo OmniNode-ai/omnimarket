@@ -85,6 +85,10 @@ runtime:
   # inmemory: scripted registry and delegator, no network (the default profile). real: the model registry's own add and list
   # handlers and the delegation skill handler against OpenRouter, on the paid probe key read from `openrouter_probe_key_env`.
   model_backend: inmemory
+  # ONEX_SCENARIO_R5_MODEL_BACKEND, when set in the unit's environment file (`.config/onex/scenario-r5.env`) to `real` or
+  # `inmemory`, overrides model_backend for that one run; unset keeps the contract's value; any other value is a refusal
+  # (the scheduled tick exits 65 and records `refused`). The contract file itself stays at the scripted default.
+  model_backend_env: ONEX_SCENARIO_R5_MODEL_BACKEND
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r5_legs.yaml
