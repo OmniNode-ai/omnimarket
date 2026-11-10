@@ -312,7 +312,15 @@ def test_golden_a_stopped_ticket_with_a_named_follow_up_and_no_successor_is_list
             left=left,
         )
 
-    with_pr = next(iter(declared_tickets()))
+    with_pr = next(
+        ticket_of(WATCHED["prs"][k]["facts"]["title"])
+        for k in sorted(WATCHED["prs"])
+        if SCOPE.classify(k) == "in_scope"
+        and WATCHED["prs"][k]["facts"]["state"] == "OPEN"
+        and not WATCHED["prs"][k]["facts"].get("draft", False)
+        and WATCHED["prs"][k]["cls"] != "held-excluded"
+        and ticket_of(WATCHED["prs"][k]["facts"]["title"])
+    )
     added = ModelWorkStateResult(
         as_of=proj.as_of,
         counts=proj.counts,
