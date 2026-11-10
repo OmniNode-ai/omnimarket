@@ -3,6 +3,7 @@
 """Render the exact authorized task; the caller alone launches its structured spec."""
 
 from omnimarket.models.lab_fill import (
+    ALREADY_BUILT_LINE,
     PUSH_AND_REPORT_LINE,
     ModelLabFillApprovedRow,
     ModelLabFillLaunch,
@@ -10,8 +11,10 @@ from omnimarket.models.lab_fill import (
 
 from ..models.model_lab_fill_lane_render import (
     ModelLabFillFallbackItem,
-    ModelLabFillLaneRenderRequest,
     ModelLabFillLaneRenderResult,
+)
+from ..models.model_lab_fill_lane_render import (
+    ModelLabFillLaneRenderRequest as ModelLabFillLaneRenderRequest,
 )
 from .handler_lab_fill_dispatch_plan import APPROVED_KINDS
 from .helpers_outcomes import pick_host
@@ -163,7 +166,7 @@ class HandlerLabFillLaneRender:
         if extra.get("repo_source"):
             parts.extend([LINES[5].format_map(values), ""])
         if not item.kind.startswith("pr-"):
-            parts.extend([LINES[8].format_map(values), ""])
+            parts.extend([LINES[8].format_map(values), "", ALREADY_BUILT_LINE, ""])
         rules = LINES[7]
         for old, new in (
             LAND_RULES

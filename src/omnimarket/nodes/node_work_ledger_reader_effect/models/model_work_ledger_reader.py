@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -55,21 +54,6 @@ class ModelReaderRequest(BaseModel):
     query: EnumReaderQuery
     lane: str | None = Field(default=None, pattern=_LANE)
     read_parity: bool = False
-
-
-class ModelPointQuery(BaseModel):
-    """The typed request the read port carries to the query node."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    query: Literal["inbox", "holds", "open-claims", "rows"]
-    lanes: tuple[str, ...] = ()
-    lane: str | None = None
-    since: datetime | None = None
-    kinds: tuple[str, ...] = ()
-    limit: int | None = Field(default=None, ge=1)
-    page_size: int | None = Field(default=None, ge=1)
-    cursor: str | None = None
 
 
 class ModelPointAnswer(BaseModel):

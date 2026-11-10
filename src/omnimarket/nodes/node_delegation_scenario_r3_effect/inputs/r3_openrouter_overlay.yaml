@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Overlay of scenario R3 leg b (OMN-23182): the real paid OpenRouter rung's model and endpoint. The probe key is never here; the
+# contract names the variable that carries it.
+openrouter_model_id: openai/gpt-4o-mini
+openrouter_base_url: https://openrouter.ai/api/v1/chat/completions
