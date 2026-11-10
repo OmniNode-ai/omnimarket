@@ -50,6 +50,13 @@ def overlay(**over: Any) -> ModelOverlayMergeOrderOverlay:
         ],
         "max_named": MAX_NAMED,
         "injected_fault": "a touched overlay carries a key the merged model refuses",
+        "home": {
+            "root_env": "TEST_OVERLAY_HOME",
+            "overlays_subdir": "overlays",
+            "overlay_file": "overlay.yaml",
+            "pins_file": ".test-node-pins",
+        },
+        "merged_ref_env": "TEST_MERGED_REF",
     }
     base.update(over)
     return ModelOverlayMergeOrderOverlay.model_validate(base)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Sequence
+from typing import TextIO
 
 from pydantic import ValidationError
 
@@ -22,11 +23,36 @@ from omnimarket.nodes.node_overlay_merge_order_compute.handlers.handler_overlay_
 from omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order import (
     EnumMergeOrderVerdict,
     ModelOverlayMergeOrderCommand,
+    ModelOverlayMergeOrderResult,
 )
 from omnimarket.nodes.node_overlay_merge_order_compute.overlay import (
     NODE_NAME,
+    ModelOverlayMergeOrderOverlay,
     load_overlay,
 )
+
+
+def report(
+    result: ModelOverlayMergeOrderResult,
+    overlay: ModelOverlayMergeOrderOverlay,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Print the decision and return the exit code (shared by the JSON entry and the check entry)."""
+    if result.status == "failed":
+        err.write(f"OVERLAY-MERGE-ORDER-REFUSED {result.failure}\n")
+        return 2
+    assert result.verdict is not None
+    out.write(
+        f"DECISION verdict={result.verdict.value} merged_ref={result.merged_ref} "
+        f"changed={result.changed} accepted={len(result.accepted)} ahead={len(result.ahead)}\n"
+    )
+    for item in result.ahead[: overlay.max_named]:
+        shown = "+".join(item.fields) or "-"
+        out.write(
+            f"AHEAD overlay={item.overlay_id} verdict={item.verdict} fields={shown}\n"
+        )
+    return 1 if result.verdict is EnumMergeOrderVerdict.AHEAD_OF_CODE else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -41,21 +67,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
         sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
         return 3
-    result = HandlerOverlayMergeOrder(overlay).handle(command)
-    if result.status == "failed":
-        sys.stderr.write(f"OVERLAY-MERGE-ORDER-REFUSED {result.failure}\n")
-        return 2
-    assert result.verdict is not None
-    sys.stdout.write(
-        f"DECISION verdict={result.verdict.value} merged_ref={result.merged_ref} "
-        f"changed={result.changed} accepted={len(result.accepted)} ahead={len(result.ahead)}\n"
+    return report(
+        HandlerOverlayMergeOrder(overlay).handle(command),
+        overlay,
+        sys.stdout,
+        sys.stderr,
     )
-    for item in result.ahead[: overlay.max_named]:
-        shown = "+".join(item.fields) or "-"
-        sys.stdout.write(
-            f"AHEAD overlay={item.overlay_id} verdict={item.verdict} fields={shown}\n"
-        )
-    return 1 if result.verdict is EnumMergeOrderVerdict.AHEAD_OF_CODE else 0
 
 
 if __name__ == "__main__":

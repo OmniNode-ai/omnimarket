@@ -18,6 +18,9 @@ from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
     EnumOverlayVerdict,
 )
+from omnimarket.nodes.node_overlay_drift_effect.overlay import (
+    ModelOverlayHomeSettings,
+)
 
 NODE_NAME = "node_overlay_merge_order_compute"
 
@@ -31,6 +34,10 @@ class ModelOverlayMergeOrderOverlay(BaseModel):
     max_named: int = Field(ge=1)
     #: The fault injected on purpose that must turn the decision AHEAD_OF_CODE.
     injected_fault: str = Field(min_length=1)
+    #: Where the overlay home is and how it is laid out (the check entry judges this home through the installed models).
+    home: ModelOverlayHomeSettings
+    #: The variable naming the omnimarket ref the installed models were taken at, echoed in the decision.
+    merged_ref_env: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
 
     @model_validator(mode="after")
     def _accepted_is_the_pass(self) -> ModelOverlayMergeOrderOverlay:
