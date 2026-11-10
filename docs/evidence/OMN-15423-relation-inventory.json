@@ -4969,6 +4969,7 @@
         "node_projection_session_outcome",
         "node_projection_tenant_credentials",
         "node_session_orchestrator",
+        "node_typed_decision_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "public",
