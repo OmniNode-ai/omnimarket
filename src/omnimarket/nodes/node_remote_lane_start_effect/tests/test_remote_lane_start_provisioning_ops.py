@@ -50,7 +50,14 @@ STAGE_OPS = frozenset({"stage_ledger_snapshot", "stage_file"})
 #: Steps the ssh transport now runs itself (OMN-23425): their parity with the runner is in
 #: test_remote_lane_start_provisioning_parity.py. resolve_registry_root stays here: with no candidates
 #: or marker configured it still answers "not run".
-MOVED_OPS = frozenset({"prepare_run_dirs"})
+MOVED_OPS = frozenset(
+    {
+        "prepare_run_dirs",
+        "read_ledger_outbox",
+        "read_lane_changes",
+        "hold_run_dir_guard",
+    }
+)
 PROVISIONING_OPS = tuple(
     name
     for name, _ in inspect.getmembers(ProtocolLaneHostTransport, inspect.isfunction)

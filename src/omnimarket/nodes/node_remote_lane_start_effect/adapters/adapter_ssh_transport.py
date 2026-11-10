@@ -49,6 +49,13 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
+    CHANGES_LINE_RE,
+    changes_script,
+)
+from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
+    hold_run_dir_guard as _hold_run_dir_guard,
+)
 from omnimarket.nodes.node_remote_lane_start_effect.models.model_engine_login import (
     LABEL_PATTERN,
     ModelEngineLoginDraw,
@@ -141,6 +148,12 @@ _LITERAL_PATH = re.compile(r"[A-Za-z0-9_./-]+")
 #: The runner script's exit for a host that holds no registry root, and for run directories that could not be made.
 NO_REGISTRY_ROOT_EXIT = 96
 RUN_DIRS_REFUSED_EXIT = 70
+
+#: The ledger outbox file under the run's context directory, read after the engine ends.
+OUTBOX_FILE = "ledger-outbox.rows"
+
+#: The line the runner's guarded cleanup header ends with when no lane tree keeps a git dir inside the run directory.
+RETENTION_SAFE_LINE = "LANE-RETENTION-SAFE"
 
 
 class SshLaneHostTransport:
@@ -410,6 +423,16 @@ class SshLaneHostTransport:
             ).strip()[-300:]
         )
 
+    def _run_dirs_header(self, run_id: str) -> str:
+        """The runner's variable line: ``W`` the run directory and ``C`` its context directory."""
+        run = self.run_dir(run_id)
+        return f'W="{run}"; C="{run}.ctx"'
+
+    def _failure(self, result: ModelHostCommandResult) -> str:
+        return (result.stderr or result.stdout or f"exit {result.exit_code}").strip()[
+            -300:
+        ] or f"exit {result.exit_code}"
+
     def prepare_run_dirs(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneRunDirsResult:
@@ -417,7 +440,7 @@ class SshLaneHostTransport:
         run = self.run_dir(request.run_id)
         script = "\n".join(
             [
-                f'W="{run}"; C="{run}.ctx"',
+                self._run_dirs_header(request.run_id),
                 f'mkdir -p "$W" "$C" || exit {RUN_DIRS_REFUSED_EXIT}',
                 'echo "REMOTE-HOME $HOME"',
             ]
@@ -476,12 +499,40 @@ class SshLaneHostTransport:
     def read_ledger_outbox(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneLedgerOutboxRows:
-        return ModelLaneLedgerOutboxRows(error=self._not_run("read_ledger_outbox"))
+        """The runner script's ``ledger_outbox_script``: print the rows the lane queued (nothing when it queued none)."""
+        run = self.run_dir(request.run_id)
+        result = self._sh(
+            request.host,
+            f'cat "{run}.ctx/{OUTBOX_FILE}" 2>/dev/null; true',
+            request.timeout_seconds,
+        )
+        if result.exit_code != 0:
+            return ModelLaneLedgerOutboxRows(error=self._failure(result))
+        return ModelLaneLedgerOutboxRows(
+            rows=tuple(line for line in result.stdout.splitlines() if line.strip())
+        )
 
     def read_lane_changes(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneChangeList:
-        return ModelLaneChangeList(error=self._not_run("read_lane_changes"))
+        """The runner script's ``changes_script``: the files each of the lane's trees changed, sorted and unique."""
+        if request.registry_root is None:
+            return ModelLaneChangeList(
+                error="read_lane_changes: registry root not resolved"
+            )
+        result = self._sh(
+            request.host,
+            changes_script(request.lane, request.registry_root),
+            request.timeout_seconds,
+        )
+        if result.exit_code != 0:
+            return ModelLaneChangeList(error=self._failure(result))
+        found = (
+            CHANGES_LINE_RE.match(line.strip()) for line in result.stdout.splitlines()
+        )
+        return ModelLaneChangeList(
+            changes=tuple(sorted({m.group(2).strip() for m in found if m}))
+        )
 
     def closeout_worktrees(
         self, request: ModelLaneHostStepRequest
@@ -491,8 +542,33 @@ class SshLaneHostTransport:
     def hold_run_dir_guard(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
+        """The runner script's ``hold_run_dir_guard`` over its cleanup header: safe only when it prints ``LANE-RETENTION-SAFE``.
+
+        A lane tree whose git dir lives inside the run directory ends the script with the printed
+        ``LANE-WORKDIR kept`` line, which is the refusal returned here.
+        """
+        if request.registry_root is None:
+            return ModelLaneHostStepResult(
+                ok=False, error="hold_run_dir_guard: registry root not resolved"
+            )
+        script = _hold_run_dir_guard(
+            f"{self._run_dirs_header(request.run_id)}\necho {RETENTION_SAFE_LINE}",
+            lane=request.lane,
+            registry_root=request.registry_root,
+        )
+        result = self._sh(request.host, script, request.timeout_seconds)
+        if result.exit_code == 0 and RETENTION_SAFE_LINE in result.stdout.splitlines():
+            return ModelLaneHostStepResult(ok=True)
+        kept = next(
+            (
+                line
+                for line in result.stdout.splitlines()
+                if line.startswith("LANE-WORKDIR ")
+            ),
+            None,
+        )
         return ModelLaneHostStepResult(
-            ok=False, error=self._not_run("hold_run_dir_guard")
+            ok=False, error=kept[:300] if kept else self._failure(result)
         )
 
     def retain_run_artifacts(
