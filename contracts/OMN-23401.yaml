@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23401"
+title: "The factory floor's input inventory and overlay store input move to a bus projection"
+summary: "The floor publish read the overlay store's fleet from a file that one reader on the operator's Mac kept; when that reader stalled the file froze and every host row read wrong. Each host's reader now publishes its view of the fleet on a snapshot topic stamped with the time it stood by it, a new publish step (node_floor_projection_read_effect) reads the topic and writes the projections with their own times, and the simple floor judges the overlay store against that time and the projection's own bound: a projection older than its bound reads unknown, never the last fleet it held. The same pull request carries the inventory of every input the publish reads, held to the publish contract by a test."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "The floor's overlay store source tests pass, including the planted stale projection, and fail on the unfixed file reader."
+    command: "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23401-overlay-store-projection-freshness"
+    description: "AC1: the floor reads the overlay store state from a bus projection with its own freshness, and a stale projection reads stale on the row. The source tests plant a projection older than its bound and a producer that stopped; both read unknown on the row, and the tests fail on the unfixed file reader."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn23401-projection-reader-and-producer"
+    description: "The projection reader keeps the producer's own time and the newest publication, the producer publishes the fleet envelope, and the inventory test holds every floor input to a row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_floor_projection_read_effect tests/unit/nodes/node_overlay_store tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn23401-integration-proof-lab"
+    description: "The change run on a lab host from its pushed head: the projection reader, the producer's publication over a bus, the floor's overlay store row and the inventory test pass on the lab host the placement picks. Hosted CI cannot place on the lab, so only the local Done gate runs this unbound check; the host, head and exit code are in the pull request comment that names the head."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23401 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_projection_read_effect tests/unit/nodes/node_overlay_store tests/unit/nodes/node_floor_simple_effect/test_overlay_store_source.py tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q --no-cov'
+        cwd: "${OMNI_HOME}/omnimarket"
