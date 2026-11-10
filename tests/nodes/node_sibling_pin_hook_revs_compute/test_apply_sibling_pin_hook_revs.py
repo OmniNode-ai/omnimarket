@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -310,6 +311,26 @@ def test_cli_apply_moves_the_planned_blocks_in_place(tmp_path: Path) -> None:
     written = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert core_revs(written) == [NEWEST, OLD_HOOK, "v0.47.46", NEWEST]
     assert passes_the_core_hook_floor(HOOK, written)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_cli_apply_plans_the_pin_alone_and_leaves_a_config_with_no_block_untouched(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], newline: str
+) -> None:
+    """No block of the repository: the plan moves the pin alone, and the config keeps its bytes and its mtime."""
+    pyproject = _write(tmp_path)
+    other = CONFIG.replace(CORE, "https://github.com/OmniNode-ai/omnibase_infra")
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_bytes(other.replace("\n", newline).encode())
+    os.utime(config, ns=(1_000_000_000, 1_000_000_000))
+    before = config.stat()
+    assert cli.main(_argv(pyproject, "--apply")) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["plan"]["reason"] == "pin_moved_no_bound_hooks"
+    assert printed["plan"]["pin_tag"] == NEWEST
+    assert printed["hook_revs"] == []
+    assert config.read_bytes() == other.replace("\n", newline).encode()
+    assert config.stat().st_mtime_ns == before.st_mtime_ns
 
 
 def test_cli_leaves_the_config_alone_for_a_candidate_that_is_not_a_verdict(

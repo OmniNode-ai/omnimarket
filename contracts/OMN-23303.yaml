@@ -65,6 +65,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_run_timeout.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn23303-integration-proof
   description: On the Mac after the unit is installed from the branch, one failed required job of an open in-scope pull request is read through the mirror within 15 minutes of its failure and returns the log, not JOB-LOG-CACHE-MISS. The first check runs the filler tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the Mac or the deployed gateway cache, so only the local Done gate runs this unbound check.
   source: manual

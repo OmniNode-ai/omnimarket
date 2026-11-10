@@ -28,5 +28,5 @@ def test_error_a_comparison_record_that_cannot_be_read_says_so_and_infers_nothin
     None
 ):
     assert "The comparison record cannot be read (" in PAGE
-    assert 'const num = (v, u) => v == null ? "unread"' in PAGE
+    assert 'const measureNum = (v, u) => v == null ? "unread"' in PAGE
     assert "no 7-day comparison for this piece yet" not in PAGE
