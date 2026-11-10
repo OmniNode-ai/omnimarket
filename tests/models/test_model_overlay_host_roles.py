@@ -110,3 +110,27 @@ def test_host_roles_refuse_unknown_role() -> None:
         ModelLabHostRow.model_validate(
             {"name": "host-a", "target": "host-a", "roles": ["unknown"]}
         )
+
+
+def test_tart_column_marks_an_admitted_host_without_declaring_roles() -> None:
+    table = ModelLabHostsTable.model_validate(
+        {
+            "hosts": [
+                {"name": "host-a", "target": "host-a", "tart": True},
+                {"name": "host-b", "target": "host-b"},
+            ]
+        }
+    )
+    assert [host.tart for host in table.hosts] == [True, False]
+
+
+def test_tart_column_does_not_make_the_table_require_a_desired_publisher() -> None:
+    # Control: a `roles` declaration on the same row does require one, so a Tart marker kept out of
+    # `roles` is what lets the live table (which declares no roles) stay valid.
+    with pytest.raises(ValidationError, match="desired-publisher"):
+        ModelLabHostsTable.model_validate(
+            {"hosts": [{"name": "host-a", "target": "host-a", "roles": ["lab"]}]}
+        )
+    ModelLabHostsTable.model_validate(
+        {"hosts": [{"name": "host-a", "target": "host-a", "tart": True}]}
+    )
