@@ -408,6 +408,44 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-join-j8/last-run.json
     state_directory: .onex_state/landing-join-j8
+  # The landing snapshot step (OMN-23458; node_pr_landing_snapshot_effect of OMN-23409): every 60 s one pass takes the tick
+  # the landing controller's facts file holds and, when that tick is not recorded yet, fills it and records it on the dev
+  # bus lane. It runs on the host that holds the controller's facts (its last-facts.json and the PR watcher state). The
+  # overlay (node_pr_landing_snapshot_effect in the overlays repository) names every path, the lane and the topics; this
+  # unit holds none of it.
+  landing-snapshot:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-snapshot
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    # A pass reads two files and publishes at most two events: it ends in seconds, so 50 s, under the 60 s interval, is a hung run.
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the step's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-snapshot/last-run.json
+    state_directory: .onex_state/landing-snapshot
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick

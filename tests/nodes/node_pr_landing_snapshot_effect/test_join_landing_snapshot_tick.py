@@ -10,10 +10,12 @@ the producing handler and the consuming source over one bus and fails when eithe
 the record's shape: a field the producer drops, a field the consumer forbids, or a node id lost in
 between.
 
-The in-memory leg runs everywhere. The Redpanda leg runs the snapshot step's own Kafka publisher
-against the broker named in ``LANDING_SNAPSHOT_JOIN_BOOTSTRAP`` on topics unique to the run:
+The in-memory leg runs everywhere. The Redpanda leg runs both real adapters on a declared bus lane
+(OMN-23458), never a typed broker address: the snapshot step's lane publisher and the tick
+orchestrator's own bus reader (no injected factory), with the broker resolved from the lane config
+under the workspace root, on topics unique to the run:
 
-    LANDING_SNAPSHOT_JOIN_BOOTSTRAP=<host:port> uv run pytest tests/nodes/node_pr_landing_snapshot_effect/test_join_landing_snapshot_tick.py -m kafka -q
+    LANDING_SNAPSHOT_JOIN_LANE=dev OMNIBASE_PATH=<workspace root> uv run pytest tests/nodes/node_pr_landing_snapshot_effect/test_join_landing_snapshot_tick.py -m kafka -q
 
 This file lives under ``tests/`` because it joins two nodes; a file under ``src/`` that imports
 another node's package is a cross-node reach-in.
@@ -26,6 +28,7 @@ import json
 import os
 import uuid
 from collections.abc import Callable, Iterable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -41,7 +44,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingActionKind,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.adapter_publisher import (
-    KafkaSnapshotPublisher,
+    LaneBusSnapshotPublisher,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot import (
     HandlerPrLandingSnapshot,
@@ -61,10 +64,13 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_sources im
     RedpandaSnapshotSource,
     build_snapshot_source,
 )
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
+    ModelTickSnapshot,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overlay import (
     ModelTickOrchestratorOverlay,
+    ModelTickTopicSelection,
 )
-from omnimarket.topic_namespace import apply_topic_namespace
 from tests.nodes.node_pr_landing_snapshot_effect.snapshot_inputs import (
     FIRST,
     FIXED_ID,
@@ -77,8 +83,11 @@ from tests.nodes.node_pr_landing_snapshot_effect.snapshot_inputs import (
 
 pytestmark = [pytest.mark.unit]
 
-BOOTSTRAP_ENV = "LANDING_SNAPSHOT_JOIN_BOOTSTRAP"
-TIMEOUT_S = 30.0
+# The declared bus lane the Redpanda leg runs on; its broker resolves from the lane config under
+# OMNIBASE_PATH (OMN-23458).
+LANE_ENV = "LANDING_SNAPSHOT_JOIN_LANE"
+ROOT_ENV = "OMNIBASE_PATH"
+READ_ATTEMPTS = 6
 TICKS = (FIRST, SECOND)
 
 
@@ -106,15 +115,17 @@ class _ListReader:
         return self._raw[:max_records]
 
     @staticmethod
-    def factory(raw: list[str]) -> Callable[[str, str, str], _ListReader]:
-        def build(servers: str, topic: str, group: str) -> _ListReader:
-            del servers, topic, group
+    def factory(raw: list[str]) -> Callable[[ModelTickTopicSelection], _ListReader]:
+        def build(selection: ModelTickTopicSelection) -> _ListReader:
+            del selection
             return _ListReader(raw)
 
         return build
 
 
-def _tick_overlay(topic: str, bootstrap: str) -> ModelTickOrchestratorOverlay:
+def _tick_overlay(
+    topic: str, lane: str, root: str, group: str = "landing-snapshot-join"
+) -> ModelTickOrchestratorOverlay:
     return ModelTickOrchestratorOverlay.model_validate(
         {
             "backend": "redpanda",
@@ -122,8 +133,9 @@ def _tick_overlay(topic: str, bootstrap: str) -> ModelTickOrchestratorOverlay:
             "max_snapshots": 10,
             "floor_piece": 9,
             "emission_journal": "unused.jsonl",
-            "bootstrap_servers": bootstrap,
-            "consumer_group": "landing-snapshot-join",
+            "bus_lane": lane,
+            "workspace_root": root,
+            "consumer_group": group,
             "snapshot_topic": topic,
             "poll_timeout_s": 5.0,
         }
@@ -174,45 +186,33 @@ def _over_inmemory_bus() -> tuple[list[ModelLandingTickRecord], list[str], str]:
 
 
 def _over_redpanda(
-    bootstrap: str,
-) -> tuple[list[ModelLandingTickRecord], list[str], str]:
+    lane: str, root: str
+) -> tuple[list[ModelLandingTickRecord], list[ModelTickSnapshot]]:
+    """Publish through the step's lane publisher; read back through the orchestrator's own reader."""
     topic = (
         f"onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1.join-{uuid.uuid4().hex}"
     )
-    recorded = _record_ticks(KafkaSnapshotPublisher(bootstrap), topic)
-
-    async def read_back() -> list[str]:
-        from aiokafka import AIOKafkaConsumer
-
-        consumer = AIOKafkaConsumer(
-            apply_topic_namespace(topic),
-            bootstrap_servers=bootstrap,
-            group_id=None,
-            enable_auto_commit=False,
-            auto_offset_reset="earliest",
+    recorded = _record_ticks(LaneBusSnapshotPublisher(lane, Path(root)), topic)
+    # no injected factory: the tick orchestrator's src reader opens the declared lane
+    source = build_snapshot_source(
+        _tick_overlay(
+            topic, lane, root, group=f"landing-snapshot-join-{uuid.uuid4().hex}"
         )
-        await consumer.start()
-        try:
-            raw: list[str] = []
-            deadline = asyncio.get_running_loop().time() + TIMEOUT_S
-            while (
-                len(raw) < len(TICKS) and asyncio.get_running_loop().time() < deadline
-            ):
-                batch = await consumer.getmany(timeout_ms=1000)
-                for messages in batch.values():
-                    raw.extend(m.value.decode() for m in messages)
-            return raw
-        finally:
-            await consumer.stop()
-
-    return recorded, asyncio.run(read_back()), topic
+    )
+    assert isinstance(source, RedpandaSnapshotSource)
+    snapshots: list[ModelTickSnapshot] = []
+    for _ in range(READ_ATTEMPTS):
+        snapshots.extend(source.snapshots())
+        if len(snapshots) >= len(TICKS):
+            break
+    return recorded, snapshots
 
 
 def _read_by_the_tick_orchestrator(
-    raw: list[str], topic: str, bootstrap: str
+    raw: list[str], topic: str
 ) -> RedpandaSnapshotSource:
     source = build_snapshot_source(
-        _tick_overlay(topic, bootstrap),
+        _tick_overlay(topic, "dev", "/ws"),
         topic_reader_factory=_ListReader.factory(raw),
     )
     assert isinstance(source, RedpandaSnapshotSource)
@@ -220,12 +220,19 @@ def _read_by_the_tick_orchestrator(
 
 
 def _assert_join(
-    recorded: list[ModelLandingTickRecord], raw: list[str], topic: str, bootstrap: str
+    recorded: list[ModelLandingTickRecord], raw: list[str], topic: str
 ) -> None:
     assert len(raw) == len(TICKS), (
         f"the bus carried {len(raw)} records for {len(TICKS)} ticks"
     )
-    snapshots = _read_by_the_tick_orchestrator(raw, topic, bootstrap).snapshots()
+    _assert_snapshots(
+        recorded, list(_read_by_the_tick_orchestrator(raw, topic).snapshots())
+    )
+
+
+def _assert_snapshots(
+    recorded: list[ModelLandingTickRecord], snapshots: list[ModelTickSnapshot]
+) -> None:
     assert [s.facts.tick for s in snapshots] == list(TICKS)
     for record, snapshot in zip(recorded, snapshots, strict=True):
         # every field the snapshot step filled reaches the tick orchestrator unchanged
@@ -258,7 +265,7 @@ def test_join_in_memory_bus_the_tick_orchestrator_reads_every_tick_the_snapshot_
     None
 ):
     recorded, raw, topic = _over_inmemory_bus()
-    _assert_join(recorded, raw, topic, "inmemory.invalid:9092")
+    _assert_join(recorded, raw, topic)
 
 
 def test_join_the_bus_payload_is_the_shared_record_model_field_for_field() -> None:
@@ -274,9 +281,19 @@ def test_join_control_a_record_missing_its_facts_is_refused_by_the_reader() -> N
         for line in raw
     ]
     with pytest.raises(ValueError, match="facts"):
-        _read_by_the_tick_orchestrator(
-            broken, topic, "inmemory.invalid:9092"
-        ).snapshots()
+        _read_by_the_tick_orchestrator(broken, topic).snapshots()
+
+
+def test_join_control_a_renamed_record_field_is_refused_by_the_reader() -> None:
+    """A producer that renames provenance, or a consumer that forbids it, breaks the seam."""
+    _, raw, topic = _over_inmemory_bus()
+    renamed = []
+    for line in raw:
+        record = json.loads(line)
+        record["source"] = record.pop("provenance")
+        renamed.append(json.dumps(record))
+    with pytest.raises(ValueError, match="provenance"):
+        _read_by_the_tick_orchestrator(renamed, topic).snapshots()
 
 
 @pytest.mark.kafka
@@ -284,8 +301,10 @@ def test_join_control_a_record_missing_its_facts_is_refused_by_the_reader() -> N
 def test_join_redpanda_the_tick_orchestrator_reads_every_tick_the_snapshot_step_publishes() -> (
     None
 ):
-    bootstrap = os.environ.get(BOOTSTRAP_ENV)
-    if not bootstrap:
-        pytest.skip(f"Kafka not reachable: {BOOTSTRAP_ENV} names no broker")
-    recorded, raw, topic = _over_redpanda(bootstrap)
-    _assert_join(recorded, raw, topic, bootstrap)
+    lane, root = os.environ.get(LANE_ENV), os.environ.get(ROOT_ENV)
+    if not (lane and root):
+        pytest.skip(
+            f"Kafka not reachable: {LANE_ENV} and {ROOT_ENV} name no declared bus lane"
+        )
+    recorded, snapshots = _over_redpanda(lane, root)
+    _assert_snapshots(recorded, snapshots)
