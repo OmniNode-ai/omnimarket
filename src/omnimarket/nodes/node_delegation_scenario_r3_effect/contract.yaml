@@ -93,7 +93,7 @@ schedule:
   unit_name: onex-delegation-scenario-r3
   state_directory: .onex_state/delegation-scenario-r3
   timeout_seconds: 900
-  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND]
   # The probe key is loaded from this file under the home directory, so its value never sits in the unit.
   environment_file: .config/onex/scenario-r3.env
   cadence:
