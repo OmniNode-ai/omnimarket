@@ -16,7 +16,14 @@ from omnimarket.models.delegation.model_ollama_config import ModelOllamaConfig
 
 
 def _tier(floor: int, model: str = "m:1b", download_gb: float = 1) -> dict[str, object]:
-    return {"min_memory_gb": floor, "model": model, "download_gb": download_gb}
+    return {
+        "min_memory_gb": floor,
+        "model": model,
+        "download_gb": download_gb,
+        "parameter_count": "1B",
+        "context_window": 8192,
+        "max_tokens": 4096,
+    }
 
 
 def _block(*tiers: dict[str, object]) -> dict[str, object]:
