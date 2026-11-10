@@ -37,7 +37,7 @@ from omnimarket.nodes.node_push_validation_effect.protocols.protocol_focused_tes
     ModelTeardownOutcome,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("host_capacity_overlay")]
 
 _SHA = "4c3985a451847571e2cebd06a6edf1940069946e"
 _CID = "f9c814aa-d101-416f-8b5d-605d6e6609f1"
@@ -91,7 +91,13 @@ class _RecordingClient:
 
     def admission(self) -> ModelHostAdmission:
         self.calls.append("admission")
-        return ModelHostAdmission(running_task_containers=0, load_one_minute=1.0)
+        return ModelHostAdmission(
+            running_task_containers=0,
+            load_one_minute=1.0,
+            logical_cores=32,
+            mem_total_gb=96.0,
+            mem_avail_gb=46.0,
+        )
 
     def sweep_orphans(self) -> None:
         self.calls.append("sweep")
@@ -210,6 +216,15 @@ def test_scripts_find_docker_helpers_beside_the_docker_binary(
     assert result.stdout.decode().split(":")[0] == "/opt/dockerish/bin"
 
 
+def _proc_capacity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:       67108864 kB\nMemAvailable:   50331648 kB\n")
+    vmstat = tmp_path / "vmstat"
+    vmstat.write_text("pswpin 100\npswpout 50\n")
+    monkeypatch.setattr(subprocess_module, "PROC_MEMINFO", str(meminfo))
+    monkeypatch.setattr(subprocess_module, "PROC_VMSTAT", str(vmstat))
+
+
 def _fake_bin(tmp_path: Path, name: str, body: str) -> Path:
     path = tmp_path / name
     path.write_text(f"#!/bin/sh\n{body}\n")
@@ -233,9 +248,15 @@ def test_admission_reads_the_load_from_proc_on_a_linux_host(
     monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
     monkeypatch.setenv("ONEX_DTL_DOCKER_BIN", str(docker))
     monkeypatch.setattr(subprocess_module, "PROC_LOADAVG", str(proc))
+    _proc_capacity(monkeypatch, tmp_path)
     admission = LocalShellFocusedRunSubprocess().admission()
     assert admission.load_one_minute == 0.52
     assert admission.running_task_containers == 0
+    assert admission.logical_cores > 0
+    assert admission.mem_total_gb == pytest.approx(64.0)
+    assert admission.mem_avail_gb == pytest.approx(48.0)
+    assert admission.swap_in_kb_s == 0.0
+    assert admission.swap_out_kb_s == 0.0
 
 
 def test_admission_reads_the_load_from_sysctl_where_proc_has_none(
@@ -246,5 +267,6 @@ def test_admission_reads_the_load_from_sysctl_where_proc_has_none(
     monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
     monkeypatch.setenv("ONEX_DTL_DOCKER_BIN", str(docker))
     monkeypatch.setattr(subprocess_module, "PROC_LOADAVG", str(tmp_path / "absent"))
+    _proc_capacity(monkeypatch, tmp_path)
     admission = LocalShellFocusedRunSubprocess().admission()
     assert admission.load_one_minute == 1.25
