@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_join_j16_effect
+version: 1.0.0
+description: Runs the J16 join (piece 16 to piece 17) and writes its two chains to the floor's emission journal, golden when an eval result reaches the floor record with an age, typed error otherwise.
+pack: operator_tooling
+node_role: effect
+display_name: Join J16 Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_join_j16_effect: omnimarket.nodes.node_join_j16_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- floor
+- join

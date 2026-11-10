@@ -1,0 +1,10 @@
+--- a/src/omnimarket/cost/usage_normalizer.py
++++ b/src/omnimarket/cost/usage_normalizer.py
+@@ -104,6 +104,7 @@
+ def _estimate_from_text(
+     prompt_text: str, response_text: str, fallback_reason: str
+ ) -> ModelUsageResult:
++    """Estimate token counts from text length when no usage block exists."""
+     input_est = len(prompt_text) // _CHAR_LENGTH_DIVISOR
+     output_est = len(response_text) // _CHAR_LENGTH_DIVISOR
+     logger.debug(
