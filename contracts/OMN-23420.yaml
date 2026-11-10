@@ -28,17 +28,17 @@ dod_evidence:
   binds_ac:
   - AC1
   checks:
-  - check_type: command
-    check_value: grep -q join_j7_parity pyproject.toml && uv run --frozen pytest tests/integration/test_join_j7.py tests/nodes/node_join_refusal_effect/test_join_j7_seam.py -q --no-cov -n 0 -p no:randomly
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/test_join_j7.py tests/nodes/node_join_refusal_effect/test_join_j7_seam.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23420-ac2-j7-refusal-answered
-  description: The hosted part of AC2, the answer the served floor's join refusal run gives. A real piece 7 failure row written by the stop drill is answered with piece 8's typed refusal and the floor fold reads J7 as an error join (the seam test's golden tests). The marker grep fails at the merge base, which lacks the join_j7_parity marker.
+  description: The hosted part of AC2, the answer the served floor's join refusal run gives. A real piece 7 failure row written by the stop drill is answered with piece 8's typed refusal and the floor fold reads J7 as an error join (the seam test's golden tests). The test file is absent at the merge base, so the command fails there.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: grep -q join_j7_parity pyproject.toml && uv run --frozen pytest tests/nodes/node_join_refusal_effect/test_join_j7_seam.py -k golden -q --no-cov -n 0 -p no:randomly
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_join_refusal_effect/test_join_j7_seam.py -k golden -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23420-ac2-j7-floor
   description: The served floor reads join J7 as passed. Hosted CI cannot reach the floor host (the URL is in FLOOR_SIMPLE_URL), so only the local Done gate runs this unbound check.
