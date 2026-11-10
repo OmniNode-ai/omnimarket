@@ -1,0 +1,44 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23040
+title: ModelLabHostRow accepts the ilo_address column
+summary: >-
+  ModelLabHostRow forbids extra columns and had no ilo_address field, although the packaged lab hosts overlay and its schema carry it on the h051 and h053 rows. The canonical omnimarket therefore refused the whole table at hosts.7 and hosts.8. The row model gains one optional ilo_address field typed as a bare IPv4, IPv6 or DNS name; a planted bad shape and an unknown column are still refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23040-ilo-address-accepted
+    statement: >-
+      A lab host row that carries ilo_address validates, an absent column loads as None, and a malformed address or an unknown column is still refused.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a test of ModelLabHostRow fails today when a row carries ilo_address and passes once the field is accepted, and a planted bad shape is still refused -- falsifier: uv run pytest of the ModelLabHostRow tests in omnimarket, red first"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The ilo_address row-model tests; 4 of the 11 fail at the merge base with AttributeError.
+    command: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ilo_address.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23040-ac1-ilo-address-field
+    description: >-
+      Rows carrying ilo_address load and expose the value, rows without it load as None, and six bad shapes (empty, blank, URL, path, space, leading dash) plus an unknown column are refused. Four tests fail at the merge base because the field does not exist.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ilo_address.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23040-integration-proof
+    description: >-
+      The branch ran on a lab host over the bus with the packaged lab hosts overlay as input: the ModelLabHostRow tests pass at the pushed head.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: onex lab-work --lane hostrow-ilo-2340 --repo omnimarket --ref omn-23040-lab-host-row-ilo-address -- uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ilo_address.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
