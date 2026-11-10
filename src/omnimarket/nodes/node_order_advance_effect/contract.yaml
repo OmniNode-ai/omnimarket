@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Order Advance Effect (OMN-22938, rebuild plan section 7.5, the holder)
+#
+# The one order writer. On each tick it reads the gate store's holder, epoch and order position and the piece
+# records, makes at most one change to the piece at the order position (started, live, in comparison, kept or rolled
+# back) and advances the gate store's order only when that piece is kept. It holds no start: nothing is refused for
+# it, and its loss stops recording only. A fallback writer on another host takes over by a fenced handover written in
+# the store. The timer that calls it is installed separately; this node is the handler the timer calls.
+name: node_order_advance_effect
+contract_name: node_order_advance_effect
+node_name: node_order_advance_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Answers one tick or one take-over of one writer. A tick writes the next change of the piece at the order position
+  with a step key and the writer's fence token, and moves the order one position only from a kept piece, at the epoch
+  it read. A restart rebuilds the next change from the stores, so no change or advance is repeated. A take-over is a
+  fenced handover and is refused from the host the current holder runs on. A writer that is not the holder, or whose
+  token or epoch is stale, is refused and writes nothing. A request the stores cannot answer is a typed failure event,
+  never dropped.
+
+handler:
+  module: omnimarket.nodes.node_order_advance_effect.handlers.handler_order_advance
+  class: HandlerOrderAdvance
+  input_model: omnimarket.models.model_order_advance.ModelOrderAdvanceRequest
+
+# Not a runtime-dispatched handler: HandlerOrderAdvance takes the gate store and the piece records as constructor
+# parameters (the order_advance overlay selects the backend), so the bus edge is answer_command, the same shape as
+# node_gate_store_effect and node_start_admission_effect.
+cli_handlers:
+  - operation: order_advance_tick
+    handler:
+      name: HandlerOrderAdvance
+      module: omnimarket.nodes.node_order_advance_effect.handlers.handler_order_advance
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [gate-store-write, piece-record-write]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelOrderAdvanceRequest
+  module: omnimarket.models.model_order_advance
+  description: One tick or take-over of one writer, its run key, host, the evidence read for the piece and the time.
+output_model:
+  name: ModelOrderAdvanceResult
+  module: omnimarket.models.model_order_advance
+  description: The typed outcome, the epoch, the holder, the order position and the piece's state.
+
+terminal_event: onex.evt.omnimarket.order-advance-answered.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  order_advance_requested: onex.cmd.omnimarket.order-advance-requested.v1
+  order_advance_answered: onex.evt.omnimarket.order-advance-answered.v1
+  order_advance_failed: onex.evt.omnimarket.order-advance-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.order-advance-answered.v1
+  - onex.evt.omnimarket.order-advance-failed.v1
+
+overlay:
+  node: order_advance
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22938
+  transport_type: inmemory

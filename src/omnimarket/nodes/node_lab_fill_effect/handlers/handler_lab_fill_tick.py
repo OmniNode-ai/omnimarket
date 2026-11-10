@@ -766,6 +766,8 @@ class HandlerLabFillTick:
                 operator_id=request.operator_id,
                 window_end_epoch_s=request.window_end_epoch_s,
                 lanes_left=max(1, lanes_left),
+                fact_hosts=request.fact_hosts,
+                host_reach=request.host_reach,
             )
         )
 

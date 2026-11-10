@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerScenarioDaysRun is built by the node CLI factory (build_runner) with the contract runtime block, not routed by handler_routing or imported by name
 """One scheduled read of the delegation scenarios' green days (OMN-23171).
 
 Reads each scenario's STATUS rows for the window from the ledger over the bus read command, one page at a time. A page
@@ -37,6 +38,7 @@ from omnimarket.models.model_delegation_scenario import (
     ModelScenarioResult,
     from_status_row,
 )
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.nodes.node_delegation_scenario_days_compute.handlers.handler_scenario_green_days import (
     HandlerScenarioGreenDays,
 )
@@ -46,7 +48,6 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
     CommandPointRead,
 )
-from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointQuery
 from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
     ProtocolLedgerPointRead,
 )
@@ -211,7 +212,7 @@ class HandlerScenarioDaysRun:
 
 def build_runner(env: Mapping[str, str] | None = None) -> HandlerScenarioDaysRun:
     """The production wiring: the registry home and the bus commands from the environment, the rest from the contract."""
-    environment = dict(os.environ if env is None else env)
+    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
     runtime = load_runtime()
     home = Path(environment[runtime.home_env])
     read_argv = shlex.split(environment.get(runtime.ledger_read_command_env, ""))

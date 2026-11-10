@@ -12,11 +12,17 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from omnimarket.handlers.delegation_readiness_scenario import scenario_main
+from omnimarket.models.model_delegation_scenario import EnumScenarioTrigger
 from omnimarket.nodes.node_delegation_scenario_r4_effect.handlers.handler_scenario_r4 import (
     NODE_MODULE,
+    HandlerScenarioR4,
     build_runner,
     load_schedule,
 )
+
+
+def _build(trigger: EnumScenarioTrigger) -> HandlerScenarioR4:
+    return build_runner(trigger=trigger)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -26,5 +32,5 @@ def main(argv: Sequence[str] | None = None) -> int:
         node_module=NODE_MODULE,
         scenario_id="R4",
         schedule=load_schedule(),
-        build=lambda trigger: build_runner(trigger=trigger),
+        build=lambda trigger: _build(trigger),
     )
