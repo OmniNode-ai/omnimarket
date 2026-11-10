@@ -13,6 +13,7 @@ was ``0`` passed as free. Both are closed here, with a positive control for each
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -196,3 +197,33 @@ def test_typed_paid_cost_with_zero_flat_figure_is_paid(
     monkeypatch.delenv(_ALLOW_PAID_ENV)
     assert routing._tier_allowed_by_contract(tier, entry) is True
     assert routing._tier_exclusion_reason(tier, entry) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("relative_path", "phrase"),
+    [
+        (
+            "benchmarks/delegation_ladder/run_ladder.py",
+            "metered rungs go, free non-local rungs stay",
+        ),
+        (
+            "src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/"
+            "port_local_delegation_dispatch.py",
+            "disable METERED escalation",
+        ),
+        (
+            "src/omnimarket/nodes/node_delegation_routing_reducer/handlers/"
+            "handler_delegation_routing.py",
+            'NOT "no escalation at all"',
+        ),
+    ],
+)
+def test_the_paid_flag_documentation_says_metered_only(
+    relative_path: str, phrase: str
+) -> None:
+    """Each place that documents the flag states it removes metered rungs only."""
+    repo_root = Path(__file__).resolve().parents[3]
+    document = (repo_root / relative_path).read_text(encoding="utf-8")
+
+    assert phrase in document, f"{relative_path} no longer contains: {phrase!r}"

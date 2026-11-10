@@ -30,8 +30,8 @@ dod_evidence:
     binds_ac:
       - AC3
     checks:
-      - check_type: command
-        check_value: grep -c "METERED" benchmarks/delegation_ladder/run_ladder.py src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/delegation/test_no_paid_run_never_reaches_paid_rung_omn18308.py -k documentation_says_metered_only -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn18308-no-paid-run-tests
     description: >-
