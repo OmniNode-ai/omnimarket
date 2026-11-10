@@ -60,6 +60,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
 )
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -143,6 +144,8 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
     """``CREATE INDEX CONCURRENTLY`` cannot run inside asyncpg's implicit
     transaction for a multi-statement string; it is pointless on a disposable
     empty schema and schema-equivalent without it."""
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 
