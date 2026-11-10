@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-from typing import get_type_hints
+from typing import cast, get_type_hints
 
 import pytest
 import yaml
@@ -51,6 +51,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.handlers import (
 from omnimarket.nodes.node_pr_landing_orchestrator.models import (
     EnumPrLandingState,
     ModelPrLandingTransitioned,
+)
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress import (
+    PrLandingOrchestratorInput,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
     PrLandingOrchestratorConfig,
@@ -123,7 +126,7 @@ class _Rig:
         self.handler = _default_handler()
 
     async def feed(self, message: BaseModel) -> list[BaseModel]:
-        emitted = await self.handler.handle(message)  # type: ignore[arg-type]
+        emitted = await self.handler.handle(cast(PrLandingOrchestratorInput, message))
         for event in emitted:
             if isinstance(event, ModelPrLandingGithubRequest):
                 self.requests.append(event)
