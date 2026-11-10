@@ -17,7 +17,9 @@ description: >-
   carries the host table as read (committed rows then private rows), the per-login overlay file when
   one exists, the invoking login and host, and the PREPUSH_* row overrides. The per-login rows
   (label, login, uv path, run folder) replace the uv path and run folder of the host row that login
-  owns and nothing else. The host is allowed when it matches an authorizing row, or when its identity
+  owns and nothing else. A row path that does not start with a slash is relative to the home the host's
+  account database gives the login (the request's login_home) and resolves under it; a relative row for
+  a login with no home, and any path with a tilde or a parent segment, raise ValueError. The host is allowed when it matches an authorizing row, or when its identity
   is unknown; otherwise the decision carries the refusal text. A malformed per-login overlay or row
   raises ValueError, which the guard script turns into a refusal.
 input_model:
@@ -62,4 +64,4 @@ metadata:
   author: "OmniNode Team"
   created: "2026-11-09"
   tags: ['compute', 'pytest-full-suite-host-guard', 'OMN-23367']
-  related_tickets: ['OMN-23367', 'OMN-23355']
+  related_tickets: ['OMN-23367', 'OMN-23355', 'OMN-23551']

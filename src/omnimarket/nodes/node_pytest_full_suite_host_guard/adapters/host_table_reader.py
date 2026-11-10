@@ -6,7 +6,9 @@ Moved out of the guard script unchanged in behaviour: absence is neutral, presen
 refuses with a ValueError the guard turns into a refusal. The paths and names arrive as arguments.
 """
 
+import getpass
 import os
+import pwd
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -35,6 +37,25 @@ def login_overlay_text(env: Env, overlay_name: str, roots_env: str) -> str | Non
                     f"per-login host overlay cannot be read: {exc}"
                 ) from exc
     return None
+
+
+def local_login() -> str:
+    """The invoking account name, which ssh(1) also uses when no user is configured."""
+    try:
+        return getpass.getuser()
+    except (KeyError, OSError):
+        return ""
+
+
+def login_home(login: str) -> str:
+    """The home directory the host's account database gives the login, empty when the login
+    is empty or has no entry; it never falls back to a constant or to $HOME."""
+    if not login:
+        return ""
+    try:
+        return pwd.getpwnam(login).pw_dir
+    except KeyError:
+        return ""
 
 
 def shipped_table_text(repo_root: Path, host_table_rel: str) -> str:

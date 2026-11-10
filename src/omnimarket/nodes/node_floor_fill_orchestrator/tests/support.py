@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from omnibase_spi.protocols.lane import ProtocolLaneProcessRunner
+
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
 )
@@ -111,7 +113,10 @@ class Harness:
     briefs: ScriptedBriefs
     extra: dict[str, Any] = field(default_factory=dict)
 
-    def orchestrator(self) -> FloorFillOrchestrator:
+    def orchestrator(
+        self, runner: ProtocolLaneProcessRunner | None = None
+    ) -> FloorFillOrchestrator:
+        """The orchestrator on these seams; ``runner`` replaces the scripted starter (the process seam's real side)."""
         return FloorFillOrchestrator(
             config=self.config,
             store=self.store,
@@ -119,7 +124,7 @@ class Harness:
             pool=self.pool,
             ledger=self.ledger,
             tickets=self.tickets,
-            runner=self.starter,
+            runner=runner or self.starter,
             briefs=self.briefs,
             clock=self.clock,
             candidates=HandlerFloorFillCandidates(),
