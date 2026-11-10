@@ -25,7 +25,12 @@ Rules this handler enforces:
   pr_comment and pr_thread_reply check the PR's head when given one. No
   mutation follows.
 - **Idempotency.** A retried command with the same idempotency key returns the
-  first result marked ``replayed`` and sends nothing. Across restarts GitHub
+  first result marked ``replayed`` and sends nothing; a key reused with
+  different request content is refused with ``idempotency_key_conflict``,
+  naming the fields that differ, never their values. Only the call-context
+  fields (correlation id, dry_run, the asking lane and run, the expected head,
+  the lease, the claim and the claims directory) may differ between retries.
+  Across restarts GitHub
   itself is the record: pr_create finds an open PR for the head, pr_comment
   finds a comment carrying the key, pr_thread_reply finds a review comment
   carrying the key, pr_review_post finds a review carrying the key,
@@ -49,6 +54,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import hashlib
+import json
 import logging
 import os
 import re
@@ -156,6 +163,19 @@ _SECRET_NAME = "GITHUB_TOKEN"
 _CLAIMS_DIR_ENV = "ONEX_PR_CLAIMS_DIR"
 # How many completed writes the in-process idempotency record keeps.
 _IDEMPOTENCY_RECORD_SIZE = 4096
+# The request fields that say who is asking and under which guard-rails, not
+# what is written: a retry may differ in them and still be the same write, so
+# the idempotency record's per-field digests leave them out.
+_CALL_CONTEXT_FIELDS: tuple[str, ...] = (
+    "correlation_id",
+    "dry_run",
+    "requested_by_run",
+    "requested_by_lane",
+    "expected_head_sha",
+    "lease",
+    "claim",
+    "claims_dir",
+)
 # Comment pages scanned for an idempotency marker (300 comments), for the
 # conversation comments, review comments and reviews of the comment/review writes.
 _MARKER_SCAN_PAGES = 3
@@ -189,6 +209,21 @@ async def _credential_from_store(ref: str) -> SecretStr | None:
 def idempotency_marker(key: str) -> str:
     """The hidden line a comment or review carries so a retry can find it."""
     return f"{IDEMPOTENCY_MARKER_PREFIX}{key} -->"
+
+
+def _request_digests(request: ModelRepoWriteRequest) -> dict[str, str]:
+    """One digest per request field, naming the write, not how it was asked.
+
+    The call-context fields are left out (see ``_CALL_CONTEXT_FIELDS``); a
+    digest, never the value, is kept, because a body can be private.
+    """
+    fields = request.model_dump(mode="json", exclude=set(_CALL_CONTEXT_FIELDS))
+    return {
+        name: hashlib.sha256(
+            json.dumps(value, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        for name, value in fields.items()
+    }
 
 
 def _resource_of(request: ModelGithubHttpRequest) -> str:
@@ -413,9 +448,9 @@ class HandlerGithubRepoWriteEffect:
         self.quota_readings = (
             GithubQuotaReadings() if quota_readings is None else quota_readings
         )
-        self._done: OrderedDict[tuple[str, str, str], ModelRepoWriteCompleted] = (
-            OrderedDict()
-        )
+        self._done: OrderedDict[
+            tuple[str, str, str], tuple[dict[str, str], ModelRepoWriteCompleted]
+        ] = OrderedDict()
 
     # --- quota ----------------------------------------------------------------
 
@@ -433,8 +468,24 @@ class HandlerGithubRepoWriteEffect:
     async def handle(self, request: ModelRepoWriteRequest) -> Result:
         """Run one write; dry_run plans its requests and sends nothing."""
         key = (request.repo.lower(), request.operation.value, request.idempotency_key)
-        done = self._done.get(key)
-        if done is not None:
+        digests = _request_digests(request)
+        record = self._done.get(key)
+        if record is not None:
+            done_digests, done = record
+            differing = sorted(
+                name
+                for name in done_digests.keys() | digests.keys()
+                if done_digests.get(name) != digests.get(name)
+            )
+            if differing:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.IDEMPOTENCY_KEY_CONFLICT,
+                    f"idempotency key {request.idempotency_key} was already used "
+                    f"for a {request.operation.value} on {request.repo} that "
+                    f"differs in {', '.join(differing)}; the recorded write's "
+                    "result is not replayed and no call is made",
+                )
             return done.model_copy(
                 update={"correlation_id": request.correlation_id, "replayed": True}
             )
@@ -472,7 +523,7 @@ class HandlerGithubRepoWriteEffect:
         except _RefusedError as exc:
             result = exc.failed
         if isinstance(result, ModelRepoWriteCompleted):
-            self._done[key] = result
+            self._done[key] = (digests, result)
             while len(self._done) > _IDEMPOTENCY_RECORD_SIZE:
                 self._done.popitem(last=False)
         _log.info(

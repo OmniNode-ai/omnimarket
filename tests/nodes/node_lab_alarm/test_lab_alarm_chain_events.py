@@ -310,7 +310,7 @@ def test_the_example_overlay_loads_and_a_missing_or_extra_key_is_refused() -> No
     raw = yaml.safe_load((_NODE / "overlay.example.yaml").read_text(encoding="utf-8"))
     assert ModelLabAlarmOverlay.model_validate(raw).groups.env == "local"
     for key in raw:
-        if key == "effects_held":  # the effects-held verbs' block; OMN-23304
+        if key == "effects_held":  # the effects-held verbs' block; OMN-23340
             assert (
                 ModelLabAlarmOverlay.model_validate(
                     {k: v for k, v in raw.items() if k != key}
