@@ -14,11 +14,11 @@ requirements:
   - id: AC2
     statement: 'AC2: the overlay key remote_lane_start.host_path_prefix is required, an empty string adds nothing, and the ssh transport exports the prefix before the prepare and start scripts and refuses a prefix with characters beyond path characters and $NAME references -- falsifier: `-k ssh_transport_path_prefix`.'
   - id: AC3
-    statement: 'AC3: the seam between the floor fill orchestrator and the lane start entry is pinned: every flag the fill passes is accepted by the entry, the fill fills exactly four placeholders, and the six flags the fill does not supply are the pinned gap -- falsifier: `-k fill_seam`.'
+    statement: 'AC3: the seam between the floor fill orchestrator and the lane start entry is pinned: every flag the fill passes is accepted by the entry, the fill fills exactly four placeholders, and the six flags the fill does not supply are the pinned gap, and the CLAIM and TERMINAL carry the worktree cell the ledger grammar requires -- falsifier: `-k "fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane"`.'
 evidence_requirements:
 - kind: tests
   description: The focused tests of both lane start nodes.
-  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder or ssh_transport_path_prefix or fill_seam'
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder or ssh_transport_path_prefix or fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane'
 emergency_bypass:
   enabled: false
   justification: ''
@@ -49,7 +49,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'fill_seam'
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane'
     cwd: .
 - id: dod-OMN-23425-integration-proof
   description: One real lane was started on a lab host by the start nodes (the entry run through onex run-node) and its CLAIM row, which carries the node's claim text, reads back from the work ledger.
