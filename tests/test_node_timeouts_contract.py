@@ -93,6 +93,7 @@ DECLARED: dict[str, dict[str, float]] = {
     "node_canonical_clone_refresh_effect": {
         "sync_timeout_seconds": 300,
         "declared_clone_timeout_seconds": 120,
+        "declared_clone_tick_seconds": 240,
     },
     "node_dev_merge_redeploy_trigger_effect": {
         "git_timeout_seconds": 120,

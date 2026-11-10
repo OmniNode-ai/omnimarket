@@ -4,7 +4,8 @@
 
     python -m omnimarket.nodes.node_pr_landing_snapshot_effect
 
-Reads the overlay (<root>/node_pr_landing_snapshot_effect/overlay.yaml under
+Reads the overlay (the file ONEX_LANDING_SNAPSHOT_OVERLAY_FILE pins, for a second instance such as
+the cutover repositories' unit; otherwise <root>/node_pr_landing_snapshot_effect/overlay.yaml under
 ONEX_SKILL_OVERLAY_ROOTS), takes the tick the controller's facts file holds now, and, when that
 tick is not recorded yet, fills and records it: appended to the record journal and published on
 the record topic. A tick already recorded is left alone and nothing is published. Each pass that
@@ -17,6 +18,7 @@ event. Exit 3: the overlay or the facts file could not be read; nothing was reco
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from collections.abc import Callable
@@ -43,6 +45,7 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snaps
     ModelLandingSnapshotRequest,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_snapshot_overlay import (
+    OVERLAY_FILE_ENV,
     OVERLAY_ID,
     ModelSnapshotOverlay,
 )
@@ -51,6 +54,8 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.protocols.protocol_landing
 )
 
 NODE = "node_pr_landing_snapshot_effect"
+PROBE_FLAG = "--probe"
+PROBE_STATUS = "probe_ok"
 
 
 def run_once(
@@ -111,10 +116,30 @@ def run_once(
     return 1, line
 
 
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="omnimarket.nodes.node_pr_landing_snapshot_effect.runtime_snapshot",
+        description="One pass of the landing snapshot step: fill and record the tick the controller's facts file holds now",
+    )
+    parser.add_argument(
+        PROBE_FLAG,
+        action="store_true",
+        help="Start check: exit 0 and print one status line without loading an overlay, reading the bus or writing a file",
+    )
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
-    del argv
+    """--probe exits 0 after one status line, before loading the overlay or running the pass."""
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.probe:
+        sys.stdout.write(json.dumps({"status": PROBE_STATUS}, sort_keys=True) + "\n")
+        return 0
     try:
-        overlay = load_structured_overlay(OVERLAY_ID, ModelSnapshotOverlay)
+        overlay = load_structured_overlay(
+            OVERLAY_ID, ModelSnapshotOverlay, file_env=OVERLAY_FILE_ENV
+        )
         code, line = run_once(overlay)
     except (NodeOverlayError, ValueError) as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}

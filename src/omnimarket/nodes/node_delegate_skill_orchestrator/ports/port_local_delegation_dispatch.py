@@ -3443,7 +3443,8 @@ class LocalDelegationDispatchPort:
                     "PAID DELEGATION (metered): task_type=%s model=%s tier=%s "
                     "cost_usd=%.6f cumulative_paid_usd=%.6f escalation_count=%d "
                     "correlation=%s — escalated off the free tiers (local/frontier); "
-                    "set ONEX_DELEGATION_ALLOW_PAID=0 to disable paid escalation.",
+                    "set ONEX_DELEGATION_ALLOW_PAID=0 to disable METERED escalation "
+                    "(free non-local rungs stay reachable).",
                     task_type,
                     backend.model_id,
                     attempt_tier,
