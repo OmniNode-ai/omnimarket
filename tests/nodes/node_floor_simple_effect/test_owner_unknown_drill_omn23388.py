@@ -26,7 +26,6 @@ from tests.nodes.node_floor_simple_effect.support import (
     build_home,
     environ,
     iso,
-    put_projection,
     record,
 )
 from tests.nodes.node_floor_simple_effect.test_cycle_exits_floor_simple import handler
@@ -34,6 +33,8 @@ from tests.nodes.node_floor_simple_effect.test_cycle_exits_floor_simple import h
 pytestmark = pytest.mark.unit
 
 STORE = "overlay_store"
+PROJECTION_FILE = ".onex_state/floor-projection/projection-reads.json"
+PROJECTION = "overlay_store_fleet"
 SERVED = ".claude_scratch/factory-floor/floor-simple.json"
 
 
@@ -71,10 +72,30 @@ def fleet_record(age: timedelta) -> dict[str, Any]:
     }
 
 
+def fleet_bundle(store: dict[str, Any]) -> dict[str, Any]:
+    """The projection reads the floor takes: the fleet projection, itself fresh, carrying the store's readings."""
+    return {
+        "read_at": iso(NOW),
+        "entries": {
+            PROJECTION: {
+                "projection_id": PROJECTION,
+                "status": "read",
+                "max_age_s": 900,
+                "read_at": iso(NOW),
+                "as_of": iso(NOW - timedelta(minutes=1)),
+                "producer": "drill",
+                "payload": store,
+            }
+        },
+    }
+
+
 def served_after_cycle(tmp_path: Path, store: dict[str, Any] | None) -> dict[str, Any]:
     home = build_home(tmp_path, rec=record(lanes=[]))
     if store is not None:
-        put_projection(home, "overlay_store_fleet", store)
+        path = home / PROJECTION_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(fleet_bundle(store)), encoding="utf-8")
     env = {
         **environ(home),
         "ONEX_SKILL_OVERLAY_ROOTS": str(overlays_with_store(tmp_path)),

@@ -23,16 +23,11 @@ handler:
   module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read
   class: HandlerFloorProjectionRead
   input_model: omnimarket.models.floor_projection.ModelFloorProjectionTickRequest
-  output_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
-
-# Not a runtime-dispatched handler: HandlerFloorProjectionRead takes the snapshot source and the overlay's projections as constructor parameters, so the node runs through its
-# own CLI as a step of the factory floor publish and never by a runtime subscription.
 
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
-  runtime_profiles: [effects]
   timeout_ms: 60000
   side_effects:
     - listens on each snapshot topic the overlay names for one window and folds the newest publication of each projection
@@ -76,5 +71,5 @@ runtime:
   group_prefix: node_floor_projection_read_effect
 
 metadata:
-  transport_type: local
+  transport_type: kafka
   ticket: OMN-23391

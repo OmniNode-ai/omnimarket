@@ -159,3 +159,98 @@ def test_named_break_the_owner_column_fills_from_the_projection_with_the_local_f
     stale = projection_payload(bundle, "owner_map", NOW + timedelta(hours=3))
     assert stale.payload is None
     assert owners_from_payload(stale.payload) is None
+
+
+def _read_back(
+    home: Path, publisher: InMemoryEnvelopePublisher, order: list[int], at: datetime
+) -> Any:
+    """Read the owner map the way the floor does: the held publications, in the given arrival order, through the reader."""
+    overlay = ModelFloorProjectionReadOverlay.model_validate(
+        {
+            "bus": "inmemory",
+            "read_window_s": 0.1,
+            "projections": {"owner_map": {"topic": TOPIC, "max_age_s": 900}},
+        }
+    )
+    held = InMemorySnapshotSource(
+        {TOPIC: [publisher.published[i].model_dump_json().encode() for i in order]}
+    )
+    result = asyncio.run(
+        read_projections(home, overlay, held, InMemoryEmissionSink(), clock=lambda: at)
+    )
+    return projection_payload(load_bundle(Path(result.output_path)), "owner_map", at)
+
+
+def test_golden_chain_an_owner_change_shows_on_the_row_within_one_publish(
+    tmp_path: Path,
+) -> None:
+    """OMN-23402 AC1: the owner of a pull request changes in the controller's state; the next publish carries it to the floor.
+
+    The earlier publication is delivered last, so a reader that keeps the first or the last message it saw would still name the
+    old owner; the one that keeps the newest publication by its own time names the new one.
+    """
+    publisher = InMemoryEnvelopePublisher()
+    (tmp_path / "ctl").mkdir()
+    source_dir = _write(tmp_path / "ctl")
+    asyncio.run(
+        run(
+            source_dir,
+            OVERLAY,
+            publisher,
+            InMemoryEmissionSink(),
+            producer="ctl",
+            clock=lambda: NOW,
+        )
+    )
+    changed = json.loads(json.dumps(STATE))
+    changed["leases"][0]["lease_id"] = 8
+    _write(tmp_path / "ctl", changed)
+    asyncio.run(
+        run(
+            source_dir,
+            OVERLAY,
+            publisher,
+            InMemoryEmissionSink(),
+            producer="ctl",
+            clock=lambda: NOW + timedelta(seconds=60),
+        )
+    )
+    at = NOW + timedelta(seconds=90)
+    before = owners_from_payload(
+        _read_back(tmp_path / "home-a", publisher, [0], at).payload
+    )
+    after = owners_from_payload(
+        _read_back(tmp_path / "home-b", publisher, [1, 0], at).payload
+    )
+    assert before is not None
+    assert before.of("omnimarket#1") == ("landing-L7", "")
+    assert after is not None
+    assert after.of("omnimarket#1") == ("landing-L8", "")
+
+
+def test_named_break_an_owner_change_with_no_publish_never_shows_and_the_map_then_ages_to_unknown(
+    tmp_path: Path,
+) -> None:
+    """The failing control for AC1: the owner changes in the controller's state but its host publishes nothing after.
+
+    The floor keeps naming the owner of the last publication, never the new one, and once the bound passes it reads unknown,
+    so the change shows only through a publish and silence is never read as a current map.
+    """
+    publisher = InMemoryEnvelopePublisher()
+    (tmp_path / "ctl").mkdir()
+    source_dir = _write(tmp_path / "ctl")
+    _run(source_dir, publisher, InMemoryEmissionSink())
+    changed = json.loads(json.dumps(STATE))
+    changed["leases"][0]["lease_id"] = 8
+    _write(tmp_path / "ctl", changed)
+    within = owners_from_payload(
+        _read_back(
+            tmp_path / "home-in", publisher, [0], NOW + timedelta(seconds=90)
+        ).payload
+    )
+    assert within is not None
+    assert within.of("omnimarket#1") == ("landing-L7", "")
+    silent = _read_back(
+        tmp_path / "home-late", publisher, [0], NOW + timedelta(hours=3)
+    )
+    assert silent.payload is None

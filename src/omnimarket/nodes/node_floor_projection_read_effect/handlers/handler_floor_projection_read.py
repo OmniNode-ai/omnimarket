@@ -20,7 +20,6 @@ from omnimarket.models.floor_projection import (
     ModelFloorProjectionEntry,
     ModelFloorProjectionEnvelope,
     ModelFloorProjectionReadOverlay,
-    ModelFloorProjectionTickRequest,
 )
 
 
@@ -39,9 +38,7 @@ class HandlerFloorProjectionRead:
         self._clock = clock or (lambda: datetime.now(UTC))
         self.skipped: dict[str, int] = {}
 
-    async def handle(
-        self, request: ModelFloorProjectionTickRequest
-    ) -> ModelFloorProjectionBundle:
+    async def handle(self, request: None = None) -> ModelFloorProjectionBundle:
         read_at = self._clock()
         entries: dict[str, ModelFloorProjectionEntry] = {}
         for projection_id, spec in self._overlay.projections.items():

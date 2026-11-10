@@ -22,16 +22,11 @@ handler:
   module: omnimarket.nodes.node_floor_owner_map_publish_effect.handlers.handler_floor_owner_map_publish
   class: HandlerFloorOwnerMapPublish
   input_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishRequest
-  output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
-
-# Not a runtime-dispatched handler: HandlerFloorOwnerMapPublish takes the controller state reader, the snapshot publisher, the projection id, the producer and the state name as constructor parameters, so the node runs through its
-# own CLI as a step of the factory floor publish and never by a runtime subscription.
 
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
-  runtime_profiles: [effects]
   timeout_ms: 30000
   side_effects:
     - reads the landing controller's state file under the directory the environment names
@@ -52,7 +47,9 @@ runtime_dispatch:
 
 event_bus:
   subscribe_topics: []
-  publish_topics: []
+  publish_topics:
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-owner-map.v1
 externally_consumed_topics:
   # The floor reads it through node_floor_projection_read_effect.
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
@@ -72,5 +69,5 @@ runtime:
   chain: node_floor_owner_map_publish_effect:publish_floor_owner_map
 
 metadata:
-  transport_type: local
+  transport_type: kafka
   ticket: OMN-23391
