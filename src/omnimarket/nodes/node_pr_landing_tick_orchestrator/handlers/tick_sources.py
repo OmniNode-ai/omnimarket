@@ -22,6 +22,7 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
@@ -60,7 +61,11 @@ class InMemorySnapshotSource:
 
 
 class RedpandaSnapshotSource:
-    """The script's tick records, read from the overlay's topic through the injected reader."""
+    """The landing snapshot step's tick records, read from the overlay's topic through the injected reader.
+
+    Each record is the shared ModelLandingTickRecord the snapshot step publishes on its record_topic
+    (OMN-23409); its facts become one snapshot with no recorded decision.
+    """
 
     def __init__(
         self,
@@ -74,10 +79,13 @@ class RedpandaSnapshotSource:
         self._timeout = poll_timeout_s
 
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]:
-        return tuple(
-            ModelTickSnapshot.model_validate_json(raw)
-            for raw in self._reader.read(self._max, self._timeout)
-        )
+        out: list[ModelTickSnapshot] = []
+        for raw in self._reader.read(self._max, self._timeout):
+            record = ModelLandingTickRecord.model_validate_json(raw)
+            out.append(
+                ModelTickSnapshot(facts=record.facts, provenance=record.provenance)
+            )
+        return tuple(out)
 
 
 _REQUIRED_FIELDS: dict[EnumTickBackend, tuple[str, ...]] = {

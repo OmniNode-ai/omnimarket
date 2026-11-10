@@ -4,7 +4,7 @@
 
 The report the floor read was a copy of the report the ``friction-rollup`` timer unit writes. That unit passes no
 class rules, so every FRICTION row written with no ``class=`` cell stayed unclassified however many rules were
-recorded (OMN-22563). This step reads the ledger, runs ``node_friction_rollup_compute`` over it with the rules and
+recorded (OMN-22563). This step reads the ledger through the bus, runs ``node_friction_rollup_compute`` over it with the rules and
 owners the overlay home holds, and writes the 24-hour report the floor reads. The rules are the overlay's; a missing or
 invalid overlay refuses the step, so the floor never draws a rule-less report as if the rules had been applied.
 """
@@ -12,9 +12,9 @@ invalid overlay refuses the step, so the floor never draws a rule-less report as
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+import shlex
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
@@ -32,14 +32,33 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_ro
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
     HandlerFrictionRollup,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerRowSource,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelLedgerQuery,
+    ProtocolLedgerRowSource,
+)
 
 
 def _stamp(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _chunks(
+    since: datetime, until: datetime, hours: int
+) -> Iterator[tuple[datetime, datetime]]:
+    """Consecutive half-open windows of ``hours`` from ``since`` to ``until``, so no bus answer outgrows its row limit."""
+    step = timedelta(hours=hours)
+    low = since
+    while low < until:
+        high = min(low + step, until)
+        yield low, high
+        low = high
+
+
 class HandlerFrictionRollupSource:
-    """The publisher's seam from the ledger files to the rollup node's request."""
+    """The publisher's seam from the ledger's bus reads to the rollup node's request."""
 
     def handle(
         self,
@@ -47,13 +66,21 @@ class HandlerFrictionRollupSource:
         *,
         now: datetime,
         environ: Mapping[str, str] | None = None,
+        source: ProtocolLedgerRowSource | None = None,
     ) -> dict[str, Any]:
-        """The window's report. Raises ``PublishRefusedError`` or ``NodeOverlayError`` naming what is missing."""
+        """The window's report. Raises ``PublishRefusedError`` or ``NodeOverlayError`` naming what is missing.
+
+        ``source`` is the injected read port; without one the command the contract's variable holds is the route.
+        """
         env = os.environ if environ is None else environ
-        live_value = env.get(settings.ledger_path_env, "").strip()
-        if not live_value:
-            raise PublishRefusedError(
-                f"{settings.ledger_path_env} is not set (fail fast, no default): export the ledger path"
+        if source is None:
+            argv = shlex.split(env.get(settings.ledger_read_command_env, ""))
+            if not argv:
+                raise PublishRefusedError(
+                    f"{settings.ledger_read_command_env} is not set (fail fast, no default): export the bus read command"
+                )
+            source = CommandLedgerRowSource(
+                argv, settings.ledger_read_timeout_seconds, settings.ledger_row_limit
             )
         overlay = load_structured_overlay(
             settings.class_overlay_id,
@@ -61,33 +88,30 @@ class HandlerFrictionRollupSource:
             env,
             file_env=settings.class_overlay_file_env,
         )
-        live = Path(live_value)
         since = now - timedelta(hours=settings.window_hours)
-        archive = live.parent / settings.archive_subdir
-        paths = [live]
-        if archive.is_dir():
-            # A roll that holds a row of the window was written at or after that row, so a roll older than the window cannot.
-            paths.extend(
-                sorted(
-                    path
-                    for path in archive.iterdir()
-                    if path.is_file()
-                    and datetime.fromtimestamp(path.stat().st_mtime, UTC) >= since
+        raws: set[str] = set()
+        # The window is half-open; one second more keeps a row stamped exactly at ``now``.
+        for low, high in _chunks(
+            since, now + timedelta(seconds=1), settings.ledger_chunk_hours
+        ):
+            for kind in settings.ledger_row_kinds:
+                page = source.read(
+                    ModelLedgerQuery(since=low, until=high, row_type=kind)
                 )
-            )
-        sources = [
-            ModelFrictionRollupSource(
-                display=live.name
-                if path == live
-                else f"{settings.archive_subdir}/{path.name}",
-                kind="markdown",
-                text=path.read_text(encoding="utf-8", errors="replace"),
-            )
-            for path in paths
-        ]
+                if page.error is not None:
+                    raise PublishRefusedError(
+                        f"the ledger bus read of {kind} rows failed ({page.error}): no report is drawn from a short read"
+                    )
+                raws.update(row.raw for row in page.rows)
         result = HandlerFrictionRollup().handle(
             ModelFrictionRollupRequest(
-                sources=sources,
+                sources=[
+                    ModelFrictionRollupSource(
+                        display="ledger-bus-read",
+                        kind="markdown",
+                        text="\n".join(sorted(raws)) + "\n",
+                    )
+                ],
                 since=_stamp(since),
                 until=_stamp(now),
                 generated_at=_stamp(now),

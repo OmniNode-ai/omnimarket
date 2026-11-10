@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Shared wire models for the silent-failure compute and effect nodes."""
 
+from .model_closer_staleness_alarm import (
+    ModelCloserStalenessRequest as ModelCloserStalenessRequest,
+)
+from .model_closer_staleness_alarm import (
+    ModelCloserStalenessResult as ModelCloserStalenessResult,
+)
 from .model_drainer_alarm import ModelDrainerObservation as ModelDrainerObservation
 from .model_drainer_alarm import ModelDrainerRepair as ModelDrainerRepair
 from .model_drainer_alarm import ModelDrainerRequest as ModelDrainerRequest

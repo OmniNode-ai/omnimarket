@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_friction_rollup_tick_effect.runtime_friction_rollup_tick import (
+    LEDGER_VARIABLE,
     main,
 )
 from tests.nodes.node_friction_rollup_tick_effect.tick_support import FIXTURES
@@ -24,7 +25,7 @@ def _world(tmp_path: Path, appender_exit: int) -> tuple[Path, Path, Path, Path]:
     """A registry root, a ledger copy of the recorded rows, an evidence dir and a recording appender stub."""
     root = tmp_path / "registry"
     root.mkdir()
-    ledger = tmp_path / "ledger" / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "ledger" / "ledger_copy.md"
     ledger.parent.mkdir()
     ledger.write_text(
         (FIXTURES / "ledger_real_rows.md").read_text(encoding="utf-8"), encoding="utf-8"
@@ -49,7 +50,7 @@ def _run(
     stub: Path,
     *extra: str,
 ) -> int:
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    monkeypatch.setenv(LEDGER_VARIABLE, str(ledger))
     monkeypatch.setenv("ONEX_LEDGER_COMMAND", f"{sys.executable} {stub}")
     return main(
         ["--omni-home", str(root), "--state-dir", str(evidence), "--now", NOW, *extra]
@@ -105,7 +106,7 @@ def test_an_absent_ledger_exits_2_and_leaves_no_last_run(
 def test_an_unset_ledger_variable_is_a_usage_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    monkeypatch.delenv(LEDGER_VARIABLE, raising=False)
     with pytest.raises(SystemExit) as raised:
         main(["--omni-home", str(tmp_path)])
     assert raised.value.code == 2

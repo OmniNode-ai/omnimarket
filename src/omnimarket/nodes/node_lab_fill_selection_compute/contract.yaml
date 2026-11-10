@@ -27,6 +27,12 @@ handler_routing:
       module: omnimarket.nodes.node_lab_fill_selection_compute.handlers.handler_approved_work_freshness
     input_model: omnimarket.nodes.node_lab_fill_selection_compute.models.model_approved_work_freshness.ModelApprovedWorkFreshnessRequest
     output_model: omnimarket.nodes.node_lab_fill_selection_compute.models.model_approved_work_freshness.ModelApprovedWorkFreshnessResult
+  - operation: read_lane_resends
+    handler:
+      name: HandlerLaneResend
+      module: omnimarket.nodes.node_lab_fill_selection_compute.handlers.handler_lane_resend
+    input_model: omnimarket.nodes.node_lab_fill_selection_compute.models.model_lane_resend.ModelLaneResendRequest
+    output_model: omnimarket.nodes.node_lab_fill_selection_compute.models.model_lane_resend.ModelLaneResendResult
 descriptor:
   node_archetype: compute
   purity: pure
@@ -37,5 +43,6 @@ metadata:
   origin_tickets:
   - OMN-17427
   - OMN-20662
+  - OMN-23250
   transport_type: in_process
 lifecycle: experimental
