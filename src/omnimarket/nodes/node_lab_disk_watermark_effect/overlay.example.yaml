@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of overlay.yaml: every host, path and number is made up.
+hosts:
+  - name: host-a
+    scheduler: systemd-user
+    reading_file: $HOME/.local/state/onex/lab-disk-watermark/host-a.json
+    volumes:
+      - {path: /, warn_percent: 80, page_percent: 90}

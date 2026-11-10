@@ -9,6 +9,7 @@ from .handler_lab_fill_probe import HandlerLabFillProbe
 from .handler_lab_fill_receipts import HandlerLabFillReceipts
 from .handler_lab_fill_send import HandlerLabFillSend
 from .handler_lab_fill_send_gate import HandlerLabFillSendGate
+from .handler_lab_fill_sources import HandlerLabFillSources
 from .handler_lab_fill_status import HandlerLabFillStatus
 from .handler_lab_fill_tick import HandlerLabFillTick
 
@@ -20,6 +21,7 @@ __all__ = [
     "HandlerLabFillReceipts",
     "HandlerLabFillSend",
     "HandlerLabFillSendGate",
+    "HandlerLabFillSources",
     "HandlerLabFillStatus",
     "HandlerLabFillTick",
 ]
