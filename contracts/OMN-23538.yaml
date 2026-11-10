@@ -33,6 +33,9 @@ dod_evidence:
   - check_type: command
     check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 0 of '"
     cwd: .
+  - check_type: command
+    check_value: uv run --frozen pytest tests/unit/test_duration_record_entries_omn23538.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn23538-ac2-shard-plan-partition
   description: The shard plan tests prove the 20 plans are an exact partition of the collected files, and the plan must read 0 unrecorded with the new record. At the merge base the tests pass but the plan reads 33 unrecorded, so the item fails there; at the head both hold.
   source: manual
