@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23503-ac2-seam-test
-  description: The J6 seam test passes at the pushed head, including its failing controls (an overlay without the journal rule, a journal that drops piece 7, a planted rename of the producer node). The file is absent at the merge base, so the command fails there.
+  description: The J6 seam test passes at the pushed head, including its failing controls (an overlay without the journal rule, a journal that drops piece 7, a planted rename of the producer node). This pull request changes only test-side files and this contract, so the merge base has no earlier behaviour to control and the hosted check treats the bindings as coverage-only evidence that must be verified at the head.
   source: manual
   binds_ac:
   - AC2
@@ -36,11 +36,27 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_join_refusal_effect/test_join_j6_journal_seam.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn23503-ac1-overlay-rule
-  description: The overlay rule is tested in the overlays repository (tests/test_join_refusal_j6.py, 9 tests; 3 red against the merge base). Hosted CI of this repository cannot read that repository, so only the local Done gate runs this unbound check.
+- id: dod-omn23503-ac1-overlay-rule-hosted
+  description: 'The hosted side of AC1: the J6 entry of the join refusal overlay in the test names the J5 handler''s piece 6 chain node in journal_upstream and never the downstream refusal node, and an overlay without that rule leaves the producer chain unanswered (the control). The overlays repository''s own test is the unbound local item below.'
   source: manual
   binds_ac:
   - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_join_refusal_effect/test_join_j6_journal_seam.py -q --no-cov -n 0 -p no:randomly -k "overlay_rule or control_an_overlay_without"
+    cwd: .
+- id: dod-omn23503-ac4-floor-fold-hosted
+  description: 'The hosted side of AC4: the floor''s own receipt fold, run over the real J5 handler''s failure chain, reads J6 broken before the refusal node runs and error_only with no finding after it. The read of the served board on the floor host is the unbound local item below.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_join_refusal_effect/test_join_j6_journal_seam.py -q --no-cov -n 0 -p no:randomly -k golden
+    cwd: .
+- id: dod-omn23503-ac1-overlay-rule
+  description: The overlay rule is tested in the overlays repository (tests/test_join_refusal_j6.py, 9 tests; 3 red against the merge base). Hosted CI of this repository cannot read that repository, so only the local Done gate runs this unbound check.
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -49,8 +65,6 @@ dod_evidence:
 - id: dod-omn23503-j6-floor
   description: The served floor reads join J6 as not broken with no J6 chain finding. Hosted CI cannot reach the floor host (the URL is in FLOOR_SIMPLE_URL), so only the local Done gate runs this unbound check.
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command

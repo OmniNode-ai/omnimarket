@@ -327,6 +327,15 @@ def test_golden_the_real_journal_backend_gives_the_same_answer(tmp_path: Path) -
     assert found.joins[0].state == "error_only"
 
 
+def test_overlay_rule_names_the_piece_6_chain_node_and_never_the_refusal_node() -> None:
+    """AC1 on the hosted side: the J6 entry's journal rule names the J5 handler's own chain node, not piece 7's refusal."""
+    join = refusal_overlay().joins[0]
+    assert join.journal_upstream is not None
+    assert list(join.journal_upstream.nodes) == [POLICY.emission_node]
+    assert join.downstream_node not in join.journal_upstream.nodes
+    assert not any(node.endswith(":join_j6") for node in join.journal_upstream.nodes)
+
+
 # ---- error ----
 
 
