@@ -13,6 +13,8 @@ requirements:
         statement: "AC1: the skipped count is derived from the contracts and no literal skipped total is pinned, and the inventory test passes on dev -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov"
       - id: "AC2"
         statement: "AC2: a routable node that is turned experimental with its handler_routing removed, and an unrouted node given a subscribe topic, each fail the test, shown by named injected breaks against an unbroken control -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -k unrouted"
+      - id: "AC3"
+        statement: "AC3: every node directory is either registered as an onex.nodes entry point or named in EXPECTED_MISSING_ENTRY_POINTS, so the whole dogfood file passes on dev -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: the inventory test passes on the unbroken tree and the two named injected breaks fail it."
@@ -38,3 +40,14 @@ dod_evidence:
         check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k unrouted"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn22571-ac3-entry-points-registered"
+    description: "AC3: node_host_installer_serve_units is registered as an onex.nodes entry point and the whole dogfood file passes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'node_host_installer_serve_units' pyproject.toml"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
