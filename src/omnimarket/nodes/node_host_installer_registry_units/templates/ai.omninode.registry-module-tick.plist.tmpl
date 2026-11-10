@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Registry module tick, rendered by node_host_installer_registry_units from its contract.
-     Placeholders: __LABEL__ __UNIT__ __UV__ __PYTHON__ __PROJECT__ __MODULE__ __OMNI_HOME__ __EVIDENCE_DIR__
-                   __HOME__ __USER__ __STATE_DIR__ __START_INTERVAL__ __RUN_AT_LOAD__ __PROCESS_TYPE__, and the
-                   environment and run-limit placeholders (named here without their underscores, because the installer fills a
-                   placeholder wherever it stands, and a value holding two hyphens, such as a command's long option, would
-                   end this comment): ENVIRONMENT, the unit's environment entries, and TIMEOUT_ARGS, the run-limit wrapper's
-                   arguments when the unit declares run_timeout_s, else empty.
-     __PROJECT__ is the canonical registry clone, or the project path override the install named. The agent
-     runs the unit's module with the project's own environment, built on __PYTHON__ (the brew interpreter, which holds the
+     Placeholders (written in the body between double underscores; never spelled that way in this comment, because the renderer
+     replaces every occurrence of one, and a value holding two hyphens in a row is not legal inside an XML comment): LABEL UNIT UV PYTHON PROJECT MODULE OMNI_HOME EVIDENCE_DIR
+                   HOME USER STATE_DIR START_INTERVAL RUN_AT_LOAD PROCESS_TYPE ENVIRONMENT
+                   TIMEOUT_ARGS (the run-limit wrapper's arguments when the unit declares run_timeout_s, else empty)
+     PROJECT is the canonical registry clone, or the project path override the install named. The agent
+     runs the unit's module with the project's own environment, built on PYTHON (the brew interpreter, which holds the
      macOS Local Network grant a uv-managed CPython never gets), so nothing is copied.
      `uv` is a literal path because launchd has a restricted PATH. The frozen flag keeps the run from rewriting
      the project's lock. Units declaring tick_no_sync reuse the environment prepared by installation.

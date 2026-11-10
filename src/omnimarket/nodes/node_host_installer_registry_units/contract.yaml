@@ -457,6 +457,7 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_LEDGER_HOST_NAME
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
@@ -464,6 +465,11 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The two names the harness overlay's emission.ledger block carries (OMN-23007): the bus append command and the host
+      # the ledger rows name. Without them every Mac tick built no appender and exited 1 (OMN-22881). This is the launching
+      # Mac (h200); an install on another host overrides the host name.
+      ONEX_LEDGER_HOST_NAME: "h200"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
     evidence_file: .local/state/omni/lab-test-harness/last-run.json
     state_directory: .onex_state/lab-test-harness
   # The job-log filler (node_job_log_filler_effect, OMN-23032): every two minutes it reads the PR watcher's state (which lives
