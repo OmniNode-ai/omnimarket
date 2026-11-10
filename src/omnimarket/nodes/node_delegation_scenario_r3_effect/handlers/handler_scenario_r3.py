@@ -26,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,7 +35,7 @@ from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
 from omnimarket.handlers.delegation_readiness_overlay import (
     DelegationEffect,
     ModelOpenRouterOverlay,
-    OpenRouterOverlayTransport,
+    OverlayLegTransport,
     probe_key_present,
 )
 from omnimarket.handlers.delegation_readiness_probe import (
@@ -184,7 +185,7 @@ def load_inputs(path: Path) -> ModelR3Inputs:
 
 def load_runtime(path: Path = CONTRACT_PATH) -> ModelR3Runtime:
     """The contract's runtime block with the paid rung's model and endpoint read from the overlay file it names."""
-    runtime = dict(read_contract(path)["runtime"])  # type: ignore[call-overload]
+    runtime = dict(cast("Mapping[str, Any]", read_contract(path)["runtime"]))
     overlay_path = NODE_DIR / str(runtime.pop("openrouter_overlay_relpath"))
     runtime.update(yaml.safe_load(overlay_path.read_text(encoding="utf-8")))
     return ModelR3Runtime.model_validate(runtime)
@@ -243,7 +244,7 @@ class HandlerScenarioR3(ReadinessScenarioBase):
         transport = self._transport_factory()
         # The real paid rung is called only on the real backend; the in-memory backend scripts it as a paid reply.
         if real_backend_id is not None and isinstance(transport, LoopbackStubServers):
-            transport = OpenRouterOverlayTransport(
+            transport = OverlayLegTransport(
                 transport,
                 overlay=self._r3.overlay,
                 real_backend_id=real_backend_id,

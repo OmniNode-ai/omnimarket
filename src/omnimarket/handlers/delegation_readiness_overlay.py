@@ -52,7 +52,7 @@ def probe_key_present(
     return bool(environment.get(overlay.probe_key_env, "").strip())
 
 
-class OpenRouterOverlayTransport:
+class OverlayLegTransport:
     """Wraps a leg transport; the rung named ``real_backend_id`` is called on OpenRouter instead of its placeholder."""
 
     def __init__(
@@ -134,8 +134,6 @@ def _real_rung_call() -> DelegationEffect:
     handler = HandlerLlmDelegationCall()
 
     def call(request: ModelLlmDelegationCallRequest) -> ModelLlmDelegationCallResult:
-        return handler._execute_call(  # noqa: SLF001 - the effect's post, classification and pricing without its /health probe
-            request, request.endpoint_ref, None
-        )
+        return handler.call_endpoint(request, request.endpoint_ref)
 
     return call

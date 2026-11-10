@@ -175,6 +175,16 @@ def failed_assertions(assertions: tuple[str, ...]) -> list[str]:
     return [item for item in assertions if item.startswith("-")]
 
 
+def _as_dict(value: object) -> dict[str, object]:
+    assert isinstance(value, dict)
+    return value
+
+
+def _as_list(value: object) -> list[object]:
+    assert isinstance(value, list)
+    return value
+
+
 def edited_inputs(tmp_path: Path, edit: Callable[[dict[str, object]], None]) -> Path:
     raw = yaml.safe_load(INPUTS.read_text(encoding="utf-8"))
     edit(raw)
@@ -350,8 +360,9 @@ def test_error_chain_the_control_ladder_answering_turns_every_down_red(
     tmp_path: Path,
 ) -> None:
     def edit(raw: dict[str, object]) -> None:
-        raw["all_down_leg"]["rungs"][1]["behaviour"] = "answer"  # type: ignore[index]
-        raw["all_down_leg"]["rungs"][1].pop("status_code")  # type: ignore[index]
+        rung = _as_dict(_as_list(_as_dict(raw["all_down_leg"])["rungs"])[1])
+        rung["behaviour"] = "answer"
+        rung.pop("status_code")
 
     handler, _, _ = build(tmp_path, inputs_path=edited_inputs(tmp_path, edit))
     result = handler.run()
@@ -437,7 +448,7 @@ def test_error_chain_an_s_input_that_measures_large_turns_the_skip_control_red(
     large = load_inputs(INPUTS).prompt
 
     def edit(raw: dict[str, object]) -> None:
-        raw["s_input"]["prompt"] = large  # type: ignore[index]
+        _as_dict(raw["s_input"])["prompt"] = large
 
     handler, _, _ = build(tmp_path, inputs_path=edited_inputs(tmp_path, edit))
     result = handler.run()
@@ -463,7 +474,7 @@ def test_error_chain_a_skip_with_the_wrong_cause_turns_the_skip_red(
     tmp_path: Path,
 ) -> None:
     def edit(raw: dict[str, object]) -> None:
-        raw["s_input"]["expect_skip_cause"] = "model_unavailable"  # type: ignore[index]
+        _as_dict(raw["s_input"])["expect_skip_cause"] = "model_unavailable"
 
     handler, _, _ = build(tmp_path, inputs_path=edited_inputs(tmp_path, edit))
     result = handler.run()
