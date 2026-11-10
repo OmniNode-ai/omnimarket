@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23606"
+title: "The factory floor board's main step reads the work log once, and the older hand-offs are their own step"
+summary: "The four unresolved ledger reads leave the factory floor effect for node_factory_floor_unresolved_effect, a publish step that is not required and carries fresh_seconds; the floor effect reads one window and the step's record. The floor step's time limit is set from a measured run (50 s) plus headroom (75 s); the cycle bound moves from 240 s to 285 s with it."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn23606-unresolved-step"
+    statement: |-
+      The floor effect reads the ledger once for its window and takes the older unresolved rows from the record its own publish step writes; the step runs the four reads together and keeps the previous record when one fails.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the floor step reads the ledger once, for its 14-day window, and takes the older unresolved rows from the unresolved step's record, refusing a missing or older-than-24-hours record as an unread ledger -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_line_board_facts.py -q -k unresolved"
+      - id: "AC2"
+        statement: "AC2: the unresolved step runs its four reads together, writes its record only after all of them finished, and keeps the previous record when one fails -- falsifier: pytest tests/nodes/node_factory_floor_unresolved_effect -q"
+      - id: "AC3"
+        statement: "AC3: the publisher declares the unresolved step not required with a freshness window, the floor step carries its measured time limit plus headroom, and the declared longest path fits the cycle bound -- falsifier: pytest tests/nodes/node_factory_floor_publish_effect/test_unresolved_step_seam.py -q"
+      - id: "AC4"
+        statement: "AC4: integrated: on the publishing Mac, the served publish status shows the unresolved step ok and the factory floor step ok in under 75 seconds, and the unresolved-hand-offs reading is not unread -- falsifier: read publish-status.json on the Mac after the install and find either step failed or the floor step at or over 75 seconds"
+evidence_requirements:
+  - kind: "tests"
+    description: "The unresolved step's tests, the floor effect's unresolved-record tests and the publisher's seam tests."
+    command: "uv run pytest tests/nodes/node_factory_floor_unresolved_effect tests/nodes/node_factory_floor_publish_effect/test_unresolved_step_seam.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23606-unit"
+    description: "The unresolved step's golden chain, error chain, parallel-read and seam tests and the publisher's seam tests pass; the failing control (a serial loop, read_workers 1) peaks at one read at a time."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_unresolved_effect tests/nodes/node_factory_floor_publish_effect/test_unresolved_step_seam.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23606-integration-proof"
+    description: "Run the unresolved step's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The Mac run (AC4) is read from the served publish status after the orchestrator installs the head."
+    source: "manual"
+    binds_ac: ["AC4"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-23606 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_unresolved_effect -q --no-cov"
+        cwd: "."

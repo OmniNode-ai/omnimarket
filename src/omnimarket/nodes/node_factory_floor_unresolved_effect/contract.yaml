@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Factory Floor Unresolved Rows Effect (OMN-19998)
+#
+# One pass of the four unresolved ledger reads (TERMINAL blocked, partial, handed-off and STATUS handed-off= across the live
+# ledger and every archive roll), run as its own step of the factory floor publish and written as one record that
+# node_factory_floor_effect reads. The evidence moves in days, so the publisher declares the step not required with fresh_seconds.
+# Which reads, how many run together, one read's bound and the margin past the window's edge are the overlay's; the window, the
+# kinds, the cut and the record's path are the floor effect's contract, read from it and never repeated here.
+name: node_factory_floor_unresolved_effect
+contract_name: node_factory_floor_unresolved_effect
+node_name: node_factory_floor_unresolved_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the unresolved hand-off and stop evidence older than the factory floor's window, in parallel, and writes it with its own
+  read time for the floor effect to read. A failed read leaves the previous record and ends the chain in a typed failure.
+
+handler:
+  module: omnimarket.nodes.node_factory_floor_unresolved_effect.handlers.handler_factory_floor_unresolved
+  class: HandlerFactoryFloorUnresolved
+  input_model: omnimarket.nodes.node_factory_floor_unresolved_effect.models.model_factory_floor_unresolved.ModelFactoryFloorUnresolvedRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  side_effects:
+    - runs the plugin's ledger reader once per read the overlay names, over the live ledger and every archive roll
+    - appends a start and a success or a typed failure to the emission journal under the registry home
+    - writes the unresolved-rows record under the registry home, atomically and only after every read finished
+
+input_model:
+  name: ModelFactoryFloorUnresolvedRequest
+  module: omnimarket.nodes.node_factory_floor_unresolved_effect.models.model_factory_floor_unresolved
+  description: The time of one pass and the plugin root the ledger reader lives under.
+output_model:
+  name: ModelUnresolvedRowsRecord
+  module: omnimarket.nodes.node_factory_floor_effect.models.model_unresolved_rows_record
+  description: The rows older than the window's edge, with the pass's read time and margin.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_factory_floor_unresolved_effect, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime:
+  home_env: OMNI_HOME
+  overlay: {overlay_id: node_factory_floor_unresolved_effect, file_env: ONEX_FACTORY_FLOOR_UNRESOLVED_OVERLAY}
+  # The floor's emission journal: this step's golden and error chains go where the receipts are read from.
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  piece: 17
+  chain: node_factory_floor_unresolved_effect:read_unresolved_rows
+
+metadata:
+  transport_type: none
+  ticket: OMN-19998

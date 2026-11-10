@@ -14,7 +14,7 @@ import tempfile
 from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal
@@ -78,6 +78,9 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runti
     ModelFactoryFloorEffectContract,
     ModelFactoryFloorPlanRef,
     ModelFactoryFloorTaskLinks,
+)
+from omnimarket.nodes.node_factory_floor_effect.models.model_unresolved_rows_record import (
+    ModelUnresolvedRowsRecord,
 )
 from omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget import (
     HandlerLaneContainerBudget,
@@ -344,12 +347,15 @@ def read_unresolved_rows(
     stand_in_file: Path | None,
     kinds: frozenset[str],
     older_than: datetime,
+    max_workers: int | None,
 ) -> tuple[ModelFloorLedgerRow, ...]:
     """Rows of the live ledger and every archive roll, with no age limit, that the window read did not bring.
 
     Each ``(kind, text)`` read is one query of the same ledger reader over the live ledger and the archive rolls. The
     window's own rows are already in the request; only rows older than ``older_than`` are returned, and a row is
     returned once however many reads match it. Which of them a later row resolved is the compute's call.
+    ``max_workers`` is how many reads run together (OMN-19998: four reads in series took 207 s of a 231 s step); ``None``
+    reads them one after the other.
     """
     if stand_in_file is not None:
         # A rows file stands in for the live ledger and the archive rolls (tests and replays): the same kind and text
@@ -368,19 +374,50 @@ def read_unresolved_rows(
             f"{plugin_root_env} is not set: export the plugin root or supply a rows file"
         )
     reader = plugin_root / "scripts" / "onex_ledger.py"
-    found: dict[tuple[datetime, str, str], ModelFloorLedgerRow] = {}
-    for kind, grep in reads:
+    all_kinds = kinds | {kind for kind, _ in reads}
+
+    def one(read: tuple[str, str]) -> tuple[ModelFloorLedgerRow, ...]:
+        kind, grep = read
         query = ["query", "--archives", "--kind", kind, "--grep", grep]
         query += ["--limit", "1000000", "--cut", str(cut_chars)]
-        for row in _run_ledger_reader(
-            reader, query, timeout_seconds, kinds | {kind for kind, _ in reads}
-        ):
+        return _run_ledger_reader(reader, query, timeout_seconds, all_kinds)
+
+    if max_workers is None:
+        answers = [one(read) for read in reads]
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            answers = list(pool.map(one, reads))
+    found: dict[tuple[datetime, str, str], ModelFloorLedgerRow] = {}
+    for rows in answers:
+        for row in rows:
             found.setdefault((row.ts, row.kind, row.lane), row)
     return tuple(
         row
         for _, row in sorted(found.items(), key=lambda pair: pair[0])
         if row.ts < older_than
     )
+
+
+def load_unresolved_rows(
+    path: Path, *, now: datetime, window_days: int, max_age_hours: int
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The unresolved rows the unresolved step wrote: those older than the window, from a record not older than its bound.
+
+    The step reads a margin of ``valid_hours`` past the window's edge, so the rows that cross the edge after it wrote are in the
+    file already; a row now inside the window is the window read's, never read twice. A record older than ``max_age_hours`` (or
+    than the margin it declares) is refused: a stop kept only in an archive roll is then unread, never reported absent.
+    """
+    with _source(path):
+        record = ModelUnresolvedRowsRecord.model_validate_json(
+            path.read_text(encoding="utf-8")
+        )
+    bound = timedelta(hours=min(max_age_hours, record.valid_hours))
+    if now - record.read_at > bound:
+        raise SourceRefusedError(
+            f"{path} was read at {record.read_at.isoformat()}, more than {bound} ago: rerun the unresolved step"
+        )
+    edge = now - timedelta(days=window_days)
+    return tuple(row for row in record.rows if row.ts < edge)
 
 
 def _ci_note(ci: dict[str, Any]) -> str:

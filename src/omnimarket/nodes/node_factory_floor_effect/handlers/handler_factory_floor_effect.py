@@ -10,7 +10,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -75,13 +75,13 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_runner_fleet,
     load_stoppages,
     load_token_pools,
+    load_unresolved_rows,
     load_watcher,
     merge_linear_titles,
     newest_dated_file,
     newest_linear_snapshot,
     read_ledger_rows,
     read_placement,
-    read_unresolved_rows,
     resolve_dir,
     resolve_home,
     resolve_host_table,
@@ -336,8 +336,6 @@ class HandlerFactoryFloorEffect:
             overlay.cloud_accounts_node_command if overlay is not None else (),
         )
         kinds = frozenset(rt.ledger_kinds)
-        # A rows file stands in for the archive reads too when no separate file names them (tests and replays).
-        stand_in = request.unresolved_rows_file or request.ledger_rows_file
         ledger = read_ledger_rows(
             window_days=rt.ledger_window_days,
             cut_chars=rt.ledger_cut_chars,
@@ -350,16 +348,15 @@ class HandlerFactoryFloorEffect:
             kinds=kinds,
         )
         try:
+            # The four unresolved reads are the unresolved step's own (OMN-19998): this run reads the record it wrote.
             ledger_unresolved: tuple[ModelFloorLedgerRow, ...] | None = (
-                read_unresolved_rows(
-                    reads=tuple((read.kind, read.grep) for read in rt.unresolved_reads),
-                    cut_chars=rt.ledger_cut_chars,
-                    timeout_seconds=rt.ledger_timeout_seconds,
-                    plugin_root=Path(plugin_root) if plugin_root else None,
-                    plugin_root_env=rt.plugin_root_env,
-                    stand_in_file=Path(stand_in) if stand_in else None,
-                    kinds=kinds,
-                    older_than=now - timedelta(days=rt.ledger_window_days),
+                load_unresolved_rows(
+                    Path(request.unresolved_rows_file)
+                    if request.unresolved_rows_file
+                    else home / src.unresolved_rows_relpath,
+                    now=now,
+                    window_days=rt.ledger_window_days,
+                    max_age_hours=rt.unresolved_max_age_hours,
                 )
             )
             unresolved_cause = ""

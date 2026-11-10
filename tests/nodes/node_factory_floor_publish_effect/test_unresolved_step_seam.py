@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""OMN-19998: the unresolved reads are their own publish step, and the publisher, the step and the floor agree on the seam.
+
+Measured on the launching Mac 2026-11-10 (cProfile, three runs each): the factory floor step took 231 s against its 30 s limit,
+207 s of it five ledger reads in series (the window read and four unresolved reads). Seams pinned here, each failing when either side
+changes shape: the step's module and record path against the floor's contract, the step's freshness against the floor's age bound,
+and the longest declared path against the cycle bound with the floor's measured time limit.
+"""
+
+from __future__ import annotations
+
+import importlib
+
+import pytest
+
+from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+    OWN_CONTRACT_PATH,
+    load_contract,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
+    load_runtime,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
+    group_steps,
+)
+
+pytestmark = pytest.mark.unit
+
+RT = load_runtime()
+FLOOR = load_contract(OWN_CONTRACT_PATH).runtime
+STEP = next(s for s in RT.steps if s.name == "factory_floor_unresolved")
+RECORD = next(s for s in RT.steps if s.name == RT.record_step)
+# Measured 2026-11-10 on lab host h053 (381,070 ledger rows): three runs of the floor step, 50.2 s, 49.3 s and 49.8 s.
+MEASURED_FLOOR_STEP_SECONDS = 50.2
+
+
+def test_the_step_runs_the_unresolved_node_before_the_record_and_is_not_required() -> (
+    None
+):
+    names = [s.name for s in RT.steps]
+    assert names.index(STEP.name) < names.index(RT.record_step)
+    assert not STEP.required
+    assert STEP.concurrent
+    # The module the publisher runs exists and is the node whose record the floor reads.
+    assert STEP.module is not None
+    runtime = importlib.import_module(f"{STEP.module}.runtime_factory_floor_unresolved")
+    assert callable(runtime.main)
+    assert STEP.args == ("--home", "{home}")
+
+
+def test_the_step_skips_while_its_record_is_fresh_and_names_the_floors_file() -> None:
+    # Break: a fresh_relpath other than the floor's source path would rerun (or never rerun) the step against the wrong file.
+    assert STEP.fresh_relpath == FLOOR.sources.unresolved_rows_relpath
+    assert STEP.fresh_seconds is not None
+    assert STEP.fresh_seconds <= FLOOR.unresolved_max_age_hours * 3600
+
+
+def test_the_step_costs_the_cycle_nothing_past_its_group() -> None:
+    group = next(g for g in group_steps(RT.steps) if STEP in g)
+    assert STEP.timeout_seconds == max(s.timeout_seconds for s in group)
+
+
+def test_the_floor_step_has_the_measured_time_plus_headroom_and_the_cycle_still_fits() -> (
+    None
+):
+    assert RECORD.required
+    assert RECORD.timeout_seconds >= MEASURED_FLOOR_STEP_SECONDS * 1.25
+    path = RT.declared_longest_path()
+    assert sum(path.values()) <= RT.cycle.bound_seconds, path
