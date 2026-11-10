@@ -11,6 +11,7 @@ stand in for them in tests.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol
@@ -44,7 +45,10 @@ class ProtocolEvalCorpus(Protocol):
     def read(
         self, run_ids: tuple[str, ...]
     ) -> tuple[tuple[ModelEvalCorpusEntry, ...], int]:
-        """Entries (all when ``run_ids`` is empty) and the count of unreadable journal lines."""
+        """Entries (all when ``run_ids`` is empty) and the count of unreadable journal lines.
+
+        An absent journal is an empty corpus; storage that cannot be read raises ``OSError``.
+        """
         ...
 
 
@@ -80,30 +84,45 @@ class InMemoryEvalCorpus:
 
 
 class JsonlEvalCorpus:
-    """Append-only journal. A line that does not parse is skipped and counted, never silently fixed."""
+    """Append-only journal. A line that does not parse or decode is skipped and counted, never silently fixed.
+
+    Only a journal that does not exist reads as an empty corpus; any other read failure (permissions, a directory at
+    the path, a filesystem error) raises ``OSError``, so unreadable storage is not mistaken for "no entries".
+    """
 
     def __init__(self, path: Path) -> None:
         self._path = path
 
     def append(self, entry: ModelEvalCorpusEntry) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(entry.model_dump_json() + "\n")
+        record = (entry.model_dump_json() + "\n").encode("utf-8")
+        with self._path.open("a+b") as handle:
+            size = handle.seek(0, os.SEEK_END)
+            if size:
+                handle.seek(size - 1)
+                # A torn tail (an interrupted write) has no newline: end it, so it stays one skipped line and the
+                # new record is not concatenated onto it.
+                if handle.read(1) != b"\n":
+                    record = b"\n" + record
+            handle.write(record)
 
     def read(
         self, run_ids: tuple[str, ...]
     ) -> tuple[tuple[ModelEvalCorpusEntry, ...], int]:
         try:
-            text = self._path.read_text(encoding="utf-8")
-        except OSError:
+            data = self._path.read_bytes()
+        except FileNotFoundError:
             return (), 0
         entries: dict[str, ModelEvalCorpusEntry] = {}
         skipped = 0
-        for line in text.splitlines():
-            if not line.strip():
+        # Split on the newline byte and decode per record, so one undecodable record is counted and the rest read.
+        for raw in data.split(b"\n"):
+            if not raw.strip():
                 continue
             try:
-                entry = ModelEvalCorpusEntry.model_validate(json.loads(line))
+                entry = ModelEvalCorpusEntry.model_validate(
+                    json.loads(raw.decode("utf-8"))
+                )
             except (ValueError, ValidationError):
                 skipped += 1
                 continue
