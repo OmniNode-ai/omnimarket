@@ -28,7 +28,9 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     the account behind ``label`` hit its usage limit, out for ``seconds``.
     ``mark_revoked``: skip ``label`` until re-added. ``reorder``: draw ``labels`` first, in that
     order, then every other token in its present order (a draw order differs per host so no two hosts
-    draw the same first token). ``status``: read the pool.
+    draw the same first token). ``status``: read the pool. ``record_use``: a lane on this host
+    started under ``label``; count the use and when it was seen, so the spread rule can tell a
+    login that has been in use from one no lanes have used yet.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -41,6 +43,7 @@ class ModelClaudeTokenPoolRequest(BaseModel):
         "reorder",
         "sync_marks",
         "status",
+        "record_use",
     ]
     label: str | None = None
     marks: tuple[ModelRotationMark, ...] = ()
@@ -66,6 +69,9 @@ class ModelClaudeTokenPoolEntry(BaseModel):
     until: str | None = None
     limited: bool = False
     revoked: bool = False
+    #: How many times a lane on this host started under the token, and when the last one did.
+    uses: int = 0
+    last_used_at: str | None = None
 
 
 class ModelClaudeTokenPoolResult(BaseModel):
@@ -81,6 +87,7 @@ class ModelClaudeTokenPoolResult(BaseModel):
         "reorder",
         "sync_marks",
         "status",
+        "record_use",
     ]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()

@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.engine_login import LABEL_PATTERN
+
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
@@ -196,6 +198,8 @@ class ModelRemoteLaneStartReceipt(BaseModel):
     claim_request_id: str | None = None
     claim_row: str | None = None
     session_id: str | None = None
+    #: The pool label the lane's engine login was drawn under (OMN-23550); None when the pool drew nothing.
+    login: str | None = Field(default=None, pattern=LABEL_PATTERN)
     workdir: str | None = None
     log_lines: int = 0
     engine_rc: int | None = None

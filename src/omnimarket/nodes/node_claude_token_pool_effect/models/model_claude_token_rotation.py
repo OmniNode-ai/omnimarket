@@ -3,7 +3,8 @@
 """What the rotation tick is asked, reads, decides and records (OMN-23000).
 
 No model here holds a token: a host's login is identified by the label and fingerprint the pool already
-shows, and every event names labels only. The overlay holds every setting; nothing has a default.
+shows, and every event names labels only. The overlay holds every setting; the spread rule is
+declared only when a host wants it, and ``None`` means it is off.
 """
 
 from __future__ import annotations
@@ -84,6 +85,19 @@ class ModelRotationSchedule(BaseModel):
     interval_seconds: int = Field(ge=60)
 
 
+class ModelRotationSpread(BaseModel):
+    """When a usable login has been in use longer than the bound, the tick spreads it to an unused token.
+
+    One account's limit then stops benching one host's lanes alone: the host that has used it the
+    longest moves to a token no host's lanes have used yet.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool
+    in_use_longer_than_seconds: int = Field(ge=60)
+
+
 class ModelRotationOverlay(BaseModel):
     """``<root>/node_claude_token_pool_effect/overlay.yaml``: the hosts, the source, the events file and the interval."""
 
@@ -95,6 +109,9 @@ class ModelRotationOverlay(BaseModel):
     events_file: str = Field(min_length=1)
     unit_environment: dict[str, str]
     schedule: ModelRotationSchedule
+    #: When set and enabled, a usable login in use longer than the bound is spread to an unused token.
+    #: ``None`` declares no spread rule: the tick only swaps a login that is limited or revoked.
+    spread: ModelRotationSpread | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRotationOverlay:
@@ -136,11 +153,11 @@ class ModelRotationEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["rotated", "rotation_failed", "no_usable"]
+    kind: Literal["rotated", "rotation_failed", "no_usable", "spread"]
     host: str
     from_label: str | None
     to_label: str | None
-    reason: Literal["limited", "revoked", "absent"]
+    reason: Literal["limited", "revoked", "absent", "spread", "assigned"]
     at: datetime
 
 
@@ -151,7 +168,7 @@ class ModelClaudeTokenRotationResult(BaseModel):
 
     host: str
     rank: int
-    outcome: Literal["kept", "swapped", "unmanaged", "no_usable", "planned"]
+    outcome: Literal["kept", "swapped", "unmanaged", "no_usable", "planned", "spread"]
     in_use_state: Literal["usable", "limited", "revoked", "unmanaged", "absent"]
     from_label: str | None = None
     to_label: str | None = None
@@ -162,7 +179,32 @@ class ModelClaudeTokenRotationResult(BaseModel):
     lines: tuple[str, ...] = ()
 
 
+class ModelClaudeTokenAssignRequest(BaseModel):
+    """Install the pool token named by ``label`` on ``host``'s login. ``dry_run`` decides and writes nothing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    dry_run: bool = False
+
+
+class ModelClaudeTokenAssignResult(BaseModel):
+    """The assign's decision. Labels only; a refusal names why, in the pool's own vocabulary."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    outcome: Literal["assigned", "unchanged", "refused"]
+    refusal: Literal["limited", "revoked", "unknown_label", "none"] = "none"
+    from_label: str | None = None
+    lines: tuple[str, ...] = ()
+
+
 __all__ = [
+    "ModelClaudeTokenAssignRequest",
+    "ModelClaudeTokenAssignResult",
     "ModelClaudeTokenRotationRequest",
     "ModelClaudeTokenRotationResult",
     "ModelRotationEvent",
@@ -173,4 +215,5 @@ __all__ = [
     "ModelRotationMarksSync",
     "ModelRotationOverlay",
     "ModelRotationSchedule",
+    "ModelRotationSpread",
 ]

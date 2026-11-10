@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-23550
+title: Spread new lanes across the Claude token pool and record the account each lane starts under
+summary: The Claude token pool node gains a spread rule the overlay declares (whether it is on, and how long a login must have been in use), an assign operation that moves a host's login to a named usable label, a record of use per label, and a login verb; the lane start receipt and the factory floor's receipt reader carry the pool label the lane started under.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23550-pool-spread
+  statement: A host's login moves to the least-used unlimited token for new lanes only, by a rule whose values are the overlay's, and the label each lane started under rides in its receipt and is read by the floor.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with spreading declared on in the pool node overlay, a tick moves a host login to the least-used unlimited token when the login has been in use longer than the declared period and an unlimited token has had no use; with spreading off or the period not reached it changes nothing -- falsifier: pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_spread.py -q with the spread call removed from handler_claude_token_rotation_tick.py'
+  - id: AC2
+    statement: 'AC2: the assign operation moves the login to a usable label and refuses a limited, revoked or unknown label with a typed refusal -- falsifier: pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_assign.py -q'
+  - id: AC3
+    statement: 'AC3: the pool status and schedule verbs read their settings on h051 and h202 from the declared overlay in the overlays repository -- falsifier: python -m omnimarket.nodes.node_claude_token_pool_effect schedule status --host h051 with ONEX_SKILL_OVERLAY_ROOTS naming the overlays repository answers without a missing-overlay refusal'
+  - id: AC4
+    statement: 'AC4: the lane start receipt names the pool label the lane started under and the floor receipt reader carries it, and the seam test turns red when either side renames the field -- falsifier: pytest tests/nodes/node_claude_token_pool_effect/test_receipt_login_seam.py -q with the login field renamed in model_remote_lane_start.py'
+  - id: AC5
+    statement: 'AC5: integrated: one new lane on h053 starts under label jonah-neugass with the label in its receipt and the count of running lanes on h053 is the same before and after -- falsifier: the receipt of that lane names another label or none, or the running lane count differs'
+evidence_requirements:
+- kind: tests
+  description: The spread, assign and receipt seam tests with the node's existing tick, pool and schedule tests
+  command: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23550-spread
+  description: An aged login a lane has used spreads to a token no lane has used, recorded as one spread event with labels only; the rule off, the period not reached, no use yet, or only a limited or revoked unused token each leave the login where it is. With the spread call removed from the tick three of the eleven spread tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_spread.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23550-assign
+  description: Assign installs a usable label, reports an unchanged login, plans on a dry run, and refuses a limited, revoked or unknown label without touching the login.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_assign.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23550-overlay-declared
+  description: The pool node overlay is declared in the overlays repository with h051 and h202 appended after the existing three hosts, so no existing host rank moves; the example overlay in this repository carries the spread block and the model refuses an unknown key.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_rotation_schedule.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23550-receipt-seam
+  description: The lane start receipt writes the drawn pool label, a draw that drew nothing writes none, a login that is not a label is refused, and the floor reader reads the label back; the key renamed on one side turns the seam test red.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_receipt_login_seam.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23550-lane-receipt-proxy
+  description: AC5 hosted proxy. A lane started in memory with a pool draw of the label jonah-neugass writes that label into its receipt and the floor reader reads it back. The lab readback of a new lane on h053 and of the running lane count before and after is recorded in the pull request, and the local_done_gate item below binds no criterion because the hosted must-fail control can never run a local_done_gate item.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_receipt_login_seam.py -k "names_the_drawn_label or carries_the_label" -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23550-integration-proof-lab
+  description: Runs the node tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23550 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_token_pool_effect -q --no-cov -p no:randomly'
+    cwd: .

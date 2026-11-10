@@ -148,6 +148,8 @@ class HandlerClaudeTokenPool:
                 alert = self._revoke(pool, request)
             elif request.operation == "reorder":
                 self._reorder(pool, request)
+            elif request.operation == "record_use":
+                self._record_use(pool, request)
             synced: tuple[str, ...] = ()
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
@@ -250,6 +252,17 @@ class HandlerClaudeTokenPool:
         until = _stamp(self._now() + timedelta(seconds=request.seconds))
         entry["until"] = max(until, entry.get("until") or "")
         entry["limited_at"] = _stamp(self._now())
+
+    def _record_use(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> None:
+        """A lane on this host started under ``label``: count the use and when it was seen."""
+        label = self._label(request)
+        entry = next((t for t in pool["tokens"] if t["label"] == label), None)
+        if entry is None:
+            raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        entry["uses"] = entry.get("uses", 0) + 1
+        entry["last_used_at"] = _stamp(self._now())
 
     def _reorder(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -364,6 +377,8 @@ class HandlerClaudeTokenPool:
                 until=t.get("until") if (t.get("until") or "") > now else None,
                 limited=(t.get("until") or "") > now and not t.get("revoked_at"),
                 revoked=bool(t.get("revoked_at")),
+                uses=t.get("uses", 0),
+                last_used_at=t.get("last_used_at"),
             )
             for t in pool["tokens"]
         )
