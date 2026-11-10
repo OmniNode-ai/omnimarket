@@ -306,7 +306,7 @@ def test_the_rules_come_from_the_declaration_not_the_code(tmp_path: Path) -> Non
         "needs-lab": 1,
         "repo-not-declared": 1,
     }
-    with pytest.raises(NodeOverlayError, match=r"idle_slot_fill\.cloud_backlog"):
+    with pytest.raises(NodeOverlayError, match=r"idle_slot_fill/overlay\.yaml"):
         cb.load_declaration({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "empty")})
 
 

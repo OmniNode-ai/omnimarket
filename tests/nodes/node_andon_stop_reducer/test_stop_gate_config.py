@@ -86,10 +86,10 @@ def test_stop_gate_config_an_absent_class_key_refuses_naming_the_key(
     assert f"andon_stop.modes.{CLASS}" in result.line
 
 
-def test_stop_gate_config_an_absent_overlay_refuses_naming_the_keys(
+def test_stop_gate_config_an_absent_overlay_refuses_naming_the_file(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(NodeOverlayError, match=r"andon_stop\.modes"):
+    with pytest.raises(NodeOverlayError, match=r"andon_stop/overlay\.yaml"):
         load_stop_policy({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)})
 
 

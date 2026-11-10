@@ -1350,7 +1350,11 @@ def test_handler_loads_required_ttl_from_overlay_without_a_default(
         model=_MODEL,
         cloud_refused_repositories=_REFUSED,
     )
-    with pytest.raises(NodeOverlayError, match="key_set_aside_ttl_seconds"):
+    # an absent overlay file is refused naming the overlay id, the file and the pin variable
+    with pytest.raises(
+        NodeOverlayError,
+        match=r"claude_review_gateway/overlay\.yaml.*ONEX_REVIEW_GATEWAY_OVERLAY",
+    ):
         handler.gateway(request)
     overlay = tmp_path / "policy.yaml"
     overlay.write_text("key_set_aside_ttl_seconds: 23\n", encoding="utf-8")

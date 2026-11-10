@@ -98,5 +98,5 @@ def test_lab_fill_priority_overlay_named_roots_replace_the_packaged_root(
 ) -> None:
     """A root the environment names is the only source: no packaged fallback behind it."""
     env = {OVERLAY_ROOTS_ENV: str(tmp_path / "empty")}
-    with pytest.raises(NodeOverlayError, match=r"lab_fill_priority\.weights"):
+    with pytest.raises(NodeOverlayError, match=r"lab_fill_priority/overlay\.yaml"):
         load_priority_declaration(TODAY, env, rank_with_mode(tmp_path))
