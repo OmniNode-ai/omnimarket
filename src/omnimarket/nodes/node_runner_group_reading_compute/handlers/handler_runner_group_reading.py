@@ -264,12 +264,12 @@ class HandlerRunnerGroupReading:
 
     @staticmethod
     def _queue_members(group: ModelGroupFact, prefix: str) -> list[ModelGroupRunner]:
-        return [r for r in group.runners if r.name.startswith(prefix)]
+        return [r for r in group.runners if r.name.startswith(prefix + "-")]
 
     def _private_queue_group(
         self, request: ModelRunnerGroupReadingRequest
     ) -> ModelReadingSubject:
-        """OMN-23156 AC1: the queue group reads private, closed to public, with every expected runner online in it."""
+        """OMN-23156 AC1, OMN-23387 AC1: the queue group reads private, closed to public, every pool online in it and on enough hosts."""
         queue = request.settings.private_queue
         assert queue is not None
         group = next((g for g in request.groups if g.name == queue.group_name), None)
@@ -280,50 +280,62 @@ class HandlerRunnerGroupReading:
                 count=0,
                 reason=f"group {queue.group_name} is not in the organization's runner groups",
             )
-        members = self._queue_members(group, queue.runner_name_prefix)
-        online = [m for m in members if m.online]
-        unread = [m for m in members if m.online is None]
-        elsewhere = sorted(
-            r.name
-            for g in request.groups
-            if g.group_id != group.group_id
-            for r in self._queue_members(g, queue.runner_name_prefix)
-        )
-        problems: list[str] = []
+        hard: list[str] = []
+        short: list[str] = []
         if group.visibility is not EnumGroupVisibility.PRIVATE:
-            problems.append(f"visibility reads {group.visibility.value}, not private")
+            hard.append(f"visibility reads {group.visibility.value}, not private")
         if group.allows_public_repositories:
-            problems.append("it allows public repositories")
-        if elsewhere:
-            problems.append(
-                f"{len(elsewhere)} {queue.runner_name_prefix} runner(s) are registered in another group: {', '.join(elsewhere)}"
+            hard.append("it allows public repositories")
+        online_total = 0
+        unread_total = 0
+        online_hosts: set[str] = set()
+        for pool in queue.pools:
+            members = self._queue_members(group, pool.runner_name_prefix)
+            online = [m for m in members if m.online]
+            online_total += len(online)
+            unread_total += len([m for m in members if m.online is None])
+            if online:
+                online_hosts.add(pool.host)
+            elsewhere = sorted(
+                r.name
+                for g in request.groups
+                if g.group_id != group.group_id
+                for r in self._queue_members(g, pool.runner_name_prefix)
             )
-        short = len(online) < queue.expected_online_members
-        if short:
-            problems.append(
-                f"{len(online)} of {queue.expected_online_members} {queue.runner_name_prefix} runners are online in it"
+            if elsewhere:
+                hard.append(
+                    f"{len(elsewhere)} {pool.runner_name_prefix} runner(s) are registered in another group: {', '.join(elsewhere)}"
+                )
+            if len(online) < pool.expected_online_members:
+                short.append(
+                    f"{len(online)} of {pool.expected_online_members} {pool.runner_name_prefix} runners ({pool.host}) are online in it"
+                )
+        if len(online_hosts) < queue.min_hosts:
+            short.append(
+                f"online queue runners sit on {len(online_hosts)} host(s), fewer than the {queue.min_hosts} the overlay requires"
             )
-        if problems and not (short and unread and len(problems) == 1):
+        # A shortfall that runners with no read status could cover leaves the reading unknown, not failed.
+        if hard or (short and not unread_total):
             return ModelReadingSubject(
                 name=SUBJECT_PRIVATE_QUEUE_GROUP,
                 verdict=_N,
-                count=len(online),
-                reason=f"group {group.name}: {'; '.join(problems)}",
+                count=online_total,
+                reason=f"group {group.name}: {'; '.join(hard + short)}",
             )
         if short:
             return ModelReadingSubject(
                 name=SUBJECT_PRIVATE_QUEUE_GROUP,
                 verdict=_U,
-                count=len(online),
-                reason=f"group {group.name}: {len(unread)} runner(s) carried no online status",
+                count=online_total,
+                reason=f"group {group.name}: {unread_total} runner(s) carried no online status",
             )
         return ModelReadingSubject(
             name=SUBJECT_PRIVATE_QUEUE_GROUP,
             verdict=_W,
-            count=len(online),
+            count=online_total,
             reason=(
-                f"group {group.name} reads private with {len(online)} online "
-                f"{queue.runner_name_prefix} runner(s) and none registered elsewhere"
+                f"group {group.name} reads private with {online_total} online queue runner(s) on "
+                f"{len(online_hosts)} host(s) ({', '.join(sorted(online_hosts))}) and none registered elsewhere"
             ),
         )
 
@@ -361,12 +373,13 @@ class HandlerRunnerGroupReading:
                 count=len(public),
                 reason=f"{len(public)} merge-group job(s) of a non-private repository ran on group {group.name}",
             )
+        prefixes = tuple(p.runner_name_prefix + "-" for p in queue.pools)
         proven = [
             j
             for j in on_pool
             if j.conclusion == "success"
             and j.runner_name is not None
-            and j.runner_name.startswith(queue.runner_name_prefix)
+            and j.runner_name.startswith(prefixes)
         ]
         if not proven:
             return ModelReadingSubject(
@@ -375,7 +388,7 @@ class HandlerRunnerGroupReading:
                 count=0,
                 reason=(
                     f"no completed merge-group job of a private repository ran on a "
-                    f"{queue.runner_name_prefix} runner of group {group.name} ({len(jobs)} job(s) read)"
+                    f"{'/'.join(p.runner_name_prefix for p in queue.pools)} runner of group {group.name} ({len(jobs)} job(s) read)"
                 ),
             )
         first = proven[0]
