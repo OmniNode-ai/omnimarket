@@ -26,7 +26,9 @@ class ProtocolTickDecider(Protocol):
 class ProtocolTickWriter(Protocol):
     """The only door to a merge, an arm or a rerun. Observe and replay never open it."""
 
-    def perform(self, action: ModelLandingAction) -> None: ...
+    def perform(self, action: ModelLandingAction, facts: ModelLandingFacts) -> bool:
+        """Perform one action of the tick whose facts are given; whether a write was sent."""
+        ...
 
 
 class ProtocolTickPublisher(Protocol):
@@ -48,8 +50,9 @@ class InMemoryTickWriter:
     def __init__(self) -> None:
         self.performed: list[ModelLandingAction] = []
 
-    def perform(self, action: ModelLandingAction) -> None:
+    def perform(self, action: ModelLandingAction, facts: ModelLandingFacts) -> bool:
         self.performed.append(action)
+        return True
 
 
 class InMemoryTickPublisher:
