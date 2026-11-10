@@ -650,7 +650,10 @@ def r6() -> list[dict[str, object]]:
 # a plausible wrong choice, because a rung whose every task has one obvious
 # answer measures nothing.
 
-_R3B_SPECS: tuple[tuple[str, str, str, list[str], list[str]], ...] = (
+# (task id, title, situation, held workflow, held parameter values). The held
+# values are only those the situation supplies; the scorer also validates the
+# whole parameter object against the workflow's request schema (OMN-18339).
+_R3B_SPECS: tuple[tuple[str, str, str, str, dict[str, object]], ...] = (
     (
         "R3b-01",
         "run one failing test file",
@@ -660,12 +663,11 @@ _R3B_SPECS: tuple[tuple[str, str, str, list[str], list[str]], ...] = (
         "repository. Run just that test file and report the result. Nothing has "
         "been recorded as failing anywhere else yet, and there is no patch to "
         "apply.",
-        [
-            "run_focused_tests",
-            "omnibase_core",
-            "tests/unit/validation/test_occ_merge_eligibility.py",
-        ],
-        ["reproduce_failing_run", "apply_patch_and_test", "verify_ticket_evidence"],
+        "run_focused_tests",
+        {
+            "repo": "omnibase_core",
+            "path": "tests/unit/validation/test_occ_merge_eligibility.py",
+        },
     ),
     (
         "R3b-02",
@@ -673,8 +675,8 @@ _R3B_SPECS: tuple[tuple[str, str, str, list[str], list[str]], ...] = (
         "Continuous-integration run 34748103920 in the omnibase_infra repository "
         "failed. Nobody knows which test failed or why. Find out, by reproducing "
         "what that run did.",
-        ["reproduce_failing_run", "34748103920", "omnibase_infra"],
-        ["run_focused_tests", "select_impacted_tests", "read_and_answer"],
+        "reproduce_failing_run",
+        {"run_id": 34748103920, "repo": "omnibase_infra"},
     ),
     (
         "R3b-03",
@@ -684,27 +686,23 @@ _R3B_SPECS: tuple[tuple[str, str, str, list[str], list[str]], ...] = (
         "least 1.0.0 and less than 2.0.0. The function lives in "
         "scripts/check_dockerfile_pins.py in the omnibase_infra repository. No "
         "test is failing and nothing needs to be executed.",
-        [
-            "read_and_answer",
-            "scripts/check_dockerfile_pins.py",
-            "omnibase_infra",
-        ],
-        ["run_focused_tests", "apply_patch_and_test", "reproduce_failing_run"],
+        "read_and_answer",
+        {"paths": ["scripts/check_dockerfile_pins.py"], "repo": "omnibase_infra"},
     ),
     (
         "R3b-04",
         "a patch in hand, and one named test to prove it",
         "A unified diff against src/omnimarket/cost/usage_normalizer.py in the "
-        "omnimarket repository is ready. It must be applied and then proven by "
-        "the test file tests/unit/cost/test_usage_normalizer_omn13621.py. The "
-        "diff is in hand; it has not been committed and there is no recorded run "
-        "for it.",
-        [
-            "apply_patch_and_test",
-            "omnimarket",
-            "tests/unit/cost/test_usage_normalizer_omn13621.py",
-        ],
-        ["run_focused_tests", "reproduce_failing_run", "select_impacted_tests"],
+        "omnimarket repository is ready and is reproduced below. It must be "
+        "applied and then proven by the test file "
+        "tests/unit/cost/test_usage_normalizer_omn13621.py. The diff is in hand; "
+        "it has not been committed and there is no recorded run for it.\n\n"
+        "THE DIFF:\n" + _fixture("r3b_04_patch_applies.diff"),
+        "apply_patch_and_test",
+        {
+            "repo": "omnimarket",
+            "test_path": "tests/unit/cost/test_usage_normalizer_omn13621.py",
+        },
     ),
 )
 
@@ -712,7 +710,11 @@ _R3B_SPECS: tuple[tuple[str, str, str, list[str], list[str]], ...] = (
 def r3b() -> list[dict[str, object]]:
     catalogue = _fixture("workflow_catalogue.txt")
     tasks: list[dict[str, object]] = []
-    for task_id, title, situation, accepted, forbidden in _R3B_SPECS:
+    for task_id, title, situation, workflow, held in _R3B_SPECS:
+        config = {"expected_workflow": workflow, "expected_parameters": held}
+        if workflow == "apply_patch_and_test":
+            # The diff must apply to the file it names (OMN-18339).
+            config["patch_check"] = json.loads(_fixture("r3b_patch_check.json"))
         tasks.append(
             {
                 "task_id": task_id,
@@ -733,8 +735,8 @@ def r3b() -> list[dict[str, object]]:
                     f"{catalogue}\n"
                     f"SITUATION:\n{situation}\n\n" + NO_TRACE
                 ),
-                "scorer": "exact_match",
-                "scorer_config": {"accepted": accepted, "forbidden": forbidden},
+                "scorer": "workflow_request",
+                "scorer_config": config,
             }
         )
     return tasks

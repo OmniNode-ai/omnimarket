@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+ledger_read:
+  route: file
+  path_env: EXAMPLE_LEDGER_PATH
+  archive_subdir: archive
+  timeout_seconds: 60
+  row_limit: 5000
+emission:
+  home_env: EXAMPLE_FLOOR_HOME
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  floor_record_relpath: .claude_scratch/factory-floor/floor-simple.json
+join:
+  join: J16
+  from_piece: 16
+  to_piece: 17
+  from_node: "example_eval_node:join_j16"
+  to_node: "example_floor_node:join_j16"
+  injected_fault: Drop the join_j16 step from the publish contract
+  # The floor overlay's ledger_readings rule, as it stands there.
+  reading:
+    row_type: STATUS
+    lane: example-reading-writer
+    cells: {src: reading}
+    piece_cell: piece
+    verdict_cell: verdict
+    probed_at_cell: probed_at
+    published_at_cell: published_at
+    max_age_cell: max_age
+    reason_cell: reason
+    lookback_days: 3

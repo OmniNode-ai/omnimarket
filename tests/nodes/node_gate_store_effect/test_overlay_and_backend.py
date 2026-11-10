@@ -65,11 +65,46 @@ def test_overlay_missing_a_key_is_refused(
         load_gate_store_policy()
 
 
-def test_unbuilt_postgres_backend_is_refused_not_answered_by_the_twin(
+def test_postgres_backend_without_its_block_is_refused_not_answered_by_the_twin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_node_overlay(
         monkeypatch, tmp_path, "gate_store", {**FIELDS, "backend": "postgres"}
     )
-    with pytest.raises(GateStoreBackendNotBuiltError):
+    with pytest.raises(NodeOverlayError, match="postgres is required"):
+        load_gate_store_policy()
+
+
+def test_shipped_example_overlay_loads_with_the_postgres_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import yaml
+
+    example = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_gate_store_effect/overlay.example.yaml"
+    )
+    install_node_overlay(
+        monkeypatch, tmp_path, "gate_store", yaml.safe_load(example.read_text())
+    )
+    policy = load_gate_store_policy()
+    assert policy.backend is EnumGateStoreBackend.POSTGRES
+    assert policy.postgres is not None
+    assert policy.postgres.dsn_env == "EXAMPLE_GATE_STORE_DSN"
+
+
+def test_postgres_backend_without_a_connection_is_refused_by_build_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import yaml
+
+    example = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_gate_store_effect/overlay.example.yaml"
+    )
+    install_node_overlay(
+        monkeypatch, tmp_path, "gate_store", yaml.safe_load(example.read_text())
+    )
+    monkeypatch.delenv("EXAMPLE_GATE_STORE_DSN", raising=False)
+    with pytest.raises(GateStoreBackendNotBuiltError, match="EXAMPLE_GATE_STORE_DSN"):
         build_store(load_gate_store_policy())

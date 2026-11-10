@@ -112,6 +112,15 @@ def test_reading_flips_the_reading_is_stale_after_eight_days() -> None:
     assert past_limit.ends_in_delegated_result
 
 
+def test_reading_flips_a_walk_half_a_second_past_the_limit_is_stale() -> None:
+    finished = NOW - timedelta(seconds=EIGHT_DAYS, milliseconds=500)
+    reading = _read(_finished_at(_walk(), finished))
+
+    assert reading.verdict is EnumReadingVerdict.NOT_WORKING
+    assert reading.reasons == ("stale-walk",)
+    assert reading.age_seconds == EIGHT_DAYS
+
+
 def test_reading_flips_both_reasons_are_named_when_both_hold() -> None:
     reading = _read(
         _finished_at(_walk(failed=True), NOW - timedelta(seconds=EIGHT_DAYS + 60))
@@ -132,6 +141,15 @@ def test_reading_flips_no_walk_at_all_reads_unknown_and_blocks() -> None:
 
 def test_reading_flips_a_walk_finished_after_now_does_not_read_working() -> None:
     reading = _read(_finished_at(_walk(), NOW + timedelta(hours=1)))
+
+    assert reading.verdict is EnumReadingVerdict.NOT_WORKING
+    assert reading.reasons == ("walk-finished-after-now",)
+
+
+def test_reading_flips_a_walk_finished_half_a_second_after_now_does_not_read_working() -> (
+    None
+):
+    reading = _read(_finished_at(_walk(), NOW + timedelta(milliseconds=500)))
 
     assert reading.verdict is EnumReadingVerdict.NOT_WORKING
     assert reading.reasons == ("walk-finished-after-now",)

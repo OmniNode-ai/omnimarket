@@ -78,6 +78,26 @@ class ProtocolWorkLedgerQueryReader(Protocol):
 
 
 @runtime_checkable
+class ProtocolWorkLedgerFilteredRowReader(Protocol):
+    """Read rows of a window narrowed in the store before they are sent (OMN-19609).
+
+    ``kinds`` keeps rows of those row types exactly. ``contains`` keeps rows whose
+    text holds that string, a superset of every row the ``lane`` filter keeps (it
+    matches the lane, from or to cell); the handler still applies its own filters,
+    so the answer is the answer of the unfiltered read.
+    """
+
+    def read_rows_matching(
+        self,
+        *,
+        since: datetime,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]: ...
+
+
+@runtime_checkable
 class ProtocolWorkLedgerStateReader(Protocol):
     """Read one page of the open set from ``work_ledger_state`` (OMN-21948)."""
 
@@ -316,6 +336,31 @@ class PostgresWorkLedgerQueryReader:
                 "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE row_ts >= %s AND row_ts <= %s ORDER BY row_ts, projected_at, row_id",
                 (since, until),
             )
+        return self._records(rows)
+
+    def read_rows_matching(
+        self,
+        *,
+        since: datetime,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """The window's rows narrowed by row type and a text match, in the store."""
+        clauses = ["row_ts >= %s", "row_ts <= %s"]
+        params: list[object] = [since, until]
+        if kinds:
+            clauses.append("row_type = ANY(%s)")
+            params.append(list(kinds))
+        if contains:
+            clauses.append("strpos(raw_row, %s) > 0")
+            params.append(contains)
+        rows = self._query(
+            "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY row_ts, projected_at, row_id",
+            tuple(params),
+        )
         return self._records(rows)
 
     def read_history(
