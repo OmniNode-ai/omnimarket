@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dispatch_reading_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Read, without I/O, piece 12 of the rebuild: the count of lanes with no dispatch record is zero and every
+  dispatch record reconciles to a terminal result inside its deadline, from the lanes and dispatch records a
+  fetching effect already read. Two subjects: the lanes that have no dispatch record (a lane started from a
+  scratch script is named as such; any lane with no record reads NOT WORKING) and the dispatch records that
+  do not reconcile (a record with no terminal result past its deadline, or a terminal result that arrived
+  after it, reads NOT WORKING; a record still inside its deadline is pending and does not fail). WORKING only
+  when both subjects are WORKING; UNKNOWN when the lanes or the records were not read, nothing was returned,
+  or the read is older than its max age. Settings live in overlay.yaml.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: read_dispatch
+    handler:
+      name: HandlerDispatchReading
+      module: omnimarket.nodes.node_dispatch_reading_compute.handlers.handler_dispatch_reading
+    input_model: omnimarket.nodes.node_dispatch_reading_compute.models.model_dispatch_reading.ModelDispatchReadingRequest
+    output_model: omnimarket.nodes.node_dispatch_reading_compute.models.model_dispatch_reading.ModelDispatchReadingResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.dispatch-reading-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.dispatch-reading-computed.v1
+terminal_event: onex.evt.omnimarket.dispatch-reading-computed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dispatch-reading-requested.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.dispatch-reading-requested.v1
+  producer: "the hourly dispatch read, an effect that lists the running lanes and the dispatch records with their terminal results and asks for the reading (a later piece wires it)"
+externally_consumed_topics:
+- onex.evt.omnimarket.dispatch-reading-computed.v1
+metadata:
+  ticket: OMN-22963
+  transport_type: kafka
+lifecycle: experimental

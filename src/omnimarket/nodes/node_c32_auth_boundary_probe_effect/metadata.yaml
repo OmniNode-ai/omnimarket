@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_c32_auth_boundary_probe_effect
+version: "0.1.0"
+description: "Effect: run the C32 local auth-boundary probe (five cases against the dashboard onex starts, plus a planted-credential search) and put the run on the bus, where the MVP launch reading M1 reads C32."
+pack: pipeline
+node_role: effect
+display_name: "C32 Auth Boundary Probe Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_c32_auth_boundary_probe_effect: "omnimarket.nodes.node_c32_auth_boundary_probe_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "probe", "c32", "mvp", "OMN-23213"]

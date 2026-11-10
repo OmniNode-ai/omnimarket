@@ -18,6 +18,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from omnimarket.handlers.floor_projection import ProjectionPayload
 from omnimarket.models.floor_17a import (
     ModelFloorCauseIn,
     ModelFloorLane,
@@ -1043,13 +1044,20 @@ def read_broker_lag(
 
 
 def read_overlay_store(
-    path: Path, overlay: ModelLabStateOverlay, now: datetime
+    projection: ProjectionPayload, overlay: ModelLabStateOverlay, now: datetime
 ) -> ModelLabSourceRead:
     """One subject per host and overlay: fresh with an answering store is ok; anything else says why.
 
-    A stale table is still read by placement, so this row is what makes it visible. A reading older than
-    the source's bound means that host's reader stopped, whatever the reading said when it was written."""
+    The fleet comes from the bus projection the hosts' readers publish (OMN-23391), judged against the projection's own
+    bound first: a projection older than its bound is unread, never the last fleet it held. A stale table is still read by
+    placement, so this row is what makes it visible. A reading older than the source's bound means that host's reader
+    stopped, whatever the reading said when it was written."""
     source = _by_kind(overlay, "overlay_store")
+    if projection.payload is None:
+        return _unread(
+            source.id,
+            f"the overlay store fleet projection is unknown: {projection.reason}",
+        )
 
     def judged(key: str, reading: Mapping[str, Any]) -> ModelLabSubject:
         age_s = (now - parse_time(reading["read_at"])).total_seconds()
@@ -1072,18 +1080,20 @@ def read_overlay_store(
         )
 
     try:
-        readings = json.loads(path.read_bytes())["readings"]
+        raw = projection.payload["readings"]
+        if not isinstance(raw, dict):
+            raise TypeError("readings is not a mapping")
+        readings: dict[str, Mapping[str, Any]] = {}
+        for key, reading in raw.items():
+            if not isinstance(reading, dict):
+                raise TypeError("a reading is not a mapping")
+            readings[key] = reading
         subjects = tuple(
             judged(key, reading) for key, reading in sorted(readings.items())
         )
         read_at = max(parse_time(r["read_at"]) for r in readings.values())
-    except OSError as exc:
-        return _unread(
-            source.id,
-            f"the overlay store fleet record cannot be opened ({type(exc).__name__})",
-        )
     except (ValueError, KeyError, TypeError):
-        return _unread(source.id, "the overlay store fleet record cannot be parsed")
+        return _unread(source.id, "the overlay store fleet projection cannot be parsed")
     return ModelLabSourceRead(
         id=source.id,
         status="read",
