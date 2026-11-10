@@ -45,6 +45,7 @@ from tests.nodes.node_lab_fill_effect.fakes import (
     FakeBlocks,
     FakeChecks,
     FakeClock,
+    FakeMerged,
     FakeOwners,
     FakeRunner,
 )
@@ -87,6 +88,7 @@ def _tick(rows: list[dict[str, object]]) -> tuple[HandlerLabFillTick, FakeRunner
     approved = FakeApproved(rows={str(r["id"]): r for r in rows}, all_rows=rows)
     clock = FakeClock()
     launch = HandlerLabFillLaunch(
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=approved,
         blocks=FakeBlocks(),

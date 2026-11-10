@@ -19,6 +19,8 @@ class ModelTicketSource(BaseModel):
     state_type: str
     project: str = ""
     parent: str | None = None
+    # The tracker assignee as the snapshot spells it (id or name); ``None`` when the snapshot does not carry one.
+    assignee: str | None = None
     requires: tuple[str, ...] = ()
 
 
@@ -73,7 +75,28 @@ class ModelLaneReceiptSource(BaseModel):
     exit_code: int | None = None
 
 
+class ModelCommitmentSource(BaseModel):
+    """One operator ask recorded as a ledger commitment, folded by node_commitment_ledger_compute.
+
+    `status` is open (no reading yet), verified (its check passes) or regressed (its check failed after it passed).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    commitment_id: str
+    ask: str
+    owner: str
+    check: str
+    status: str
+    opened_at: datetime
+    ticket: str | None = None
+    requires: tuple[str, ...] = ()
+    last_checked_at: datetime | None = None
+    last_exit: int | None = None
+
+
 __all__ = [
+    "ModelCommitmentSource",
     "ModelLaneReceiptSource",
     "ModelPlanTaskSource",
     "ModelPullRequestSource",

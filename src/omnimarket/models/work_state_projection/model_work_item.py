@@ -55,6 +55,12 @@ class ModelWorkItem(BaseModel):
     # A lane item only: every alias its CLAIM cells name (`ticket:OMN-1`, `cause:stoppage:x`, `pr:repo#1`, a key), so a
     # reader that draws its own rows (the floor) attributes the lane to a row from the CLAIM and not from a typed owner.
     attributes: tuple[str, ...] = ()
+    # Who owes the item, where the source names one (a commitment's owner).
+    owner: str | None = None
+    # A ticket item only (OMN-23313): the tracker assignee and parent ticket, so a reader that judges ownership by epic
+    # (the floor's delegation:idle row) reads them from the projection and not from a second tracker read.
+    assignee: str | None = None
+    parent: str | None = None
 
 
 __all__ = ["ModelCriterionPart", "ModelWorkItem"]

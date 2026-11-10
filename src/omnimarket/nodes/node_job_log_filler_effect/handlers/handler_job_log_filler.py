@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
-from collections.abc import Callable, Mapping
+import threading
+import time
+from collections.abc import Callable, Mapping, MutableMapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Literal
@@ -109,9 +112,14 @@ def select_merge_relevant_runs(
     Open, non-draft pull requests in the overlay's classes whose CI record is of their
     current head. Per job name the latest completed attempt's id is the one read: the
     watcher keeps the job id of each name in ``ci.detail``.
+
+    The list is ordered for the per-pass cap: red jobs before named ones, and within each the
+    most recently completed first. A backlog of old reds (a first pass over every open pull
+    request) therefore never holds a fresh failure behind it; the fresh failure is filled in
+    the pass after it appears.
     """
     wanted = {r.lower() for r in repos}
-    runs: list[ModelMergeRelevantRun] = []
+    ranked: list[tuple[int, str, ModelMergeRelevantRun]] = []
     stale = 0
     for record in (state.get("prs") or {}).values():
         facts = record.get("facts") or {}
@@ -136,7 +144,7 @@ def select_merge_relevant_runs(
             if name not in latest or completed_at >= latest[name][0]:
                 latest[name] = (completed_at, int(job_id))
         red = set(ci.get("red") or [])
-        for name, (_, job_id) in sorted(latest.items()):
+        for name, (completed_at, job_id) in sorted(latest.items()):
             reason = (
                 EnumJobLogFillReason.RED
                 if name in red
@@ -146,17 +154,24 @@ def select_merge_relevant_runs(
             )
             if reason is None:
                 continue
-            runs.append(
-                ModelMergeRelevantRun(
-                    repo=repo,
-                    pr_number=int(facts["number"]),
-                    head_sha=str(facts["head_sha"]),
-                    job_name=name,
-                    job_id=job_id,
-                    reason=reason,
+            ranked.append(
+                (
+                    0 if reason is EnumJobLogFillReason.RED else 1,
+                    str(completed_at),
+                    ModelMergeRelevantRun(
+                        repo=repo,
+                        pr_number=int(facts["number"]),
+                        head_sha=str(facts["head_sha"]),
+                        job_name=name,
+                        job_id=job_id,
+                        reason=reason,
+                    ),
                 )
             )
-    return runs, stale
+    # Stable two-key order: newest completion first, then red before named.
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    ranked.sort(key=lambda item: item[0])
+    return [run for _, _, run in ranked], stale
 
 
 class HandlerJobLogFiller:
@@ -171,10 +186,19 @@ class HandlerJobLogFiller:
         overlay: ModelJobLogFillerOverlay | None = None,
         reader_factory: Callable[[str | None], ProtocolJobLogReader] | None = None,
         state_reader: Callable[[], Mapping[str, Any]] | None = None,
+        held: MutableMapping[int, float] | None = None,
+        clock: Callable[[], float] = time.time,
     ) -> None:
+        self._held: MutableMapping[int, float] = {} if held is None else held
+        self._clock = clock
         self._overlay = overlay
         self._reader_factory = reader_factory
         self._state_reader = state_reader
+
+    @property
+    def held(self) -> MutableMapping[int, float]:
+        """Job id -> when a pass last confirmed its log cached; the tick keeps it between passes."""
+        return self._held
 
     @property
     def overlay(self) -> ModelJobLogFillerOverlay:
@@ -214,45 +238,77 @@ class HandlerJobLogFiller:
         cap = min(
             overlay.max_reads_per_pass, request.max_reads or overlay.max_reads_per_pass
         )
-        # Runs whose log is cached cost one local probe; only the missing ones count
-        # against the cap, so the cap bounds GitHub reads.
+        # One worker takes one run at a time, newest failure first: it probes the cache, and on a miss reads the
+        # log at once, so the newest failures are filled before any older run is probed. Two bounds end the work:
+        # the read cap (GitHub reads) and the pass budget (wall clock; a probe over the bus is a round trip the
+        # gateway answers one at a time, measured 2026-11-09 on h051 at a median 2.4 s with six readers, so
+        # probing 886 runs before the first fill never ended inside the unit's limit). A run the pass did not
+        # reach is deferred and is the next pass's first work, because the held memo skips what this one confirmed.
         items: list[ModelJobLogFillItem] = []
+        lock = threading.Lock()
         live_reads = 0
         deferred = 0
-        todo: list[ModelMergeRelevantRun] = []
-        for run in runs:
+        now = self._clock()
+        deadline = now + overlay.pass_budget_seconds
+        budget_exhausted = False
+        memo = self._held
+        remembered = [
+            r
+            for r in runs
+            if now - memo.get(r.job_id, -math.inf) < overlay.reprobe_seconds
+        ]
+        remembered_ids = {r.job_id for r in remembered}
+        to_probe = [r for r in runs if r.job_id not in remembered_ids]
+        items.extend(
+            ModelJobLogFillItem(run=r, outcome=EnumJobLogFillOutcome.ALREADY_CACHED)
+            for r in remembered
+        )
+
+        def work(run: ModelMergeRelevantRun) -> ModelJobLogFillItem | None:
+            nonlocal live_reads, deferred, budget_exhausted
+            with lock:
+                if self._clock() >= deadline:
+                    budget_exhausted = True
+                    deferred += 1
+                    return None
             try:
-                result = reader.read(run.repo, run.job_id, cache_only=True)
+                tail = reader.read(run.repo, run.job_id, cache_only=True)
+                return ModelJobLogFillItem(
+                    run=run,
+                    outcome=EnumJobLogFillOutcome.ALREADY_CACHED,
+                    total_bytes=tail.total_bytes,
+                )
             except JobLogCacheMissError:
+                pass
+            except Exception as exc:
+                return self._failed(run, exc)
+            with lock:
                 if live_reads >= cap:
                     deferred += 1
-                    continue
+                    return None
                 live_reads += 1
-                todo.append(run)
-            except Exception as exc:
-                items.append(self._failed(run, exc))
-            else:
-                items.append(
-                    ModelJobLogFillItem(
-                        run=run,
-                        outcome=EnumJobLogFillOutcome.ALREADY_CACHED,
-                        total_bytes=result.total_bytes,
-                    )
-                )
-
-        def one(run: ModelMergeRelevantRun) -> ModelJobLogFillItem:
             try:
-                result = reader.read(run.repo, run.job_id, cache_only=False)
+                filled = reader.read(run.repo, run.job_id, cache_only=False)
             except Exception as exc:
                 return self._failed(run, exc)
             return ModelJobLogFillItem(
                 run=run,
                 outcome=EnumJobLogFillOutcome.FILLED,
-                total_bytes=result.total_bytes,
+                total_bytes=filled.total_bytes,
             )
 
         with ThreadPoolExecutor(max_workers=overlay.reader_concurrency) as pool:
-            items.extend(pool.map(one, todo))
+            items.extend(i for i in pool.map(work, to_probe) if i is not None)
+        # What this pass confirmed held is remembered, what it did not is forgotten, and a job no longer
+        # in play is dropped, so the memo never outgrows the open pull requests.
+        confirmed = {
+            i.run.job_id for i in items if i.outcome is not EnumJobLogFillOutcome.FAILED
+        }
+        current = {r.job_id for r in runs}
+        for job_id in [j for j in memo if j not in current or j not in confirmed]:
+            del memo[job_id]
+        for job_id in confirmed - remembered_ids:
+            memo[job_id] = now
         filled = sum(i.outcome is EnumJobLogFillOutcome.FILLED for i in items)
         cached = sum(i.outcome is EnumJobLogFillOutcome.ALREADY_CACHED for i in items)
         failed = sum(i.outcome is EnumJobLogFillOutcome.FAILED for i in items)
@@ -276,6 +332,7 @@ class HandlerJobLogFiller:
             already_cached=cached,
             failed=failed,
             deferred=deferred,
+            budget_exhausted=budget_exhausted,
             stale_skipped=stale,
             items=tuple(items),
         )

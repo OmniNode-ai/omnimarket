@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 
+from omnimarket.handlers.rules_lab_fill_closer import built_reports_from_ledger
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
 from omnimarket.models.ticket_query.model_ticket_credential_refusal import (
     TicketQueryCredentialRefusedError,
 )
@@ -53,6 +55,7 @@ from omnimarket.nodes.node_ticket_query.handlers.store_resolved_tracker import (
     resolve_linear_tracker,
 )
 
+from .local_lab_fill_merged_history import LocalMergedHistory
 from .protocol_lab_fill_effect import (
     LabFillClaimFacts,
     LabFillCommandOutcome,
@@ -429,6 +432,55 @@ class LocalLiveChecks:
         except (OSError, ValueError, KeyError, AttributeError) as exc:
             return "pr-state-unreadable", type(exc).__name__
         return "pr-state-unreadable", f"{pr} not in the watcher state"
+
+
+class LocalMergedWork:
+    """Merged pull requests per ticket from the PR watcher's snapshot and the canonical clones, and a ticket's already-built reports (OMN-23277, OMN-23376)."""
+
+    def __init__(
+        self,
+        reader: LocalOwnerReader | None = None,
+        history: LocalMergedHistory | None = None,
+    ) -> None:
+        self._reader = reader if reader is not None else LocalOwnerReader()
+        self._history = history
+
+    def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]:
+        watcher_error: LabFillPortError | None = None
+        try:
+            watcher = tuple(self._reader.watcher_merged(state_path).get(ticket, ()))
+        except LabFillPortError as exc:
+            watcher, watcher_error = (), exc
+        history_error: LabFillPortError | None = None
+        history: tuple[str, ...] = ()
+        try:
+            if self._history is None:
+                self._history = LocalMergedHistory()
+            history = self._history.merged(ticket)
+        except LabFillPortError as exc:
+            history_error = exc
+        merged = tuple(sorted(set(watcher) | set(history)))
+        if merged:
+            return merged
+        # A merge is evidence whichever source holds it; nothing found is clear only when both sources were read.
+        if watcher_error is not None:
+            raise watcher_error
+        if history_error is not None:
+            raise history_error
+        return ()
+
+    def built_reports(
+        self, ticket: str, ledger_path: str
+    ) -> Sequence[ModelLabFillBuiltReport]:
+        path = Path(os.path.expandvars(ledger_path))
+        try:
+            with path.open(encoding="utf-8") as handle:
+                lines = [
+                    line for line in handle if ticket in line and "TERMINAL" in line
+                ]
+        except OSError as exc:
+            raise LabFillPortError(f"ledger unreadable: {exc}") from exc
+        return built_reports_from_ledger(lines)
 
 
 class LocalBriefBlocks:

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of overlay.yaml: every host, name and number is made up.
+state_suffix: .ctx
+hosts:
+  - name: host-a
+    spill_byte_cap_mib: 20480
+    skip_names: [ledger, .venv, node_modules, __pycache__]
+    skip_patterns: ['pytest-of-*', 'pytest-tmp*']
