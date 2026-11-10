@@ -546,6 +546,7 @@ node_delegation_acceptance_judged_replay_compute = "omnimarket.nodes.node_delega
 node_delegation_admission_compute = "omnimarket.nodes.node_delegation_admission_compute"
 node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_gate_compute"
 node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
+node_delegation_code_budget_compute = "omnimarket.nodes.node_delegation_code_budget_compute"
 node_delegation_client_verdict_compute = "omnimarket.nodes.node_delegation_client_verdict_compute"
 node_delegation_completion_rate_compute = "omnimarket.nodes.node_delegation_completion_rate_compute"
 node_delegation_completion_rate_effect = "omnimarket.nodes.node_delegation_completion_rate_effect"
