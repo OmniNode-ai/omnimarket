@@ -7,11 +7,10 @@ each stopped lane it lists. The reader on the other side is the fill: ``node_flo
 entry as ``ModelRecordStopped`` and builds the continuation lane's brief. The fill orchestrator that sends the brief is lane
 ``contfill``'s change (omnimarket#5699, OMN-23416); it reads the candidate this compute returns and is not changed here.
 
-The seam, as read today: ``ModelRecordStopped`` has no ``needs`` field and ignores extra keys, so the typed ask (action and
-target) is dropped at the fill's read and the brief names ``needs`` in its "naming" list without carrying the cell. These tests
-pin that reading so the join goes red when either side changes shape: the producer adds or renames a field, or the fill starts
-reading ``needs``. The change that makes the fill read the cell flips ``test_seam_pin_the_fill_does_not_read_the_needs_cell_yet``
-and the field-set join in the same pull request. The entry crosses the in-memory bus and, with ``CLOSING_ROW_PARITY_BOOTSTRAP``
+The seam, as read today (OMN-23464): ``ModelRecordStopped`` has a ``needs`` field, so the typed ask (action and target) is read at
+the fill and the brief states it in the line "The predecessor asked for next: <cell>". These tests pin that reading so the join
+goes red when either side changes shape: the producer adds or renames a field, or the fill stops reading ``needs``. The entry
+crosses the in-memory bus and, with ``CLOSING_ROW_PARITY_BOOTSTRAP``
 naming a lab broker, a Redpanda broker:
 
     CLOSING_ROW_PARITY_BOOTSTRAP=<host:port> uv run pytest -m "closing_row_parity and kafka" -q
@@ -68,8 +67,8 @@ UNTYPED = (
     "LANE_RESULT outcome=blocked\n" + DELEGATION
 )
 CELL = "rerun:omnibase_core#2302"
-# The producer fields the fill does not read today; the fill's change reads needs and shrinks this set.
-NOT_READ_BY_THE_FILL = {"needs", "age_minutes"}
+# The producer fields the fill does not read today; the fill reads needs (OMN-23464), so only age_minutes is left.
+NOT_READ_BY_THE_FILL = {"age_minutes"}
 
 
 def stopped_entry(rows: dict[str, str]) -> dict[str, Any]:
@@ -145,18 +144,17 @@ def test_golden_the_typed_ask_reaches_the_fill_as_a_listed_lane_naming_needs() -
     assert "needs" in entry["names"]
 
 
-def test_seam_pin_the_fill_does_not_read_the_needs_cell_yet() -> None:
-    """Pins the reading: the fill carries the cell only as text inside the predecessor's last rows, never as a typed ask.
+def test_seam_pin_the_fill_reads_the_needs_cell_into_the_brief() -> None:
+    """Pins the reading: the fill states the cell as a typed ask in the brief, ahead of the predecessor's last rows.
 
-    ``ModelRecordStopped`` has no ``needs`` field, so the action and target are not a value the brief states; they reach the
-    continuation lane only because the ending row's own text (``needs=<cell>``) is among the rows the brief quotes. The fill
-    reader change (a ``needs`` field and a sentence in the brief) flips this test; update it in that pull request.
+    ``ModelRecordStopped`` has a ``needs`` field, so the action and target are a value the brief states in its own line
+    (OMN-23464), as well as inside the ending row's text among the rows the brief quotes.
     """
     [candidate] = fill_reads(in_process()["typed"])
     lead, _, quoted = candidate.brief.partition("The predecessor's last rows:")
 
-    assert "needs" not in ModelRecordStopped.model_fields
-    assert CELL not in lead
+    assert "needs" in ModelRecordStopped.model_fields
+    assert f"The predecessor asked for next: {CELL}" in lead
     assert f"needs={CELL}" in quoted
 
 
