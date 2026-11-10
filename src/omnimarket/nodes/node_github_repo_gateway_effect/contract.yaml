@@ -17,9 +17,14 @@ lifecycle: experimental
 job_log_cache:
   root: null
   ttl_seconds: 86400
-  # OMN-23032: a lane's `onex scm job-log` answers from this cache only; a miss is
-  # refused naming the cache path. node_job_log_filler_effect fills the cache.
+  # OMN-23032: a lane's `onex scm job-log` answers from this cache; a miss fills
+  # that one job on demand inside the declared budget, else is refused naming the
+  # cache path. node_job_log_filler_effect fills the cache.
   lane_reads_cache_only: true
+  # OMN-23378: a lane's miss fills that one job on demand, at most that many fills per window;
+  # the explicit job_log_fill verb is not counted.
+  lane_miss_fill_max: 30
+  lane_miss_fill_window_seconds: 3600
 
 cli_aliases:
   job-log-cached:
@@ -57,12 +62,14 @@ description: >
   or falls back to HTTP. Use the first read's bus binding for gateway-shared
   bytes; --bus inmemory uses the canonical adapter on the calling host and
   can reuse covered byte ranges from its previous successful job-log cache.
-  A lane's `job-log` read is cache-only while job_log_cache.lane_reads_cache_only
-  is true, and a miss is refused naming the cache path; node_job_log_filler_effect
-  fills the cache from the merge-relevant runs of open pull requests. A lane that
-  meets such a miss before the filler reaches the job runs `job-log-fill` (operation
-  job_log_fill): the gateway serves the job from the cache, or on a miss downloads that
-  one job's log into the cache and returns it (OMN-23308).
+  A lane's `job-log` read answers from this cache while job_log_cache.lane_reads_cache_only
+  is true; a miss fills that one job on demand inside the declared miss-fill budget,
+  and the refusal that names the cache path appears when that budget is spent;
+  node_job_log_filler_effect fills the cache from the merge-relevant runs of
+  open pull requests. A lane that meets such a miss before the filler reaches the job
+  runs `job-log-fill` (operation job_log_fill): the gateway serves the job from the
+  cache, or on a miss downloads that one job's log into the cache and returns it
+  (OMN-23308).
   Missing ranges and uncached step metadata remain misses; a partial cached
   answer is never represented as a whole log. A github_job_logs/overlay.yaml
   under ONEX_SKILL_OVERLAY_ROOTS can set root and ttl_seconds. Shared gateway
