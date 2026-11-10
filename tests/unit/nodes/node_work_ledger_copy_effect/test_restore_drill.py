@@ -67,6 +67,7 @@ def test_drill_with_no_run_id_takes_the_newest_snapshot() -> None:
     HandlerWorkLedgerSnapshot(
         source_host=SOURCE_HOST,
         store_host=DRILL_HOST,
+        local_host=DRILL_HOST,
         topic=older,
         projection=older,
         store=store,
@@ -83,6 +84,7 @@ def test_directory_store_survives_the_round_trip_through_files(tmp_path: Path) -
     made = HandlerWorkLedgerSnapshot(
         source_host=SOURCE_HOST,
         store_host=DRILL_HOST,
+        local_host=DRILL_HOST,
         topic=source,
         projection=source,
         store=store,
@@ -91,6 +93,7 @@ def test_directory_store_survives_the_round_trip_through_files(tmp_path: Path) -
     assert made.ok
     result = HandlerWorkLedgerRestoreDrill(
         drill_host=DRILL_HOST,
+        local_host=DRILL_HOST,
         source_host=SOURCE_HOST,
         source_port=SOURCE_PORT,
         store=store,
@@ -152,6 +155,7 @@ def test_damaged_byte_on_disk_is_refused(tmp_path: Path) -> None:
     HandlerWorkLedgerSnapshot(
         source_host=SOURCE_HOST,
         store_host=DRILL_HOST,
+        local_host=DRILL_HOST,
         topic=source,
         projection=source,
         store=store,
@@ -163,6 +167,7 @@ def test_damaged_byte_on_disk_is_refused(tmp_path: Path) -> None:
     )
     result = HandlerWorkLedgerRestoreDrill(
         drill_host=DRILL_HOST,
+        local_host=DRILL_HOST,
         source_host=SOURCE_HOST,
         source_port=SOURCE_PORT,
         store=store,
@@ -229,6 +234,7 @@ def test_named_break_row_in_the_projection_alone_fails_the_comparison() -> None:
     HandlerWorkLedgerSnapshot(
         source_host=SOURCE_HOST,
         store_host=DRILL_HOST,
+        local_host=DRILL_HOST,
         topic=MemoryRowSource(topic),
         projection=MemoryRowSource(projection),
         store=store,
@@ -245,6 +251,7 @@ def test_named_break_row_withheld_from_the_topic_fails_the_comparison() -> None:
     HandlerWorkLedgerSnapshot(
         source_host=SOURCE_HOST,
         store_host=DRILL_HOST,
+        local_host=DRILL_HOST,
         topic=MemoryRowSource(rows(5)[:-1]),
         projection=MemoryRowSource(rows(5)),
         store=store,
