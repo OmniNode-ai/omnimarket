@@ -171,6 +171,11 @@ def test_the_contract_declares_the_command_and_terminal_topics() -> None:
     assert command in contract["event_bus"]["subscribe_topics"]
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert contract["terminal_event"] in contract["externally_consumed_topics"]
+    assert command == "onex.cmd.omnimarket.broker-acl-overlay-render-requested.v1"
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.broker-acl-overlay-rendered.v1"
+    )
     assert contract["node_type"] == "compute"
 
 
