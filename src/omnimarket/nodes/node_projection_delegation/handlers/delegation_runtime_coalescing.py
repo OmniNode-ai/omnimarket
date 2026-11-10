@@ -22,7 +22,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.delegation_aggregate_c
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 
 
-class HandlerCoalescingProjection(BaseProjectionRunner):
+class CoalescingProjectionBase(BaseProjectionRunner):
     """Base runner that coalesces its aggregate republish in the consume loop and per delivery."""
 
     _coalescer: AggregateCoalescer

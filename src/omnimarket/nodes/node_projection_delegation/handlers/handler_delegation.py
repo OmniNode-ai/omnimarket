@@ -55,7 +55,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.delegation_coercion im
     _safe_numeric_str,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.delegation_runtime_coalescing import (
-    HandlerCoalescingProjection,
+    CoalescingProjectionBase,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
@@ -292,7 +292,7 @@ WRITE_ATTESTATION_COLUMNS: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 
-class DelegationProjectionRunner(HandlerCoalescingProjection):
+class DelegationProjectionRunner(CoalescingProjectionBase):
     """Projects task-delegated and delegation-shadow-comparison events.
 
     Two topics -> two tables, each with ON CONFLICT (correlation_id) DO NOTHING.
