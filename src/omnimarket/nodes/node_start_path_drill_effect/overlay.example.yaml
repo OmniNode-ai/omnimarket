@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_start_path_drill_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+#   census           every start path: its id (contract.start_paths names the ones it must hold), its binding (bound: the path's last
+#                    step before an engine, session or provisioning call asks admission; unbound: live and does not ask yet; dead: starts
+#                    nothing), and the repository that holds the step ("unread" where no read named it)
+#   gate             the test gate store each path is drilled on: a piece under a stop, a piece the policy admits, and the effect's deadline
+#   ledger_append    the bus append command and host name the observe-log rows and the reading row go through
+#   publish          the lanes and actor of the rows, and how long a reading stays fresh
+#   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
+#   schedule_hosts   hosts that install the daily systemd user timer: the venv its unit runs and the environment it carries
+census:
+- id: lane_runner
+  binding: unbound
+  home: example-repo
+- id: brief_check
+  binding: unbound
+  home: example-repo
+- id: lab_fill_a
+  binding: unbound
+  home: example-repo
+- id: lab_fill_b
+  binding: unbound
+  home: example-repo
+- id: lab_fill_c
+  binding: unbound
+  home: example-repo
+- id: agent_workflow_hook
+  binding: unbound
+  home: example-repo
+- id: landing_fix_workers
+  binding: unbound
+  home: example-repo
+- id: scheduled_ticks
+  binding: unbound
+  home: example-repo
+- id: cloud_lanes
+  binding: unbound
+  home: example-repo
+- id: node_overnight
+  binding: unbound
+  home: example-repo
+- id: node_demo_fanout_orchestrator
+  binding: unbound
+  home: example-repo
+- id: node_coding_agent_invoke_effect
+  binding: unbound
+  home: example-repo
+- id: harness_delegate
+  binding: unbound
+  home: example-repo
+- id: epic_team_run_sh
+  binding: unbound
+  home: example-repo
+- id: lab_run_agent_commands
+  binding: unbound
+  home: example-repo
+gate:
+  stopped_piece: example-stopped-piece
+  open_piece: example-open-piece
+  open_piece_limit: 1
+  reservation_ttl_seconds: 60
+  answer_deadline_seconds: 5.0
+  max_redecisions: 2
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: start-path-drill
+  observe_lane: start-admission-observe
+  actor: node:node_start_path_drill_effect
+  publish_max_age_seconds: 129600
+injected_fault: Remove a declared path from the census, or make the gate store admit a start on the stopped piece
+schedule_hosts:
+- name: example-lab-host
+  venv: example-venv
+  environment:
+    EXAMPLE_HOST_NAME: example-lab-host
+    EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example

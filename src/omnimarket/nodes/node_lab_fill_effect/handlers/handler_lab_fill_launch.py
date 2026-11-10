@@ -32,6 +32,10 @@ from ..models import (
     ModelLabFillLaunchRequest,
     ModelLabFillLaunchResult,
 )
+from ..models.model_lab_fill_send_gate import (
+    EnumLabFillSendVerdict,
+    ModelLabFillSendGateRequest,
+)
 from ..protocols import (
     LabFillPortError,
     ProtocolLabFillApprovedWork,
@@ -39,7 +43,9 @@ from ..protocols import (
     ProtocolLabFillClock,
     ProtocolLabFillLaneLauncher,
     ProtocolLabFillLiveChecks,
+    ProtocolLabFillMergedWork,
 )
+from .handler_lab_fill_send_gate import HandlerLabFillSendGate
 from .helpers_lab_fill_effect import default_clock, iso_utc
 
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
@@ -148,13 +154,17 @@ class HandlerLabFillLaunch:
         blocks: ProtocolLabFillBriefBlocks | None = None,
         runner: ProtocolLabFillLaneLauncher | None = None,
         clock: ProtocolLabFillClock | None = None,
+        merged: ProtocolLabFillMergedWork | None = None,
     ) -> None:
         from ..protocols.local_lab_fill_adapters import (
             LocalApprovedWork,
             LocalBriefBlocks,
             LocalLaneLauncher,
             LocalLiveChecks,
+            LocalMergedWork,
         )
+
+        self._merged = merged if merged is not None else LocalMergedWork()
 
         self._checks = checks if checks is not None else LocalLiveChecks()
         self._approved = approved if approved is not None else LocalApprovedWork()
@@ -174,6 +184,8 @@ class HandlerLabFillLaunch:
             brief_has_delegation: bool = False,
             detail: str = "",
             elapsed_s: int | None = None,
+            routed_to: str = "",
+            merged_prs: tuple[str, ...] = (),
         ) -> ModelLabFillLaunchResult:
             return ModelLabFillLaunchResult(
                 lane=launch.lane,
@@ -187,6 +199,8 @@ class HandlerLabFillLaunch:
                     if elapsed_s is not None
                     else int(self._clock.now_epoch_s() - started)
                 ),
+                routed_to=routed_to,
+                merged_prs=merged_prs,
             )
 
         if refusal := lane_model_refusal(launch.engine):
@@ -229,6 +243,42 @@ class HandlerLabFillLaunch:
                     skipped="approved-row-unresolved",
                     detail=str(exc)[:300],
                 )
+        try:
+            merged_prs = tuple(
+                self._merged.merged_prs(launch.ticket, request.watcher_state_path)
+            )
+            built = tuple(
+                self._merged.built_reports(launch.ticket, request.ledger_path)
+            )
+        except LabFillPortError as exc:
+            # An unread merge state is not a clear one: a lane sent blind may redo merged work.
+            return result(
+                detached=False, skipped="merged-state-unreadable", detail=str(exc)[:300]
+            )
+        gate = HandlerLabFillSendGate().handle(
+            ModelLabFillSendGateRequest(
+                ticket=launch.ticket,
+                kind=request.kind,
+                brief=brief,
+                host=launch.host,
+                merged_prs=merged_prs,
+                built=built,
+                exempt_kinds=request.closer_exempt_kinds,
+                fact_hosts=request.fact_hosts,
+                needs_hosts=request.needs_hosts,
+                host_reach=request.host_reach,
+            )
+        )
+        if gate.verdict is not EnumLabFillSendVerdict.SEND:
+            return result(
+                detached=False,
+                skipped=gate.verdict.value,
+                detail=gate.detail[:300],
+                routed_to=gate.routed_to,
+                merged_prs=gate.merged_prs,
+            )
+        if gate.host and gate.host != launch.host:
+            launch = launch.model_copy(update={"host": gate.host, "placement": None})
         guard = HandlerInternalReleasePathGuard().handle(
             ModelInternalReleasePathGuardRequest(
                 proposed_actions=brief,

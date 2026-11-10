@@ -1130,7 +1130,10 @@ shadow_mode:
 # memory size. The HOST is deliberately not declared here -- the onboarding
 # script chooses host.docker.internal from inside Docker and localhost otherwise.
 # The first entry whose min_memory_gb <= the Mac's memory wins; entries are
-# ordered by min_memory_gb strictly descending and the last one is 0.
+# ordered by min_memory_gb strictly descending and the last one is 0. Each row also
+# declares the parameter_count, context_window and max_tokens the developer model
+# overlay states for it (OMN-20330, ruling G4), so onboarding writes no number of
+# its own.
 ollama:
   port: 11434
   chat_path: /v1/chat/completions
@@ -1138,6 +1141,12 @@ ollama:
     - min_memory_gb: 16
       model: qwen2.5-coder:7b
       download_gb: 5
+      parameter_count: "7B"
+      context_window: 32768
+      max_tokens: 8192
     - min_memory_gb: 0
       model: qwen2.5-coder:1.5b
       download_gb: 1
+      parameter_count: "1.5B"
+      context_window: 32768
+      max_tokens: 8192
