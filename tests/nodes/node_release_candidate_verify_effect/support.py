@@ -335,36 +335,48 @@ def pip_template_from_stub_install(
     )
 
 
-def pipx_template_from_stub_install(
+def pipx_templates_from_stub_installs(
     base: Path, wheel_dir: Path
-) -> ModelLauncherTemplate:
-    """The launcher template of the pipx on PATH, generated from a stub install through pipx."""
-    home = base / "pipx-template-home"
-    bin_dir = base / "pipx-template-bin"
-    _run(
-        [
-            "pipx",
-            "install",
-            "--python",
-            sys.executable,
-            "--pip-args",
-            f"--no-index --no-deps --find-links {wheel_dir}",
-            "omnibase-core==1.0.0",
-        ],
-        {"PIPX_HOME": str(home), "PIPX_BIN_DIR": str(bin_dir)},
-    )
-    prefix = home / "venvs" / "omnibase-core"
-    text = _launcher_template_text((prefix / "bin" / "onex").read_text(), prefix)
+) -> tuple[ModelLauncherTemplate, ...]:
+    """The launcher templates of the pipx on PATH, generated from stub installs through pipx.
+
+    pip writes the short form when the interpreter line fits the 127 characters a shebang may hold and
+    the /bin/sh form otherwise, so one stub install sits at a short path and one at a path past the limit.
+    """
     pipx_version = subprocess.run(
         ["pipx", "--version"], capture_output=True, text=True, check=True
     ).stdout.strip()
-    return ModelLauncherTemplate(
-        name="pipx-generated",
-        installer="pipx",
-        installer_version=pipx_version,
-        interpreter_names=("python",),
-        text=text,
-    )
+    templates = []
+    for name, directory in (
+        ("pipx-generated", "short"),
+        ("pipx-generated-long-path", "long" * 40),
+    ):
+        home = base / directory
+        _run(
+            [
+                "pipx",
+                "install",
+                "--python",
+                sys.executable,
+                "--pip-args",
+                f"--no-index --no-deps --find-links {wheel_dir}",
+                "omnibase-core==1.0.0",
+            ],
+            {"PIPX_HOME": str(home), "PIPX_BIN_DIR": str(home / "bin")},
+        )
+        prefix = home / "venvs" / "omnibase-core"
+        templates.append(
+            ModelLauncherTemplate(
+                name=name,
+                installer="pipx",
+                installer_version=pipx_version,
+                interpreter_names=("python",),
+                text=_launcher_template_text(
+                    (prefix / "bin" / "onex").read_text(), prefix
+                ),
+            )
+        )
+    return tuple(templates)
 
 
 def overlay_with_bundled_pip(

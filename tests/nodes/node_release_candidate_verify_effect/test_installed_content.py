@@ -91,10 +91,8 @@ def test_untouched_pipx_passes(
             ),
         ),
         extra_templates=(
-            (
-                support.pipx_template_from_stub_install(
-                    tmp_path / "pipx-template", wheel_dir
-                ),
+            support.pipx_templates_from_stub_installs(
+                tmp_path / "pipx-template", wheel_dir
             )
             if shutil.which("pipx")
             else ()
