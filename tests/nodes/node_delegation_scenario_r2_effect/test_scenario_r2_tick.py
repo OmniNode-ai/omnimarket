@@ -27,12 +27,12 @@ from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenar
     HandlerScenarioR2,
     load_schedule,
 )
-from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2_settings import (
-    HandlerSecretStoreSettings,
-    setting_names,
-)
 from omnimarket.nodes.node_delegation_scenario_r2_effect.runtime_scenario_r2_tick import (
     main,
+)
+from omnimarket.nodes.node_delegation_scenario_r2_effect.scenario_r2_settings import (
+    SecretStoreSettingsReader,
+    setting_names,
 )
 from tests.nodes.node_delegation_scenario_r2_effect.test_golden_chain_scenario_r2_effect import (
     KEY,
@@ -250,7 +250,7 @@ def test_a_machine_with_no_store_overlay_and_no_identity_file_supplies_nothing(
     tmp_path: Path,
 ) -> None:
     """Error chain on the real store seam: no config.yaml block and no host env file is not_configured, so no value."""
-    store = HandlerSecretStoreSettings(onex_home=tmp_path, home=tmp_path)
+    store = SecretStoreSettingsReader(onex_home=tmp_path, home=tmp_path)
     secret = asyncio.run(
         store.read(RUNTIME.secret_store_folder, RUNTIME.onboarding.key_env)
     )

@@ -29,9 +29,9 @@ from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenar
     build_runner,
     load_runtime,
 )
-from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2_settings import (
-    HandlerSecretStoreSettings,
+from omnimarket.nodes.node_delegation_scenario_r2_effect.scenario_r2_settings import (
     ProtocolSettingStore,
+    SecretStoreSettingsReader,
     fill_settings,
 )
 
@@ -86,7 +86,7 @@ def main(
         fill_settings(
             environment,
             runtime,
-            store if store is not None else HandlerSecretStoreSettings(),
+            store if store is not None else SecretStoreSettingsReader(),
         )
     )
     factory = runner_factory if runner_factory is not None else _runner_factory

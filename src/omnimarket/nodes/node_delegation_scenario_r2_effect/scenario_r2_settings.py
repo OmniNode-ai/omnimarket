@@ -43,7 +43,7 @@ class ProtocolSettingStore(Protocol):
     async def read(self, folder: str, name: str) -> SecretStr | None: ...
 
 
-class HandlerSecretStoreSettings:
+class SecretStoreSettingsReader:
     """The real store seam: the machine's overlay first, the host env file's identity second.
 
     Args:
@@ -125,8 +125,8 @@ async def fill_settings(
 
 
 __all__ = [
-    "HandlerSecretStoreSettings",
     "ProtocolSettingStore",
+    "SecretStoreSettingsReader",
     "fill_settings",
     "setting_names",
 ]
