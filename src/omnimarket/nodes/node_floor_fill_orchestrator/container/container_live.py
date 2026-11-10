@@ -4,7 +4,7 @@
 
 Bound live: the state store (the ``floor_fill_state`` table of omnibase_infra, migration 113), the floor record (URL)
 and plan texts (files), the ledger (the rolling ledger file), the lane process runner (the posix runner of
-``node_lane_process_effect``) and the wall clock. The pool, tickets, brake and stop-signal seams have no live source
+``node_lane_process_effect``), the continuation briefs (directories) and the wall clock. The pool, tickets, brake and stop-signal seams have no live source
 of their own (no placement reader, the floor-task ticket nodes off the dev branch, no open-count brake, no stop
 signal): they are bound by injection, and a missing one (left ``None``) refuses by name, making the pass answer
 ``UNKNOWN <source>-unread:unbound:<seam>`` and start nothing.
@@ -41,6 +41,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_
     ModelFloorFillLiveSettings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.adapters import (
+    DirectoryFloorBriefs,
     LedgerRowsFloorLedger,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import (
@@ -117,6 +118,9 @@ def build_live_handler_factory(
             ledger=LedgerRowsFloorLedger(FileWorkLedgerStore(settings.ledger_path)),
             tickets=tickets if tickets is not None else UnboundFloorTickets(),
             runner=process,
+            briefs=DirectoryFloorBriefs(
+                config.stopped_reports_root, config.stopped_brief_directory
+            ),
             clock=SystemFloorClock(),
         )
         return HandlerFloorFillCommand(
