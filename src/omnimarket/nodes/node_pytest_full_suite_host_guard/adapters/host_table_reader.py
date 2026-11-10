@@ -18,11 +18,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.models.node_overlays.model_node_overlays import (
     ModelPytestHostGuardOverlay,
 )
-from omnimarket.nodes.node_pytest_full_suite_host_guard.handlers.handler_pytest_full_suite_host_guard import (
-    HandlerPytestFullSuiteHostGuard,
-)
 from omnimarket.nodes.node_pytest_full_suite_host_guard.models.model_pytest_full_suite_host_guard import (
-    ModelPytestFullSuiteHostGuardDecision,
     ModelPytestFullSuiteHostGuardRequest,
 )
 
@@ -151,7 +147,7 @@ def private_table_text(root: Path | None, private_rel: str) -> str | None:
     return working.decode("utf-8")
 
 
-def decide(
+def request(
     table_text: str,
     env: Env,
     *,
@@ -161,17 +157,15 @@ def decide(
     host_table_rel: str,
     overlay_name: str,
     roots_env: str,
-) -> ModelPytestFullSuiteHostGuardDecision:
-    """The node's answer for a host and login, with the overlays read from ``env``."""
-    return HandlerPytestFullSuiteHostGuard().handle(
-        ModelPytestFullSuiteHostGuardRequest(
-            table_text=table_text,
-            login_overlay_text=login_overlay_text(env, overlay_name, roots_env),
-            login=login,
-            host=host,
-            env_overrides={k: v for k, v in env.items() if k.startswith("PREPUSH_")},
-            legacy_override_by_label=legacy_override_by_label(env),
-            private_table_rel=private_table_rel,
-            host_table_rel=host_table_rel,
-        )
+) -> ModelPytestFullSuiteHostGuardRequest:
+    """The node's request for a host and login, with the overlays read from ``env``."""
+    return ModelPytestFullSuiteHostGuardRequest(
+        table_text=table_text,
+        login_overlay_text=login_overlay_text(env, overlay_name, roots_env),
+        login=login,
+        host=host,
+        env_overrides={k: v for k, v in env.items() if k.startswith("PREPUSH_")},
+        legacy_override_by_label=legacy_override_by_label(env),
+        private_table_rel=private_table_rel,
+        host_table_rel=host_table_rel,
     )

@@ -115,15 +115,21 @@ def _decide(
     private_rel: str = PRIVATE_TABLE_REL,
 ) -> Any:
     """The node's answer for a host and login over the table as read (OMN-23367)."""
-    return _io().decide(
-        table_text,
-        env,
-        host=host,
-        login=resolve_local_login() if login is None else login,
-        private_table_rel=private_rel,
-        host_table_rel=HOST_TABLE_REL,
-        overlay_name=LOGIN_OVERLAY_NAME,
-        roots_env=OVERLAY_ROOTS_ENV,
+    return (
+        _node()
+        .HandlerPytestFullSuiteHostGuard()
+        .handle(
+            _io().request(
+                table_text,
+                env,
+                host=host,
+                login=resolve_local_login() if login is None else login,
+                private_table_rel=private_rel,
+                host_table_rel=HOST_TABLE_REL,
+                overlay_name=LOGIN_OVERLAY_NAME,
+                roots_env=OVERLAY_ROOTS_ENV,
+            )
+        )
     )
 
 
