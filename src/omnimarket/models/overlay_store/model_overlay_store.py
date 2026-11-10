@@ -173,6 +173,8 @@ class ModelOverlayStoreReadOverlay(_Frozen):
     overlays: dict[OverlayId, ModelOverlayReadPolicy] = Field(min_length=1)
     # Where a tick writes the newest reading of each host and overlay, under the registry home. Unset writes none.
     fleet_record_relpath: str | None = None
+    # The id this host's view of the fleet is published under as a floor projection (OMN-23391); unset publishes none.
+    fleet_projection_id: OverlayId | None = None
 
     @model_validator(mode="after")
     def _backend_names_what_it_needs(self) -> ModelOverlayStoreReadOverlay:
@@ -184,5 +186,13 @@ class ModelOverlayStoreReadOverlay(_Frozen):
         if missing:
             raise ValueError(
                 f"the {self.backend} backend needs the broker or database it reads"
+            )
+        # Only a host that reads the broker has a bus to publish its view of the fleet on (OMN-23391).
+        no_bus = {"in_memory": True, "postgres": True, "bus_snapshot": False}[
+            self.backend
+        ]
+        if self.fleet_projection_id is not None and no_bus:
+            raise ValueError(
+                f"the {self.backend} backend has no bus to publish the fleet projection on"
             )
         return self
