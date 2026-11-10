@@ -10,6 +10,9 @@ reachable server.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import pytest
 
 from omnimarket.projection.runner import MessageMeta
@@ -40,9 +43,9 @@ _MIGRATION = _MIGRATIONS_DIR / "0068_delegation_events_turn_count.sql"
     ],
 )
 async def test_skill_terminal_stores_total_calls_and_a_zero_is_not_null(
-    make_terminal: object, expected: int
+    make_terminal: Callable[[], dict[str, Any]], expected: int
 ) -> None:
-    payload = make_terminal()  # type: ignore[operator]
+    payload = make_terminal()
     payload["tenant_id"] = _TENANT
     cid = str(payload["correlation_id"])
     async with _provisioned_runner() as (runner, admin_conn, _schema):

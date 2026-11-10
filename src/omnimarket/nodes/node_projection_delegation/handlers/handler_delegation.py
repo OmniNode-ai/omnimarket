@@ -92,6 +92,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _stamp_declared_failure_cause,
     _stamp_not_routed,
     _stamp_routing_tier,
+    _stamp_terminal_dispositions,
     _stamp_terminal_stop_reason,
     _stamp_terminal_timing_and_requested_model,
     _stamp_terminal_trace_and_routing,
@@ -2030,12 +2031,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         # OMN-19448: match the sync writer's copy of the declared disposition.
         # Omitted values must leave a prior terminal's evidence untouched.
-        for column, terminal_disposition in (
-            ("operational_outcome", event.operational_outcome),
-            ("content_verdict", event.content_verdict),
-        ):
-            if terminal_disposition is not None:
-                row[column] = terminal_disposition.value
+        _stamp_terminal_dispositions(row, event)
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]

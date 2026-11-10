@@ -46,7 +46,12 @@ from omnimarket.models.model_local_install_delegation_summary import (
     DELEGATION_SUMMARY_VIEW_STEPS,
     create_delegation_summary_view,
 )
-from omnimarket.models.model_local_install_schema import _CURSOR_TABLE_STEPS
+from omnimarket.models.model_local_install_schema import (
+    _CURSOR_TABLE_STEPS,
+)
+from omnimarket.models.model_local_install_schema import (
+    DELEGATION_EVENTS_DECLARED_COLUMNS as _DELEGATION_EVENTS_DECLARED_COLUMNS,
+)
 from omnimarket.nodes.node_projection_tenant_credentials.stores import (
     _CREDENTIAL_CHOSEN_MODELS_STEP as _CREDENTIAL_CHOSEN_MODELS_STEP,
 )
@@ -118,78 +123,9 @@ CREATE TABLE IF NOT EXISTS delegation_events (
     -- OMN-19448: nullable requested model and terminal timings (0058).
     requested_model         TEXT,
     queue_wait_ms           INTEGER,
-    execution_ms            INTEGER,
-    -- OMN-18534: nullable total inference calls of the terminal (0068).
-    turn_count              INTEGER
+    execution_ms            INTEGER
 )
 """
-
-# OMN-19976: every column a contract-declared exposure over delegation_events
-# reads. The read node refuses an exposure whose declared column the relation
-# lacks (projection_column_missing), and the writer adds a column only when a
-# row carries it, so a column the local writer never sends would never exist
-# and the local dashboard could not serve Runs. They are added nullable on
-# connect; a value the writer has no field for reads as NULL, as on Postgres.
-# tests/unit/projection/test_sqlite_delegation_events_declared_columns_omn19976.py
-# fails when an exposure declares a column missing from this set.
-_DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
-    "actual_score",
-    "answering_backend",
-    "authority_source",
-    "backend_id",
-    "compliance_attempts",
-    "context_pack_hash",
-    "cost_savings_usd",
-    "cost_tier_name",
-    "cost_tier_type",
-    "cost_usd",
-    "created_at",
-    "data_source",
-    "delegated_by",
-    "delegated_to",
-    "delegation_latency_ms",
-    "escalation_count",
-    "execution_ms",
-    "finish_reason",
-    "host",
-    "latency_ms",
-    "lineage_kind",
-    "model_name",
-    "modelled_savings_usd",
-    "override_within_bounds",
-    "parent_correlation_id",
-    "parent_failure_cause",
-    "pricing_manifest_version",
-    "prompt_text",
-    "quality_gate_detail",
-    "quality_gate_passed",
-    "quality_gates_checked",
-    "quality_gates_failed",
-    "queue_wait_ms",
-    "request_override_applied",
-    "requested_model",
-    "required_bar",
-    "response_text",
-    "routed_model",
-    "savings_baseline_model",
-    "savings_measurement",
-    "savings_pricing_manifest_version",
-    "score_source",
-    "session_id",
-    "task_type",
-    "tenant_id",
-    "terminal_failure_cause",
-    "terminal_ok",
-    "timestamp",
-    "tokens_input",
-    "tokens_output",
-    "tokens_to_compliance",
-    "trace_id",
-    "truncated",
-    "turn_count",
-    "writer_identity",
-    "written_at",
-)
 
 # A store created before ``id`` existed cannot gain a rowid alias without a
 # table rewrite, so it gets a plain ``id`` column instead, filled from the
