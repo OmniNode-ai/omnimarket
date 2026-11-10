@@ -23,6 +23,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 from tests.test_omn19514_ticket_id_projection_real_postgres import (
     _MIGRATIONS_DIR,
     _NullPublisher,
@@ -129,7 +130,9 @@ async def test_migrated_terminal_row_carries_every_column(
         )
         # Reapply the actual migrations, not a hand-written test schema.
         for name in _MIGRATIONS:
-            await connection.execute((_MIGRATIONS_DIR / name).read_text())
+            await connection.execute(
+                for_isolated_schema((_MIGRATIONS_DIR / name).read_text())
+            )
         if writer == "async":
             async with _runner(postgres, schema) as runner:
                 if family == "canonical":

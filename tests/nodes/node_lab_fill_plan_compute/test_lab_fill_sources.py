@@ -300,3 +300,103 @@ def test_sources_match_the_workflow(case: dict[str, Any]) -> None:
     result = handler_type().handle(request_type.model_validate(case["input"]))
     assert isinstance(result, result_type)
     assert result.model_dump(mode="json") == case["expected"]
+
+
+def _delegation_candidates(**mirror: object) -> ModelLabFillSourceCandidatesResult:
+    """One stalled-plan ticket through the candidate builder, its mirror row carrying ``mirror``."""
+    sources = _tickets(
+        plans={"document": {"plans": [_plan("OMN-11")]}},
+    )
+    handler, request_type, _ = OPERATIONS["classify_lab_fill_source_candidates"]
+    result = handler().handle(
+        request_type(sources=sources, tickets=(_facts("OMN-11", **mirror),))
+    )
+    assert isinstance(result, ModelLabFillSourceCandidatesResult)
+    return result
+
+
+def test_golden_chain_delegation_candidate_carries_the_mirror_facts() -> None:
+    """OMN-23312: assignee, parents, state type and criterion reach the candidate the selection reads."""
+    only = _delegation_candidates(
+        assignee="owner-1", parents=("OMN-epic-a",), criterion="true"
+    ).candidates[0]
+    assert (only.assignee, only.parents, only.state_type, only.criterion) == (
+        "owner-1",
+        ("OMN-epic-a",),
+        "started",
+        "true",
+    )
+    dumped = only.model_dump(mode="json")
+    assert dumped["assignee"] == "owner-1"
+    assert dumped["parents"] == ["OMN-epic-a"]
+    assert dumped["state_type"] == "started"
+    assert dumped["criterion"] == "true"
+
+
+def test_error_chain_candidate_without_mirror_facts_keeps_its_recorded_shape() -> None:
+    """A mirror row with no delegation facts adds nothing to the candidate: no key, no default."""
+    only = _delegation_candidates().candidates[0]
+    assert (only.assignee, only.parents, only.state_type, only.criterion) == (
+        "",
+        (),
+        "",
+        "",
+    )
+    assert not {"assignee", "parents", "state_type", "criterion"} & set(
+        only.model_dump(mode="json")
+    )
+
+
+def test_delegation_candidate_ranks_first_in_the_selection() -> None:
+    """The builder's facts are what make the selection rank the ticket: without them it stays behind."""
+    from omnimarket.nodes.node_lab_fill_selection_compute.handlers import (
+        HandlerLabFillSelection,
+    )
+    from omnimarket.nodes.node_lab_fill_selection_compute.models import (
+        ModelLabFillCandidateInput,
+        ModelLabFillDeployment,
+        ModelLabFillSelectionRequest,
+    )
+
+    deployment = ModelLabFillDeployment.from_overlay(
+        {
+            "companion_repositories": [],
+            "not_work_repositories": [],
+            "document_repositories": [],
+            "delegation_epics": ["OMN-epic-a"],
+        }
+    )
+    now = "2026-11-09T11:30:00Z"
+
+    def order(mirror: dict[str, object]) -> list[str]:
+        built = _delegation_candidates(**mirror).candidates[0].model_dump(mode="json")
+        common = {
+            "kind": "ticket",
+            "ticket_updated_at": "2026-11-09T11:00:00Z",
+            "watcher_read": True,
+            "facts_read_at": now,
+        }
+        facts = {
+            k: tuple(v) if isinstance(v, list) else v
+            for k, v in built.items()
+            if k in ("assignee", "parents", "state_type", "criterion")
+        }
+        result = HandlerLabFillSelection().handle(
+            ModelLabFillSelectionRequest(
+                now=now,
+                candidates=(
+                    ModelLabFillCandidateInput(key="OMN-2", ticket="OMN-2", **common),
+                    ModelLabFillCandidateInput(
+                        key="OMN-11", ticket="OMN-11", **common, **facts
+                    ),
+                ),
+                ledger_lines=(),
+                deployment=deployment,
+            )
+        )
+        return [d.ticket for d in result.decisions if d.reason is None]
+
+    mirror = {"assignee": "anyone", "parents": ("OMN-epic-a",), "criterion": "true"}
+    assert order(mirror) == ["OMN-11", "OMN-2"]
+    # Injected break: the builder passes no mirror facts, so nothing is ranked.
+    assert order({}) == ["OMN-2", "OMN-11"]

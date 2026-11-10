@@ -39,6 +39,7 @@ from omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot i
     ModelLinearSnapshotRequest,
     ModelLinearSnapshotResult,
     ModelLinearSnapshotState,
+    ModelSnapshotAttachment,
     ModelSnapshotIssue,
 )
 
@@ -50,6 +51,15 @@ CLOSED_STATE_TYPES = frozenset({"completed", "canceled"})
 #: The wait after a 429 that names no Retry-After: 30 s, doubling per refusal of one call, capped at 5 minutes.
 BACKOFF_BASE_S = 30.0
 BACKOFF_CAP_S = 300.0
+
+#: What the brief check's merged-implementation rule reads of an issue besides its state: its attachments (pull
+#: requests, by source type, title and metadata) and its children. Both queries select the same parts, so a full and
+#: an incremental read write the same record. A page that says it has more than the page asked for is not written
+#: as read (see ``_parts``): a reader that finds a part absent from the record reads Linear for it.
+PARTS_PAGE = 50
+ISSUE_PARTS = f"""
+      attachments(first: {PARTS_PAGE}) {{ pageInfo {{ hasNextPage }} nodes {{ sourceType title metadata }} }}
+      children(first: {PARTS_PAGE}) {{ pageInfo {{ hasNextPage }} nodes {{ identifier }} }}"""
 
 QUERY = """
 query SnapshotIssues($first: Int!, $after: String) {
@@ -74,11 +84,11 @@ query SnapshotIssues($first: Int!, $after: String) {
       state { name type }
       assignee { id }
       labels { nodes { name } }
-      project { name }
+      project { name }__PARTS__
     }
   }
 }
-"""
+""".replace("__PARTS__", ISSUE_PARTS)
 
 #: The issues of the team updated after ``$since``, archived ones included, whoever they are assigned to and
 #: whatever their state: the read of what changed, which also names what left the subject's open list.
@@ -106,11 +116,11 @@ query SnapshotChanges($first: Int!, $after: String, $since: DateTimeOrDuration!)
       state { name type }
       assignee { id }
       labels { nodes { name } }
-      project { name }
+      project { name }__PARTS__
     }
   }
 }
-"""
+""".replace("__PARTS__", ISSUE_PARTS)
 
 #: ``post(query, variables)`` returns the GraphQL ``data`` object; it raises on any transport or GraphQL error.
 Post = Callable[[str, dict[str, Any]], dict[str, Any]]
@@ -188,11 +198,42 @@ def http_post(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _parts(
+    node: dict[str, Any],
+) -> tuple[tuple[ModelSnapshotAttachment, ...] | None, tuple[str, ...] | None]:
+    """(attachments, child ids) of one node; a part is None (not read) when the answer lacks it or holds only its first page."""
+    attachments: tuple[ModelSnapshotAttachment, ...] | None = None
+    children: tuple[str, ...] | None = None
+    raw_att = node.get("attachments")
+    if isinstance(raw_att, dict) and not (raw_att.get("pageInfo") or {}).get(
+        "hasNextPage"
+    ):
+        attachments = tuple(
+            ModelSnapshotAttachment(
+                source_type=a.get("sourceType") or "",
+                title=a.get("title") or "",
+                metadata=a.get("metadata") or {},
+            )
+            for a in raw_att.get("nodes") or []
+        )
+    raw_ch = node.get("children")
+    if isinstance(raw_ch, dict) and not (raw_ch.get("pageInfo") or {}).get(
+        "hasNextPage"
+    ):
+        children = tuple(
+            str(c["identifier"])
+            for c in raw_ch.get("nodes") or []
+            if c.get("identifier")
+        )
+    return attachments, children
+
+
 def _issue(node: dict[str, Any], viewer: str) -> ModelSnapshotIssue:
     state = node.get("state") or {}
     assignee = node.get("assignee") or {}
     labels = ((node.get("labels") or {}).get("nodes")) or []
     priority = node.get("priorityLabel") if node.get("priority") else None
+    attachments, children = _parts(node)
     return ModelSnapshotIssue(
         id=node.get("identifier") or "",
         title=node.get("title") or "",
@@ -204,6 +245,8 @@ def _issue(node: dict[str, Any], viewer: str) -> ModelSnapshotIssue:
         updated_at=node.get("updatedAt") or "",
         description=node.get("description") or "",
         priority=priority,
+        attachments=attachments,
+        children=children,
     )
 
 
@@ -284,6 +327,14 @@ def read_changes(
     raise SnapshotReadError(
         f"the changes read still had a next page after {max_pages} pages of {page_size}"
     )
+
+
+def _lacks_parts(snapshot: ModelLinearSnapshot) -> bool:
+    """True when a base issue was written before the file held attachments and children (neither part read).
+
+    An incremental read replaces only the issues that changed, so from such a base most issues would stay without
+    the parts until the daily full read; the next read is a full one instead."""
+    return any(i.attachments is None and i.children is None for i in snapshot.issues)
 
 
 def _still_open_and_mine(node: dict[str, Any], viewer: str) -> bool:
@@ -429,7 +480,7 @@ class HandlerLinearSnapshot:
         mode = "full"
         try:
             snapshot: ModelLinearSnapshot | None = None
-            if base is not None and state is not None:
+            if base is not None and state is not None and not _lacks_parts(base[1]):
                 full_age = (
                     started - _parse_iso(state.last_full_read_at)
                 ).total_seconds()

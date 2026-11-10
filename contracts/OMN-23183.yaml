@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23183
+title: Scenario R5 runs hourly on the lab as an omnimarket node, two free OpenRouter models on one key are listed in the order they were added, each pinned receipt names its model and a faults file that makes model A answer 429 is answered on model B
+summary: The readiness plan put the R5 producer in a workflow of the cloud repository. It now lives in omnimarket as node_delegation_scenario_r5_effect, scheduled hourly (minute 05 UTC) on the lab by its own timer. One run registers two free OpenRouter models A and B on one key in that order through the model registry (the functions behind onex models add and list, injected), reads the listing back, pins one delegation to each model, and runs one delegation with a faults-mode probe ladder that makes model A answer 429. The listing names A then B, each pinned receipt names its model and the forced history is A rate_limited then B accepted. Two falsifiers run in the same pass - an id the key does not list is refused by add and stores nothing, and after a reorder to B, A the same faults file makes the run answer on B with no attempt on A. The market ingress does not yet accept a per-call model (OMN-20844 step 2), so the pinned legs are red with assertions pinned_model_accepted_a and pinned_model_accepted_b until that ticket lands; a red scenario is the expected colour, never a skip. The one paid probe key is read at run time from the variable the contract names, never printed, logged or recorded; an empty variable in the real backend is a red run. It writes one ledger STATUS row (the row the green-days reading counts) and emits the result on the bus.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23183-r5-openrouter-ordered-models
+  statement: Several OpenRouter models added to one key are listed and tried in the order they were added, a delegation pinned to a model names that model on its receipt, and a model that answers 429 is followed by the next model in the list.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the committed R5 inputs pass their own schema test -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r5_effect/test_r5_inputs.py -q`'
+  - id: AC2
+    statement: 'AC2: the forced leg is A rate_limited then B accepted and the two falsifiers (an unlisted id refused by add, a reorder to B, A answered on B with no A attempt) are red for a named injected break -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r5_effect/test_golden_chain_scenario_r5_effect.py -q`'
+evidence_requirements:
+- kind: tests
+  description: The R5 inputs schema tests and the golden and error chain tests pass.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23183-ac1-inputs
+  description: Runs the inputs schema tests. The inputs file parses into the typed model, rejects an unknown key and an incoherent model set, builds a valid faults file naming model A only, and the contract's lane and cadence are the ones the green-days reader names.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_r5_inputs.py -q --no-cov
+    cwd: .
+- id: dod-omn23183-ac2-chains
+  description: Runs the golden and error chain tests. The green chain lists A then B, names the pinned model on each receipt and walks A rate_limited then B accepted; an add that takes an unlisted id, a run that ignores a reorder, a listing in the wrong order, a faults file that is not applied, a fault status typed as unavailable, a pinned receipt that names another model, a wrong answer, an empty probe key in the real backend, unreadable inputs, a failing ledger append and a failing bus emit each turn the run red for their own reason. The unmodified run is red for the two pinned legs only until the ingress accepts model.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_golden_chain_scenario_r5_effect.py -q --no-cov
+    cwd: .
+- id: dod-omn23183-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23183 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect -q --no-cov
+    cwd: .
