@@ -62,17 +62,19 @@ def rows_page(
     term: str | None,
 ) -> tuple[int, list[ModelWorkLedgerRowRecord], str | None]:
     """The matched total, one page of the selection and the cursor of the next page."""
-    filters = {
-        "since": since,
-        "ticket": ticket,
-        "pr": pr,
-        "kinds": kinds,
-        "row_ref": row_ref,
-        "term": term,
-    }
     chosen: dict[str, ModelWorkLedgerRowRecord] = {}
     for lane in lanes or (None,):
-        for row in replay.select_rows(rows, lane=lane, **filters):  # type: ignore[arg-type]
+        selected = replay.select_rows(
+            rows,
+            since=since,
+            lane=lane,
+            pr=pr,
+            ticket=ticket,
+            kinds=kinds,
+            row_ref=row_ref,
+            term=term,
+        )
+        for row in selected:
             chosen.setdefault(row.record.row_id, row.record)
     ordered = sorted(chosen.values(), key=lambda r: (r.row_ts, r.row_id))
     left = ordered
