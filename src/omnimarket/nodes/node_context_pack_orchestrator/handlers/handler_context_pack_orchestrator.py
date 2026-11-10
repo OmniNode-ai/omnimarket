@@ -593,15 +593,8 @@ class HandlerContextPackOrchestrator:
         # from the raw entries can name a chunk the pack no longer carries and
         # fail the render UNKNOWN_CHUNK_REF. Keep only the refs of the chunks
         # the pack holds, in the order the entries produced them.
-        pack_chunk_ids = {chunk.chunk_id for chunk in pack.chunks}
-        refs = tuple(
-            ref
-            for ref in self._chunk_refs(entries_by_factor)
-            if ref.chunk_id in pack_chunk_ids
-        )
-        unrecorded = entries_by_factor.get(
-            EnumContextFactor.OPERATOR_WORDS_UNRECORDED, ()
-        )
+        refs = self._chunk_refs(entries_by_factor, {c.chunk_id for c in pack.chunks})
+        words = entries_by_factor.get(EnumContextFactor.OPERATOR_WORDS_UNRECORDED, ())
         rendered: ModelContextPackRenderResult = self._renderer.handle(
             ModelContextPackRenderRequest(
                 pack=pack,
@@ -612,7 +605,7 @@ class HandlerContextPackOrchestrator:
                     final_pack_hash=built.pack_hash,
                     version_vector_hash=version_vector_hash,
                     profile_name=request.profile_name,
-                    unrecorded_prompt_count=len(unrecorded),
+                    unrecorded_prompt_count=len(words),
                     reviewed_prompt_count=0,
                     scrubbed_span_count=0,
                     transcript_extract_candidate_count=len(
@@ -627,7 +620,7 @@ class HandlerContextPackOrchestrator:
                         prompt_id=entry.source_ref or entry.text_sha256[:16],
                         capture_sequence=index,
                     )
-                    for index, entry in enumerate(_unique_by_ref(unrecorded))
+                    for index, entry in enumerate(_unique_by_ref(words))
                 ),
             )
         )
@@ -673,6 +666,7 @@ class HandlerContextPackOrchestrator:
         entries_by_factor: Mapping[
             EnumContextFactor, tuple[ModelContextSourceEntry, ...]
         ],
+        pack_chunk_ids: set[str],
     ) -> tuple[ModelContextPackRenderChunkRef, ...]:
         refs: dict[str, ModelContextPackRenderChunkRef] = {}
         for factor, entries in entries_by_factor.items():
@@ -692,7 +686,7 @@ class HandlerContextPackOrchestrator:
                         row_lane=lane,
                     ),
                 )
-        return tuple(refs.values())
+        return tuple(r for c, r in refs.items() if c in pack_chunk_ids)
 
 
 # Carried whole and verbatim: only an operator's review row removes a prompt (carry rule).
