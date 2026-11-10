@@ -17,10 +17,12 @@ event. Exit 3: the overlay or the facts file could not be read; nothing was reco
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 from omnimarket.handlers.emission_sink import ChainEmitter, JsonlEmissionSink
@@ -112,7 +114,16 @@ def run_once(
 
 
 def main(argv: list[str] | None = None) -> int:
-    del argv
+    parser = argparse.ArgumentParser(
+        prog="node_pr_landing_snapshot_effect",
+        description=(
+            "Takes one pass of the landing snapshot step from the overlay under "
+            "ONEX_SKILL_OVERLAY_ROOTS."
+        ),
+    )
+    parser.add_argument("--omni-home", dest="home", type=Path)
+    parser.add_argument("--state-dir", type=Path)
+    parser.parse_args(argv)
     try:
         overlay = load_structured_overlay(OVERLAY_ID, ModelSnapshotOverlay)
         code, line = run_once(overlay)
