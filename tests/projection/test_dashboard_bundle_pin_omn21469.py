@@ -33,7 +33,7 @@ from pathlib import Path
 import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.github_api import download_release_asset, rest_json
+from omnimarket.github_api import download_release_asset
 from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
     BundlePin,
     ensure_bundle,
@@ -64,6 +64,23 @@ def _carries_settings_nav_entry(root: Path) -> bool:
     return any(
         _SETTINGS_NAV_ENTRY.search(script.read_text(encoding="utf-8", errors="replace"))
         for script in sorted(root.rglob("*.js"))
+    )
+
+
+# The publish-dashboard-bundle run listing for the tag, as the GitHub API returns
+# it, recorded so the check reads without the public endpoint's rate limits.
+_PUBLISH_RUNS_FIXTURE = (
+    Path(__file__).parents[1]
+    / "fixtures"
+    / "dashboard_bundle"
+    / "omnidash_publish_runs_v1_1_11.json"
+)
+
+
+def _publish_run_succeeded(runs: dict, commit: str) -> bool:
+    return any(
+        run.get("head_sha") == commit and run.get("conclusion") == "success"
+        for run in runs["workflow_runs"]
     )
 
 
@@ -120,20 +137,21 @@ def test_the_release_carries_the_bundle_and_its_sidecar(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.integration
-def test_the_publish_run_for_the_tag_succeeded(tmp_path: Path) -> None:
-    path = (
-        f"/repos/{_REPOSITORY}/actions/workflows/publish-dashboard-bundle.yml"
-        f"/runs?branch={_RELEASE}&event=push"
+@pytest.mark.unit
+def test_the_publish_run_for_the_tag_succeeded() -> None:
+    runs = json.loads(_PUBLISH_RUNS_FIXTURE.read_text(encoding="utf-8"))
+    assert _publish_run_succeeded(runs, _BUMP_MERGE_COMMIT), (
+        f"no successful publish-dashboard-bundle run for {_RELEASE}"
     )
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if token:
-        runs = rest_json("GET", path, token=token)
-    else:
-        listing = tmp_path / "runs.json"
-        download_release_asset(f"https://api.github.com{path}", listing)
-        runs = json.loads(listing.read_text(encoding="utf-8"))
-    assert any(
-        run.get("head_sha") == _BUMP_MERGE_COMMIT and run.get("conclusion") == "success"
-        for run in runs.get("workflow_runs", [])
-    ), f"no successful publish-dashboard-bundle run for {_RELEASE}"
+
+
+@pytest.mark.unit
+def test_the_publish_run_check_rejects_a_wrong_run() -> None:
+    runs = json.loads(_PUBLISH_RUNS_FIXTURE.read_text(encoding="utf-8"))
+    bump_run = next(
+        run for run in runs["workflow_runs"] if run["head_sha"] == _BUMP_MERGE_COMMIT
+    )
+    assert not _publish_run_succeeded(runs, "0" * 40)
+    failed = {**runs, "workflow_runs": [{**bump_run, "conclusion": "failure"}]}
+    assert not _publish_run_succeeded(failed, _BUMP_MERGE_COMMIT)
+    assert not _publish_run_succeeded({**runs, "workflow_runs": []}, _BUMP_MERGE_COMMIT)
