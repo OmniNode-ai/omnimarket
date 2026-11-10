@@ -253,7 +253,7 @@ inputs:
   - id: delegation_scenario_reads
     order: 20
     class: file
-    where: .onex_state/floor-delegation/scenario-runs.json
+    where: .onex_state/floor-delegation/scenario-runs.json; .onex_state/floor-delegation/route-reads.json (the routes stage's delegations per hour by route)
     read_by: [node_floor_delegation_effect]
     steps: [delegation_tracker]
     producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
@@ -295,6 +295,15 @@ inputs:
     producer: the lab check run overlay and the ledger's golden stop drill readings
     replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
     ticket: OMN-23420
+  - id: join_j16_ledger_reads
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_join_j16_effect run (reads the newest eval reading of piece 16 on the ledger and the floor record, writes the chains to the emission journal)
+    read_by: [node_join_j16_effect]
+    steps: [join_j16]
+    producer: the ledger's eval readings and the floor record
+    replacement: {node: node_join_j16_effect, topic: onex.snapshot.projection.join-j16.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-join-j7-j16-projection
   - id: network_reads
     order: 21
     class: http
