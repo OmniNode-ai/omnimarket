@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23596
+title: The local identity data feed says plainly that no reader exists yet
+summary: node_projection_local_identity declares its onex.snapshot.projection.local-identity.v1 exposure bus_backed and its handler publishes each row delta, but no omnidash component, local page or status-page reader reads the topic, so omnibase_infra's exposure-reader-coverage gate reports it with no reader and keeps the bot change omnibase_infra#5877 red. The exposure now declares the self-expiring consumers none opt-out with a reason, as the compaction-receipts and board-probe-results exposures do; the change that adds a reader deletes both keys.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23596-reader-opt-out
+  statement: The bus_backed local-identity exposure carries a reasoned consumers none opt-out until a reader lands, and publishes exactly what it published before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the local-identity exposure in node_projection_local_identity''s contract declares consumers none with a non-empty reason naming the missing reader -- falsifier: uv run pytest tests/test_omn19998_local_identity_reader_optout.py -q -k reasoned_reader_opt_out'
+  - id: AC2
+    statement: 'AC2: the exposure stays bus_backed and the node still publishes its row delta, so the opt-out changes no behaviour -- falsifier: uv run pytest tests/test_omn19986_local_identity_node.py -q'
+  - id: AC3
+    statement: 'AC3: integrated: on the dev runtime the local-identity snapshot topic still carries the minted row after the change is installed -- falsifier: onex projection read of onex.snapshot.projection.local-identity.v1 on the dev runtime returns the tenant row'
+evidence_requirements:
+- kind: tests
+  description: The opt-out test and the node tests at the pushed head. With the contract restored to origin/dev the opt-out test fails with KeyError consumers.
+  command: env -u PYTHONPATH uv run pytest tests/test_omn19998_local_identity_reader_optout.py tests/test_omn19986_local_identity_node.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23596-ac1-opt-out
+  description: The contract declares consumers none with a reason that names the topic; the test fails with KeyError consumers on the origin/dev contract.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn19998_local_identity_reader_optout.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23596-ac2-no-behaviour-change
+  description: The existing node tests still pass with the exposure bus_backed and its key columns unchanged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn19986_local_identity_node.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23596-ac3-hosted
+  description: 'Hosted proxy for AC3: with the opt-out in the contract, the exposure is still discovered and served, the served row is the stored row, another tenant''s row is never served, and the catalogue lists the exposure. The live read on the dev runtime is the unbound local item below, because the dev runtime can only carry this change after it merges.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/projection/test_omn19986_local_identity_served.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23596-integration-proof
+  description: The pushed head ran the served-exposure tests on a lab host through the lab work runner and exited 0. The read of the topic on the running dev runtime after the merge installs is recorded in the pull request, because hosted CI cannot reach the lab.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23596 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_omn19986_local_identity_served.py -q --no-cov'
+    cwd: .
