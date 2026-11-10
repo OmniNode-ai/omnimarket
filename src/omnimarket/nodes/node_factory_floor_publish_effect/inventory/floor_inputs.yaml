@@ -231,15 +231,6 @@ inputs:
     producer: the delegation read in the publish handler (HandlerDelegationReport)
     replacement: {node: node_projection_delegation, topic: onex.snapshot.projection.delegation-window.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-delegation-window-projection
-  - id: delegation_route_reads
-    order: 18
-    class: ssh
-    where: .onex_state/floor-delegation/route-reads.json, written by the routes stage from the lab projection's delegation_events (delegations per hour by route)
-    read_by: [node_floor_delegation_effect]
-    steps: [delegation_tracker]
-    producer: node_floor_delegation_effect itself (the routes stage, read over psql)
-    replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-route-reads.v1, status: new}
-    ticket: NEED-CHILD-TICKET:floor-delegation-window-projection
   - id: process_health_sources
     order: 19
     class: jsonl
