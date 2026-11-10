@@ -123,8 +123,11 @@ def test_deployed_chain_travels_the_topics_its_three_nodes_declare() -> None:
     ]
     # onex-topic-allow: a projection snapshot topic has the projection's own name form.
     assert SNAPSHOT_TOPIC == "onex.snapshot.projection.overlay-store.v1"
+    # OMN-23391: it also publishes this host's view of the fleet on the floor's snapshot topic.
     assert contract_topics("node_overlay_store_read_effect", "publish_topics") == [
-        "onex.evt.omnimarket.overlay-store-read.v1"
+        "onex.evt.omnimarket.overlay-store-read.v1",
+        # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+        "onex.snapshot.projection.floor-overlay-store-fleet.v1",
     ]
     assert contract_topics("node_overlay_store_read_effect", "subscribe_topics") == []
 
