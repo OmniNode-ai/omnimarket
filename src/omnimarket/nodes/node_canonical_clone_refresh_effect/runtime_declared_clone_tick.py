@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def open_bus() -> Any:
         return open_lab_run_bus(
-            bus="inmemory" if overlay.backend == "inmemory" else "kafka",
+            bus=overlay.bus_kind,
             lane=overlay.bus_lane,
             kafka_bootstrap=None,
             **{_REGISTRY_KW: args.registry_root},
