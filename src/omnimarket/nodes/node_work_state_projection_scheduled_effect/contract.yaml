@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work-State Projection Scheduled (OMN-22935, the projection in the runtime)
+#
+# The work-state projection computed inside the one runtime on a declared schedule. The runtime scheduler emits
+# onex.intent.platform.runtime-tick.v1 far more often than the projection needs; the handler gates on the schedule
+# overlay's run_interval_seconds with an in-process last-run time (the idiom of node_floor_simple_scheduled_effect), runs the
+# projector the overlay binds (unread: the in-memory default; file_sources: node_work_state_projection_effect's read, project
+# and atomic write, so the floor and the fill dispatcher read the file it writes) and returns one compact event. The items
+# stay in the projection file; the event carries the counts, the ready count and every source that was not fresh.
+name: node_work_state_projection_scheduled_effect
+contract_name: node_work_state_projection_scheduled_effect
+node_name: node_work_state_projection_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Projects every work item on a declared schedule inside the runtime and emits a compact event. A source that could not
+  be read is carried in the event's unread list and is never drawn empty. The cadence and the projector profile are the
+  schedule overlay's; this contract and the handler hold no value.
+
+handler:
+  module: omnimarket.nodes.node_work_state_projection_scheduled_effect.handlers.handler_work_state_projection_scheduled
+  class: HandlerWorkStateProjectionScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: work_state.scheduled_project
+      handler:
+        name: HandlerWorkStateProjectionScheduled
+        module: omnimarket.nodes.node_work_state_projection_scheduled_effect.handlers.handler_work_state_projection_scheduled
+      handler_module: omnimarket.nodes.node_work_state_projection_scheduled_effect.handlers.handler_work_state_projection_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the schedule overlay's run_interval_seconds since the last scheduled run; when due, run the projector the
+        overlay binds and return the projected event.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelWorkStateProjectedEvent
+  module: omnimarket.models.work_state_projection.model_work_state_projected_event
+  description: The counts, the ready count and every source not fresh, with the tick time the projection was computed for.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  side_effects:
+    - the file_sources profile reads the projection's sources and writes the projection JSON atomically where the floor and the fill dispatcher read it
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "work_state.scheduled_project"
+
+terminal_event: onex.evt.omnimarket.work-state-projected.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.work-state-projected.v1"
+
+published_events:
+  - event_type: ModelWorkStateProjectedEvent
+    topic: onex.evt.omnimarket.work-state-projected.v1
+    description: "One scheduled work-state projection run: counts, ready count, unread and stale sources."
+
+# No node in the graph consumes the projected event yet: the floor and the lab fill read the projection file. The event is the
+# runtime's observable proof that the projection ran and what it could not read; a consuming node is a follow-up of OMN-22935.
+externally_consumed_topics:
+  - "onex.evt.omnimarket.work-state-projected.v1"
+
+# Where the schedule reads its settings. The overlay is found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_work_state_projection_scheduled_effect, file_env: ONEX_WORK_STATE_SCHEDULE_OVERLAY, model: omnimarket.models.work_state_projection.model_work_state_projected_event.ModelWorkStateScheduleOverlay}
+  # The file the file_sources profile writes and the floor and the fill dispatcher read: the effect node's contract output.
+  projection_output: {contract: node_work_state_projection_effect, key: runtime.output.relpath}
+
+metadata:
+  ticket: OMN-22935
+  transport_type: kafka

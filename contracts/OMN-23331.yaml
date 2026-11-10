@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23331
+title: A daily delegation_events defect scan with compute and effect nodes on a daily lab timer, with tests on planted defects
+summary: A pure compute node (and an effect node that reads delegation_events over ssh and appends its row) scans the last day of delegation_events for three defects over the real, non-shadow rows (a row past the terminal grace whose terminal outcome was never reduced, a row that spent tokens but records a cost of zero with no measurement source, and a row that names no caller lane) against bounds read from an overlay, and reads WORKING, NOT WORKING or UNKNOWN. The effect node carries the reading as one STATUS ledger row and installs a daily systemd user timer from its contract's schedule block. It carries its own golden and error chain tests, each with named mutations that turn it red.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23331-delegation-events-defect-scan
+  statement: The delegation_events defect scan reads NOT WORKING when a day holds a planted missing terminal, unread cost recorded as zero or unattributed attempt over its overlay bound (or holds too few rows to attest), reads WORKING for a clean day, reads UNKNOWN when the rows could not be read, and runs once a day on a lab timer that appends its reading to the ledger.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a compute node scans a day of delegation_events for defects (missing terminal, unread cost recorded as zero, unattributed attempts) and an effect node writes the result, with tests that fail on a planted defect -- falsifier: uv run pytest tests -q -k delegation_events_defect_scan in omnimarket'
+  - id: AC2
+    statement: 'AC2: the scan runs daily on a lab timer and its reading appears on the ledger -- falsifier: the ledger shows a scan reading row the day after install'
+evidence_requirements:
+- kind: tests
+  description: The planted-defect tests, the golden and error chain tests with their named mutations, the ssh source tests, the schedule tests and the CLI tests
+  command: uv run --frozen pytest tests/nodes/node_delegation_events_defect_scan_compute tests/nodes/node_delegation_events_defect_scan_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23331-planted-defects
+  description: A clean day of 120 rows reads WORKING; the same day with one planted row of each defect kind (missing terminal, unread cost recorded as zero, unattributed) reads NOT WORKING naming that defect and its count; an empty day reads NOT WORKING; unreadable rows read UNKNOWN with no count; the same rows read the other way when only the overlay's bound changes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_events_defect_scan_compute tests/nodes/node_delegation_events_defect_scan_effect -q --no-cov -k delegation_events_defect_scan
+    cwd: .
+- id: dod-omn23331-daily-timer
+  description: The schedule block of the effect node's contract renders a daily systemd user timer and service, install enables the timer, uninstall removes both units, and the scan row the timer's run appends is a STATUS row of the scan lane with its read time.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_events_defect_scan_effect/test_schedule.py tests/nodes/node_delegation_events_defect_scan_effect/test_cli.py -q --no-cov
+    cwd: .
+- id: dod-omn23331-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23331 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_events_defect_scan_compute tests/nodes/node_delegation_events_defect_scan_effect -q --no-cov
+    cwd: .

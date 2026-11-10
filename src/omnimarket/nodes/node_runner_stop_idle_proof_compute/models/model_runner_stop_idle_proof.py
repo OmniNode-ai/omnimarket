@@ -59,6 +59,15 @@ class ModelProofRead(BaseModel):
     read_failure: EnumIdleProofReadFailure | None = None
 
 
+class ModelQueuePoolHost(BaseModel):
+    """One merge-queue pool of the overlay: its runners' name prefix and the host that carries it (OMN-23387)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    runner_name_prefix: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+
+
 class ModelRunnerStopIdleProofSettings(BaseModel):
     """The overlay's settings and the caller's injected stop set; no default here is a policy."""
 
@@ -73,6 +82,10 @@ class ModelRunnerStopIdleProofSettings(BaseModel):
     # means the caller named none and the queue-pool subject is not judged.
     queue_pool_stop_name_prefixes: tuple[str, ...] = ()
     queue_pool_proof_max_age_seconds: int = Field(default=1800, gt=0)
+    # OMN-23387: the host of each merge-queue pool. When declared, a stop request that names a queue runner is refused
+    # if the queue runners left online would sit on fewer than queue_pool_min_hosts hosts. A floor of two.
+    queue_pool_hosts: tuple[ModelQueuePoolHost, ...] = ()
+    queue_pool_min_hosts: int = Field(default=2, ge=2)
 
 
 class ModelQueuePoolProof(BaseModel):
@@ -96,6 +109,8 @@ class ModelRunnerStopIdleProofRequest(BaseModel):
     reads: tuple[ModelProofRead, ...] = ()
     stop_request_names: tuple[str, ...] = ()
     queue_pool_proof: ModelQueuePoolProof | None = None
+    # OMN-23387: the names of the queue runners online at the read; None when the pool was not read.
+    queue_runners_online: tuple[str, ...] | None = None
 
 
 class ModelIdleProofSubject(BaseModel):

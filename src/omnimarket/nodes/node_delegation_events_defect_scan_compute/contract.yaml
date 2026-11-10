@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Events Defect Scan Compute (OMN-23331)
+#
+# Pure compute: handle(ModelDefectScanRequest) -> ModelDefectScan. The caller reads the rows of delegation_events and the time;
+# the day, the data source word, the terminal grace and every bound travel on the request from the node's overlay
+# (overlays/node_delegation_events_defect_scan_compute/overlay.yaml); this contract holds none.
+name: node_delegation_events_defect_scan_compute
+contract_name: node_delegation_events_defect_scan_compute
+node_name: node_delegation_events_defect_scan_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  A day of delegation_events scanned for three defects over its real, non-shadow rows: a row older than the terminal grace whose
+  terminal_ok was never reduced (missing terminal), a row that spent tokens but records a cost of exactly zero with no cost
+  measurement source (unread cost recorded as zero), and a row with no caller_lane (unattributed). WORKING while every count is at
+  or under its overlay bound and at least the minimum number of rows was scanned. NOT WORKING when any bound is broken, an empty
+  day included. UNKNOWN when the rows could not be read. The scan is carried as one STATUS ledger row. No clock read, no state,
+  no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_events_defect_scan
+      handler:
+        name: HandlerDelegationEventsDefectScan
+        module: omnimarket.nodes.node_delegation_events_defect_scan_compute.handlers.handler_delegation_events_defect_scan
+
+handler:
+  module: omnimarket.nodes.node_delegation_events_defect_scan_compute.handlers.handler_delegation_events_defect_scan
+  class: HandlerDelegationEventsDefectScan
+  input_model: omnimarket.models.model_delegation_events_defect_scan.ModelDefectScanRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelDefectScanRequest
+  module: omnimarket.models.model_delegation_events_defect_scan
+  description: The delegation_events rows read, the overlay and the time to scan at.
+output_model:
+  name: ModelDefectScan
+  module: omnimarket.models.model_delegation_events_defect_scan
+  description: The verdict, the three defect counts, the broken bounds and the ledger row that carries them.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.delegation-events-defect-scan-requested.v1"
+    operation: "delegation_events_defect_scan"
+
+terminal_event: onex.evt.omnimarket.delegation-events-defect-scan-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-events-defect-scan-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-events-defect-scan-read.v1
+
+# node_delegation_events_defect_scan_effect reads the rows, builds the request and appends the row through its own CLI (it takes its
+# source, appender and clock as constructor parameters), so neither topic below is a bus hop yet.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.delegation-events-defect-scan-requested.v1
+    producer: "node_delegation_events_defect_scan_effect, which reads the day's rows; it calls the handler directly"
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-events-defect-scan-read.v1
+
+metadata:
+  description: "Daily delegation_events defect scan: missing terminals, unread costs recorded as zero and unattributed attempts against owner-set overlay bounds"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-09"
+  tags: [compute, delegation, reading, pure]
+  related_tickets: ["OMN-23331"]

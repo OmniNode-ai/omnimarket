@@ -7,7 +7,9 @@
 # authorises is issued; a stale write ends the command STALE-STATE and the next tick retries. A pass reads the
 # floor and the facts, resolves every RESERVED and SENT entry through node_floor_fill_reducer, decides through
 # node_floor_fill_candidates_compute, mints each task's ticket (the ticket seam), reserves (a write), starts the
-# lane (the process seam) and words the tick through node_floor_fill_lines_compute. Nothing is read as empty: a
+# lane (the process seam) and words the tick through node_floor_fill_lines_compute. A stopped lane of the floor
+# record that node_floor_fill_candidates_compute lists as a candidate gets one continuation lane started through
+# floor_fill.stopped_runner_command, its previous report text in the brief file the briefs seam writes. Nothing is read as empty: a
 # row or a source that cannot be read stops the pass with UNKNOWN and a failing exit code.
 #
 # Seams are injected in the handler constructor. The in-memory profile binds scripted adapters; the live
@@ -63,6 +65,7 @@ protocol_dependencies:
   - {name: STO, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorStateStore", bind_as: store, required: true}
   - {name: TKT, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorTickets", bind_as: tickets, required: true}
   - {name: PRC, protocol: "omnibase_spi.protocols.lane:ProtocolLaneProcessRunner", bind_as: runner, required: true}
+  - {name: BRF, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorBriefs", bind_as: briefs, required: true}
 dependencies:
   - name: omnimarket.nodes.node_floor_fill_candidates_compute
     dependency_type: internal
@@ -108,6 +111,9 @@ overlay:
     - stopped_max_lanes
     - stopped_report_chars
     - stopped_continue_rule
+    - stopped_runner_command
+    - stopped_reports_root
+    - stopped_brief_directory
 descriptor:
   node_archetype: orchestrator
   purity: effectful

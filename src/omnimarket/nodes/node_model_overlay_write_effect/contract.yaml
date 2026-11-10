@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Model Overlay Write Effect (OMN-20330)
+#
+# CLI-run effect: no subscription, invoked by `onex models overlay`, which the
+# onboarding script calls. `experimental` marks it as not bus-routed; the
+# topic graph sees it as an externally triggered ingress root.
+name: model_overlay_write_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Model overlay write EFFECT. Onboarding writes the developer's model overlay for
+  the mode being set up, so a local model is used without hand-editing YAML.
+  Native `onex`: the local routes file the native loader merges over the base
+  contract (`backends` rows for the rebound local rungs). Local compose stack: a
+  `bifrost_lane_overlay.v3` lane overlay, the file the stack's renderer reads.
+  Lab stack with the developer's own key is out of the MVP (operator ruling
+  2026-10-01, Q4): that mode is refused and writes nothing. The model is the
+  Ollama default for the machine's memory (the `ollama` block of the base
+  contract states model, window and ceiling) or a server named by URL. No key
+  and no key reference is ever written: a rendered overlay that holds
+  `secret_ref` or `credential` is refused before any write. A file the developer
+  wrote is never overwritten. The file store is injected: in memory by default,
+  the filesystem for the CLI.
+
+output_model: omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_result.ModelModelOverlayWriteResult
+
+handler:
+  module: omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write
+  class: HandlerModelOverlayWrite
+  input_model: omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_request.ModelModelOverlayWriteRequest
+  output_model: omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_result.ModelModelOverlayWriteResult
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write:HandlerModelOverlayWrite
+
+# The CLI command module is bound here so the canonical-file-shape check
+# finds its owner; it routes nothing (the CLI imports it directly).
+command_bindings:
+  overlay_command:
+    handler:
+      name: write_model_overlay
+      module: omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_models_overlay_command
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true  # the same request writes the same text
+  timeout_ms: 30000
+  runtime_profiles: []
+
+# Every setting the overlay writer uses. A deployment changes these here, never in code.
+config:
+  # First line of every file this node writes; it is how a later run knows the file is its own.
+  marker_line: "# Written by onboarding (node_model_overlay_write_effect): your local model."
+  # First lines of earlier files onboarding or `make local-env` wrote; those are replaced, not refused.
+  replaceable_first_lines:
+    - "# Written by lab-onboarding"
+    - "# Laptop profile model overlay TEMPLATE"
+  # The base contract's local rungs the overlay rebinds to the developer's model.
+  rebound_backends:
+    - local-coder
+    - local-heavy-reasoning
+  # Used when a request names a URL and states no ceiling or timeout.
+  default_max_tokens: 8192
+  default_timeout_ms: 300000
+  # A rendered overlay holding any of these is refused before it is written (AC3).
+  forbidden_text:
+    - secret_ref
+    - credential
+  lane_overlay:
+    schema_version: "bifrost_lane_overlay.v3"
+    lane: local
+    locale: lab
+  modes:
+    native:
+      host: localhost
+      target_path: "~/.omninode/delegation/bifrost_overrides.yaml"
+    local_stack:
+      # From inside a container, a model on the developer's machine is at this host.
+      host: host.docker.internal
+      loopback_hosts: [localhost, 127.0.0.1]
+      target_path: "~/.omnibase/local.bifrost.yaml"
+
+# The node publishes nothing; the result is returned to the CLI that asked.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "onex models overlay --mode <native|local-stack>, which builds the request, calls HandlerModelOverlayWrite.handle and prints the outcome"
+
+metadata:
+  transport_type: local
