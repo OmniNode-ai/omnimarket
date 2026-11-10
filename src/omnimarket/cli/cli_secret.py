@@ -83,9 +83,6 @@ from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_capture
 from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
     ModelCapturedSecretStoreRequest,
 )
-from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_models_overlay_command import (
-    write_model_overlay,
-)
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
     OVERLAY_DEFAULT_PROVIDERS,
@@ -921,7 +918,7 @@ models_group = click.Group(
         "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
-    commands=[*MODEL_COMMANDS, write_model_overlay],  # onex models first (OMN-21346)
+    commands=list(MODEL_COMMANDS),  # onex models first (OMN-21346), only
 )
 
 
