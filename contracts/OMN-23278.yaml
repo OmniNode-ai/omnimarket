@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-23278
+title: Split the OMN-17427 contract-only retirement into batches of about 40 labels so dod-verify fits its evidence window
+summary: One change that retired every contract-only label of the OMN-17427 contract ran the 227 checks of the retired items inside repo-evidence / dod-verify, about 54 minutes against the 43 minute window of Repo Evidence Dependency, so it could never pass. The retirement is five batches of at most 40 labels. Each batch retires its labels with its own carrier item, so no carrier references another batch's items, and the evidence window is unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23278-contract-only-retirement-in-batches
+  statement: The contract-only labels of contracts/OMN-17427.yaml are retired in batches of at most 40 labels, each batch retired whole by its own carrier item, with the evidence window of Repo Evidence Dependency unchanged.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the retirement lands as batch PRs of at most 40 labels each, and each batch's dod-verify run finishes inside the unchanged evidence window -- falsifier: the dod-verify job duration on each batch PR, read from the mirror, is under the window, and git diff shows the window bound unchanged"
+  - id: AC2
+    statement: "AC2: omnimarket#5150 is closed unmerged with a comment naming the batch PRs -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#5150 shows CLOSED and uv run pytest tests -q -k contract_only passes on main"
+evidence_requirements:
+- kind: tests
+  description: Each batch test file under tests/ci (one per batch pull request) holds at most 40 labels, reads its batch retired whole, finds its carrier repeating no check of a retired item, and finds the evidence window line of ci.yml unchanged, with detector controls.
+  command: uv run --frozen pytest tests/ci -k contract_only_retirement_batch -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23278-ac1-batch-size-and-window
+  description: Runs the batch test files under tests/ci. Each names at most 40 labels and no label twice, and finds the 2580 second window line of Repo Evidence Dependency still in ci.yml. The named break is a batch carrier left beside a still-declared label, which the detector reads as half retired; at the merge base the batch's carrier is absent and the retirement test fails. The dod-verify job duration of each batch pull request is read from the PR watcher state after the run and is not a check of this item.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci -k contract_only_retirement_batch -q --no-cov
+    cwd: .
+- id: dod-omn23278-ac2-contract-only-batches-whole
+  description: Reads contracts/OMN-17427.yaml through every contract_only test under tests/ci. Each batch whose test file is present reads its carrier item, no label of the batch still declared, a retirement entry for every item that binds one of its labels and no retirement of another batch's label, and no carrier repeating a check of a retired item. The closing of omnimarket#5150 is read with onex scm pr-view and is not a check of this item.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci -k contract_only -q --no-cov
+    cwd: .
+- id: dod-omn23278-ac1-batch-4-retired-whole
+  description: Runs the batch 4 test file tests/ci/test_omn17427_contract_only_retirement_batch4_omn23278.py. It reads batch 4's 35 labels, no label of the batch still declared in contracts/OMN-17427.yaml, the carrier item dod-omn-17427-contract-only-retirement-batch-4 with a retirement entry for every item that binds one of them, and the evidence window line of ci.yml unchanged. At the merge base the batch's carrier is absent and the retirement test fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn17427_contract_only_retirement_batch4_omn23278.py -q --no-cov
+    cwd: .

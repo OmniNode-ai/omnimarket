@@ -44,7 +44,7 @@ from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
     resolve_task_class_output_contract,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_secret_request_refusal import (
+from omnimarket.models.delegation.model_secret_request_refusal import (
     load_secret_request_refusal,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (

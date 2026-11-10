@@ -28,6 +28,7 @@ from omnimarket.handlers.rules_stop_gate import (
     stop_gate,
 )
 from omnimarket.models.stop_gate import (
+    EnumFloorVerdict,
     EnumFoldStatus,
     EnumReadingOrigin,
     EnumReadingVerdict,
@@ -36,6 +37,7 @@ from omnimarket.models.stop_gate import (
     EnumStopGateReason,
     EnumStopMode,
     ModelAndonStopConfig,
+    ModelGoAndSeeRow,
     ModelHandFixEvidence,
     ModelStopEvent,
     ModelStopFoldRequest,
@@ -44,6 +46,7 @@ from omnimarket.models.stop_gate import (
     ModelStopReading,
     ModelStopRecord,
     ModelStopScope,
+    ModelWorkingReading,
 )
 from omnimarket.nodes.node_andon_stop_reducer import HandlerAndonStop
 from omnimarket.nodes.node_andon_stop_reducer.overlay import load_stop_policy
@@ -70,6 +73,29 @@ PASS = ModelStopReading(
     origin=EnumReadingOrigin.EXECUTED,
     covers_scope=True,
 )
+
+
+def released_reading(minutes: int) -> ModelStopReading:
+    """A fixed reading that also carries a WORKING floor reading probed at ``minutes``."""
+    return PASS.model_copy(
+        update={
+            "working": ModelWorkingReading(
+                verdict=EnumFloorVerdict.WORKING,
+                read_at=T0 + timedelta(minutes=minutes),
+            )
+        }
+    )
+
+
+def seen_row(minutes: int) -> ModelGoAndSeeRow:
+    return ModelGoAndSeeRow(
+        row_id=f"go-and-see-{minutes}",
+        lane_id="swarm-lane-1",
+        seen_at=T0 + timedelta(minutes=minutes),
+        observed="opened the stopped scope and saw the countermeasure working",
+    )
+
+
 ROLES = {
     EnumStopEventKind.LEASE_GRANTED: "swarm_lane",
     EnumStopEventKind.LEASE_EXPIRED: "detector",
@@ -111,6 +137,16 @@ def fold(
     return fold_stop_event(record, ev, FSM, config)
 
 
+def release_event(minutes: int) -> ModelStopEvent:
+    """A readback that carries what releases a stop: a PASS, a WORKING reading and a go-and-see row."""
+    return event(
+        EnumStopEventKind.READBACK,
+        minutes,
+        reading=released_reading(minutes),
+        go_and_see=seen_row(minutes),
+    )
+
+
 def with_consecutive(count: int) -> ModelAndonStopConfig:
     return CONFIG.model_copy(update={"consecutive_fixed_readings": count})
 
@@ -118,9 +154,7 @@ def with_consecutive(count: int) -> ModelAndonStopConfig:
 def readings_until_cleared(config: ModelAndonStopConfig, limit: int = 6) -> int:
     record = stop(FIXED, fixed_at=T0)
     for number in range(1, limit + 1):
-        result = fold(
-            record, event(EnumStopEventKind.READBACK, number, reading=PASS), config
-        )
+        result = fold(record, release_event(number), config)
         assert result.status is EnumFoldStatus.APPLIED
         record = result.stop
         if record.state == CLEARED:
@@ -192,14 +226,14 @@ def test_ac1_full_lifecycle_refuses_until_the_clear_and_admits_after() -> None:
     steps = [
         event(EnumStopEventKind.LEASE_GRANTED, 1, lane_id="swarm-lane-1"),
         event(EnumStopEventKind.COUNTERMEASURE_MERGED, 2),
-        event(EnumStopEventKind.READBACK, 3, reading=PASS),
+        release_event(3),
     ]
     for step in steps:
         assert gate((record,)).outcome is EnumStopGateOutcome.REFUSE
         record = fold(record, step).stop
     assert record.state == FIXED
     assert gate((record,)).outcome is EnumStopGateOutcome.REFUSE
-    record = fold(record, event(EnumStopEventKind.READBACK, 4, reading=PASS)).stop
+    record = fold(record, release_event(4)).stop
     assert record.state == CLEARED
     assert record.cleared_at == T0 + timedelta(minutes=4)
     assert gate((record,)).outcome is EnumStopGateOutcome.ADMIT
@@ -526,14 +560,14 @@ def test_ac8_the_handler_reads_its_numbers_from_the_contract_it_is_given() -> No
     result = handler.handle(
         ModelStopFoldRequest(
             stop=stop(FIXED, fixed_at=T0),
-            event=event(EnumStopEventKind.READBACK, 1, reading=PASS),
+            event=release_event(1),
         )
     )
     assert result.stop.state == CLEARED
     default = HandlerAndonStop().handle(
         ModelStopFoldRequest(
             stop=stop(FIXED, fixed_at=T0),
-            event=event(EnumStopEventKind.READBACK, 1, reading=PASS),
+            event=release_event(1),
         )
     )
     assert default.stop.state == FIXED

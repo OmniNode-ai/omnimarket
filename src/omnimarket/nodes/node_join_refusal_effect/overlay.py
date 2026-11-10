@@ -29,8 +29,31 @@ class ModelRefusalEmission(BaseModel):
 
     home_env: str = Field(min_length=1)
     journal_relpath: str = Field(min_length=1)
-    #: How far back the journal is read to see which failures the downstream piece has already answered.
+    #: How far back the journal is read to see which failures the downstream piece has already answered: the scope of the
+    #: once-only answer.
     window_hours: int = Field(ge=1)
+
+
+class ModelJournalUpstream(BaseModel):
+    """Upstream nodes whose own failure chains in the emission journal this join answers, besides the ledger rows.
+
+    A node of the upstream piece can fail under a correlation id of its own and write that chain straight to the emission
+    journal, with no ledger row (the J2 check's piece 3 chain is one). The floor reads such a chain as a failure of the
+    upstream piece, so the join wants the downstream piece's typed refusal under the same id. ``nodes`` names the emitting
+    nodes exactly as the journal carries them (``<node>:<chain>``); a refusal is never answered, only a real failure.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelJournalUpstream:
+        if len(self.nodes) != len(set(self.nodes)):
+            raise ValueError("a journal upstream node is named twice")
+        if any(not n.strip() for n in self.nodes):
+            raise ValueError("a journal upstream node name is empty")
+        return self
 
 
 class ModelRefusedJoin(BaseModel):
@@ -38,7 +61,8 @@ class ModelRefusedJoin(BaseModel):
 
     ``upstream`` is the floor overlay's piece event rule of the upstream piece, copied as it stands there, so the failure
     chains this node answers are the chains the floor builds from the same ledger rows, under the same correlation ids.
-    ``downstream_node`` is the node name the typed refusal is emitted under.
+    ``journal_upstream`` (optional; absent answers the ledger chains only) adds the failure chains the named upstream nodes
+    wrote to the emission journal. ``downstream_node`` is the node name the typed refusal is emitted under.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -48,6 +72,7 @@ class ModelRefusedJoin(BaseModel):
     to_piece: int = Field(ge=1, le=18)
     downstream_node: str = Field(min_length=1)
     upstream: ModelPieceEventRule
+    journal_upstream: ModelJournalUpstream | None = None
     injected_fault: str = Field(min_length=1)
 
     @model_validator(mode="after")
