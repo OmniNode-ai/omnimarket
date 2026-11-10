@@ -1,0 +1,43 @@
+{
+  "cleanup": [],
+  "masks": {
+    "/request/headers/authorization": "credential",
+    "/request/headers/content-type": "private_text",
+    "/request/query/limit/0": "private_text",
+    "/response/body/data_state": "private_text",
+    "/response/body/generated_at": "volatile",
+    "/response/headers/content-length": "private_text",
+    "/response/headers/content-type": "private_text",
+    "/response/headers/date": "volatile"
+  },
+  "method": "GET",
+  "path": "/v1/tenants/me/delegations",
+  "request": {
+    "body": null,
+    "headers": {
+      "authorization": "<MASK:credential>",
+      "content-type": "<MASK:private_text>"
+    },
+    "method": "GET",
+    "path": "/v1/tenants/me/delegations",
+    "query": {
+      "limit": [
+        "<MASK:private_text>"
+      ]
+    }
+  },
+  "response": {
+    "body": {
+      "count": 0,
+      "data_state": "<MASK:private_text>",
+      "generated_at": "<MASK:volatile>",
+      "runs": []
+    },
+    "headers": {
+      "content-length": "<MASK:private_text>",
+      "content-type": "<MASK:private_text>",
+      "date": "<MASK:volatile>"
+    },
+    "status": 200
+  }
+}

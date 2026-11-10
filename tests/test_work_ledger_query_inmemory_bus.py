@@ -43,6 +43,7 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_i
     InMemoryWorkLedgerQueryReader,
     ledger_row_topics,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 from tests.test_golden_chain_work_ledger_query import (
     EXPECTED,
     LEDGER,
@@ -69,7 +70,7 @@ async def _write_fixture(emitter: InMemoryBusEmitter) -> int:
     The handler is synchronous (a CLI's shape), so it runs on a worker thread,
     where ``InMemoryBusEmitter.handle`` finds no running loop.
     """
-    handler = HandlerWorkLedgerEmit(emitter=emitter)
+    handler = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE, emitter=emitter)
     accepted = 0
     for raw in split_ledger_rows(LEDGER.read_text()):
         result = await asyncio.to_thread(
@@ -157,7 +158,9 @@ def test_the_sync_emit_handler_writes_through_the_bus_outside_a_loop() -> None:
         return bus, reader
 
     bus, reader = asyncio.run(setup())
-    handler = HandlerWorkLedgerEmit(emitter=InMemoryBusEmitter(bus))
+    handler = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE, emitter=InMemoryBusEmitter(bus)
+    )
     row = (
         "2026-10-20T10:00:00Z | CLAIM | lane=local-a | actor=user | model=none | "
         "ticket=OMN-1 | worktree=none | host=laptop | run=r1 | scope=local ledger | "

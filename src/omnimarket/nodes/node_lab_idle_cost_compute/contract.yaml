@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_idle_cost_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-22885. The lab-fill tick writes one lab-idle FRICTION row each time it leaves slots free
+  (30 rows, 7,100 lane-minutes on 2026-11-07) and nothing summed them. This pure node sums the
+  lab-idle FRICTION cost since a start (the request's since, else the last orchestrator CLAIM
+  in the rows, else the first row given) and renders the one-line segment the operator's status
+  line carries. A lab-idle row whose cost cannot be read is counted as unreadable, never as
+  zero. It was a second operation of node_stall_responder_compute, which `onex node` could not
+  reach because that contract's input model is the stall request; as its own node a caller runs
+  it with `onex node node_lab_idle_cost_compute --input <request.json> --output receipt`. The
+  node starts nothing and writes nothing.
+
+input_model: omnimarket.nodes.node_lab_idle_cost_compute.models.model_lab_idle_cost.ModelLabIdleCostRequest
+output_model: omnimarket.nodes.node_lab_idle_cost_compute.models.model_lab_idle_cost.ModelLabIdleCostResult
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerLabIdleCost
+        module: omnimarket.nodes.node_lab_idle_cost_compute.handlers.handler_lab_idle_cost
+      event_model:
+        name: ModelLabIdleCostRequest
+        module: omnimarket.nodes.node_lab_idle_cost_compute.models.model_lab_idle_cost
+
+handler:
+  module: omnimarket.nodes.node_lab_idle_cost_compute.handlers.handler_lab_idle_cost
+  class: HandlerLabIdleCost
+  input_model: omnimarket.nodes.node_lab_idle_cost_compute.models.model_lab_idle_cost.ModelLabIdleCostRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.lab-idle-cost-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-idle-cost-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-idle-cost-computed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-idle-cost-requested.v1
+
+# OMN-22885 -- explicit SINK declaration (contract topic graph closure). No node contract
+# subscribes to the result event: the node writes nothing, so its caller reads the segment from
+# the receipt or this topic and prints it outside the ONEX node graph.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-idle-cost-computed.v1
+
+dod_evidence:
+  - test: tests/nodes/node_lab_idle_cost_compute/test_lab_idle_cost_contract.py
+    description: "The 30 lab-idle FRICTION rows of 2026-11-07 sum to 7,100 lane-minutes through the node's own contract input model, with since left empty"
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: lab-idle FRICTION cost since the last start, as the status-line segment"
+  author: "OmniNode Platform Team"
+  created: "2026-11-09"
