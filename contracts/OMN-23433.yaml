@@ -45,16 +45,15 @@ dod_evidence:
     description: The seam test runs the check entry as a subprocess the way the overlays CI step runs it (module path, the three variables, ids on standard input, exit codes, the DECISION and AHEAD output lines) and reads a planted rung_order key AHEAD_OF_CODE and a clean control ORDER_OK; the overlays repository holds the mirror of the same constants. Renaming one output field turns the planted-key and clean-control tests red.
     source: manual
     execution_scope: hosted_and_local
-    binds_ac: [AC3, AC4]
+    binds_ac: [AC2, AC3, AC4]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_merge_order_compute/test_seam_ci_step_to_check_entry.py tests/unit/nodes/node_overlay_merge_order_compute/test_seam_overlay_drift_to_merge_order.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn23433-overlays-ci-step-at-main
-    description: The overlays repository's CI workflow at main holds the step; hosted CI cannot read the lab clone of the overlays repository, so only the local Done gate runs this unbound check.
+    description: The overlays repository's CI workflow at main holds the step; hosted CI cannot read the lab clone of the overlays repository, so only the local Done gate runs this unbound check; AC2's hosted-runnable test is dod-omn23433-ci-step-seam, which holds the CI step's module path, variable names and output lines.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: 'git -C "$OMNI_HOME/overlays" show origin/main:.github/workflows/ci.yml | grep -F "No overlay merges ahead of the code that models it"'
