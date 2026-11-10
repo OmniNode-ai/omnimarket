@@ -36,13 +36,9 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import
 from omnimarket.events.pr_landing_github.model_pr_landing_github_request import (
     ModelPrLandingGithubRequest,
 )
-from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
+from omnimarket.models.landing_decision import (
     EnumLandingActionKind,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
     ModelLandingAction,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
     ModelLandingPrFacts,
 )
