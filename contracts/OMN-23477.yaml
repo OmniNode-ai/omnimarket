@@ -1,0 +1,47 @@
+schema_version: 1.0.0
+ticket_id: OMN-23477
+title: A lane's job-log read fills a cache miss on demand inside a declared budget
+summary: "A lane's onex scm job-log read that misses the job-log cache now fills that one job's log on demand inside the gateway node (node_github_repo_gateway_effect) and answers it. The request flag fill_on_miss is accepted on job_log_tail only and is exclusive with cache_only. The contract's job_log_cache block declares lane_miss_fill_max and lane_miss_fill_window_seconds (the overlay can change both); a lane_miss_fill_max of 0 keeps the old refusal. The handler miss_fill_budget counts fills per window under a lock in the cache root, and a spent budget refuses the miss with JOB-LOG-CACHE-MISS naming the budget and the cache path. The scm verb sets the flag from the declared policy; job-log-cached stays cache_only; the filler node's own reads are not counted. The test file tests/nodes/node_github_repo_gateway_effect/test_job_log_read_fills_on_miss.py is absent at the merge base."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23477-lane-read-fills-miss
+  statement: A lane's job-log read that misses the cache fills that one log inside the declared per-window budget; a spent or zero budget refuses the miss.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a lane's job-log read that misses the cache fills that one log on demand, answers, and a second read of the same job is a cache hit -- falsifier: uv run pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_read_fills_on_miss.py fails on the merge base, where the test file is absent"
+  - id: AC2
+    statement: "AC2: once the declared fills-per-window allowance is spent, a missing log is refused naming the allowance and the cache path, and a zero allowance keeps the old refusal -- falsifier: the spent-budget and no-budget cases of the same test file fail when the budget count is ignored"
+  - id: AC3
+    statement: "AC3: integrated: one cache-miss job-log read from a lab lane host is answered through the gateway on the development runtime and the fill count is read back as one -- falsifier: the same read on the runtime before the change answers a cache miss, and the fill count reads zero"
+evidence_requirements:
+- kind: tests
+  description: The fill-on-miss test file of this ticket at the pushed head. It covers the fill, the second-read hit, the spent and absent budget refusals, the failing control without the flag, the scm verb and the seams with the filler node.
+  command: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_read_fills_on_miss.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23477-ac1-ac2-fill-on-miss
+  description: The fifteen tests pass; a miss fills once and the second read hits, a spent budget and an absent budget refuse the miss, the control without fill_on_miss still refuses, and the seam tests keep the filler and the lane on one cache entry and one request shape.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_read_fills_on_miss.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23477-ac3-integration-proof
+  description: The pushed head ran the fill-on-miss tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The cache-miss read through the running gateway is recorded in the pull request comment that names the head.
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23477 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_read_fills_on_miss.py -q --no-cov -n 0 -p no:randomly'
+    cwd: .
