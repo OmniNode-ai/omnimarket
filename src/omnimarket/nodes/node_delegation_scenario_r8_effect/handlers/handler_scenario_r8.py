@@ -350,7 +350,7 @@ def build_runner(
     """The production wiring: the registry home, the bus commands and the contract's lane backend."""
     runtime = load_runtime()
     settings = load_lane_settings()
-    environment = dict(os.environ if env is None else env)
+    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
     home = Path(environment[runtime.home_env])
     if record is not None:
         appender = _record_appender(record)
