@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-23416
+title: The fill's floor-line path accepts a real task id that contains a dot
+summary: The floor key of the fill's state accepts ids of letters, digits, underscore and dash in runs joined by single dots, so a real task id such as W0.1 reaches the reducer, and the lane name minted from the key writes the dot as a dash so the name keeps its charset; a dot run, a separator and an edge dot stay refused.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23416-dotted-task-id
+  statement: A floor line whose task id holds a dot is read, keyed, reserved and started by the fill without a validation error, and the lane name minted from it holds no dot.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a tick over a line whose task ids are W0.1 and W0.2 starts one lane per key with dotless lane names, with a failing control on the unfixed key charset -- falsifier: uv run pytest on src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_dotted_task_id.py fails on the unfixed charset'
+evidence_requirements:
+- kind: tests
+  description: The dotted task id tests (golden, seam to the lane start request, error chain) and the reducer's key tests
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_dotted_task_id.py src/omnimarket/nodes/node_floor_fill_reducer/tests/test_floor_fill_reducer.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23416-dotted-task-id
+  description: Runs the dotted task id tests. At the merge base the key charset refuses a dot, so a tick over W0.1 raises and the golden tests fail there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_dotted_task_id.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-reducer-keys
+  description: Runs the reducer's key tests, whose bad-key list keeps refusing separators, dot runs and edge dots.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer/tests/test_floor_fill_reducer.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-integration-proof-lab
+  description: Runs the dotted task id tests and the reducer's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The live read of the fill on the dev runtime is a separate step recorded in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23416 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_dotted_task_id.py src/omnimarket/nodes/node_floor_fill_reducer/tests/test_floor_fill_reducer.py -q --no-cov -p no:randomly'
+    cwd: .
