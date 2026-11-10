@@ -25,6 +25,7 @@ from omnimarket.nodes.node_dev_roll_request_compute.models import (
     ModelDevRollRequest,
     ModelDevTipChanged,
 )
+from omnimarket.nodes.node_dev_roll_request_compute.overlay import load_dev_roll_policy
 
 Result = ModelDevRollDecided | ModelDevRollRefused
 
@@ -140,10 +141,17 @@ def decide_dev_roll(facts: ModelDevRollFacts, policy: ModelDevRollPolicy) -> Res
 
 
 class HandlerDevRollRequest:
-    """``handle(ModelDevRollFacts) -> ModelDevRollDecided | ModelDevRollRefused``."""
+    """``handle(ModelDevRollFacts) -> ModelDevRollDecided | ModelDevRollRefused``.
 
-    def __init__(self, policy: ModelDevRollPolicy) -> None:
+    The runtime builds the handler with no arguments; the policy is then read from the
+    node's overlay on the first request (no packaged fallback: an absent overlay raises).
+    A test passes a policy in.
+    """
+
+    def __init__(self, policy: ModelDevRollPolicy | None = None) -> None:
         self._policy = policy
 
     async def handle(self, request: ModelDevRollFacts) -> Result:
+        if self._policy is None:
+            self._policy = load_dev_roll_policy()
         return decide_dev_roll(request, self._policy)
