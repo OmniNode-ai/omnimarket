@@ -1,0 +1,80 @@
+schema_version: 1.0.0
+ticket_id: OMN-23471
+title: The floor task ticket node can be asked for a ticket over the dev bus lane (command and completed topics, bus handler, overlay, real store binding)
+summary: >-
+  node_floor_task_ticket_effect was merged with no bus topic or trigger, so nothing on the runtime could ask it for a ticket. Its contract now declares the command topic onex.cmd.omnimarket.floor-task-ticket-mint-requested.v1 and the completed topic onex.evt.omnimarket.floor-task-ticket-mint-completed.v1 with a handler route to the new bus handler HandlerFloorTaskTicketMintBus, which reads floor_fill.mint_timeout_seconds and floor_fill.ticket_store from the node overlay on every command, binds the in-memory store or the real tracker store (the GraphQL store over node_create_ticket's create, the key from the secret store), runs the merged mint handler and answers on the completed topic with the same typed result. The existing in-process handlers and the orchestrator's call are unchanged. The overlay values go to the overlays repository, the principal grants to omnibase_infra's lab deploy directory.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - topics
+requirements:
+  - id: req-omn23471-floor-task-ticket-bus
+    statement: The runtime can be asked, over the dev bus lane, for the one ticket of a floor task, and answers on a completed topic with the merged mint's typed result.
+    acceptance:
+      - id: AC1
+        statement: "AC1: The floor task ticket node declares a command topic and a completed topic in its contract and a handler route, and the runtime lists it as startable -- falsifier: the contract test that loads the node's contract and fails when either topic or the route is removed"
+      - id: AC2
+        statement: "AC2: A request on the command topic over the in-memory bus ends on the completed topic with the typed answer, and a request missing a required setting ends on the completed topic with a typed refusal naming the setting -- falsifier: the golden chain test and the error chain test, each failing when the route or the setting check is removed"
+      - id: AC3
+        statement: "AC3: Every value the request needs comes from the overlay and none is hard-coded -- falsifier: a test that removes one overlay key and expects a refusal naming that key"
+      - id: AC4
+        statement: "AC4: The permission rows the asking side needs are listed from the grants file declared way, and the seam test fails when the topic names or the answer shape change on either side -- falsifier: the seam test run on the in-memory bus and on the real broker"
+      - id: AC5
+        statement: "AC5: integrated: one request for a floor task sent to the running dev runtime on the lab host returns its completed event, read back with the revision running -- falsifier: the request sent with the onex command against the dev lane, the printed completed event and the running revision"
+evidence_requirements:
+  - kind: tests
+    description: The focused suites of the floor task ticket node and its bus, binding and seam tests.
+    command: uv run pytest src/omnimarket/nodes/node_floor_task_ticket_effect tests/nodes/node_floor_task_ticket -q --no-cov --tb=line -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23471-ac1
+    description: AC1 the contract declares the command topic, the completed topic, the terminal event and the handler route, and the descriptor lists the node for the effects profile.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_floor_task_ticket/test_floor_task_ticket_bus_chain.py -q --no-cov --tb=line -p no:randomly -k "contract_declares_the_bus_route"
+        cwd: .
+  - id: dod-omn23471-ac2
+    description: AC2 the golden chain returns the ticket on the completed topic through the runtime dispatch, and the error chains (overlay unreadable, store unbuildable, gate refusal) end on the completed topic with a typed state.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_floor_task_ticket/test_floor_task_ticket_bus_chain.py -q --no-cov --tb=line -p no:randomly -k "golden_chain or error_chain or control_no_route"
+        cwd: .
+  - id: dod-omn23471-ac3
+    description: AC3 each overlay key is required and a missing overlay ends the command with a typed unavailable naming the key.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_floor_task_ticket/test_floor_task_ticket_bus_chain.py -q --no-cov --tb=line -p no:randomly -k "every_overlay_key_is_required"
+        cwd: .
+  - id: dod-omn23471-ac4
+    description: AC4 the seam test pins the command and completed topics, the shape onex run-node sends and reads, the result states the fill orchestrator reads, and the grant rows the asking side needs.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_floor_task_ticket/test_floor_task_ticket_bus_seam.py -q --no-cov --tb=line -p no:randomly
+        cwd: .
+  - id: dod-omn23471-ac5-integration-proof
+    description: >-
+      AC5 integrated: one request sent to the running dev runtime ends on the completed topic. The request carries a description the ticket gate refuses (no criteria), so the live read proves the bus route, the overlay, the secret store key, the tracker search and the gate, and creates no ticket: the answer reads state refused with a cause starting ticket-refused. The hosted verifier cannot reach the lab bus, so this unbound check belongs to the local Done gate; its receipt is in the pull request.
+    source: manual
+    binds_ac:
+      - AC5
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          onex run-node node_floor_task_ticket_effect --timeout 120 --input '{"requested_by_lane":"floortrig-1035","floor_key":"floor:bus-proof:T0","title":"Bus proof, refused by the gate","description":"Floor key: floor:bus-proof:T0","parent":"OMN-23471"}'
+        cwd: .

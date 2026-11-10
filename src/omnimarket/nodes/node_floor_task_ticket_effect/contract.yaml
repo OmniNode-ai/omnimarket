@@ -18,17 +18,58 @@ description: >
   that fails or runs past floor_fill.mint_timeout_seconds, and a read-back that is unreadable or unusable, ends the mint for
   the tick with no ticket (unavailable) and the next tick searches first again. The gate runs inside the store's create. The
   entry check reads one stored ticket and says usable, refused (canceled, done, umbrella, old-fill-visible) or unreadable.
-  Called in process by the floor-fill orchestrator; the in-memory profile binds an in-memory store.
+  Called in process by the floor-fill orchestrator; the in-memory profile binds an in-memory store. It is also asked over
+  the bus: a mint command on the command topic is answered on the completed topic with the same result, correlated by the
+  command's correlation id. Overlay floor_fill.ticket_store selects the store (inmemory, or linear for the real tracker);
+  a missing or invalid overlay ends the command with a typed unavailable answer naming the keys, never a default.
 handler:
   module: omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_mint
   class: HandlerFloorTaskTicketMint
   input_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskTicketMintRequest
   output_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskTicketMintResult
+input_model:
+  name: ModelFloorTaskTicketMintCommand
+  module: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_bus
+# `onex run-node` reads this: a payload that lacks correlation_id gets the command envelope's id injected, and the completed
+# answer is matched to the command by that id.
+inputs:
+  correlation_id:
+    type: str
+    description: The command's correlation id; the completed answer carries it.
+    required: true
+output_model:
+  name: ModelFloorTaskTicketMintCompleted
+  module: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_bus
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+  - onex.cmd.omnimarket.floor-task-ticket-mint-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.floor-task-ticket-mint-completed.v1
+published_events:
+- event_type: FloorTaskTicketMintCompleted
+  topic: onex.evt.omnimarket.floor-task-ticket-mint-completed.v1
+  description: The mint ended for the command; its result is a ticket, a refusal or no answer this time (unavailable).
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - operation: floor_task_ticket.mint
+    message_category: command
+    handler:
+      name: HandlerFloorTaskTicketMintBus
+      module: omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_mint_bus
+    event_model:
+      name: ModelFloorTaskTicketMintCommand
+      module: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_bus
+    topic: onex.cmd.omnimarket.floor-task-ticket-mint-requested.v1
+terminal_event: onex.evt.omnimarket.floor-task-ticket-mint-completed.v1
 runtime_dispatch:
-  external_trigger: Direct Python invocation by the floor-fill orchestrator with the payload of a task that has no usable ticket.
+  command_topic: onex.cmd.omnimarket.floor-task-ticket-mint-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.floor-task-ticket-mint-completed.v1
+  external_trigger: The mint command on the command topic, sent by onex run-node or by a node that holds the produce grant; the floor-fill orchestrator also calls the mint handler in process with the payload of a task that has no usable ticket.
+externally_consumed_topics:
+- onex.evt.omnimarket.floor-task-ticket-mint-completed.v1
 # Handlers the orchestrator calls in process with an injected store; boot does not route to them, so they sit outside handler_routing.
 in_process_handlers:
 - operation: floor_task_ticket_entry_check
@@ -39,12 +80,15 @@ in_process_handlers:
   output_model: omnimarket.nodes.node_floor_task_ticket_effect.models.model_floor_task_ticket_effect.ModelFloorTaskEntryTicketVerdict
 # The node reads no overlay itself: the orchestrator reads the key and carries it on the request, and a request that lacks it
 # is refused naming the key (floor_fill.mint_timeout_seconds).
+# On the bus path the handler reads both keys from the node's overlay when it handles a command (the in-process path still
+# receives the timeout on the request).
 deployment_overlay:
   name: floor_fill
   required: true
   fields:
   - floor_fill.mint_timeout_seconds
-  description: The deadline of each call of the ticket store. A key no overlay supplies refuses naming the key.
+  - floor_fill.ticket_store
+  description: The deadline of each call of the ticket store, and the store the bus handler binds (inmemory or linear). A key no overlay supplies refuses naming the key.
 overlay:
   example: overlay.example.yaml
   section: floor_fill
@@ -64,10 +108,19 @@ descriptor:
   idempotent: true
   side_effects:
   - linear_ticket_create
-  runtime_profiles: []
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+secrets:
+  LINEAR_API_KEY:
+    description: Contract-declared key the linear store resolves through the secret store; the inmemory store reads none.
+    required: false
+integrations:
+  linear:
+    graphql_url_ref: linear.graphql_url
 metadata:
   ticket: OMN-22850
   origin_tickets:
   - OMN-17427
-  transport_type: local
+  - OMN-23471
+  transport_type: kafka
 lifecycle: experimental
