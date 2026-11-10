@@ -12,7 +12,7 @@ recorded ends in the typed failed event and replaces no earlier record.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
+from omnimarket.models.landing_decision import (
     ModelLandingFacts,
     ModelLandingPrFacts,
 )

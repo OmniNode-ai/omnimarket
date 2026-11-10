@@ -6,9 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
-    ModelLandingFacts,
-)
+from omnimarket.models.landing_decision import ModelLandingFacts
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
     ModelLandingTickRecord,
     ModelPrWriteFacts,

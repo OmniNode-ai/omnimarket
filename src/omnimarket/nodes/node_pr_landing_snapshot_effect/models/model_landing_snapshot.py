@@ -15,12 +15,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
-    ModelLandingFacts,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
+from omnimarket.models.landing_decision import (
     PR_KEY_PATTERN,
     SHA_PATTERN,
+    ModelLandingFacts,
 )
 
 

@@ -16,9 +16,7 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.events.pr_landing_github.model_pr_landing_github_request import (
     ModelPrLandingGithubRequest,
 )
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
-    ModelLandingAction,
-)
+from omnimarket.models.landing_decision import ModelLandingAction
 
 
 class EnumTickWriteRefusal(StrEnum):

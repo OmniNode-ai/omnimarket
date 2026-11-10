@@ -11,9 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
     EnumPrLandingGithubMode,
 )
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
-    REPO_PATTERN,
-)
+from omnimarket.models.landing_decision import REPO_PATTERN
 
 OVERLAY_ID = "node_pr_landing_tick_orchestrator"
 
