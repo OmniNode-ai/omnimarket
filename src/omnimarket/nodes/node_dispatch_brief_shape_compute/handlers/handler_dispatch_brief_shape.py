@@ -14,6 +14,10 @@ Each refusal comes before placement, remote provisioning and CLAIM, with exit 2 
 - ``umbrella-refused``: a lane that may open a PR (a repo, or the contract-before-push step) names only an umbrella ticket
   (OMN-17427 today, 154 criteria), so its PR title would share the umbrella's one contract and spend up to 40 minutes in
   dod-verify (OMN-21301). The fix is a child ticket; a brief that carries ``Umbrella evidence: <reason>`` is admitted.
+- ``gh-read-refused``: the brief's own text, fenced commands included, tells the lane to run a ``gh`` read or a ``gh pr create``
+  (OMN-18946: 101 refusals of the real-gh guard in 24 hours came from lanes and subagents following such a line). The
+  refusal names the ``onex scm`` verb or the local reader that answers the same question; the pasted rules block and the
+  3a block name ``gh`` only to forbid it and are not read.
 - ``wip-refused``: a lane that may open a PR is new work, and the started-but-unlanded count is at the repository's or
   the fleet's limit (RULING 2026-10-30T00:03:58Z). A lane that works a named PR, or whose name carries a fix-forward
   prefix, is never refused; the limits are the ``wip_admission`` overlay's, and a host with no overlay judges nothing.
@@ -38,6 +42,13 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.handlers.wip_admission_brief_gate import (
     dispatch_wip_refusal,
+)
+from omnimarket.models.model_gh_read_scan import (
+    ModelGhReadScanRequest,
+    ModelGhReadSurface,
+)
+from omnimarket.nodes.node_lane_gh_read_scan_compute.handlers.handler_gh_read_scan import (
+    HandlerGhReadScan,
 )
 
 from ..models.model_dispatch_brief_shape import (
@@ -92,6 +103,48 @@ def rules_only(brief: str, lane_brief: ModuleType) -> bool:
         return False
     prose = lane_brief.premise_text(brief).splitlines()
     return not any(x.strip() and not METADATA_RE.match(x.strip()) for x in prose)
+
+
+def authored_text(brief: str, lane_brief: ModuleType) -> str:
+    """The brief's own words with its fenced commands kept: no pasted rules block, no generated 3a block, no ticket text."""
+    text = lane_brief.without_ticket_text(brief)
+    text = re.sub(
+        rf"^{re.escape(lane_brief.RULES_BLOCK_HEAD)}[^\n]*\n.*?(?=^#{{1,2}} |\Z)",
+        "",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    return re.sub(
+        rf"^{re.escape(lane_brief.H_3A)}[^\n]*\n.*?(?=^## |\Z)",
+        "",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+
+
+def gh_read_problem(brief: str, lane_brief: ModuleType) -> str | None:
+    """Why a brief is refused: it tells the lane to run a gh call the real-gh guard refuses."""
+    found = (
+        HandlerGhReadScan()
+        .handle(
+            ModelGhReadScanRequest(
+                surfaces=(
+                    ModelGhReadSurface(
+                        path="brief", text=authored_text(brief, lane_brief)
+                    ),
+                )
+            )
+        )
+        .findings
+    )
+    if not found:
+        return None
+    named = "; ".join(f"line {f.line}: `{f.command}` -> {f.mirror}" for f in found[:5])
+    more = f" (and {len(found) - 5} more)" if len(found) > 5 else ""
+    return (
+        "the brief tells the lane to run a GitHub call through gh, which the lane gh shim and the real-gh guard refuse "
+        f"(RULING 2026-10-10T18:17:36Z, OMN-18946): {named}{more}; name the mirror instead"
+    )
 
 
 def driver_problem(lane: str, prs: tuple[str, ...]) -> str | None:
@@ -335,6 +388,11 @@ class HandlerDispatchBriefShape:
         if umbrella:
             refusals.append(
                 ("umbrella-refused", f"REMOTE-LANE-UMBRELLA-REFUSED {umbrella}")
+            )
+        gh_read = gh_read_problem(request.brief, lane_brief)
+        if gh_read:
+            refusals.append(
+                ("gh-read-refused", f"REMOTE-LANE-GH-READ-REFUSED {gh_read}")
             )
         refusals.extend(
             HandlerBriefDestinations()

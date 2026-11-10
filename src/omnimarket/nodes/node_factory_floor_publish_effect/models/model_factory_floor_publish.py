@@ -19,8 +19,33 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_hea
 )
 
 
+class ModelPublishTarget(BaseModel):
+    """One serving host: where the files are written over ssh and where that host answers (OMN-23081)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ssh_target: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.@-]*$")
+    remote_dir: str = Field(min_length=1)
+    serve_url: str = Field(min_length=1)
+    history_root: str = Field(min_length=1)
+
+    @field_validator("remote_dir", "history_root")
+    @classmethod
+    def _absolute_posix(cls, value: str) -> str:
+        path = PurePosixPath(value)
+        if not path.is_absolute() or ".." in path.parts or "\n" in value:
+            raise ValueError("a remote path must be an absolute path without '..'")
+        return value
+
+
 class ModelFactoryFloorPublishOverlay(BaseModel):
-    """Deployment facts of the host that serves the page. There is no packaged default for any of them."""
+    """Deployment facts of the hosts that serve the page. There is no packaged default for any of them.
+
+    The top-level ``ssh_target``, ``remote_dir``, ``serve_url`` and ``history_root`` are the first serving host; every
+    host in ``extra_targets`` is served the same files (OMN-23081), so the floor survives one host being down. The URL list
+    a reader may use is ``serve_urls``. ``local_copy_relpath``, relative to the registry home, is where each published
+    file is written on the publishing machine before any host is tried.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -29,6 +54,59 @@ class ModelFactoryFloorPublishOverlay(BaseModel):
     serve_url: str = Field(min_length=1)
     bus_lane: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     history_root: str = Field(min_length=1)
+    extra_targets: tuple[ModelPublishTarget, ...] = ()
+    local_copy_relpath: str | None = Field(default=None, min_length=1)
+
+    @property
+    def primary_target(self) -> ModelPublishTarget:
+        return ModelPublishTarget(
+            ssh_target=self.ssh_target,
+            remote_dir=self.remote_dir,
+            serve_url=self.serve_url,
+            history_root=self.history_root,
+        )
+
+    @property
+    def targets(self) -> tuple[ModelPublishTarget, ...]:
+        """Every serving host, the first one first."""
+        return (self.primary_target, *self.extra_targets)
+
+    @property
+    def serve_urls(self) -> tuple[str, ...]:
+        """The address of every serving host: a reader tries them in order and takes the first that answers."""
+        return tuple(t.serve_url for t in self.targets)
+
+    def for_target(self, target: ModelPublishTarget) -> ModelFactoryFloorPublishOverlay:
+        """This overlay narrowed to the one host ``target``: the copy and gate code that knows one host runs unchanged."""
+        return self.model_copy(
+            update={
+                "ssh_target": target.ssh_target,
+                "remote_dir": target.remote_dir,
+                "serve_url": target.serve_url,
+                "history_root": target.history_root,
+                "extra_targets": (),
+            }
+        )
+
+    @field_validator("local_copy_relpath")
+    @classmethod
+    def _relative_local(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        path = PurePosixPath(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(
+                "local_copy_relpath is relative to the registry home, without '..'"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _distinct_targets(self) -> ModelFactoryFloorPublishOverlay:
+        names = [t.ssh_target for t in self.targets]
+        if len(set(names)) != len(names):
+            raise ValueError("each serving host appears once in the overlay")
+        return self
+
     # The tailnet login that owns the operator's own devices, exactly as ``tailscale status --json`` lists it in its
     # user table. The operator-only reports are served to the devices that login owns and to nobody else; without
     # this key the publish refuses (there is no packaged value and no default).
@@ -470,6 +548,12 @@ class ModelFactoryFloorPublishResult(BaseModel):
     delegation_published: bool = False
     history_snapshot: str = ""
     history_pruned: tuple[str, ...] = ()
+    # OMN-23081: every serving host's address (a reader takes the first that answers), the hosts every file reached, the hosts
+    # that missed files with the first reason each gave, and the local copy's directory (empty when the overlay names none).
+    serve_urls: tuple[str, ...] = ()
+    served_to: tuple[str, ...] = ()
+    failed_targets: dict[str, str] = Field(default_factory=dict)
+    local_copy: str = ""
     # The seconds one run took in all and in each phase (input steps, delegation, copy, history prune, after-publish), OMN-22699.
     cycle_seconds: float = Field(default=0.0, ge=0)
     phase_seconds: dict[str, float] = Field(default_factory=dict)
@@ -518,3 +602,5 @@ class ModelOperatorAccessResult(BaseModel):
     include_changed: bool
     published: tuple[str, ...]
     unread: tuple[str, ...]
+    # OMN-23081: the serving hosts whose gate was refused (their operator-only files were withdrawn) and why; empty when every host admitted.
+    failed_targets: dict[str, str] = Field(default_factory=dict)

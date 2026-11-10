@@ -14,6 +14,8 @@
 #                    names the fault injected on purpose
 #   landing_route    where piece 9 reads the pull request watcher: the variable holding its state file, the goal
 #                    scope overlay, the watcher classes that are green and waiting and the conflict merge states
+#   read_retry       optional: a source whose read failed is read again, `passes` more times, `pause_seconds` apart
+#   append_retry     optional: a piece whose append failed is written again, `passes` more times, `pause_seconds` apart
 #   schedule_hosts   hosts that install the hourly systemd user timer
 #   unit_environment environment the installed unit carries (the routes' variables)
 #   two_backend      optional: the piece whose row also carries the count of effects not yet on both
