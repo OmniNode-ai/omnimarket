@@ -18,7 +18,10 @@ from pathlib import Path
 import pytest
 
 from omnimarket.handlers import ledger_row_grammar as grammar
-from omnimarket.models.remote_lane_close import ModelRemoteLaneResult
+from omnimarket.models.remote_lane_close import (
+    ModelRemoteLaneResult,
+    ModelRemoteLaneResultRequest,
+)
 from omnimarket.nodes.node_remote_lane_close_compute.handlers.handler_remote_lane_result import (
     HandlerRemoteLaneResult,
 )
@@ -49,7 +52,7 @@ BLOCKED_NO_CELL = (
 class UnfixedClose(HandlerRemoteLaneResult):
     """The injected break ``drop-forwarding``: the close result keeps no cell beyond the ones the unfixed runner copied."""
 
-    def handle(self, request):  # type: ignore[no-untyped-def]
+    def handle(self, request: ModelRemoteLaneResultRequest) -> ModelRemoteLaneResult:
         decided = super().handle(request)
         kept = {
             k: v
