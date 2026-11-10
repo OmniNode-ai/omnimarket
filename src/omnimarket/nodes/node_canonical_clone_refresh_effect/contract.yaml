@@ -98,3 +98,4 @@ declared_clone_refresh:
 timeouts:
   sync_timeout_seconds: 300  # Bounds the canonical clone sync subprocess.
   declared_clone_timeout_seconds: 120  # Bounds one host's declared-clone command.
+  declared_clone_tick_seconds: 240  # Bounds one host tick of the declared-clone refresh (the unit's run_timeout_s sits above it).

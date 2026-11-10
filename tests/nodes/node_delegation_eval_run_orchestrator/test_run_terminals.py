@@ -216,16 +216,20 @@ def test_empty_manifest_fails_without_replaying(
     gate.handle.assert_not_called()
 
 
-def test_missing_labelled_item_source_refuses_before_replaying(
-    run_request: ModelDelegationEvalRunRequest,
+def test_unbound_labelled_item_source_fails_the_run_before_replaying(
+    run_request: ModelDelegationEvalRunRequest, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # OMN-20577: with no injected source the handler binds the overlay-named reader;
+    # with no overlay the run ends in a failed terminal and replays nothing.
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     gate = Mock(spec=HandlerDelegationGateEval)
 
-    with pytest.raises(
-        RuntimeError, match=r"^tenant-scoped labelled-item source is required$"
-    ):
-        HandlerDelegationEvalRun(gate_eval=gate).handle(run_request)
+    payload = HandlerDelegationEvalRun(gate_eval=gate).handle(run_request).payload
 
+    assert payload.status == "failed"
+    assert payload.failure_reasons == (
+        "labelled-item source unavailable: NodeOverlayError",
+    )
     gate.handle.assert_not_called()
 
 

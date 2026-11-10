@@ -40,6 +40,7 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
     ProtocolWorkLedgerFilteredRowReader,
+    ProtocolWorkLedgerOldestRowReader,
     ProtocolWorkLedgerQueryReader,
     ProtocolWorkLedgerStateReader,
     WorkLedgerReadError,
@@ -144,7 +145,16 @@ class HandlerWorkLedgerQuery:
         try:
             records = self._read_rows(request, until, effective_since)
             newest_ts, newest_projected = self._reader.freshness(until=until)
-            first = effective_since or (min((r.row_ts for r in records), default=until))
+            first = effective_since
+            if first is None:
+                oldest = self._reader
+                first = (
+                    oldest.oldest_row_ts(until=until)
+                    if isinstance(oldest, ProtocolWorkLedgerOldestRowReader)
+                    and self._narrowed_without_start(request)
+                    else min((r.row_ts for r in records), default=until)
+                )
+            first = first or until
             days = replay.utc_days(first, until)
             capped = len(days) > _PARITY_DAYS_CAP
             days = days[-_PARITY_DAYS_CAP:]
@@ -212,34 +222,62 @@ class HandlerWorkLedgerQuery:
         until: datetime,
         since: datetime | None,
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
-        """The window's rows; a rows read with a start is narrowed in the store when it can be (OMN-19609).
+        """The window's rows, narrowed in the store when the read can be (OMN-19609, OMN-23615).
 
         ``since`` is the effective start: the request's ``since`` or the bounded window's start
         (OMN-23541), so a bounded rows read narrows in the store too. Only the rows and rulings
-        answers are narrowed, and only when a start is named, so the parity days (taken from the
-        first row read when no start is named) and every other answer read the window whole. The
-        narrowing is a superset of what select_rows keeps, so the answer is the same.
+        answers are narrowed. With a start the store keeps the asked row types and lane; with no
+        start it also keeps the asked term, and the parity window is then taken from the ledger's
+        oldest row (``oldest_row_ts``) so it does not depend on the rows read. Every other answer
+        reads the window whole. The narrowing is a superset of what select_rows keeps, so the
+        answer is the same.
         """
         reader = self._reader
+        no_start = self._narrowed_without_start(request)
         if (
-            since is not None
+            (since is not None or no_start)
             and request.query
             in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}
             and isinstance(reader, ProtocolWorkLedgerFilteredRowReader)
         ):
-            kinds = tuple(request.kinds) or (
-                tuple(replay.RULING_TYPES)
-                if request.query is EnumWorkLedgerQueryKind.RULINGS
-                else ()
-            )
-            if kinds or request.lane:
+            kinds = self._narrow_kinds(request)
+            term = request.term if no_start and request.term else None
+            if kinds or request.lane or term:
                 return reader.read_rows_matching(
                     since=since,
                     until=until,
                     kinds=tuple(k.upper() for k in kinds),
                     contains=request.lane or None,
+                    **({"term": term} if term else {}),
                 )
         return reader.read_rows(since=since, until=until)
+
+    @staticmethod
+    def _narrow_kinds(request: ModelWorkLedgerQueryRequest) -> tuple[str, ...]:
+        return tuple(request.kinds) or (
+            tuple(replay.RULING_TYPES)
+            if request.query is EnumWorkLedgerQueryKind.RULINGS
+            else ()
+        )
+
+    def _narrowed_without_start(self, request: ModelWorkLedgerQueryRequest) -> bool:
+        """A rows read with no start that names a kind, a lane or an ASCII term is narrowed in the store (OMN-23615).
+
+        The parity window of such a read starts at the ledger's oldest row, which the store names itself
+        (``oldest_row_ts``), so the narrowed rows cannot move it; a store that cannot is read whole.
+        """
+        return (
+            request.since is None
+            and request.query
+            in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}
+            and isinstance(self._reader, ProtocolWorkLedgerFilteredRowReader)
+            and isinstance(self._reader, ProtocolWorkLedgerOldestRowReader)
+            and bool(
+                self._narrow_kinds(request)
+                or request.lane
+                or (request.term and request.term.isascii())
+            )
+        )
 
     @staticmethod
     def _message(exc: Exception) -> str:

@@ -149,6 +149,10 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
     EnumLabCheckVerdict,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
+    EnumLivenessRead,
+    ModelLandingLivenessUnread,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,
     ModelLandingCausePair,
@@ -266,6 +270,7 @@ class _Tick:
     )
     released: set[str] = field(default_factory=set)
     skips: dict[str, EnumLandingLandSkipReason] = field(default_factory=dict)
+    liveness_files: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def emit(self, action: ModelLandingAction) -> None:
         if repo_of(action.subject) in self.observe:
@@ -1687,6 +1692,11 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
         t.skips[p.pr] = SKIP_FOR_VERDICT[reading.verdict]
         return
+    undeclared = _liveness_undeclared(p)
+    if undeclared:
+        t.skips[p.pr] = EnumLandingLandSkipReason.LIVENESS_UNDECLARED
+        t.liveness_files[p.pr] = undeclared
+        return
     if p.runtime:
         in_open_companion = any(
             c.state is EnumLandingPrState.OPEN
@@ -1707,6 +1717,46 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
             kind=EnumLandingActionKind.MERGE, subject=p.pr, head_sha=p.head_sha
         )
     )
+
+
+def _liveness_undeclared(p: ModelLandingPrFacts) -> tuple[str, ...]:
+    """The undeclared installer sources a liveness read made on this exact head names (OMN-23529).
+
+    An unreadable read, a read of another head and an absent read hold nothing.
+    """
+    fact = p.liveness
+    if fact is None or fact.read is not EnumLivenessRead.READ:
+        return ()
+    if fact.head_sha != p.head_sha:
+        return ()
+    return tuple(sorted(set(fact.undeclared_sources)))
+
+
+def _liveness_unread(t: _Tick) -> tuple[ModelLandingLivenessUnread, ...]:
+    """Open PRs whose liveness read was not made: unreadable, of another head, or absent where expected."""
+    rows: list[ModelLandingLivenessUnread] = []
+    for p in sorted(t.prs.values(), key=lambda p: p.pr):
+        if p.state is not EnumLandingPrState.OPEN:
+            continue
+        fact = p.liveness
+        if fact is None:
+            if t.facts.policy.liveness_read_expected:
+                rows.append(
+                    ModelLandingLivenessUnread(
+                        pr=p.pr, head_sha=p.head_sha, detail="no liveness read"
+                    )
+                )
+            continue
+        if fact.read is EnumLivenessRead.UNREADABLE:
+            detail = fact.detail
+        elif fact.head_sha != p.head_sha:
+            detail = f"liveness read of another head {fact.head_sha}"
+        else:
+            continue
+        rows.append(
+            ModelLandingLivenessUnread(pr=p.pr, head_sha=p.head_sha, detail=detail)
+        )
+    return tuple(rows)
 
 
 def _stale_cancelled(p: ModelLandingPrFacts) -> bool:
@@ -2367,6 +2417,7 @@ def _decision(
             and EnumLandingSuspension.GATE in p.suspensions
         ),
         land_skips=land_skips,
+        liveness_unread=_liveness_unread(t),
         next_state=next_state,
     )
 
@@ -2389,6 +2440,11 @@ def _land_skips(
                 reason=reason,
                 gate_reasons=(
                     p.gate_reasons if reason is EnumLandingLandSkipReason.GATE else ()
+                ),
+                files=(
+                    t.liveness_files.get(pr, ())
+                    if reason is EnumLandingLandSkipReason.LIVENESS_UNDECLARED
+                    else ()
                 ),
             )
         )
