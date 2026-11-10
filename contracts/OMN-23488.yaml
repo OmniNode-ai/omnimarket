@@ -51,9 +51,16 @@ dod_evidence:
   description: Runs the refusal tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23488 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_unsequenced_live_row_refused.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23488-integration-real-database
+  description: Runs the real-Postgres projection test. A live-writer row (source onex-ledger) with no ledger_seq is refused and the table holds zero rows with source onex-ledger and ledger_seq NULL; the same row with a ledger_seq projects as one row. This hosted check gives the test a Postgres 16, so it binds AC4's row count; the deployed dev runtime read stays with the local Done gate item above.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_work_ledger_event_identity.py -k test_unsequenced_live_row_is_refused_and_projects_no_row -q --no-cov -p no:randomly
     cwd: .

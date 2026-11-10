@@ -641,3 +641,36 @@ async def test_distinct_legacy_arrival_cannot_race_typed_reconciliation(
         )
         == 0
     )
+
+
+@pytest.mark.integration
+async def test_unsequenced_live_row_is_refused_and_projects_no_row_in_a_real_database(
+    source_database,
+):
+    from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
+    from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
+        UnsequencedLiveRowError,
+        WorkLedgerProjectionWriter,
+    )
+    from omnimarket.projection.runner import MessageMeta
+
+    db, conn, schema = source_database
+    writer = WorkLedgerProjectionWriter()
+    writer._db = db
+    live = paired_inbound().model_copy(update={"source": "onex-ledger"})
+    payload = live.model_dump(mode="json")
+    meta = MessageMeta(
+        partition=0, offset=1, fallback_id="", topic=EnumLedgerRowType.CLAIM.typed_topic
+    )
+    with pytest.raises(UnsequencedLiveRowError):
+        await writer._project_and_report(meta.topic, payload, meta)
+    unsequenced = await conn.fetch(
+        f"SELECT 1 FROM {schema}.work_ledger_rows "
+        "WHERE source = 'onex-ledger' AND ledger_seq IS NULL"
+    )
+    assert len(unsequenced) == 0
+    await writer._project_and_report(meta.topic, {**payload, "ledger_seq": 9}, meta)
+    sequenced = await conn.fetch(
+        f"SELECT ledger_seq FROM {schema}.work_ledger_rows WHERE source = 'onex-ledger'"
+    )
+    assert [row["ledger_seq"] for row in sequenced] == [9]
