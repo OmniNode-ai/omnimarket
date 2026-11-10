@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
+    ModelFloorStartCriterion,
     ModelFloorTaskPayloadVerdict,
 )
 
@@ -129,6 +130,10 @@ class ProtocolFloorTickets(Protocol):
         self, floor_record: str, plan_texts: Mapping[str, str | None]
     ) -> Sequence[ModelFloorTaskPayloadVerdict]:
         """Pure: one verdict per ready task of the record. Makes no Linear call."""
+        ...
+
+    def start_criteria(self, floor_record: str) -> Sequence[ModelFloorStartCriterion]:
+        """One ``Start when:`` line per ready task of the record; a task absent here has no criterion and is not ready."""
         ...
 
     def entry_ticket_verdicts(

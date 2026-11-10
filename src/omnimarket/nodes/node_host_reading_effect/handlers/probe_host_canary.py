@@ -17,6 +17,10 @@ What it never does (the OMN-22538 pool-read lesson): a canary cut at its deadlin
 read could not reach, or a host the pool read never named (a busy exit with no line for the host)
 is read as a failed host, never as free capacity or a typed busy refusal.
 
+A host the pool read admitted whose lane wrapper then exits with the overlay's guard-missing code and
+marker (its installed lane guard copy is absent) is a failed host named ``canary-guard-missing-<host>``;
+the pool read's own refusal for a guard it lacks stays a typed busy refusal.
+
 Named break: kill the canary's wrapper, so the result is not typed; the reading goes NOT_WORKING
 with ``canary-untyped-<host>``.
 """
@@ -174,6 +178,14 @@ def classify(
         ending = EnumCanaryEnding.TIMED_OUT
     elif _pool_line(text, host, settings.pool_unreadable_marker) is not None:
         ending = EnumCanaryEnding.UNREACHABLE
+    elif (
+        run.exit_code in settings.guard_missing_exit_codes
+        and settings.guard_missing_marker in text
+    ):
+        # The pool read admitted the host and the lane wrapper's stub then found no installed copy
+        # of the lane guard: no lane can start there, so the host fails and the row names the guard
+        # (it read untyped before, which hid the cause: OMN-22869).
+        ending = EnumCanaryEnding.GUARD_MISSING
     elif run.exit_code in settings.busy_exit_codes and (
         parked := _refusal_token(text, host, settings.pool_parked_markers)
     ):

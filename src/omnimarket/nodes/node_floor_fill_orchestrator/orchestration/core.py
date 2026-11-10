@@ -494,6 +494,7 @@ class FloorFillOrchestrator:
             stopped_report_chars=self._config.stopped_report_chars,
             stopped_continue_rule=self._config.stopped_continue_rule,
             payload_verdicts=payloads,
+            start_criteria=tuple(self._tickets.start_criteria(floor_text)),
             ticket_verdicts=ticket_verdicts,
             entries=entries,
             reports=ctx.reports,

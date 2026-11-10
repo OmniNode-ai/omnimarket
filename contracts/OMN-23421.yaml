@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23421
+title: The delegation scorecard can read results from the live message service, and its second test scenario runs on a schedule
+summary: The work ledger read node answers a rows query that carries page_size, one keyset page at a time oldest first, with the rows' lines and a next_cursor, so the delegation board's lab-node reader and the green-days reader get an answer from the live node; the seam tests between the board reader and the scenario nodes' rows, and between the board's request and the node's request model, ride with it.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23421-rows-page-size
+  statement: The work ledger read node answers a rows query carrying page_size with a page of rows, their lines and a cursor, and a bad cursor is an error answer, never an empty one.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the live ledger read node answers a rows query that carries page_size, with a failing control on the unfixed node, and the seam tests of branch omn-23407-board-seam-tests merge (the lab-node reader against the scenario node''s rows, on the in-memory bus and the real broker) -- falsifier: uv run pytest on the read node''s tests with a page_size query fails on the unfixed node'
+evidence_requirements:
+- kind: tests
+  description: The rows page tests of the read node and the seam tests (golden, error and named injected breaks)
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_page_size.py tests/nodes/node_floor_delegation_effect/test_seam_ledger_read_node.py tests/nodes/node_floor_delegation_effect/test_seam_scenario_nodes.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23421-rows-page-size
+  description: Runs the rows page tests of the read node. A rows request with page_size is refused by the request model at the merge base, so the file fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_page_size.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23421-seam-tests
+  description: Runs the seam tests between the board's readers and the scenario nodes and the read node, on the in-memory bus.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_delegation_effect/test_seam_ledger_read_node.py tests/nodes/node_floor_delegation_effect/test_seam_scenario_nodes.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23421-existing-read-node-tests
+  description: Runs the existing golden chain tests of the read node, which answer a rows query without page_size unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_golden_chain_work_ledger_query.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23421-integration-proof-lab
+  description: Runs the rows page tests of the read node and the seam tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23421 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_page_size.py tests/nodes/node_floor_delegation_effect/test_seam_ledger_read_node.py -q --no-cov -p no:randomly'
+    cwd: .

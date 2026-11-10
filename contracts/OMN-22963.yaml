@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-22963
+title: Contract and evidence for node_dispatch_reading_compute, the piece 12 reading
+summary: node_dispatch_reading_compute reads, without I/O, whether every lane has a dispatch record and every dispatch record reconciles to a terminal result inside its deadline. A lane with no record is named (a drill lane started from a scratch script is named as such) and a record with no terminal result at its deadline fails the reading. This contract binds the node's evidence so dod-verify can judge the pull request that adds it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22963-dispatch-reading
+  statement: The dispatch reading is WORKING only when every lane read has a dispatch record and no dispatch record is past its deadline without a terminal result or reconciled to one after its deadline; an unread, empty or stale read is UNKNOWN, never a pass.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a drill lane started from a scratch script is named by the reading within one tick -- falsifier: uv run pytest src/omnimarket/nodes/node_dispatch_reading_compute -q -k scratch_script_named'
+  - id: AC2
+    statement: 'AC2: a dispatch with no terminal result at its deadline fails the reading -- falsifier: uv run pytest src/omnimarket/nodes/node_dispatch_reading_compute -q -k no_terminal_fails'
+  - id: AC3
+    statement: 'AC3: generated golden and error chain tests exist and a named mutation turns each red -- falsifier: uv run pytest src/omnimarket/nodes/node_dispatch_reading_compute -q -k chain'
+evidence_requirements:
+- kind: tests
+  description: The scratch-script, missing-terminal, golden chain and error chain tests of node_dispatch_reading_compute
+  command: uv run --frozen pytest src/omnimarket/nodes/node_dispatch_reading_compute -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22963-scratch-script-named
+  description: Runs the scratch-script tests. A drill lane with no dispatch record and a scratch-script source reads NOT_WORKING and is named with its script path; a lane with a record is not named; the node is absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_dispatch_reading_compute -q --no-cov -p no:randomly -k scratch_script_named
+    cwd: .
+- id: dod-omn22963-no-terminal-fails
+  description: Runs the reconciliation tests. A dispatch past its deadline with no terminal result, and one whose terminal result came after its deadline, read NOT_WORKING with the dispatch named; a dispatch still inside its deadline is pending and does not fail (the positive control).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_dispatch_reading_compute -q --no-cov -p no:randomly -k no_terminal_fails
+    cwd: .
+- id: dod-omn22963-chains
+  description: Runs the golden chain and error chain tests. Five named golden mutations (scratch source ignored, unrecorded lane ignored, missing terminal ignored, late terminal ignored, verdict always working) and four named error mutations (read failure ignored, empty read is working, stale read is working, unread side is working) each turn a chain assertion red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_dispatch_reading_compute -q --no-cov -p no:randomly -k chain
+    cwd: .
+- id: dod-omn22963-integration-proof-lab
+  description: Runs the node's tests at the pushed head on a lab host through the lab work runner, so the reading is exercised off the launching host. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22963 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_dispatch_reading_compute -q --no-cov -p no:randomly'
+    cwd: .
