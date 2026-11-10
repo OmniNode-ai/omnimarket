@@ -612,8 +612,10 @@ units:
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file
+    # The cutover overlay file is overridable like the overlay roots: the overlays clone is not under every registry root.
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_LANDING_SNAPSHOT_OVERLAY_FILE
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
     environment:
       # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
