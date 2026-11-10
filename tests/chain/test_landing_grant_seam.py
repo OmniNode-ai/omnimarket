@@ -15,7 +15,7 @@ checks a group id under a prefix the grants do not name and demands red.
 from __future__ import annotations
 
 import contextlib
-import inspect
+import functools
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Final
@@ -107,13 +107,14 @@ async def _started_bus(
     """
     fake = FakeLabRunBus()
 
+    # ``wraps`` carries the real opener's signature (``inspect.signature`` follows
+    # ``__wrapped__``), so the registry-root parameter ``start`` looks up by its ``_home``
+    # suffix is the real one.
     @contextlib.asynccontextmanager
+    @functools.wraps(open_lab_run_bus)
     async def fake_open_lab_run_bus(**_: Any) -> AsyncIterator[FakeLabRunBus]:
         yield fake
 
-    # Carry the real opener's signature, so the registry-root parameter ``start`` looks up
-    # by its ``_home`` suffix is the real one.
-    fake_open_lab_run_bus.__signature__ = inspect.signature(open_lab_run_bus)  # type: ignore[attr-defined]
     monkeypatch.setattr(
         "omnimarket.delegated_test_loop.lane_bus.open_lab_run_bus",
         fake_open_lab_run_bus,
