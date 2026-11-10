@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     HandlerRegistryUnits,
     load_units,
 )
+from omnimarket.nodes.node_pr_landing_snapshot_effect.runtime_snapshot import main
 from tests.nodes.node_host_installer_registry_units.test_registry_units import (
     BREW_PYTHON,
     Recorder,
@@ -106,3 +108,61 @@ def test_a_checkout_without_the_step_entry_file_is_refused(tmp_path: Path) -> No
         )
     )
     assert result.status == "failure"
+
+
+@pytest.mark.usefixtures("canonical")
+def test_the_step_main_accepts_the_arguments_the_installer_proof_and_the_plist_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Seam: installer (start proof and plist) to the step's main. Either side changing its arguments fails here."""
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=ENTRY)
+    recorder = Recorder()
+    result = HandlerRegistryUnits(recorder).handle(
+        request(
+            tmp_path,
+            unit=UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "success", result.stderr
+    module = "omnimarket.nodes.node_pr_landing_snapshot_effect"
+    proofs = [c for c in recorder.calls if c[-3:-1] == ["-m", module]]
+    assert len(proofs) == 1
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    with pytest.raises(SystemExit) as raised:
+        main(proofs[0][-1:])
+    assert raised.value.code == 0
+    assert "overlay_refused" not in capsys.readouterr().out
+    plist_args = plist_of(result.rendered)["ProgramArguments"]
+    unit_args = plist_args[plist_args.index(module) + 1 :]
+    assert unit_args[0] == "--omni-home"
+    missing_facts = tmp_path / "overlay-roots" / "node_pr_landing_snapshot_effect"
+    missing_facts.mkdir(parents=True)
+    (missing_facts / "overlay.yaml").write_text(
+        "\n".join(
+            [
+                "backend: redpanda",
+                "record_topic: t.record",
+                "failed_topic: t.failed",
+                "floor_piece: 9",
+                "bus_lane: dev",
+                f"workspace_root: {tmp_path}",
+                f"facts_path: {tmp_path}/absent-facts.json",
+                f"watcher_state_path: {tmp_path}/state.json",
+                "watcher_max_age_seconds: 900",
+                "owner: acme",
+                f"record_journal: {tmp_path}/records.jsonl",
+                f"emission_journal: {tmp_path}/emissions.jsonl",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlay-roots"))
+    code = main(unit_args)
+    assert code == 3
+    assert json.loads(capsys.readouterr().out)["status"] == "facts_unread"
