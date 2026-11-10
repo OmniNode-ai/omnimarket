@@ -7,6 +7,10 @@ default profile (the deployed gateway over the lane's bus, on the host that hold
 state) and writes its reading to ``<state-dir>/last-run.json``: when it ran, the pass status, the
 counts, and ``coverage`` (filled plus already cached, over considered).
 
+A tick takes an exclusive lock on ``<state-dir>/tick.lock`` before it reads or writes anything and holds it to the end,
+so two ticks never share one state dir (an older install's tick left running beside the current unit's, OMN-23349). The
+kernel drops the lock when its holder ends or dies. A tick that finds it held exits 3 and touches nothing.
+
 Exit codes: 0 when the pass ended completed or partial (a log GitHub no longer serves fails on its own
 and stays in ``failed``; it does not fail the tick), 1 when the pass failed (it could not start, or
 every read failed), 2 when the overlay cannot be loaded. The evidence is written for all three, so a
@@ -17,9 +21,13 @@ from __future__ import annotations
 
 import argparse
 import faulthandler
+import fcntl
 import json
+import os
 import sys
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,6 +50,9 @@ EVIDENCE_FILE = "last-run.json"
 HELD_FILE = "held.json"
 EXIT_FAILED = 1
 EXIT_OVERLAY = 2
+EXIT_LOCKED = 3
+# The unit declares this name as tick_lock_file, so the installer can wait for, then stop, the tick that holds it.
+LOCK_FILE = "tick.lock"
 
 
 def tick_deadline_s() -> float:
@@ -66,6 +77,7 @@ def evidence_for(result: ModelJobLogFillResult, now: datetime) -> dict[str, Any]
         "already_cached": result.already_cached,
         "failed": result.failed,
         "deferred": result.deferred,
+        "budget_exhausted": result.budget_exhausted,
         "stale_skipped": result.stale_skipped,
         "coverage": (held / result.considered) if result.considered else 1.0,
         "error": result.error,
@@ -89,6 +101,23 @@ def _write_atomically(path: Path, text: str) -> None:
     held.replace(path)
 
 
+@contextmanager
+def single_run(state_dir: Path) -> Iterator[bool]:
+    """Hold the state dir's tick lock for the body; yields False, holding nothing, when another tick holds it."""
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with (state_dir / LOCK_FILE).open("a+", encoding="utf-8") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        handle.seek(0)
+        handle.truncate()
+        handle.write(f"pid={os.getpid()}\n")
+        handle.flush()
+        yield True
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -99,6 +128,20 @@ def main(
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
     parser.add_argument("--state-dir", required=True, type=Path)
     args = parser.parse_args(argv)
+    with single_run(args.state_dir) as held:
+        if not held:
+            sys.stderr.write(
+                f"{NODE}: another tick holds {args.state_dir / LOCK_FILE}; this one ran nothing\n"
+            )
+            return EXIT_LOCKED
+        return run_pass(args, handler, now)
+
+
+def run_pass(
+    args: argparse.Namespace,
+    handler: HandlerJobLogFiller | None,
+    now: datetime | None,
+) -> int:
     faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
     stamp = now or datetime.now(UTC)
     evidence_path = args.state_dir / EVIDENCE_FILE
@@ -131,7 +174,16 @@ def main(
     return EXIT_FAILED if result.status is EnumJobLogFillStatus.FAILED else 0
 
 
-__all__ = ["EVIDENCE_FILE", "HELD_FILE", "evidence_for", "main", "read_held"]
+__all__ = [
+    "EVIDENCE_FILE",
+    "EXIT_LOCKED",
+    "HELD_FILE",
+    "LOCK_FILE",
+    "evidence_for",
+    "main",
+    "read_held",
+    "single_run",
+]
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
