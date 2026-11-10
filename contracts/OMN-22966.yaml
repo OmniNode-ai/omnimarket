@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22966
+title: A discovery read finds whether a working classifier or tracked list of lane results exists in omnimarket, the plugin or the controller, and wires it or names the build
+summary: docs/reference/lane-result-classifier-discovery-read.json lists every behavioural equivalent of a lane-result classifier or tracked list with its wiring state, a wire or build verdict, a code path and a run read, and a test holds an unwired equivalent to not-working.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22966-discovery-read
+  statement: Every equivalent in the read carries a wire or build verdict backed by a code path and a run read, and an equivalent with no runtime caller is not reported as working.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the read lists every behavioural equivalent with its wiring state and a verdict wire or build, each backed by a code path and a run read -- falsifier: uv run pytest tests/unit/test_classifier_discovery_read.py -q -k verdicts_cited'
+  - id: AC2
+    statement: 'AC2: an equivalent with no runtime wiring is not reported as working -- falsifier: uv run pytest tests/unit/test_classifier_discovery_read.py -q -k unwired_not_working'
+evidence_requirements:
+- kind: tests
+  description: Tests of the discovery read
+  command: uv run --frozen pytest tests/unit/test_classifier_discovery_read.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22966-verdicts-cited
+  description: Each equivalent in the read has a wire or build verdict, a code path that is a file in the repository and a run read with host, command, observation and time; a refused entry is the control.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_classifier_discovery_read.py -q --no-cov -k verdicts_cited
+    cwd: .
+- id: dod-omn22966-unwired-not-working
+  description: The wiring state is recomputed from pyproject, the node contracts and the callers' files; an entry point or a bus subscription alone leaves a node unwired, and an unwired equivalent reported working is refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_classifier_discovery_read.py -q --no-cov -k unwired_not_working
+    cwd: .

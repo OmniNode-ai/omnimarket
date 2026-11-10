@@ -757,7 +757,7 @@ _BAD_KEYS = (
 
 @pytest.mark.parametrize("key", _BAD_KEYS)
 def test_lane_name_floor_key_refuses_separators_and_trailing_newline(key: str) -> None:
-    """One task is one key: a key with a newline, ``|``, ``=``, ``/`` or ``..`` is no key."""
+    """One task is one key: a key with a newline, ``|``, ``=``, ``/`` or a dot run is no key."""
     with pytest.raises(ValidationError):
         ModelFloorFillTicketStored(key=key, ticket=TICKET)
     with pytest.raises(ValueError, match="is not a floor key"):
@@ -810,7 +810,14 @@ def test_lane_name_floor_key_with_trailing_newline_cannot_reserve_twice() -> Non
 
 
 @pytest.mark.parametrize(
-    "key", ["floor:L:t", "floor:line-a:task-1", "floor:a_b:OMN-22200", "floor:A9:9z"]
+    "key",
+    [
+        "floor:L:t",
+        "floor:line-a:task-1",
+        "floor:a_b:OMN-22200",
+        "floor:A9:9z",
+        "floor:2026-10-31-wave-plan:W0.1",
+    ],
 )
 def test_lane_name_minted_only_from_a_closed_charset(key: str) -> None:
     assert re.fullmatch(r"floor-[A-Za-z0-9_-]+-a[1-9][0-9]*", lane_name(key, 1))

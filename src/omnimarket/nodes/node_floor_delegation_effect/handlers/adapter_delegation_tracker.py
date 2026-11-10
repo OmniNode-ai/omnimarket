@@ -12,6 +12,9 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from omnimarket.nodes.node_floor_delegation_effect.models.model_delegation_routes import (
+    ModelRoutesBlock,
+)
 from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
     ModelDelegationCounts,
     ModelDelegationInputs,
@@ -253,12 +256,19 @@ def _scenario_result(
     base = {
         "id": decl.id,
         "title": decl.title,
+        "source": decl.source,
         "repo": decl.repo,
         "workflow": decl.workflow,
+        "lane": decl.lane,
         "cadence_hours": decl.cadence_hours,
         "builder_ticket": decl.builder_ticket,
         "builder_group": builder_group,
-        "workflow_url": f"{rt.github_url}/{decl.repo}/actions/workflows/{decl.workflow}",
+        "workflow_url": (
+            f"{rt.github_url}/{decl.repo}/actions/workflows/{decl.workflow}"
+            if decl.source == "workflow"
+            else ""
+        ),
+        "read_seconds": read.read_seconds if read is not None else None,
     }
     if read is None:
         return ModelScenarioResult(
@@ -304,7 +314,11 @@ def _scenario_result(
             **base,
             state="no_run",
             result_text="No scheduled run has finished",
-            reason=f"The workflow has no finished {rt.scenario_event} run.",
+            reason=(
+                f"The workflow has no finished {rt.scenario_event} run."
+                if decl.source == "workflow"
+                else f"The lab node has no {rt.scenario_event} result in the last {rt.lab_node_window_days} days."
+            ),
             in_progress=bool(ordered),
         )
     latest = finished[0]
@@ -484,4 +498,10 @@ def build_tracker(
         tickets=tuple(tickets),
         sources=inputs.sources,
         details_page_size=rt.details_page_size,
+        routes=inputs.routes
+        or ModelRoutesBlock(
+            state="unread",
+            reason="the routes were not read",
+            max_age_min=rt.routes_max_age_min,
+        ),
     )

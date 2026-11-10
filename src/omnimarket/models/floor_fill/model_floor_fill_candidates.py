@@ -15,6 +15,12 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.floor_fill.model_start_criterion import (
+    M0Verdict,
+    ModelFloorStartCriterion,
+)
+from omnimarket.models.model_factory_floor_input import ItemState
+
 OVERLAY_KEYS = (
     "max_age_minutes",
     "max_fill_lanes_per_line",
@@ -35,6 +41,8 @@ LineVerdict = Literal[
     "STARTABLE", "NEEDS-TICKET", "UNTICKETABLE", "AT-CAPACITY", "NO-STARTABLE"
 ]
 StoppedVerdict = Literal["STARTABLE", "AT-CAPACITY", "NO-STOPPED"]
+# The value the writer's closing row carries in its ``needs`` cell when the cell could not be read: it names no ask.
+NEEDS_UNPARSED = "unparsed"
 # The line id a stopped lane's entry-ticket verdict and state entries are keyed under: ``stopped:<lane>``.
 STOPPED_LINE = "stopped"
 STOPPED_KEY_PREFIX = "stopped:"
@@ -138,6 +146,12 @@ class ModelFloorFillCandidatesRequest(BaseModel):
     payload_verdicts: tuple[ModelFloorTaskPayloadVerdict, ...] = ()
     ticket_verdicts: tuple[ModelFloorEntryTicketVerdict, ...] = ()
     entries: tuple[ModelFloorFillStateEntry, ...] = ()
+    # Readiness inputs: the ``Start when:`` line of each task's ticket, the served floor record text (its pieces list),
+    # the pull requests and tickets read merged, and the M0 verdict. Nothing an operator says is a field here.
+    start_criteria: tuple[ModelFloorStartCriterion, ...] = ()
+    pieces_record: str | None = None
+    merged_refs: tuple[str, ...] = ()
+    m0_verdict: M0Verdict = "UNREAD"
     reports: tuple[ModelStoppedLaneReport, ...] = ()
 
     @model_validator(mode="before")
@@ -151,6 +165,13 @@ class ModelFloorFillCandidatesRequest(BaseModel):
                     + ", ".join(f"{OVERLAY_PREFIX}{key}" for key in missing)
                 )
         return data
+
+    @model_validator(mode="after")
+    def _one_criterion_per_task(self) -> ModelFloorFillCandidatesRequest:
+        seen = [(c.line_id, c.task_id) for c in self.start_criteria]
+        if len(seen) != len(set(seen)):
+            raise ValueError("a task carries one start criterion")
+        return self
 
     @field_validator("now")
     @classmethod
@@ -191,6 +212,8 @@ class ModelFloorFillNotReady(BaseModel):
 
     task_id: str
     cause: str
+    # The prerequisites of the task's start criterion that read false, each naming why; set only by an unmet criterion.
+    unmet: tuple[str, ...] = ()
 
 
 class ModelFloorFillLine(BaseModel):
@@ -260,7 +283,7 @@ class ModelRecordItem(BaseModel):
 
     id: str
     kind: str
-    state: Literal["done", "active", "prep", "wait", "stop"]
+    state: ItemState
     note: str = ""
     prs: tuple[str, ...] = ()
 
@@ -317,6 +340,8 @@ class ModelRecordStopped(BaseModel):
     branch: str = ""
     head: str = ""
     prs: tuple[str, ...] = ()
+    # The closing row's typed ask as the floor compute writes it: ``<action>:<target>``, ``unparsed`` or empty.
+    needs: str = ""
     rows: tuple[str, ...] = ()
     report_path: str = ""
 

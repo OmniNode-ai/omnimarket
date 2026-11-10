@@ -45,6 +45,9 @@ class ModelWorkStateRules(BaseModel):
     ticket_id_pattern: str
     # Linear state types that mean the ticket needs no more work.
     ticket_done_state_types: tuple[str, ...] = Field(min_length=1)
+    # What a ticket's assignee reads as when the snapshot's own ``operator`` is the assignee (OMN-23313): the tracker's alias
+    # for the signed-in user, which the lab fill already accepts for the operator's tickets.
+    operator_assignee_alias: str = Field(default="me", min_length=1)
     # A ticket description line naming its start criterion; names the group `refs`.
     ticket_requires_pattern: str
     # TERMINAL outcomes that close a lane with nothing left; any other outcome leaves the lane stopped.
@@ -59,6 +62,14 @@ class ModelWorkStateRules(BaseModel):
     # Receipt statuses that mean the lane's engine has ended.
     receipt_ended_statuses: tuple[str, ...] = ()
     plan: ModelPlanParseRules
+    # How many parent hops above a ticket the scope reads: the ticket, then up to this many ancestors, are checked
+    # against the goal's roots and projects. A chain that reaches neither within the bound is out of scope.
+    scope_chain_max_hops: int = Field(default=6, ge=0)
+    # A pull request body line that names the ticket it works (group `ticket`), read where the title names none.
+    pr_body_ticket_pattern: str = r"(?im)^\s*Ticket:\s*(?P<ticket>[A-Z][A-Z0-9]+-\d+)"
+    # Pull request authors (regular expressions, searched) whose pull requests are never flagged for citing no ticket,
+    # such as the bots that open dependency bumps.
+    ticketless_pr_exempt_author_patterns: tuple[str, ...] = (r"\[bot\]$",)
     # Each source's read budget, timeout, attempts and oldest servable snapshot. Every source must have a row.
     source_budgets: dict[EnumWorkStateSource, ModelSourceBudget]
 

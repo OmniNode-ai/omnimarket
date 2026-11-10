@@ -7,7 +7,13 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -60,8 +66,19 @@ class ModelRemoteLaneStartSettings(BaseModel):
     receipt_dir: str = Field(min_length=1)
     host_run_root: str = Field(min_length=1)
     registry_root_candidates: tuple[str, ...]
+    # The directory a registry root holds (the runner's marker), so a candidate that is not one is skipped.
+    registry_marker: str = Field(min_length=1)
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
+    # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin
+    # directory); "" adds nothing. The runner script exports the same prefix before each host step.
+    host_path_prefix: str
+    # The host's Claude token pool, drawn through node_claude_token_pool_effect (OMN-23425): the runner exports the
+    # first unlimited pool token as the engine's login; a lane that skipped the pool ran on the host login, which
+    # may be at its limit while a pool label is not.
+    login_pool_module: str = Field(min_length=1)
+    login_pool_python_relative: str = Field(min_length=1)
+    login_draw_timeout_seconds: float = Field(gt=0)
     ledger_append_argv: tuple[str, ...] = Field(min_length=1)
     # OMN-22848: "bus" on a host whose ledger of record is the bus, where a direct
     # file append from anyone but the ledger serve is refused; "local" otherwise.
@@ -72,6 +89,29 @@ class ModelRemoteLaneStartSettings(BaseModel):
     est_hours: int = Field(ge=1)
     priority: str = Field(min_length=1)
     claim_text: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _templates_are_fillable(self) -> ModelRemoteLaneStartSettings:
+        """Refuse at load a template the core cannot fill, so none is found after the CLAIM.
+
+        The engine command and the CLAIM text are filled with ``str.format`` once the lane is
+        placed; a literal brace or a field the request does not carry would raise there, after
+        the CLAIM is written, and leave it open with no TERMINAL (seen on h051 2026-11-10).
+        """
+        for key, templates, fields in (
+            ("engine_argv", self.engine_argv, {"model": "", "brief": "", "lane": ""}),
+            ("claim_text", (self.claim_text,), {"host": "", "lane": ""}),
+        ):
+            for template in templates:
+                try:
+                    template.format(**fields)
+                except (KeyError, IndexError, ValueError) as exc:
+                    raise ValueError(
+                        f"remote_lane_start.{key}: {template!r} cannot be filled from "
+                        f"{sorted(fields)} ({type(exc).__name__}: {exc}); "
+                        "write a literal brace doubled"
+                    ) from exc
+        return self
 
     @classmethod
     def from_overlay(cls, overlay: dict[str, Any]) -> ModelRemoteLaneStartSettings:
@@ -86,6 +126,27 @@ class ModelRemoteLaneStartSettings(BaseModel):
             return cls.model_validate(section)
         except ValidationError as exc:
             raise ValueError(f"remote_lane_start: {exc}") from exc
+
+
+class ModelRemoteLaneStartFloorFill(BaseModel):
+    """The ``floor_fill`` section: what the stopped-line fill runs to start a lane."""
+
+    model_config = _FROZEN
+
+    runner_command: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelRemoteLaneStartOverlay(BaseModel):
+    """The whole overlay document (``overlays/node_remote_lane_start_orchestrator/overlay.yaml``).
+
+    The overlays repository loads the document through this model, the way the node reads it: both sections
+    are required, and the settings keep their per-key refusal (``from_overlay`` names a missing key).
+    """
+
+    model_config = _FROZEN
+
+    remote_lane_start: ModelRemoteLaneStartSettings
+    floor_fill: ModelRemoteLaneStartFloorFill
 
 
 class ModelRemoteLaneStartRequest(BaseModel):
@@ -112,6 +173,12 @@ class ModelRemoteLaneStartRequest(BaseModel):
     #: The lane's runtime limit in minutes; the CLAIM's est hours follow it as the runner script's do
     #: (``max(1, round(minutes / 60))``). Absent, the overlay's ``est_hours`` stands.
     timeout_min: int | None = Field(default=None, ge=1)
+    #: The host this lane repairs (OMN-23389). The lane runs on another host that reached the target over ssh,
+    #: and a pin to the target names the target, not the run host.
+    repair_target: str | None = Field(default=None, min_length=1)
+    #: Per host, the hosts it reached over ssh, read by the caller beside the pool snapshot. A host with no entry
+    #: was not tried and takes no repair lane.
+    host_ssh_reach: dict[str, tuple[str, ...]] = Field(default_factory=dict)
 
 
 class ModelRemoteLaneStartReceipt(BaseModel):
@@ -155,6 +222,8 @@ class ModelRemoteLaneStartResult(BaseModel):
 __all__ = [
     "EXIT_CODES",
     "EnumRemoteLaneStartOutcome",
+    "ModelRemoteLaneStartFloorFill",
+    "ModelRemoteLaneStartOverlay",
     "ModelRemoteLaneStartReceipt",
     "ModelRemoteLaneStartRequest",
     "ModelRemoteLaneStartResult",

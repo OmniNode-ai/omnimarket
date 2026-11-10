@@ -146,6 +146,22 @@ class InMemoryWorkLedgerQueryReader:
             if (since is None or r.row_ts >= since) and r.row_ts <= until
         )
 
+    def read_rows_matching(
+        self,
+        *,
+        since: datetime,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        wanted = set(kinds)
+        return tuple(
+            r
+            for r in self.read_rows(since=since, until=until)
+            if (not wanted or r.row_type in wanted)
+            and (not contains or contains in r.raw_row)
+        )
+
     def read_parity_receipts(
         self, *, since: datetime, until: datetime
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:

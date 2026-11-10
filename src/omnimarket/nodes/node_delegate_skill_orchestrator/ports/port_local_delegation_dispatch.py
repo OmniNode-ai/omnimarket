@@ -135,6 +135,7 @@ from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
+    byok_backend_retry_wait_seconds,
     resolve_byok_backend_by_id,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
@@ -341,6 +342,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     describe_no_higher_tier_available,
     first_eligible_tier,
     is_free_tier,
+    lead_backend_refs,
     measure_grounding_input_tokens,
     next_eligible_tier,
     quota_blocked_backend_refs,
@@ -1648,7 +1650,10 @@ class LocalDelegationDispatchPort:
         named_test_runner: _NamedTestRunner | None = None,
         answer_judge: _AnswerJudge | None = None,
         clock: Callable[[], float] | None = None,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
+        # OMN-23176: waits between same-route re-issues of a customer route. Tests inject one so a wait costs no wall time.
+        self._sleep = sleep or asyncio.sleep
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
         # OMN-21214: the monotonic clock the rung deadlines are kept on. Tests
         # inject one so a slow rung costs no wall time. Without one, the port
@@ -2363,9 +2368,9 @@ class LocalDelegationDispatchPort:
         if skipped_rungs is None:
             skipped_rungs = []
 
-        def redraft_leaves_reserve() -> bool:
+        def redraft_leaves_reserve(wait_seconds: float = 0.0) -> bool:
             remaining = run_deadline - self._clock()
-            return remaining - next_rung_reserve >= last_attempt_seconds
+            return remaining - wait_seconds - next_rung_reserve >= last_attempt_seconds
 
         # OMN-21267: the developer's local-only or free-only rule. A pin, and a
         # probe ladder, decide the rung themselves and are not narrowed by it.
@@ -2948,8 +2953,10 @@ class LocalDelegationDispatchPort:
                 )
                 spent = byok_retry_counts.get(backend.backend_id, 0)
                 rung_retry_budget = 0
+                retry_wait = 0.0
                 if customer_route:
                     budget = byok_backend_max_retries(backend.backend_id) or 0
+                    retry_wait = byok_backend_retry_wait_seconds(backend.backend_id)
                     quota_block = quota_block_for_backend(
                         self._quota_snapshot(quota_observations),
                         endpoint_url=backend.endpoint_ref,
@@ -2961,7 +2968,7 @@ class LocalDelegationDispatchPort:
                     if (
                         quota_block is None
                         and spent < budget
-                        and redraft_leaves_reserve()
+                        and redraft_leaves_reserve(retry_wait)
                     ):
                         rung_retry_budget = budget
                 transport_transition = self._decide_transition(
@@ -3189,6 +3196,10 @@ class LocalDelegationDispatchPort:
                         correlation_id,
                         transport_failure_message,
                     )
+                    if retry_wait > 0:
+                        # OMN-23176: the provider's throttle window outlasts a
+                        # back-to-back re-issue; the wait is the catalogue's.
+                        await self._sleep(retry_wait)
                     continue
 
                 if next_chosen_model is not None:
@@ -3828,6 +3839,9 @@ class LocalDelegationDispatchPort:
                 and is_free_tier(current_tier)
                 and redrafts < tier_max_retries(current_tier)
                 and redraft_leaves_reserve()
+                # OMN-23329: a lead rung's miss is not redrafted on itself; the
+                # exclusion below moves the tier on to its next rung.
+                and backend.backend_id not in lead_backend_refs()
                 else 0
             )
             quality_transition = self._decide_transition(

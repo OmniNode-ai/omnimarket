@@ -36,12 +36,18 @@ class EnumTickFailureReason(StrEnum):
 
 
 class ModelTickSnapshot(BaseModel):
-    """One recorded tick: the facts the script read, and the decision it made from them."""
+    """One recorded tick: the facts read, and the script's decision from them when one was recorded."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     facts: ModelLandingFacts
-    decision: ModelLandingDecision
+    decision: ModelLandingDecision | None = Field(
+        default=None,
+        description=(
+            "The script's decision for the tick; None for a landing snapshot step record, "
+            "which carries facts only (the tick then ends recorded_decision_missing)."
+        ),
+    )
     fair_share: bool = Field(
         default=True,
         description="Whether the script shared free slots across repositories.",
@@ -78,6 +84,14 @@ class ModelTickResult(BaseModel):
     writes_performed: int = Field(
         default=0,
         description="Merges, arms and reruns the tick performed. Observe and replay: 0.",
+    )
+    recorded_written: bool = Field(
+        default=False,
+        description=(
+            "Act mode wrote the recorded decision itself: the cutover repository is one the old "
+            "controller rules out of scope, so its recorded decision is no action, and the "
+            "comparison covers that repository's subjects only (OMN-23458)."
+        ),
     )
     failure_reason: EnumTickFailureReason | None = None
     failure_detail: str = ""

@@ -1,0 +1,34 @@
+# The J4 rules of the floor overlay's piece_events (OMN-23085), as the overlays repository carries them in
+# node_floor_simple_compute. One J4 run writes one STATUS row of the lane secret-join-j4; the floor reads it as the piece 4
+# consumer chain and the piece 5 scan chain under one correlation id, so the join folds golden from a row on a host that is not
+# the floor's. An operational WORKING row is the golden pair. A consumer that failed (the value was found, or the key did not
+# resolve) is a piece 4 typed failure with no piece 5 answer, which the floor reads as the join broken. A scan that failed after
+# a clean consumer is a piece 5 typed failure. A drill row is tag=drill and matches neither rule.
+- piece: 4
+  node: "node_secret_reading_effect:join_j4_consumer"
+  golden:
+    row_type: STATUS
+    lane: secret-join-j4
+    cells: {src: secret-join-j4, tag: operational, verdict: WORKING}
+  error:
+    row_type: STATUS
+    lane: secret-join-j4
+    cells: {src: secret-join-j4, tag: operational, consumer_chain: failure}
+  failure_code_cell: reason
+  failure_default: consumer_failed
+  error_drill_cell: drill
+  lookback_days: 7
+- piece: 5
+  node: "node_secret_reading_effect:join_j4"
+  golden:
+    row_type: STATUS
+    lane: secret-join-j4
+    cells: {src: secret-join-j4, tag: operational, verdict: WORKING}
+  error:
+    row_type: STATUS
+    lane: secret-join-j4
+    cells: {src: secret-join-j4, tag: operational, consumer_chain: success, scan_chain: failure}
+  failure_code_cell: reason
+  failure_default: scan_failed
+  error_drill_cell: drill
+  lookback_days: 7

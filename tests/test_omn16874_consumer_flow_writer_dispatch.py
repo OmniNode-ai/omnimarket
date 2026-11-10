@@ -395,6 +395,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # local_alerts, dispatched once per consumed alert transition by runtime
     # auto-wiring; its pure fold plan, HandlerProjectionLocalAlerts, does NOT
     # declare the capability.
+    # LocalIdentityProjectionWriter (OMN-19986) is the only writer of
+    # local_identity: it composes HandlerLocalIdentityProjectionRunner once per
+    # consumed mint through the shared RuntimeProjectionWriter base; neither
+    # that runner nor the pure plan, HandlerProjectionLocalIdentity, declares it.
     # CompactionReceiptsProjectionWriter (OMN-21336) is the only writer of
     # compaction_receipts, dispatched once per consumed install-confirm-completed event by
     # runtime auto-wiring; its pure fold, HandlerProjectionCompactionReceipts,
@@ -440,6 +444,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ConsumerFlowProjectionWriter",
         "LocalEnvironmentProjectionWriter",
         "LocalAlertsProjectionWriter",
+        "LocalIdentityProjectionWriter",
         "DelegationEvalProjectionWriter",
         "HandlerDelegationDispositionWriter",
         "HandlerDelegationCapabilityMapWriter",
