@@ -16,6 +16,9 @@ from omnimarket.models.landing_decision import (
     ModelLandingFacts,
     ModelLandingPrFacts,
 )
+from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
+    SnapshotSourceError,
+)
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
     EnumSnapshotFailureReason,
     EnumSnapshotStatus,
@@ -79,7 +82,10 @@ class HandlerPrLandingSnapshot:
     def handle(
         self, request: ModelLandingSnapshotRequest
     ) -> ModelLandingSnapshotResult:
-        facts = self._facts_source.read_facts(request.tick)
+        try:
+            facts = self._facts_source.read_facts(request.tick)
+        except SnapshotSourceError as exc:
+            return self._fail(request, EnumSnapshotFailureReason.FACTS_UNREAD, str(exc))
         if facts is None:
             return self._fail(
                 request,
@@ -98,9 +104,14 @@ class HandlerPrLandingSnapshot:
                 EnumSnapshotFailureReason.TICK_ALREADY_RECORDED,
                 f"tick {request.tick} is recorded; a record is never replaced",
             )
-        write = self._write_source.read_write_facts(
-            {p.pr: p.head_sha for p in facts.prs}
-        )
+        try:
+            write = self._write_source.read_write_facts(
+                {p.pr: p.head_sha for p in facts.prs}
+            )
+        except SnapshotSourceError as exc:
+            return self._fail(
+                request, EnumSnapshotFailureReason.WRITE_FACTS_UNREAD, str(exc)
+            )
         filled, node_ids, run_ids = fill_write_facts(facts, write)
         record = ModelLandingTickRecord(
             correlation_id=request.correlation_id,

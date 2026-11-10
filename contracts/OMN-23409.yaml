@@ -31,6 +31,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_landing_snapshot.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn23409-real-backend
+  description: Runs the snapshot step on its real backend in a temporary directory. Two consecutive controller ticks in the facts file, each taken by one pass of the runtime, are both in the record journal after the second, with node ids and failed run ids read from a PR watcher state; a pass over an already recorded tick publishes nothing; a watcher state past its bound ends in write_facts_unread with a failure chain and no record; a recorder that overwrites its one file every tick loses the first tick.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_snapshot_real_backend.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23409-seam-join
+  description: The seam join between the snapshot step and node_pr_landing_tick_orchestrator. The tick orchestrator's snapshot source reads every tick record the snapshot step publishes, field for field, and the act-mode writer arms a merge with the node id that crossed the seam; a record missing its facts is refused. The in-memory leg runs here; the Redpanda leg runs with LANDING_SNAPSHOT_JOIN_BOOTSTRAP naming a lab broker.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_join_landing_snapshot_tick.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn23409-stuck-head-replay
   description: Replays the first recorded tick with the stuck-head shape from the recorded fixture the step produces. The decision merges both green heads at their heads; the strict plan reads the unread base as strict, orders the first merge first, holds nothing and defers no merge; the act-mode writer arms each merge at its head with the node id the step filled; the same tick from unfilled facts names no_node_id for each merge.
   source: manual

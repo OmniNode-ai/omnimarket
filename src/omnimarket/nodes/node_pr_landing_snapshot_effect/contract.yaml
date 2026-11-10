@@ -44,19 +44,19 @@ handler:
 dependencies:
   - name: ProtocolLandingFactsSource
     dependency_type: protocol
-    description: "the tick's facts from the watcher state and the ledger; in memory by default."
+    description: "the tick's facts; in memory by default; the redpanda profile reads the landing controller's facts file for its last tick (overlay facts_path)."
     required: true
   - name: ProtocolLandingWriteFactsSource
     dependency_type: protocol
-    description: "the per-PR node id and failed run ids, one batched read per tick; in memory by default."
+    description: "the per-PR node id and failed run ids, one batched read per tick; in memory by default; the redpanda profile reads the PR watcher's state (overlay watcher_state_path, refused past watcher_max_age_seconds)."
     required: true
   - name: ProtocolLandingTickRecorder
     dependency_type: protocol
-    description: "keeps every tick's record; a later tick never replaces an earlier one."
+    description: "keeps every tick's record; a later tick never replaces an earlier one; the redpanda profile appends to the overlay's record_journal."
     required: true
   - name: ProtocolLandingSnapshotPublisher
     dependency_type: protocol
-    description: "publishes the tick record or the failed event on the overlay's topics."
+    description: "publishes the tick record or the failed event on the overlay's topics; the redpanda profile publishes on the overlay's bus_lane (or a plaintext lab broker for a proof). The record is omnimarket.models.landing_tick_record.ModelLandingTickRecord, which node_pr_landing_tick_orchestrator's snapshot source reads."
     required: true
 handler_routing:
   routing_strategy: "operation_match"
@@ -81,7 +81,7 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
     failure: "onex.evt.omnimarket.pr-landing-snapshot-failed.v1"
-  external_trigger: "A snapshot command once per landing tick; sources, recorder and publisher are injected."
+  external_trigger: "A snapshot command once per landing tick; sources, recorder and publisher are injected. On the controller's host a unit runs python -m omnimarket.nodes.node_pr_landing_snapshot_effect each pass: it takes the tick the facts file holds and records it unless already recorded."
 descriptor:
   node_archetype: effect
   purity: side_effecting

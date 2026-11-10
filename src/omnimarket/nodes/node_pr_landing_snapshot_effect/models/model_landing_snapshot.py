@@ -18,8 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.models.landing_decision import (
     PR_KEY_PATTERN,
     SHA_PATTERN,
-    ModelLandingFacts,
 )
+from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 
 
 class EnumSnapshotStatus(StrEnum):
@@ -29,6 +29,7 @@ class EnumSnapshotStatus(StrEnum):
 
 class EnumSnapshotFailureReason(StrEnum):
     FACTS_UNREAD = "facts_unread"
+    WRITE_FACTS_UNREAD = "write_facts_unread"
     TICK_MISMATCH = "tick_mismatch"
     TICK_ALREADY_RECORDED = "tick_already_recorded"
 
@@ -55,19 +56,6 @@ class ModelLandingSnapshotRequest(BaseModel):
 
     correlation_id: UUID
     tick: int = Field(..., ge=1)
-
-
-class ModelLandingTickRecord(BaseModel):
-    """One tick's filled facts, as recorded on the bus."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    correlation_id: UUID
-    tick: int = Field(..., ge=1)
-    facts: ModelLandingFacts
-    provenance: str = Field(
-        ..., min_length=1, description="The declared sources the facts came from."
-    )
 
 
 class ModelLandingSnapshotResult(BaseModel):
