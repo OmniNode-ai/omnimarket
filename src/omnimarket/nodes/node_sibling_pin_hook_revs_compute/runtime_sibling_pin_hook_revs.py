@@ -13,7 +13,7 @@ distribution, and the hook blocks from the ``.pre-commit-config.yaml`` beside th
 pyproject. ``--candidates`` is a JSON list of ``[tag, green]`` pairs, newest first, where
 ``green`` is true, false (red) or null (unread). The plan prints as JSON. Without
 ``--apply`` nothing is written. With ``--apply`` the planned hook blocks of the repository
-are moved in place in the config; the pin tag the plan names is the caller's to write. A
+are moved in place in the config, and a config the plan does not change is not written; the pin tag the plan names is the caller's to write. A
 config with no hook block of the repository plans the pin alone, to the newest green tag.
 """
 
@@ -42,9 +42,12 @@ def main(argv: list[str] | None = None) -> int:
     ]
     source = sources[args.distribution]
     precommit = args.pyproject.with_name(".pre-commit-config.yaml")
+    # newline="" keeps the file's own line endings through the read and the write.
+    with precommit.open(encoding="utf-8", newline="") as handle:
+        precommit_text = handle.read()
     result = HandlerSiblingPinHookRevsApply().handle(
         ModelSiblingPinHookRevsApplyRequest(
-            precommit_text=precommit.read_text(encoding="utf-8"),
+            precommit_text=precommit_text,
             repository_url=source["git"],
             pin_tag=source["tag"],
             candidates=tuple(
@@ -54,8 +57,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     sys.stdout.write(result.model_dump_json(exclude={"candidate_text"}) + "\n")
-    if args.apply:
-        precommit.write_text(result.candidate_text, encoding="utf-8")
+    if args.apply and result.candidate_text != precommit_text:
+        with precommit.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(result.candidate_text)
     return 0
 
 

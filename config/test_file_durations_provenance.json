@@ -208,5 +208,27 @@
     "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with -m 'not kafka'; existing entries left as they were",
     "runner": "lab host h201, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "06cf69041a369e222fab7c76b37e34919d947d5b"
+  },
+  "supplement_omn23514": {
+    "ticket": "OMN-23514",
+    "recorded_on": "2026-11-10",
+    "files_added": 5,
+    "basis": "The five test files the landing cutover change adds, each summed from its measured pytest setup, call and teardown seconds (--durations=0 --durations-min=0, one file per run); existing entries left as they were.",
+    "runner": "lab host h051, lane p9wire6-1650; the next CI refresh replaces these entries",
+    "base_sha": "f0ada1526e0703f46e818a1bef5db612ee59b8aa"
+  },
+  "supplement_omn22848_lab_fill": {
+    "recorded_on": "2026-11-10",
+    "files_added": 55,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "af97344b3d5f6103d62193a16df7e542b17c85a6"
+  },
+  "supplement_omn22868_lab_fill": {
+    "recorded_on": "2026-11-09",
+    "files_added": 58,
+    "basis": "files the record did not hold, each the sum of its measured pytest per-test durations from one serial run of those files with -m 'not kafka'; existing entries left as they were",
+    "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "72f7015b7109e0d0b41c5b6e835426480b775934"
   }
 }

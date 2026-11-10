@@ -5,13 +5,13 @@
 Every node-adding pull request used to append one line at the end of the
 ``[project.entry-points."onex.nodes"]`` table, so any two of them conflicted and
 a conflicted head gets no pull_request CI. The table is now kept sorted by node
-name and this test refuses an unsorted table (the entry-point format script is
-baselined and may not grow, so the sort rule lives here and runs in CI).
+name and this test refuses an unsorted table (the entry-point format script
+refuses it too, for the pre-commit hook).
 
 Three reads, each with a failing control:
 
 * AC1: the real table is sorted; the same table with two names swapped is
-  reported out of order.
+  reported out of order, and ``scripts/ci/check_entry_point_format.py`` exits 1 on it.
 * AC2: a node directory with no entry still fails the node drift validator; with
   its entry it passes.
 * AC3: two branches that add different nodes merge without a conflict when each
@@ -38,6 +38,7 @@ pytestmark = pytest.mark.unit
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 DRIFT_SCRIPT = REPO_ROOT / "scripts" / "validate_node_drift.py"
+FORMAT_SCRIPT = REPO_ROOT / "scripts" / "ci" / "check_entry_point_format.py"
 TABLE_HEADER = '[project.entry-points."onex.nodes"]'
 ENTRY_LINE = re.compile(r'^([A-Za-z0-9_.-]+) = "[^"]+"$')
 
@@ -90,6 +91,42 @@ def test_two_swapped_names_are_reported_out_of_order() -> None:
     swapped = [*names]
     swapped[10], swapped[11] = swapped[11], swapped[10]
     assert _out_of_order(swapped) == [(names[11], names[10])]
+
+
+def _run_format_script(
+    tmp_path: Path, pyproject_text: str
+) -> subprocess.CompletedProcess[str]:
+    """Run a copy of the format script against a pyproject.toml in a throwaway tree."""
+    script = tmp_path / "scripts" / "ci" / FORMAT_SCRIPT.name
+    script.parent.mkdir(parents=True)
+    script.write_text(FORMAT_SCRIPT.read_text())
+    (tmp_path / "pyproject.toml").write_text(pyproject_text)
+    return subprocess.run(
+        [sys.executable, str(script), "pyproject.toml"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_format_script_passes_the_real_sorted_table(tmp_path: Path) -> None:
+    """AC1: the format script exits 0 on the real, sorted table."""
+    result = _run_format_script(tmp_path, PYPROJECT.read_text())
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "entries OK" in result.stdout
+
+
+def test_format_script_exits_1_on_two_swapped_names(tmp_path: Path) -> None:
+    """AC1 failing control: the real table with two adjacent lines swapped exits 1."""
+    text = PYPROJECT.read_text()
+    lines = _entry_lines(text)
+    swapped = text.replace(
+        lines[10] + "\n" + lines[11] + "\n", lines[11] + "\n" + lines[10] + "\n", 1
+    )
+    assert swapped != text
+    result = _run_format_script(tmp_path, swapped)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "not sorted by name" in result.stdout
 
 
 def test_a_node_without_an_entry_fails_the_drift_validator(tmp_path: Path) -> None:
