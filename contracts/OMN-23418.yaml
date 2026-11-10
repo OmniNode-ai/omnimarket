@@ -34,8 +34,10 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_late_reply.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23418-row-consumers-seam
-  description: Runs the seam test between the probe's row and the floor's piece 3 event rule and the reading writer's piece 3 source rule.
+  description: Runs the seam test between the probe's row and the floor's piece 3 event rule and the reading writer's piece 3 source rule; the reply cells reach the piece 3 reading and collide with none of the cells the consumers read. The same tests fail at the merge base, where the row has no reply cells.
   source: manual
+  binds_ac:
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_row_consumers.py -q --no-cov -p no:randomly
@@ -48,21 +50,18 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_deadline_chain_events.py tests/nodes/node_seam_deadline_probe_effect/test_seam_counts_and_on_demand.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23418-stall-located
-  description: The responder's reply time for one late reply is read from the reply envelope the probe records (stamp_ms) beside the send acknowledgement and the late arrival; the comment on the ticket carries the numbers. Local Done gate only, a runtime read.
+  description: The kafka adapter records the send acknowledgement, the reply envelope's creation time (stamp_ms) and the late arrival of one late reply, so the slow hop can be named from the row. The live numbers go in the comment on the ticket (a runtime read, not run by hosted CI).
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
-  - check_type: command
+  - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_late_reply.py -q --no-cov -p no:randomly -k kafka_adapter
     cwd: .
 - id: dod-omn23418-h053-reading-row
   description: The reading unit on h053 is reinstalled through the host installer from h051; the seam-deadline row after the next minute-35 run carries the reply cells. Local Done gate only, a runtime read.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_row_consumers.py -q --no-cov -p no:randomly
