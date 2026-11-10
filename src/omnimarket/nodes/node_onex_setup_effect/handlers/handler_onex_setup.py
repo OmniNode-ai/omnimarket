@@ -422,24 +422,12 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
     from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
         ModelSetupRefusedError,
     )
-    from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
-        ModelModelSetupRequest,
-    )
 
     provider = (request.provider or "").lower()
     model = request.model or ""
     try:
         if provider in KEYLESS_PROVIDERS:
-            tests = (
-                model_keys.model_handler()
-                .handle(
-                    ModelModelSetupRequest(
-                        operation="add_local", url=request.url, models=(model,)
-                    )
-                )
-                .tests
-            )
-            result = tests[0] if tests else None
+            result = model_keys.add_local(request.url, model)
         else:
             key = request.key.get_secret_value() if request.key is not None else ""
             result = model_keys.add_key(provider, key, (model,), url=request.url)
