@@ -441,3 +441,163 @@ def test_control_policy_lives_in_the_contract_and_keeps_the_upstream_prefix() ->
         ValueError, match=r"join_j15\.entry_dropped_failure_code is absent"
     ):
         load_join_j15_policy(contract)
+
+
+# --- review findings (omnimarket#5298): read-back, journal damage, replay, drop identity --------------------------
+
+
+class _StaleReplacementCorpus(InMemoryEvalCorpus):
+    """Injected break: holds an older row for a run and drops every later append, so the old row stays visible."""
+
+    def __init__(self, stale: ModelEvalCorpusEntry) -> None:
+        super().__init__()
+        super().append(stale)
+
+    def append(self, entry: ModelEvalCorpusEntry) -> None:
+        return
+
+
+def _stale_entry(run_id: str) -> ModelEvalCorpusEntry:
+    return ModelEvalCorpusEntry(
+        run_id=run_id,
+        task_class="document",
+        model_id="lab-qwen",
+        outcome="completed",
+        result_summary="an older summary",
+        cost_status=EnumCorpusCostStatus.PRESENT,
+        cost=_cost(run_id, "0.0001"),
+        joined_at=NOW - timedelta(days=1),
+    )
+
+
+def test_join_j15_error_a_dropped_replacement_behind_an_older_cost_row_is_not_landed() -> (
+    None
+):
+    rig = _Rig(
+        results=[_result("run-1")],
+        costs=[_cost("run-1")],
+        corpus=_StaleReplacementCorpus(_stale_entry("run-1")),
+    )
+    result = rig.join.handle(
+        ModelJoinJ15Request(correlation_id=uuid4().hex, run_ids=("run-1",))
+    )
+
+    assert result.outcome is EnumJoinJ15Outcome.ENTRY_DROPPED
+    assert result.failure_code == POLICY.entry_dropped_failure_code
+    assert result.absent_run_ids == ("run-1",)
+
+
+def test_join_j15_error_a_dropped_cost_less_replacement_behind_an_older_cost_row_is_typed_not_a_crash() -> (
+    None
+):
+    rig = _Rig(
+        results=[_result("run-1")],
+        costs=[],
+        corpus=_StaleReplacementCorpus(_stale_entry("run-1")),
+    )
+    result = rig.join.handle(
+        ModelJoinJ15Request(correlation_id=uuid4().hex, run_ids=("run-1",))
+    )
+
+    assert result.outcome is EnumJoinJ15Outcome.ENTRY_DROPPED
+    assert result.absent_run_ids == ("run-1",)
+
+
+def test_join_j15_error_a_torn_journal_tail_does_not_consume_the_next_append(
+    tmp_path: Path,
+) -> None:
+    journal = tmp_path / "eval_corpus.jsonl"
+    journal.write_text('{"run_id": "run-0", "task_cl', encoding="utf-8")
+    corpus = JsonlEvalCorpus(journal)
+    corpus.append(_stale_entry("run-1"))
+
+    entries, skipped = JsonlEvalCorpus(journal).read(())
+    assert [e.run_id for e in entries] == ["run-1"]
+    assert skipped == 1
+
+
+def test_join_j15_error_an_unreadable_journal_is_not_an_absent_one(
+    tmp_path: Path,
+) -> None:
+    # An absent journal is an empty corpus; a directory at the journal path is unreadable storage, not "no entries".
+    assert JsonlEvalCorpus(tmp_path / "absent.jsonl").read(()) == ((), 0)
+    with pytest.raises(IsADirectoryError):
+        JsonlEvalCorpus(tmp_path).read(())
+
+
+def test_join_j15_error_an_undecodable_journal_record_does_not_block_the_valid_ones(
+    tmp_path: Path,
+) -> None:
+    journal = tmp_path / "eval_corpus.jsonl"
+    corpus = JsonlEvalCorpus(journal)
+    corpus.append(_stale_entry("run-1"))
+    with journal.open("ab") as handle:
+        handle.write(b'{"run_id": "run-x", "result_summary": "\xe2\x82"}\n')
+    corpus.append(_stale_entry("run-2"))
+
+    entries, skipped = JsonlEvalCorpus(journal).read(())
+    assert [e.run_id for e in entries] == ["run-1", "run-2"]
+    assert skipped == 1
+
+
+def test_join_j15_golden_a_replayed_request_keeps_one_valid_chain() -> None:
+    rig = _Rig(results=[_result("run-1")], costs=[_cost("run-1")])
+    cid = uuid4().hex
+    rig.upstream_chain(cid, cost_present=True)
+    request = ModelJoinJ15Request(correlation_id=cid, run_ids=("run-1",))
+    first = rig.join.handle(request)
+    second = rig.join.handle(request)
+
+    assert first.outcome is second.outcome is EnumJoinJ15Outcome.LANDED
+    mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
+    assert [e.phase for e in mine] == ["start", "success"]
+    assert _fold(rig.sink.events) == ("golden_only", [])
+
+
+class _FailsOnce(InMemoryEvalCorpus):
+    """Injected break: the first append raises, after the chain has started."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.failed = False
+
+    def append(self, entry: ModelEvalCorpusEntry) -> None:
+        if not self.failed:
+            self.failed = True
+            raise OSError("disk full")
+        super().append(entry)
+
+
+def test_join_j15_golden_a_retry_after_an_append_failure_keeps_one_start() -> None:
+    rig = _Rig(results=[_result("run-1")], costs=[_cost("run-1")], corpus=_FailsOnce())
+    cid = uuid4().hex
+    rig.upstream_chain(cid, cost_present=True)
+    request = ModelJoinJ15Request(correlation_id=cid, run_ids=("run-1",))
+    with pytest.raises(OSError, match="disk full"):
+        rig.join.handle(request)
+    result = rig.join.handle(request)
+
+    assert result.outcome is EnumJoinJ15Outcome.LANDED
+    mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
+    assert [e.phase for e in mine] == ["start", "success"]
+    assert _fold(rig.sink.events) == ("golden_only", [])
+
+
+def test_join_j15_error_a_corpus_drop_keeps_its_own_failure_code_on_the_emission() -> (
+    None
+):
+    rig = _Rig(
+        results=[_result("run-1"), _result("run-2")],
+        costs=[_cost("run-1")],
+        corpus=_DroppingCorpus(),
+    )
+    cid = uuid4().hex
+    rig.upstream_chain(cid, cost_present=False)
+    rig.join.handle(ModelJoinJ15Request(correlation_id=cid, run_ids=("run-1", "run-2")))
+
+    mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
+    assert mine[-1].phase == "failure"
+    assert mine[-1].failure_code == POLICY.entry_dropped_failure_code
+    # The drop is not the expected upstream-cost refusal: the floor must not read it as the error case handled.
+    state, _ = _fold(rig.sink.events)
+    assert state not in ("error_only", "passed")

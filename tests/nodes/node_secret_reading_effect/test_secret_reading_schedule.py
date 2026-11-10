@@ -315,3 +315,117 @@ def test_run_now_with_drill_starts_the_drill_service(tmp_path: Path) -> None:
     assert runner.commands == [
         ["systemctl", "--user", "start", "onex-secret-reading-drill-daily.service"]
     ]
+
+
+# --- the J4 join unit (OMN-23085) -------------------------------------------------------------------------------------------
+
+
+def _j4_overlay_root(tmp_path: Path) -> Path:
+    """An overlay root that holds the J4 join overlay, so the join's unit pair is installed."""
+    root = tmp_path / "overlays-with-j4"
+    (root / "node_secret_reading_join_j4").mkdir(parents=True)
+    (root / "node_secret_reading_join_j4" / "overlay.yaml").write_text(
+        "consumer: gate\n", encoding="utf-8"
+    )
+    return root
+
+
+def test_the_contract_declares_an_hourly_j4_join_unit_after_the_secret_reading() -> (
+    None
+):
+    join_j4 = load_schedule().join_j4
+    assert join_j4 is not None
+    assert join_j4.unit_name == "onex-secret-join-j4-hourly"
+    assert join_j4.cadence.on_calendar == "*-*-* *:20:00"
+
+
+def test_j4_unit_runs_the_join_cli_with_the_run_verb(tmp_path: Path) -> None:
+    root, home, _ = _layout(tmp_path)
+    service, timer = render_units(
+        load_schedule(),
+        _overlay(),
+        omni_root=root,
+        venv=root / "venv",
+        home=home,
+        overlay_root=tmp_path / "overlays",
+        join_j4=True,
+    )
+    assert (
+        "-m omnimarket.nodes.node_secret_reading_effect.runtime_join_j4 run\n"
+        in service
+    )
+    assert "secret-join-j4.out.log" in service
+    assert "SyslogIdentifier=onex-secret-join-j4-hourly" in service
+    assert "OnCalendar=*-*-* *:20:00" in timer
+    assert "Unit=onex-secret-join-j4-hourly.service" in timer
+
+
+def test_install_with_the_j4_overlay_writes_the_j4_pair_and_enables_its_timer(
+    tmp_path: Path,
+) -> None:
+    root, home, _ = _layout(tmp_path)
+    overlay_root = _j4_overlay_root(tmp_path)
+    runner = _Recorder()
+    result = _scheduler(home, runner).install(
+        "h-test", omni_root=root, overlay_root=overlay_root
+    )
+    assert result.exit_code == 0, result.stderr
+    units = home / ".config/systemd/user"
+    service = (units / "onex-secret-join-j4-hourly.service").read_text(encoding="utf-8")
+    assert f"ONEX_SKILL_OVERLAY_ROOTS={overlay_root}" in service
+    assert (units / "onex-secret-join-j4-hourly.timer").is_file()
+    enabled = [
+        c[-1]
+        for c in runner.commands
+        if c[:4] == ["systemctl", "--user", "enable", "--now"]
+    ]
+    assert enabled == [
+        "onex-secret-reading-hourly.timer",
+        "onex-secret-join-j4-hourly.timer",
+    ]
+
+
+def test_install_without_the_j4_overlay_installs_no_j4_unit(tmp_path: Path) -> None:
+    root, home, overlays = _layout(tmp_path)
+    runner = _Recorder()
+    result = _scheduler(home, runner).install(
+        "h-test", omni_root=root, overlay_root=overlays
+    )
+    assert result.exit_code == 0, result.stderr
+    assert not (home / ".config/systemd/user/onex-secret-join-j4-hourly.timer").exists()
+    assert "onex-secret-join-j4-hourly.timer" not in [c[-1] for c in runner.commands]
+
+
+def test_uninstall_removes_the_j4_pair_too(tmp_path: Path) -> None:
+    root, home, _ = _layout(tmp_path)
+    runner = _Recorder()
+    scheduler = _scheduler(home, runner)
+    scheduler.install("h-test", omni_root=root, overlay_root=_j4_overlay_root(tmp_path))
+    assert scheduler.uninstall("h-test").exit_code == 0
+    units = home / ".config/systemd/user"
+    assert not (units / "onex-secret-join-j4-hourly.service").exists()
+    assert not (units / "onex-secret-join-j4-hourly.timer").exists()
+    assert [
+        "systemctl",
+        "--user",
+        "disable",
+        "--now",
+        "onex-secret-join-j4-hourly.timer",
+    ] in runner.commands
+
+
+def test_run_now_with_join_j4_starts_the_j4_service(tmp_path: Path) -> None:
+    _, home, _ = _layout(tmp_path)
+    runner = _Recorder()
+    assert _scheduler(home, runner).run_now("h-test", join_j4=True).exit_code == 0
+    assert runner.commands == [
+        ["systemctl", "--user", "start", "onex-secret-join-j4-hourly.service"]
+    ]
+
+
+def test_run_now_refuses_the_drill_and_the_j4_unit_together(tmp_path: Path) -> None:
+    _, home, _ = _layout(tmp_path)
+    runner = _Recorder()
+    result = _scheduler(home, runner).run_now("h-test", drill=True, join_j4=True)
+    assert result.exit_code == 1
+    assert runner.commands == []

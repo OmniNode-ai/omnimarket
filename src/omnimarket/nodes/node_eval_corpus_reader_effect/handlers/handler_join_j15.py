@@ -8,10 +8,15 @@ emission contract under the correlation id piece 15's chain carries:
 * a requested run piece 15 holds no result for: a typed ``upstream_`` failure that never started, nothing written;
 * otherwise every result is written to the corpus with its cost row, or typed ``missing`` when none exists, and the
   corpus reader reads the runs back; the chain starts first when every run has its cost;
-* a run the reader does not return is a typed ``entry_dropped`` failure (a silent drop made loud);
+* a run the reader does not return, or returns as something other than the entry this join wrote (an older row left
+  behind by a dropped append), is a typed ``entry_dropped`` failure (a silent drop made loud) that keeps its own code
+  on the emission;
 * a run with no cost row is a typed ``upstream_`` ``cost_missing`` failure with no start (piece 15's chain failed
   there), and its entry stays in the corpus typed missing;
 * a success only when every run is read back with its cost.
+
+A replayed request (a repeated delivery, a retry after a failed append) keeps one logical chain: an emission whose
+phase the sink already holds under the correlation id is not written again.
 
 Everything it calls is injected: the two sources, the corpus, the emission sink and the clock. Its settings are the
 contract's ``join_j15`` section.
@@ -36,6 +41,7 @@ from omnimarket.models.eval_corpus import (
     ModelJoinJ15Request,
     ModelJoinJ15Result,
 )
+from omnimarket.models.floor_17a import ModelNodeEmission
 from omnimarket.nodes.node_eval_corpus_reader_effect.handlers.handler_eval_corpus_reader import (
     HandlerEvalCorpusReader,
 )
@@ -66,6 +72,57 @@ def load_join_j15_policy(
         if key not in section:
             raise ValueError(f"{_NODE} contract {_SECTION}.{key} is absent")
     return ModelJoinJ15Policy(**section)
+
+
+_TERMINAL_PHASES = ("success", "failure")
+
+
+class _ReplaySafeSink:
+    """Keeps one logical chain per correlation id across replays of the same request.
+
+    A start is not written again when the sink already holds a start or a terminal for this chain, and a terminal is
+    not written again when the sink already holds one, so repeated deliveries and partial-work retries add no
+    ``duplicate_start`` or second terminal to the receipt fold.
+    """
+
+    def __init__(
+        self,
+        sink: ProtocolEmissionSink,
+        *,
+        node: str,
+        piece: int,
+        correlation_id: str,
+    ) -> None:
+        self._sink = sink
+        self._node = node
+        self._piece = piece
+        self._correlation_id = correlation_id
+        held = [
+            e for e in sink.read(datetime.min.replace(tzinfo=UTC)) if self._is_mine(e)
+        ]
+        self._has_start = any(e.phase == "start" for e in held)
+        self._has_terminal = any(e.phase in _TERMINAL_PHASES for e in held)
+
+    def _is_mine(self, event: ModelNodeEmission) -> bool:
+        return (
+            event.node == self._node
+            and event.piece == self._piece
+            and event.correlation_id == self._correlation_id
+        )
+
+    def emit(self, event: ModelNodeEmission) -> None:
+        if event.phase == "start":
+            if self._has_start or self._has_terminal:
+                return
+            self._has_start = True
+        elif event.phase in _TERMINAL_PHASES:
+            if self._has_terminal:
+                return
+            self._has_terminal = True
+        self._sink.emit(event)
+
+    def read(self, since: datetime) -> tuple[ModelNodeEmission, ...]:
+        return self._sink.read(since)
 
 
 class HandlerJoinJ15:
@@ -100,7 +157,12 @@ class HandlerJoinJ15:
     def handle(self, request: ModelJoinJ15Request) -> ModelJoinJ15Result:
         policy = self._policy
         chain = ChainEmitter(
-            self._sink,
+            _ReplaySafeSink(
+                self._sink,
+                node=policy.emission_node,
+                piece=policy.to_piece,
+                correlation_id=request.correlation_id,
+            ),
             node=policy.emission_node,
             piece=policy.to_piece,
             clock=self._clock,
@@ -128,35 +190,40 @@ class HandlerJoinJ15:
         # failure that never started as a refusal. The result is still written, typed missing: no silent drop.
         if not cost_less:
             chain.start()
+        written: dict[str, ModelEvalCorpusEntry] = {}
         for result in results:
             cost = costs[result.run_id]
-            self._corpus.append(
-                ModelEvalCorpusEntry(
-                    run_id=result.run_id,
-                    task_class=result.task_class,
-                    model_id=result.model_id,
-                    outcome=result.outcome,
-                    result_summary=result.result_summary,
-                    cost_status=EnumCorpusCostStatus.PRESENT
-                    if cost is not None
-                    else EnumCorpusCostStatus.MISSING,
-                    cost=cost,
-                    joined_at=self._clock(),
-                )
+            entry = ModelEvalCorpusEntry(
+                run_id=result.run_id,
+                task_class=result.task_class,
+                model_id=result.model_id,
+                outcome=result.outcome,
+                result_summary=result.result_summary,
+                cost_status=EnumCorpusCostStatus.PRESENT
+                if cost is not None
+                else EnumCorpusCostStatus.MISSING,
+                cost=cost,
+                joined_at=self._clock(),
             )
+            self._corpus.append(entry)
+            written[entry.run_id] = entry
 
         read = self._reader.handle(ModelCorpusReadRequest(run_ids=request.run_ids))
-        if read.absent_run_ids:
+        # An entry that reads back is the join's only when it equals what was written: a dropped replacement can
+        # leave an older row for the run, which would otherwise read as landed.
+        stale = {e.run_id for e in read.entries if e != written.get(e.run_id)}
+        dropped = tuple(
+            i for i in request.run_ids if i in read.absent_run_ids or i in stale
+        )
+        if dropped:
             code = policy.entry_dropped_failure_code
-            detail = (
-                f"the corpus returned no entry for {', '.join(read.absent_run_ids)}"
-            )
-            if chain.open:
-                chain.failure(code, detail)
-            else:
-                # Piece 15's chain failed for a cost-less run, so this chain never started: the drop is named in
-                # the detail and the refusal keeps the upstream code the floor reads.
-                chain.refuse(policy.cost_missing_failure_code, detail)
+            detail = f"the corpus returned no current entry for {', '.join(dropped)}"
+            if not chain.open:
+                # Piece 15's chain failed for a cost-less run, so this chain never started. The drop keeps its own
+                # code: it is not the upstream refusal the floor reads as the expected error case, so the chain
+                # starts and fails under the drop code and the floor names it.
+                chain.start()
+            chain.failure(code, detail)
             return ModelJoinJ15Result(
                 outcome=EnumJoinJ15Outcome.ENTRY_DROPPED,
                 correlation_id=request.correlation_id,
@@ -164,7 +231,7 @@ class HandlerJoinJ15:
                 detail=detail,
                 entries=read.entries,
                 missing_cost_run_ids=read.missing_cost_run_ids,
-                absent_run_ids=read.absent_run_ids,
+                absent_run_ids=dropped,
             )
         if read.missing_cost_run_ids:
             code = policy.cost_missing_failure_code
