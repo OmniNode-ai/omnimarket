@@ -17,6 +17,10 @@ from omnimarket.models.delegation.wire.model_probe_ladder import (
     ModelProbeLadder,
     ModelProbeRung,
 )
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeLadderCredentialed,
+    ModelProbeRungCredentialed,
+)
 from omnimarket.nodes.node_delegation_scenario_r4_effect.handlers.handler_scenario_r4 import (
     CONTRACT_PATH,
     NODE_DIR,
@@ -123,9 +127,9 @@ def test_r4_credential_absent_leg_builds_a_valid_probe_ladder_carrying_the_decla
     leg = inputs.credential_absent_leg
     spec = inputs.leg_spec(leg.name, leg.rungs)
     urls = ScriptedLegTransport().endpoints(spec)
-    ladder = ModelProbeLadder(
+    ladder = ModelProbeLadderCredentialed(
         rungs=tuple(
-            ModelProbeRung(
+            ModelProbeRungCredentialed(
                 backend_id=rung.backend_id,
                 model_id=rung.model_id,
                 endpoint_ref=urls[rung.backend_id],

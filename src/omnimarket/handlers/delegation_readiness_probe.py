@@ -56,8 +56,10 @@ from omnimarket.models.delegation.wire.model_delegate_skill_request import (
 )
 from omnimarket.models.delegation.wire.model_probe_ladder import (
     READINESS_PROBE_SOURCE_SURFACE,
-    ModelProbeLadder,
-    ModelProbeRung,
+)
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeLadderCredentialed,
+    ModelProbeRungCredentialed,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
@@ -411,9 +413,9 @@ def run_leg(
     db_path = work_dir / f"{leg.name}.sqlite"
     seed_probe_tenant(db_path, tenant_slug)
     urls = transport.endpoints(leg)
-    ladder = ModelProbeLadder(
+    ladder = ModelProbeLadderCredentialed(
         rungs=tuple(
-            ModelProbeRung(
+            ModelProbeRungCredentialed(
                 backend_id=rung.backend_id,
                 model_id=rung.model_id,
                 endpoint_ref=urls[rung.backend_id],

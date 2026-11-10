@@ -260,6 +260,9 @@ from omnimarket.models.delegation.wire.model_probe_ladder import (
     ModelProbeLadder,
     probe_ladder_admitted,
 )
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeRungCredentialed,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
@@ -1472,7 +1475,8 @@ class _ProbeLadderWalk:
         self._credential_absent = frozenset(
             rung.backend_id
             for rung in ladder.rungs
-            if rung.credential is EnumProbeRungCredential.DECLARED_ABSENT
+            if isinstance(rung, ModelProbeRungCredentialed)
+            and rung.credential is EnumProbeRungCredential.DECLARED_ABSENT
         )
         self._cursor = 0
 

@@ -101,27 +101,6 @@ _DOCTOR = ModelDelegationProvenance(
 )
 
 
-@pytest.fixture
-def _routing_is_never_consulted(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A rungs-mode probe run, accepted or refused, never asks the routing contract.
-
-    A faults-mode run is the opposite: it resolves the production ladder, so the
-    faults-mode tests below do not take this fixture.
-    """
-
-    def forbidden(*_a: Any, **_k: Any) -> Any:
-        raise AssertionError("a probe-ladder run consulted the routing contract")
-
-    for name in (
-        "first_eligible_tier",
-        "next_eligible_tier",
-        "backend_id_for_tier",
-        "sibling_backend_available_in_tier",
-        "resolve_delegation_backend",
-    ):
-        monkeypatch.setattr(port_mod, name, forbidden)
-
-
 def _dispatch(
     tmp_path: Path,
     transport: StubProbeTransport,
@@ -374,8 +353,7 @@ def test_probe_ladder_key_is_in_the_wire_gate_graded_keys_and_released_ladder_un
     request's new key ``probe_ladder`` is accepted by a consumer pinned at or
     after OMN-23161. ``ModelProbeLadder`` keeps exactly its released keys
     (``rungs``), because a pinned consumer's copy forbids any other; the faults
-    mode is a separate class in its own module. ``ModelProbeRung`` gained the
-    optional ``credential`` field (OMN-23511); it defaults to ``not_required``.
+    mode is a separate class in its own module.
     """
     graded = _gate_graded_keys()
     assert PROBE_LADDER_WIRE_KEY in graded["emitted_keys"]
@@ -383,7 +361,6 @@ def test_probe_ladder_key_is_in_the_wire_gate_graded_keys_and_released_ladder_un
     assert sorted(ModelProbeLadder.model_fields) == ["rungs"]
     assert sorted(ModelProbeRung.model_fields) == [
         "backend_id",
-        "credential",
         "endpoint_ref",
         "max_tokens",
         "model_id",

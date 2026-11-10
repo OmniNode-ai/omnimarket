@@ -28,9 +28,16 @@ from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_probe_ladder import (
     ModelProbeLadder,
     ModelProbeRung,
+)
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeLadderCredentialed,
+    ModelProbeRungCredentialed,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
@@ -45,8 +52,8 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.stub_probe_transpor
 from tests.unit.delegation.test_probe_ladder import (
     _DOCTOR,
     _GOOD_ANSWER,
-    _routing_is_never_consulted,  # noqa: F401  (fixture reused by name)
     _row,
+    _wire_request,
 )
 
 pytestmark = pytest.mark.unit
@@ -58,10 +65,12 @@ _ABSENT = EnumProbeRungCredential.DECLARED_ABSENT
 _PRESENT = EnumProbeRungCredential.NOT_REQUIRED
 
 
-def _ladder(*rungs: tuple[str, str, EnumProbeRungCredential]) -> ModelProbeLadder:
-    return ModelProbeLadder(
+def _ladder(
+    *rungs: tuple[str, str, EnumProbeRungCredential],
+) -> ModelProbeLadderCredentialed:
+    return ModelProbeLadderCredentialed(
         rungs=tuple(
-            ModelProbeRung(
+            ModelProbeRungCredentialed(
                 backend_id=backend_id,
                 model_id=f"stub-{backend_id}",
                 endpoint_ref=url,
@@ -73,7 +82,7 @@ def _ladder(*rungs: tuple[str, str, EnumProbeRungCredential]) -> ModelProbeLadde
 
 
 def _dispatch(
-    tmp_path: Path, transport: StubProbeTransport, ladder: ModelProbeLadder
+    tmp_path: Path, transport: StubProbeTransport, ladder: ModelProbeLadderCredentialed
 ) -> tuple[UUID, dict[str, Any]]:
     port = LocalDelegationDispatchPort(
         effect_handler=transport,
@@ -109,7 +118,7 @@ def test_the_credential_declaration_is_a_two_valued_enum_defaulting_to_not_requi
         "not_required",
         "declared_absent",
     }
-    rung = ModelProbeRung(backend_id="a", model_id="m", endpoint_ref=_ONE)
+    rung = ModelProbeRungCredentialed(backend_id="a", model_id="m", endpoint_ref=_ONE)
     assert rung.credential is EnumProbeRungCredential.NOT_REQUIRED
 
 
@@ -118,14 +127,43 @@ def test_the_credential_declaration_takes_the_enum_wire_value_and_nothing_free()
 ):
     base = {"backend_id": "a", "model_id": "m", "endpoint_ref": _ONE}
     assert (
-        ModelProbeRung.model_validate(
+        ModelProbeRungCredentialed.model_validate(
             {**base, "credential": "declared_absent"}
         ).credential
         is EnumProbeRungCredential.DECLARED_ABSENT
     )
     for free_string in ("none", "absent", ""):
         with pytest.raises(ValidationError):
-            ModelProbeRung.model_validate({**base, "credential": free_string})
+            ModelProbeRungCredentialed.model_validate(
+                {**base, "credential": free_string}
+            )
+
+
+def test_the_released_probe_rung_shape_is_unchanged_and_the_credential_rides_a_new_version() -> (
+    None
+):
+    """The wire gate's seam: a pinned consumer's ``ModelProbeRung`` forbids extra keys.
+
+    The released rung and ladder keep exactly their released keys; the credential
+    declaration lives only on the credentialed subclasses, so a payload that does
+    not declare it decodes on the pinned consumer unchanged (OMN-23511).
+    """
+    assert "credential" not in ModelProbeRung.model_fields
+    assert sorted(ModelProbeLadder.model_fields) == ["rungs"]
+    assert sorted(ModelProbeLadderCredentialed.model_fields) == ["rungs"]
+    assert set(ModelProbeRungCredentialed.model_fields) - set(
+        ModelProbeRung.model_fields
+    ) == {"credential"}
+    base = {"backend_id": "a", "model_id": "m", "endpoint_ref": _ONE}
+    with pytest.raises(ValidationError):
+        ModelProbeRung.model_validate({**base, "credential": "declared_absent"})
+    request_ladder = ModelDelegateSkillRequest.model_validate(
+        _wire_request(
+            probe_ladder={"rungs": [{**base, "credential": "declared_absent"}]}
+        )
+    ).probe_ladder
+    assert isinstance(request_ladder, ModelProbeLadderCredentialed)
+    assert request_ladder.rungs[0].credential is _ABSENT
 
 
 @pytest.mark.usefixtures("_routing_is_never_consulted")
