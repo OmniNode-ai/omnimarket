@@ -268,6 +268,18 @@ def install_uv_tool(base: Path, wheel_dir: Path) -> tuple[str, str]:
     return str(tools / "omnibase-core"), str(bin_dir / "onex")
 
 
+def _launcher_template_text(text: str, prefix: Path) -> str:
+    """The launcher text with the venv's interpreter and target swapped for placeholders."""
+    text = text.replace(f"{prefix}/bin/python3", "{interpreter}").replace(
+        f"{prefix}/bin/python", "{interpreter}"
+    )
+    text = text.replace(
+        "from omnibase_core.cli.cli_commands import cli",
+        "from {target_module} import {target_attr}",
+    )
+    return text.replace("sys.exit(cli())", "sys.exit({target_attr}())")
+
+
 def pip_template_from_stub_install(
     base: Path, wheel_dir: Path, installer_python: Path | None = None
 ) -> ModelLauncherTemplate:
@@ -301,15 +313,7 @@ def pip_template_from_stub_install(
             "omnibase-core==1.0.0",
         ]
     )
-    text = (stub / "bin" / "onex").read_text()
-    text = text.replace(f"{stub}/bin/python3", "{interpreter}").replace(
-        f"{stub}/bin/python", "{interpreter}"
-    )
-    text = text.replace(
-        "from omnibase_core.cli.cli_commands import cli",
-        "from {target_module} import {target_attr}",
-    )
-    text = text.replace("sys.exit(cli())", "sys.exit({target_attr}())")
+    text = _launcher_template_text((stub / "bin" / "onex").read_text(), stub)
     pip_version = subprocess.run(
         [
             str(stub / "bin" / "pip")
@@ -331,8 +335,43 @@ def pip_template_from_stub_install(
     )
 
 
+def pipx_template_from_stub_install(
+    base: Path, wheel_dir: Path
+) -> ModelLauncherTemplate:
+    """The launcher template of the pipx on PATH, generated from a stub install through pipx."""
+    home = base / "pipx-template-home"
+    bin_dir = base / "pipx-template-bin"
+    _run(
+        [
+            "pipx",
+            "install",
+            "--python",
+            sys.executable,
+            "--pip-args",
+            f"--no-index --no-deps --find-links {wheel_dir}",
+            "omnibase-core==1.0.0",
+        ],
+        {"PIPX_HOME": str(home), "PIPX_BIN_DIR": str(bin_dir)},
+    )
+    prefix = home / "venvs" / "omnibase-core"
+    text = _launcher_template_text((prefix / "bin" / "onex").read_text(), prefix)
+    pipx_version = subprocess.run(
+        ["pipx", "--version"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    return ModelLauncherTemplate(
+        name="pipx-generated",
+        installer="pipx",
+        installer_version=pipx_version,
+        interpreter_names=("python",),
+        text=text,
+    )
+
+
 def overlay_with_bundled_pip(
-    base: Path, wheel_dir: Path, installer_pythons: Sequence[Path | None] = (None,)
+    base: Path,
+    wheel_dir: Path,
+    installer_pythons: Sequence[Path | None] = (None,),
+    extra_templates: Sequence[ModelLauncherTemplate] = (),
 ) -> ModelReleaseCandidateOverlay:
     """The default overlay plus one generated template per pip that may have written the install."""
     default = load_default_overlay()
@@ -343,7 +382,13 @@ def overlay_with_bundled_pip(
         )
         generated.append(template.model_copy(update={"name": f"pip-generated-{index}"}))
     return default.model_copy(
-        update={"launcher_templates": (*default.launcher_templates, *generated)}
+        update={
+            "launcher_templates": (
+                *default.launcher_templates,
+                *generated,
+                *extra_templates,
+            )
+        }
     )
 
 

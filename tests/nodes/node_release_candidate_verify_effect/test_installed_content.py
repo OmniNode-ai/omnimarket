@@ -73,6 +73,8 @@ def test_untouched_pipx_passes(
     prefix, onex = support.install_pipx(tmp_path, wheel_dir)
     # The pip that writes the launcher (pipx's shared pip, else the bundled one) may write one no
     # checked-in template covers; its template is then generated from a stub install, as the overlay's were.
+    # Newer pipx writes a launcher whose interpreter line carries -E, so its template is generated
+    # through pipx itself.
     candidates = [
         tmp_path / "pipx-home" / "shared" / "bin" / "python",
         Path(prefix) / "bin" / "python",
@@ -87,6 +89,15 @@ def test_untouched_pipx_passes(
                 for c in candidates
                 if shutil.which("pipx") and c.exists() and _has_pip(c)
             ),
+        ),
+        extra_templates=(
+            (
+                support.pipx_template_from_stub_install(
+                    tmp_path / "pipx-template", wheel_dir
+                ),
+            )
+            if shutil.which("pipx")
+            else ()
         ),
     )
     result = HandlerReleaseCandidateVerify().handle(
