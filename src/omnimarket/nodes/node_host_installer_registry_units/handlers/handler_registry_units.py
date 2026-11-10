@@ -371,7 +371,8 @@ class HandlerRegistryUnits:
         ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
         variable of the installing shell, and falls back to the value the unit's last install recorded, so a
         reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
-        never written with a hole in it.
+        never written with a hole in it, except in a top-level key the declaration lists under ``optional_keys``:
+        that key is left out of the document.
         """
         declared = unit.get("config_file")
         if not declared:
@@ -402,7 +403,14 @@ class HandlerRegistryUnits:
                 return {str(key): fill(item) for key, item in node.items()}
             return node
 
-        return json.dumps(fill(declared["document"]), indent=1) + "\n"
+        document = dict(declared["document"])
+        for key in declared.get("optional_keys") or []:
+            if key in document:
+                try:
+                    fill(document[key])
+                except ValueError:
+                    del document[key]
+        return json.dumps(fill(document), indent=1) + "\n"
 
     def config_inputs(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
