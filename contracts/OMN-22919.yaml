@@ -51,6 +51,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -n 0 -p no:randomly -k runner_group
     cwd: .
+- id: dod-omn22919-j8-ages
+  description: The floor-with-ages test passes (the floor shows J8 with ages beside a clean runner-group read). On the merge base the test does not exist, so the same selection collects nothing and exits non-zero; that is the failing control.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov -n 0 -p no:randomly -k ages
+    cwd: .
 - id: dod-omn22919-j8-floor
   description: The served floor reads J8 as something other than broken. Hosted CI cannot reach the floor host (the URL is in FLOOR_SIMPLE_URL), so only the local Done gate runs this unbound check. It reads not_run until the handler runs on the dev bus under piece 8's correlation ids (not part of this change).
   source: manual
