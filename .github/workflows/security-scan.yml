@@ -60,7 +60,13 @@ jobs:
 
       - name: Run Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4
-        if: github.event_name == 'pull_request'
+        # OMN-20413: the action errors "Dependency review is not supported on
+        # this repository" while the repository's Dependency graph is off, which
+        # failed this job for every pull request whatever it changed. It runs
+        # only once the repository variable DEPENDENCY_GRAPH_ENABLED is 'true'
+        # (set it when an admin enables the graph); the Safety check below keeps
+        # scanning the exported requirements on every run.
+        if: github.event_name == 'pull_request' && vars.DEPENDENCY_GRAPH_ENABLED == 'true'
 
       - name: Run Safety Check
         run: |
