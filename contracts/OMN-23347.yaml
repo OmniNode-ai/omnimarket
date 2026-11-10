@@ -34,8 +34,6 @@ dod_evidence:
 - id: dod-omn23347-deploy-single-pass-readback
   description: Hosted-runner deploy check. The derived-read source module GitHub serves at the checked-out commit defines the held window class; at the merge base the module does not exist and the check fails.
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: grep -q "class DerivedWindowCache" src/omnimarket/nodes/node_projection_query_api_effect/ports/derived_row_source.py

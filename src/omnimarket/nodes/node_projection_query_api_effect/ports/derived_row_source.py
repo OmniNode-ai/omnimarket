@@ -4,7 +4,7 @@
 
 The overview exposures (the delegation summary, token usage, model routing,
 quality gate, daily, savings and the cost savings overview) are views over
-``delegation_events``. One evaluation of such a view scans that table (about
+the delegation event table. One evaluation of such a view scans that table (about
 100k rows on the dev lane) several times and costs 0.13 to 2.4 s, and the
 per-key skip scan :class:`TableRowSource` reads a mutable-grain exposure with
 names the relation three times (an anchor, a recursive step that finds nothing,
