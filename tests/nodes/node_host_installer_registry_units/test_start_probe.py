@@ -22,14 +22,19 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     HandlerRegistryUnits,
     load_units,
 )
+from tests.nodes.node_host_installer_registry_units import (
+    test_start_check_environment as sibling,
+)
 from tests.nodes.node_host_installer_registry_units.test_start_check_environment import (
     ROOTS,
     Proofs,
-    brew_python_present,  # noqa: F401  (autouse fixture of the sibling module)
     tick_request,
 )
 
 pytestmark = pytest.mark.unit
+
+# The sibling module's autouse fixture, re-exported by assignment so this module collects it.
+brew_python_present = sibling.brew_python_present
 
 LANDING_UNITS = (
     "landing-snapshot",
