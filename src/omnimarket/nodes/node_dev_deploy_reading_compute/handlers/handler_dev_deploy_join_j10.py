@@ -29,7 +29,7 @@ import yaml
 
 from omnimarket.handlers.emission_sink import ProtocolEmissionSink
 from omnimarket.models.floor_17a import ModelNodeEmission
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
+from omnimarket.models.model_dev_deploy_reading import (
     ModelLabPassReceiptFact,
 )
 from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_join_j10 import (

@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of overlay.yaml: every name, path, command and number is made up.
+parent_lane: parent-lane
+failure_statuses: [placement-failed]
+retry_budget: 3
+backoff_seconds: [120, 600]
+state_file: $HOME/.local/state/onex/lane-notice/state.json
+recovery_timeout_seconds: 120
+recovery_argv: [start-lane, "{lane}", "{brief_file}", "{ticket}", "{parent}", "{model}", "{original}"]
+ack_argv: [ack-row, "{lane}", "{notice}", "{action}"]
+escalate_argv: [escalate-row, "{row}"]

@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23224
+title: The floor's Host disk card counts a host it cannot vouch for as not above the 10 GB bar
+summary: read_disk in node_floor_simple_effect counts a host with an unread disk figure, a host the pool receipt holds no line for, and a host whose figure (receipt age plus the probe's cached= age) is over the source bound as not above the bar. The 10 GB bar and the 900 s bound are the overlay's and are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23224-disk-card-unread-host
+  statement: The Host disk card counts a host under its disk bar, or one whose disk reading is unread or older than its bound, as not above the bar.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the cause is recorded in the pull request body and the lane report with the files and lines of the card (sources.read_disk), the pool receipt writer (onex_lab_run.record_hosts_probe) and the probe cell text (host_capability.disk_cells) -- falsifier: the replay tests that turn red when the unread-figure, missing-host and aged-figure rules are broken'
+  - id: AC2
+    statement: 'AC2: the disk card counts a host under its disk bar, or one whose disk reading is unread or older than its bound, as not above the bar -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_disk_card_unread_host_floor_simple.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The disk card replay of the recorded h053 readings, with a positive control
+  command: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_disk_card_unread_host_floor_simple.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23224-ac1
+  description: The three gaps of the card (unread figure dropped, missing host not counted, kept text age ignored) are each shown by a test that fails when the rule is broken.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_disk_card_unread_host_floor_simple.py -q --no-cov -k "error_a_figure or error_a_host or error_a_receipt"
+    cwd: .
+- id: dod-omn23224-ac2
+  description: The replay with h053 at 7.6 GB reads 6 of 7, and the positive control with every host above 10 GB reads 7 of 7.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_disk_card_unread_host_floor_simple.py -q --no-cov
+    cwd: .
+- id: dod-omn23224-integration-proof
+  description: The floor cycle's golden and error chain tests and the disk card replay run on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23224 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_effect tests/nodes/node_floor_simple_compute -q --no-cov
+    cwd: .
