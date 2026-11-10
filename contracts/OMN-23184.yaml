@@ -1,6 +1,6 @@
 schema_version: 1.0.0
 ticket_id: OMN-23184
-title: The board lists every in-scope work item that needs help with its owner state, and the lab fill takes its candidates from those rows first
+title: The board lists every in-scope work item that needs help with its owner state, and the lab fill takes its candidates from those rows first; and the floor reads scope along the Linear parent chain
 summary: Adds the work list to node_floor_simple_compute (pull requests that are red or conflicting, tickets a lane left stopped, required checks red over an hour from a shared cause nobody owns, each with an owner state), reads it in node_floor_simple_effect from the watcher state, the landing controller's state file and the work-state projection, lets the ticket rule count toward the red class (the reason prs:red held 2 while the controller counted 60 to 70), and makes node_idle_slot_fill_effect take the unowned rows first.
 is_seam_ticket: false
 interface_change: false
@@ -15,10 +15,28 @@ requirements:
     statement: 'AC2: every red or conflicting open in-scope pull request, every stopped in-scope ticket with a named follow-up and no successor, and every required check red over an hour on several pull requests with no cause lease is listed with its owner state, and a class row is red while any member is unowned -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov -k "golden or error"'
   - id: AC3
     statement: 'AC3: the lab fill takes the unowned board rows before its other candidates and takes none a lane or lease owns, and without the idle_slot_fill_board overlay it sends the stored item -- falsifier: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_board_worklist_fill_omn23184.py -q --no-cov'
+- id: req-omn23184-scope-parent-chain
+  statement: The work list reads scope along the parent chain, the snapshot carries the parent, and the floor flags pull requests that cite no ticket.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a ticket, plan task or pull request is in scope when it or any ancestor within the rules hop bound is a goal root or sits in a goal project (by name or id): a child with no project under a goal root or under a Factory ticket is in scope -- falsifier: `uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k ''a_child_with_no_project or matched_by_name_or_by_id or hop_bound''`'
+  - id: AC5
+    statement: 'AC5: a paused ticket on the chain wins over the root or project above it, a paused pull request stays out, and omnimarket#5445 and a chain reaching no root and no goal project stay out -- falsifier: `uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k ''paused_ticket_on_the_chain_leaves or paused_ticket_wins_over_a_project_matched_by_id or 5445 or reaching_no_root''`'
+  - id: AC6
+    statement: 'AC6: the snapshot writer asks for the parent identifier and the project id and writes parentId and projectId, and a file from before the keys still reads -- falsifier: `uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_parent_and_project_id.py -q --no-cov`'
+  - id: AC7
+    statement: 'AC7: an open, non-draft pull request that cites no ticket is flagged, an author the rules overlay exempts is not, and the floor draws one named row with the list -- falsifier: `uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_unticketed_prs_floor_row.py tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k ''one_named_row or no_flagged_pr or cites_no_ticket or author_exclusions''`'
+  - id: AC8
+    statement: 'AC8: the floor reads the shared ticket_scope overlay (project_ids and project_names) into the scope''s in-scope projects, and an absent overlay changes nothing -- falsifier: `uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ticket_scope_overlay.py -q --no-cov -k ''ticket_scope''`'
+  - id: AC9
+    statement: 'AC9: the snapshot carries the ancestors of its issues that are not issues themselves (ancestor_depth levels, kept consistent by the incremental read) and a chain through them reads in scope without making them work items -- falsifier: `uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_ancestors.py tests/nodes/node_work_state_projection_compute/test_work_state_ticket_scope_overlay.py -q --no-cov`'
 evidence_requirements:
 - kind: tests
   description: The work list's golden and error tests, the failing control from tonight's watcher state, and the fill tests
   command: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py tests/nodes/node_idle_slot_fill_effect/test_board_worklist_fill_omn23184.py -q --no-cov
+- kind: tests
+  description: The scope-chain, snapshot and floor row tests pass.
+  command: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py tests/nodes/node_linear_snapshot_effect/test_parent_and_project_id.py tests/nodes/node_floor_simple_compute/test_unticketed_prs_floor_row.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -58,4 +76,66 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23184 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_effect tests/nodes/node_floor_simple_compute tests/nodes/node_idle_slot_fill_effect -q --no-cov
+    cwd: .
+- id: dod-omn23184-scope-ac1
+  description: With the change the four-hop child, the Factory child and the project-id ticket read in scope; at the merge base they read paused and the tests fail.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k 'a_child_with_no_project or matched_by_name_or_by_id or hop_bound'
+    cwd: .
+- id: dod-omn23184-scope-ac2
+  description: A paused ticket, a paused pull request and an unrooted chain read paused; omnimarket#5445 stays out.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k 'paused_ticket_on_the_chain_leaves or paused_ticket_wins_over_a_project_matched_by_id or 5445 or reaching_no_root'
+    cwd: .
+- id: dod-omn23184-scope-ac3
+  description: The snapshot writer emits parentId and projectId from the GraphQL answer, and an old file without them validates.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_parent_and_project_id.py -q --no-cov
+    cwd: .
+- id: dod-omn23184-scope-ac4
+  description: The floor draws one prs:no-ticket row naming the human-authored pull requests that cite no ticket, and none for a bot author.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_unticketed_prs_floor_row.py tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py -q --no-cov -k 'one_named_row or no_flagged_pr or cites_no_ticket or author_exclusions'
+    cwd: .
+- id: dod-omn23184-scope-integration-proof
+  description: Run the scope-chain, snapshot and floor row tests at the pushed head on a lab host. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23184 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_scope_parent_chain.py tests/nodes/node_linear_snapshot_effect/test_parent_and_project_id.py tests/nodes/node_floor_simple_compute/test_unticketed_prs_floor_row.py -q --no-cov
+    cwd: .
+- id: dod-omn23184-scope-ac5
+  description: A ticket whose project id or name is in the ticket_scope overlay reads in scope; with no overlay it reads paused.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ticket_scope_overlay.py -q --no-cov -k 'ticket_scope'
+    cwd: .
+- id: dod-omn23184-scope-ac6
+  description: The chain OMN-23229 -> OMN-23127 -> OMN-22880 -> OMN-22478 with the two middle tickets only in the snapshot's ancestors reads in scope, and paused without them.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_ancestors.py tests/nodes/node_work_state_projection_compute/test_work_state_ticket_scope_overlay.py -q --no-cov
     cwd: .

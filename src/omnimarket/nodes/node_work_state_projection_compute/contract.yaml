@@ -28,7 +28,11 @@ description: >-
   is not a done outcome, its receipt ended with no closing row, or it went silent past the live window, with what it
   left), blocked (its start criterion reads false or unread, naming the blocking items; a pull request with red required
   checks names them) or available. Every lane is an item too. An item outside the goal's scope declaration is projected
-  and marked paused. A source that could not be read is carried in unread, never drawn empty.
+  and marked paused. A ticket, plan task or pull request is in scope when its ticket or any ancestor up the Linear parent
+  chain (to the rules' scope_chain_max_hops) is a goal root or sits in a goal project, by name or id; a paused ticket
+  on the way up wins. An open, non-draft pull request that cites no ticket (title or a Ticket line of the body) by an
+  author the rules do not exempt is flagged needs_ticket. A source that could not be read is carried in unread, never
+  drawn empty.
 input_model:
   name: "ModelWorkStateRequest"
   module: "omnimarket.models.work_state_projection"
