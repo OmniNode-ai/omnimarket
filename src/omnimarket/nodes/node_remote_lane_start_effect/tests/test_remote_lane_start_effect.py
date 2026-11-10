@@ -357,3 +357,46 @@ def test_the_contract_names_the_spi_transport() -> None:
     [dep] = contract["protocol_dependencies"]
     assert dep["protocol"].endswith(":ProtocolLaneHostTransport")
     assert dep["protocol"].startswith("omnibase_spi.")
+
+
+def test_ssh_transport_path_prefix_puts_the_engine_on_the_hosts_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-interactive ssh shell has no user bin directory on its PATH (seen on h051 2026-11-10);
+    the overlay's ``host_path_prefix`` is exported before the engine starts, as the runner script does."""
+    bin_dir = tmp_path / "userbin"
+    bin_dir.mkdir()
+    engine = bin_dir / "lane-engine"
+    engine.write_text("#!/bin/sh\nexit 7\n", encoding="utf-8")
+    engine.chmod(0o755)
+    monkeypatch.setenv("LANE_TEST_BIN", str(bin_dir))
+
+    def transport(prefix: str) -> SshLaneHostTransport:
+        return SshLaneHostTransport(
+            ssh_argv=("ssh",),
+            host_run_root=str(tmp_path / f"runs-{bool(prefix)}"),
+            call_timeout_seconds=30,
+            detach_argv=SETSID_SHIM,
+            path_prefix=prefix,
+        )
+
+    without = transport("")
+    assert _start(without, tmp_path, ("lane-engine",)).state == "started"
+    assert _wait_exit(without).exit_code == 127  # the failing control: not on the PATH
+    with_prefix = transport("$LANE_TEST_BIN")
+    assert _start(with_prefix, tmp_path, ("lane-engine",)).state == "started"
+    assert _wait_exit(with_prefix).exit_code == 7
+
+
+@pytest.mark.parametrize("prefix", ['a"b', "a`b`", "a$(b)", "a b", "a;b"])
+def test_ssh_transport_path_prefix_that_could_run_a_command_is_refused(
+    tmp_path: Path, prefix: str
+) -> None:
+    with pytest.raises(ValueError, match=r"remote_lane_start\.host_path_prefix"):
+        SshLaneHostTransport(
+            ssh_argv=("ssh",),
+            host_run_root=str(tmp_path),
+            call_timeout_seconds=30,
+            detach_argv=SETSID_SHIM,
+            path_prefix=prefix,
+        )
