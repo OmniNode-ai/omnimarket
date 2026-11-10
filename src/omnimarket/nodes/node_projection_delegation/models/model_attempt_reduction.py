@@ -248,10 +248,10 @@ def reduce_delegation_attempts(
         and not declared_failed_acceptance
     )
     cause = (
-        EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
-        if declared_failed_acceptance
-        else EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+        EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
         if not declared_ok and _QUOTA_TEXT_PATTERN.search(error_message or "")
+        else EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+        if declared_failed_acceptance
         else None
     )
     return ModelDelegationAttemptReduction(
