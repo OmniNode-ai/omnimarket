@@ -47,6 +47,7 @@ class ModelFactoryFloorSourceBars(BaseModel):
     running_evidence: int = Field(gt=0)
     required_contexts: int = Field(gt=0)
     goal: int = Field(gt=0)
+    placement: int = Field(gt=0)
 
 
 class ModelFactoryFloorUnresolvedRead(BaseModel):
