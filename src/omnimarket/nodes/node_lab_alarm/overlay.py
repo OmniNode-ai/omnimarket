@@ -6,7 +6,7 @@ Found at ``<root>/node_lab_alarm/overlay.yaml`` under a root named in ``ONEX_SKI
 The package ships ``overlay.example.yaml`` (the in-memory backend, synthetic values). Nothing here has
 a default: an absent key refuses the load and names it, with one exception: ``effects_held`` is the
 block of the effects-held verbs only, so an overlay that lacks it still loads and the broker lag read
-(the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23304).
+(the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23340).
 """
 
 from __future__ import annotations

@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23555
+title: 'The R5 readiness check takes its backend (scripted or real) from the host settings file'
+summary: 'Scenario R5 ships model_backend inmemory in its contract; the unit environment file may name real or inmemory through ONEX_SCENARIO_R5_MODEL_BACKEND for one run, unset keeps the contract value and any other value refuses to build the runner.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23555-ac1
+  statement: 'build_runner reads the backend override from the variable the contract names; unset keeps the contract value, real or inmemory is honoured, anything else refuses.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with ONEX_SCENARIO_R5_MODEL_BACKEND unset the R5 runner keeps the contract backend, with real it selects the real backend, and any other value refuses to build the runner -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py -q`'
+evidence_requirements:
+- kind: tests
+  description: 'The override tests pass; at the merge base the contract names no override variable and the tests fail.'
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23555-override-tests
+  description: 'The override tests pass for unset, real and a refused value.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23555-integration-proof-lab
+  description: 'Runs the override tests at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23555 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py -q --no-cov -p no:randomly'
+    cwd: .
