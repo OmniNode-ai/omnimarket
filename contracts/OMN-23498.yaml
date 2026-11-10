@@ -63,12 +63,11 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q --no-cov -p no:randomly -k "no_longer_dispatches"
     cwd: .
 - id: dod-omn23498-integration-proof
-  description: Reads the live workflow files at the checked-out head for the two removed triggers and the kept dispatch trigger. The post-merge reading (no scheduled or repository_dispatch run after the merge) is taken from the repository's run list on the first day after the merge and posted on the ticket. Hosted CI cannot read that run list, so only the local Done gate runs this unbound item.
+  description: Runs the live-workflow trigger tests at the checked-out head (the sibling pin train and the omniclaude pin bump workflows carry no schedule and no repository_dispatch trigger and keep workflow_dispatch). The new sibling pin train test file is absent at the merge base, so the command fails there. The reading in the running repository (no scheduled or repository_dispatch run after the merge, a by-hand dispatch still starts one) is taken from the run list on the first day after the merge and posted on OMN-23498.
   source: manual
   binds_ac:
   - AC4
-  execution_scope: local_done_gate
   checks:
-  - check_type: command
-    check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_sibling_pin_train_schedule_off_omn23498.py tests/ci/test_omniclaude_release_notice_omn20001.py -q --no-cov -p no:randomly -k "live_workflow or cites_the_ruling"'
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_sibling_pin_train_schedule_off_omn23498.py tests/ci/test_omniclaude_release_notice_omn20001.py -q --no-cov -p no:randomly -k "live_workflow or cites_the_ruling"
     cwd: .
