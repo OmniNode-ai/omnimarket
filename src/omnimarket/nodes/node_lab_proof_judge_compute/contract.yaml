@@ -32,8 +32,28 @@ handler:
   class: HandlerChangedPathLive
   input_model: omnimarket.nodes.node_lab_proof_judge_compute.models.model_changed_path_live.ModelChangedPathLiveRequest
 
-# HandlerChangedPathLive takes the overlay model as a constructor parameter, so
-# the node runs through its own CLI, not handler_routing.
+# The handlers are bound here so each is owned by this node's contract. The node
+# runs through its own CLI verbs: HandlerChangedPathLive takes the overlay model
+# as a constructor parameter.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: changed_path_live
+      handler:
+        name: HandlerChangedPathLive
+        module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_changed_path_live
+    - operation: select_tests
+      handler:
+        name: HandlerTestSelection
+        module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_test_selection
+    - operation: focused_tests
+      handler:
+        name: HandlerFocusedTests
+        module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_focused_tests
+    - operation: retention
+      handler:
+        name: HandlerLogRetention
+        module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_log_retention
 
 descriptor:
   node_archetype: compute
