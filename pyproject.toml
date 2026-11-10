@@ -523,6 +523,7 @@ node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
 node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
 node_cross_cli_originator = "omnimarket.nodes.node_cross_cli_originator"
+node_cross_repo_order_gate_compute = "omnimarket.nodes.node_cross_repo_order_gate_compute"
 node_daily_line_compute = "omnimarket.nodes.node_daily_line_compute"
 node_daily_line_effect = "omnimarket.nodes.node_daily_line_effect"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep"
@@ -673,7 +674,9 @@ node_floor_fill_lines_compute = "omnimarket.nodes.node_floor_fill_lines_compute"
 node_floor_fill_orchestrator = "omnimarket.nodes.node_floor_fill_orchestrator"
 node_floor_fill_owner_count_compute = "omnimarket.nodes.node_floor_fill_owner_count_compute"
 node_floor_fill_reducer = "omnimarket.nodes.node_floor_fill_reducer"
+node_floor_owner_map_publish_effect = "omnimarket.nodes.node_floor_owner_map_publish_effect"
 node_floor_page_api_effect = "omnimarket.nodes.node_floor_page_api_effect"
+node_floor_projection_read_effect = "omnimarket.nodes.node_floor_projection_read_effect"
 node_floor_simple_compute = "omnimarket.nodes.node_floor_simple_compute"
 node_floor_simple_effect = "omnimarket.nodes.node_floor_simple_effect"
 node_floor_simple_scheduled_effect = "omnimarket.nodes.node_floor_simple_scheduled_effect"
@@ -1265,6 +1268,7 @@ node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_serv
 node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_compute"
 node_standup_retrospective_compute = "omnimarket.nodes.node_standup_retrospective_compute"
 node_start_admission_effect = "omnimarket.nodes.node_start_admission_effect"
+node_start_path_drill_effect = "omnimarket.nodes.node_start_path_drill_effect"
 node_state_persist_effect = "omnimarket.nodes.node_state_persist_effect"
 node_stop_drill_effect = "omnimarket.nodes.node_stop_drill_effect"
 node_stop_escalation_effect = "omnimarket.nodes.node_stop_escalation_effect"
@@ -2049,5 +2053,7 @@ markers = [
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
     "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
     "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus (needs FLOOR_FILL_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "closing_row_parity: the remote lane's closing row (needs and report cells) joins the close node, the row writer and the stopped-lane compute the same on the in-memory bus and on a Redpanda bus (needs CLOSING_ROW_PARITY_BOOTSTRAP for the Redpanda leg)",
     "work_state_parity: the work-state projection projects the same items on the in-memory bus and on a Redpanda bus (needs WORK_STATE_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "join_j7_parity: the J7 refusal seam answers the same on the in-memory bus and on a Redpanda bus (needs JOIN_J7_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]

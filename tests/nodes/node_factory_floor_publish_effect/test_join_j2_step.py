@@ -15,6 +15,9 @@ and the fold reads J2 not run.
 
 from __future__ import annotations
 
+import asyncio
+import os
+import signal
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -110,7 +113,7 @@ def _j2_state(sink: InMemoryEmissionSink) -> str:
 def test_golden_the_contract_declares_the_j2_step_before_the_floor_step() -> None:
     step = next(s for s in RT.steps if s.name == "join_j2")
     assert (step.kind, step.module) == ("module", JOIN_J2)
-    assert step.args == ("join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}")
+    assert step.args[:5] == ("join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}")
     assert step.concurrent
     assert not step.required
     names = [s.name for s in RT.steps]
@@ -203,7 +206,9 @@ def _run_main(
         def __init__(self, **_: Any) -> None:
             pass
 
-        async def run_hosts(self, names: tuple[str, ...]) -> tuple[()]:
+        async def run_hosts(
+            self, names: tuple[str, ...], *, deadline_seconds: float | None = None
+        ) -> tuple[()]:
             seen.append(tuple(names))
             return ()
 
@@ -246,3 +251,72 @@ def test_error_control_an_empty_overlay_host_list_runs_every_pooled_host(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     assert _run_main(monkeypatch, tmp_path, ()) == [("pooled-x",)]
+
+
+def test_error_control_the_step_bounds_the_run_inside_its_own_time_limit() -> None:
+    """A step killed at its time limit cannot close the chains it started; the run's own bound comes first."""
+    step = next(s for s in RT.steps if s.name == "join_j2")
+    args = list(step.args)
+    assert "--deadline-seconds" in args
+    deadline = float(args[args.index("--deadline-seconds") + 1])
+    assert 0 < deadline < step.timeout_seconds
+
+
+def test_error_a_terminate_during_the_run_cancels_it_so_open_chains_close_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The terminate reaches the join as a cancel: the join sees a CancelledError, where an unhandled SIGTERM would give it nothing."""
+    cancelled: list[bool] = []
+
+    class _TerminatedJoin:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def run_hosts(
+            self, names: tuple[str, ...], *, deadline_seconds: float | None = None
+        ) -> tuple[()]:
+            os.kill(os.getpid(), signal.SIGTERM)
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled.append(True)
+                raise
+            return ()
+
+    @asynccontextmanager
+    async def _bus(**_: Any) -> Any:
+        yield object()
+
+    class _Caller:
+        def __init__(self, bus: object, *, wait_slack_seconds: int) -> None:
+            pass
+
+        async def start(self) -> None:
+            pass
+
+        async def collect(self, seconds: int) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
+
+    overlay = SimpleNamespace(
+        join_j2=SimpleNamespace(
+            settings=SimpleNamespace(result_wait_slack_seconds=1),
+            emission_home_env="J2_STEP_TEST_HOME",
+            emission_journal_relpath="j2.jsonl",
+            collect_window_seconds=0,
+            hosts=("h-a",),
+        )
+    )
+    monkeypatch.setattr(runtime_host_reading, "load_overlay", lambda: overlay)
+    monkeypatch.setattr(runtime_host_reading, "open_lab_run_bus", _bus)
+    monkeypatch.setattr(runtime_host_reading, "LabWorkCaller", _Caller)
+    monkeypatch.setattr(runtime_host_reading, "JoinJ2", _TerminatedJoin)
+    monkeypatch.setenv("J2_STEP_TEST_HOME", str(tmp_path))
+    code = runtime_host_reading.main(["join-j2", "--bus", "kafka"])
+    assert cancelled == [True]
+    assert code == 1
+    assert "J2-TERMINATED" in capsys.readouterr().err
