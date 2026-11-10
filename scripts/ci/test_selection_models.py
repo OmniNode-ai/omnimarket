@@ -33,17 +33,18 @@ class EnumFullSuiteReason(StrEnum):
     # a full-suite run and takes the full-suite shard matrix; it must never be
     # a single unsplit job.
     NO_NARROWABLE_SELECTION = "no_narrowable_selection"
+    # OMN-23296: node_test_selection_selector_compute found the narrowed paths too
+    # heavy (or their recorded durations unreadable), so the full-suite matrix runs.
+    NARROWED_SELECTION_TOO_HEAVY = "narrowed_selection_too_heavy"
 
 
 # OMN-17232: a directory under tests/ (trailing slash) or one test file that
 # always_selected_paths names; changed-test narrowing still emits directories only.
 TestPath = Annotated[
-    str,
-    StringConstraints(pattern=r"^tests(/[A-Za-z0-9_./-]+)?/$|^tests/[\w/]+\.py$"),
+    str, StringConstraints(pattern=r"^tests(/[A-Za-z0-9_./-]+)?/$|^tests/[\w/]+\.py$")
 ]
 ModuleName = Annotated[
-    str,
-    StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", min_length=1),
+    str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", min_length=1)
 ]
 
 
