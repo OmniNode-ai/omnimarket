@@ -13,7 +13,8 @@ between.
 The in-memory leg runs everywhere. The Redpanda leg runs both real adapters on a declared bus lane
 (OMN-23458), never a typed broker address: the snapshot step's lane publisher and the tick
 orchestrator's own bus reader (no injected factory), with the broker resolved from the lane config
-under the workspace root, on topics unique to the run:
+under the workspace root, on the fixed record topic under a group unique to the run, keeping only its
+own records (each record's provenance carries the run id, OMN-23494):
 
     LANDING_SNAPSHOT_JOIN_LANE=dev OMNIBASE_PATH=<workspace root> uv run pytest tests/nodes/node_pr_landing_snapshot_effect/test_join_landing_snapshot_tick.py -m kafka -q
 
@@ -88,6 +89,12 @@ pytestmark = [pytest.mark.unit]
 LANE_ENV = "LANDING_SNAPSHOT_JOIN_LANE"
 ROOT_ENV = "OMNIBASE_PATH"
 READ_ATTEMPTS = 6
+# The snapshot step's record topic (its redpanda overlay's record_topic) and the join test's granted
+# consumer-group prefix on the dev broker (OMN-23494).
+RECORD_TOPIC = "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
+JOIN_GROUP_PREFIX = "landing-snapshot-join-"
+# The fixed topic holds other runs' and the live unit's records; one read takes up to this many.
+REDPANDA_MAX_SNAPSHOTS = 500
 TICKS = (FIRST, SECOND)
 
 
@@ -124,13 +131,17 @@ class _ListReader:
 
 
 def _tick_overlay(
-    topic: str, lane: str, root: str, group: str = "landing-snapshot-join"
+    topic: str,
+    lane: str,
+    root: str,
+    group: str = "landing-snapshot-join",
+    max_snapshots: int = 10,
 ) -> ModelTickOrchestratorOverlay:
     return ModelTickOrchestratorOverlay.model_validate(
         {
             "backend": "redpanda",
             "act_enabled": False,
-            "max_snapshots": 10,
+            "max_snapshots": max_snapshots,
             "floor_piece": 9,
             "emission_journal": "unused.jsonl",
             "bus_lane": lane,
@@ -142,11 +153,13 @@ def _tick_overlay(
     )
 
 
-def _record_ticks(publisher: Any, record_topic: str) -> list[ModelLandingTickRecord]:
+def _record_ticks(
+    publisher: Any, record_topic: str, facts: Any | None = None
+) -> list[ModelLandingTickRecord]:
     step_overlay = overlay().model_copy(update={"record_topic": record_topic})
     handler = HandlerPrLandingSnapshot(
         overlay=step_overlay,
-        facts_source=facts_source(),
+        facts_source=facts if facts is not None else facts_source(),
         write_source=write_source(),
         recorder=InMemoryLandingTickRecorder(),
         publisher=publisher,
@@ -188,24 +201,32 @@ def _over_inmemory_bus() -> tuple[list[ModelLandingTickRecord], list[str], str]:
 def _over_redpanda(
     lane: str, root: str
 ) -> tuple[list[ModelLandingTickRecord], list[ModelTickSnapshot]]:
-    """Publish through the step's lane publisher; read back through the orchestrator's own reader."""
-    topic = (
-        f"onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1.join-{uuid.uuid4().hex}"
+    """Publish through the step's lane publisher on the fixed record topic; read back through the
+    orchestrator's own reader under a group unique to the run, keeping only this run's records."""
+    run = uuid.uuid4().hex
+    marked = facts_source()
+    # the record's provenance is "<facts source name>+<write source name>": mark it with the run
+    marked.name = f"inmemory-facts-join-{run}"
+    recorded = _record_ticks(
+        LaneBusSnapshotPublisher(lane, Path(root)), RECORD_TOPIC, facts=marked
     )
-    recorded = _record_ticks(LaneBusSnapshotPublisher(lane, Path(root)), topic)
     # no injected factory: the tick orchestrator's src reader opens the declared lane
     source = build_snapshot_source(
         _tick_overlay(
-            topic, lane, root, group=f"landing-snapshot-join-{uuid.uuid4().hex}"
+            RECORD_TOPIC,
+            lane,
+            root,
+            group=f"{JOIN_GROUP_PREFIX}{run}",
+            max_snapshots=REDPANDA_MAX_SNAPSHOTS,
         )
     )
     assert isinstance(source, RedpandaSnapshotSource)
-    snapshots: list[ModelTickSnapshot] = []
+    own: list[ModelTickSnapshot] = []
     for _ in range(READ_ATTEMPTS):
-        snapshots.extend(source.snapshots())
-        if len(snapshots) >= len(TICKS):
+        own.extend(s for s in source.snapshots() if run in s.provenance)
+        if len(own) >= len(TICKS):
             break
-    return recorded, snapshots
+    return recorded, sorted(own, key=lambda s: s.facts.tick)[: len(TICKS)]
 
 
 def _read_by_the_tick_orchestrator(

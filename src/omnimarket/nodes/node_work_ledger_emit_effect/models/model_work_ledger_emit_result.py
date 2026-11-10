@@ -18,6 +18,7 @@ class ModelWorkLedgerEmitResult(BaseModel):
         description="True when the event is durable: on the spool, published or both.",
     )
     row_id: str | None = None
+    ledger_seq: int | None = None
     row_type: str | None = None
     event_type: str | None = None
     topic: str | None = None
