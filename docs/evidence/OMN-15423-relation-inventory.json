@@ -4965,7 +4965,6 @@
         "node_projection_live_events",
         "node_projection_metering_summary",
         "node_projection_pattern_learning",
-        "node_projection_query_api_effect",
         "node_projection_registration",
         "node_projection_replay_check_compute",
         "node_projection_routing_decision",
