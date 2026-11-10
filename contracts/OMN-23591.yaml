@@ -1,0 +1,65 @@
+# Contract of OMN-23591 (carrier OMN-19998). The overlay key and the two failure codes are internal to the J5 join node; no shared topic, event or public interface changes.
+schema_version: 1.0.0
+ticket_id: OMN-23591
+title: The hourly ledger-append run always reports how it ended, inside its own time limit
+summary: 'The J5 join run (piece 6, node_work_ledger_append_effect) writes a start to the emission journal, then calls an append command (overlay append_timeout_seconds, up to that plus 15 s) and up to six projection reads (60 s each), while the publish cycle kills the join_j5 step at 90 s. A run killed or raising after its start leaves the start with no terminal, which the served floor reads as start_without_terminal (corr 3aa8933f27bf7d0ddae24bb81eed8c75, 900 s after the start). The join handler now closes its chain with a typed failure on any raise after the start (ledger_join_interrupted) and on the run deadline (ledger_join_deadline_exceeded); the deadline is the overlay''s run_deadline_seconds, armed by the runtime around the run, inside the publish step''s limit. A replay writes no chain. The J6 symptom on the same board (J6 piece 6 to 7 downstream_missing_typed_failure) is a different cause: the board publisher''s tree and overlay root predate the merged J6 refusal rule, and is not
+  changed here.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23591-terminal
+  statement: Every chain the J5 join starts ends, as a success or a typed failure, inside the publish step's time limit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: when the hourly ledger-append run is interrupted or fails after it announced its start, it writes a typed failure under the same chain id, so no start is left without a terminal -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_terminal.py -q --no-cov -n 0 -p no:randomly, red at the base'
+  - id: AC2
+    statement: 'AC2: the run''s own time limit is read from the overlay, is shorter than the publish step''s time limit in the publish contract, and a run that is still open at it ends with a typed failure -- falsifier: the seam test in tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_terminal.py (-k deadline)'
+  - id: AC3
+    statement: 'AC3: golden chain and error chain tests hold on the in-memory bus and on the real broker for the journal chain the join reads -- falsifier: uv run --frozen pytest tests/nodes/node_join_refusal_effect/test_join_j6_journal_seam.py -q --no-cov -n 0 -p no:randomly, with JOIN_J6_PARITY_BOOTSTRAP naming the lab broker'
+  - id: AC4
+    statement: 'AC4: integrated: after the board publisher runs the merged revision and the overlay value is delivered, the served floor shows no "start_without_terminal" finding for the ledger append piece for a full day -- falsifier: the chain findings of the served floor-simple.json'
+evidence_requirements:
+- kind: tests
+  description: The J5 terminal tests, golden, error, deadline, control and seam, at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_terminal.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23591-ac1-terminal
+  description: 'The chain closes typed on every path out of the run: an append that raises, a projection that raises, a replay (no second chain) and a deadline; the failing control (a sink that drops the failure) reads start_without_terminal. At the merge base 12 of the 13 tests in the file fail (the golden test passes).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_terminal.py -q --no-cov -n 0 -p no:randomly -k "golden or error or control"
+    cwd: .
+- id: dod-omn23591-ac2-deadline-seam
+  description: The overlay example's run_deadline_seconds is below the publish contract's join_j5 step limit, a step limit at or below it fails the seam, and an overlay without the key is refused naming it.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_terminal.py -q --no-cov -n 0 -p no:randomly -k "seam or deadline"
+    cwd: .
+- id: dod-omn23591-ac3-bus-parity
+  description: The J6 seam test, which runs the real J5 handler as the producer, passes in memory and on the lab broker. Hosted CI has no broker, so the broker leg is the unbound local item.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_join_refusal_effect/test_join_j6_journal_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23591-ac4-served-floor
+  description: The served floor shows no start_without_terminal finding for piece 6. Hosted CI cannot reach the floor host, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: curl -s -m 20 "${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(1 if [f for f in d['chain_findings'] if f['code']=='start_without_terminal' and 'piece 6' in f['subject']] else 0)"
+    cwd: .
