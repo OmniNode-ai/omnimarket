@@ -135,6 +135,7 @@ def request(
 
 QUEUE_GROUP_ID = 11
 QUEUE_PREFIX = "hp053-ci-mq-runner"
+SECOND_QUEUE_PREFIX = "hp051-ci-mq-runner"
 
 
 def queue_group(
@@ -142,9 +143,13 @@ def queue_group(
     visibility: EnumGroupVisibility = EnumGroupVisibility.PRIVATE,
     allows_public: bool = False,
     online: tuple[bool | None, ...] = (True, True, True, True),
+    second_online: tuple[bool | None, ...] = (True, True, True, True),
     name: str | None = None,
 ) -> ModelGroupFact:
-    """The overlay-named private merge-queue group with its runners (OMN-23156)."""
+    """The overlay-named private merge-queue group with the runners of both pools (OMN-23156, OMN-23387).
+
+    ``online`` is the first pool (QUEUE_PREFIX), ``second_online`` the pool on the second host.
+    """
     return ModelGroupFact(
         group_id=QUEUE_GROUP_ID,
         name=name or str(overlay()["private_queue"]["group_name"]),
@@ -152,11 +157,15 @@ def queue_group(
         allows_public_repositories=allows_public,
         runners=tuple(
             ModelGroupRunner(
-                name=f"{QUEUE_PREFIX}-{i}",
+                name=f"{prefix}-{i}",
                 labels=("self-hosted", "omnibase-ci-mq"),
                 online=state,
             )
-            for i, state in enumerate(online, start=1)
+            for prefix, states in (
+                (QUEUE_PREFIX, online),
+                (SECOND_QUEUE_PREFIX, second_online),
+            )
+            for i, state in enumerate(states, start=1)
         ),
     )
 
