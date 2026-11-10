@@ -4,7 +4,9 @@
 #
 # The lab alarm's conditions as one node, starting with broker lag: the watched consumer groups are
 # derived from the contracts the running runtime image serves, never listed, and the growth rule reads
-# them. Other conditions of scripts/lab_alarm.py move here one at a time.
+# them. The effects-held condition (OMN-23106) is the second: no live member in the delegate-skill
+# consumer group past its bound opens one fix lane per episode. Other conditions of scripts/lab_alarm.py
+# move here one at a time.
 name: node_lab_alarm
 contract_name: node_lab_alarm
 node_name: node_lab_alarm
@@ -20,15 +22,37 @@ description: >
   each node's contract identity), so a contract version bump or a writer folded into the runtime changes
   the names read in the same step. A run is OK when no watched group grew between two samples, ALARM when
   one grew or lost its offsets, INDETERMINATE when a declared node is absent from the manifest, the
-  manifest or a group cannot be read, or there is no previous sample. The backend (in-memory fixtures or
+  manifest or a group cannot be read, or there is no previous sample. A manifest endpoint that does not
+  answer (dev is redeploying) is retried, then the group names come from the last good manifest while it
+  is within the overlay's staleness bound, its age named; with none the run reads INDETERMINATE as
+  manifest-unreachable, which says the lag was not read. The backend (in-memory fixtures or
   the lane's manifest URL and broker) comes from the overlay.
+
+  The effects-held condition (HandlerEffectsHeld, verb effects-held) reads the groups matching the overlay's
+  prefix and suffix. It is OK while one is Stable with a live member or while none has been absent for the
+  overlay's bound, ALARM once none has for at least the bound, INDETERMINATE when the groups cannot be read.
+  An ALARM opens one lane through the overlay's dispatch command, once per episode; a dispatch that cannot
+  start is retried on the next run and the run exits ALARM with escalation=failed until one starts.
 
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
   class: HandlerBrokerLag
   input_model: omnimarket.nodes.node_lab_alarm.models.model_lab_alarm.ModelBrokerLagCommand
 
-# HandlerBrokerLag takes the overlay, the manifest source, the lag reader and the sample store as
+cli_handlers:
+  - operation: broker_lag
+    handler:
+      name: HandlerBrokerLag
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
+  - operation: effects_held
+    handler:
+      name: HandlerEffectsHeld
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held
+
+# HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
+# ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
+# the same way, and is selected by the CLI verb effects-held; both handlers are built by the CLI, so no
+# handler_routing is declared. HandlerBrokerLag takes the overlay, the manifest source, the lag reader and the sample store as
 # constructor parameters, so the node runs through its own CLI, not handler_routing.
 
 descriptor:
@@ -59,6 +83,12 @@ topics:
   broker_lag_group_read: onex.evt.omnimarket.lab-alarm-broker-lag-group-read.v1
   broker_lag_run_completed: onex.evt.omnimarket.lab-alarm-broker-lag-completed.v1
   broker_lag_run_failed: onex.evt.omnimarket.lab-alarm-broker-lag-failed.v1
+  effects_held_requested: onex.cmd.omnimarket.lab-alarm-effects-held-requested.v1
+  effects_held_run_started: onex.evt.omnimarket.lab-alarm-effects-held-started.v1
+  effects_held_group_read: onex.evt.omnimarket.lab-alarm-effects-held-group-read.v1
+  effects_held_lane_dispatch: onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
+  effects_held_run_completed: onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
+  effects_held_run_failed: onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -69,6 +99,11 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-broker-lag-group-read.v1
   - onex.evt.omnimarket.lab-alarm-broker-lag-completed.v1
   - onex.evt.omnimarket.lab-alarm-broker-lag-failed.v1
+  - onex.evt.omnimarket.lab-alarm-effects-held-started.v1
+  - onex.evt.omnimarket.lab-alarm-effects-held-group-read.v1
+  - onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
+  - onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
+  - onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
 
 overlay:
   node: node_lab_alarm

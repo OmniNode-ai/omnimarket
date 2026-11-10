@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23162
+title: A synthetic delegate request carries a typed probe ladder to the local port, and an organic request carrying one is refused with zero provider calls
+summary: ModelDelegateSkillRequest declares probe_ladder in both modes (rungs, and the new faults mode that names transport faults keyed by model id while the production ladder is resolved as usual), the handler forwards it, and the local port admits it from synthetic traffic with source_surface doctor_escalation_check or readiness_probe.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23162-probe-ladder-end-to-end
+  statement: An organic request carrying a ladder is refused with zero provider calls, a synthetic one runs the rungs it names, and a readiness_probe request is admitted in faults mode with the resolved production order the one tested.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an organic request carrying a ladder is refused with zero provider calls, and a synthetic one runs the rungs it names -- falsifier: `uv run pytest tests/unit/delegation/test_probe_ladder.py -q`'
+  - id: AC2
+    statement: 'AC2: a synthetic request with source_surface readiness_probe is admitted in faults mode and the resolved production order is the one tested -- falsifier: `uv run pytest tests/unit/delegation/test_probe_ladder.py -q -k faults_mode`'
+evidence_requirements:
+- kind: tests
+  description: The probe ladder tests pass, in both modes.
+  command: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23162-ac1-probe-ladder
+  description: Refusal before dispatch with zero transport calls for organic, other-surface, unclassified and no-provenance requests, rungs walked for doctor and readiness_probe traffic, the request field declared and the handler forwarding it.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov
+    cwd: .
+- id: dod-omn23162-ac2-faults-mode
+  description: A readiness_probe request with a faults ladder naming model A as 429 walks the same attempts as production does when A really answers 429, the faulted call never reaches the provider, and the routing contract is consulted. Injected breaks (fault injection removed, readiness_probe not admitted) turn these tests red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k faults_mode
+    cwd: .
+- id: dod-omn23162-wire-gate
+  description: The wire compatibility gate grades the new request key and the new faults module against the omniclaude pin dev-20261108203540-db43d2dfcd3e and passes; against the pin dev-20261108120016-294b7a0fe265 it refuses the key probe_ladder.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k wire_gate_graded_keys
+    cwd: .
+- id: dod-omn23162-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23162 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k faults_mode
+    cwd: .

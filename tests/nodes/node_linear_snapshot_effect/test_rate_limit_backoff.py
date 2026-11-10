@@ -53,6 +53,8 @@ def node(
         "assignee": {"id": VIEWER},
         "labels": {"nodes": [{"name": "machinery"}]},
         "project": {"name": "Delegation Pillar"},
+        "attachments": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+        "children": {"pageInfo": {"hasNextPage": False}, "nodes": []},
     }
     return {**base, **over}
 
