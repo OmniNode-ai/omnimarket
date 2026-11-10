@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pool_usage_verdict_compute
+version: "1.0.0"
+description: One verdict per Claude token-pool label, from measured usage on its five-hour and weekly windows against overlay thresholds
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_pool_usage_verdict_compute: omnimarket.nodes.node_pool_usage_verdict_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, usage, limits, token-pool]
+node_role: compute
+pack: "data"
+display_name: "Pool Usage Verdict Compute"
