@@ -28,8 +28,14 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.handlers.floor_projection import (
+    load_bundle,
+    owners_from_payload,
+    projection_payload,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    find_node_overlay,
     load_structured_overlay,
 )
 from omnimarket.models.floor_17a import (
@@ -87,6 +93,9 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources impor
     CommandMvpRunSource,
     ProtocolMvpRunSource,
     RecordMvpRunSource,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.owner_source import (
+    check_owner_source,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
@@ -193,14 +202,15 @@ class ModelSourcePaths(BaseModel):
     controller_state_dir_env: str
     controller_state_dir_fallback: str
     controller_admissions_name: str
-    controller_state_name: str
+    owner_map_projection: str
     controller_admissions_tail_bytes: int
     friction_report_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
     broker_lag_runs_relpath: str
     broker_lag_condition: str
-    overlay_store_relpath: str
+    projection_reads_relpath: str
+    overlay_store_projection: str
     deploy_agent_relpath: str
     readings_relpath: str
     harness_result_relpath: str
@@ -234,6 +244,15 @@ class ModelStatePaths(BaseModel):
     history_keep_minutes: int
     emission_window_hours: int
     canary_clone: str
+
+
+class ModelAbandonedPieceChains(BaseModel):
+    """The chains of one other piece whose starts this node closes when no process can still close them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    nodes: tuple[str, ...] = Field(min_length=1)
 
 
 class ModelMvpLaunchRuntime(BaseModel):
@@ -272,6 +291,8 @@ class ModelFloorSimpleRuntime(BaseModel):
     # A start older than this with no terminal is closed by the next cycle with a typed failure (OMN-22864).
     abandon_after_seconds: int = Field(gt=0)
     abandon_chains: tuple[str, ...] = ()
+    # Starts of nodes of other pieces that a publish step runs and a kill can strand (OMN-23230), closed the same way.
+    abandon_other_pieces: tuple[ModelAbandonedPieceChains, ...] = ()
     # The chains of this node that a join reads (the cycle and its steps); the chains it emits per lab source row are not
     # among them, because no downstream piece can answer a row that reads a bad value.
     pipeline_chains: tuple[str, ...] = Field(min_length=1)
@@ -559,6 +580,10 @@ class HandlerFloorSimpleTick:
             env,
             file_env=rt.lab_overlay.file_env,
         )
+        if lab_ov.owner_source is not None:
+            floor_path = self._floor_overlay_path(rt, env)
+            if floor_path is not None:
+                check_owner_source(floor_path, lab_ov.owner_source)
         goal_scope = self._load_goal_scope(rt, env)
         try:
             doc, canary = self._cycle(
@@ -615,6 +640,18 @@ class HandlerFloorSimpleTick:
             canary=canary,
         )
 
+    @staticmethod
+    def _floor_overlay_path(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> Path | None:
+        """The file the floor overlay was loaded from, found the way ``load_structured_overlay`` finds it."""
+        pinned = env.get(rt.floor_overlay.file_env, "").strip()
+        return (
+            Path(pinned)
+            if pinned
+            else find_node_overlay(rt.floor_overlay.overlay_id, env)
+        )
+
     def _close_abandoned(
         self,
         rt: ModelFloorSimpleRuntime,
@@ -624,13 +661,26 @@ class HandlerFloorSimpleTick:
         """Close each start of this node's pipeline chains that no process can still close; the count of closures."""
         now = self._clock()
         journal = sink.read(now - timedelta(hours=rt.state.emission_window_hours))
-        closing = abandoned_starts(
-            journal,
-            now=now,
-            abandon_after_s=rt.abandon_after_seconds,
-            piece=floor_ov.rebuild.lab_state_piece,
-            nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
-        )
+        closing = [
+            *abandoned_starts(
+                journal,
+                now=now,
+                abandon_after_s=rt.abandon_after_seconds,
+                piece=floor_ov.rebuild.lab_state_piece,
+                nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
+            ),
+            *(
+                event
+                for other in rt.abandon_other_pieces
+                for event in abandoned_starts(
+                    journal,
+                    now=now,
+                    abandon_after_s=rt.abandon_after_seconds,
+                    piece=other.piece,
+                    nodes=frozenset(other.nodes),
+                )
+            ),
+        ]
         for event in closing:
             sink.emit(event)
         return len(closing)
@@ -735,6 +785,7 @@ class HandlerFloorSimpleTick:
 
         record_path = home / rt.sources.record_relpath
         work_state = read_work_state(home / rt.sources.work_state_relpath)
+        projections = load_bundle(home / rt.sources.projection_reads_relpath)
         controller_dir = Path(
             env.get(rt.sources.controller_state_dir_env, "").strip()
             or Path.home() / rt.sources.controller_state_dir_fallback
@@ -790,7 +841,11 @@ class HandlerFloorSimpleTick:
             ]
             if any(s.kind == "overlay_store" for s in lab_ov.sources):
                 overlay_store = read_overlay_store(
-                    home / rt.sources.overlay_store_relpath, lab_ov, now
+                    projection_payload(
+                        projections, rt.sources.overlay_store_projection, now
+                    ),
+                    lab_ov,
+                    now,
                 )
                 reads.append(overlay_store)
                 for event in overlay_store_events(
@@ -886,7 +941,11 @@ class HandlerFloorSimpleTick:
         )
         worklist = read_worklist(
             watcher_path=home / rt.sources.watcher_relpath,
-            controller_state_path=controller_dir / rt.sources.controller_state_name,
+            owners=owners_from_payload(
+                projection_payload(
+                    projections, rt.sources.owner_map_projection, now
+                ).payload
+            ),
             projection=work_state,
             scope=goal_scope,
             overlay=floor_ov.worklist,

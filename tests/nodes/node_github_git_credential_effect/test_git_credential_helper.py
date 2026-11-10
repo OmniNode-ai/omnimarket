@@ -197,3 +197,43 @@ async def test_a_refusal_from_the_node_is_raised_with_its_reason() -> None:
             asker,
             git_host="github.com",
         )
+
+
+def test_a_broker_refusal_exits_with_the_bus_unavailable_code_and_no_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broker that refuses the helper's read is a typed exit, not a traceback.
+
+    Lab hosts whose login lacks read on the node's result topics hit this
+    (TopicAuthorizationFailedError surfaced as InfraConnectionError); git shows
+    the helper's stderr to the person pushing, so it must name the cause.
+    """
+    from omnibase_infra.errors import InfraConnectionError
+
+    from omnimarket.handlers.scm import scm_git_credential
+
+    class _Refused:
+        async def __aenter__(self) -> Any:
+            raise InfraConnectionError(
+                "Failed to start group-less read of topic "
+                "onex.evt.omnimarket.github-git-credential-issued.v1: "
+                "TopicAuthorizationFailedError"
+            )
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    def refused() -> Any:
+        return _Refused()
+
+    def opener(*_args: object, **_kwargs: object) -> Any:
+        return refused
+
+    monkeypatch.setattr(scm_git_credential, "_bus_opener", opener)
+    result = CliRunner().invoke(
+        git_credential_command, ["get", "--kafka-bootstrap", "127.0.0.1:1"], input=_GET
+    )
+    assert result.exit_code == scm_git_credential.EXIT_BUS_UNAVAILABLE, result.output
+    assert "bus unavailable" in result.output
+    assert "TopicAuthorizationFailedError" in result.output
+    assert "Traceback" not in result.output

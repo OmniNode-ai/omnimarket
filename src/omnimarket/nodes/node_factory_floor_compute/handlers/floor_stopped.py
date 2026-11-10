@@ -28,6 +28,8 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_outp
 NAMES_BRANCH = "branch"
 NAMES_ASK = "ask"
 NAMES_NEXT_STEP = "next-step"
+NAMES_NEEDS = "needs"
+UNPARSED_NEEDS = "unparsed"
 UNREAD_SCOPE_CAUSE = "goal scope unread: no stopped lane is listed"
 
 
@@ -36,10 +38,17 @@ def _key(row: ModelFloorLedgerRow) -> tuple[datetime, str, str]:
 
 
 def _said(row: ModelFloorLedgerRow) -> str:
-    """What the row says: its text, and its reason when the text does not already begin with it."""
+    """What the row says: its text, its reason when the text does not already begin with it, and its report cell."""
     if row.reason and not row.text.startswith(row.reason):
-        return f"{row.reason} {row.text}".strip()
-    return row.text or row.reason
+        said = f"{row.reason} {row.text}".strip()
+    else:
+        said = row.text or row.reason
+    return f"{said} {row.report}".strip() if row.report else said
+
+
+def _typed_needs(row: ModelFloorLedgerRow) -> str:
+    """The closing row's typed needs cell; ``unparsed`` and a missing cell name no ask (OMN-23417)."""
+    return row.needs if row.needs and row.needs != UNPARSED_NEEDS else ""
 
 
 def _branch(text: str, cfg: ModelFloorStoppedConfig) -> str:
@@ -55,11 +64,15 @@ def _head(text: str, cfg: ModelFloorStoppedConfig) -> str:
     return found.group(1) if found else ""
 
 
-def _names(text: str, branch: str, cfg: ModelFloorStoppedConfig) -> tuple[str, ...]:
+def _names(
+    text: str, branch: str, cfg: ModelFloorStoppedConfig, needs: str = ""
+) -> tuple[str, ...]:
     folded = text.casefold()
     names: list[str] = []
     if branch:
         names.append(NAMES_BRANCH)
+    if needs:
+        names.append(NAMES_NEEDS)
     if any(marker.casefold() in folded for marker in cfg.ask_markers):
         names.append(NAMES_ASK)
     if any(marker.casefold() in folded for marker in cfg.next_step_markers):
@@ -198,7 +211,7 @@ def build_stopped(
             continue
         text = _said(ended)
         branch = _branch(text, cfg)
-        names = _names(text, branch, cfg)
+        names = _names(text, branch, cfg, _typed_needs(ended))
         if not names:
             skip("names-no-branch-ask-or-next-step")
             continue
@@ -225,6 +238,7 @@ def build_stopped(
                     ended_at=ended.ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
                     age_minutes=age,
                     names=names,
+                    needs=ended.needs,
                     branch=branch,
                     head=_head(text, cfg),
                     prs=ended.prs,

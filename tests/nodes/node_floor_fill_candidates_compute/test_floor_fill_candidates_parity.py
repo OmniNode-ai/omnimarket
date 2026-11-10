@@ -19,6 +19,7 @@ import json
 import os
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -26,6 +27,7 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.models.floor_fill import (
     ModelFloorFillCandidatesRequest,
+    ModelFloorStartCriterion,
 )
 from omnimarket.models.model_factory_floor_input import ModelFloorLinearIssue
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
@@ -45,14 +47,18 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_
     HandlerFloorFillCandidates,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.tests.support import (
+    LINE,
     NOW,
     READY_10_40,
     all_ready_payloads_ok,
     all_ready_tickets_usable,
     fixture_text,
+    item,
     minutes_before,
+    record,
     request,
     reserved,
+    usable,
 )
 from tests.nodes.node_factory_floor_compute.test_stopped_lane_child_tickets import (
     CHILD,
@@ -60,6 +66,11 @@ from tests.nodes.node_factory_floor_compute.test_stopped_lane_child_tickets impo
     floor_request,
 )
 
+PIECES_FIXTURE = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/fixtures"
+    / "floor-simple-2026-11-07T1232Z.json"
+)
 pytestmark = [pytest.mark.unit, pytest.mark.floor_fill_parity]
 
 BOOTSTRAP_ENV = "FLOOR_FILL_PARITY_BOOTSTRAP"
@@ -87,6 +98,32 @@ def stopped_request(*, children: bool) -> ModelFloorFillCandidatesRequest:
     return request(now=STOPPED_NOW, floor_record=stopped_record(children=children))
 
 
+def criterion_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
+    """The start criterion on the bus: a met one (golden), an unmet one and an unparseable one (error)."""
+    pieces = PIECES_FIXTURE.read_text()
+    now = "2026-11-07T12:35:00Z"
+    tasks = {
+        "criterion:met": "Start when: piece 1 reads WORKING and omnimarket#4922 is merged",
+        "criterion:unmet": "Start when: piece 2 reads WORKING",
+        "criterion:unparseable": "Start when: the operator says go",
+    }
+    return {
+        name: request(
+            now=now,
+            floor_record=record([item("T1")], generated_at="2026-11-07T12:34:00Z"),
+            pieces_record=pieces,
+            merged_refs=("omnimarket#4922",),
+            start_criteria=(
+                ModelFloorStartCriterion(
+                    line_id=LINE, task_id="T1", start_when=start_when
+                ),
+            ),
+            ticket_verdicts=(usable(LINE, "T1", "TCK-1"),),
+        )
+        for name, start_when in tasks.items()
+    }
+
+
 def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
     """The golden scenario (the 10:40Z record) under each ticket input, plus the unread and the held cases."""
     first_line = next(iter(READY_10_40))
@@ -104,6 +141,7 @@ def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
         "fixture:absent": request(floor_record=None),
         "stopped:child-ticket-lane": stopped_request(children=True),
         "stopped:no-snapshot-children": stopped_request(children=False),
+        **criterion_scenarios(),
     }
 
 
@@ -297,6 +335,13 @@ def test_floor_fill_candidates_parity_scenarios_decide_what_the_node_says() -> N
     assert decisions["fixture:stale"]["unread_cause"] == "old"
     assert decisions["fixture:absent"]["unread_cause"] == "absent"
     assert json.loads(fixture_text())["generated_at"] == "2026-11-02T10:40:00Z"
+    met = decisions["criterion:met"]["lines"][0]
+    assert [c["task_id"] for c in met["candidates"]] == ["T1"]
+    unmet = decisions["criterion:unmet"]["lines"][0]
+    assert unmet["candidates"] == []
+    assert unmet["not_ready"][0]["unmet"] == ["piece 2 WORKING (reads NOT WORKING)"]
+    unparseable = decisions["criterion:unparseable"]["lines"][0]
+    assert unparseable["not_ready"][0]["cause"].startswith("start-when-unparseable:")
 
 
 def test_floor_fill_candidates_parity_the_child_ticket_lane_is_a_candidate_only_with_the_snapshot_children() -> (
