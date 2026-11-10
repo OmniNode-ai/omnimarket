@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
 from omnimarket.models.ticket_query.model_ticket_facts import ModelTicketFactsOutput
 from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
@@ -119,9 +120,15 @@ class ProtocolLabFillLiveChecks(Protocol):
 
 
 class ProtocolLabFillMergedWork(Protocol):
-    """The merged pull requests that name a ticket (``repo#number``), read from the PR watcher's state (OMN-23277)."""
+    """The merged pull requests that name a ticket (``repo#number``), read from the PR watcher's state and the canonical clones (OMN-23277, OMN-23376)."""
 
     def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]: ...
+
+    def built_reports(
+        self, ticket: str, ledger_path: str
+    ) -> Sequence[ModelLabFillBuiltReport]:
+        """The ticket's already-built TERMINALs in the ledger (OMN-23376)."""
+        ...
 
 
 class ProtocolLabFillBriefBlocks(Protocol):

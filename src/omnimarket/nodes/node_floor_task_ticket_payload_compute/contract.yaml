@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_task_ticket_payload_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Build the create payload of one floor task's ticket from the plan text, or name what the plan lacks. A pure compute:
+  the line id, the task id and the plan text come in on the request. The payload carries the title from the task heading,
+  the parent from the plan header's ticket line, the task's labelled criteria with their falsifiers copied as written, a
+  Gate line, a Definition of done block that names the merge, the dev deployment and the integration check the task's Lab
+  step names, and one Floor key line; it declares no project, no label and no pillar. A task that lacks a criterion with a
+  falsifier or a named integration check is NEEDS-SPEC (the parts are named), a plan whose header names no ticket is
+  NO-PARENT, and a plan that could not be read is PLAN-UNREAD. Called in process by the floor-fill orchestrator; it makes
+  no Linear call.
+handler:
+  module: omnimarket.nodes.node_floor_task_ticket_payload_compute.handlers.handler_floor_task_ticket_payload
+  class: HandlerFloorTaskTicketPayload
+  input_model: omnimarket.nodes.node_floor_task_ticket_payload_compute.models.model_floor_task_ticket_payload.ModelFloorTaskTicketPayloadRequest
+  output_model: omnimarket.nodes.node_floor_task_ticket_payload_compute.models.model_floor_task_ticket_payload.ModelFloorTaskTicketPayloadResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the floor-fill orchestrator with the plan text of a ready task on the request.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: floor_task_ticket_payload
+    handler:
+      name: HandlerFloorTaskTicketPayload
+      module: omnimarket.nodes.node_floor_task_ticket_payload_compute.handlers.handler_floor_task_ticket_payload
+    input_model: omnimarket.nodes.node_floor_task_ticket_payload_compute.models.model_floor_task_ticket_payload.ModelFloorTaskTicketPayloadRequest
+    output_model: omnimarket.nodes.node_floor_task_ticket_payload_compute.models.model_floor_task_ticket_payload.ModelFloorTaskTicketPayloadResult
+# The node reads no setting: what it needs comes on the request, and the plan's own text decides the verdict.
+protocol_dependencies: []
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+metadata:
+  ticket: OMN-22850
+  origin_tickets:
+  - OMN-17427
+  transport_type: local
+lifecycle: experimental

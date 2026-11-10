@@ -37,6 +37,7 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.adapters.kafka_seam_bus im
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.handlers.handler_seam_deadline import (
     HandlerSeamDeadline,
+    reply_state,
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.handlers.schedule import (
     SeamDeadlineScheduler,
@@ -92,7 +93,10 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         sys.stdout.write(
             f"SEAM seam={reading.seam} verdict={reading.verdict.value} "
             f"crossing={reading.crossing.value} elapsed_ms={reading.elapsed_ms} "
-            f"deadline_s={reading.deadline_seconds} demand={reading.correlation_id}"
+            f"deadline_s={reading.deadline_seconds} "
+            f"send_ack_ms={reading.send_ack_ms} late_reply_ms={reading.late_reply_ms} "
+            f"reply_stamp_ms={reading.reply_stamp_ms} reply={reply_state(reading)} "
+            f"demand={reading.correlation_id}"
             + (f" detail={reading.detail}" if reading.detail else "")
             + "\n"
         )
