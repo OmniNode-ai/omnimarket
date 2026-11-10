@@ -49,5 +49,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23475 -- uv run --frozen pytest tests/nodes/node_factory_floor_compute tests/nodes/node_floor_fill_candidates_compute -q --no-cov'
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23475 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_compute tests/nodes/node_floor_fill_candidates_compute -q --no-cov'
     cwd: .
