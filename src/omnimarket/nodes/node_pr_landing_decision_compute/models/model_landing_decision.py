@@ -37,6 +37,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingOutcomeReason,
     EnumLandingResultKind,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exhaustion_owner import (
+    ModelLandingExhaustionOwner,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -274,6 +277,9 @@ class ModelLandingAction(BaseModel):
     attempts: tuple[ModelLandingCauseAttempt, ...] = Field(
         default=(), description="file_cause_ticket: the attempts the ticket carries."
     )
+    owner: ModelLandingExhaustionOwner | None = Field(
+        default=None, description="Accountable owner carried by a cause park handoff."
+    )
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLandingAction:
@@ -318,6 +324,10 @@ class ModelLandingRecordedOutcome(BaseModel):
     outcome: EnumLandingOutcome
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE
     blocker_fingerprint: str = ""
+    owner: str | None = Field(
+        default=None,
+        description="The change in another repository the outcome waits on (OMN-23345).",
+    )
 
 
 class ModelLandingDegraded(BaseModel):
@@ -327,6 +337,10 @@ class ModelLandingDegraded(BaseModel):
 
     reason: EnumLandingDegradedReason
     subject: str = Field(..., min_length=1)
+    owner: ModelLandingExhaustionOwner | None = Field(
+        default=None,
+        description="Named next-step owner for escalation_exhausted or cause_exhausted.",
+    )
 
 
 class ModelLandingViolation(BaseModel):

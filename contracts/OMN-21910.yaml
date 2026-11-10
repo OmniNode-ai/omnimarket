@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: OMN-21910
+title: "The session handoff is a declared contract with a check that assembles and validates it, and a handoff that leaves a ruling unaccounted for is refused"
+summary: >
+  node_handoff_check_effect assembles a session handoff from the ledger, the PR watcher reader and
+  live probes against the declared handoff contract in its contract.yaml, and validates it. A ruling
+  or consent with no status refuses the handoff; an unhealthy service is recorded and never refuses.
+  The acceptance lines below are the ticket's own text; each falsifier now runs at the node's test
+  paths in this repository, as the dod_evidence commands state.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21910-handoff-contract
+    statement: The handoff is a declared contract with a check that refuses an unaccounted ruling.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a handoff with a planted ruling that has no status of done, in flight, dropped or held is refused, and an unhealthy service is recorded and never a refusal -- falsifier: pytest plugins/onex/skills/handoff/tests -q"
+      - id: AC2
+        statement: "AC2: every factual line carries its source and read time, and a read older than the declared age is marked stale -- falsifier: pytest plugins/onex/skills/handoff/tests -q -k stale"
+      - id: AC3
+        statement: "AC3: the dropped-decision count on the recorded ledger slice of 2026-11-01 reproduces the recorded number -- falsifier: pytest plugins/onex/skills/handoff/tests -q -k dropped_count"
+      - id: AC4
+        statement: "AC4: the resume step reads the newest handoff under beta/handoffs of the shared document clone, re-probes its stale lines and lists what changed -- falsifier: pytest plugins/onex/skills/handoff/tests -q -k resume"
+evidence_requirements:
+  - kind: tests
+    description: "The node's own tests pass."
+    command: "uv run pytest tests/nodes/node_handoff_check_effect/test_handoff_check.py tests/test_golden_chain_node_handoff_check_effect.py -q --no-cov -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21910-ruling-gate
+    description: "A planted ruling with no status refuses the handoff; an unhealthy service is recorded and never refuses."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_handoff_check_effect/test_handoff_check.py tests/test_golden_chain_node_handoff_check_effect.py -q --no-cov -m 'not kafka'"
+        cwd: .
+  - id: dod-omn21910-stale
+    description: "Every factual line carries source and read time; a read past its declared age is marked STALE."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_handoff_check_effect/test_handoff_check.py tests/test_golden_chain_node_handoff_check_effect.py -q --no-cov -k stale"
+        cwd: .
+  - id: dod-omn21910-dropped-count
+    description: "The dropped-decision count reproduces on the recorded slice."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_handoff_check_effect/test_handoff_check.py tests/test_golden_chain_node_handoff_check_effect.py -q --no-cov -k dropped_count"
+        cwd: .
+  - id: dod-omn21910-resume
+    description: "The resume step reads the newest committed handoff, re-probes stale lines and lists a changed line."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_handoff_check_effect/test_handoff_check.py tests/test_golden_chain_node_handoff_check_effect.py -q --no-cov -k resume"
+        cwd: .
+  - id: dod-omn21910-deploy
+    description: The node is registered as an onex.nodes entry point and the onex-handoff-check console script resolves, so a deployed wheel carries the node.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_golden_chain_node_handoff_check_effect.py -k handoff_check_deploy -q --no-cov"
+        cwd: .
+  - id: dod-omn21910-deploy-probe-contract
+    description: "Deploy probe: the node contract GitHub serves at the checked-out commit binds HandlerHandoffCheck; the file is absent at the merge base, so the content read fails there."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_handoff_check_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | contains("HandlerHandoffCheck")' | grep -qx true
+        cwd: .
+  - id: dod-omn21910-integration-proof
+    description: "Integration proof, unbound: the pushed head ran the node's golden chain on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-handoff-check -- env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_node_handoff_check_effect.py -q -n 0 --no-cov -m 'not kafka'"
+        cwd: .

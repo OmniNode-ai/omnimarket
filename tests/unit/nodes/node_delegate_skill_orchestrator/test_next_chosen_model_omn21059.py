@@ -25,6 +25,9 @@ from pydantic import SecretStr
 from omnimarket.enums.enum_delegation_failure_class import (
     EnumDelegationFailureClass,
 )
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_backend_by_id,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -38,8 +41,8 @@ from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secr
 from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_request import (
     ModelLocalSecretRequest,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_backend_by_id
 from tests.chains.local.harness import use_local_store
+from tests.helpers.tenant_registry import mirror_tenant_in_store
 
 pytestmark = pytest.mark.unit
 
@@ -112,8 +115,13 @@ def chosen_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def _dispatch(
-    tmp_path: Path, providers: _Providers, *, model: str | None = None
+    tmp_path: Path,
+    providers: _Providers,
+    *,
+    model: str | None = None,
+    backend_id: str | None = None,
 ) -> dict[str, object]:
+    mirror_tenant_in_store(tmp_path / "evidence.sqlite", "acme")
     port = LocalDelegationDispatchPort(
         effect_handler=providers,
         evidence_db_path=tmp_path / "evidence.sqlite",
@@ -134,6 +142,7 @@ def _dispatch(
             acceptance_criteria=(),
             tenant_id="acme",
             model=model,
+            backend_id=backend_id,
         )
     )
 
@@ -150,6 +159,82 @@ def test_a_healthy_first_model_answers_alone(
 
     assert result["status"] == "completed", result
     assert _models(providers) == [FIRST]
+
+
+@pytest.mark.parametrize(
+    ("pinned", "all_blocked"), [(False, False), (True, False), (False, True)]
+)
+def test_a_known_daily_cap_is_skipped_after_credential_substitution(
+    chosen_models: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pinned: bool,
+    all_blocked: bool,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from omnibase_infra.errors import ProtocolConfigurationError
+
+    from omnimarket.events.provider_quota import credential_ref_for
+    from omnimarket.inference.local_byok_credential_adapter import (
+        resolve_local_byok_credential_ref,
+    )
+    from omnimarket.inference.provider_quota_state import (
+        ModelProviderQuotaBlock,
+        ModelProviderQuotaSnapshot,
+    )
+
+    _add_key("gemini", (GEMINI_MODEL,))
+    now = datetime.now(UTC)
+    state = ModelProviderQuotaSnapshot(
+        tenant_id=None,
+        as_of=now,
+        readable=True,
+        blocks=(
+            ModelProviderQuotaBlock(
+                credential_ref=credential_ref_for(
+                    resolve_local_byok_credential_ref("openrouter")
+                ),
+                provider_id="openrouter",
+                model_scope="*",
+                disposition="disable_until_reset",
+                blocked_until=now + timedelta(hours=12),
+            ),
+        ),
+    )
+    if all_blocked:
+        state = state.model_copy(
+            update={
+                "blocks": (
+                    *state.blocks,
+                    state.blocks[0].model_copy(
+                        update={
+                            "provider_id": "google-gemini",
+                            "credential_ref": credential_ref_for(
+                                resolve_local_byok_credential_ref("gemini")
+                            ),
+                        }
+                    ),
+                )
+            }
+        )
+    monkeypatch.setattr(
+        LocalDelegationDispatchPort, "_quota_snapshot", lambda _self, _observed: state
+    )
+    providers = _Providers(failing=set())
+    if pinned or all_blocked:
+        with pytest.raises(
+            ProtocolConfigurationError, match="provider quota exhausted"
+        ):
+            _dispatch(
+                tmp_path, providers, backend_id="byok-openrouter" if pinned else None
+            )
+        assert providers.calls == []
+        return
+    result = _dispatch(tmp_path, providers)
+    assert result["status"] == "completed", result
+    assert _models(providers) == [GEMINI_MODEL]
+    assert result["skipped_rungs"][0]["rule"] == "provider_quota"
 
 
 def test_a_retryable_failure_on_the_first_model_moves_to_the_second(

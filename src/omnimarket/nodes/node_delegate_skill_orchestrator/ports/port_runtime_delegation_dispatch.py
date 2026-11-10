@@ -36,6 +36,8 @@ from omnimarket.handlers.execution_budget_overlay import largest_execution_budge
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
+from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
+from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     dispatch_stage,
 )
@@ -45,6 +47,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
     RunStepRecorder,
 )
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +142,17 @@ class RuntimeDelegationDispatchPort:
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
+        probe_ladder: ModelProbeLadder | ModelProbeFaults | None = None,
     ) -> dict[str, object]:
+        # OMN-23162: a probe ladder is admitted and run only by the in-process
+        # port, whose provider calls it can name or fault. Refused rather than
+        # dropped, so a probe is never run as an ordinary delegation.
+        if probe_ladder is not None:
+            raise ValueError(
+                "a probe ladder is not carried by this dispatch port's delegation "
+                "request; a synthetic probe runs it through the in-process path "
+                "(onex delegate --bus inmemory)"
+            )
         # OMN-21077: tests run where the workspace is, and a deployed lane has no
         # access to the caller's workspace. Refused rather than dropped, so a
         # caller who named tests is told where they run instead of reading an
@@ -286,6 +299,12 @@ class RuntimeDelegationDispatchPort:
             result["error_message"] = terminal.error_message
         if terminal.payload:
             result.update(_flatten_terminal_payload(terminal.payload))
+        if not result.get("secret_ref"):
+            # OMN-19996: the bus terminal has no secret_ref field; the key a
+            # customer-key rung ran on is stamped on its escalation_history row.
+            ref = _last_attempt_secret_ref(result.get("escalation_history"))
+            if ref is not None:
+                result["secret_ref"] = ref
         return result
 
     async def _publish_run_steps(
@@ -505,6 +524,26 @@ class _BufferedRunStepPublisher:
             )
         )
         return True
+
+
+def _last_attempt_secret_ref(history: object) -> str | None:
+    """The key the last customer-key rung of a bus terminal ran on (OMN-19996).
+
+    The delegation workflow stamps ``secret_ref`` on a rung's escalation_history
+    row only when the effect reported that exact attempt as answered on the
+    customer's own key. Only a minted tenant-key reference is returned; a run
+    with no such row names none.
+    """
+    if not isinstance(history, list | tuple):
+        return None
+    found: str | None = None
+    for row in history:
+        if not isinstance(row, Mapping):
+            continue
+        ref = row.get("secret_ref")
+        if isinstance(ref, str) and is_tenant_credential_ref(ref):
+            found = ref
+    return found
 
 
 def _text(value: object) -> str | None:

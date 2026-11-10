@@ -33,6 +33,11 @@ class ModelRoutingDecision(BaseModel):
         ...,
         description="Name of the LLM model selected for this task.",
     )
+    model_candidates: tuple[str, ...] = Field(
+        default=(),
+        exclude_if=lambda value: not value,
+        description="Ordered models of this selected tenant key; empty on legacy/platform routes.",
+    )
     selected_backend_id: UUID = Field(
         ...,
         description=(

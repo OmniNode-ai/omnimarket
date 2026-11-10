@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21972"
+title: "Compaction probes, leak audit and control contexts"
+summary: >-
+  Adds node_compaction_probe_compute, a pure compute node with no topic. From a typed list of
+  effective rulings (stamp, question= cell, quoted decision, required spans and the superseded
+  ruling's text when one was amended) it builds one probe per ruling from the question, refuses a
+  probe that shares five consecutive words with the quote as PROBE_LEAK, and builds the oracle,
+  empty and inverted control contexts deterministically. The inverted context carries each
+  ruling's predecessor text or a negation of its quote, with every required span redacted. A
+  deterministic lexical judge fixture labels an answer RECALLED, ABSENT or CONTRADICTED.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-compaction-probe-node"
+    statement: |-
+      Probes are built from each effective ruling's question, leaking probes are refused before any arm runs, and the oracle, empty and inverted contexts are built deterministically.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the leak audit refuses the fixture and passes a clean one -- falsifier: `uv run pytest tests/nodes/node_compaction_probe_compute/test_compaction_probes.py -k probe_leak -q --no-cov`, which fails when the fixture is not refused or a clean one is
+      - id: "AC2"
+        statement: |-
+          AC2: for each effective ruling the inverted context carries its predecessor text or a negation of its quoted decision, and none of the effective ruling's required spans appears verbatim; a fixture pair (predecessor, negation) is labelled `CONTRADICTED` by the judge fixture -- falsifier: an effective ruling's required span found in the inverted context, or a fixture pair not contradicting
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the node suite, including the leak fixture, the clean fixture and the inverted-context fixture pair."
+    command: "uv run pytest tests/nodes/node_compaction_probe_compute/test_compaction_probes.py tests/nodes/node_compaction_probe_compute/test_golden_chain_compaction_probe_compute.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21972-ac1-probe_leak"
+    description: "AC1: the leak fixture's probe is refused PROBE_LEAK and the clean fixture's probes are accepted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_probe_compute/test_compaction_probes.py -k probe_leak -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21972-ac2-inverted"
+    description: "AC2: the inverted context carries the predecessor or a negation per ruling, holds no required span verbatim, and the judge fixture labels both fixture entries CONTRADICTED."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_probe_compute/test_compaction_probes.py -k inverted -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21972-deploy-contract"
+    description: "Deploy probe: read the node's contract.yaml at the checked-out commit from GitHub and require the pure descriptor. The base has no such file and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_compaction_probe_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^  purity: pure$' | grep -qx 1
+  - id: "dod-omn21972-integration-proof"
+    description: "The pushed head ran the compaction probe node suite on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21972 -- uv run --frozen pytest tests/nodes/node_compaction_probe_compute/test_compaction_probes.py tests/nodes/node_compaction_probe_compute/test_golden_chain_compaction_probe_compute.py -q -p no:randomly --no-cov"
+        cwd: "."

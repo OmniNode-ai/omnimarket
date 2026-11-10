@@ -25,11 +25,14 @@ COST_DURATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_AGE_SUFFIX = re.compile(r"\s+(?:old|ago)\b", re.IGNORECASE)
+
 _ROW_PATTERN = re.compile(
     r"^\s*(?:[-*]\s+)?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)"
     r"\s*\|\s*([A-Z][A-Z-]*)\s*\|"
 )
 _FIELD_PATTERN = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(.*?)\s*$")
+_MARKED_COST = re.compile(r"lane-|~", re.IGNORECASE)
 _COST_COLON_PATTERN = re.compile(r"^\s*(costs?)\s*:\s*(.*?)\s*$", re.IGNORECASE)
 _TICKET_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _TRAILING_PARENTHETICAL = re.compile(r"\s*\(([^()]*)\)\s*$")
@@ -68,6 +71,77 @@ _GENERIC_CLASSES = frozenset({"refusal", "process", "tooling", "ci", "other"})
 # Rows with no class= are counted and costed, but they are not one class, so
 # they are never flagged as a recurring class.
 UNCLASSIFIED = "unclassified"
+# A writer's class cell that says no more than "no class fits": the class rules may name such a row from its text.
+_BARE_OTHER = "other"
+
+_GROUP_REFERENCE = re.compile(r"\{(\d+)\}")
+
+
+@dataclass(frozen=True)
+class ClassRule:
+    """A caller-supplied rule that names the class of a FRICTION row written with no ``class=`` cell or with a bare ``class=other`` (OMN-22563, OMN-22879).
+
+    ``name`` may carry ``{1}``-style references to the groups of ``pattern``, so one rule names a family
+    (``lab-alarm:{1}`` gives ``lab-alarm:consumer_group_lag``). ``owner`` is who ends the class. The pattern is
+    searched in the row's lane and its whole text; the first rule that matches names the class.
+    """
+
+    name: str
+    owner: str
+    pattern: re.Pattern[str]
+
+    def classify(self, row: LedgerRow) -> tuple[str, str] | None:
+        found = self.pattern.search(f"{row.first('lane')} {row.text}")
+        if found is None:
+            return None
+        name = _normalise_class(
+            _GROUP_REFERENCE.sub(
+                lambda ref: found.group(int(ref.group(1))) or "", self.name
+            )
+        )
+        return (name, self.owner) if name else None
+
+
+def parse_class_rules(values: Iterable[tuple[str, str, str]]) -> tuple[ClassRule, ...]:
+    """Compile ``(name, owner, pattern)`` triples; a rule with an empty field or a pattern that does not compile is refused."""
+    rules: list[ClassRule] = []
+    for name, owner, pattern in values:
+        if not name.strip() or not owner.strip() or not pattern.strip():
+            raise ValueError(
+                f"class rule needs a name, an owner and a pattern: {name!r}"
+            )
+        try:
+            compiled = re.compile(pattern, re.IGNORECASE)
+        except re.error as exc:
+            raise ValueError(
+                f"class rule {name!r}: pattern does not compile: {exc}"
+            ) from exc
+        for ref in _GROUP_REFERENCE.finditer(name):
+            if not 1 <= int(ref.group(1)) <= compiled.groups:
+                raise ValueError(
+                    f"class rule {name!r}: {ref.group(0)} names a group its pattern does not have"
+                )
+        rules.append(ClassRule(name.strip(), owner.strip(), compiled))
+    return tuple(rules)
+
+
+def parse_class_owners(values: Iterable[tuple[str, str]]) -> dict[str, str]:
+    """Compile ``(class, owner)`` pairs into a map from normalised class name to who ends the class (OMN-22563).
+
+    This is for a class a writer already names (a row with a class cell) and that no ticket or lane owns, such as
+    ``tick-liveness``; a class two pairs name twice, or a pair with an empty field, is refused.
+    """
+    owners: dict[str, str] = {}
+    for name, owner in values:
+        key = _normalise_class(name)
+        if not key or not owner.strip():
+            raise ValueError(f"class owner needs a class and an owner: {name!r}")
+        if key in owners:
+            raise ValueError(f"class owner names {key!r} twice")
+        owners[key] = owner.strip()
+    return owners
+
+
 _SIGNAL_NAMES = (
     "correction-row",
     "lane-refused-or-halted",
@@ -141,6 +215,10 @@ class FrictionObservation:
     umbrella_tickets: frozenset[str]
     related: frozenset[str]
     guards: frozenset[str]
+    ruled_by: str = (
+        ""  # the rule that named a row with no class= cell or a bare class=other
+    )
+    owner: str = ""  # who ends the class, from that rule
 
 
 @dataclass
@@ -155,12 +233,15 @@ class ClassAccumulator:
     unparseable_cost_rows: int = 0
     first_seen: datetime | None = None
     last_seen: datetime | None = None
+    resolved_at: datetime | None = None
     lanes: set[str] = field(default_factory=set)
     source_lanes: set[str] = field(default_factory=set)
     tickets: set[str] = field(default_factory=set)
     umbrella_tickets: set[str] = field(default_factory=set)
     related: set[str] = field(default_factory=set)
     guards: set[str] = field(default_factory=set)
+    owners: set[str] = field(default_factory=set)
+    rows_ruled: int = 0
     row_refs: list[dict[str, object]] = field(default_factory=list)
 
 
@@ -336,11 +417,29 @@ def _cost(row: LedgerRow) -> tuple[str, str, float | None]:
         # refused command and the guard's message, whose durations ("the
         # 10-minute ceiling") are not what the refusal cost anyone.
         return "", "hook-no-cost", None
-    inline = COST_DURATION_PATTERN.search(row.text)
+    inline = _inline_cost(row.text)
     if inline is not None:
-        text = inline.group(0)
-        return text, "inline", parse_cost_minutes(text)
+        return inline, "inline", parse_cost_minutes(inline)
     return "", "missing", None
+
+
+def _inline_cost(text: str) -> str | None:
+    """The duration a cell-less row states as its cost, not the first duration its prose mentions (OMN-22879, OMN-23220).
+
+    A duration in the prose can be an age ("a snapshot 390 hours old against a 24 hour limit") or a limit, which is not what the
+    row cost anyone. Durations followed by "old" or "ago" are skipped; of the rest the first one a lane wrote as lane time
+    ("~0.5 lane-hours") or with an estimate marker ("~20 minutes") is the row's own cost and wins over earlier plain ones;
+    with none marked, the first remains.
+    """
+    candidates = [
+        match.group(0)
+        for match in COST_DURATION_PATTERN.finditer(text)
+        if _AGE_SUFFIX.match(text, match.end()) is None
+    ]
+    for candidate in candidates:
+        if _MARKED_COST.search(candidate):
+            return candidate
+    return candidates[0] if candidates else None
 
 
 def _parse_aliases(values: Sequence[str]) -> dict[str, str]:
@@ -358,9 +457,23 @@ def _parse_aliases(values: Sequence[str]) -> dict[str, str]:
 
 
 def _observation(
-    row: LedgerRow, aliases: dict[str, str], umbrella_tickets: frozenset[str]
+    row: LedgerRow,
+    aliases: dict[str, str],
+    umbrella_tickets: frozenset[str],
+    rules: Sequence[ClassRule] = (),
 ) -> FrictionObservation:
     raw_value = row.first("class").strip()
+    ruled_by, owner = "", ""
+    # A bare ``class=other`` names no class (a ``reason`` cell is a class of its own below), so the rules read it as they read a row
+    # with no class cell; a row no rule names stays ``other``, counted and costed as before (OMN-22879).
+    if not raw_value or (
+        _normalise_class(raw_value) == _BARE_OTHER and not row.first("reason").strip()
+    ):
+        for rule in rules:
+            named = rule.classify(row)
+            if named is not None:
+                raw_value, owner, ruled_by = named[0], named[1], rule.name
+                break
     raw_class = raw_value or "unclassified"
     parenthetical = _TRAILING_PARENTHETICAL.search(raw_class)
     restatement = bool(
@@ -404,6 +517,8 @@ def _observation(
         umbrella_tickets=frozenset(umbrellas),
         related=frozenset(related),
         guards=frozenset({guard} if guard and guard.lower() != "none" else set()),
+        ruled_by=ruled_by,
+        owner=owner,
     )
 
 
@@ -445,6 +560,29 @@ def _canonical_classes(observations: Sequence[FrictionObservation]) -> dict[str,
     return canonical
 
 
+def _resolutions(
+    rows: Sequence[LedgerRow], aliases: dict[str, str]
+) -> dict[str, datetime]:
+    """The newest time each class was reported resolved, from the STATUS rows that say ``resolved=<class>``.
+
+    An alarm writes that row only when its own reading of the condition is healthy again, so it is evidence the class
+    ended: a class whose newest FRICTION row is not later than this time is not occurring. A resolved cell may list
+    several classes, separated by commas; ``none`` names no class.
+    """
+    newest: dict[str, datetime] = {}
+    for row in rows:
+        if row.row_type != "STATUS":
+            continue
+        for value in row.first("resolved").split(","):
+            base = _normalise_class(value)
+            if not base or base == "none":
+                continue
+            name = aliases.get(base, base)
+            if name not in newest or row.ts > newest[name]:
+                newest[name] = row.ts
+    return newest
+
+
 def _row_ref(observation: FrictionObservation) -> dict[str, object]:
     return {
         "ts": _stamp(observation.row.ts),
@@ -459,7 +597,16 @@ def _row_ref(observation: FrictionObservation) -> dict[str, object]:
 def _class_json(accumulator: ClassAccumulator) -> dict[str, object]:
     assert accumulator.first_seen is not None
     assert accumulator.last_seen is not None
+    ruled: dict[str, object] = (
+        {
+            "owner": "; ".join(sorted(accumulator.owners)),
+            "rows_ruled": accumulator.rows_ruled,
+        }
+        if accumulator.owners
+        else {}
+    )
     return {
+        **ruled,
         "class": accumulator.name,
         "occurrences": accumulator.occurrences,
         "rows": accumulator.rows,
@@ -468,6 +615,11 @@ def _class_json(accumulator: ClassAccumulator) -> dict[str, object]:
         "unparseable_cost_rows": accumulator.unparseable_cost_rows,
         "first_seen": _stamp(accumulator.first_seen),
         "last_seen": _stamp(accumulator.last_seen),
+        **(
+            {"resolved_at": _stamp(accumulator.resolved_at)}
+            if accumulator.resolved_at is not None
+            else {}
+        ),
         "lanes": sorted(accumulator.lanes),
         "source_lanes": sorted(accumulator.source_lanes),
         "tickets": sorted(accumulator.tickets),
@@ -702,10 +854,12 @@ def build_report(
     duplicates_dropped: int,
     jsonl_provided: bool,
     jsonl_malformed_lines: int,
+    class_rules: Sequence[ClassRule] = (),
+    class_owners: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Build the stable JSON-ready report from deduplicated in-window rows."""
     observations = [
-        _observation(row, aliases, umbrella_tickets)
+        _observation(row, aliases, umbrella_tickets, class_rules)
         for row in rows
         if _is_friction(row)
     ]
@@ -727,6 +881,11 @@ def build_report(
         accumulator.umbrella_tickets.update(observation.umbrella_tickets)
         accumulator.related.update(observation.related)
         accumulator.guards.update(observation.guards)
+        if observation.ruled_by:
+            accumulator.owners.add(observation.owner)
+            accumulator.rows_ruled += 1
+        if class_owners and name in class_owners:
+            accumulator.owners.add(class_owners[name])
         accumulator.row_refs.append(_row_ref(observation))
         rows_with_class += int(bool(observation.row.first("class")))
         if observation.restatement:
@@ -786,6 +945,14 @@ def build_report(
         if accumulator.first_seen is None:
             accumulator.first_seen = observation.row.ts
             accumulator.last_seen = observation.row.ts
+    for resolved_name, resolved_at in _resolutions(rows, aliases).items():
+        resolved_class = canonical.get(resolved_name, resolved_name)
+        resolved_accumulator = accumulators.get(resolved_class)
+        if resolved_accumulator is not None and (
+            resolved_accumulator.resolved_at is None
+            or resolved_at > resolved_accumulator.resolved_at
+        ):
+            resolved_accumulator.resolved_at = resolved_at
     classes = [_class_json(accumulator) for accumulator in accumulators.values()]
     classes.sort(key=_class_sort_key)
     recurring_without_ticket = sorted(
@@ -816,6 +983,11 @@ def build_report(
             "unparseable_cost_rows": len(unparseable),
             "rows_with_class": rows_with_class,
             "rows_without_class": len(observations) - rows_with_class,
+            **(
+                {"rows_classified_by_rule": sum(1 for o in observations if o.ruled_by)}
+                if class_rules
+                else {}
+            ),
         },
         "classes": classes,
         "flags": {

@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -145,6 +146,40 @@ def test_the_writer_declares_the_in_process_dispatch_capability() -> None:
     throwaway loop and every message afterwards dies.
     """
     assert FleetLivenessProjectionWriter.onex_runtime_inprocess_dispatch is True
+
+
+def test_standalone_delivery_saves_the_file_the_floor_reads(
+    writer: FleetLivenessProjectionWriter,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+        load_runner_fleet_strict,
+    )
+    from omnimarket.projection.runner import MessageMeta
+
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+    publisher = _RecordingPublisher()
+    monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
+
+    async def deliver() -> bool:
+        await writer.db.connect()
+        try:
+            return await writer.project_event(
+                _IN_TOPIC,
+                _observation([_runner("runner-a", status="busy")]),
+                MessageMeta(
+                    topic=_IN_TOPIC, partition=0, offset=1, fallback_id="event-a"
+                ),
+            )
+        finally:
+            await writer.db.close()
+
+    assert asyncio.run(deliver()) is True
+    assert len(publisher.published) == 1
+    fleet = load_runner_fleet_strict(tmp_path / "runner-fleet/runner-fleet.json")
+    assert fleet.observed_at == _T0
+    assert [runner.status for runner in fleet.runners] == ["busy"]
 
 
 def test_the_writer_publishes_a_snapshot_delta_for_every_written_row(
@@ -334,6 +369,7 @@ def test_the_applied_payload_carries_the_fleet_facts_not_a_bare_ack(
         "rows_tombstoned",
         "runner_rows",
         "tombstoned_runner_names",
+        "state_file",
     }
     assert result["runner_rows"][0]["status"] == "offline"
 

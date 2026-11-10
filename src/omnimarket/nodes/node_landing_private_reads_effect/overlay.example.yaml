@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic example. The deployment overlay (the private overlay repository) names the real private roots.
+source_backend: directory
+copy_root_env: LANDING_PRIVATE_READS_COPY_ROOT
+include_suffixes: [".py", ".sh", ".json", ".yaml"]
+exclude_prefixes: ["tests/"]
+roots:
+  - name: example-private-tools
+    tokens: [example_private_tools, EXAMPLE_PRIVATE_TOOLS_HOME]
+  - name: example-overlay-store
+    tokens: [example-overlays]
+read_context_patterns:
+  - "[/\\\\]"
+  - "Path\\("
+  - "environ"
+  - "getenv"
+  - "--project"
+  - "_HOME\\b"
+comment_prefixes: ["#"]
+slug_prefixes: ["ExampleOrg/"]
+name_only_patterns: ["#\\d"]
+declared:
+  - file: scripts/controller.py
+    root: example-private-tools
+    destination: omnimarket node (piece 9)

@@ -323,3 +323,101 @@ async def test_real_postgres_scopes_the_tombstone_on_supersession_and_observer()
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
+
+
+@pytest.mark.integration
+async def test_the_fleet_file_the_floor_reads_agrees_with_the_rows_the_database_holds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-21733: the observation saved for the factory floor is the one the real table now holds.
+
+    The writer saves the observation it just projected. This writes two runners through the real upsert, builds the
+    observation from the rows Postgres returns (real ``datetime`` and JSONB values, not the wire strings), redelivers
+    it through the standalone writer and reads its saved file through the floor's own loader. The writer's SQL runs
+    against the real connection, including stale-write refusal on redelivery.
+    """
+    from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+        load_runner_fleet_strict,
+    )
+    from omnimarket.nodes.node_projection_runner_fleet.handlers.handler_fleet_liveness_writer import (
+        FleetLivenessProjectionWriter,
+    )
+    from omnimarket.nodes.node_projection_runner_fleet.models import (
+        ModelRunnerFleetObservationWire,
+    )
+    from omnimarket.projection.runner import MessageMeta
+
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        await _upsert(
+            conn, name="runner-a", status="busy", observed_at=_T0, host="host-051"
+        )
+        await _upsert(
+            conn, name="runner-b", status="offline", observed_at=_T0, host="host-053"
+        )
+        stored = await conn.fetch(
+            f"SELECT runner_name, label_class, labels, host, status, observed_at "
+            f"FROM {_SCHEMA}.runner_fleet_liveness ORDER BY runner_name"
+        )
+        observation = ModelRunnerFleetObservationWire.model_validate(
+            {
+                "schema_version": "1.0.0",
+                "event_type": "runner-fleet-observation",
+                "host": "omni-201",
+                "observed_at": max(row["observed_at"] for row in stored),
+                "runners": [
+                    {
+                        "runner_name": row["runner_name"],
+                        "label_class": row["label_class"],
+                        "labels": json.loads(row["labels"]),
+                        "host": row["host"],
+                        "status": row["status"],
+                        "observed_at": row["observed_at"],
+                    }
+                    for row in stored
+                ],
+            }
+        )
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", "postgresql://fixture/unused")
+        writer = FleetLivenessProjectionWriter()
+        calls: list[str] = []
+
+        async def execute(query: str, *args: object) -> list[asyncpg.Record]:
+            calls.append(query)
+            return await conn.fetch(_scoped(query, _SCHEMA), *args)
+
+        # Keep the real production statements and real driver; redirect only
+        # the database boundary into this test's disposable schema/connection.
+        monkeypatch.setattr(writer.db, "execute", execute)
+        assert await writer.project_event(
+            writer.subscribe_topics[0],
+            observation.model_dump(mode="json"),
+            MessageMeta(partition=0, offset=1, fallback_id="fleet-file-redelivery"),
+        )
+        assert sum("INSERT INTO" in query for query in calls) == 2
+        after = await conn.fetch(
+            f"SELECT host, status, observed_at FROM {_SCHEMA}.runner_fleet_liveness ORDER BY runner_name"
+        )
+        assert len(after) == 2
+        path = tmp_path / "runner-fleet" / "runner-fleet.json"
+        fleet = load_runner_fleet_strict(path)
+        assert fleet.observed_at == _T0
+        assert [(r.host_label, r.status) for r in fleet.runners] == [
+            (row["host"], row["status"]) for row in after
+        ]
+        # The file names each runner as the table does, so an offline runner can be told from a parked one (OMN-22605).
+        named = await conn.fetch(
+            f"SELECT runner_name, label_class, labels FROM {_SCHEMA}.runner_fleet_liveness ORDER BY runner_name"
+        )
+        assert [
+            (r.runner_name, r.label_class, list(r.labels)) for r in fleet.runners
+        ] == [
+            (row["runner_name"], row["label_class"], json.loads(row["labels"]))
+            for row in named
+        ]
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()

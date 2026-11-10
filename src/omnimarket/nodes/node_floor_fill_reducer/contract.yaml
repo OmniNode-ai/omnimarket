@@ -1,0 +1,209 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeFloorFillReducer
+#
+# The stopped-line fill's state as one pure transition function: given the stored row
+# (seq and the entries by key) and one observation, return the next row, the trigger
+# taken (or why the observation was dropped) and the intents. Definition-B:
+#
+#   handle(ModelFloorFillReduceInput) -> ModelFloorFillReduceOutput
+#
+# Stateless and deterministic: no clock read (time and every configured duration or
+# limit come on the observation), no I/O, no overlay key, no language model. The
+# orchestrator of the fill is the only writer of the row and calls this handler in
+# process, so the reducer has no bus surface: no subscription and no topic.
+#
+# The transition table below is held equal to the fixture in
+# tests/test_floor_fill_reducer.py (-k transition_conformance) and to the handler's
+# VALID_TRANSITIONS through fsm_handler_binding (check-fsm-handler-drift). A response
+# for another attempt or lane, a response for an entry in the wrong state and a refused
+# reserve are drops, not edges: the row and its seq stay as they were. The drop reasons
+# are the members of EnumFloorFillDropReason: no-entry, stale-attempt, wrong-state,
+# no-ticket, held, window, uncleared, capacity, no-slot, landing-only, stop-signal.
+name: "node_floor_fill_reducer"
+contract_name: "node_floor_fill_reducer"
+node_name: "node_floor_fill_reducer"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: "REDUCER_GENERIC"
+# Experimental until the fill orchestrator calls this handler in the runtime.
+lifecycle: experimental
+description: >
+  Pure definition-B reducer for the stopped-line fill. Maps the stored row and one
+  observation to the next row, the trigger taken and the StartLane intent. Admits a
+  reserve only for an entry that holds a ticket and has no dispatch state, within the
+  line's capacity, the slot budget, the open-count brake and the stop signals; confirms,
+  times out or clears a reservation; marks a lane ended and expires an entry once its
+  window has passed. The lane name is a function of the key and the attempt count.
+  Never reads a clock, never performs I/O.
+input_model:
+  name: "ModelFloorFillReduceInput"
+  module: "omnimarket.models.floor_fill"
+  description: "The stored row (seq and the entries by key) and one observation."
+output_model:
+  name: "ModelFloorFillReduceOutput"
+  module: "omnimarket.models.floor_fill"
+  description: "The next row, the trigger taken or the drop reason, and the intents."
+handler:
+  module: "omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer"
+  class: "HandlerFloorFillReducer"
+  input_model: "omnimarket.models.floor_fill.ModelFloorFillReduceInput"
+  output_model: "omnimarket.models.floor_fill.ModelFloorFillReduceOutput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer:HandlerFloorFillReducer"
+  handlers:
+    - operation: "reduce_floor_fill"
+      handler:
+        name: "HandlerFloorFillReducer"
+        module: "omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the fill orchestrator with the stored row and one observation.
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Pure transition function of the stopped-line fill's per-key state."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-02"
+  tags:
+    - reducer
+    - floor-fill
+    - fsm
+    - pure
+fsm_handler_binding:
+  - fsm_type: "FLOOR_FILL"
+    handler_module: "omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer"
+    valid_transitions_symbol: "VALID_TRANSITIONS"
+    state_filter:
+      - "NONE"
+      - "RESERVED"
+      - "SENT"
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: floor_fill_entry
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "Dispatch state of one fill entry, keyed by the floor key. NONE is an entry with no dispatch state (a ticket, an attempt count and nothing started). There is no terminal state: an entry lives as long as its key does and is offered again as attempt n+1 after its dispatch state is cleared."
+  initial_state: NONE
+  terminal_states: []
+  error_states: []
+  persistence_enabled: true
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: NONE
+      state_type: operational
+      description: "The entry holds a ticket and no dispatch state."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: RESERVED
+      state_type: operational
+      description: "A lane name is reserved and StartLane was returned; waiting for the CLAIM."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: SENT
+      state_type: operational
+      description: "The CLAIM was found; the key is held inside the window, and the lane counts toward capacity until it has ended."
+  transitions:
+    # row 0: TicketStored creates the entry, or sets the ticket on an entry with no dispatch state
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: none_to_none_on_ticket_stored
+      from_state: NONE
+      to_state: NONE
+      trigger: ticket_stored
+    # row 1: reserve; adds one to attempt, names the lane, returns the intent StartLane
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: none_to_reserved_on_reserve_admitted
+      from_state: NONE
+      to_state: RESERVED
+      trigger: reserve_admitted
+      conditions:
+        - {condition_name: ticket_held, condition_type: expression, expression: "ticket_held == true"}
+        - {condition_name: line_has_capacity, condition_type: expression, expression: "line_has_capacity == true"}
+        - {condition_name: slot_budget_above_zero, condition_type: expression, expression: "slot_budget > 0"}
+        - {condition_name: landing_only_off, condition_type: expression, expression: "landing_only == false"}
+        - {condition_name: no_stop_signal, condition_type: expression, expression: "stop_signal == false"}
+      actions:
+        - action_name: emit_start_lane
+          action_type: intent_emission
+    # row 2: the CLAIM was found; sent_at is set by this first confirming observation and never refreshed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reserved_to_sent_on_confirmed
+      from_state: RESERVED
+      to_state: SENT
+      trigger: confirmed
+      conditions:
+        - {condition_name: identity_matches, condition_type: expression, expression: "identity_matches == true"}
+        - {condition_name: claim_found, condition_type: expression, expression: "claim_found == true"}
+    # row 2: no CLAIM yet and the reservation has not timed out; the entry stays as it is
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reserved_to_reserved_on_reserved_waiting
+      from_state: RESERVED
+      to_state: RESERVED
+      trigger: reserved_waiting
+      conditions:
+        - {condition_name: identity_matches, condition_type: expression, expression: "identity_matches == true"}
+        - {condition_name: no_claim, condition_type: expression, expression: "claim_found == false"}
+        - {condition_name: not_timed_out, condition_type: expression, expression: "reserved_timed_out == false"}
+    # row 2: no CLAIM at reserved_at + reserved_timeout or later; dispatch state cleared, ticket and attempt stay
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reserved_to_none_on_reserved_timed_out
+      from_state: RESERVED
+      to_state: NONE
+      trigger: reserved_timed_out
+      conditions:
+        - {condition_name: identity_matches, condition_type: expression, expression: "identity_matches == true"}
+        - {condition_name: no_claim, condition_type: expression, expression: "claim_found == false"}
+        - {condition_name: timed_out, condition_type: expression, expression: "reserved_timed_out == true"}
+    # row 2: the process effect answered failed, nothing was started; dispatch state cleared at once
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reserved_to_none_on_start_failed
+      from_state: RESERVED
+      to_state: NONE
+      trigger: start_failed
+      conditions:
+        - {condition_name: identity_matches, condition_type: expression, expression: "identity_matches == true"}
+    # row 4: the lane has not ended; the entry stays whole and counts as a live lane even past the window
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: sent_to_sent_on_sent_live
+      from_state: SENT
+      to_state: SENT
+      trigger: sent_live
+      conditions:
+        - {condition_name: identity_matches, condition_type: expression, expression: "identity_matches == true"}
+        - {condition_name: lane_live, condition_type: expression, expression: "lane_ended == false"}
+    # row 4: the lane ended inside the window; ended is set, the entry holds its key and uses no capacity
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: sent_to_sent_on_sent_ended
+      from_state: SENT
+      to_state: SENT
+      trigger: sent_ended
+      conditions:
+        - {condition_name: identity_matches, condition_type: expression, expression: "identity_matches == true"}
+        - {condition_name: lane_ended, condition_type: expression, expression: "lane_ended == true"}
+        - {condition_name: inside_window, condition_type: expression, expression: "window_passed == false"}
+    # row 4: the window has passed and the lane has ended; dispatch state cleared, ticket and attempt stay
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: sent_to_none_on_sent_expired
+      from_state: SENT
+      to_state: NONE
+      trigger: sent_expired
+      conditions:
+        - {condition_name: identity_matches, condition_type: expression, expression: "identity_matches == true"}
+        - {condition_name: lane_ended, condition_type: expression, expression: "lane_ended == true"}
+        - {condition_name: window_passed, condition_type: expression, expression: "window_passed == true"}

@@ -11,9 +11,11 @@ import shutil
 import stat
 import subprocess
 import textwrap
+import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -28,12 +30,23 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
+    ModelPublishStep,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish import (
     main,
 )
 
 pytestmark = pytest.mark.unit
+
+# The only links the page may carry: the site's icons and the vendored theme files published beside it.
+_ICON_AND_THEME_LINKS = [
+    '<link rel="icon" type="image/svg+xml" href="favicon.svg">',
+    '<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">',
+    '<link rel="apple-touch-icon" href="apple-touch-icon.png">',
+    '<link rel="stylesheet" href="onex.theme.light.css">',
+    '<link rel="stylesheet" href="onex.theme.dark.css">',
+    '<link rel="stylesheet" href="onex.theme.warm.css">',
+]
 
 RECORD = {
     "schema_id": "factory-floor/1",
@@ -80,6 +93,7 @@ def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
         serve_url="http://example.invalid:8088/",
         bus_lane="lane-x",
         history_root=str(tmp_path / "kept"),
+        owner_login="owner@example.invalid",
     )
 
 
@@ -134,10 +148,12 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target=target,
             remote_dir="/srv/site",
             serve_url="u",
             history_root="/srv/site",
+            owner_login="owner@example.invalid",
         )
 
 
@@ -145,10 +161,12 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
+            bus_lane="dev",
             ssh_target="lab-web",
             remote_dir=path,
             serve_url="u",
             history_root="/srv/site",
+            owner_login="owner@example.invalid",
         )
 
 
@@ -170,37 +188,76 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     )
     site = tmp_path / "site"
     assert sorted(p.name for p in site.iterdir()) == [
+        "apple-touch-icon.png",
+        "compare.html",
+        "delegation.html",
+        "detail.html",
         "factory-floor.json",
+        "favicon-32.png",
+        "favicon.svg",
         "floor",
         "index.html",
+        "onex.theme.dark.css",
+        "onex.theme.light.css",
+        "onex.theme.warm.css",
         "publish-status.json",
     ]
     assert [p.name for p in (site / "floor").iterdir()] == ["index.html"]
+    for icon in ("favicon.svg", "favicon-32.png", "apple-touch-icon.png"):
+        assert (site / icon).read_bytes() == (
+            NODE_DIR / "page/icons" / icon
+        ).read_bytes()
     assert (
         json.loads((site / "factory-floor.json").read_text())["generated_at"]
         == RECORD["generated_at"]
     )
+    assert (site / "detail.html").read_bytes() == (
+        NODE_DIR / "page/detail.html"
+    ).read_bytes()
     assert (site / "index.html").read_bytes() == (
-        NODE_DIR / "page/index.html"
+        NODE_DIR / "page/simple.html"
     ).read_bytes()
     assert (site / "floor/index.html").read_bytes() == (
         NODE_DIR / "page/floor/index.html"
     ).read_bytes()
     assert result.published == (
+        "onex.theme.light.css",
+        "onex.theme.dark.css",
+        "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
+        "detail.html",
         "index.html",
+        "compare.html",
+        "delegation.html",
         "publish-status.json",
         "factory-floor.json",
     )
-    # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
-    assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
+    # The snapshot goes first and the live record last of the copies; the listing for pruning follows, and the final
+    # status write (OMN-22699) closes the run.
+    assert [
+        c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls if c[0][0] == "ssh"
+    ] == [
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
         False,
         False,
         False,
         False,
         True,
         False,
+        False,
     ]
+    assert "publish-status.json" in ssh.calls[-1][0][-1]
     evidence = json.loads((tmp_path / "state/last-run.json").read_text())
     assert evidence["record_generated_at"] == RECORD["generated_at"]
     assert "ssh_target" not in json.dumps(evidence)
@@ -280,7 +337,18 @@ class Scripted(LocalSsh):
 
 
 FACTORY = "omnimarket.nodes.node_factory_floor_effect"
+FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
+FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
+FLOOR_DELEGATION = "omnimarket.nodes.node_floor_delegation_effect"
+BETA_BOARD = "omnimarket.nodes.node_beta_board_effect"
+JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
+FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
+JOIN_J16 = "omnimarket.nodes.node_join_j16_effect"
+JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
+JOIN_J5 = "omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5"
+JOIN_J6 = "omnimarket.nodes.node_gate_store_effect.runtime_join_j6"
+JOIN_J7 = "omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7"
 HEALTH = {"generated_at": "2026-10-31T12:00:00Z", "days": [], "summary": {}}
 
 
@@ -305,13 +373,39 @@ def _program_calls(runner: LocalSsh) -> list[str]:
     ]
 
 
-def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
+def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floor_effect_last(
     tmp_path: Path,
 ) -> None:
     runner = Scripted({"--json": (0, b"[]", b"")})
     request = _refresh_request(tmp_path)
     HandlerFactoryFloorPublish(runner).handle(request, environ=PLUGIN)
-    assert _program_calls(runner) == ["hosts", "pool", HEALTH_MODULE, FACTORY]
+    calls = _program_calls(runner)
+    # The canary status is published after the page is served: the last call is the floor node's canary step.
+    assert calls[-1] == FLOOR_SIMPLE
+    calls = calls[:-1]
+    # OMN-23018: the comparison reads the simple floor just written, so it is the last refresh step.
+    assert calls[-1] == FLOOR_COMPARE
+    calls = calls[:-1]
+    assert sorted(calls[:-2]) == sorted(
+        [
+            "hosts",
+            "pool",
+            HEALTH_MODULE,
+            JOIN_REFUSAL,
+            JOIN_J2,
+            JOIN_J5,
+            JOIN_J6,
+            JOIN_J7,
+            FLOOR_DELEGATION,
+            FLOOR_PROJECTIONS,
+            BETA_BOARD,
+            FLOOR_SIMPLE,
+            JOIN_J16,
+        ]
+    )
+    assert calls[-2] == FACTORY
+    # OMN-19998: the simple floor is built from the record just written, so it is the one step after it.
+    assert calls[-1] == FLOOR_SIMPLE
     pool = next(c[0] for c in runner.calls if any("onex_lab_run.py" in w for w in c[0]))
     assert pool == [
         "python3",
@@ -328,6 +422,133 @@ def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
     ).read_text() == "[]"
     factory = next(c[0] for c in runner.calls if FACTORY in c[0])
     assert factory[-2:] == ["--home", request.home]
+
+
+def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_not() -> (
+    None
+):
+    steps = {s.name: s for s in load_runtime().steps}
+    assert [n for n, s in steps.items() if s.concurrent] == [
+        "hosts",
+        "pool",
+        "friction",
+        "process_health",
+        "runner_fleet",
+        "join_j2",
+        "join_j5",
+        "join_j6",
+        "join_j7",
+        "friction_classed",
+        "join_refusal",
+        "delegation_tracker",
+        "beta_board",
+        "mvp_launch_reads",
+        "floor_projections",
+        "join_j16",
+    ]
+    assert steps["factory_floor"].concurrent is False
+
+
+def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
+    tmp_path: Path,
+) -> None:
+    barrier = threading.Barrier(
+        3, timeout=10
+    )  # hosts, pool and process_health in flight at once
+
+    class Overlapping(Scripted):
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if (
+                argv[0] != "ssh"
+                and FACTORY not in argv
+                and FLOOR_SIMPLE not in argv
+                and FLOOR_COMPARE not in argv
+                and FLOOR_DELEGATION not in argv
+                and BETA_BOARD not in argv
+                and JOIN_REFUSAL not in argv
+                and JOIN_J16 not in argv
+                and JOIN_J2 not in argv
+                and JOIN_J5 not in argv
+                and FLOOR_PROJECTIONS not in argv
+                and JOIN_J6 not in argv
+                and JOIN_J7 not in argv
+            ):
+                barrier.wait()
+            return super().__call__(argv, stdin, timeout)
+
+    request = _refresh_request(tmp_path)
+    result = HandlerFactoryFloorPublish(
+        Overlapping({"--json": (0, b"[]", b"")})
+    ).handle(request, environ=PLUGIN)
+    assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
+    # This home has neither the friction report nor the runtime read overlay, and PLUGIN names no ledger path, so the
+    # classed friction rollup refuses with no default.
+    assert [s.name for s in result.steps if s.status != "ok"] == [
+        "friction",
+        "runner_fleet",
+        "friction_classed",
+    ]
+
+
+def test_refresh_a_step_with_a_fresh_output_is_skipped_and_a_stale_one_runs(
+    tmp_path: Path,
+) -> None:
+    request = _refresh_request(tmp_path)
+    health = Path(request.home or "") / load_runtime().process_health_relpath
+    health.parent.mkdir(parents=True)
+    health.write_text(json.dumps(HEALTH), encoding="utf-8")
+    fresh = Scripted({"--json": (0, b"[]", b"")})
+    HandlerFactoryFloorPublish(fresh).handle(request, environ=PLUGIN)
+    assert HEALTH_MODULE not in _program_calls(fresh)
+    old = time.time() - 3600
+    os.utime(health, (old, old))
+    stale = Scripted({"--json": (0, b"[]", b"")})
+    HandlerFactoryFloorPublish(stale).handle(request, environ=PLUGIN)
+    assert HEALTH_MODULE in _program_calls(stale)
+
+
+def test_refresh_a_freshness_gate_names_its_file_and_its_age_together() -> None:
+    with pytest.raises(ValueError, match="together or neither"):
+        ModelPublishStep(
+            name="x",
+            kind="command",
+            required=False,
+            timeout_seconds=1,
+            argv=("a",),
+            fresh_relpath="f.json",
+        )
+
+
+def test_transfer_retries_an_ssh_connection_error_and_gives_up_after_the_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish.time.sleep",
+        lambda _s: None,
+    )
+    request = _request(tmp_path)
+
+    class Flaky(LocalSsh):
+        def __init__(self, failures: int) -> None:
+            super().__init__()
+            self.failures = failures
+
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] == "ssh" and self.failures > 0:
+                self.failures -= 1
+                return subprocess.CompletedProcess(
+                    list(argv), 255, b"", b"Network is unreachable"
+                )
+            return super().__call__(argv, stdin, timeout)
+
+    result = HandlerFactoryFloorPublish(Flaky(2)).handle(request, environ={})
+    assert "factory-floor.json" in result.published
+    with pytest.raises(PublishRefusedError, match="exit 255"):
+        HandlerFactoryFloorPublish(Flaky(3)).handle(request, environ={})
 
 
 def test_refresh_a_required_step_failing_publishes_nothing(tmp_path: Path) -> None:
@@ -347,7 +568,7 @@ def test_refresh_an_optional_step_failing_is_published_as_failed_without_its_out
         _refresh_request(tmp_path), environ=PLUGIN
     )
     failed = {s.name: s for s in result.steps if s.status == "failed"}
-    assert set(failed) == {"hosts", "friction"}
+    assert set(failed) == {"hosts", "friction", "runner_fleet", "friction_classed"}
     assert failed["hosts"].detail == "exit 1"
     assert "refused" in failed["hosts"].diagnostic
     status = json.loads((tmp_path / "site/publish-status.json").read_text())
@@ -401,8 +622,17 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
     result = HandlerFactoryFloorPublish(runner).handle(request, environ={})
     assert result.process_health_published is True
     assert result.published == (
+        "onex.theme.light.css",
+        "onex.theme.dark.css",
+        "onex.theme.warm.css",
+        "favicon.svg",
+        "favicon-32.png",
+        "apple-touch-icon.png",
         "floor/index.html",
+        "detail.html",
         "index.html",
+        "compare.html",
+        "delegation.html",
         "publish-status.json",
         "process-health.json",
         "factory-floor.json",
@@ -477,17 +707,18 @@ def test_cli_refusal_exits_two(
 
 
 PAGE = (NODE_DIR / "page/floor/index.html").read_text(encoding="utf-8")
-SHELL = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+SHELL = (NODE_DIR / "page/detail.html").read_text(encoding="utf-8")
 
 
 def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None:
     assert 'DATA_FILE = "factory-floor.json"' in PAGE
     runtime = load_runtime()
     assert runtime.names.data == "factory-floor.json"
-    assert runtime.names.page == "index.html"
+    assert runtime.names.page == "detail.html"
+    assert runtime.names.simple_page == "index.html"
     for field in (
-        "generated_at", "lines", "floor", "sources", "line_id", "status_pill", "percent_built", "stations",
-        "andon", "flag", "reason", "causes", "items", "feeders", "machines", "lanes", "cloud", "shipped", "waiting",
+        "generated_at", "lines", "floor", "sources", "line_id", "condition", "blocker", "progress", "gates", "line_evidence", "evidence_kind", "stations",
+        "reason", "items", "feeders", "machines", "lanes", "cloud", "shipped", "waiting",
         "stoppages", "cost_minutes", "occurrences", "recurring", "tickets", "last_seen", "stale",
         "state", "note", "label", "cap", "lanes_placed", "load_per_core", "mem_free_gb", "mem_total_gb",
         "swap_used_pct", "unit_work", "runners", "refusal", "read_age_min", "title", "title_source", "kind",
@@ -502,6 +733,9 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
         "delegation.json", "outcomes", "routes", "published_at",
     ):  # fmt: skip
         assert re.search(rf"\b{field}\b", PAGE), field
+    for retired in ("status_pill", "percent_built", "andon"):
+        assert retired not in PAGE, retired
+        assert retired not in SHELL, retired
 
 
 def test_page_carries_no_secret_no_absolute_path_no_hostname_and_no_external_url() -> (
@@ -514,8 +748,11 @@ def test_page_carries_no_secret_no_absolute_path_no_hostname_and_no_external_url
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", PAGE, re.IGNORECASE
     )
-    assert PAGE.count("<link") == 1
-    assert '<link rel="icon" href="data:,">' in PAGE
+    assert re.findall(r"<link[^>]*>", PAGE) == [
+        '<link rel="icon" type="image/svg+xml" href="../favicon.svg">',
+        '<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">',
+        '<link rel="apple-touch-icon" href="../apple-touch-icon.png">',
+    ]
     assert "src=" not in PAGE
 
 
@@ -570,7 +807,7 @@ FLOOR_HARNESS = textwrap.dedent(
     """
 )
 
-FLOOR_RECORD = {
+FLOOR_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [
@@ -579,9 +816,11 @@ FLOOR_RECORD = {
             "name": "Second plan",
             "plan_path": "beta/plans/two-plan.md",
             "source": "manifest",
-            "status_pill": "stopped",
-            "percent_built": 37,
-            "andon": {"flag": True, "reason": "gate failed", "causes": ["G9"]},
+            "condition": "stopped",
+            "blocker": {"reason": "gate failed", "evidence": ["G9"]},
+            "progress": {"state": "known", "completed": 1, "total": 2, "percent": 50.0, "note": ""},
+            "gates": {"passed": 0, "failed": 1, "waiting": 0, "items": [{"id": "G9", "state": "failed"}]},
+            "line_evidence": {"merged": 1, "running_on_dev": None, "verified": None, "of": 2},
             "stations": [
                 {"id": "0", "name": "Look first", "state": "done", "feeders": [],
                  "items": [{"id": "a", "title": "Part A", "kind": "lane", "state": "done", "note": "merged", "tickets": [], "prs": []}]},
@@ -643,9 +882,12 @@ def test_page_draws_the_declared_lines_in_order_with_an_unmatched_one_unread() -
     assert "no plan file matches" in lines
     assert "first-plan" in lines
     assert "third-plan" in lines
-    assert "Frame finished" in lines
-    assert "Stopped:</b> gate failed (G9)" in lines
-    assert "About 37 percent built" in lines
+    assert (
+        "Why it is stopped</b><span>gate failed</span><small>Evidence: G9</small>"
+        in lines
+    )
+    assert "1 / 2 work tasks, 50.0%" in lines
+    assert "1 gate: 0 passed, 1 failed, 0 waiting" in lines
 
 
 def test_page_shows_each_number_from_the_record_and_never_a_baked_one() -> None:
@@ -708,6 +950,8 @@ def machine_cells(**cells: object) -> dict[str, object]:
         "swap_used_pct": None,
         "cap": 4,
         "refusal": "",
+        "free_slots": 2,
+        "admission": {"state": "open", "reason": ""},
         "lanes_placed": 2,
         "lanes": ["lane-one", "lane-two"],
         "units_placed": 3,
@@ -724,7 +968,7 @@ def machine_cells(**cells: object) -> dict[str, object]:
     return {**base, **cells}
 
 
-BAYS_RECORD = {
+BAYS_RECORD: dict[str, Any] = {
     **FLOOR_RECORD,
     "floor": {
         **FLOOR_RECORD["floor"],
@@ -757,13 +1001,10 @@ def test_page_draws_a_bay_per_machine_with_its_lanes_against_the_cap() -> None:
     out = _run_floor({"factory-floor.json": BAYS_RECORD})
     grid = out["bayGrid"]
     assert "bay-x" in grid
-    assert (
-        '<span class="mono">2</span> of <span class="mono">4</span> worker slots in use'
-        in grid
-    )
+    assert '<span class="mono">2/4</span> worker slots in use' in grid
     assert grid.count('class="cap"') >= 1
-    assert "0.5" in grid
-    assert "12 GB of 32" in grid
+    assert "0.50 (1.0 = one runnable task per core)" in grid
+    assert "20 of 32 GB used" in grid
     assert "swap used" in grid
     assert "unit work" in grid
     assert "1 placed beside the workers" in grid
@@ -877,6 +1118,93 @@ def test_page_draws_the_delegation_card_from_its_file() -> None:
     assert "A reason the file states." in out["delegBody"]
 
 
+def test_floor_draws_the_projection_report_windows_without_inventing_calls() -> None:
+    from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+        delegation_report,
+    )
+
+    delegation = delegation_report(
+        {
+            "now": "2099-01-01T07:12:00Z",
+            "total_rows": 8,
+            "rows": [
+                {
+                    "correlation_id": "run-a",
+                    "timestamp": "2099-01-01T06:12:00Z",
+                    "data_source": "real",
+                    "attempt_history": [
+                        {
+                            "backend_id": "local-coder",
+                            "tier": "local",
+                            "model_id": "model-a",
+                            "host": "gpu-a",
+                            "acceptance_decision": "accept",
+                        }
+                    ],
+                }
+            ],
+        },
+        [],
+    )
+    body = _run_floor(
+        {"factory-floor.json": FLOOR_RECORD, "delegation.json": delegation}
+    )["delegBody"]
+    assert "2h: 1 local / 1 delegated runs" in body
+    assert "24h: 1 local / 1 delegated runs" in body
+    assert "1 accepted" in body
+    assert "delegation calls" not in body
+
+
+def test_floor_keeps_a_failed_projection_read_unread_and_escapes_its_cause() -> None:
+    from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+        HandlerDelegationReport,
+    )
+    from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
+        ModelDelegationReportRequest,
+    )
+
+    delegation = (
+        HandlerDelegationReport()
+        .handle(ModelDelegationReportRequest(), environ={})
+        .report
+    )
+    assert delegation["status"] == "unread"
+    delegation["reason"] = "projection <unavailable>"
+    body = _run_floor(
+        {"factory-floor.json": FLOOR_RECORD, "delegation.json": delegation}
+    )["delegBody"]
+    assert "Unread" in body
+    assert "projection &lt;unavailable&gt;" in body
+    assert 'class="stack unread"' in body
+    assert "delegation calls" not in body
+
+
+def test_floor_preserves_a_quiet_projection_window_as_zero() -> None:
+    from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+        delegation_report,
+    )
+
+    delegation = delegation_report(
+        {"now": "2099-01-01T07:12:00Z", "total_rows": 8, "rows": []}, []
+    )
+    body = _run_floor(
+        {"factory-floor.json": FLOOR_RECORD, "delegation.json": delegation}
+    )["delegBody"]
+    assert "2h: 0 local / 0 delegated runs" in body
+    assert "24h: 0 local / 0 delegated runs" in body
+    assert "8 stored events" in body
+
+
+def test_floor_preserves_zero_calls_in_a_legacy_count_file() -> None:
+    body = _run_floor(
+        {
+            "factory-floor.json": FLOOR_RECORD,
+            "delegation.json": {"generated_at": "2099-01-01T07:12:00Z", "outcomes": []},
+        }
+    )["delegBody"]
+    assert "0 delegation calls" in body
+
+
 # ---- The tab page (OMN-21733): a dashboard and four tabs on one page.
 
 SHELL_HARNESS = textwrap.dedent(
@@ -893,7 +1221,7 @@ SHELL_HARNESS = textwrap.dedent(
       appendChild(c) { this.children.push(c); }, focus() {}});
     const saved = {};
     globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), createElement: () => mk("created"), addEventListener() {}};
-    globalThis.window = {addEventListener() {}, matchMedia: () => ({matches: false})};
+    globalThis.window = {addEventListener() {}, matchMedia: () => ({matches: false}), scrollTo() {}, scrollY: 0};
     globalThis.location = {hash: opts.hash || "", search: "", origin: "null"};
     globalThis.history = {replaceState(_a, _b, h) { globalThis.location.hash = h; }, pushState(_a, _b, h) { globalThis.location.hash = h; }};
     globalThis.localStorage = opts.storeBlocked
@@ -919,7 +1247,7 @@ SHELL_HARNESS = textwrap.dedent(
 )
 
 SHELL_NOW = "2099-01-01T00:10:00Z"
-SHELL_RECORD = {
+SHELL_RECORD: dict[str, Any] = {
     "schema_id": "factory-floor/1",
     "generated_at": "2099-01-01T00:00:00Z",
     "lines": [
@@ -928,9 +1256,11 @@ SHELL_RECORD = {
             "name": "Second plan",
             "plan_path": "beta/plans/two-plan.md",
             "source": "manifest",
-            "status_pill": "stopped",
-            "percent_built": 37,
-            "andon": {"flag": True, "reason": "PR repo#9 CI red (2 red of 10)", "causes": ["PR repo#9 CI red (2 red of 10)"]},
+            "condition": "stopped",
+            "blocker": {"reason": "PR repo#9 CI red (2 red of 10)", "evidence": ["repo#9"]},
+            "progress": {"state": "known", "completed": 1, "total": 2, "percent": 50.0, "note": ""},
+            "gates": {"passed": 0, "failed": 1, "waiting": 0, "items": [{"id": "G9", "state": "failed"}]},
+            "line_evidence": {"merged": 1, "running_on_dev": None, "verified": None, "of": 2},
             "stations": [
                 {"id": "0", "name": "Look first", "state": "done", "feeders": [],
                  "items": [{"id": "a", "title": "Part A", "kind": "lane", "state": "done", "note": "", "tickets": [], "prs": []},
@@ -1012,7 +1342,7 @@ SHELL_MANIFEST = {
     ],
 }  # fmt: skip
 
-SHELL_FILES = {
+SHELL_FILES: dict[str, object] = {
     "factory-floor.json": SHELL_RECORD,
     "publish-status.json": SHELL_STATUS,
     "process-health.json": SHELL_HEALTH,
@@ -1020,7 +1350,9 @@ SHELL_FILES = {
 }
 
 
-def _run_shell(files: dict[str, object], **opts: object) -> dict[str, object]:
+def _run_shell(
+    files: dict[str, object], tz: str | None = None, **opts: object
+) -> dict[str, object]:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -1029,13 +1361,14 @@ def _run_shell(files: dict[str, object], **opts: object) -> dict[str, object]:
             node,
             "-e",
             SHELL_HARNESS,
-            str(NODE_DIR / "page/index.html"),
+            str(NODE_DIR / "page/detail.html"),
             json.dumps({k: json.dumps(v) for k, v in files.items()}),
             json.dumps(opts),
         ],
         capture_output=True,
         check=False,
         timeout=60,
+        env=None if tz is None else {**os.environ, "TZ": tz},
     )
     assert done.returncode == 0, done.stderr.decode()
     return cast(
@@ -1058,20 +1391,23 @@ def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first()
     assert labels == [
         ("dashboard", "Dashboard"),
         ("floor", "Factory floor"),
+        ("machines", "Machines"),
         ("process", "Process before and after"),
         ("map", "Decision map"),
-        ("quality", "Decision quality"),
     ]
-    for pane in ("dashboard", "floor", "process", "map", "quality"):
+    for pane in ("dashboard", "floor", "machines", "process", "map"):
         assert f'id="pane-{pane}"' in SHELL
+    assert "pane-quality" not in SHELL
     assert 'role="tablist"' in SHELL
     for page in (
         'page: "floor/?embed=1"',
         'page: "reports/process-health/?embed=1"',
         'page: "reports/decision-map/?embed=1"',
-        'page: "reports/decision-quality/?embed=1"',
     ):
         assert page in SHELL
+    assert "decision-quality" not in SHELL
+    assert "decision_quality" not in SHELL
+    assert "Decision quality" not in SHELL
 
 
 def test_page_tabs_open_the_dashboard_with_no_hash_and_no_remembered_tab() -> None:
@@ -1100,8 +1436,7 @@ def test_page_tabs_a_hash_that_names_no_tab_falls_back_to_the_remembered_one() -
     result = _run_shell(SHELL_FILES, hash="#nonsense", stored="map")
     assert result["sel"] == ["tab-map"]
     result = _run_shell(SHELL_FILES, stored="quality")
-    assert result["sel"] == ["tab-quality"]
-    assert result["hash"] == "#quality"
+    assert result["sel"] == ["tab-dashboard"]
 
 
 def test_page_tabs_blocked_browser_storage_still_opens_the_dashboard() -> None:
@@ -1118,9 +1453,10 @@ def test_page_dashboard_draws_each_line_with_its_state_and_its_real_stop_reason(
     dash = out["dash"]
     assert "Second plan" in dash
     assert "Stopped" in dash
-    assert "PR repo#9 CI red (2 red of 10)" in dash
-    assert "37% built" in dash
+    assert "change repo#9 failing checks (2 red of 10)" in dash
+    assert "1 / 2 work tasks, 50.0%" in dash
     assert "never-matched-plan" in dash
+    assert "no plan file yet" in dash
     assert "not in the record" in dash
     assert dash.index("Line A") < dash.index("Line B")
     assert "#dashboard/line-plan-two" in dash
@@ -1130,15 +1466,15 @@ def test_page_dashboard_draws_each_machine_with_its_lanes_load_and_memory() -> N
     dash = _shell_out(_run_shell(SHELL_FILES))["dash"]
     assert "Bay one" in dash
     assert "Rebuilding the widget" in dash
-    assert '1</span> lanes placed of <span class="mono">4' in dash
-    assert "load per core" in dash
-    assert "12.5 GB of 32" in dash
-    assert "repo#9 · CI red" in dash
+    assert '<span class="mono">1</span> of <span class="mono">4</span> workers' in dash
+    assert "Load per core" in dash
+    assert "19.5 of 32 GB used" in dash
+    assert "failing checks · change repo#9" in dash
     assert "Bay two" in dash
     assert "in repair" in dash
     assert "down for repair since the move" in dash
-    assert "1 live lane names no machine the floor draws" in dash
-    assert "stalled" in dash
+    assert "1 live worker names no machine the floor draws" in dash
+    assert "gone quiet" in dash
     assert "#dashboard/lane-lane-x" in dash
 
 
@@ -1149,8 +1485,8 @@ def test_page_dashboard_takes_todays_merges_and_reds_from_the_series_and_the_lan
     assert ">232<" in dash
     assert "178 to product code" in dash
     assert "the day before 161" in dash
-    assert "9 dev-branch red episodes opened today" in dash
-    assert "45 repo-hours red" in dash
+    assert "9 stretches of failing checks opened on the main branch today" in dash
+    assert "45 repo-hours failing" in dash
     assert "Shipped seven" in dash
     assert "Series day 2099-01-01, so far" in dash
     for baked in ("232 merges", "251 of 251"):
@@ -1170,7 +1506,7 @@ def test_page_dashboard_shows_the_age_of_every_source_and_marks_an_old_or_unread
 ):
     out = _shell_out(_run_shell(SHELL_FILES))
     dash = out["dash"]
-    assert "Pull request watcher, last tick" in dash
+    assert "Change watcher, last tick" in dash
     assert (
         'class="age-stale"' in dash
     )  # the watcher tick is decades older than the record
@@ -1188,15 +1524,15 @@ def test_page_tabs_carry_a_lamp_and_a_caption_read_from_the_same_files() -> None
     out = _shell_out(_run_shell(SHELL_FILES))
     assert "1 of 2 lines stopped" in out["sub-dashboard"]
     assert "3 better, 1 worse" in out["sub-process"]
-    assert "snapshot" in out["sub-map"]
-    assert "data unread" in out["sub-quality"]
+    assert "Snapshot" in out["word-map"]
+    assert "sub-quality" not in out
 
 
 def test_page_dashboard_without_a_record_draws_nothing_and_says_it_is_unread() -> None:
     out = _shell_out(_run_shell({}))
     assert "the factory record is unread" in out["dash"]
     assert "could not be read" in out["banner"]
-    assert "unread" in out["sub-dashboard"]
+    assert "not read" in out["sub-dashboard"]
 
 
 def test_page_tabs_shell_carries_no_secret_no_host_and_no_external_url() -> None:
@@ -1207,7 +1543,7 @@ def test_page_tabs_shell_carries_no_secret_no_host_and_no_external_url() -> None
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", SHELL, re.IGNORECASE
     )
-    assert SHELL.count("<link") == 1
+    assert re.findall(r"<link[^>]*>", SHELL) == _ICON_AND_THEME_LINKS
     assert "src=" not in SHELL
     assert SHELL.count("${esc(") > 20
     for raw in ("${L.name}", "${m.label}", "${l.title}", "${p.title}"):
@@ -1373,10 +1709,11 @@ def test_the_record_step_keeps_its_place_among_the_refresh_steps_when_it_is_flag
     env["CLAUDE_PLUGIN_ROOT"] = str(tmp_path / "plugin")
     result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ=env)
     names = [s.name for s in result.steps]
-    assert names[-1] == load_runtime().record_step
+    assert names[-3] == load_runtime().record_step
+    assert names[-2:] == ["floor_simple", "floor_compare"]
     assert names.count(load_runtime().record_step) == 1
-    assert result.steps[-1].status == "failed"
-    assert "alpha-plan" in result.steps[-1].detail
+    assert result.steps[-3].status == "failed"
+    assert "alpha-plan" in result.steps[-3].detail
 
 
 def test_nothing_is_flagged_when_the_overlay_declares_nothing_readable(
@@ -1398,14 +1735,26 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
                 "name": "alpha-plan",
                 "plan_path": "alpha-plan",
                 "source": "undrawn",
-                "status_pill": "stopped",
-                "percent_built": 0,
-                "stations": [],
-                "andon": {
-                    "flag": True,
+                "condition": "stopped",
+                "blocker": {
                     "reason": "plan file not found: no plan path contains alpha-plan",
-                    "causes": ["plan file not found: no plan path contains alpha-plan"],
+                    "evidence": [],
                 },
+                "progress": {
+                    "state": "unknown",
+                    "completed": None,
+                    "total": None,
+                    "percent": None,
+                    "note": "no plan file",
+                },
+                "gates": {"passed": 0, "failed": 0, "waiting": 0, "items": []},
+                "line_evidence": {
+                    "merged": 0,
+                    "running_on_dev": None,
+                    "verified": None,
+                    "of": 0,
+                },
+                "stations": [],
             },
         ],
     }
@@ -1423,7 +1772,172 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
         }
     )
     lines = out["lines"]
-    assert (
-        "<b>Stopped:</b> plan file not found: no plan path contains alpha-plan" in lines
-    )
+    assert "<span>plan file not found: no plan path contains alpha-plan</span>" in lines
     assert "No plan read for this line" not in lines
+
+
+def _cloud_account(name: str, **cells: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "name": name,
+        "ready": True,
+        "login": "ok",
+        "cap": 17,
+        "open_sessions": 0,
+        "record_note": "",
+        "credit_remaining": 244.0,
+        "credit_read_at": "2098-12-30T00:00:00Z",
+        "rate_status": "",
+        "rate_resets_at": "",
+    }
+    return {**base, **cells}
+
+
+def _cloud_card(accounts: list[dict[str, object]], **cloud_cells: object) -> str:
+    record = {
+        **BAYS_RECORD,
+        "floor": {
+            **BAYS_RECORD["floor"],
+            "cloud": {
+                "state": "read",
+                "note": "",
+                "accounts": accounts,
+                "sessions": [],
+                "lamps": [],
+                **cloud_cells,
+            },
+        },
+    }
+    grid = _run_floor({"factory-floor.json": record})["bayGrid"]
+    start = grid.index('id="bay-cloud"')
+    end = grid.find("<article", start)
+    return grid[start : end if end != -1 else len(grid)]
+
+
+def test_page_draws_the_open_figure_the_record_gives_and_the_stale_note_beside_it() -> (
+    None
+):
+    card = _cloud_card(
+        [
+            _cloud_account(
+                "acct-a",
+                open_sessions=3,
+                record_note="the accounts file holds 7 active entries; 3 sessions are open",
+            )
+        ]
+    )
+    assert "3 open of 17" in card
+    assert "the accounts file holds 7 active entries; 3 sessions are open" in card
+
+
+def test_page_draws_both_ready_accounts_and_an_unread_cap_or_credit_as_unread() -> None:
+    card = _cloud_card(
+        [
+            _cloud_account("acct-a", open_sessions=3),
+            _cloud_account(
+                "acct-b",
+                open_sessions=0,
+                cap=None,
+                credit_remaining=None,
+                credit_read_at="",
+            ),
+        ]
+    )
+    assert "acct-a" in card
+    assert "acct-b" in card
+    assert "3 open of 17" in card
+    assert "0 open · cap unread" in card
+    assert "credit unread" in card
+    assert "of 0" not in card
+
+
+def test_page_draws_an_open_count_the_record_could_not_read_as_unread_never_zero() -> (
+    None
+):
+    card = _cloud_card([_cloud_account("acct-a", open_sessions=None)])
+    assert "open unread" in card
+    assert "0 open" not in card
+
+
+def test_page_headline_open_count_is_the_sum_of_the_drawn_accounts() -> None:
+    card = _cloud_card(
+        [
+            _cloud_account("acct-a", open_sessions=3),
+            _cloud_account("acct-b", open_sessions=2, cap=None),
+        ]
+    )
+    per_account = [int(n) for n in re.findall(r'class="mono">(\d+) open', card)]
+    assert per_account == [3, 2]
+    headline = re.search(
+        r'id="cloud-open">(\d+) open sessions across (\d+) accounts', card
+    )
+    assert headline is not None
+    assert (int(headline.group(1)), int(headline.group(2))) == (sum(per_account), 2)
+
+
+def _canary_calls(ssh: LocalSsh) -> list[int]:
+    return [
+        index
+        for index, (argv, _stdin) in enumerate(ssh.calls)
+        if argv[0] != "ssh" and "--publish-canary" in argv
+    ]
+
+
+def test_canary_is_published_after_the_last_file_of_the_page_is_served(
+    tmp_path: Path,
+) -> None:
+    ssh = LocalSsh()
+    result = HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    assert [(s.name, s.status) for s in result.after_publish] == [
+        ("floor_canary", "ok")
+    ]
+    canary = _canary_calls(ssh)
+    assert len(canary) == 1
+    served = [
+        index
+        for index, (argv, _stdin) in enumerate(ssh.calls)
+        if argv[0] == "ssh" and index != len(ssh.calls) - 1
+    ]
+    assert served
+    assert max(served) < canary[0]
+    # Only the final status write follows it (OMN-22699): it names the canary step's seconds.
+    assert canary[0] == len(ssh.calls) - 2
+    assert "publish-status.json" in ssh.calls[-1][0][-1]
+
+
+def test_the_floor_step_defers_the_canary_to_the_publish() -> None:
+    steps = {step.name: step for step in load_runtime().steps}
+    assert "--defer-canary" in steps["floor_simple"].args
+    after = {step.name: step for step in load_runtime().after_publish_steps}
+    assert after["floor_canary"].required
+    assert "--publish-canary" in after["floor_canary"].args
+
+
+def test_a_failed_page_upload_publishes_no_canary_so_the_failure_stays_visible(
+    tmp_path: Path,
+) -> None:
+    ssh = LocalSsh(fail_name="factory-floor.json")
+    with pytest.raises(PublishRefusedError):
+        HandlerFactoryFloorPublish(ssh).handle(_request(tmp_path), environ={})
+    assert _canary_calls(ssh) == []
+
+
+def test_a_canary_that_cannot_be_published_fails_the_run_after_the_page_is_served(
+    tmp_path: Path,
+) -> None:
+    class CanaryFails(LocalSsh):
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] != "ssh" and "--publish-canary" in argv:
+                self.calls.append((list(argv), stdin))
+                return subprocess.CompletedProcess(list(argv), 2, b"", b"push refused")
+            return super().__call__(argv, stdin, timeout)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    with pytest.raises(PublishRefusedError, match="floor_canary"):
+        HandlerFactoryFloorPublish(CanaryFails()).handle(
+            _request(tmp_path, state_dir=str(state)), environ={}
+        )
+    assert (tmp_path / "site" / "factory-floor.json").is_file()  # the page is served
+    assert (state / load_runtime().evidence_file).is_file()  # and the run says so

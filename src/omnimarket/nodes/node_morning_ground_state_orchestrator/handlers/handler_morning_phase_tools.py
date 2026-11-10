@@ -204,28 +204,29 @@ class HandlerMorningPhaseTools:
     async def run(
         self, run: ModelMorningGroundStateRequest, phase: ModelMorningPhaseRequest
     ) -> dict[str, JsonValue] | None:
-        phase_tools(
-            phase.label
-        )  # refuses a phase with no tool set before anything starts
+        from .handler_morning_phase_session_files import (
+            HandlerMorningPhaseSessionFiles,
+            ModelMorningPhaseSessionFilesRequest,
+        )
+
+        phase_tools(phase.label)  # refuses before any session starts
         refuse_stranding_commit(phase.label)
         ctx = self.context(run, phase.label, phase.model)
-        run_dir = self._run_dir(ctx, run)
-        context_file = run_dir / f"{phase.label}.context.json"
-        context_file.write_text(ctx.model_dump_json(indent=2), encoding="utf-8")
-        config = mcp_config_for(context_file, run_dir / f"{phase.label}.calls.jsonl")
-        refuse_unless_morning_server(config)
-        config_file = run_dir / f"{phase.label}.mcp.json"
-        config_file.write_text(json.dumps(config, indent=2), encoding="utf-8")
-        schema_file = run_dir / f"{phase.label}.schema.json"
-        schema_file.write_text(json.dumps(phase.schema_definition, sort_keys=True))
-        argv = transport_argv(phase.model, config_file, schema_file)
+        files = HandlerMorningPhaseSessionFiles().handle(
+            ModelMorningPhaseSessionFilesRequest(
+                context=ctx,
+                correlation_id=run.correlation_id,
+                schema_definition=phase.schema_definition,
+                state_root=self._state_root,
+            )
+        )
         with tempfile.TemporaryDirectory(prefix="morning-phase-") as cwd:
             try:
                 # In a thread, so two phases the node gathers (ground-state and triage) run
                 # side by side as the workflow intends, instead of one blocking the loop.
                 done = await asyncio.to_thread(
                     subprocess.run,
-                    argv,
+                    files.argv,
                     input=phase.prompt + TOOLS_NOTE + phase_note(phase.label),
                     capture_output=True,
                     text=True,
@@ -242,7 +243,7 @@ class HandlerMorningPhaseTools:
             raise MorningPhaseToolsError(
                 f"{phase.label}: the agent transport refused the session: {done.stderr[-400:]}"
             )
-        (run_dir / f"{phase.label}.session.json").write_text(
+        (files.run_dir / f"{phase.label}.session.json").write_text(
             done.stdout, encoding="utf-8"
         )
         try:

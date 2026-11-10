@@ -2013,22 +2013,28 @@ class TestExternalSweepExclusions:
         )
 
     def test_registry_has_exactly_measured_valid_entries(self) -> None:
-        assert set(gate.EXTERNAL_SWEEP_EXCLUSIONS) == {
+        shipped = gate.load_resolved_registry(gate.REGISTRY_FILE)[0]
+        assert set(shipped) == {
             "AC1 exact revision row on PostgreSQL 16",
             "auto-tag",
         }
-        assert gate.validate_sweep_exclusions(gate.EXTERNAL_SWEEP_EXCLUSIONS) == []
-        active, expired = gate.active_sweep_exclusions(
-            gate.EXTERNAL_SWEEP_EXCLUSIONS, now=self.NOW
-        )
-        assert active == frozenset(gate.EXTERNAL_SWEEP_EXCLUSIONS)
+        assert gate.validate_sweep_exclusions(shipped) == []
+        active, expired = gate.active_sweep_exclusions(shipped, now=self.NOW)
+        assert active == frozenset(shipped)
         assert expired == ()
         assert not active.intersection(EXPECTED_EXTERNAL_CONTEXTS)
-        for entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.values():
-            assert entry.reason.strip()
-            assert entry.ticket == "OMN-17427"
-            assert entry.added == "2026-10-17"
-            assert entry.expires == "2026-12-20"
+        # OMN-23029: the shape of every entry is pinned, not the literal values of
+        # whichever entries happen to be shipped. Pinning ticket, added and expires
+        # to one tuple made the registry unextendable: a second owner's exception
+        # could not be added without editing an assertion that was never about it.
+        # What must hold of EVERY entry is that it is reasoned, carries a real
+        # ticket, is dated, and expires after it was added.
+        for name, entry in shipped.items():
+            assert entry.reason.strip(), name
+            assert gate._SWEEP_TICKET_RE.match(entry.ticket), (name, entry.ticket)
+            assert gate._SWEEP_DATE_RE.match(entry.added), (name, entry.added)
+            assert gate._SWEEP_DATE_RE.match(entry.expires), (name, entry.expires)
+            assert entry.expires > entry.added, (name, entry.added, entry.expires)
         with pytest.raises(FrozenInstanceError):
             self._entry().reason = "changed"
 
@@ -2379,17 +2385,27 @@ class TestSweepIsWiredIntoProductionPoller:
         assert gate.main(args) == EXIT_SUCCESS
 
     def test_main_rejects_malformed_registry(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            gate, "EXTERNAL_SWEEP_EXCLUSIONS", {"X": {"reason": "untyped"}}
+        malformed = tmp_path / "malformed_registry.json"
+        malformed.write_text(
+            json.dumps(
+                {
+                    "exclusions": {"X": {"reason": "untyped"}},
+                    "check_modes": {},
+                    "refusals": [],
+                }
+            ),
+            encoding="utf-8",
         )
-        assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_FAILURE
-        assert "external sweep exclusion registry REFUSED" in capsys.readouterr().out
-        monkeypatch.setattr(gate, "EXTERNAL_SWEEP_EXCLUSIONS", {})
+        good = gate.REGISTRY_FILE
+        monkeypatch.setattr(gate, "REGISTRY_FILE", malformed)
+        with pytest.raises(TypeError):
+            self._main(tmp_path, _healthy_check_runs(), [])
+        monkeypatch.setattr(gate, "REGISTRY_FILE", tmp_path / "absent_registry.json")
+        with pytest.raises(FileNotFoundError):
+            self._main(tmp_path, _healthy_check_runs(), [])
+        monkeypatch.setattr(gate, "REGISTRY_FILE", good)
         assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_SUCCESS
 
     def test_main_keeps_unavailable_checks_pending(
@@ -2533,8 +2549,54 @@ def test_ci_summary_restores_every_gate_data_file_from_the_head() -> None:
     for filename in (
         "scripts/ci/ci_summary_external_producers.json",
         "scripts/ci/ci_summary_sweep_non_pr_events.json",
+        "scripts/ci/ci_summary_sweep_exclusions.json",
+        "scripts/ci/ci_summary_external_check_modes.contract.json",
+        "scripts/ci/ci_summary_external_check_modes.json",
+        "scripts/ci/ci_summary_rules.json",
     ):
         assert text.count(filename) >= 2, (
             f"{filename} must appear in both the head sparse-checkout "
             "list and the restore cp line"
         )
+
+
+# OMN-22126: the prompt cost estimate contract job is asserted at layer 4, so
+# the advisory-job gate finds it enforced and the workflow cannot be absent.
+PROMPT_COST_CONTEXT = "prompt-cost-estimate-contract"
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ("missing", EXIT_PENDING),
+        ("failure", EXIT_FAILURE),
+        ("success", EXIT_SUCCESS),
+    ],
+)
+def test_prompt_cost_estimate_contract_context_is_enforced(
+    state: str, expected: int
+) -> None:
+    assert PROMPT_COST_CONTEXT in EXPECTED_EXTERNAL_CONTEXTS
+    producer = gate.EXTERNAL_CONTEXT_PRODUCERS[PROMPT_COST_CONTEXT]
+    assert producer.workflow == "prompt-cost-estimate-contract.yml"
+
+    runs = [run for run in _healthy_check_runs() if run["name"] != PROMPT_COST_CONTEXT]
+    if state != "missing":
+        runs.append(_check_run(PROMPT_COST_CONTEXT, conclusion=state))
+
+    code, report = evaluate_external(runs)
+    assert code == expected, report
+    if state == "missing":
+        assert PROMPT_COST_CONTEXT in report
+
+
+def test_prompt_cost_estimate_contract_workflow_reports_on_every_shape() -> None:
+    doc = yaml.safe_load(
+        (WORKFLOWS_DIR / "prompt-cost-estimate-contract.yml").read_text()
+    )
+    triggers = _yaml_on_block(doc)
+    assert set(triggers) == {"pull_request", "merge_group"}
+    assert not triggers["pull_request"]
+    job = doc["jobs"][PROMPT_COST_CONTEXT]
+    assert job["name"] == PROMPT_COST_CONTEXT
+    assert "if" not in job

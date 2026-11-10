@@ -1,0 +1,46 @@
+{
+  "provenance": "Rows recorded 2026-10-31 to 2026-11-02 on the rolling ledger and the exception queue, scrubbed: the workspace path is replaced, no principal or person names. The outage and outbox-refused blocks are not recorded occurrences on the queue (its file holds only bus-binding-degraded rows); they are the evidence strings the producers in omnimarket.handlers.bus_binding.recovery write, with the refusal message completed from the handler's own words.",
+  "status_row": {
+    "recorded_at": "2026-11-02T02:29:40Z",
+    "detail": "bus-binding lane=dev binding=durable state=healthy pending_outbox=16 Received unknown topic or partition error in ListOffset request for partition TopicPartition(topic='onex.evt.omnimarket.work-ledger-append-completed.v1', partition=0). The"
+  },
+  "missing_topic": "onex.evt.omnimarket.work-ledger-append-completed.v1",
+  "blocks": [
+    {
+      "id": "2026-10-31T11:06:44Z-bus-binding-degraded-c45ae905",
+      "cls": "bus-binding-degraded",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "durable bus health read failed: TimeoutError: ",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "automatic recovery: retry the durable health read and replay the local outbox"
+    },
+    {
+      "id": "2026-10-31T11:09:04Z-bus-binding-degraded-c45ae905",
+      "cls": "bus-binding-degraded",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "durable bus health read failed: LabRunBusError: lane 'dev' declares SASL_PLAINTEXT, declared in <workspace>/config/lab/ci_bus_lanes.yaml, and this machine holds no identity for it. Bus id",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "automatic recovery: retry the durable health read and replay the local outbox"
+    },
+    {
+      "id": "constructed-bus-binding-outage",
+      "cls": "bus-binding-outage",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "outage_seconds=1200; durable bus health read failed: TimeoutError: ",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "investigate the prolonged durable binding outage; automatic recovery remains enabled"
+    },
+    {
+      "id": "constructed-bus-binding-outbox-refused",
+      "cls": "bus-binding-outbox-refused",
+      "key": "lane=market-claim-acct-1102 request=3f1c2a9e-5b7d-4c1e-8a2f-6d4e9b0c7a11",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host h200 refused the queued append (exit_code=65): request id already belongs to different rows or principal; rows lost: FRICTION stamped 2026-11-02T02:41:00Z",
+      "tried": "replayed the outbox; kept the refused request at the refused directory",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    }
+  ]
+}

@@ -1072,23 +1072,27 @@ def test_a_scenario_delivered_in_reverse_folds_to_the_same_rows(name: str) -> No
     )
 
 
-def test_each_runtime_message_gets_its_own_single_connection_adapter() -> None:
-    """Four messages in flight must never share the writer's pool."""
+def test_the_writer_keeps_one_contract_sized_pool_on_the_bound_dsn() -> None:
+    """OMN-23257: four messages in flight share ONE pool, sized by the contract."""
     from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 
     writer = ClaudeHookEventsProjectionWriter()
     bound = AsyncpgAdapter(dsn="postgresql://hook_writer@db.invalid/omnidash")
     writer._db = bound
 
-    first = writer._message_db()
-    second = writer._message_db()
+    kept = writer._pool_host._adapter_factory()
+    declared = writer._pool_host.settings
 
-    assert isinstance(first, AsyncpgAdapter)
-    assert first is not bound
-    assert first is not second
-    assert first.dsn == bound.dsn == second.dsn
-    assert (first._min_size, first._max_size) == (1, 1)
+    assert isinstance(kept, AsyncpgAdapter)
+    assert kept is not bound
+    assert kept.dsn == bound.dsn
+    assert (kept._min_size, kept._max_size) == (declared.min_size, declared.max_size)
+    assert (
+        declared.max_size
+        >= writer._contract["consume_concurrency"]["max_in_flight_records"]
+    )
     assert not bound.is_connected
+    assert not kept.is_connected
 
 
 def test_compaction_pack_build_barrier_retains_applied_lineage_sequence() -> None:

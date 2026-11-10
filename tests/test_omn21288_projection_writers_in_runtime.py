@@ -69,6 +69,10 @@ EXPECTED_SUBSCRIPTIONS = {
         # (the registries' replay source), routed to the same runtime writer.
         "onex.evt.omnimarket.tenant-credential-state.v1",
         "onex.evt.omnimarket.tenant-routing-overlay-state.v1",
+        # OMN-19996: the delegation terminals, read for the key each run used,
+        # so the key's row records when it was last used in a run.
+        "onex.evt.omnimarket.delegate-skill-completed.v1",
+        "onex.evt.omnimarket.delegate-skill-failed.v1",
     ),
     "tenant_registry": ("onex.tenant.events",),
 }
@@ -333,11 +337,13 @@ def test_real_runtime_dispatch_preserves_sql_and_snapshots(
         )
         assert boundary["sql"] == expected_sql
         assert boundary["snapshots"] == expected_snapshots
-        assert all(
-            pool.test_closed and pool.test_loop.is_closed()
-            for pool in boundary["pools"]
-        )
 
+    # OMN-23196: the writer keeps its pools between deliveries and closes them,
+    # on the loop that opened them, when the writer is closed.
+    writer.close()
+    assert all(
+        pool.test_closed and pool.test_loop.is_closed() for pool in boundary["pools"]
+    )
     assert all(
         producer.closed and producer.loop.is_closed()
         for producer in boundary["producers"]
@@ -365,6 +371,7 @@ def test_runtime_writer_refuses_unattested_database_and_closes_pools(
     with pytest.raises(RuntimeError, match="expected principal"):
         writer.handle({**data, "_topic": topic, "_partition": 2, "_offset": 41})
     assert not boundary["sql"]
+    writer.close()
     assert all(
         pool.test_closed and pool.test_loop.is_closed() for pool in boundary["pools"]
     )
@@ -392,6 +399,7 @@ def test_runtime_writer_closes_resources_when_projection_raises(
     topic, data = _source(name)
     with pytest.raises(ConnectionError, match="fixture write failure"):
         writer.handle({**data, "_topic": topic, "_partition": 2, "_offset": 41})
+    writer.close()
     assert all(
         pool.test_closed and pool.test_loop.is_closed() for pool in boundary["pools"]
     )

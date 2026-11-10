@@ -56,6 +56,11 @@ description: |
   model, timeout_seconds) and returns ModelClaudeCredentialProbeReceipt (redacted bounded
   output, exit_cause, exit_code). The credential is never a field of either model.
 
+  The shared HandlerProviderQuotaReset reads typed reset requests through the
+  existing quota classifier on failed calls. Both this effect and the local
+  dispatch port use it; provider markers and reset modes stay in the delegation
+  policy overlay and the existing provider-quota observation topics are reused.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 
@@ -162,13 +167,23 @@ service_configuration:
   is_persistent_service: false
   requires_external_dependencies: true
 
+# Handlers receive these through the container, built from the lane overlay's
+# binding of each protocol and from nothing else (OMN-21595). The overlay's
+# ProtocolOverlayDocument binding carries two named documents: "codex_harness"
+# (host policy overlay for the direct Codex harness operation) and
+# "delegation_adapters" (deployment overlay: repository/work roots, call-site
+# routing and generation parameters, honored provider capabilities, secret
+# references), plus an optional "transport" document that sets runtime_profile.
+# No document holds credential values.
+handler_dependencies:
+  - omnimarket.protocols.protocol_process_environment.ProtocolProcessEnvironment
+  - omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+
+# Transport default; a "transport" overlay document overrides runtime_profile.
+transport:
+  runtime_profile: main
+
 config_dependencies:
-  - key: "CODEX_HARNESS_OVERLAY_PATH"
-    required: false
-    description: "Host policy overlay for the direct Codex harness operation; no credential values."
-  - key: "DELEGATION_ADAPTER_CONFIG_PATH"
-    required: false
-    description: "Deployment contract overlay: repository/work roots, call-site routing and generation parameters, honored provider capabilities, secret references. No credential values."
   - key: "INFERENCE_PROTOCOL_CONFIG_PATH"
     required: false
     description: "Optional override for typed provider request-shaping profiles (defaults to configs/inference_protocols.v1.yaml)."
@@ -488,6 +503,16 @@ codex_harness:
   reasoning_effort: high
   max_timeout_seconds: 600
   terminate_grace_seconds: 5
+
+# Provider quota reset reader: called in-process by the quota policy through the shared classifier, never from the
+# bus. It is not in handler_routing because a routed handler needs a subscribed topic and an event_type.
+provider_quota_reset:
+  request_model:
+    name: "ModelProviderQuotaResetRequest"
+    module: "omnimarket.models.delegation.model_provider_quota_reset"
+  handler:
+    name: "HandlerProviderQuotaReset"
+    module: "omnimarket.handlers.handler_provider_quota_reset"
 
 # Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
 # The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is

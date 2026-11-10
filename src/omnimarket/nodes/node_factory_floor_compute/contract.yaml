@@ -12,8 +12,8 @@ node_version: 1.0.0
 description: >-
   Join plans, their task manifests, the PR watcher state, the ledger's CLAIM, TERMINAL, HOLD, RELEASE and
   gate STATUS rows, the Linear snapshot plans-today writes, the lab placement reading and the landing
-  controller's merges into one assembly-line record per selected plan (line id, name, status pill, percent
-  built, stations with items and feeders, andon flag with reason) and one floor section (bays, shipped and
+  controller's merges into one assembly-line record per selected plan (line id, name, condition, blocker, progress,
+  gates, line evidence, data age, stations with items and feeders, andon flag with reason) and one floor section (bays, shipped and
   waiting pull requests, stoppages from the friction report). A plan with no manifest falls back to the
   plans-today task table. Pure and deterministic: the caller supplies every fact, including the time.
 input_model:
@@ -59,12 +59,34 @@ config:
   andon_markers: [andon]
   gate_kind: gate
   gate_state: gate
+  # Gate runners also write subject=W0 (and W1a, etc.); these are the same wave's verdict, not a separate gate.
+  gate_wave_subject_template: "W{wave}"
   gate_fail_verdicts: [fail]
   gate_pass_verdicts: [pass]
-  done_outcomes: [done, merged, handed-off]
+  done_outcomes: [done, merged]
+  handoff_outcomes: [handed-off]
+  # Done is merged AND running on dev AND integration-proven (the running_evidence input and a STATUS row in this
+  # state); merged without both is integrating, which the built percent does not count.
+  integration_state: integration
+  integration_pass_verdicts: [pass]
+  integration_fail_verdicts: [fail]
+  # Progress: merged work tasks over valid work tasks (gates are counted apart), to this many decimals, rounded half-up.
+  percent_decimals: 1
+  progress_note_known: "{completed} / {total} work tasks complete"
+  progress_note_no_tasks: No work tasks declared
+  progress_note_unscoped: Work task total not read
+  progress_note_duplicate_ids: Work task total not valid, task ids repeat
+  progress_note_under_review: "Scope needs review: {note}"
+  # Merged work exists but the running-on-dev records were not read, so done is unknown: never a known 0.
+  progress_note_running_unread: "{merged} / {total} work tasks merged; running on dev not read"
+  pending_gate_blocker: "All work tasks recorded done; gate {gates} pending"
   blocked_outcomes: [blocked, failed, partial]
   live_claim_minutes: 45
-  advertisement_stale_factor: 3
+  # How a line's parts become stations: "task" draws every task of the plan as its own station (its state, tickets and
+  # pull requests are the task's; its feeders are the tasks it depends on); "wave" groups the tasks of one declared
+  # wave into one station, and a plan that declares no wave into the single fallback station.
+  station_grouping: task
+  # The label a station carries for its wave (the group a renderer bands stations by); also a wave station's name.
   station_name_template: "Wave {wave}"
   fallback_station_id: tasks
   fallback_station_name: Task table (no manifest)
@@ -77,8 +99,9 @@ config:
   # first hold_exemption_slug_tokens words of the plan's file name (after its date), joined by hyphens.
   hold_exemption_markers: [exempt]
   hold_exemption_slug_tokens: 3
-  # Live lanes (OMN-21733): a lane is live while its newest CLAIM has no TERMINAL after it and it wrote a row inside
-  # lane_live_window_minutes; it is stalled after stall_minutes without a row of any kind.
+  # Unclosed claims inside lane_live_window_minutes are candidates. Finished receipts and absent processes
+  # move them to inactive_lanes and occupy no bay; unknown process evidence stays visible. Silence alone
+  # marks a live worker stalled after stall_minutes, never dead.
   lane_live_window_minutes: 180
   stall_minutes: 45
   status_chars: 140
@@ -118,6 +141,77 @@ config:
   stop_outcomes: [blocked]
   ask_recipients: [orchestrator]
   ask_answer_kinds: [ACK, RELEASE]
+  # A lane that ended short is a stopped line (OMN-22934): its newest TERMINAL has one of these outcomes, no later CLAIM by
+  # it or by a lane on the same work, its ticket is in the goal's scope, and the ending row names a branch, an ask or a
+  # next step. The record lists it under floor.stopped with the lane's last rows and the path of its report. A lane that
+  # ended done, or ended short and names nothing, is never listed. An unread goal scope lists none.
+  stopped:
+    outcomes: [partial, blocked, failed]
+    max_age_minutes: 1440
+    # Tickets many lanes share; two lanes on one of these are not on the same work.
+    umbrella_tickets: [OMN-22478, OMN-19998, OMN-17427]
+    branch_patterns:
+    - '\b(omn-\d+-[a-z0-9][a-z0-9._-]*)'
+    - '\b((?:docs|fix|feat|chore|automation)/[a-z0-9][a-z0-9._/-]*)'
+    head_pattern: '\bheads?\s+([0-9a-f]{7,40})\b'
+    ask_markers: ["needs a decision", "needs a ruling", "an ask", "ask for", "one plain ask", "blocker"]
+    next_step_markers: ["next step", "next:", "what is left", "left to do", "still to do", "not yet", "not installed", "not proven", "follow-up", "follow up", "needs "]
+    # A lane name ends in its start time (floor-reds-1300, asks-1220, runners-r2-0930); the name without it is the stem.
+    lane_stem_suffix: '-\d{4}(?:-[a-z0-9]+)?$'
+    rows_kept: 4
+    row_chars: 400
+    report_path_template: .claude_scratch/reports/{lane}/result.md
+  # Evidence for a task is a ledger row whose typed cells bind it: task= names the task, ticket= one of its tickets,
+  # pr= one of its pull requests. A task id that only appears in a row's free text or reason binds nothing.
+  evidence_cells: [task, ticket, pr]
+  # Both manifest and fallback table items use the same PR ownership mapping. For a ticketed task, a watched title
+  # or branch must name its ticket; a dependency update with no ticket is unrelated even when a stale table lists it.
+  # An explicit link is retained when the watcher has not read the PR's identity. PR body mentions bind nothing.
+  # The task-to-ticket map: a STATUS row whose state= cell is this value maps the task in its task= cell, of the plan
+  # whose path contains its subject= cell (any plan when empty), to the ticket in its ticket= cell and the pull request
+  # in its pr= cell. Both join the task's own; an outcome= in done_outcomes records that the mapped work merged.
+  task_map_state: task-map
+  # A built task whose depends_on names a gate that reads a gate_fail_verdicts verdict (the gate STATUS row, its
+  # subject= the gate's wave or id) carries this note, reads wait and does not count toward the line's built percent.
+  built_ahead_of_gate_label: built ahead of gate
+  # The Limits panel (OMN-22010). A reading older than one publish cycle, or never read, is UNKNOWN and carries no number.
+  # The budget applies to every API key whose overlay row names none; the credit expiry is the day the cloud-session credit ends.
+  limits:
+    publish_cycle_minutes: 5
+    api_budget_usd: 200
+    cloud_credit_expiry: "2026-11-05"
+  # The Machines tab's per-host record (OMN-22673). Each value is read from one source and judged against that source's
+  # own bound: the pool read uses pool_stale_minutes above; a capacity advertisement is a snapshot written once per publish
+  # cycle (5 min), so three cycles; a host-drift heartbeat comes about hourly (measured 2026-11-06: gaps of 42 to 56
+  # minutes on four lab hosts), so two cycles.
+  host_status:
+    heartbeat_stale_seconds: 7200
+    disk_cell: runs
+    advert_stale_minutes: 15
+    docker_tool: docker
+    landing_worker_kind: landing worker
+  # Line selection (OMN-22369, lean line board plan T4): six classes in order, each line once at its lowest class. A
+  # class is chosen from the sources named here; its coverage is the worst health among them (unread, stale, read-empty,
+  # read) and an unread class prints no count. The caller names the classes a run draws (selection.line_classes).
+  line_select:
+    classes:
+      - {line_class: declared, id_prefix: "", label: declared lines, sources: [plans_clone]}
+      - {line_class: plan, id_prefix: "", label: plan selection, sources: [plans_today]}
+      - {line_class: goal, id_prefix: "goal:", label: goal rows, sources: [goal_file]}
+      - {line_class: ruling, id_prefix: "ruling:", label: rulings, sources: [ledger]}
+      - {line_class: ticket, id_prefix: "ticket:", label: unplanned work, sources: [ledger, pr_watcher, linear_snapshot, running_evidence]}
+      - {line_class: process, id_prefix: "process:", label: factory processes, sources: []}
+    selection_window_days: 14
+    in_progress_statuses: [In Progress]
+    closed_status_types: [completed, canceled]
+    claim_kind: CLAIM
+    terminal_kind: TERMINAL
+    ruling_kind: RULING
+    stale_note: "UNREAD: {label} from {read_at}"
+    unread_note: "UNREAD: {label}, lines unknown"
+    missing_health_cause: no health entry for the source
+    bare_progress_note: Stages not computed for this class
+    ticket_line_note: unplanned work
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

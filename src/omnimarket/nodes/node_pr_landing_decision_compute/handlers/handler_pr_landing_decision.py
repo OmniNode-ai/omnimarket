@@ -73,6 +73,7 @@ import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import cache
 
 from omnimarket.handlers.cause_signature import (
     CAUSE_PREFIX,
@@ -80,8 +81,16 @@ from omnimarket.handlers.cause_signature import (
     cause_key,
     normalize_signature,
 )
+from omnimarket.models.model_priority_rules import ModelPriorityRules
+from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
+    load_priority_rules,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
+    SKIP_FOR_VERDICT,
+    read_lab_check,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     BLOCKED_OUTCOMES,
@@ -122,6 +131,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
     ModelLandingViolation,
     ModelLandingWorkerBrief,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exhaustion_owner import (
+    ModelLandingExhaustionOwner,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     FIXER_HOLD_ALL,
     ModelLandingBlockerRef,
@@ -133,6 +145,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingRerunRun,
     ModelLandingSharedCheckVerdict,
     ModelLandingWorkerResult,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
+    EnumLabCheckVerdict,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,
@@ -233,6 +248,7 @@ class _Tick:
     close_requested: set[str]
     causes: dict[str, ModelLandingCauseRecord] = field(default_factory=dict)
     hold: set[str] = field(default_factory=set)
+    hold_released: set[str] = field(default_factory=set)
     formed: set[str] = field(default_factory=set)
     suppressed: set[str] = field(default_factory=set)
     elig_reruns: list[ModelLandingEligibilityRerun] = field(default_factory=list)
@@ -272,12 +288,26 @@ class _Tick:
         facts = self.prs.get(pr)
         return blocker_fingerprint(facts.blocker_refs) if facts is not None else ""
 
-    def held(self, repo: str) -> bool:
-        """Under a fixer HOLD: no dispatch, and every live lease is revoked."""
+    def held(self, repo: str, pr: str | None = None) -> bool:
+        """Under a fixer HOLD: no dispatch, and every live lease is revoked.
+
+        A scoped RELEASE lifts the PR it names (``pr`` as ``repo#n``) and nothing else.
+        """
+        if pr is not None and pr in self.hold_released:
+            return False
         return FIXER_HOLD_ALL in self.hold or repo in self.hold
 
 
 # ---------------------------------------------------------------- escalation
+def _accountable_owner(
+    t: _Tick, previous: ModelLandingExhaustionOwner | None
+) -> ModelLandingExhaustionOwner:
+    """Keep explicit accountability; an ended claimant returns to policy."""
+    if previous is not None and previous.source != "claim":
+        return previous
+    return t.facts.policy.exhaustion_owner
+
+
 def _escalate(t: _Tick, pr: str) -> None:
     """One step up the R1 ladder; the third failure on one head parks the PR."""
     rec = t.record_of(pr)
@@ -287,6 +317,7 @@ def _escalate(t: _Tick, pr: str) -> None:
     if ladder >= len(t.facts.policy.engine_ladder) and subject is not None:
         update["parked_head"] = subject.head_sha
         update["parked_fingerprint"] = t.fingerprint(pr)
+        update["exhaustion_owner"] = _accountable_owner(t, rec.exhaustion_owner)
     t.put_record(pr, **update)
 
 
@@ -296,6 +327,7 @@ def _record(
     lease_id: int | None,
     outcome: EnumLandingOutcome,
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE,
+    owner: str | None = None,
 ) -> None:
     fp = t.fingerprint(pr)
     t.put_record(pr, outcome=outcome, reason=reason, blocker_fingerprint=fp)
@@ -306,6 +338,7 @@ def _record(
             outcome=outcome,
             reason=reason,
             blocker_fingerprint=fp,
+            owner=owner,
         )
     )
 
@@ -489,7 +522,7 @@ def _observe_lease(t: _Tick, lease: ModelLandingLease) -> None:
                 _escalate(t, pr)
         return
     if (
-        (repo_of(pr) in t.draining or t.held(repo_of(pr)))
+        (repo_of(pr) in t.draining or t.held(repo_of(pr), pr))
         and lease.result_recorded_at is None
         and not lease.revoked
     ):
@@ -662,7 +695,7 @@ def _try_dispatch(
     """Dispatch one worker, when the pool, the load and the engines allow (D5, P7)."""
     policy = t.facts.policy
     repo = repo_of(subject)
-    if repo in t.draining or t.held(repo) or subject in t.leases:
+    if repo in t.draining or t.held(repo, subject) or subject in t.leases:
         return False
     if t.facts.load1 > policy.load_pause_threshold:
         return False
@@ -1015,7 +1048,8 @@ def _read_cause_result(
     if outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED:
         update.update(fix_ref=result.fix_ref, fix_head=result.fix_head, rerun_at=None)
     elif outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
-        # back to the per-PR path at rung 0; the key stays blocked for this set
+        # back to the per-PR path at rung 0; the key stays blocked on this base
+        update["not_shared_base_head"] = _base_head(t, rec.repo)
         current = tuple(
             ModelLandingMemberRef(pr=m.pr, head_sha=t.prs[m.pr].head_sha)
             for m in rec.members
@@ -1029,6 +1063,7 @@ def _read_cause_result(
                 ladder_index=0,
                 parked_head=None,
                 parked_fingerprint="",
+                exhaustion_owner=None,
                 awaiting_head=None,
             )
     t.causes[key] = rec.model_copy(update=update)
@@ -1062,9 +1097,16 @@ def _holds_members(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
 
 
 def _blocks(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
-    """cause_not_shared blocks its key until a member's head moves or it leaves."""
+    """cause_not_shared blocks its key while the base head it was given on stands.
+
+    A verdict given with no base head read, or read again with none, holds only
+    while every member is open at the head it was given on.
+    """
     if rec.outcome is not EnumLandingOutcome.CAUSE_NOT_SHARED:
         return False
+    now = _base_head(t, rec.repo)
+    if rec.not_shared_base_head is not None and now is not None:
+        return now == rec.not_shared_base_head
     for m in rec.members:
         p = t.prs.get(m.pr)
         if p is None or p.state is not EnumLandingPrState.OPEN:
@@ -1082,6 +1124,33 @@ def _owned(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
         or (owner.cause is None and owner.repo == rec.repo and owner.check in checks)
         for owner in t.facts.cause_owners
     )
+
+
+def _cause_exhaustion_owner(
+    t: _Tick, rec: ModelLandingCauseRecord
+) -> ModelLandingExhaustionOwner:
+    """A live claimant takes precedence over the persisted accountable owner.
+
+    Resolve competing observations by exact cause before check, then lane,
+    independent of snapshot order. Accountability alone is never a live claim.
+    """
+    checks = {pair.check for pair in rec.pairs}
+    owners = sorted(
+        (
+            owner
+            for owner in t.facts.cause_owners
+            if owner.cause == rec.key
+            or (
+                owner.cause is None and owner.repo == rec.repo and owner.check in checks
+            )
+        ),
+        key=lambda owner: (owner.cause != rec.key, owner.lane),
+    )
+    if owners:
+        return ModelLandingExhaustionOwner(
+            kind="lane", name=owners[0].lane, source="claim"
+        )
+    return _accountable_owner(t, rec.exhaustion_owner)
 
 
 def _keep_cause(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
@@ -1136,7 +1205,9 @@ def _advance_causes(t: _Tick) -> None:
     park = timedelta(hours=policy.cause_park_hours)
     fresh: dict[str, object] = {
         "parked_until": None,
+        "exhaustion_owner": None,
         "parked_base_head": None,
+        "not_shared_base_head": None,
         "attempts": 0,
         "spawn_failures": 0,
         "outcome": None,
@@ -1167,9 +1238,13 @@ def _advance_causes(t: _Tick) -> None:
                     }
                 )
             else:
+                owner = _cause_exhaustion_owner(t, rec)
+                rec = rec.model_copy(update={"exhaustion_owner": owner})
                 t.degraded.append(
                     ModelLandingDegraded(
-                        reason=EnumLandingDegradedReason.CAUSE_EXHAUSTED, subject=key
+                        reason=EnumLandingDegradedReason.CAUSE_EXHAUSTED,
+                        subject=key,
+                        owner=owner,
                     )
                 )
         if rec.outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED and rec.fix_ref:
@@ -1365,8 +1440,8 @@ def _upsert_cause(t: _Tick, cause: _Cause) -> None:
     rec = t.causes.get(cause.key)
     if rec is not None and rec.outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
         if _blocks(t, rec):
-            return  # not shared for this member set: no cause, members stay per-PR
-        rec = None  # a member moved: a fresh cause
+            return  # not shared on this base: no cause, members stay per-PR
+        rec = None  # the base moved (or a member, with no base read): a fresh cause
     if rec is None:
         rec = ModelLandingCauseRecord(
             key=cause.key, repo=cause.repo, pairs=tuple(cause.pairs), members=members
@@ -1436,6 +1511,7 @@ def _park(t: _Tick, rec: ModelLandingCauseRecord) -> None:
     update: dict[str, object] = {
         "parked_until": until,
         "parked_base_head": _base_head(t, rec.repo),
+        "exhaustion_owner": _cause_exhaustion_owner(t, rec),
     }
     if ask:
         update["escalated"] = dedupe
@@ -1445,7 +1521,9 @@ def _park(t: _Tick, rec: ModelLandingCauseRecord) -> None:
     t.causes[rec.key] = rec.model_copy(update=update)
     t.degraded.append(
         ModelLandingDegraded(
-            reason=EnumLandingDegradedReason.CAUSE_EXHAUSTED, subject=rec.key
+            reason=EnumLandingDegradedReason.CAUSE_EXHAUSTED,
+            subject=rec.key,
+            owner=t.causes[rec.key].exhaustion_owner,
         )
     )
     if ask and row is None and rec.escalated != dedupe:
@@ -1453,6 +1531,7 @@ def _park(t: _Tick, rec: ModelLandingCauseRecord) -> None:
             ModelLandingAction(
                 kind=EnumLandingActionKind.ESCALATE_OPERATOR,
                 subject=rec.key,
+                owner=t.causes[rec.key].exhaustion_owner,
                 members=rec.members,
                 dedupe_key=dedupe,
             )
@@ -1462,6 +1541,7 @@ def _park(t: _Tick, rec: ModelLandingCauseRecord) -> None:
             ModelLandingAction(
                 kind=EnumLandingActionKind.FILE_CAUSE_TICKET,
                 subject=rec.key,
+                owner=t.causes[rec.key].exhaustion_owner,
                 members=rec.members,
                 dedupe_key=dedupe,
                 attempts=rec.history,
@@ -1598,7 +1678,15 @@ def _mergeable(p: ModelLandingPrFacts) -> bool:
 
 
 def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
-    """Merge pinned to the head; a runtime PR lands only holding the token (R6)."""
+    """Merge pinned to the head; a runtime PR lands only holding the token (R6).
+
+    A PR that carries a lab-bound check lands only on a pass of the current attempt on this exact head (J8): any
+    other reading holds the head with its own named reason.
+    """
+    reading = read_lab_check(p, t.now, t.facts.policy)
+    if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
+        t.skips[p.pr] = SKIP_FOR_VERDICT[reading.verdict]
+        return
     if p.runtime:
         in_open_companion = any(
             c.state is EnumLandingPrState.OPEN
@@ -1658,9 +1746,28 @@ def _refresh_stale_cancelled(
 
 
 def _park_degraded(t: _Tick, pr: str) -> None:
+    rec = t.record_of(pr)
+    # A live cause claimant owns its members' next step too. A persisted
+    # assignment is accountability, never a new lease or a dispatch exclusion.
+    claimed = sorted(
+        (
+            cause
+            for cause in t.causes.values()
+            if _owned(t, cause) and any(member.pr == pr for member in cause.members)
+        ),
+        key=lambda cause: cause.key,
+    )
+    owner = (
+        _cause_exhaustion_owner(t, claimed[0])
+        if claimed
+        else _accountable_owner(t, rec.exhaustion_owner)
+    )
+    t.put_record(pr, exhaustion_owner=owner)
     t.degraded.append(
         ModelLandingDegraded(
-            reason=EnumLandingDegradedReason.ESCALATION_EXHAUSTED, subject=pr
+            reason=EnumLandingDegradedReason.ESCALATION_EXHAUSTED,
+            subject=pr,
+            owner=owner,
         )
     )
 
@@ -1683,13 +1790,118 @@ def _brief_class(p: ModelLandingPrFacts, ladder: int) -> EnumLandingBriefClass |
     return None
 
 
+def _red_from_older_base(t: _Tick, p: ModelLandingPrFacts) -> bool:
+    """A red head whose reds the base has since fixed and whose branch lacks that base.
+
+    web-app#496 at head ba2e4454 read red on ``pnpm audit`` and ``CI Summary``
+    from a minimatch advisory that web-app#497 fixed on dev (4d99e96) after the
+    branch was cut; the PR touched no package file, so lease 28879 and lease
+    28915 each wrote ``blocked reason=nothing_to_fix`` and the branch was never
+    updated. The head is red from its base when it lacks the base's newest head,
+    it has at least one red check outside the follower checks, and every such
+    check is green on that base head. A repo whose base head or green checks are
+    unread, a conflicting head and a head with a red the base also fails are the
+    PR's own: they keep the worker path.
+    """
+    if (
+        p.ci is not EnumLandingCi.RED
+        or not p.lacks_base_head
+        or p.merge_state is EnumLandingMergeState.CONFLICTING
+        or p.red_class is not EnumLandingRedClass.PRODUCT
+    ):
+        return False
+    repo = repo_of(p.pr)
+    if _base_head(t, repo) is None:
+        return False
+    followers = set(t.facts.policy.cluster_excluded_checks)
+    fixable = [c for c in p.red_checks if c not in followers]
+    if not fixable:
+        return False
+    green = {
+        check
+        for repo_checks in t.facts.base_green_checks
+        if repo_checks.repo == repo
+        for check in repo_checks.checks
+    }
+    return set(fixable) <= green
+
+
+def _cross_repo_owner(t: _Tick, p: ModelLandingPrFacts) -> str | None:
+    """The open change in another repository that every fixable red of this PR waits on.
+
+    OMN-23345: the manifest repository change #1531 removed the lab-manifest entries before its
+    infra half, omnibase_infra#5810, had merged; every omnibase_infra PR then read
+    red on the parity check, and the controller leased one worker after another on
+    PRs whose red no branch of theirs could fix (about twenty ``nothing_to_fix``
+    results from 12:15Z). Once the red is named as another repository's change
+    (``cross_repo_causes``) and that change reads open, a worker on this PR can
+    only find nothing to fix. The owner is named instead. A red check not named,
+    an owner that is this PR, merged, closed or unread, or a follower-only red
+    leaves the worker path: the controller fails open, never on a guess.
+    """
+    if p.ci is not EnumLandingCi.RED or not p.red_checks:
+        return None
+    followers = set(t.facts.policy.cluster_excluded_checks)
+    fixable = sorted({c for c in p.red_checks if c not in followers})
+    if not fixable:
+        return None
+    owner_of: dict[str, str] = {}
+    for cause in t.facts.cross_repo_causes:
+        owner = t.prs.get(cause.owner)
+        if (
+            cause.owner == p.pr
+            or owner is None
+            or owner.state is not EnumLandingPrState.OPEN
+        ):
+            continue
+        owner_of.setdefault(cause.check, cause.owner)
+    if not all(check in owner_of for check in fixable):
+        return None
+    return owner_of[fixable[0]]
+
+
+def _hold_for_cross_repo_owner(
+    t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord
+) -> bool:
+    """True while a worker would only find another repository's change to wait for.
+
+    Records ``blocked_on`` once per owner and head state, naming the owner on the
+    recorded outcome. When the owner is gone (merged, closed, unread) the record
+    is cleared so the ordinary path, a branch update, a rerun or a worker, resumes.
+    """
+    owner = _cross_repo_owner(t, p)
+    if owner is None:
+        if rec.cross_repo_owner is not None:
+            t.put_record(
+                p.pr,
+                outcome=None,
+                reason=EnumLandingOutcomeReason.NONE,
+                blocker_fingerprint="",
+                cross_repo_owner=None,
+                ladder_index=0,
+                awaiting_head=None,
+            )
+        return False
+    if (
+        rec.cross_repo_owner != owner
+        or rec.outcome is not EnumLandingOutcome.BLOCKED_ON
+    ):
+        _record(t, p.pr, None, EnumLandingOutcome.BLOCKED_ON, owner=owner)
+        t.put_record(p.pr, cross_repo_owner=owner)
+    return True
+
+
 def _update_behind(t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord) -> bool:
     """Update once per head, or retry one observed transient response after backoff.
 
     True also means waiting for the backoff: that response is not a reason to
-    spend a worker. Unknown refusals retain the existing behind-worker path.
+    spend a worker. Unknown refusals retain the existing behind-worker path. A
+    red head that lacks a base which already passes its reds is updated the
+    same way (see ``_red_from_older_base``), before any worker or rerun.
     """
-    if p.merge_state is not EnumLandingMergeState.BEHIND:
+    if p.merge_state is not EnumLandingMergeState.BEHIND and not _red_from_older_base(
+        t, p
+    ):
         return False
     # OMN-19998: the merge queue rebuilds every entry on the latest base, so an
     # update there buys a push and a fresh CI run for nothing; only a red head,
@@ -1815,7 +2027,11 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
             _park_degraded(t, pr)
         elif lease is None:
             rec = t.put_record(
-                pr, parked_head=None, parked_fingerprint="", ladder_index=0
+                pr,
+                parked_head=None,
+                parked_fingerprint="",
+                ladder_index=0,
+                exhaustion_owner=None,
             )
     if lease is not None:
         # PinMerge: under a live lease, merge only the verified head
@@ -1849,6 +2065,9 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
         return
     if _shared_verdict_rerun(t, p, rec):
         return
+    if _hold_for_cross_repo_owner(t, p, rec):
+        return
+    rec = t.record_of(pr)
     suppressed = rec.outcome in BLOCKED_OUTCOMES and rec.blocker_fingerprint == fp
     if suppressed or parked:
         return
@@ -1990,16 +2209,47 @@ class LandingCoverageError(RuntimeError):
     """
 
 
+@cache
+def _priority_rules() -> ModelPriorityRules:
+    """The lane priority classes, highest first, defined once in the lab placement contract."""
+    return load_priority_rules()
+
+
+def _class_rank(p: ModelLandingPrFacts) -> int:
+    """Where the PR's lane priority class stands in the contract's order; 0 is first."""
+    rules = _priority_rules()
+    cls = p.priority_class
+    if cls not in rules.classes:
+        cls = rules.factory_class if p.process_fix else rules.classes[-1]
+    return rules.classes.index(str(cls))
+
+
+def _cause_fix_prs(t: _Tick) -> set[str]:
+    """The PRs that are the fix a shared cause is waiting on."""
+    return {
+        rec.fix_ref
+        for rec in t.causes.values()
+        if rec.fix_ref and rec.outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED
+    }
+
+
 def _priority(
-    t: _Tick, p: ModelLandingPrFacts
-) -> tuple[bool, int, bool, datetime, str]:
-    """R4: green and mergeable, chain root by PRs unblocked, process-fix, age."""
+    t: _Tick, p: ModelLandingPrFacts, cause_fixes: set[str]
+) -> tuple[bool, bool, int, int, datetime, str]:
+    """R4: green and mergeable, a cause fix, chain root by PRs unblocked, lane priority class, age."""
     unblocks = sum(
         1
         for q in t.prs.values()
         if q.state is EnumLandingPrState.OPEN and p.pr in q.parents
     )
-    return (not _mergeable(p), -unblocks, not p.process_fix, p.created_at, p.pr)
+    return (
+        not _mergeable(p),
+        p.pr not in cause_fixes,
+        -unblocks,
+        _class_rank(p),
+        p.created_at,
+        p.pr,
+    )
 
 
 # ---------------------------------------------------------------------- tick
@@ -2023,6 +2273,7 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         close_requested=set(state.close_requested),
         causes={c.key: c for c in state.causes},
         hold=set(facts.fixer_hold),
+        hold_released=set(facts.fixer_hold_released_prs),
     )
     _effective_suspensions(t)
     holder = t.prs.get(t.token) if t.token is not None else None
@@ -2047,7 +2298,8 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
     _advance_causes(t)
     _form_causes(t)
     _dispatch_causes(t)
-    for p in sorted(t.prs.values(), key=lambda p: _priority(t, p)):
+    cause_fixes = _cause_fix_prs(t)
+    for p in sorted(t.prs.values(), key=lambda p: _priority(t, p, cause_fixes)):
         _product_pr(t, p)
     # The tick is local to this call: a raise here leaves no decision, no
     # action and no state behind, so the caller has nothing to act on.

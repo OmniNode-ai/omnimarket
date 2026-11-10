@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Pure detection of abandoned blocked work that implements a process ruling."""
+"""Pure detection of abandoned unfinished work that implements a process ruling."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 _CITE = re.compile(r"\bRULING\s+(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)")
+_UNFINISHED = frozenset({"blocked", "failed", "partial"})
 
 
 def parse_rows(text: str) -> list[dict[str, str]]:
@@ -58,7 +59,7 @@ def detect_relaunches(
     briefs: Mapping[str, str] | None = None,
     sent: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """One item per abandoned terminal; a repeated block is an orchestrator exception.
+    """One item per abandoned terminal; a repeated failure is an orchestrator exception.
 
     A later CLAIM supersedes an old terminal even when it arrived after the grace
     window: never send an obsolete attempt alongside its replacement. A sent key
@@ -97,7 +98,7 @@ def detect_relaunches(
         if not terminals:
             continue
         terminal = terminals[-1]
-        if terminal.get("outcome") not in {"blocked", "partial"}:
+        if terminal.get("outcome") not in _UNFINISHED:
             continue
         terminal_position = max(
             i for i, r in enumerate(history) if r["action"] == "TERMINAL"
@@ -127,9 +128,7 @@ def detect_relaunches(
         if not cites and not prior:
             continue
         blocker = terminal.get("blocker") or terminal["text"]
-        earlier = [
-            r for r in terminals[:-1] if r.get("outcome") in {"blocked", "partial"}
-        ]
+        earlier = [r for r in terminals[:-1] if r.get("outcome") in _UNFINISHED]
         last_success = max(
             (r["at"] for r in terminals if r.get("outcome") in {"done", "handed-off"}),
             default="",

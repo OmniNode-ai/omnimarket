@@ -19,6 +19,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     EnumNamedTestRunStatus,
@@ -33,7 +34,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
     transport,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _BACKENDS: list[dict[str, object]] = [
     {

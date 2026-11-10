@@ -3,7 +3,7 @@
 ---
 name: node_host_reconcile_effect
 version: 1.0.0
-description: Host-local reconciliation with content-proven surfaces and dispatch floor eligibility.
+description: Host-local reconciliation with verified retirement bundles and dispatch floor eligibility.
 omnibase_core_compat: '>=0.39.0,<1.0.0'
 pack: core
 node_role: effect
@@ -29,3 +29,4 @@ tags:
 - effect
 - host
 - reconcile
+- repository-retirement

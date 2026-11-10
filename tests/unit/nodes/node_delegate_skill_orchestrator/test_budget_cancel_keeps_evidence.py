@@ -31,6 +31,11 @@ import pytest
 from pydantic import SecretStr
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.handlers.routing import byok_model_discovery as discovery
+from omnimarket.handlers.routing import byok_provider_backends as catalogue
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
@@ -56,11 +61,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing import byok_model_discovery as discovery
-from omnimarket.routing import byok_provider_backends as catalogue
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
 from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
     FakeModels,
     _isolated_effects,
@@ -355,6 +355,9 @@ async def test_a_retry_on_the_customer_route_keeps_the_earlier_rung(
 ) -> None:
     """The 429 came back to the port, which re-issued the same route."""
     customer_ref, db_path = _customer_route(monkeypatch, tmp_path)
+    # OMN-23176: the row declares a wait before a re-issue, longer than this stub
+    # budget; this test is about the evidence the re-issue leaves, not the wait.
+    monkeypatch.setattr(port_mod, "byok_backend_retry_wait_seconds", lambda _ref: 0.0)
     # Each call runs in a fresh child process, so the first call is told apart
     # by a file, not by state in this one.
     first_call_marker = tmp_path / "first-call-made"

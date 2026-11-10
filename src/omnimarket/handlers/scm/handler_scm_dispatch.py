@@ -115,6 +115,9 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs",
     ),
     ModelScmVerb(
+        verb="job-log-fill", node=_G, operation="job_log_fill", replaces="gh job log"
+    ),
+    ModelScmVerb(
         verb="run-download", node=_G, operation="artifacts", replaces="gh run download"
     ),
     ModelScmVerb(
@@ -147,6 +150,9 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh api graphql (pullRequest reviewThreads)",
     ),
     ModelScmVerb(
+        verb="open-pr-facts", node=_G, operation="open_pr_facts", replaces="gh pr list"
+    ),
+    ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
     ),
     ModelScmVerb(verb="pr-edit", node=_W, operation="pr_edit", replaces="gh pr edit"),
@@ -170,6 +176,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         node=_W,
         operation="pr_thread_resolve",
         replaces="gh api graphql resolveReviewThread",
+    ),
+    ModelScmVerb(
+        verb="pr-review-post",
+        node=_W,
+        operation="pr_review_post",
+        replaces="gh api --method POST /repos/{o}/{r}/pulls/{n}/reviews",
     ),
     ModelScmVerb(
         verb="workflow-run",
@@ -229,18 +241,12 @@ SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
 
 def verb(name: str) -> ModelScmVerb:
     """The served verb named ``name``."""
-    for spec in SCM_VERBS:
-        if spec.verb == name:
-            return spec
-    raise KeyError(name)
+    return {spec.verb: spec for spec in SCM_VERBS}[name]
 
 
 def load_contract(node: EnumScmNode) -> dict[str, JsonValue]:
-    loaded = yaml.safe_load(
-        resources.files(f"omnimarket.nodes.{node.value}")
-        .joinpath("contract.yaml")
-        .read_text(encoding="utf-8")
-    )
+    package = resources.files(f"omnimarket.nodes.{node.value}")
+    loaded = yaml.safe_load((package / "contract.yaml").read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"{node.value} contract is not a mapping")
     return loaded
@@ -389,15 +395,3 @@ class ScmBusCaller:
         finally:
             for unsubscribe in unsubscribes:
                 await unsubscribe()
-
-
-__all__: list[str] = [
-    "LANDING_CONTROLLER",
-    "SCM_LOCAL_VERBS",
-    "SCM_REFUSED_VERBS",
-    "SCM_VERBS",
-    "ScmBusCaller",
-    "contract_operations",
-    "load_topics",
-    "verb",
-]

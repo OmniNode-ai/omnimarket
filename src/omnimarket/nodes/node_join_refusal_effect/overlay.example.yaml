@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+ledger_read:
+  route: file
+  path_env: EXAMPLE_LEDGER_PATH
+  archive_subdir: archive
+  timeout_seconds: 60
+  row_limit: 5000
+emission:
+  home_env: EXAMPLE_FLOOR_HOME
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  window_hours: 48
+joins:
+  - join: J2
+    from_piece: 2
+    to_piece: 3
+    downstream_node: "example_seam_node:join_j2"
+    injected_fault: Drop the downstream node's refusal from the emission journal
+    # The floor overlay's piece_events rule of the upstream piece, as it stands there.
+    upstream:
+      piece: 2
+      node: "example_host_node:host_canary"
+      golden:
+        row_type: STATUS
+        lane: example-host-reading
+        cells: {src: example-host-reading, probe: host-canary, drill: "no", verdict: WORKING, outcome: read}
+      error:
+        row_type: STATUS
+        lane: example-host-reading
+        cells: {src: example-host-reading, probe: host-canary, verdict: NOT_WORKING}
+      failure_code_cell: reason
+      failure_default: canary_untyped
+      error_drill_cell: drill
+      lookback_days: 7
+    # Optional on any join. Also answers the failure chains these upstream nodes wrote to the emission journal with no ledger
+    # row (a node of the upstream piece that fails under its own correlation id). A refusal and a drill are never answered.
+    # journal_upstream:
+    #   nodes: ["example_seam_node:join_j2"]

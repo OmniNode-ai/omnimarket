@@ -2,12 +2,19 @@
 # SPDX-License-Identifier: MIT
 """The ledger host's append command and file reader (OMN-20275)."""
 
+import fcntl
 import os
 import subprocess
+import threading
+import time
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
+
+WRITE_VIA_MODES = ("local", "bus")
 
 
 class ModelAppendCommandResult(BaseModel):
@@ -26,6 +33,63 @@ class ProtocolLedgerReader(Protocol):
     def read_text(self) -> str: ...
 
 
+class ProtocolLedgerAppendLock(Protocol):
+    """Mutual exclusion around one check-then-append step (OMN-22185)."""
+
+    def hold(self) -> AbstractContextManager[None]: ...
+
+
+class LedgerLockTimeoutError(TimeoutError):
+    """The append lock was not free within its declared wait."""
+
+
+class InMemoryLedgerAppendLock:
+    """In-process adapter: threads of one process exclude each other."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+
+    @contextmanager
+    def hold(self) -> Iterator[None]:
+        with self._lock:
+            yield
+
+
+class LocalLedgerAppendLock:
+    """flock on a lock file beside the ledger: processes and threads exclude each other.
+
+    Each hold opens its own descriptor, so two holds in one process conflict as two
+    processes do. The wait is bounded; the lock file stays, empty, between holds.
+    """
+
+    _POLL_S = 0.005
+
+    def __init__(self, path: Path, wait_s: float) -> None:
+        if wait_s <= 0:
+            raise ValueError("wait_s must be positive")
+        self._path = path
+        self._wait_s = wait_s
+
+    @contextmanager
+    def hold(self) -> Iterator[None]:
+        deadline = time.monotonic() + self._wait_s
+        with self._path.open("a+") as stream:
+            while True:
+                try:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise LedgerLockTimeoutError(
+                            f"ledger append lock {self._path} not free within {self._wait_s}s"
+                        ) from None
+                    time.sleep(self._POLL_S)
+            try:
+                yield
+            finally:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
 class LocalLedgerAppendCommand:
     """Invoke the operator-supplied argv prefix without a shell."""
 
@@ -33,13 +97,22 @@ class LocalLedgerAppendCommand:
     # cannot take it, so the process is never killed mid-write by our own timeout.
     LOCK_WAIT_S = 60
 
-    def __init__(self, argv_prefix: list[str], timeout_s: float = 150.0) -> None:
+    def __init__(
+        self,
+        argv_prefix: list[str],
+        timeout_s: float = 150.0,
+        *,
+        write_via: str = "local",
+    ) -> None:
         if not argv_prefix:
             raise ValueError("append command must not be empty")
         if timeout_s <= 0:
             raise ValueError("timeout_s must be positive")
+        if write_via not in WRITE_VIA_MODES:
+            raise ValueError(f"write_via must be one of {WRITE_VIA_MODES}")
         self._argv_prefix = list(argv_prefix)
         self._timeout_s = timeout_s
+        self._write_via = write_via
 
     def append(self, rows: str) -> ModelAppendCommandResult:
         try:
@@ -52,8 +125,12 @@ class LocalLedgerAppendCommand:
                     str(self.LOCK_WAIT_S),
                 ],
                 stdin=subprocess.DEVNULL,
-                # A request must never be re-published to the bus it came from.
-                env={**os.environ, "ONEX_LEDGER_WRITE_VIA": "local"},
+                # The ledger serve keeps "local": a request must never be
+                # re-published to the bus it came from. A writer that is not the
+                # serve (the lane start leader, OMN-22848) passes "bus", because a
+                # host whose ledger of record is the bus refuses a direct file
+                # append from anyone but the serve.
+                env={**os.environ, "ONEX_LEDGER_WRITE_VIA": self._write_via},
                 capture_output=True,
                 text=True,
                 timeout=self._timeout_s,

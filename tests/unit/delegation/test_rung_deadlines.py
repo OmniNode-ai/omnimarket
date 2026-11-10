@@ -31,6 +31,9 @@ import pytest
 import yaml
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    resolve_delegation_backend as _real_resolve_delegation_backend,
+)
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
     resolve_task_class_output_contract,
@@ -47,9 +50,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend as _real_resolve_delegation_backend,
 )
 from tests.fixtures.task_class_transitions import with_declared_transitions
 
@@ -218,17 +218,21 @@ ANSWER = (
 )
 
 
-@pytest.fixture
-def _fixture_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[None, None, None]:
-    """Bind routing, bifrost and task-class config to the fixture YAML above."""
+def _bind_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    tiers_yaml: str,
+    bifrost_yaml: str,
+    contract_yaml: str,
+) -> None:
+    """Bind routing, bifrost and task-class config to the given YAML."""
     tiers_path = tmp_path / "routing_tiers.yaml"
-    tiers_path.write_text(_ROUTING_TIERS_YAML)
+    tiers_path.write_text(tiers_yaml)
     bifrost_path = tmp_path / "bifrost_delegation.yaml"
-    bifrost_path.write_text(_BIFROST_YAML)
+    bifrost_path.write_text(bifrost_yaml)
     contract_path = tmp_path / "task_class_contracts.v1.yaml"
-    contract_path.write_text(with_declared_transitions(_TASK_CLASS_CONTRACT_YAML))
+    contract_path.write_text(with_declared_transitions(contract_yaml))
 
     monkeypatch.setenv("DELEGATION_ROUTING_TIERS_PATH", str(tiers_path))
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(bifrost_path))
@@ -243,13 +247,29 @@ def _fixture_env(
             overlay_path=tmp_path / "no-such-overlay.yaml",
         ),
     )
+    _reset_routing_caches()
+
+
+def _reset_routing_caches() -> None:
     routing._config = None
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()
+
+
+@pytest.fixture
+def _fixture_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
+    """Bind routing, bifrost and task-class config to the fixture YAML above."""
+    _bind_config(
+        tmp_path,
+        monkeypatch,
+        tiers_yaml=_ROUTING_TIERS_YAML,
+        bifrost_yaml=_BIFROST_YAML,
+        contract_yaml=_TASK_CLASS_CONTRACT_YAML,
+    )
     yield
-    routing._config = None
-    routing._get_task_class_contract.cache_clear()
-    routing._load_bifrost_endpoints.cache_clear()
+    _reset_routing_caches()
 
 
 class _Clock:
@@ -396,3 +416,172 @@ def test_every_shipped_class_declares_its_rung_floor() -> None:
         assert isinstance(floor, int), task_class
         assert floor >= 1, task_class
         assert floor <= budget["task_class_timeout_ceiling_seconds"], task_class
+
+
+# --- OMN-23170 AC1: a rung with no credential is not reserved a floor ----------
+
+ABSENT_KEY_ENV = "OMN23170_ABSENT_RUNG_KEY"
+
+
+def _tier_yaml(name: str, cost: float, backend_id: str) -> str:
+    return textwrap.dedent(
+        f"""\
+          - name: {name}
+            cost_per_1k_tokens: {cost}
+            models:
+              - id: {backend_id}-model
+                backend_id: {backend_id}
+                max_context_tokens: 8192
+                use_for: [document]
+            eval_before_accept: false
+            max_retries: 0
+        """
+    )
+
+
+def _ladder_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    middle: bool,
+    middle_key_env: str | None = None,
+) -> None:
+    """Bind a ladder of local -> [cheap_cloud ->] top_cloud.
+
+    The ladder has three rungs when ``middle`` is true and two when it is not.
+    The middle rung reads its key from ``middle_key_env`` when that is given
+    and needs none otherwise. The local rung's own timeout is longer than the
+    whole chain, so its deadline is the one the rung reserve sets.
+    """
+    tier_order = ["local"] + (["cheap_cloud"] if middle else []) + ["top_cloud"]
+    tiers = "tiers:\n" + _tier_yaml("local", 0.0, "local-a")
+    if middle:
+        tiers += _tier_yaml("cheap_cloud", 0.001, "cloud-2")
+    tiers += _tier_yaml("top_cloud", 0.003, "cloud-4")
+
+    backend_ids = ["local-a"] + (["cloud-2"] if middle else []) + ["cloud-4"]
+    bifrost = (
+        'config_version: "1.0.0"\nschema_version: "bifrost_delegation.v1"\nbackends:\n'
+        + _backend("local-a", "local", "local", CEILING_SECONDS * 2000)
+    )
+    if middle:
+        cloud_2 = _backend("cloud-2", "glm", "frontier_api", 120000)
+        if middle_key_env is not None:
+            cloud_2 = cloud_2.replace(
+                "  tier: frontier_api\n",
+                f"  tier: frontier_api\n  api_key_env: {middle_key_env}\n",
+            )
+        bifrost += cloud_2
+    bifrost += _backend("cloud-4", "glm", "frontier_api", 120000)
+    bifrost += _BIFROST_YAML[_BIFROST_YAML.index("routing_rules:") :].replace(
+        f"backend_ids: [{', '.join(_BACKEND_IDS)}]",
+        f"backend_ids: [{', '.join(backend_ids)}]",
+    )
+    contract = _TASK_CLASS_CONTRACT_YAML.replace(
+        "max_escalations: 3", f"max_escalations: {len(tier_order) - 1}"
+    ).replace(
+        "        - local\n        - cheap_cloud\n        - mid_cloud\n        - top_cloud\n",
+        "".join(f"        - {name}\n" for name in tier_order),
+    )
+    _bind_config(
+        tmp_path,
+        monkeypatch,
+        tiers_yaml=tiers,
+        bifrost_yaml=bifrost,
+        contract_yaml=contract,
+    )
+
+
+class _LocalSlowThenAnswer:
+    """The local rung runs past its deadline; any cloud rung answers."""
+
+    def __init__(self, clock: _Clock) -> None:
+        self.clock = clock
+        self.calls: list[tuple[str, float, float]] = []
+
+    def __call__(
+        self, request: ModelLlmDelegationCallRequest
+    ) -> ModelLlmDelegationCallResult:
+        self.calls.append(
+            (request.provider, self.clock.now, float(request.timeout_seconds))
+        )
+        if request.provider != "local-a":
+            return ModelLlmDelegationCallResult(
+                request_id=request.request_id, success=True, content=ANSWER
+            )
+        self.clock.now += (
+            float(request.timeout_seconds)
+            + port_mod._DISPATCH_TIMEOUT_BUFFER_SECONDS
+            + OVERRUN_SECONDS
+        )
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=False,
+            failure_class=EnumDelegationFailureClass.TIMEOUT,
+            error_message="killed at the dispatch deadline",
+        )
+
+
+def _local_rung_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    middle: bool,
+    middle_key_env: str | None = None,
+) -> tuple[float, list[str]]:
+    """The first rung's attempt timeout on a ladder, and the rungs that were called."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    try:
+        _ladder_config(
+            tmp_path, monkeypatch, middle=middle, middle_key_env=middle_key_env
+        )
+        clock = _Clock()
+        effect = _LocalSlowThenAnswer(clock)
+        result = _dispatch(
+            LocalDelegationDispatchPort(
+                effect_handler=effect,
+                evidence_db_path=tmp_path / "d.sqlite",
+                effect_process_boundary=False,
+                clock=clock,
+            )
+        )
+        assert result["status"] == "completed", result
+        return effect.calls[0][2], [provider for provider, _, _ in effect.calls]
+    finally:
+        _reset_routing_caches()
+
+
+def test_credential_absent_not_reserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC1: a rung with no key holds no floor, so the rung before it keeps its time.
+
+    Three rungs whose second has no credential must give the first rung the
+    deadline a two-rung ladder gives it: the second rung is never attempted,
+    so the time reserved for it would be spent on nothing.
+    """
+    monkeypatch.delenv(ABSENT_KEY_ENV, raising=False)
+
+    two_rung, two_called = _local_rung_timeout(
+        tmp_path / "two", monkeypatch, middle=False
+    )
+    absent, absent_called = _local_rung_timeout(
+        tmp_path / "absent",
+        monkeypatch,
+        middle=True,
+        middle_key_env=ABSENT_KEY_ENV,
+    )
+    present, present_called = _local_rung_timeout(
+        tmp_path / "present", monkeypatch, middle=True
+    )
+
+    # Positive control: a middle rung that needs no key IS reached and does
+    # hold a floor, so the first rung's deadline is shorter than a two-rung
+    # ladder's.
+    assert present_called == ["local-a", "cloud-2"], present_called
+    assert two_called == ["local-a", "cloud-4"], two_called
+    assert present < two_rung, (present, two_rung)
+
+    # The absent-key middle rung is skipped and costs the first rung nothing.
+    assert absent_called == ["local-a", "cloud-4"], absent_called
+    assert absent == pytest.approx(two_rung), (absent, two_rung)

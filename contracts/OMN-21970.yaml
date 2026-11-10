@@ -1,0 +1,64 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21970
+title: Ownership of the per-day delegation view and the delegation_events walk cursor, ahead of their vendoring
+summary: >-
+  Ownership half only: declares the delegation_events walk cursor sequence and the projection_delegation_daily view in the application relation ownership manifest, ahead of omnibase_infra vendoring node_projection_delegation's 0065 and 0066 migrations, whose application SQL gate needs every object a vendored migration creates or grants to have exactly one correctly typed owner here. The migrations, the per-day exposure, the cursor walk and the dashboard charts are other changes. This check proves the declarations, not acceptance of the criterion.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21970-ac1-daily-view-cursor-ownership
+    statement: >-
+      The delegation_events walk cursor sequence and the projection_delegation_daily view each have exactly one ownership declaration, of the right kind, in the tenant domain, owned by the projection migration runner, so omnibase_infra's application SQL gate accepts the vendored 0065 and 0066 migrations.
+    acceptance:
+      - id: AC1
+        statement: "AC1: omnimarket serves per-day run and token totals for a requested UTC day range with no row cap, and for a range holding more than 500 runs the served run totals equal the full count -- falsifier: uv run pytest on a projection test that writes 600 runs over 20 days and asserts 20 served days whose run totals sum to 600"
+evidence_requirements:
+  - kind: tests
+    description: Ownership half only; the cursor sequence and the daily view are each declared once, with their kind, domain and owner.
+    command: uv run pytest tests/test_omn21970_daily_view_cursor_ownership_declared.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21970-ac1-daily-view-cursor-ownership
+    description: Ownership half only. The cursor sequence and the daily view are each declared exactly once, of the right kind, in the tenant domain, owned by the projection migration runner. It does not prove the per-day exposure, the walk or the charts.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21970_daily_view_cursor_ownership_declared.py -q
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC1]
+  - id: dod-omn21970-ac1-daily-exposure-and-walk
+    description: >-
+      AC1, the exposure half: omnimarket serves onex.snapshot.projection.delegation.daily.v1, one row per tenant whose
+      days list holds every UTC day's runs, verdicts and token totals with no row cap, and pages decisions.v1 past its
+      newest 500 runs by the projection_cursor walk. 600 runs over 20 days are served as 20 days summing to 600, a run
+      lands on the UTC day of written_at, verdicts match the dashboard's, another tenant's runs are neither counted nor
+      served, the decisions first page is still the newest 500, and the walk reaches all 600; each in SQLite and in a
+      real PostgreSQL 16 database with migrations 0065 and 0066 applied.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/projection/test_sqlite_delegation_daily_omn21970.py -q
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21970_daily_and_cursor_real_postgres.py -q
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC1]
+  - id: dod-omn21970-integration-proof
+    description: >-
+      Run this pull request's real-PostgreSQL proof on a lab host at the pushed head: migrations 0065 and 0066 applied,
+      600 runs over 20 days served as 20 days summing to 600, and the decisions walk reaching all 600. Hosted CI cannot
+      reach the lab, so only the local Done gate runs this unbound check. The served delegation.daily.v1 is read on the
+      lab projection API after this change and its omnibase_infra pin deploy.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-21970 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/test_omn21970_daily_and_cursor_real_postgres.py -q --no-cov
+        cwd: .

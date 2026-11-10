@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23181
+title: The delegation readiness verdict is shippable only when all nine scenarios have seven consecutive green UTC days, no failure today and a successful run in the latest due slot
+summary: Readiness plan task A2. node_delegation_readiness_verdict_effect runs hourly (minute 35 UTC, after the green-days node) and reads the scenarios' STATUS rows over the same ledger point-read route as node_delegation_scenario_days_effect. node_delegation_readiness_verdict_compute decides PASS only when, for every declared scenario R1..R9, the consecutive green days reach the bar (required_green_days 7, the operator's decision, a contract setting over a window of 8 days), no slot failed today (UTC), and the latest due slot (the slot before the last 2 h for hourly, 8 h for every_6h, 26 h for daily, all contract settings) has a successful scheduled run. A due slot with no run is red, a manual run never fills a slot, an unreadable history and a scenario with no rows are red. The node writes the verdict JSON, one ledger STATUS row (verdict=pass|fail, misses=) and emits the result on onex.evt.omnimarket.delegation-readiness-verdict-published.v1. Its CLI run exits 0 only on PASS and names each scenario that misses on stdout. Wiring this verdict into criterion C33 is a separate follow-up and is not part of this ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23181-readiness-verdict
+  statement: The readiness verdict passes only when every scenario has the required consecutive green UTC days, no failed slot today and a successful scheduled run in its latest due slot, and the CLI exit code and output say which scenarios miss.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the verdict passes only when all nine scenarios have >=7 green days, no failure today and a successful run in the latest due slot -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_readiness_verdict_effect -q --no-cov -k "all_seven or one_short or failed_today or stopped_after_qualifying or unreadable_is_red"`'
+  - id: AC2
+    statement: 'AC2: the CLI exits non-zero naming each missing scenario -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_readiness_verdict_effect/test_golden_chain_readiness_verdict_effect.py -q --no-cov -k cli_exit`'
+evidence_requirements:
+- kind: tests
+  description: The golden and error chain tests of the readiness verdict compute and effect nodes pass.
+  command: uv run --frozen pytest tests/nodes/node_delegation_readiness_verdict_compute tests/nodes/node_delegation_readiness_verdict_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23181-ac1-verdict
+  description: Runs the verdict chain tests. All nine scenarios with seven green days, no failure today and a successful latest due slot pass; one scenario with six days, a failure today, runs that stopped past the grace, and an unreadable history each turn the verdict red for their own reason.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_readiness_verdict_effect -q --no-cov -k "all_seven or one_short or failed_today or stopped_after_qualifying or unreadable_is_red"
+    cwd: .
+- id: dod-omn23181-ac2-cli
+  description: Runs the CLI exit tests. The run exits 0 on PASS and 1 on FAIL, with each scenario that misses named on stdout.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_readiness_verdict_effect/test_golden_chain_readiness_verdict_effect.py -q --no-cov -k cli_exit
+    cwd: .
+- id: dod-omn23181-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23181 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_readiness_verdict_compute tests/nodes/node_delegation_readiness_verdict_effect -q --no-cov
+    cwd: .

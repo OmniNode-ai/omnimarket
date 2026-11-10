@@ -11,11 +11,17 @@ returns the decision. It reads nothing, has no clock and writes nothing.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 from datetime import datetime, timedelta
 
+from omnimarket.handlers.runtime_proof_close_rules import (
+    MERGED_NOT_PROVEN_RUNNING,
+    evaluate_proof_close,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
+    merged_branch,
     refusal_of,
     refusal_reason,
     same_actor,
@@ -25,11 +31,25 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
     ground_state,
     read_receipts,
     zero_flip_alert,
+    zero_flip_reading,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_rules import (
+    merged_prs,
+    open_prs,
+    pr_rows,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
+    load_scope_overlay,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rules import (
+    bundle_text,
+    scope_examined_memory,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
     box_ticks,
     chunk_list,
     comment_signature,
+    could_not_run_reading,
     decide_ticket,
     open_comment,
     read_dod_verify,
@@ -67,6 +87,7 @@ BLOCK_AC_UNBOUND = "ac:unbound"
 BLOCK_CHECKS_TALLY = "checks:tally"
 BLOCK_BEHAVIOR_NONE = "behavior:none"
 BLOCK_REVERTED_UNCHANGED = "reverted:unchanged"
+BLOCK_MERGED_NOT_PROVEN_RUNNING = "proof:merged-not-yet-proven-running"
 BLOCK_MERGED_UNRELEASED = "released:merged-unreleased"
 BLOCK_RELEASED_INDETERMINATE = "released:indeterminate"
 BLOCK_UNCLASSIFIED = "unclassified"
@@ -474,6 +495,23 @@ def flip_decision(
         unmet.append(BLOCK_BEHAVIOR_NONE)
     if request.prior_reversal and not request.outcome_changed_since_reversal:
         unmet.append(BLOCK_REVERTED_UNCHANGED)
+    # OMN-22334: a merge delivers the change; the ticket closes only on proof it runs.
+    proof_reason = ""
+    if request.all_prs_merged:
+        proof = (
+            evaluate_proof_close(
+                request.runtime_proof.model_copy(update={"change_merged": True})
+            )
+            if request.runtime_proof is not None
+            else None
+        )
+        if proof is None or not proof.allowed:
+            unmet.append(BLOCK_MERGED_NOT_PROVEN_RUNNING)
+            proof_reason = (
+                proof.reason
+                if proof is not None
+                else f"{MERGED_NOT_PROVEN_RUNNING}: no runtime receipt was supplied"
+            )
     if unmet:
         return ModelDodCloseoutDecisionResult(
             kind=kind,
@@ -482,6 +520,7 @@ def flip_decision(
             unmet=unmet,
             primary_blocker=unmet[0],
             unbound_criteria=unbound,
+            reason=proof_reason or None,
         )
     if request.released is EnumReleasedState.MERGED_UNRELEASED:
         return ModelDodCloseoutDecisionResult(
@@ -796,12 +835,17 @@ def refuse_binding(
     check = request.check
     if check is not None and not check.label and request.criterion_label:
         check = check.model_copy(update={"label": request.criterion_label})
-    refusal = refusal_of(check)
+    overlay = (
+        load_scope_overlay() if request.scope_overlay is None else request.scope_overlay
+    )
+    refusal = refusal_of(check, overlay)
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.REFUSE_BINDING,
         refused=refusal is not None,
         refusal_class=refusal,
-        reason=None if refusal is None else refusal_reason(refusal),
+        reason=None
+        if refusal is None
+        else refusal_reason(refusal, merged_branch(check, overlay)),
     )
 
 
@@ -825,6 +869,65 @@ def rotate_candidates(
     )
 
 
+def bundle_scope(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """The bounded scope the sweep selects from, ranked over the whole scope by the
+    overlay's rules (OMN-20655)."""
+    assert request.scope_candidates is not None
+    assert request.scope_pr_state is not None
+    assert request.scope_text_state is not None
+    assert request.max_candidates is not None
+    overlay = request.scope_overlay or load_scope_overlay()
+    text = bundle_text(
+        request.scope_candidates,
+        request.scope_pr_state,
+        request.scope_text_state,
+        request.scope_contract_state,
+        request.max_candidates,
+        overlay,
+        request.scope_examined,
+    )
+    examined_next = (
+        None
+        if request.scope_now is None
+        else scope_examined_memory(
+            request.scope_candidates,
+            request.scope_pr_state,
+            request.scope_text_state,
+            request.scope_contract_state,
+            request.max_candidates,
+            overlay,
+            request.scope_examined or {},
+            request.scope_now,
+        )
+    )
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
+        scope_bundle=json.loads(text),
+        scope_examined_next=examined_next,
+    )
+
+
+def report_prs(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """Each ticket's merged and open PRs; a watcher state that was not read is an error on every
+    row, never an empty open set (OMN-20655)."""
+    assert request.pr_tickets is not None
+    assert request.pr_subjects is not None
+    overlay = request.scope_overlay or load_scope_overlay()
+    merged, unread = merged_prs(request.pr_subjects, overlay)
+    state = request.pr_watcher_state
+    opened = None if state is None else open_prs(state, overlay)
+    why = request.pr_watcher_error or "PR watcher state was not given"
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.PR_ROWS,
+        pr_rows=[dict(r) for r in pr_rows(request.pr_tickets, merged, opened, why)],
+        unread_repositories=unread,
+    )
+
+
 def judge_ticket(
     *, request: ModelDodCloseoutDecisionRequest
 ) -> ModelDodCloseoutDecisionResult:
@@ -837,9 +940,12 @@ def judge_ticket(
         if request.dod_verify_receipt is None
         else read_dod_verify(request.dod_verify_receipt)
     )
+    if request.verify_detail:
+        dod_verify = could_not_run_reading(request.verify_detail)
     decision, unmet = decide_ticket(
         acs=request.acs,
         dod_verify=dod_verify,
+        no_contract_prefix=load_scope_overlay().no_contract_detail_prefix,
         criteria_note=request.criteria_note,
         criteria_amendment=request.criteria_amendment,
     )
@@ -900,6 +1006,7 @@ def complete_run(
         completion_rows=rows,
         zero_flip_streak=length,
         top_deferral_reason=reason,
+        zero_flip_reading=zero_flip_reading(request.run_summary, request.clock_utc),
         zero_flip_alert=zero_flip_alert(
             request.run_summary,
             length,
@@ -966,6 +1073,10 @@ class HandlerDodCloseoutSweep:
             )
         if kind is EnumCloseoutDecisionKind.SELECT_CANDIDATES:
             return rotate_candidates(request=request)
+        if kind is EnumCloseoutDecisionKind.SCOPE_BUNDLE:
+            return bundle_scope(request=request)
+        if kind is EnumCloseoutDecisionKind.PR_ROWS:
+            return report_prs(request=request)
         if kind is EnumCloseoutDecisionKind.DECIDE_TICKET:
             return judge_ticket(request=request)
         if kind is EnumCloseoutDecisionKind.COMPLETION:

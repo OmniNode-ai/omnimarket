@@ -1,0 +1,25 @@
+name: node_handoff_check_effect
+version: "1.0.0"
+description: "Assembles a session handoff from the ledger, PR watcher and probes, and refuses it when a ruling is unaccounted for"
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_handoff_check_effect: "omnimarket.nodes.node_handoff_check_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read_write
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "pydantic>=2.0"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "handoff", "ledger", "session"]
+pack: "observability"
+display_name: "Handoff Check Effect"
+node_role: "effect"

@@ -73,6 +73,38 @@ from omnimarket.handlers.handler_capability_start import (
     resolve_capability_start,
 )
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
+from omnimarket.handlers.routing.backend_placement import (
+    apply_backend_placements,
+    lead_models,
+    lead_refs_in,
+    load_bound_bifrost_placements,
+    pick_spread_member,
+    spread_groups,
+    spread_weights,
+)
+from omnimarket.handlers.routing.customer_key_terminus import (
+    EnumDelegationSurface,
+    enforce_customer_key_terminus,
+    house_credential_refs,
+    is_customer_attributed,
+    lab_backend_hosts,
+    refuse_keyless_customer_on_cloud,
+)
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.measured_correct_ceiling import (
+    exceeds_measured_correct_ceiling,
+    load_grounding_budget_by_task_class,
+    measure_grounding_input_tokens,
+)
+from omnimarket.handlers.routing.routing_tiers_path import (
+    load_delegation_routing_overlay,
+    resolve_routing_tiers_path,
+)
+from omnimarket.handlers.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
     resolve_path_config,
@@ -106,15 +138,18 @@ from omnimarket.models.delegation.model_entry_tier_share import (
 from omnimarket.models.delegation.model_escalation_transitions import (
     ModelTaskClassTransitions,
 )
-from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
-    ModelGroundingBudgetByTaskClass,
-)
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
-    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT as DELEGATION_MAX_TOKENS_HARD_LIMIT,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.tenant_overlay_decision import (
+    TENANT_OVERLAY_TIER_NAME as TENANT_OVERLAY_TIER_NAME,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.tenant_overlay_decision import (
+    build_tenant_overlay_decision,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
@@ -139,34 +174,11 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
     ModelTierModel,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.backend_placement import (
-    apply_backend_placements,
-    load_bound_bifrost_placements,
-    spread_groups,
-    spread_pick,
-    spread_weights,
-)
-from omnimarket.routing.customer_key_terminus import (
-    EnumDelegationSurface,
-    enforce_customer_key_terminus,
-    house_credential_refs,
-    is_customer_attributed,
-    lab_backend_hosts,
-    refuse_keyless_customer_on_cloud,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
-from omnimarket.routing.routing_tiers_path import (
-    load_delegation_routing_overlay,
-    resolve_routing_tiers_path,
-)
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+from omnimarket.routing.tenant_overlay_resolver import (
+    HOUSE_OVERLAY_COST_TIER as HOUSE_OVERLAY_COST_TIER,
 )
 from omnimarket.routing.tenant_overlay_resolver import (
-    HOUSE_OVERLAY_COST_TIER,
     ModelTenantRoutingOverlayBackend,
 )
 
@@ -508,7 +520,7 @@ def _select_model_for_task(
     OMN-19215 AC4: when ``spread_key`` is given and ``spread_peers`` names
     spread-mode placed backends for the chosen rung, the choice becomes one
     member of the group ``[rung, *eligible peers]``, picked by
-    :func:`~omnimarket.routing.backend_placement.spread_pick` over the key, each
+    :func:`~omnimarket.handlers.routing.backend_placement.spread_pick` over the key, each
     member taking the share its placement ``weight`` declares (the rung's is 1.0).
     A peer is eligible under the same rules the first choice met: not
     excluded, declares ``task_type``, fits ``estimated_tokens`` and its backend
@@ -518,53 +530,57 @@ def _select_model_for_task(
     transport-failure retry that excludes the member tried first still lands on
     another member of the group.
     """
-    selected = _select_primary_model_for_task(
+    # OMN-22220: a rung is never offered a task above its measured correct ceiling.
+    tier_models = tuple(
+        m
+        for m in tier_models
+        if not exceeds_measured_correct_ceiling(
+            m.backend_ref, task_type, estimated_tokens
+        )
+    )
+    # OMN-23329: a lead rung is tried ahead of the class's model pin; a request it
+    # cannot take falls through to the tier's own rungs.
+    for models, pin in (
+        (lead_models(tier_models), None),
+        (tier_models, contract_model_ref),
+    ):
+        selected = (
+            _select_primary_model_for_task(
+                models,
+                task_type,
+                estimated_tokens,
+                bifrost_backends,
+                pin,
+                exclude_backend_refs,
+                contract_model_ref_is_explicit_override=(
+                    contract_model_ref_is_explicit_override
+                ),
+                require_credential=require_credential,
+                quota_state=quota_state,
+            )
+            if models
+            else None
+        )
+        if selected is not None:
+            break
+    if selected is None or spread_key is None or not spread_peers:
+        return selected
+    return pick_spread_member(
+        selected,
         tier_models,
         task_type,
         estimated_tokens,
-        bifrost_backends,
-        contract_model_ref,
         exclude_backend_refs,
-        contract_model_ref_is_explicit_override=(
-            contract_model_ref_is_explicit_override
+        spread_peers,
+        spread_member_weights or {},
+        spread_key,
+        lambda ref: (
+            (backend := bifrost_backends.get(ref)) is not None
+            and _backend_routable(
+                backend, require_credential=require_credential, quota_state=quota_state
+            )
         ),
-        require_credential=require_credential,
-        quota_state=quota_state,
     )
-    if selected is None or spread_key is None or not spread_peers:
-        return selected
-    peer_refs = spread_peers.get(selected.backend_ref, ())
-    group: list[ModelTierModel] = [selected]
-    for peer_ref in peer_refs:
-        if peer_ref in exclude_backend_refs:
-            continue
-        backend = bifrost_backends.get(peer_ref)
-        if backend is None or not _backend_routable(
-            backend, require_credential=require_credential, quota_state=quota_state
-        ):
-            continue
-        member = next(
-            (
-                model
-                for model in tier_models
-                if model.backend_ref == peer_ref
-                and task_type in model.use_for
-                and estimated_tokens <= model.max_context_tokens
-            ),
-            None,
-        )
-        if member is not None:
-            group.append(member)
-    if len(group) == 1:
-        return selected
-    member_weights = spread_member_weights or {}
-    return group[
-        spread_pick(
-            spread_key,
-            [1.0]
-            + [member_weights.get(member.backend_ref, 1.0) for member in group[1:]],
-        )
-    ]
 
 
 def _select_primary_model_for_task(
@@ -708,14 +724,14 @@ def _select_primary_model_for_task(
 
 # OMN-15628: the canonical routing_tiers.yaml location and its env-pinned
 # resolver live in the SHARED, non-node module
-# ``omnimarket.routing.routing_tiers_path`` (imported above), not here. Both
+# ``omnimarket.handlers.routing.routing_tiers_path`` (imported above), not here. Both
 # this routing authority and the delegation orchestrator's replay-provenance
 # hash read that one derivation, so neither node imports the other's handler
 # package and the two cannot drift apart again — an orchestrator copy that
 # walked one ``.parent`` too far is the defect round 3 fixed.
 
 # OMN-17802: repointed at the shared derivation in
-# ``omnimarket.routing.task_class_contract_path`` so the orchestrator's
+# ``omnimarket.handlers.routing.task_class_contract_path`` so the orchestrator's
 # escalation-config provenance hash and this authority cannot name different
 # files -- the same single-derivation rule OMN-15628 applied to routing_tiers.
 _DEFAULT_TASK_CLASS_CONTRACT_PATH = TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH
@@ -814,6 +830,11 @@ def _spread_weights_for(config: ModelDelegationConfig) -> dict[str, float]:
     if recorded is None or recorded[0] is not config:
         return {}
     return recorded[1]
+
+
+def lead_backend_refs() -> frozenset[str]:
+    """The lead-placed backends of the bound routing config (OMN-23329)."""
+    return lead_refs_in(_get_config())
 
 
 def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:
@@ -2136,23 +2157,6 @@ def tiers_declaring_backend(backend_ref: str) -> tuple[str, ...]:
     return tuple(names)
 
 
-# OMN-18297: the divisor of the character-based input measurement. It is the
-# repo's existing estimator (``estimate_tokens``, node_context_artifact_resolver
-# _compute) and it UNDER-counts: the recorded 57,120-character prompt of
-# delegation d715f096-27b9-444f-9355-3554819ef8a5 measures 14,280 here against
-# the provider's metered 18,245, about 22% low. The budget is declared in these
-# same units so the comparison is like-for-like, and both numbers are recorded
-# on the receipt so a reader never has to guess which one a budget refers to.
-_GROUNDING_TOKEN_CHARS_PER_TOKEN: int = 4
-
-
-def measure_grounding_input_tokens(text: str) -> int:
-    """Measure a prompt in the units the grounding budget is declared in."""
-    if not text:
-        return 0
-    return max(1, -(-len(text) // _GROUNDING_TOKEN_CHARS_PER_TOKEN))
-
-
 def resolve_backend_grounding_budget(
     backend_id: str, task_type: str | None = None
 ) -> int | None:
@@ -2182,23 +2186,13 @@ def resolve_backend_grounding_budget(
     for backend in config.backends:
         if backend.backend_id == backend_id:
             if task_type is not None:
-                class_budget = _load_grounding_budget_by_task_class().budget_for(
+                class_budget = load_grounding_budget_by_task_class().budget_for(
                     backend_id, task_type
                 )
                 if class_budget is not None:
                     return class_budget
             return backend.max_grounded_input_tokens
     return None
-
-
-@lru_cache(maxsize=1)
-def _load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
-    """Load the packaged per-task-class grounded input budgets (OMN-20486)."""
-    resource = importlib.resources.files("omnimarket").joinpath(
-        "configs/grounding_budget_by_task_class.yaml"
-    )
-    data = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
-    return ModelGroundingBudgetByTaskClass.model_validate(data)
 
 
 def backend_id_for_tier(
@@ -2549,7 +2543,6 @@ def tier_max_retries(tier_name: str) -> int:
 # gives downstream cost/tier accounting a stable, greppable value instead of
 # an empty string or a borrowed platform tier name that would misattribute
 # the decision's provenance.
-TENANT_OVERLAY_TIER_NAME = "tenant_overlay"
 
 
 def _decision_from_tenant_overlay(
@@ -2561,115 +2554,18 @@ def _decision_from_tenant_overlay(
     dod_resolution: ModelDodResolution,
     size_band: ModelSizeBand | None = None,
 ) -> ModelRoutingDecision:
-    """Build a ``ModelRoutingDecision`` directly from a tenant overlay row.
-
-    OMN-15631 v1(a) AC6: a matching (tenant_id, task_type) overlay row
-    WHOLESALE-REPLACES the platform-resolved BACKEND for that pair — endpoint,
-    model, credential ref, timeout, max_tokens and cost tier all come from the
-    row, and tier iteration, task-class ROUTING policy and ROI suppression are
-    not consulted (those govern platform routing STRUCTURE, which stays
-    platform-fixed in v1(a); see ``tenant_overlay_resolver`` module docstring
-    for the full precedence writeup). ``max_context_tokens`` uses the
-    platform's shared hard-limit constant — the overlay table does not carry
-    a per-backend context window in v1(a).
-
-    OMN-17372: the ACCEPTANCE contract is neither the backend nor the routing
-    structure, and is therefore NOT overlay-replaced. ``dod_resolution`` is
-    resolved once in ``delta`` from the task-class contract and the CALLER's
-    prompt, and is threaded onto this decision byte-identically to the platform
-    site. The overlay decides WHERE the work runs and WHOSE key pays; it must
-    never decide WHAT counts as done. It is not overlay-controllable by
-    construction: the overlay table carries no DoD column and must not gain
-    one, for the same reason ``_shape_override_deterministic`` refuses a
-    ``default_shape_overrides.deterministic`` sibling — acceptance the caller
-    can write is a caller-controlled bypass of the acceptance surface.
-
-    Dropping it was not a cosmetic omission. With both bands empty the quality
-    gate's ``has_contract_dod`` is False, so every keyed customer delegation
-    was graded by ``_run_legacy_checks``, which applies a 60-character floor no
-    contract declares and then appends ``_NO_ADEQUACY_AUTHORITY_REASON`` — a
-    correct answer scoring 1.000 against a 0.800 bar was still terminalized
-    ``failed`` (live workflows 40ac8467 and 5ad9b033, 2026-09-07).
-    """
-    provider = (overlay.provider or "").strip()
-    if not provider:
-        context = ModelInfraErrorContext.with_correlation(
-            transport_type=EnumInfraTransportType.DATABASE,
-            operation="resolve_tenant_overlay_provenance",
-        )
-        raise ProtocolConfigurationError(
-            "Tenant routing overlay "
-            f"{overlay.backend_id!r} has no declared provider provenance.",
-            context=context,
-        )
-
-    system_prompt = _SYSTEM_PROMPTS.get(
-        task_type,
-        f"You are a helpful assistant completing a {task_type} task.",
-    )
-    rationale = (
-        f"Task '{task_type}' (~{estimated_tokens} tokens) routed to tenant "
-        f"{overlay.tenant_id!r}'s overlay backend '{overlay.backend_id}' "
-        "(OMN-15631 v1(a) tenant-scoped resolution — platform tier ladder "
-        "not consulted)."
-    )
-    return ModelRoutingDecision(
-        correlation_id=request.correlation_id,
+    """Build the overlay decision, including this selected key's model order."""
+    return build_tenant_overlay_decision(
+        request,
         task_type=task_type,
-        selected_model=overlay.model_name,
-        # Namespaced by tenant_id so two tenants' overlay rows that happen to
-        # name the same backend_id string never collide on the derived UUID
-        # (_backend_id_for_ref hashes the supplied reference alone).
-        selected_backend_id=_backend_id_for_ref(
-            f"{overlay.tenant_id}:{overlay.backend_id}"
-        ),
-        endpoint_url=overlay.endpoint_url,
-        # No api_key_env / house env-var fallback is ever threaded for a
-        # tenant-overlay backend. OMN-16944: this is now ENFORCED rather than
-        # merely observed here. ``overlay.secret_ref`` carries the minted
-        # tenant-credential shape, and ``secret_store_resolver
-        # .resolve_api_key_async`` routes any ref of that shape through
-        # ``resolve_tenant_scoped_api_key_async`` -- dropping ``env_var_fallback``
-        # unconditionally -- at the one choke point every effect-boundary entry
-        # point funnels through. So the guarantee holds even if a future DTO
-        # grows an ``api_key_env`` field or a call site threads one. Until
-        # OMN-16944 that resolver had zero production call sites and this
-        # comment described an intent, not a mechanism.
-        api_key_ref=overlay.secret_ref,
-        extra_headers=None,
-        # OMN-19186: the label follows the tenant, because the house did not
-        # bring its own key -- it owns the GPU, and a house rung usually has no
-        # secret_ref at all. Filing house inference under a customer's
-        # bring-your-own-key tier is a reporting defect that surfaces only when
-        # somebody reads a bill.
-        cost_tier=(
-            HOUSE_OVERLAY_COST_TIER
-            if overlay.tenant_id == HOUSE_TENANT_SLUG
-            else "tenant_byok"
-        ),
-        max_context_tokens=DELEGATION_MAX_TOKENS_HARD_LIMIT,
-        timeout_ms=overlay.timeout_ms if overlay.timeout_ms is not None else 30000,
-        max_tokens=(
-            overlay.max_tokens
-            if overlay.max_tokens is not None
-            else DELEGATION_MAX_TOKENS_HARD_LIMIT
-        ),
-        system_prompt=system_prompt,
-        rationale=rationale,
-        tier_name=TENANT_OVERLAY_TIER_NAME,
-        selected_backend_ref=overlay.backend_id,
-        route=overlay.backend_id,
-        provider=provider,
-        # OMN-17372: the same five fields the platform site threads, from the
-        # same single resolution — so the two sites cannot disagree about what
-        # counts as done for a given (task_type, prompt).
-        dod_deterministic=dod_resolution.deterministic,
-        dod_heuristic=dod_resolution.heuristic,
-        requested_shape=dod_resolution.requested_shape,
-        dod_deterministic_source=dod_resolution.deterministic_source,
-        dod_heuristic_source=dod_resolution.heuristic_source,
-        # OMN-20167: measured once in ``delta`` from the text, like the DoD bands.
+        overlay=overlay,
+        estimated_tokens=estimated_tokens,
+        dod_resolution=dod_resolution,
         size_band=size_band,
+        system_prompt=_SYSTEM_PROMPTS.get(
+            task_type, f"You are a helpful assistant completing a {task_type} task."
+        ),
+        backend_id=_backend_id_for_ref(f"{overlay.tenant_id}:{overlay.backend_id}"),
     )
 
 
@@ -3013,7 +2909,7 @@ def delta(
             and the only routable answer would authenticate the customer's work
             with an OmniNode platform credential — or, on the cloud surface,
             with OmniNode's own compute. See
-            :mod:`omnimarket.routing.customer_key_terminus`.
+            :mod:`omnimarket.handlers.routing.customer_key_terminus`.
     """
     task_type = request.task_type
     # OMN-17427: a withheld class is refused before every backend or overlay override.
@@ -3552,6 +3448,7 @@ __all__: list[str] = [
     "first_eligible_tier",
     "house_credential_refs",
     "is_free_tier",
+    "measure_grounding_input_tokens",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
     "resolve_task_class_dod_resolution",

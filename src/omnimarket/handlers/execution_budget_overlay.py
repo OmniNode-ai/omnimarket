@@ -126,6 +126,22 @@ def resolve_execution_budget(
     return resolve_for_authority(load_task_class_authority(), task_class, environ)
 
 
+def execution_budget_source(
+    task_class: str,
+    environ: Mapping[str, str] | None = None,
+) -> str | None:
+    """Name where ``task_class``'s budget came from, or None when it declares none.
+
+    The delegate-skill terminal carries this as ``budget_source`` (OMN-21344
+    AC2): the contract entry, or the overlay file that set the class. A broken
+    overlay still raises :class:`NodeOverlayError`.
+    """
+    try:
+        return resolve_execution_budget(task_class, environ).source
+    except ValueError:
+        return None
+
+
 def largest_execution_budget(
     environ: Mapping[str, str] | None = None,
 ) -> ModelResolvedExecutionBudget | None:
@@ -154,6 +170,7 @@ def largest_execution_budget(
 
 __all__ = [
     "EXECUTION_BUDGET_OVERLAY_ID",
+    "execution_budget_source",
     "largest_execution_budget",
     "load_execution_budget_overlay",
     "resolve_execution_budget",

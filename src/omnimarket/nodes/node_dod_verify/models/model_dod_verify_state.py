@@ -195,38 +195,18 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # still refuses. Remedy: install the distribution into the verifier's
     # environment.
     VERIFIER_ENVIRONMENT = "verifier_environment"
-
-
-class EnumOccRefRefreshOutcome(StrEnum):
-    """Outcome of refreshing the OCC governance ref's remote-tracking branch.
-
-    OMN-15454: ``EvidenceCollector`` used to swallow a failed ``git fetch``
-    at ``logger.info`` and proceed against whatever the local
-    remote-tracking ref happened to have, while still logging that it
-    resolved from ``origin/dev`` — a fail-open that made a stale local
-    clone (the *expected* state under concurrent merge activity, not an
-    edge case) indistinguishable from a genuinely fresh one. Every caller
-    now consumes a typed outcome instead of a discarded ``None``.
-    """
-
-    FETCHED = "fetched"
-    FETCH_FAILED = "fetch_failed"
-    # A bare local-branch OCC_GOVERNANCE_REF (no ``<remote>/<branch>`` shape —
-    # the test-override case) has no remote to fetch at all; this is not a
-    # failure and must keep resolving exactly as before (AC4).
-    NOT_APPLICABLE = "not_applicable"
+    # The gateway returned no usable check-run listing for the deciding head.
+    # Set from the read result, never from a check's output. Still blocks Done.
+    CHECK_RUN_READ_FAILED = "check_run_read_failed"
 
 
 class EnumProductCloneFreshness(StrEnum):
     """Freshness of the PRODUCT clone a behaviour check executes in (OMN-16846).
 
-    ``node_dod_verify`` already refreshes and pins the CONTRACT repo — the
-    receipt carries ``occ_governance_ref``, ``occ_refresh_outcome`` and
-    ``occ_resolved_sha``. It asserted nothing at all about the clone the
-    ``test_passes`` commands actually run in, and recorded no tree SHA for it,
-    so two runs of the same contract against different trees produced receipts
-    a reader cannot tell apart. This enum is the product-clone counterpart of
-    ``EnumOccRefRefreshOutcome``.
+    ``node_dod_verify`` asserted nothing about the clone the ``test_passes``
+    commands actually run in, and recorded no tree SHA for it, so two runs of
+    the same contract against different trees produced receipts a reader cannot
+    tell apart. This enum records whether that clone was refreshed.
     """
 
     # HEAD contains every commit its upstream has. AHEAD is deliberately not a
@@ -464,9 +444,8 @@ class ModelEvidenceCheckResult(BaseModel):
     # contract: the evidence autoclose sweep runs on a GitHub Actions runner
     # with no contract checkout, and a second contract parser would be a
     # second truth that drifts from this one. The verifier already resolves,
-    # pins and reads the contract (`occ_resolved_sha` above records which), so
-    # it is the only place the binding can be reported from without adding a
-    # second reader.
+    # pins and reads the contract, so it is the only place the binding can be
+    # reported from without adding a second reader.
     #
     # An EMPTY tuple and an ABSENT field are different facts downstream: empty
     # means this item declares no criterion (a coverage gap the ticket author
@@ -715,20 +694,6 @@ class ModelDodVerifyState(BaseModel):
     # says nothing about drift, so the Done gate refuses to rest on one alone.
     criteria_delegated: bool = Field(default=False, exclude_if=lambda value: not value)
     error_message: str | None = Field(default=None)
-    # OMN-15454 AC2: provenance of the OCC governance ref actually read this
-    # run — "attribution must name what was actually read, not what was
-    # intended." None only when collect() was never asked to auto-resolve an
-    # OCC ref (an explicit contract_path was supplied).
-    occ_governance_ref: str | None = Field(
-        default=None, description="OCC governance ref requested (e.g. origin/dev)."
-    )
-    occ_refresh_outcome: EnumOccRefRefreshOutcome | None = Field(
-        default=None, description="Outcome of refreshing that ref before resolving."
-    )
-    occ_resolved_sha: str | None = Field(
-        default=None,
-        description="40-char commit SHA of the OCC worktree HEAD actually read.",
-    )
     # OMN-17022: set exactly on an UNRESOLVED status. An unresolved run that
     # cannot say WHY is the untyped ``RUN_ERROR_OR_TIMEOUT`` label all over
     # again — the closeout's ad-hoc string, which no consumer could branch on.
@@ -760,7 +725,6 @@ __all__: list[str] = [
     "EnumDodVerifyUnresolvedCause",
     "EnumEvidenceCheckStatus",
     "EnumEvidenceUnverifiableCause",
-    "EnumOccRefRefreshOutcome",
     "EnumProductCloneFreshness",
     "ModelDodVerifyState",
     "ModelEvidenceCheckResult",

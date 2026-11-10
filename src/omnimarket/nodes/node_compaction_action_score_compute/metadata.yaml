@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_compaction_action_score_compute
+version: 1.0.0
+description: Grades each open-loop item of a continuation after compaction as acted, checked, prompted, idle
+  or not due within N turns, and lists calls on held scope.
+pack: core
+node_role: compute
+display_name: Compaction Action Score Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_compaction_action_score_compute: omnimarket.nodes.node_compaction_action_score_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.11.0
+license: MIT
+tags: [compute, compaction, measurement]

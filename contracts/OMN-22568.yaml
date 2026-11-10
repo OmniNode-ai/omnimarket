@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-22568
+title: The host worktree cleaner reads a merged pull request's head as proof the work landed, and a host overlay can limit it to merged work
+summary: The worktree-reconcile node reads the head commits of merged pull requests through a host-named reader, removes a clean tree sitting at one, and holds every other removal rule at keep on a host whose policy says merged_only.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+requirements:
+- id: req-omn22568-merged-pr-head
+  statement: A tree whose HEAD is the head commit of a merged pull request is removed as landed work, and a host can limit removal to merged work.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a squash-merged branch whose base moved on is removed with reason pr_merged_head when the reader lists its head, and kept when the reader lists another head -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_effect.py -k merged_pull_request_head -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a reader that fails is reported as a failure of the run and keeps the tree -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_effect.py -k failed_reader -q --no-cov'
+  - id: AC3
+    statement: 'AC3: with merged_only a work_on_remote tree, an unpushed stale tree and an empty directory all stay, and model advice to remove is refused -- falsifier: uv run --frozen pytest tests/test_worktree_reconcile_effect.py -k merged_only -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: Merged pull request evidence and the merged_only policy of the worktree-reconcile node
+  command: uv run --frozen pytest tests/test_worktree_reconcile_effect.py tests/test_worktree_reconcile_compute.py tests/test_golden_chain_worktree_reconcile.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22568-merged-pr-head
+  description: Real temporary git repositories and injected readers exercise the evidence, the failing reader and the merged_only policy.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_effect.py -q --no-cov
+    cwd: .
+- id: dod-omn22568-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22568 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_effect.py -q --no-cov
+    cwd: .

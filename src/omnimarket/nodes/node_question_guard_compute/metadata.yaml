@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_question_guard_compute
+version: "1.0.0"
+description: Refuses a drafted question to the operator that a ruling in force already answers
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_question_guard_compute: omnimarket.nodes.node_question_guard_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - omnibase_infra
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ruling, guard, operator]
+node_role: compute
+pack: "routing"
+display_name: "Question Guard Compute"

@@ -14,8 +14,8 @@
 # client_bindings.claude_code is the inventory of binding hooks: the hook-inventory gate
 # reads it, node_claude_code_binding_render_compute renders it, and the install effect
 # writes the rendered module (replacing rows) or user-settings command hooks (additive
-# rows). The rows ship empty: each binding ticket (delegation, compaction, additive
-# profiles) adds its own row beside the probe rows it depends on.
+# rows). Each binding ticket (delegation, compaction, additive profiles) adds its own row
+# beside the probe rows it depends on.
 
 name: node_claude_code_hook_adapter_effect
 version: "1.0.0"
@@ -79,6 +79,12 @@ capabilities:
   - name: hook.claude_code.adapt
     description: Adapt one Claude Code hook call to a typed command and back to the hook's output shape
     version: 1.0.0
+  - name: hook.claude_code.additive_inject
+    description: >
+      Answer an additive row (session_start, agent_spawn, per_prompt) with the package its
+      profile builds, within the row's latency_budget_ms, or with nothing and one journalled
+      miss record (OMN-22016)
+    version: 1.0.0
   - name: hook.claude_code.compaction_latency_run
     description: >
       Drive the adapter over recorded PreCompact hook inputs, cold and warm, and record each
@@ -109,6 +115,19 @@ runtime_dispatch:
 
 terminal_event: onex.evt.omnimarket.claude-code-hook-adapted.v1
 
+# The miss record of an additive call that wanted a package and injected nothing (OMN-22016):
+# the profile, the reason and the elapsed time, never package text. The adapter journals it in
+# the hook emit journal under the event type additive.miss, which the emit registry declares
+# node-owned because this node, not a hook script, writes it.
+published_events:
+  - event_type: AdditivePackMissed
+    topic: onex.evt.omnimarket.additive-pack-missed.v1
+    description: "One additive call that injected nothing for want of a package: profile, reason (timeout, unavailable, unverified, over_cap) and elapsed_ms."
+
+# The drainer delivers the miss record to the projection and dashboards outside this repository.
+externally_consumed_topics:
+  - onex.evt.omnimarket.additive-pack-missed.v1
+
 client_bindings:
   claude_code:
     default_max_mode: observe
@@ -117,6 +136,7 @@ client_bindings:
     # the render refuses any session.compact row whose trigger is not "manual".
     bindings:
       - name: compaction
+        arm: 'on'
         kind: replacing
         hook_event: session.compact
         matcher_tool: manual
@@ -131,14 +151,96 @@ client_bindings:
           - {name: newest_turn, source: "$.newest_turn"}
           - {name: barrier_id, source: "@session_barrier"}
           - {name: compact_model, source: "$.compact_model"}
-        awaited_events:
-          - onex.cmd.omniintelligence.context-compaction-package.v1
-          - onex.evt.omnimarket.context-compaction-prepared.v1
-          - onex.evt.omnimarket.context-compaction-fallback.v1
+          # The reply topics are PER PRINCIPAL (OMN-22103): `{principal}` is replaced with the
+          # requester's principal at call time, and the command names the three resolved topics
+          # (`@awaited_event:<n>` is the n-th awaited event after that substitution) so the
+          # orchestrator replies to exactly the topics this binding awaits. The templates are
+          # declared in parts in node_context_compaction_orchestrator/contract.yaml.
+          - {name: reply_topic_package, source: "@awaited_event:0"}
+          - {name: reply_topic_prepared, source: "@awaited_event:1"}
+          - {name: reply_topic_fallback, source: "@awaited_event:2"}
+        # Declared in parts (as node_context_compaction_orchestrator does) because a
+        # `{principal}` slot inside a full topic string fails the topic-name lint; the loader
+        # renders them to onex.<kind>.<producer>.<name_prefix>{principal}.v<version>.
+        awaited_event_parts:
+          - {kind: cmd, producer: omniintelligence, name_prefix: "context-compaction-package-for-", version: 1}
+          - {kind: evt, producer: omnimarket, name_prefix: "context-compaction-prepared-for-", version: 1}
+          - {kind: evt, producer: omnimarket, name_prefix: "context-compaction-fallback-for-", version: 1}
         verdict_compute: context_compaction_verdict
         deadline_ms: 30000
         probe_rows: [P0, P6, P11a, P13, P14]
         deny_text: compaction unavailable
+
+      # Additive rows (OMN-22016, plan task TC.11): installed into user settings as
+      # `onex-claude-code-hook --binding <name>`, on a lab host's session only until promotion.
+      # Each waits on the lab bus for its package no longer than latency_budget_ms (the cap of
+      # its profile, decision D8) and prints nothing, with one journalled miss record, when the
+      # package does not arrive. The orchestrator's enabled_additive_profiles list ships empty,
+      # so every call is answered none; per_prompt cannot be listed before TC.13.
+      # session_start acts only in a session started inside the workspace registry or an
+      # internal-library clone (decision D7).
+      - name: session_start
+        kind: additive
+        hook_event: SessionStart
+        profile: session_start
+        latency_budget_ms: 5000
+        start_scope: workspace
+        command_topic: onex.cmd.omniintelligence.context-pack-requested.v1
+        command_type: context_pack_requested
+        arguments:
+          - {name: profile_name, source: "@profile"}
+          - {name: binding_kind, source: "@binding_kind"}
+          - {name: invocation_id, source: "@invocation_id"}
+          - {name: session_id, source: "$.session_id"}
+        awaited_events:
+          - onex.cmd.omniintelligence.context-pack-built.v1
+          - onex.cmd.omniintelligence.context-pack-failed.v1
+        verdict_compute: client_verdict
+        deadline_ms: 5000
+        unverified_action: none
+        probe_rows: [P16, P19]
+
+      - name: agent_spawn
+        kind: additive
+        hook_event: SubagentStart
+        profile: agent_spawn
+        latency_budget_ms: 3000
+        start_scope: any
+        command_topic: onex.cmd.omniintelligence.context-pack-requested.v1
+        command_type: context_pack_requested
+        arguments:
+          - {name: profile_name, source: "@profile"}
+          - {name: binding_kind, source: "@binding_kind"}
+          - {name: invocation_id, source: "@invocation_id"}
+          - {name: session_id, source: "$.session_id"}
+        awaited_events:
+          - onex.cmd.omniintelligence.context-pack-built.v1
+          - onex.cmd.omniintelligence.context-pack-failed.v1
+        verdict_compute: client_verdict
+        deadline_ms: 3000
+        unverified_action: none
+        probe_rows: [P17, P19]
+
+      - name: per_prompt
+        kind: additive
+        hook_event: UserPromptSubmit
+        profile: per_prompt
+        latency_budget_ms: 500
+        start_scope: any
+        command_topic: onex.cmd.omniintelligence.context-pack-requested.v1
+        command_type: context_pack_requested
+        arguments:
+          - {name: profile_name, source: "@profile"}
+          - {name: binding_kind, source: "@binding_kind"}
+          - {name: invocation_id, source: "@invocation_id"}
+          - {name: session_id, source: "$.session_id"}
+        awaited_events:
+          - onex.cmd.omniintelligence.context-pack-built.v1
+          - onex.cmd.omniintelligence.context-pack-failed.v1
+        verdict_compute: client_verdict
+        deadline_ms: 500
+        unverified_action: none
+        probe_rows: [P18, P19]
 
 metadata:
   author: OmniNode Team

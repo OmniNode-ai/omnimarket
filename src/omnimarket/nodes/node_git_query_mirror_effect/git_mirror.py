@@ -78,7 +78,6 @@ LOCK_WAIT_S = 300
 # The registry repositories a scheduled sync keeps current when it is given
 # no explicit list. Adding a repo here is the whole change needed to mirror it.
 REGISTRY_REPOS: tuple[str, ...] = (
-    "OmniNode-ai/omnibase_compat",
     "OmniNode-ai/omnibase_core",
     "OmniNode-ai/omnibase_spi",
     "OmniNode-ai/omnibase_infra",

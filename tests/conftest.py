@@ -24,7 +24,7 @@ import pytest_asyncio
 import yaml
 
 from omnimarket.config.env_flags import env_flag
-from omnimarket.routing.task_class_contract_path import (
+from omnimarket.handlers.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 
@@ -174,7 +174,7 @@ def catalogue_picks_models(monkeypatch: pytest.MonkeyPatch) -> None:
     re-aims once) stays reachable from a row that sets ``customer_chooses_model``
     false, and the tests that exercise that path opt in here.
     """
-    from omnimarket.routing import byok_provider_backends as catalogue
+    from omnimarket.handlers.routing import byok_provider_backends as catalogue
 
     plans = {
         key: row.model_copy(update={"customer_chooses_model": False})
@@ -245,7 +245,7 @@ def _no_real_byok_model_list_reads(monkeypatch: pytest.MonkeyPatch) -> None:
 
     import httpx
 
-    from omnimarket.routing import byok_model_discovery
+    from omnimarket.handlers.routing import byok_model_discovery
 
     real_get = byok_model_discovery.get_models_json
 
@@ -296,13 +296,30 @@ def _ensure_delegation_routing_tiers_path(monkeypatch: pytest.MonkeyPatch) -> No
     RED-refusal-path tests that ``delenv`` this key inside the test body are
     unaffected.
     """
-    from omnimarket.routing.routing_tiers_path import (
+    from omnimarket.handlers.routing.routing_tiers_path import (
         ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     )
 
     monkeypatch.setenv(
         "DELEGATION_ROUTING_TIERS_PATH", str(ROUTING_TIERS_PACKAGED_DEFAULT_PATH)
     )
+
+
+@pytest.fixture(autouse=True)
+def _paid_rung_size_band_rule_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Declare no paid-rung size band for the local dispatch port (OMN-23180).
+
+    The contract's default ``paid_from_size_band: L`` skips a paid rung for any
+    smaller request. Tests that walk a paid ladder with a short prompt are about
+    the ladder, not about which band may reach it, so the port reads no band
+    here. ``tests/unit/delegation/test_size_band_paid_rule.py`` binds the real
+    resolver back and tests the rule.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as port_mod,
+    )
+
+    monkeypatch.setattr(port_mod, "resolve_paid_from_size_band", lambda _t: None)
 
 
 @pytest.fixture(autouse=True)
@@ -1121,6 +1138,13 @@ def _isolate_local_secret_store(
         "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
         lambda: _local_secret_store_root / f"{digest}.sqlite",
     )
+    # OMN-21921: a delegation key is read through the secret store node, whose
+    # overlay is read from the ONEX home. Point it at an empty one so a developer's
+    # own config.yaml never decides which store a unit test reads.
+    monkeypatch.setattr(
+        "omnibase_infra.doctor.delegation_doctor_support.default_onex_home",
+        lambda: _local_secret_store_root / "onex-home",
+    )
 
 
 @pytest.fixture
@@ -1285,3 +1309,18 @@ def compaction_bus():
     yield factory
     for harness in reversed(harnesses):
         harness.close()
+
+
+@pytest.fixture
+def host_capacity_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """The ``host_capacity`` overlay at the starting values the node ships as its example (OMN-23337)."""
+    example = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_host_capacity_compute/overlay.example.yaml"
+    )
+    root = tmp_path / "overlay_roots"
+    target = root / "host_capacity" / "overlay.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    return target

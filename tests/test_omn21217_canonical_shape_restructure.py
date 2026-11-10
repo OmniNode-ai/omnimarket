@@ -47,6 +47,9 @@ _ROUTED_TOPICS = [
     "onex.evt.omnimarket.credential-revoked.v1",
     "onex.evt.omnimarket.tenant-credential-state.v1",
     "onex.evt.omnimarket.tenant-routing-overlay-state.v1",
+    # OMN-19996: the delegate-skill terminals that move a key's last-used time.
+    "onex.evt.omnimarket.delegate-skill-completed.v1",
+    "onex.evt.omnimarket.delegate-skill-failed.v1",
 ]
 
 _PUBLISHER = "omnimarket.projection.credential_publisher"
@@ -102,6 +105,12 @@ _MIXED_IN = [
         "_backfill_credential_chosen_models",
     ),
     (
+        _SQLITE,
+        "SqliteDatabaseAdapter",
+        "CredentialSqliteStore",
+        "record_credential_last_used",
+    ),
+    (
         _POSTGRES,
         "PostgresSyncProjectionAdapter",
         "CredentialPgStore",
@@ -112,6 +121,12 @@ _MIXED_IN = [
         "PostgresSyncProjectionAdapter",
         "CredentialPgStore",
         "write_credential_row",
+    ),
+    (
+        _POSTGRES,
+        "PostgresSyncProjectionAdapter",
+        "CredentialPgStore",
+        "record_credential_last_used",
     ),
 ]
 

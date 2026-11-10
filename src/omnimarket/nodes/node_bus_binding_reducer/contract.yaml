@@ -64,6 +64,24 @@ recovery_policy:
   escalate_after_seconds: 900
   escalation_audience: orchestrator
 
+# How the binding settles its exception rows in code (OMN-21959). An episode emits one row; a degraded
+# command while that episode is open emits no other, whoever closed the row. A healthy durable command with
+# an empty outbox hands every open, non-decision row of these classes for its lane to the exception actor
+# (omnimarket.handlers.bus_binding.exception_actor.settle_open_cases), which resolves it.
+exception_settlement:
+  alarm_scope: episode
+  settle_on_healthy_read:
+    - bus-binding-degraded
+
+# OMN-21959: a ledger guard's refusal of a replayed append is settled in code by the replay that finds it
+# when its cause is gone; only a case the guard actor cannot settle reaches the exception queue. The actor's
+# ports are bound from these names: the ledger and its archive rolls are read where the environment points,
+# a worktree cell is resolved under the registry root, and a corrected request is queued to the local outbox.
+refused_request_settlement:
+  ledger_path_env: ONEX_LEDGER_PATH
+  ledger_archive_glob: "archive/ROLLING_WORK_LEDGER*.md"
+  worktree_root_env: OMNI_HOME
+
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: bus_binding_fsm

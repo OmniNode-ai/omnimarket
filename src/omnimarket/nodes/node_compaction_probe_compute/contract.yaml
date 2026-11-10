@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_compaction_probe_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: >-
+  Build one probe per effective ruling from the row's own question= cell, refuse a probe that shares
+  five consecutive words with the ruling's quote as PROBE_LEAK before any arm runs, and build the
+  oracle, empty and inverted control contexts deterministically. The inverted context carries each
+  ruling's predecessor text or a negation of its quote with every required span redacted. A
+  deterministic lexical judge fixture labels an answer RECALLED, ABSENT or CONTRADICTED.
+input_model:
+  name: ModelCompactionProbeRequest
+  module: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe
+output_model:
+  name: ModelCompactionProbeResult
+  module: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe
+handler:
+  module: omnimarket.nodes.node_compaction_probe_compute.handlers.handler_compaction_probe
+  class: HandlerCompactionProbes
+  input_model: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe.ModelCompactionProbeRequest
+  output_model: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe.ModelCompactionProbeResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: build_compaction_probes
+      handler:
+        name: HandlerCompactionProbes
+        module: omnimarket.nodes.node_compaction_probe_compute.handlers.handler_compaction_probe
+      input_model: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe.ModelCompactionProbeRequest
+      output_model: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe.ModelCompactionProbeResult
+    - operation: judge_probe_answer
+      handler:
+        name: HandlerProbeJudgeFixture
+        module: omnimarket.nodes.node_compaction_probe_compute.handlers.handler_compaction_probe
+      input_model: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe.ModelProbeJudgeRequest
+      output_model: omnimarket.nodes.node_compaction_probe_compute.models.model_compaction_probe.ModelProbeJudgeResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with the effective rulings a caller derived.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local

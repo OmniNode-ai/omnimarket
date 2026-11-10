@@ -185,6 +185,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql
       access: write
       role: alert_channel_liveness
+    # Context-integrity audit events, written by node_projection_context_audit in
+    # place of the omnibase_infra context-audit consumer. Rows carry a
+    # deterministic event_key; the table's natural id is a BIGSERIAL.
+    - name: context_audit_events
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_context_audit/migrations/0000_add_context_audit_event_key.sql
+      access: write
+      role: context_audit_events
     # OMN-19977: replaceable metering snapshots, one row per (tenant, window,
     # baseline model). Declared HERE because the OMN-15361 SQL gate resolves a
     # created application object against this manifest.
@@ -301,6 +310,33 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql
       access: read_write
       role: lab_job_transitions
+    # OMN-23055 (rebuild plan section 7.5, step 0 row 3): the four relations of the gate
+    # store's Postgres backend. Declared here for the same OMN-15361 SQL gate reason as the
+    # lab job read models above. Created directly in omninode_internal.
+    - name: gate_store_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_state
+    - name: gate_store_reservations
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_reservations
+    - name: gate_store_safety
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_safety
+    - name: gate_store_steps
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_steps
     # OMN-17427: durable execution claims and the ordered transition outbox of
     # node_llm_delegation_call_effect's lab-job handler. Declared here for the
     # same OMN-15361 SQL gate reason as the lab job read models above. Created
@@ -982,6 +1018,18 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_local_environment/migrations/0000_create_local_environment.sql
       access: read_write
       role: local_environment
+    - name: local_alerts
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_local_alerts/migrations/0000_create_local_alerts.sql
+      access: read_write
+      role: local_alerts
+    - name: local_identity
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_local_identity/migrations/0000_create_local_identity.sql
+      access: read_write
+      role: local_identity
     - name: traces
       database_ref: application
       schema: omninode_internal
@@ -1067,6 +1115,31 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0000_create_claude_hook_events.sql
       access: read_write
       role: claude_agent_spans
+    # OMN-20034 (GC.11): register this repository as the CATALOG owner of the
+    # physical relations `goal_trace_events` and `goal_traces` -- the goal-trace
+    # projection: one content-free row per event a goal's trace absorbed, and
+    # one folded row per goal (revision chain, closed revision, verdict,
+    # checksum). Created by node_projection_goal_trace's own node-owned
+    # migration. Both are created DIRECTLY in omninode_internal, so they need no
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 entry.
+    #
+    # THESE ENTRIES LAND BEFORE THE MIGRATION THEY DESCRIBE, in the same
+    # three-step order the claude_hook_events comment above records: (1) these
+    # declarations, (2) omnibase_infra vendors the migration, (3) omnimarket
+    # lands the node package and the migration. `access: read_write` and the
+    # roles mirror the node contract's own db_io.db_tables declarations.
+    - name: goal_trace_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_goal_trace/migrations/0000_create_goal_trace_events.sql
+      access: read_write
+      role: goal_trace_events
+    - name: goal_traces
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_goal_trace/migrations/0000_create_goal_trace_events.sql
+      access: read_write
+      role: goal_traces
     # OMN-19861: register this repository as the CATALOG owner of the physical
     # relation `demo_readiness_latest`, created by
     # node_projection_demo_readiness's own node-owned migration.
@@ -1120,6 +1193,17 @@ database_objects:
   # tables. The table rows stay logical; these object rows name the physical
   # sequence identities targeted by the grant migrations.
   - name: capability_scores_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-21934: the BIGSERIAL id sequence of public.context_audit_events.
+  # Declared ahead of node_projection_context_audit: omnibase_infra vendors the
+  # tenant_projection_writer grant first, and its SQL gate needs the sequence
+  # that GRANT names to have one owner here.
+  - name: context_audit_events_id_seq
     kind: sequence
     database_ref: application
     schema: public
@@ -1262,7 +1346,39 @@ database_objects:
   # OMN-19988: cursor for the per-service environment rows. Declared ahead of
   # the node's migrations: omnibase_infra vendors them first, and its SQL gate
   # needs every sequence a vendored GRANT names to have one owner here.
+  # OMN-21970: the integer walk cursor 0065 adds to delegation_events, so the
+  # decisions exposure can be paged past its newest 500 runs. Declared ahead of
+  # the node's migrations: omnibase_infra vendors them first, and its SQL gate
+  # needs the sequence the writer grant names to have exactly one owner here.
+  - name: delegation_events_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   - name: local_environment_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19991: cursor for the local_alerts rows, one per (tenant, code,
+  # subject). Declared ahead of the node's migrations for the same reason as
+  # local_environment's: omnibase_infra vendors them first, and its SQL gate
+  # needs every sequence a vendored GRANT names to have one owner here.
+  - name: local_alerts_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19986: cursor for the local identity rows. Declared ahead of the
+  # node's migrations: omnibase_infra vendors them first, and its SQL gate
+  # needs every sequence a vendored GRANT names to have one owner here.
+  - name: local_identity_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: public
@@ -1425,6 +1541,17 @@ database_objects:
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
   - name: claude_agent_spans_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-20034: the standalone sequence behind goal_trace_events' BIGSERIAL
+  # projection_cursor column. The node's 0001 grants USAGE on it by literal
+  # name, and the SQL gate resolves a sequence as a target in its own right
+  # (the OMN-18999 correction above). goal_traces has no cursor.
+  - name: goal_trace_events_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal
@@ -1674,6 +1801,24 @@ relation_evidence:
       scope to make the numbers mean anything, which a reader that derives its
       scope from a tenant filter cannot do -- it saw no rows and published
       zeros that read as a quiet period.
+  - name: projection_delegation_daily
+    kind: view
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql
+    classification_evidence: >-
+      tenant read view over delegation_events with one row per tenant whose days
+      list holds every UTC day's runs, verdict counts and token totals, so the
+      dashboard's daily charts cover the whole selected range (OMN-21970).
+      Declared ahead of its vendoring for the same reason as its cursor sequence.
   - name: projection_delegation_token_usage
     kind: view
     database_ref: application

@@ -1,15 +1,25 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Tick-clocked, catalog-driven compose service observations."""
+"""Tick-clocked compose service observations, from the lane's roster or the catalog.
+
+A lane that runs its own service set (the dev lane folds its writers into the
+runtime and runs no laptop services) names that set in the node's overlay,
+``<root>/node_local_environment_observe_effect/overlay.yaml`` under
+``ONEX_SKILL_OVERLAY_ROOTS``. With an overlay the observer probes exactly the
+services it names and never reads the catalog bundle; with none it probes the
+contract's catalog bundle (``local``, the laptop profile). A broken overlay
+refuses the pass and never falls back to the catalog.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Protocol
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
@@ -25,6 +35,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.config.settings import get_settings
 from omnimarket.enums.enum_local_environment_mode import EnumLocalEnvironmentMode
 from omnimarket.enums.enum_local_service_state import EnumLocalServiceState
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
 from omnimarket.local_deployment.tenant_identity import (
     EnumLocalTenantIdentityRefusalReason,
     LocalTenantIdentityError,
@@ -34,11 +49,16 @@ from omnimarket.local_deployment.tenant_identity import (
 )
 from omnimarket.models.model_local_environment_status import ModelLocalEnvironmentStatus
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_local_environment_observe_effect.overlay import (
+    ModelLocalEnvironmentRoster,
+    ModelProbeTarget,
+)
 from omnimarket.projection.tenant_registry_resolution import is_tenant_slug
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _HANDLER_ID = "local-environment-observe-handler"
+_OVERLAY_ID = "node_local_environment_observe_effect"
 
 
 class ModelObserveSchedule(BaseModel):
@@ -56,17 +76,6 @@ class ModelLocalEnvironmentObserveConfig(BaseModel):
     bundle: str = Field(default="local", min_length=1)
     probe_timeout_seconds: float = Field(default=3, gt=0)
     schedule: ModelObserveSchedule = Field(default_factory=ModelObserveSchedule)
-
-
-class ModelProbeTarget(BaseModel):
-    """Service-network destination derived from a catalog manifest."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    service: str = Field(min_length=1)
-    port: int = Field(ge=1, le=65535)
-    scheme: Literal["http", "https"] | None = None
-    path: str = "/"
-    query: str = ""
 
 
 class ModelProbeResult(BaseModel):
@@ -242,9 +251,11 @@ class HandlerLocalEnvironmentObserve:
         self,
         prober: ProtocolServiceProber | None = None,
         config: ModelLocalEnvironmentObserveConfig | None = None,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
         self._prober = prober if prober is not None else RealNetworkProber()
         self._config = config or _load_contract_config()
+        self._environ = environ
         self._publish_topic = contract_publish_topics(_CONTRACT_PATH)[0]
         self._last_run: datetime | None = None
 
@@ -279,24 +290,18 @@ class HandlerLocalEnvironmentObserve:
             )
             return self._output(request, (), (refusal.model_dump_json(),))
 
-        stack = await asyncio.to_thread(
-            lambda: CatalogResolver(self._config.catalog_dir).resolve(
-                [self._config.bundle]
-            )
-        )
-        targets: list[ModelProbeTarget] = []
-        logs: list[str] = []
-        for name, manifest in sorted(stack.manifests.items()):
-            if manifest.restart == "no":
-                reason = f"Excluded {name}: restart is 'no' (one-shot)."
-            else:
-                target = _probe_target(manifest)
-                if target is not None:
-                    targets.append(target)
-                    continue
-                reason = f"Excluded {name}: no port to probe."
-            logger.info("%s", reason)
-            logs.append(reason)
+        try:
+            roster = await asyncio.to_thread(self._lane_roster)
+        except NodeOverlayError as exc:
+            refused = f"Local environment observation refused: {exc}"
+            logger.warning("%s", refused)
+            return self._output(request, (), (refused,))
+        targets: list[ModelProbeTarget]
+        logs: list[str]
+        if roster is not None:
+            targets, logs = list(roster.services), []
+        else:
+            targets, logs = await asyncio.to_thread(self._catalog_targets)
         results = await asyncio.gather(
             *(
                 self._prober.probe(t, self._config.probe_timeout_seconds)
@@ -319,6 +324,32 @@ class HandlerLocalEnvironmentObserve:
             "Returning %d observations for %s", len(events), self._publish_topic
         )
         return self._output(request, events, tuple(logs))
+
+    def _lane_roster(self) -> ModelLocalEnvironmentRoster | None:
+        """The lane overlay's roster, or ``None`` when no overlay root supplies one."""
+        try:
+            return load_structured_overlay(
+                _OVERLAY_ID, ModelLocalEnvironmentRoster, self._environ
+            )
+        except NodeOverlayNotFoundError:
+            return None
+
+    def _catalog_targets(self) -> tuple[list[ModelProbeTarget], list[str]]:
+        stack = CatalogResolver(self._config.catalog_dir).resolve([self._config.bundle])
+        targets: list[ModelProbeTarget] = []
+        logs: list[str] = []
+        for name, manifest in sorted(stack.manifests.items()):
+            if manifest.restart == "no":
+                reason = f"Excluded {name}: restart is 'no' (one-shot)."
+            else:
+                target = _probe_target(manifest)
+                if target is not None:
+                    targets.append(target)
+                    continue
+                reason = f"Excluded {name}: no port to probe."
+            logger.info("%s", reason)
+            logs.append(reason)
+        return targets, logs
 
     @staticmethod
     def _output(

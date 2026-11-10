@@ -24,7 +24,7 @@ description: >
   Called in process through node.py by the throughput tick and the Stop hook.
   The throughput effect reads each process ruling's optional live-check JSON object on every run, plus the two
   standing declarations in ruling_checks.yaml. A mismatch or unread reading is MISSING ruling-drift:<timestamp>
-  with the live reading. This runs even without free slots. A blocked or partial ruled-work terminal abandoned
+  with the live reading. This runs even without free slots. A blocked, failed or partial ruled-work terminal abandoned
   for two hours becomes one Codex-first ruling-relaunch item, retaining its staged branch, patch path, run
   directory and named blocker. It passes the existing scope, admission, brief and launch gates. A second block
   becomes a durable orchestrator EXCEPTION row and never an automatic third attempt.
@@ -50,6 +50,13 @@ protocol_dependencies:
   - {name: SRC, protocol: "omnimarket.protocols.protocol_fact_source:ProtocolFactSource", bind_as: facts, required: true}
   - {name: BUS, protocol: "omnibase_core.protocols.event_bus.protocol_event_bus:ProtocolEventBus", bind_as: bus, required: true}
   - {name: CLK, protocol: "omnimarket.protocols.protocol_clock:ProtocolClock", bind_as: clock, required: true}
+# OMN-21893: each tick asks the pure owed compute which mechanism tickets a lane left
+# unfinished with no CLAIM after one tick, and prints one MISSING mechanism-owed line each.
+dependencies:
+  - name: omnimarket.nodes.node_ruling_mechanism_owed_compute
+    dependency_type: internal
+    description: "owed rows for mechanism tickets abandoned after a blocked, failed or partial TERMINAL."
+    required: true
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill:HandlerIdleSlotFill

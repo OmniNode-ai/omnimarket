@@ -23,6 +23,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 
 pytestmark = pytest.mark.unit
 
@@ -43,7 +44,8 @@ def test_work_ledger_parity_fixture_never_enters_shared_spool(
     monkeypatch.setenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", spool_only)
     spool_path = tmp_path / "spool"
     handler = HandlerWorkLedgerEmit(
-        emitter=HandlerEventEmitEffect(spool=SpoolOutbox(spool_path))
+        judge_gate=OPEN_JUDGE_GATE,
+        emitter=HandlerEventEmitEffect(spool=SpoolOutbox(spool_path)),
     )
 
     result = handler.handle(ModelWorkLedgerEmitRequest(row=RECORDED_FIXTURE))

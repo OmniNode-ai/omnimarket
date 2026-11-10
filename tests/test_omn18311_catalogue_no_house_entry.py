@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
     house_keyed_provider_slugs,
     load_byok_not_offered_providers,

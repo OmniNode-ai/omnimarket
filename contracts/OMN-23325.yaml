@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23325
+title: The projection runner's publish callable survives the per-delivery producer stop, so terminal events are not lost to ProducerClosed
+summary: KeptPools.project stops the runner's Kafka producer after every delivery, but BaseProjectionRunner.get_publish_fn cached a closure over the producer it had just built, so every delivery after the first published through a stopped producer and node_projection_delegation lost its terminal events to ProducerClosed (2544 on the dev runtime). The publish callable no longer closes over a producer or caches itself; each call resolves the live producer, building a new one when the last was stopped. An injected publish_fn is still returned as is.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23325-publish-fn-survives-producer-stop
+  statement: A projection runner's publish callable publishes on a live producer on every call, including after the producer was stopped between deliveries.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a projection''s terminal-event publish after a delivery finishes succeeds, and no publish uses a stopped producer -- falsifier: uv run pytest tests -q -k producer_closed_terminal in omnimarket, failing on the old KeptPools'
+  - id: AC2
+    statement: 'AC2: after a dev deploy, the runtime log shows no ProducerClosed from node_projection_delegation over an hour -- falsifier: the runtime log read on h201 for that hour'
+evidence_requirements:
+- kind: tests
+  description: Five tests over a fake producer that refuses sends once stopped, as aiokafka does - publish after a stop, a callable held across a stop, an injected publish_fn across a stop, three delegation deliveries each emitting a terminal event, and a broker that refuses the send being logged and not failing the row. Four of the five fail on the old runner.
+  command: uv run --frozen pytest tests/test_omn23325_producer_closed_terminal_publish.py tests/test_omn12810_projection_publisher_injection.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23325-ac1-tests
+  description: Runs the real runner and the real delegation projection runner over a fake producer that raises ProducerClosed once stopped, stops it between deliveries as KeptPools does, and reads the terminal events each producer received. The named break is the old get_publish_fn, which cached a closure over the first producer.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn23325_producer_closed_terminal_publish.py -k producer_closed_terminal -q --no-cov
+    cwd: .
+- id: dod-omn23325-ac2-dev-runtime-log
+  description: 'The AC2 measurement itself: the omninode-runtime container log on h201 for the hour after the deploy agent installed this change, read for ProducerClosed lines from node_projection_delegation; the count must be 0. Fails until that file exists; the hosted gate cannot reach h201, so only the local Done gate runs it, and it binds no criterion (the hosted deploy check below binds AC2).'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      test -s "$OMNI_HOME/.claude_scratch/reports/producer3-1300/ac2-runtime-log-count.txt" && test "$(cat "$OMNI_HOME/.claude_scratch/reports/producer3-1300/ac2-runtime-log-count.txt")" = "0"
+    cwd: .
+- id: dod-omn23325-runner-deploy
+  description: Reads the runner source on the branch; the exit status depends on get_publish_fn resolving the producer through _ensure_producer inside the returned callable and no longer caching the closure in self._publish_fn, so it goes red on the pre-fix runner. Runs on a hosted runner, which cannot reach h201; the dev runtime log read stays in the local Done gate check above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: 'grep -q "live := await self._ensure_producer()" src/omnimarket/projection/runner.py && ! grep -q "self._publish_fn = _publish" src/omnimarket/projection/runner.py'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn12810_projection_publisher_injection.py -q --no-cov
+    cwd: .
+- id: dod-omn23325-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23325 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn23325_producer_closed_terminal_publish.py tests/test_omn12810_projection_publisher_injection.py -q --no-cov
+    cwd: .

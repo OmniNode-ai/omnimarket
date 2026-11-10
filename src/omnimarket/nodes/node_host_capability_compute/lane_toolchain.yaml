@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The lane toolchain every lab host provides, as data. A tool row: `probe` (argv run with the PATH lanes run with), `repair`
+# (how the host installer repairs it: lane-link | clear-empty-tree | install; an `install` row's argv is the host overlay's, never
+# this file's) and `owner_fix` (what the host owner adds when the installer cannot). A host row lists the tools its lanes need,
+# in install order: node comes before pyright because pyright-python uses a node on PATH and only builds a nodeenv without one.
+tools:
+  onex:
+    # The dispatch venv's own entry point, not the bare `onex` a package manager leaves on PATH (it raises ModuleNotFoundError:
+    # omnibase_core). The wrapper script is not the target: it resolves the venv from OMNIBASE_PATH, which a lab-work unit sets to
+    # a clone-refresh root that has none.
+    probe: [onex, --help]
+    repair: {kind: lane-link, target: .onex-dispatch-venv/bin/onex}
+    owner_fix: the host installer links the dispatch venv's onex entry point into the lane PATH directory ahead of any package-manager onex
+  node:
+    probe: [node, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares a node installer argv for the host in the toolchain overlay, or installs node
+  pnpm:
+    probe: [pnpm, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares a pnpm installer argv for the host in the toolchain overlay, or installs pnpm
+  make:
+    probe: [make, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares a make installer argv for the host in the toolchain overlay, or installs make
+  jq:
+    probe: [jq, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares a jq installer argv for the host in the toolchain overlay, or installs jq
+  python:
+    # Lanes invoke this command by name; a working python3 alone does not supply it.
+    probe: [python, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares an installer argv that provides python on the lane PATH
+  crush:
+    # The lab agent the code step falls back to when the code-edit node fails (lab_crush.py). A host that runs lab code drafts lists it.
+    probe: [crush, --version]
+    repair: {kind: install}
+    owner_fix: the host owner declares a crush installer argv for the host in the toolchain overlay, or installs crush
+  pyright:
+    probe: [uvx, pyright, --version]
+    repair: {kind: clear-empty-tree, path: .cache/pyright-python/nodeenv}
+    owner_fix: pyright-python needs a node on the lane PATH or a working nodeenv under its cache; the host owner installs node, or removes the broken nodeenv
+hosts:
+  h051: [onex, node, pnpm, make, jq, python, crush, pyright]
+  h053: [onex, node, pnpm, make, jq, python, pyright]
+  h101: [onex, node, pnpm, make, jq, python, crush, pyright]
+  h105: [onex, node, pnpm, make, jq, python, pyright]
+  h200: [onex, node, pnpm, make, jq, python, pyright]
+  h201: [onex, node, pnpm, make, jq, python, crush, pyright]

@@ -1003,6 +1003,20 @@ events:
     required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
 
   # =========================================================================
+  # Additive binding rows (OMN-22016): the miss record of an additive call that
+  # injected nothing for want of a package. profile, reason and elapsed_ms only.
+  # node_owned: node_claude_code_hook_adapter_effect journals it, never a hook script.
+  # =========================================================================
+  additive.miss:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.additive-pack-missed.v1"
+        tier: telemetry
+        description: "Additive call injected nothing: profile, reason and elapsed time only"
+    partition_key_field: profile
+    required_fields: [profile, reason, elapsed_ms]
+
+  # =========================================================================
   # Context compaction (OMN-21112): two restricted commands, six receipts.
   # Receipt schemas carry ids, hashes, counts, names and enums only.
   # node_owned: the orchestrator node emits these, never a Claude Code hook, so
@@ -1072,3 +1086,15 @@ events:
         description: "Compaction install uncertain: ids and reason enum only"
     partition_key_field: session_id
     required_fields: [activation_id, session_id, reason]
+
+  # C32 local auth-boundary probe run (OMN-23213): one daily run of node_c32_auth_boundary_probe_effect, the record the MVP launch
+  # reading (M1) reads C32 from. One record a day; the run history file on the host keeps every run. Carries the run id, trigger, verdict,
+  # graded clause names and details (never a credential value: the probe only searches for its planted value), and package versions.
+  c32.auth_boundary_probe.completed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.local-auth-boundary-probe-completed.v1"
+        tier: telemetry
+        description: "C32 auth-boundary probe run: verdict, conclusion, clauses and graded versions; no credential value"
+    partition_key_field: criterion
+    required_fields: [run_id, verdict, conclusion, criterion]

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: tailnet_https_serve_effect
+version: "1.0.0"
+description: "A tailnet https listener in front of a loopback upstream: refuses a dead upstream and a foreign listener, reads the listener back, and uninstalls as its rollback."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_tailnet_https_serve_effect: omnimarket.nodes.node_tailnet_https_serve_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, tailscale, https]
+pack: "install"
+display_name: "Effect: Tailnet Https Serve"
+node_role: "effect"
+license: "MIT"

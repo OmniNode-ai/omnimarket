@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_closeout_orchestrator
+version: "1.0.0"
+description: "Lane end: release exact ended-engine PR claims when requested, inventory trees, then guard and close out each one through sibling effect contracts."
+omnibase_core_compat: ">=0.47.53,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_closeout_orchestrator: omnimarket.nodes.node_lane_closeout_orchestrator
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  side_effect_class: write
+dependencies:
+  - omnibase_core>=0.47.53
+  - pydantic>=2.11.0
+  - PyYAML>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [lane, closeout, orchestrator]
+pack: operator_tooling
+display_name: "Lane Closeout Orchestrator"
+node_role: orchestrator
+tickets: ["OMN-22191"]

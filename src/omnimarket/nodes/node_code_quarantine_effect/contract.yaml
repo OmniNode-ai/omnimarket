@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-23144. Quarantine, then removal, of code not in use. An entity leaves the
+# build with its tests for the overlay's days with nothing deleted; a red clean build, a red lab runtime start or a
+# missing reading restores it and resets the clock; a removal is accepted only with a git tag that exists and a catalog
+# row (entity, tag, sha, reason) for every entity of the batch, one repository per batch. Days, repository roots, gate
+# commands and the report are overlay data. Externally triggered (a lane or the daily line), so no subscription.
+name: code_quarantine_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Quarantines unused code with its tests, restores it on a red gate, and removes it only with a tag and a catalog row.
+input_model: omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine.ModelQuarantineRequest
+output_model: omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine.ModelQuarantineResult
+handler:
+  module: omnimarket.nodes.node_code_quarantine_effect.handlers.handler_code_quarantine
+  class: HandlerCodeQuarantine
+  input_model: omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine.ModelQuarantineRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  side_effects: [exclusion-state-write, catalog-append, git-rm, ledger-append]
+  timeout_ms: 3600000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: true
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+overlay:
+  node: node_code_quarantine_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: local-command
+  ticket: OMN-23144

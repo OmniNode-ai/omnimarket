@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_fill_candidates_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Name, per factory-floor line, the ready tasks a lane may be started for, from the published floor record.
+  A pure compute: the clock reading, the floor record text, the served floor pieces list text, the merged references,
+  the M0 verdict, the per-task Start when lines, the per-task payload verdicts, the per-task entry-ticket verdicts and
+  the fill's state entries all come in on the request; no input carries an operator go. A task is ready when the
+  prerequisites parsed from its Start when line all read true (a piece reading WORKING inside its reading bound on a
+  fresh pieces list, a reference on the merged list, M0 PASS), it is not done, active or stopped, it has no pull
+  request, no live lane names it and its key is not held by a RESERVED entry or a SENT entry inside the window; the pill
+  and the floor record's wait state and note are never read as a go. A task with an unmet prerequisite is not ready and
+  names it; a task with no Start when line, or one that cannot be parsed, is not ready with that cause. A ready task is
+  STARTABLE (a usable entry ticket), NEEDS-TICKET (payload verdict ok, no entry ticket yet) or UNTICKETABLE with its
+  cause. A line is STARTABLE, NEEDS-TICKET, UNTICKETABLE, AT-CAPACITY (no capacity left while ready usable work
+  remains; none returned) or NO-STARTABLE; every ready usable task is returned in record order with no cutoff by
+  capacity. An absent, malformed or old record is one global FLOOR-UNREAD. A stopped lane (the floor record's floor.stopped:
+  a lane whose newest TERMINAL is partial, blocked or failed, in the goal's scope, naming a branch, an ask or a next step,
+  with no lane on the same work since) is a stopped candidate under the key stopped:<lane> unless a live lane holds it, a
+  RESERVED or SENT entry holds it, its entry ticket is refused or it has no ticket; its brief inlines the predecessor's
+  last rows and report and the rule to push and continue. Called in process by the floor-fill orchestrator.
+handler:
+  module: omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates
+  class: HandlerFloorFillCandidates
+  input_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
+  output_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the floor-fill orchestrator with the floor record and fill state on the request.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: floor_fill_candidates
+    handler:
+      name: HandlerFloorFillCandidates
+      module: omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates
+    input_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
+    output_model: omnimarket.models.floor_fill.model_floor_fill_candidates.ModelFloorFillCandidatesResult
+# The node reads no overlay itself: the orchestrator reads these keys and carries them on the request, and a request
+# that lacks one is refused naming the key (floor_fill.<key>).
+deployment_overlay:
+  name: floor_fill
+  required: true
+  fields:
+  - floor_fill.max_age_minutes
+  - floor_fill.max_fill_lanes_per_line
+  - floor_fill.sent_window_minutes
+  - floor_fill.stopped_max_lanes
+  - floor_fill.stopped_report_chars
+  - floor_fill.stopped_continue_rule
+  description: Freshness limit of the floor record, lanes a line may hold at once, how long a started key is held, how many
+    continuation lanes of stopped lanes may run at once, how much of a predecessor's report a brief carries, and the rule
+    a continuation brief ends with. A key no overlay supplies refuses naming the key.
+# No injected seams: a pure compute takes everything it reads on the request.
+protocol_dependencies: []
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+metadata:
+  ticket: OMN-22199
+  origin_tickets:
+  - OMN-17427
+  - OMN-22992
+  transport_type: local
+lifecycle: experimental

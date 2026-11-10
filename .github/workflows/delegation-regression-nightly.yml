@@ -199,12 +199,11 @@ jobs:
       # sibling clones below outlive the job, so clean before cloning or every
       # run after the first on a given runner fails with exit 128.
       - name: Clean stale dependency clones
-        run: rm -rf ../omnibase_core ../omnibase_compat ../omnimemory
+        run: rm -rf ../omnibase_core ../omnimemory
 
       - name: Clone sibling repos (workspace deps)
         run: |
           git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-          git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
           git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
 
       - name: Install uv
@@ -280,7 +279,8 @@ jobs:
       - name: Guard — zero executed live cases is a failure, not a pass (OMN-16809)
         if: always()
         run: |
-          uv run python scripts/ci/check_integration_skips.py \
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+            python -m omnibase_core.nodes.node_integration_skips_check_compute.runtime_integration_skips_check \
             --junit delegation_regression_junit.xml \
             --config scripts/ci/nightly_chain_skip_guard.yaml
 

@@ -4,13 +4,26 @@
 
 from __future__ import annotations
 
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_integration_proof import (
+    HandlerIntegrationProof,
+)
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_ticket_contract_prerequisite import (
     HandlerTicketContractPrerequisite,
+    default_head,
 )
 
-__all__ = ["create_handler_ticket_contract_prerequisite"]
+__all__ = [
+    "create_handler_integration_proof",
+    "create_handler_ticket_contract_prerequisite",
+    "default_head",
+]
 
 
 def create_handler_ticket_contract_prerequisite() -> HandlerTicketContractPrerequisite:
     """Build the handler with its default dependencies."""
     return HandlerTicketContractPrerequisite()
+
+
+def create_handler_integration_proof() -> HandlerIntegrationProof:
+    """Build the pure integration-proof handler."""
+    return HandlerIntegrationProof()

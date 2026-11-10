@@ -15,8 +15,10 @@ description: >-
   The landing worker's engine choice at placement, from the pool readings recounted under the placement lock. A code or
   mechanical class on the first rung tries the Codex engine first; every worker then tries the node's Claude engine; and a
   worker no Claude host can take (every Claude host usage-limited or full) runs on the Codex engine where a codex host has
-  room instead of waiting out its lease. A cause brief keeps waiting for Claude. LANDING_CODEX_MECHANICAL=0 turns off
-  every Codex route and LANDING_CODEX_FALLBACK=0 only the fallback. Pure: it reads and writes nothing itself.
+  room instead of waiting out its lease. A cause brief keeps waiting for Claude. config.codex_routes.mechanical false
+  turns off every Codex route and config.codex_routes.fallback false only the fallback; the landing_worker_engine
+  overlay may set either. Pure: it takes each engine's availability, the node's config and the stop gate's facts
+  as supplied typed facts and reads and writes nothing itself.
 input_model:
   name: "ModelLandingWorkerEngineRequest"
   module: "omnimarket.nodes.node_landing_worker_engine_compute.models.model_landing_worker_engine"
@@ -38,11 +40,18 @@ handler_routing:
       handler:
         name: "HandlerLandingWorkerEngine"
         module: "omnimarket.nodes.node_landing_worker_engine_compute.handlers.handler_landing_worker_engine"
+config:
+  # The Codex engine id of the caller's placement and the default of each Codex route (OMN-21958). The
+  # landing_worker_engine overlay may turn a route off under codex_routes; the handler reads neither.
+  codex_engine: codex_high
+  codex_routes:
+    mechanical: true
+    fallback: true
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: "Direct Python invocation of the handler with pool readings and its placement API."
+  external_trigger: "Direct Python invocation of the handler with each engine's availability, the node config and the stop gate facts."
 descriptor:
   node_archetype: compute
   purity: pure

@@ -40,14 +40,18 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumMoveKind,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_paid_rung_decision import (
+    ModelPaidRungDecision,
+    ModelPaidRungRequest,
+)
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
     ModelTransitionDecisionRequest,
 )
-from omnimarket.routing.model_escalation_decision_request import (
+from omnimarket.models.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
-from omnimarket.routing.model_escalation_decision_result import (
+from omnimarket.models.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
 )
 
@@ -103,6 +107,32 @@ class HandlerEscalationDecision:
                 kind=kind, cause=cause, move_kind=request.move_kind
             )
         return ModelTransitionDecision(kind=table.kind_of(cause), cause=cause)
+
+    def decide_paid_rung(self, request: ModelPaidRungRequest) -> ModelPaidRungDecision:
+        """OMN-23180: a paid rung below the contract's size band is a declared skip.
+
+        A free rung, or a contract that declares no ``paid_from_size_band``, is
+        allowed. A request whose band was not measured is below the band: only a
+        measured large task reaches a paid rung. The skip is read from the
+        class's declared lists, like every other cause.
+        """
+        if not request.rung_is_paid or request.paid_from_size_band is None:
+            return ModelPaidRungDecision(allowed=True)
+        measured = request.size_band
+        if measured is not None and measured.rank >= request.paid_from_size_band.rank:
+            return ModelPaidRungDecision(allowed=True)
+        cause = EnumEscalationCause.SIZE_BAND_BELOW_PAID
+        kind = request.transitions.kind_of(cause)
+        band = measured.value if measured is not None else "unmeasured"
+        return ModelPaidRungDecision(
+            allowed=False,
+            transition=ModelTransitionDecision(kind=kind, cause=cause),
+            reason=(
+                f"paid rung skipped before dispatch: the request's size band is "
+                f"{band}, below {request.paid_from_size_band.value}, the smallest "
+                "band that may reach a paid rung"
+            ),
+        )
 
     def handle(
         self, request: ModelEscalationDecisionRequest

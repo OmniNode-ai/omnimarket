@@ -18,7 +18,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from omnimarket.models.secret_store.plain_http_rule import validate_plain_http_hosts
 
 #: The block name inside ``<onex_home>/config.yaml``.
 SECRET_STORE_BLOCK = "secret_store"
@@ -32,16 +34,37 @@ class ModelSecretStoreOverlay(BaseModel):
     #: Which adapter speaks to the store. Matched inside the node's adapters
     #: package, the only place a store product is named.
     provider: str = Field(min_length=1)
-    address: str = Field(min_length=1, pattern=r"^https?://")
-    project_id: uuid.UUID
-    environment: str = Field(min_length=1)
+    #: Addressing and identity. Which of these a provider needs is that
+    #: adapter's business, so a provider that reads a machine-local store names
+    #: none of them.
+    address: str | None = Field(default=None, min_length=1, pattern=r"^https?://")
+    project_id: uuid.UUID | None = None
+    environment: str | None = Field(default=None, min_length=1)
+    #: Hosts (names, addresses or CIDR networks) the adapter may reach over plain
+    #: http, beside loopback, which is always allowed. An https address needs no
+    #: entry. Left out, a plain-http address to any other host is refused before
+    #: a request is made (OMN-23193); the one rule is in ``plain_http_rule``.
+    plain_http_hosts: tuple[str, ...] = ()
     #: Every folder a request names is taken relative to this one.
     root_folder: str = Field(default="/", pattern=r"^/")
     #: The machine identity's client id, by reference.
-    client_id_ref: str = Field(min_length=1)
+    client_id_ref: str | None = Field(default=None, min_length=1)
     #: The machine identity's client secret, by reference.
-    client_secret_ref: str = Field(min_length=1)
+    client_secret_ref: str | None = Field(default=None, min_length=1)
+    #: Where the identity references resolve when no bootstrap store is injected:
+    #: a ``NAME=value`` file relative to the user's home, refused unless mode
+    #: 0600. Left out, they resolve from ``<onex_home>/credentials.json``.
+    identity_file: str | None = Field(default=None, min_length=1)
+    #: A declared reference (``llm.<provider>.<name>``) whose secret this
+    #: machine's store holds somewhere other than the contract's provider
+    #: folder: the absolute path ``/<folder>/<KEY>``, relative to the root folder.
+    references: dict[str, str] = Field(default_factory=dict)
     timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+
+    @field_validator("plain_http_hosts")
+    @classmethod
+    def _hosts_parse(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_plain_http_hosts(value)
 
 
 def load_secret_store_overlay(

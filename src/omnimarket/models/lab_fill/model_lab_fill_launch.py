@@ -14,6 +14,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 LANE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+# OMN-22866: lane-brief's ``check --lab`` (lab_child_id_problems, OMN-22883) refuses a lab-bound brief whose own prose opens a
+# pull request and carries neither a ``child-ticket-ids:`` line nor a push-the-branch-and-report sentence. Every fill brief that
+# opens a pull request was refused from the first fire after that check was installed (2026-11-08 21:57Z: 1 to 7 eligible
+# tickets, dispatched=0, 41 free slots). A fill lane has no ticket id to wait for, so it pushes and names its branch and head.
+# The sentence holds none of the negation words the check skips a sentence for (never, not, nothing, without, refus*, avoid*,
+# n't), or the check would not count it as an instruction.
+PUSH_AND_REPORT_LINE = "Push the branch when the work is ready, and name its branch and head in your TERMINAL."
 
 
 class ModelLabFillApprovedRow(BaseModel):
@@ -46,3 +53,5 @@ class ModelLabFillLaunch(BaseModel):
     # OMN-21881: ``auto`` lets the runner place a repo-only lane on a lab host first and a
     # cloud session as the overflow; None passes no --placement (the runner's own default).
     placement: Literal["auto"] | None = None
+    # OMN-22413: the runner's queue class for work that fixes the factory itself.
+    priority_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")

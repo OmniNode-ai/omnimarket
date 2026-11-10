@@ -963,12 +963,24 @@ provider_quota_policy:
             z.ai's pricing page. This is never a funding action.
     - provider_id: openrouter
       match_endpoint_host: "openrouter.ai"
-      # The free tier is rate-limited with no SLA. OMN-20154: its 429 carries
-      # the bare HTTP status as error.code and the limit is counted per free
-      # model, so a 429 cools down that one model and the other free models
-      # behind the same key stay routable. Recorded rather than retried: the
-      # 59 free calls in 24h on 2026-09-30 had nothing to learn from otherwise.
+      # Daily free-tier exhaustion is shared by the credential's free models.
+      # Match it before the ordinary model throttle; the provider embeds its
+      # epoch-millisecond reset in error.metadata.headers on recorded refusals.
       codes:
+        # The provider's native limit-source and message markers are code
+        # candidates before its generic HTTP 429. No new wire keys are needed.
+        - code: "openrouter_free_tier_daily"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: rate_limit_reset_milliseconds
+          fallback_cooldown_seconds: 86400
+          alert: false
+        - code: "free-models-per-day"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: rate_limit_reset_milliseconds
+          fallback_cooldown_seconds: 86400
+          alert: false
         - code: "429"
           disposition: cooldown
           scope: model
@@ -1109,7 +1121,10 @@ shadow_mode:
 # memory size. The HOST is deliberately not declared here -- the onboarding
 # script chooses host.docker.internal from inside Docker and localhost otherwise.
 # The first entry whose min_memory_gb <= the Mac's memory wins; entries are
-# ordered by min_memory_gb strictly descending and the last one is 0.
+# ordered by min_memory_gb strictly descending and the last one is 0. Each row also
+# declares the parameter_count, context_window and max_tokens the developer model
+# overlay states for it (OMN-20330, ruling G4), so onboarding writes no number of
+# its own.
 ollama:
   port: 11434
   chat_path: /v1/chat/completions
@@ -1117,6 +1132,12 @@ ollama:
     - min_memory_gb: 16
       model: qwen2.5-coder:7b
       download_gb: 5
+      parameter_count: "7B"
+      context_window: 32768
+      max_tokens: 8192
     - min_memory_gb: 0
       model: qwen2.5-coder:1.5b
       download_gb: 1
+      parameter_count: "1.5B"
+      context_window: 32768
+      max_tokens: 8192

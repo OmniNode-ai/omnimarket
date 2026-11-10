@@ -10,6 +10,10 @@ from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_
     HandlerReplayManifestBuilder,
     ManifestRefusalError,
 )
+from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_transcript_manifest import (
+    HandlerTranscriptManifest,
+    MissingRequiredVariableError,
+)
 
 __all__ = [
     "HandlerBoundaryPairing",
@@ -17,5 +21,7 @@ __all__ = [
     "HandlerRepeatClassifier",
     "HandlerReplayBundleVerifier",
     "HandlerReplayManifestBuilder",
+    "HandlerTranscriptManifest",
     "ManifestRefusalError",
+    "MissingRequiredVariableError",
 ]

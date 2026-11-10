@@ -181,20 +181,6 @@
     ],
     "push_branches": []
   },
-  "Hostile Review Gate": {
-    "workflow": "hostile-reviewer.yml",
-    "events": [
-      "pull_request"
-    ],
-    "push_branches": []
-  },
-  "Hostile Reviewer (adversarial gate)": {
-    "workflow": "hostile-reviewer.yml",
-    "events": [
-      "pull_request"
-    ],
-    "push_branches": []
-  },
   "imperative-contract-guard / Imperative Contract Guard": {
     "workflow": "imperative-contract-guard.yml",
     "events": [
@@ -541,6 +527,14 @@
       "pull_request",
       "merge_group",
       "workflow_dispatch"
+    ],
+    "push_branches": []
+  },
+  "prompt-cost-estimate-contract": {
+    "workflow": "prompt-cost-estimate-contract.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
     ],
     "push_branches": []
   }

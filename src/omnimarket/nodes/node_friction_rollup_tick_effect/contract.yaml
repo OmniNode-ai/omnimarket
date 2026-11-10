@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_friction_rollup_tick_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  One friction rollup tick (OMN-22987), the scheduled unit that moved here from the timer of OMN-19715:
+  reads the ledger and the sorted archive files, runs the compute node's rollup for each window with the class rules
+  of the overlay home, writes the dated and latest json and markdown reports atomically, prunes old reports and
+  appends one STATUS row through an injected appender. Exit codes: 0 done, 1 append refused, 2 usage or unreadable
+  input, 3 done with class rules unapplied. Every setting is in overlay.example.yaml.
+input_model:
+  name: ModelFrictionRollupTickRequest
+  module: omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick
+output_model:
+  name: ModelFrictionRollupTickResult
+  module: omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick
+handler:
+  module: omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick
+  class: HandlerFrictionRollupTick
+  input_model: omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick.ModelFrictionRollupTickRequest
+  output_model: omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick.ModelFrictionRollupTickResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick:HandlerFrictionRollupTick
+  handlers:
+    - operation: run_friction_rollup_tick
+      handler:
+        name: HandlerFrictionRollupTick
+        module: omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+inputs:
+  registry_root: {type: str, required: true, description: Root that holds the default state directory.}
+  ledger_path: {type: str, required: true, description: The rolling work ledger to read and append to.}
+  now: {type: str, required: false, description: UTC timestamp used instead of the clock.}
+  dry_run: {type: bool, required: false, description: Compute the row and reports and write nothing.}
+  state_dir: {type: str, required: false, description: Where the reports are written.}
+  archive_dir: {type: str, required: false, description: Where the archive split files are.}
+outputs:
+  status: {type: str}
+  exit_code: {type: int}
+  state: {type: str}
+  status_row: {type: str}
+  log_line: {type: str}
+  error_message: {type: str}
+  class_rules: {type: str}
+  report_path: {type: str}
+  report_json_text: {type: str}
+  report_markdown_text: {type: str}
+  written: {type: list}
+  pruned: {type: list}
+terminal_event: onex.evt.omnimarket.friction-rollup-tick-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.friction-rollup-tick-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.friction-rollup-tick-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.friction-rollup-tick-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.friction-rollup-tick-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Scheduled friction rollup tick
+  author: OmniNode Team
+  created: "2026-11-07"
+  related_tickets: [OMN-22987, OMN-19715, OMN-22814]

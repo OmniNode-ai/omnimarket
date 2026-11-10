@@ -19,9 +19,10 @@ A lane does GitHub work through this command and no ``gh`` verb:
 - **Other reads** (pr-review, pr-ticket, pr-threads, branch-protection, run-list,
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  pr-thread-reply, pr-thread-resolve, workflow-run, check-run-create) publish node_github_repo_write_effect's typed
+  pr-thread-reply, pr-thread-resolve, pr-review-post, workflow-run,
+  check-run-create) publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
-  needs. pr-edit, pr-ready and pr-close take the expected head from the
+  needs. pr-edit, pr-ready, pr-close and pr-review-post take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
   caller took from the caller's own claim registry and carries it on the
   command: the effect runs elsewhere and cannot read that directory.
@@ -38,8 +39,13 @@ Gateway reads retry on no terminal or bus unavailability for up to three total
 attempts, pausing 20 seconds between attempts (OMN-21396). Writes retry only when
 the broker reports no consumer, checking that evidence after each timeout;
 other unanswered writes and bus-open failures stop immediately (OMN-21646).
-With ``--bus inmemory``, the selected contract is hosted in this process by
-the runtime dispatcher before the command is published.
+With no ``--bus-lane``, ``--kafka-bootstrap`` or ``--bus inmemory``, the bus is
+the ``event_bus`` the node's contract overlay declares (OMN-22351). With
+``--bus inmemory``, or an overlay declaring ``type: inmemory``, the selected
+contract is hosted in this process by the runtime dispatcher before the command
+is published. A lane whose durable binding is degraded is refused with exit 69
+naming the bus login this host lacks; a source-control node is never hosted in
+process as a fallback, because it runs in the runtime that holds its credential.
 
 Registered in ``[project.entry-points."onex.cli"]``; the CLI discovers it over
 installed distributions.
@@ -89,7 +95,10 @@ from omnimarket.handlers.scm.scm_duplicate_guard import (
     duplicate_check_command,
     refuse_or_continue,
 )
+from omnimarket.handlers.scm.scm_gateway_open_prs import GatewayOpenPrFactsSource
+from omnimarket.handlers.scm.scm_git_credential import git_credential_command
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.model_gateway_node_skew import plain_sentence, refused_fields
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
@@ -112,6 +121,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteClaim,
     ModelRepoWriteRequest,
 )
+from omnimarket.nodes.node_lane_github_budget_effect import track_gateway_dispatch
 
 EXIT_FAILED: Final[int] = 1
 EXIT_USAGE: Final[int] = 2
@@ -163,6 +173,21 @@ def _write_has_no_consumer(exc: TimeoutError) -> bool:
     )
 
 
+def _with_skew_reading(
+    spec: ModelScmVerb, payload: dict[str, JsonValue], result: dict[str, JsonValue]
+) -> dict[str, JsonValue]:
+    """Say plainly, on stderr and in the answer, that the node is older than this client."""
+    fields = refused_fields(payload)
+    if not fields:
+        return result
+    sentence = plain_sentence(f"onex scm {spec.verb}", fields)
+    click.echo(sentence, err=True)
+    return {
+        **result,
+        "node_older_than_client": {"refused_fields": list(fields), "message": sentence},
+    }
+
+
 def _call_bus(
     spec: ModelScmVerb,
     repo: str,
@@ -170,10 +195,15 @@ def _call_bus(
     correlation_id: uuid.UUID,
     bus_opts: dict[str, object],
     timeout_s: float,
+    dispatch_receipt: Path | None = None,
 ) -> int:
     async def main() -> ModelScmTerminal:
         async with _open_bus({**bus_opts, "scm_node": spec.node}) as opened:
-            return await ScmBusCaller(opened).call(
+            return await ScmBusCaller(
+                track_gateway_dispatch(opened, dispatch_receipt)
+                if dispatch_receipt is not None
+                else opened,
+            ).call(
                 node=spec.node,
                 request=request,
                 correlation_id=correlation_id,
@@ -208,7 +238,11 @@ def _call_bus(
         except (LabRunBusError, InfraConnectionError) as exc:
             # A broker that refuses this principal a topic (an ACL) lands here too.
             click.echo(f"bus: {exc}", err=True)
-            if attempt == max_attempts or not is_read:
+            if (
+                attempt == max_attempts
+                or not is_read
+                or isinstance(exc, ScmBusRefusedError)
+            ):
                 return EXIT_BUS_UNAVAILABLE
         else:
             failed = (
@@ -217,6 +251,19 @@ def _call_bus(
                 or terminal.payload.get("status") == "failed"
             )
             result = terminal.payload.get("result", terminal.payload)
+            if failed and isinstance(result, dict):
+                result = _with_skew_reading(spec, terminal.payload, result)
+            if failed and refused_fields(terminal.payload) == ("fill_on_miss",):
+                # An older gateway does not know the flag, so the read is asked cache-only until it is redeployed (OMN-23378).
+                correlation_id = uuid.uuid4()
+                request = request.model_copy(
+                    update={
+                        "fill_on_miss": False,
+                        "cache_only": True,
+                        "correlation_id": correlation_id,
+                    }
+                )
+                continue
             return _emit(
                 ModelScmAnswer(
                     verb=spec.verb,
@@ -249,9 +296,17 @@ def _open_bus(
     names = tuple(inspect.signature(open_lab_run_bus).parameters)
     if names[:3] != ("bus", "lane", "kafka_bootstrap") or len(names) != 4:
         raise LabRunBusError(f"unexpected bus opener parameters: {names}")
-    values: tuple[object, ...] = (
+    node = bus_opts.get("scm_node")
+    bus, lane = _bus_selection(
         _bus_kind(bus_opts["bus"]),
         _optional_str(bus_opts["bus_lane"]),
+        _optional_str(bus_opts["kafka_bootstrap"]),
+        _optional_path(bus_opts["omnibase_path"]),
+        node if isinstance(node, EnumScmNode) else None,
+    )
+    values: tuple[object, ...] = (
+        bus,
+        lane,
         _optional_str(bus_opts["kafka_bootstrap"]),
         _optional_path(bus_opts["omnibase_path"]),
     )
@@ -259,7 +314,6 @@ def _open_bus(
         Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
         open_lab_run_bus,
     )
-    node = bus_opts.get("scm_node")
     opened = opener(**dict(zip(names, values, strict=True)))
     if values[0] == "inmemory":
         from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
@@ -275,6 +329,48 @@ def _open_bus(
     )
 
 
+class ScmBusRefusedError(LabRunBusError):
+    """A bus refusal no retry can change: no broker is declared, or the binding is degraded and a
+    source-control node is never hosted on this host (OMN-22351). Exit 69 at once, never retried."""
+
+
+def _bus_selection(
+    bus: BusKind,
+    lane: str | None,
+    kafka_bootstrap: str | None,
+    workspace_root: Path | None,
+    node: EnumScmNode | None,
+) -> tuple[BusKind, str | None]:
+    """The bus and lane this verb dials: the command line's, else the node's contract overlay (OMN-22351).
+
+    ``--bus-lane``, ``--kafka-bootstrap`` and ``--bus inmemory`` are explicit and win. With none of
+    them, ``event_bus`` of the node's overlay selects the bus: ``type: kafka`` and its lane, or
+    ``type: inmemory``. With no overlay declaration the shared-bus selection stays incomplete and the
+    opener refuses it, now naming the overlay it looked for.
+    """
+    if (
+        bus != "kafka"
+        or lane is not None
+        or kafka_bootstrap is not None
+        or node is None
+    ):
+        return bus, lane
+    from omnimarket.handlers.bus_binding.node_event_bus_overlay import (
+        resolve_node_event_bus,
+    )
+
+    declared, path = resolve_node_event_bus(node.value, workspace_root)
+    if declared is None:
+        raise ScmBusRefusedError(
+            f"{node.value} declares no event_bus in its contract overlay "
+            f"({path or '<workspace config root>/config/onex/overlays/' + node.value + '/overlay.yaml'}), "
+            "and no --bus-lane or --kafka-bootstrap was given, so this verb names no broker. "
+            "Declare `event_bus: {type: kafka, lane: <lane id>}` there (the broker address stays "
+            "in the lane declaration)."
+        )
+    return declared.type, declared.lane
+
+
 @contextlib.asynccontextmanager
 async def _open_scm_bound(
     durable: contextlib.AbstractAsyncContextManager[ProtocolLabRunBus],
@@ -282,10 +378,16 @@ async def _open_scm_bound(
     values: tuple[object, ...],
     node: EnumScmNode | None,
 ) -> AsyncIterator[ProtocolLabRunBus]:
-    """The durable bus, or the in-memory bus hosting this node when the lane overlay orders a fallback
-    and the durable bus fails its bounded health read (OMN-20275)."""
+    """The durable bus, or a refusal when the lane's binding is degraded (OMN-22351).
+
+    The lane declaration may order an in-memory fallback (OMN-20275) for the clients that can run
+    their node in process. The source-control nodes cannot: they run in the lane's runtime, which
+    holds the GitHub credential, and a copy hosted in this process would look the credential up on a
+    host that must never hold it (the credential_unavailable failures of every h106 lane). So a
+    degraded binding refuses with exit 69 naming the bus login this host lacks, before any command
+    is published.
+    """
     from omnimarket.handlers.bus_binding.select import open_bound_bus, positional_opener
-    from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
 
     elsewhere = positional_opener(opener)
     used: list[bool] = []
@@ -308,15 +410,15 @@ async def _open_scm_bound(
         if not bound.decision.degraded:
             yield bound.bus
             return
-        if node is None:
-            raise LabRunBusError("the in-memory SCM fallback requires a node")
-
-        @contextlib.asynccontextmanager
-        async def borrowed() -> AsyncIterator[ProtocolLabRunBus]:
-            yield bound.bus
-
-        async with open_scm_inprocess(borrowed(), node) as hosted:
-            yield hosted
+        lane = bound.decision.lane
+        raise ScmBusRefusedError(
+            f"lane {lane!r} binding is {bound.decision.state.value} "
+            f"({bound.decision.reason or 'durable bus unavailable'}). "
+            f"onex scm never hosts {node.value if node else 'a source-control node'} on this host: "
+            "the node runs in the lane's runtime, which holds the GitHub credential. This host "
+            f"needs its own bus login on lane {lane!r} (issued by the lab principal issuer, stored "
+            f"with `onex auth lane-login --lane {lane}`) and the scm client grants its peers hold."
+        )
 
 
 def _bus_kind(value: object) -> BusKind:
@@ -391,6 +493,15 @@ _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
 )
 
 
+def _lane_job_log_flag() -> str | None:
+    """The gateway contract's (or its overlay's) lane job-log flag; imported when asked."""
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
+        lane_job_log_flag,
+    )
+
+    return lane_job_log_flag()
+
+
 def _read_command(spec: ModelScmVerb) -> click.Command:
     pr_scoped = spec.operation in _PR_SCOPED_READS
 
@@ -443,12 +554,14 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
     )
     @click.option("--timeout-s", type=float, default=60.0, show_default=True)
+    @click.option("--dispatch-receipt", type=click.Path(path_type=Path), hidden=True)
     def command(
         target: str,
         source: str,
         watcher_state: str | None,
         clone: str | None,
         timeout_s: float,
+        dispatch_receipt: Path | None,
         **fields: object,
     ) -> None:
         repo, number = _target(target, pr=pr_scoped)
@@ -491,6 +604,11 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         elif source == "local":
             raise click.UsageError(f"{spec.verb} has no local answer; use the bus")
         given = {name: value for name, value in fields.items() if value is not None}
+        if spec.verb == "job-log":
+            flag = _lane_job_log_flag()
+            if flag is not None:
+                # OMN-23378: the declared policy sets a lane's job-log read's flag.
+                given[flag] = True
         correlation_id = uuid.uuid4()
         try:
             request = ModelGithubGatewayRequest(
@@ -502,7 +620,17 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
             )
         except ValidationError as exc:
             raise click.UsageError(str(exc)) from exc
-        sys.exit(_call_bus(spec, repo, request, correlation_id, bus_opts, timeout_s))
+        sys.exit(
+            _call_bus(
+                spec,
+                repo,
+                request,
+                correlation_id,
+                bus_opts,
+                timeout_s,
+                dispatch_receipt,
+            )
+        )
 
     return click.command(spec.verb, help=f"Replaces `{spec.replaces}`.")(command)
 
@@ -610,6 +738,7 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_comment": ("body", "body_file"),
     "pr_thread_reply": ("thread", "body", "body_file"),
     "pr_thread_resolve": ("review_thread",),
+    "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
         "name",
@@ -623,7 +752,7 @@ _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
     {"pr_create", "workflow_dispatch", "check_run_create"}
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
-    {"pr_edit", "pr_ready", "pr_close"}
+    {"pr_edit", "pr_ready", "pr_close", "pr_review_post"}
 )
 
 _OPTION_DECORATORS: Final[
@@ -736,6 +865,18 @@ def _carried_claim(
         return None
 
 
+def gateway_open_prs_source(
+    bus_opts: dict[str, object], timeout_s: float
+) -> GatewayOpenPrFactsSource:
+    """The duplicate-fix guard's read of the open pull requests on a host with no PR watcher state (OMN-22654).
+
+    It opens the bus only when the guard asks, which is only when the watcher state could not be read.
+    """
+    return GatewayOpenPrFactsSource(
+        open_bus=_open_bus, bus_opts=bus_opts, timeout_s=timeout_s
+    )
+
+
 def _write_command(spec: ModelScmVerb) -> click.Command:
     pr_scoped = spec.operation not in _REPO_SCOPED_WRITES
 
@@ -777,6 +918,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 body=body,
                 lane=lane,
                 watcher_state=watcher_state,
+                open_prs_source=gateway_open_prs_source(bus_opts, timeout_s),
             )
             if refused is not None:
                 sys.exit(refused)
@@ -908,6 +1050,30 @@ def _refused_command(verb_name: str, handled_by: str) -> click.Command:
     return command
 
 
+def cached_job_log_command(
+    factory: Callable[[ModelScmVerb], click.Command],
+) -> click.Command:
+    command = factory(
+        ModelScmVerb(
+            verb="job-log-cached",
+            node=EnumScmNode.GATEWAY,
+            operation="job_log_tail",
+            replaces="host-shared completed job log",
+        )
+    )
+    callback = command.callback
+    assert callback is not None
+
+    def cached(**fields: object) -> object:
+        # Neither arguments nor environment can turn this verb into a live read.
+        fields["cache_only"] = True
+        return callback(**fields)
+
+    command.callback = cached
+    command.help = "A cached job's tail, window or step; a miss makes no GitHub call."
+    return command
+
+
 for _spec in SCM_VERBS:
     scm_group.add_command(
         _write_command(_spec)
@@ -917,6 +1083,8 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+scm_group.add_command(git_credential_command)
+scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
 

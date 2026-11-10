@@ -30,6 +30,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 from tests.unit.nodes.node_projection_work_ledger.test_work_ledger_parity_text_relations import (
     CORRECTION,
     ROWS,
@@ -104,7 +105,7 @@ async def test_text_evidence_has_same_verdict_on_both_bindings(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=adapter
         )
     )
-    handler = HandlerWorkLedgerEmit(emitter=emitter)
+    handler = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE, emitter=emitter)
     try:
         for row in ROWS:
             result = await asyncio.to_thread(

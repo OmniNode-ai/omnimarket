@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Fill Orchestrator (plan T13 of the stopped-line fill)
+#
+# The one writer of every floor lane. The rule is the state row, not a lock: there is one row per
+# floor_fill.scope and every write of it is conditional on the stored seq and made before any intent it
+# authorises is issued; a stale write ends the command STALE-STATE and the next tick retries. A pass reads the
+# floor and the facts, resolves every RESERVED and SENT entry through node_floor_fill_reducer, decides through
+# node_floor_fill_candidates_compute, mints each task's ticket (the ticket seam), reserves (a write), starts the
+# lane (the process seam) and words the tick through node_floor_fill_lines_compute. A stopped lane of the floor
+# record that node_floor_fill_candidates_compute lists as a candidate gets one continuation lane started through
+# floor_fill.stopped_runner_command, its previous report text in the brief file the briefs seam writes. Nothing is read as empty: a
+# row or a source that cannot be read stops the pass with UNKNOWN and a failing exit code.
+#
+# Seams are injected in the handler constructor. The in-memory profile binds scripted adapters; the live
+# bindings (floor, pool, ledger, tickets, process, state_io table floor_fill_state with its omnibase_infra
+# migration) are bound by the lab step, so the node attaches to no runtime profile yet.
+name: "node_floor_fill_orchestrator"
+contract_name: "node_floor_fill_orchestrator"
+node_name: "node_floor_fill_orchestrator"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+node_type: "ORCHESTRATOR_GENERIC"
+lifecycle: experimental
+runtime_profiles: []
+description: >-
+  Starts a lane on every startable floor line, once. Commands: tick (a whole pass S0 to S6), send_key (one
+  key through the same single writer), inspect (read-only verdicts) and lines (the stored answer of the last
+  tick, judged by its own observed_at). Run on floor_fill.host_id; on any other host tick is refused wrong-host
+  and every other command is forwarded to the fill host, its output and exit code relayed, with
+  UNKNOWN floor-fill-unreachable and exit 75 for a forward that fails or passes floor_fill.command_timeout_seconds.
+input_model:
+  name: "ModelFloorFillCommandRequest"
+  module: "omnimarket.nodes.node_floor_fill_orchestrator.models"
+  description: "One command (tick, send_key, inspect, lines), its key for send_key and the host it runs on."
+output_model:
+  name: "ModelFloorFillEntryResult"
+  module: "omnimarket.nodes.node_floor_fill_orchestrator.models"
+  description: "What the entry prints and exits with; the typed answer (status, lines, key results, exit_code) rides on it."
+handler:
+  module: "omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command"
+  class: "HandlerFloorFillCommand"
+  input_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.ModelFloorFillCommandRequest"
+  output_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.ModelFloorFillEntryResult"
+# No handler_routing: HandlerFloorFillCommand takes its seams (config, orchestrator, runner) in its constructor, so it
+# is not boot-resolvable or dispatched by the runtime. It is built and run by the runtime module (the census node's form).
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+state_io:
+  database: "omnibase_infra"
+  table: "floor_fill_state"
+  key: "scope"
+  codec:
+    module: "omnimarket.nodes.node_floor_fill_orchestrator.state_codec"
+    name: "StateIoCodec"
+protocol_dependencies:
+  - {name: SRC, protocol: "omnibase_spi.protocols.lane:ProtocolFactSource", bind_as: facts, required: true}
+  - {name: LED, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorLedger", bind_as: ledger, required: true}
+  - {name: HST, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorPool", bind_as: pool, required: true}
+  - {name: CLK, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorClock", bind_as: clock, required: true}
+  - {name: STO, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorStateStore", bind_as: store, required: true}
+  - {name: TKT, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorTickets", bind_as: tickets, required: true}
+  - {name: PRC, protocol: "omnibase_spi.protocols.lane:ProtocolLaneProcessRunner", bind_as: runner, required: true}
+  - {name: BRF, protocol: "omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports:ProtocolFloorBriefs", bind_as: briefs, required: true}
+dependencies:
+  - name: omnimarket.nodes.node_floor_fill_candidates_compute
+    dependency_type: internal
+    description: "T1: the verdict per line and the ready tasks of each, in record order."
+    required: true
+  - name: omnimarket.nodes.node_floor_fill_reducer
+    dependency_type: internal
+    description: "T12: the fill's state as one pure transition function."
+    required: true
+  - name: omnimarket.nodes.node_floor_fill_lines_compute
+    dependency_type: internal
+    description: "T4: the tick's lines."
+    required: true
+runtime_dispatch:
+  external_trigger: "the runtime module (python -m omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator --overlay-json <J> --this-host <H> <command>), called by the fill's tick unit and by the prompt-submit hook entry."
+# The tick unit: installed by `schedule install` as a systemd user timer on floor_fill.host_id, removed by
+# `schedule uninstall` (the rollback). The unit runs the dispatch venv's interpreter on this node's runtime module
+# (-m ...runtime_floor_fill_orchestrator --overlay-json <the floor_fill section> --this-host <host> tick), the
+# census node's form. The interval (floor_fill.tick_interval_seconds) is the overlay's.
+schedule:
+  unit_name: onex-floor-fill-tick
+  timeout_seconds: 900
+  dispatch_venv: .onex-dispatch-venv
+
+overlay:
+  example: "overlay.example.yaml"
+  section: "floor_fill"
+  keys:
+    - scope
+    - host_id
+    - url
+    - plans_root
+    - runner_command
+    - reserved_timeout_seconds
+    - sent_window_minutes
+    - command_timeout_seconds
+    - tick_interval_seconds
+    - remote_argv
+    - process_environment
+    - process_working_directory
+    - max_age_minutes
+    - max_fill_lanes_per_line
+    - stopped_max_lanes
+    - stopped_report_chars
+    - stopped_continue_rule
+    - stopped_runner_command
+    - stopped_reports_root
+    - stopped_brief_directory
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 60000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  transport_type: local
+  description: "The one writer of every floor lane of the stopped-line fill."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-07"
+  tags: ['orchestrator', 'floor-fill']

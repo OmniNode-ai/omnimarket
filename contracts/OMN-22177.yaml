@@ -1,0 +1,228 @@
+schema_version: 1.0.0
+ticket_id: OMN-22177
+title: 'Agent review dispatch node and the review post: the orchestrator reviews one pull request head with lab models and publishes one signed receipt'
+summary: node_agent_review_dispatch_orchestrator takes one command (repo, pr, head_sha) on onex.cmd.omnimarket.agent-review-requested.v1, reads the head through injected ports, reuses the receipt stored under repo#pr#head or runs the lab review, signs a candidate, stores it by insert-if-absent and posts the stored receipt as a pull request review through the new source-control write operation pr_review_post; terminals are completed, refused and failed. Every voter, endpoint, threshold and deadline comes from the node overlay. The ports are injected and tested in memory and under the Redpanda overlay; the production adapters are not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22177-ac1
+  statement: 'AC1: A head has at most one stored receipt, and a head with a stored receipt is not reviewed again'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A head has at most one stored receipt, and a head with a stored receipt is not reviewed again -- falsifier: the contention or crash test in `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -v -rs` finds two stored receipts, a posted review carrying an id other than the stored one, or a lab call for a head with a stored receipt'
+- id: req-omn22177-ac2
+  statement: 'AC2: A head observed stale at either read, and a delivery after a recorded terminal, post no review'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: A head observed stale at either read, and a delivery after a recorded terminal, post no review -- falsifier: a test in the same suite finds a review post after a stale read or on a delivery after a recorded terminal (the delivery returns the recorded terminal marked historical)'
+- id: req-omn22177-ac3
+  statement: 'AC3: The model of the receipt key comes first and holds'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: The model of the receipt key comes first and holds -- falsifier: `git merge-base --is-ancestor <commit adding test_receipt_key_model> <first commit adding the handler> && uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -k test_receipt_key_model -v -rs` exits non-zero (the ancestor check fails, the two ids are equal, or the test fails because it does not enumerate two requests with a crash before the lab review, after signing, after storing and after the post, or an interleaving ends with two stored receipts, a posted review with a non-stored id, or no receipt stored and published after the retry)'
+- id: req-omn22177-ac4
+  statement: 'AC4: A forbidden provider or gateway endpoint causes zero calls'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: A forbidden provider or gateway endpoint causes zero calls -- falsifier: the test counts any call on a fake port after loading a roster that names `provider: anthropic` or a review-gateway endpoint'
+- id: req-omn22177-ac5
+  statement: 'AC5: The agent path verdict equals the CI gate verdict on the three parity fixtures (clean diff, one-voter finding, two-voter finding)'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: The agent path verdict equals the CI gate verdict on the three parity fixtures (clean diff, one-voter finding, two-voter finding) -- falsifier: the parity test in the same suite finds a differing verdict'
+- id: req-omn22177-ac6
+  statement: 'AC6: The write operation exists in the source-control node'
+  acceptance:
+  - id: AC6
+    statement: 'AC6: The write operation exists in the source-control node -- falsifier: `onex scm verbs` does not list `pr_review_post`'
+- id: req-omn22177-ac7
+  statement: 'AC7: No voter, endpoint, threshold, repository, deadline or host is a literal in the node, and both profiles pass'
+  acceptance:
+  - id: AC7
+    statement: 'AC7: No voter, endpoint, threshold, repository, deadline or host is a literal in the node, and both profiles pass -- falsifier: the literal-scan test finds one, or `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -v -rs` fails to show one `[inmemory] PASSED` and one `[redpanda_overlay] PASSED` line per test function with equal counts and no SKIPPED line'
+- id: req-omn22177-ac8
+  statement: 'AC8: Lab step: on the lab dev lane one review of a scratch draft pull request in a registry repository (closed unmerged afterwards) shows the receipt review, and a second dispatch of the same head posts no second receipt id'
+  acceptance:
+  - id: AC8
+    statement: 'AC8: Lab step: on the lab dev lane one review of a scratch draft pull request in a registry repository (closed unmerged afterwards) shows the receipt review, and a second dispatch of the same head posts no second receipt id -- falsifier: `onex run-node node_agent_review_dispatch_orchestrator` on the dev lane for the same head twice yields a second distinct receipt id'
+- id: req-omn22177-dod1
+  statement: 'DOD1: Merged in omnimarket and the overlay repository, and the node is registered and answers on the lab dev lane at the release tag the lab deploys from'
+  acceptance:
+  - id: DOD1
+    statement: 'DOD1: Merged in omnimarket and the overlay repository, and the node is registered and answers on the lab dev lane at the release tag the lab deploys from -- falsifier: the required context `CI Summary` is not green on the merged omnimarket PR head, or the required context `ci` is not green on the merged overlay repository PR head, or the dev lane reports a tag older than the merge commit'
+- id: req-omn22177-ac9
+  statement: 'AC9: The gate-accept step, which holds the receipt key, runs in the omniintelligence clone with python -P, never in the checkout under review'
+  acceptance:
+  - id: AC9
+    statement: 'AC9: The gate-accept step, which holds the receipt key, runs in the omniintelligence clone with python -P, never in the checkout under review -- falsifier: `uv run pytest tests/ci/test_hostile_review_accept_step_shape.py -v -rs` passes with the step run in the checkout under review (no working-directory, or python -m without -P), where uv builds an empty environment from the pull request pyproject.toml and a root-level module of the pull request can shadow an import'
+evidence_requirements:
+- kind: tests
+  description: The node suite under both profiles, the parity test, the literal scan and the operation-table check.
+  command: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator tests/unit/nodes/node_agent_review_harness_rung_effect tests/ci/test_scm_operation_table_omn20912.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22177-ac9
+  description: 'AC9: the step-shape tests pin the gate-accept step to working-directory ../omniintelligence and python -P -m. At the merge base the step runs python -m in the checkout under review, so the test fails there (measured on job 126160569597: no module named pydantic, decision=unchanged).'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_hostile_review_accept_step_shape.py -q -n 0 -p no:randomly --no-cov --tb=line -k never_runs_in_the_checkout_under_review
+    cwd: .
+- id: dod-omn22177-ac1
+  description: 'AC1: the contention, stored-receipt, failed-run and crash-at-each-step tests find one stored receipt, every posted review carrying its id, and no lab call for a stored head.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k 'two_simultaneous or stored_receipt or crash_at_each_step or post_that_committed'
+    cwd: .
+- id: dod-omn22177-ac2
+  description: 'AC2: a stale head at the first read and at the re-read post nothing; a delivery after a recorded terminal returns it marked historical and calls no port but the log.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k 'stale_head or recorded_terminal'
+    cwd: .
+- id: dod-omn22177-ac3
+  description: 'AC3: the model test was added by a commit that is an ancestor of the first commit adding the handler, and it holds over every enumerated crash and interleaving (mutants are caught).'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'git merge-base --is-ancestor $(git log --diff-filter=A --format=%H --reverse -- tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_receipt_key_model.py | head -1) $(git log --diff-filter=A --format=%H --reverse -- src/omnimarket/nodes/node_agent_review_dispatch_orchestrator/handlers/handler_agent_review_dispatch.py | head -1)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k test_receipt_key_model
+    cwd: .
+- id: dod-omn22177-ac4
+  description: 'AC4: a roster naming provider anthropic, a review-gateway endpoint class, an unapproved identity, a missing model, an unapproved rung or a forbidden host causes zero port calls.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k forbidden_roster
+    cwd: .
+- id: dod-omn22177-ac5
+  description: 'AC5: the node''s aggregation gives the recorded CI gate verdict on the clean, one-voter and two-voter fixtures.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_quorum_parity.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .
+- id: dod-omn22177-ac6
+  description: 'AC6: the source-control verb table and the write node''s contract both carry pr_review_post, and the operation-table check is whole.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'grep -F pr_review_post src/omnimarket/handlers/scm/handler_scm_dispatch.py src/omnimarket/nodes/node_github_repo_write_effect/contract.yaml'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_scm_operation_table_omn20912.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .
+- id: dod-omn22177-ac7
+  description: 'AC7: the literal scan finds none, and every test of the suite passes under both profiles with equal counts and no skip.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_no_literals.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .
+  - check_type: command
+    check_value: bash -o pipefail -c 'uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -v -rs -n 0 -p no:randomly --no-cov > /tmp/omn22177-profiles.txt; ! grep -q SKIPPED /tmp/omn22177-profiles.txt; a=$(grep -c "\[inmemory\] PASSED" /tmp/omn22177-profiles.txt); b=$(grep -c "\[redpanda_overlay\] PASSED" /tmp/omn22177-profiles.txt); test "$a" -gt 0 && test "$a" = "$b"'
+    cwd: .
+- id: dod-omn22177-ac4-harness-rungs
+  description: 'AC4, for the harness rungs: a roster voter of endpoint class review_gateway or anthropic_api causes zero port calls, and a harness rung the overlay does not name has no binding.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'forbidden_endpoint_class or does_not_name'
+    cwd: .
+- id: dod-omn22177-ac7-harness-rungs
+  description: 'AC7, for the harness rungs: one harness rung node serves rungs codex and claude from overlay data; a roster naming lab, codex and claude binds; one identity from two hosts counts once; one codex plus one claude vote meets a quorum of two; a vote off the roster''s model is refused; the harness child holds neither the signer''s names nor the key; every test passes under both profiles with equal counts and no skip.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_harness_rung_effect tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .
+  - check_type: command
+    check_value: bash -o pipefail -c 'uv run pytest tests/unit/nodes/node_agent_review_harness_rung_effect tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -v -rs -n 0 -p no:randomly --no-cov > /tmp/omn22177-harness-profiles.txt; ! grep -q SKIPPED /tmp/omn22177-harness-profiles.txt; a=$(grep -c "\[inmemory[]-].* PASSED" /tmp/omn22177-harness-profiles.txt); b=$(grep -c "\[redpanda_overlay[]-].* PASSED" /tmp/omn22177-harness-profiles.txt); test "$a" -gt 0 && test "$a" = "$b"'
+    cwd: .
+- id: dod-omn22177-ac8-in-process
+  description: 'AC8, in process: the production file store, terminal log and review poster over a recorded source-control bus answer two requests for the same head with one receipt id and one review post. The lab dev lane run is dod-omn22177-ac8, in the local Done gate.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k second_request_for_a_posted_head
+    cwd: .
+- id: dod-omn22177-dod1-registered
+  description: 'DOD1, in process: the node is an onex.nodes entry point, the runtime builds its handler with no arguments, and a request on a host without the overlay ends failed not_bound. The lab dev lane answer is dod-omn22177-dod1, in the local Done gate.'
+  source: manual
+  binds_ac:
+  - DOD1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_agent_review_dispatch_orchestrator tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k 'registered_as_an_entry_point or constructs_as_the_runtime_builds_it or builds_the_handler_with_no_arguments or without_the_overlay_fails_not_bound'
+    cwd: .
+- id: dod-omn22177-ac8
+  description: 'AC8: lab step, run after the deploy by the local Done gate: the same head dispatched twice on the lab dev lane yields one receipt id. Not met by this change alone.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'onex run-node node_agent_review_dispatch_orchestrator --help > /dev/null'
+    cwd: .
+- id: dod-omn22177-dod1
+  description: 'DOD1: after merge and the release train, the node is registered and answers on the lab dev lane. Not met by this change alone.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'onex run-node node_agent_review_dispatch_orchestrator --help > /dev/null'
+    cwd: .
+- id: dod-omn22177-deploy-probe
+  description: 'Deploy probe: the handler GitHub serves at the checked-out commit defines HandlerAgentReviewDispatch, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_agent_review_dispatch_orchestrator/handlers/handler_agent_review_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerAgentReviewDispatch" > /dev/null'
+    cwd: .
+- id: dod-omn22177-integration-proof
+  description: The pushed head ran the node suite on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ticket-omn-22177-1103-r -- uv run --frozen pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q --no-cov
+    cwd: .
+- id: dod-omn22177-rung-chain
+  description: 'The chain of responders: rungs are called in the overlay order one rung at a time, an unavailable or timed out voter is skipped and recorded and never a failed run, a run no rung can answer ends refused with every attempt recorded, every call is pinned to the requested head, and a head with a stored receipt calls no rung (the recorded gateway 503 replies drive the unavailable cases).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_rung_chain.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .

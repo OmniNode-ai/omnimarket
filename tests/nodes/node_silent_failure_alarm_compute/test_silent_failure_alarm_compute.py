@@ -448,3 +448,15 @@ def test_the_friction_check_names_what_a_row_lacks() -> None:
     assert _friction_row_reason("2026-10-09T06:00:00Z | FRICTION | actor=x | text") == (
         "FRICTION row is missing lane, ticket, cost"
     )
+
+
+def test_the_fix_names_a_broker_refusal_beside_a_stopped_drainer() -> None:
+    """A drainer that is active and refused by the broker is not cured by a reinstall."""
+    result = _quiet(_host("h053", 6000, 50, 40))
+    assert result.alarm
+    assert "when the drainer is not active" in result.fix
+    assert "when it is active" in result.fix
+    assert "not authorized" in result.fix
+    assert "no WRITE grant" in result.fix
+    assert result.fix in result.friction_cells
+    assert result.fix in result.alert_text

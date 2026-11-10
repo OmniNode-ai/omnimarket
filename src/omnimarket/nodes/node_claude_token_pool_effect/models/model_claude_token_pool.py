@@ -9,9 +9,14 @@ every dump, so a result written as JSON names labels and fingerprints only.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
+    ModelRotationMark,
+)
 
 
 class ModelClaudeTokenPoolRequest(BaseModel):
@@ -29,10 +34,22 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: Literal[
-        "add", "resolve", "mark_limited", "mark_revoked", "reorder", "status"
+        "add",
+        "resolve",
+        "mark_limited",
+        "mark_revoked",
+        "reorder",
+        "sync_marks",
+        "status",
     ]
     label: str | None = None
+    marks: tuple[ModelRotationMark, ...] = ()
     labels: tuple[str, ...] = ()
+    #: ``sync_marks``: when the source wrote ``marks``. A local limit or revocation observed after this
+    #: instant is newer than the snapshot and is kept; unset, the marks are authoritative.
+    marks_at: datetime | None = None
+    #: Decide on the pool as the operation would leave it, and write neither the pool nor the status mirror.
+    dry_run: bool = False
     setup_token_output: SecretStr | None = None
     seconds: float | None = Field(default=None, gt=0)
     force: bool = False
@@ -57,7 +74,13 @@ class ModelClaudeTokenPoolResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: Literal[
-        "add", "resolve", "mark_limited", "mark_revoked", "reorder", "status"
+        "add",
+        "resolve",
+        "mark_limited",
+        "mark_revoked",
+        "reorder",
+        "sync_marks",
+        "status",
     ]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()
@@ -65,6 +88,7 @@ class ModelClaudeTokenPoolResult(BaseModel):
     token: SecretStr | None = Field(default=None, exclude=True, repr=False)
     limited: int = 0
     revoked: tuple[str, ...] = ()
+    synced: tuple[str, ...] = ()
     alert: str | None = None
     all_limited: bool = False
     next_reset: str | None = None

@@ -14,8 +14,10 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model
 from .cloud_session import lane_kind
 
 CLAUDE_MODELS = {"sonnet": "claude_sonnet"}
+# review-only (OMN-22345): the session reviews one head and leaves no pull request; its review returns through the
+# session's final message, read by this node, never through a pushed branch.
 CLOUD_LANE_KINDS = frozenset(
-    {"conflict-fix", "red-test-fix", "small-code", "plan-draft"}
+    {"conflict-fix", "red-test-fix", "small-code", "plan-draft", "review-only"}
 )
 
 

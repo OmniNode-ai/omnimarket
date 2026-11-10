@@ -35,6 +35,9 @@ class EnumGithubGatewayOperation(StrEnum):
     WORKFLOW_RUNS = "workflow_runs"
     RUN_JOBS = "run_jobs"
     JOB_LOG_TAIL = "job_log_tail"
+    # OMN-23308: one named job's log, filled into the host-shared cache on a miss
+    # and returned; the same result shape as job_log_tail.
+    JOB_LOG_FILL = "job_log_fill"
     ARTIFACTS = "artifacts"
     PR_TEXT = "pr_text"
     RELEASES = "releases"
@@ -46,7 +49,15 @@ class EnumGithubGatewayOperation(StrEnum):
     MERGED_PR = "merged_pr"
     # The review threads of a PR, with the resolved state only GraphQL reports.
     PR_REVIEW_THREADS = "pr_review_threads"
+    # OMN-22654: every open PR's head, base, title and fix markers, the read the
+    # duplicate-fix guard makes on a host that has no PR watcher state.
+    OPEN_PR_FACTS = "open_pr_facts"
 
+
+# Operations that read one job's log and take its window fields.
+_JOB_LOG_OPERATIONS: frozenset[EnumGithubGatewayOperation] = frozenset(
+    {EnumGithubGatewayOperation.JOB_LOG_TAIL, EnumGithubGatewayOperation.JOB_LOG_FILL}
+)
 
 # Operations scoped to a single PR require ``pr_number``.
 _PR_SCOPED_OPERATIONS: frozenset[EnumGithubGatewayOperation] = frozenset(
@@ -106,7 +117,17 @@ class ModelGithubGatewayRequest(BaseModel):
         description="Workflow run id; required by run_jobs and artifacts.",
     )
     job_id: int | None = Field(
-        default=None, gt=0, description="Job id; required by job_log_tail."
+        default=None,
+        gt=0,
+        description="Job id; required by job_log_tail and job_log_fill.",
+    )
+    cache_only: bool = Field(
+        default=False,
+        description="job_log_tail: refuse a cache miss without resolving credentials or making HTTP calls.",
+    )
+    fill_on_miss: bool = Field(
+        default=False,
+        description="job_log_tail: on a cache miss, download that one job's log inside the gateway's declared miss-fill budget instead of refusing.",
     )
     artifact_id: int | None = Field(
         default=None,
@@ -196,11 +217,22 @@ class ModelGithubGatewayRequest(BaseModel):
             raise ValueError(
                 f"operation {self.operation.value!r} requires run_id to be set."
             )
+        if self.operation in _JOB_LOG_OPERATIONS and self.job_id is None:
+            raise ValueError(
+                f"operation {self.operation.value!r} requires job_id to be set."
+            )
         if (
-            self.operation is EnumGithubGatewayOperation.JOB_LOG_TAIL
-            and self.job_id is None
+            self.operation is EnumGithubGatewayOperation.JOB_LOG_FILL
+            and self.cache_only
         ):
-            raise ValueError("operation 'job_log_tail' requires job_id to be set.")
+            raise ValueError(
+                "operation 'job_log_fill' downloads on a miss and cannot be cache_only."
+            )
+        if self.fill_on_miss:
+            if self.operation is not EnumGithubGatewayOperation.JOB_LOG_TAIL:
+                raise ValueError("fill_on_miss is supported only for job_log_tail.")
+            if self.cache_only:
+                raise ValueError("fill_on_miss and cache_only are exclusive.")
         if (
             self.operation is EnumGithubGatewayOperation.COMMIT_CHECK_RUNS
             and self.head_sha is None
@@ -219,9 +251,10 @@ class ModelGithubGatewayRequest(BaseModel):
             "step": self.step,
         }
         given = [name for name, value in window.items() if value is not None]
-        if given and self.operation is not EnumGithubGatewayOperation.JOB_LOG_TAIL:
+        if given and self.operation not in _JOB_LOG_OPERATIONS:
             raise ValueError(
-                f"{', '.join(given)} read only by the job_log_tail operation."
+                f"{', '.join(given)} read only by the job_log_tail and "
+                "job_log_fill operations."
             )
         if (
             self.length_bytes is not None
@@ -455,12 +488,11 @@ class ModelRunJobsResult(_ModelBoundedList):
     jobs: list[ModelRunJob] = Field(default_factory=list)
 
 
-class ModelJobLogTailResult(BaseModel):
-    """The end of one job's log, at most the request's tail_bytes."""
+class _ModelJobLogRead(BaseModel):
+    """What one job-log read keeps; the subclasses name the operation that answered it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["job_log_tail"] = "job_log_tail"
     repo: str
     job_id: int
     total_bytes: int = Field(..., ge=0, description="Length of the whole log.")
@@ -497,6 +529,18 @@ class ModelJobLogTailResult(BaseModel):
     region_bounds: Literal["timestamp"] | None = Field(
         default=None, description="How the step's region was found."
     )
+
+
+class ModelJobLogTailResult(_ModelJobLogRead):
+    """The end of one job's log, at most the request's tail_bytes."""
+
+    operation: Literal["job_log_tail"] = "job_log_tail"
+
+
+class ModelJobLogFillResult(_ModelJobLogRead):
+    """One named job's log, served from the cache or downloaded into it on a miss (OMN-23308)."""
+
+    operation: Literal["job_log_fill"] = "job_log_fill"
 
 
 class EnumArtifactFetchRefusal(StrEnum):
@@ -756,6 +800,37 @@ class ModelPrReviewThreadsResult(_ModelBoundedList):
     threads: list[ModelPrReviewThread] = Field(default_factory=list)
 
 
+class ModelOpenPrFact(BaseModel):
+    """What the duplicate-fix guard folds over for one open PR (OMN-22654).
+
+    ``fix_markers`` are the PR body's ``Fix-Check:`` and ``Fix-Cause:`` lines,
+    whole and in body order, so the body itself never travels on the bus.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int = Field(..., gt=0)
+    head_ref: str = Field(..., min_length=1)
+    head_sha: str = Field(..., pattern=r"^[0-9a-f]{40}$")
+    base_ref: str = Field(..., min_length=1)
+    title: str
+    draft: bool
+    fix_markers: list[str] = Field(default_factory=list)
+
+
+class ModelOpenPrFactsResult(_ModelBoundedList):
+    """Every open PR of a repo with the facts the duplicate-fix guard needs, newest first.
+
+    Replaces the PR watcher's open records for a caller that has no watcher
+    state. ``total_count`` and ``truncated`` describe the open PRs: a caller
+    that must see every one refuses a truncated answer.
+    """
+
+    operation: Literal["open_pr_facts"] = "open_pr_facts"
+    repo: str
+    prs: list[ModelOpenPrFact] = Field(default_factory=list)
+
+
 GithubGatewayResult = Annotated[
     ModelPrStatusResult
     | ModelCiChecksResult
@@ -767,13 +842,15 @@ GithubGatewayResult = Annotated[
     | ModelWorkflowRunsResult
     | ModelRunJobsResult
     | ModelJobLogTailResult
+    | ModelJobLogFillResult
     | ModelArtifactsResult
     | ModelPrTextResult
     | ModelReleasesResult
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
     | ModelMergedPrResult
-    | ModelPrReviewThreadsResult,
+    | ModelPrReviewThreadsResult
+    | ModelOpenPrFactsResult,
     Field(discriminator="operation"),
 ]
 
@@ -812,10 +889,13 @@ __all__: list[str] = [
     "ModelCommitCheckRunsResult",
     "ModelGithubGatewayRequest",
     "ModelGithubGatewayResponse",
+    "ModelJobLogFillResult",
     "ModelJobLogTailResult",
     "ModelJobStep",
     "ModelMergeCommitShaResult",
     "ModelMergedPrResult",
+    "ModelOpenPrFact",
+    "ModelOpenPrFactsResult",
     "ModelOpenPrSummary",
     "ModelOpenPrsResult",
     "ModelPrComment",

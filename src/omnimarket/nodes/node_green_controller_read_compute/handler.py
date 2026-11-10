@@ -8,6 +8,12 @@ conflicting at those heads and held conflict workers on them (leases 11152 and 1
 (absent_required) and leased worker 11162: the watcher counts only the check runs that exist. A head the controller's
 fresh facts read conflicting, or red on named checks, at the watcher's head is not green-landable, and the controller is
 acting on it. Pure: this handler reads nothing and writes nothing.
+
+On 2026-11-01 omnibase_infra#5555 (head d8823dd2c059) merged from the merge queue at 21:36:43Z. The PR watcher kept its
+record OPEN from then on (its last read of the PR is 20:55:18Z), so the watcher listed it green and unlanded; the
+throughput tick called that a CONTROLLER_DEFECT and dispatched a controller fix lane about 16 hours later. The
+controller's own live read had the PR MERGED (``state: merged`` in last-facts.json) and its decision had nothing to do
+with it. A head the controller reads merged or closed at the watcher's head is not unlanded: it is landed or gone.
 """
 
 from __future__ import annotations
@@ -17,6 +23,10 @@ from datetime import datetime
 from typing import Any
 
 from .models import ModelGreenControllerReadRequest, ModelGreenControllerReadResult
+
+# The controller's own live read of the PR (``ModelLandingPrFacts.state``): a PR it reads merged or closed has left the open
+# queue, so no controller action can land it and no fix lane can help it (OMN-22109).
+LEFT_OPEN_STATES = frozenset({"merged", "closed"})
 
 
 def _parse(stamp: Any) -> datetime | None:
@@ -30,6 +40,8 @@ def _parse(stamp: Any) -> datetime | None:
 
 
 def _not_green(entry: Mapping[str, Any]) -> bool:
+    if str(entry.get("state") or "").lower() in LEFT_OPEN_STATES:
+        return True
     return entry.get("merge_state") == "conflicting" or (
         entry.get("ci") == "red" and bool(entry.get("red_checks"))
     )

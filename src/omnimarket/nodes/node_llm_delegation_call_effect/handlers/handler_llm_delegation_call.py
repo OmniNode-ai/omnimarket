@@ -50,6 +50,20 @@ from omnimarket.events.provider_quota import (
     ModelProviderQuotaObserved,
 )
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.routing.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
+    model_not_chosen_message,
+)
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    byok_backend_provider,
+    byok_declared_price_per_1m,
+    byok_model_price_per_1m,
+    resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     record_local_byok_model,
@@ -114,20 +128,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.byok_model_discovery import (
-    describe_discovery_refusal,
-    discover_byok_model_sync,
-    model_not_chosen_message,
-)
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    ModelByokProviderBackend,
-    byok_backend_provider,
-    byok_declared_price_per_1m,
-    byok_model_price_per_1m,
-    resolve_byok_backend_by_endpoint,
-    token_limit_field_for_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -585,6 +585,14 @@ class HandlerLlmDelegationCall:
             return result
         return self._build_completed_event(request, result)
 
+    def call_endpoint(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+    ) -> ModelLlmDelegationCallResult:
+        """Post, classify and price one call against ``endpoint_url`` without the loopback ``/health`` probe."""
+        return self._execute_call(request, endpoint_url, None)
+
     def _execute_call(
         self,
         request: ModelLlmDelegationCallRequest,
@@ -734,6 +742,7 @@ class HandlerLlmDelegationCall:
             failure_class=first.failure_class or EnumDelegationFailureClass.UNKNOWN,
             error_message=first.error_message or "",
             http_status=first.http_status,
+            duration_ms=first.latency_ms,
         )
         second = self._execute_call_once(retry, endpoint_url, event_publisher)
         update: dict[str, Any] = {

@@ -25,6 +25,9 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     MODEL_WIRE_KEY,
     ModelDelegateSkillRequest,
@@ -42,9 +45,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
+from tests.helpers.tenant_registry import mirror_tenant_in_store
 
 pytestmark = pytest.mark.unit
 
@@ -148,6 +149,7 @@ def _dispatch(
 ) -> tuple[dict[str, object], _Effect]:
     monkeypatch.setattr(port_mod, "resolve_delegation_backend", lambda *_a, **_k: route)
     effect = _Effect()
+    mirror_tenant_in_store(tmp_path / "d.sqlite", "acme")
     port = LocalDelegationDispatchPort(
         effect_handler=effect,
         evidence_db_path=tmp_path / "d.sqlite",

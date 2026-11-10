@@ -7,14 +7,22 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
+    JsonValue,
     model_validator,
+)
+
+from omnimarket.models.runtime_proof.model_runtime_proof_close import (
+    ModelProofCloseRequest,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
 )
 
 UUID_PATTERN = re.compile(
@@ -35,9 +43,11 @@ class EnumCloseoutDecisionKind(StrEnum):
     REFUSE_BINDING = "refuse_binding"
     CHECK_IDENTITIES = "check_identities"
     SELECT_CANDIDATES = "select_candidates"
+    SCOPE_BUNDLE = "scope_bundle"
     DECIDE_TICKET = "decide_ticket"
     COMPLETION = "completion"
     GROUND_STATE = "ground_state"
+    PR_ROWS = "pr_rows"
 
 
 class EnumPrecheckVerdict(StrEnum):
@@ -192,6 +202,10 @@ class ModelRunSummary(BaseModel):
     flip_refused: list[ModelRunFlipRefusal] = Field(default_factory=list)
     held_for_amendment: list[str]
     deferred_count: int = Field(ge=0)
+    # OMN-20718: a dry run flips nothing by design and reads no zero-flip; the candidate sources
+    # name the tickets the run enumerated and where each came from ("merged" = a merged PR).
+    apply: bool = True
+    candidate_sources: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ModelDodCloseoutZeroFlipAlert(BaseModel):
@@ -206,6 +220,32 @@ class ModelDodCloseoutZeroFlipAlert(BaseModel):
     deferred_count: int = Field(ge=1)
     top_deferral_reason: str
     observed_at: str
+
+
+class ModelDodCloseoutZeroFlipReading(BaseModel):
+    """OMN-20718: a run that closed zero tickets, read as a working closer, never a failed run.
+
+    ``exit_code`` is always 0: the closer's own exit reports whether it ran, and the staleness
+    alarm reports whether it stopped running. ``reason_counts`` counts why the run's tickets
+    were not flipped (refused bindings and unmet criteria by class, refused done-flips, tickets
+    held for an amendment, tickets behind the candidate budget).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    run_key: str = Field(pattern=r"^[^\s|]+$", description="One ledger token.")
+    observed_at: str
+    exit_code: Literal[0] = 0
+    candidate_count: int = Field(
+        ge=0, description="Tickets In Review with a merged PR."
+    )
+    selected_count: int = Field(ge=0)
+    open_count: int = Field(ge=0)
+    held_count: int = Field(ge=0)
+    deferred_count: int = Field(ge=0)
+    reason_counts: dict[str, int]
+    top_reason: str
 
 
 class ModelSprintProject(BaseModel):
@@ -353,6 +393,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     prior_reversal: bool = False
     outcome_changed_since_reversal: bool = False
     all_prs_merged: bool | None = None
+    # flip_decision (OMN-22334): the facts the runtime-proof conjunct reads; absent holds.
+    runtime_proof: ModelProofCloseRequest | None = None
     released: EnumReleasedState = EnumReleasedState.NOT_APPLICABLE
     # report
     project_name: str = ""
@@ -364,7 +406,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     friction: str = "none"
     released_probe_run: bool = True
     released_positive_control: str = ""
-    # refuse_binding
+    # refuse_binding (scope_overlay, shared with scope_bundle and pr_rows, names each
+    # repository's default branch; absent loads this node's overlay.yaml)
     check: ModelBindingCheck | None = None
     criterion_label: str = ""
     # check_identities
@@ -383,6 +426,30 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     records: list[ModelRotationRecord] | None = None
     text_state: str = ""
     max_candidates: int | None = Field(default=None, ge=1)
+    # scope_bundle (max_candidates is shared with select_candidates): the rows the sweep
+    # enumerated, the PR state and text state read for them, and (optional) which of them have
+    # a contract on a default branch. Rows pass through to the bundle unchanged.
+    scope_candidates: list[dict[str, JsonValue]] | None = None
+    scope_pr_state: list[dict[str, JsonValue]] | None = None
+    scope_text_state: list[dict[str, JsonValue]] | None = None
+    scope_contract_state: list[dict[str, JsonValue]] | None = None
+    scope_overlay: ModelCloseoutScopeOverlay | None = None
+    # scope_bundle (OMN-23282): what the closer recorded of each ticket's last selection
+    # ({id: {examined_at, key, streak}}), and the instant this selection is made, from which the
+    # result's scope_examined_next is the memory after it. Absent: nothing was recorded and
+    # nothing is returned to record.
+    scope_examined: dict[str, dict[str, JsonValue]] | None = None
+    scope_now: str | None = None
+    # pr_rows (scope_overlay is shared with scope_bundle): the tickets to report on, the squash
+    # merge subjects read from each overlay repository's default branch (a repository the caller
+    # could not read is absent, never empty), and the PR watcher's state (absent when it could
+    # not be read, with pr_watcher_error saying why).
+    pr_tickets: list[str] | None = None
+    pr_subjects: dict[str, list[str]] | None = None
+    pr_watcher_state: dict[str, JsonValue] | None = None
+    pr_watcher_error: str = ""
+    # decide_ticket: the detail the verify command printed with outcome could_not_run.
+    verify_detail: str = ""
     # completion (clock_utc is the completion stamp, ledger_rows the history; both shared
     # with precheck)
     run_summary: ModelRunSummary | None = None
@@ -415,6 +482,12 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
             EnumCloseoutDecisionKind.REFUSE_BINDING: (),
             EnumCloseoutDecisionKind.CHECK_IDENTITIES: (),
             EnumCloseoutDecisionKind.SELECT_CANDIDATES: ("records", "max_candidates"),
+            EnumCloseoutDecisionKind.SCOPE_BUNDLE: (
+                "scope_candidates",
+                "scope_pr_state",
+                "scope_text_state",
+                "max_candidates",
+            ),
             EnumCloseoutDecisionKind.DECIDE_TICKET: ("ticket_id", "acs"),
             EnumCloseoutDecisionKind.COMPLETION: (
                 "clock_utc",
@@ -422,6 +495,7 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "run_summary",
             ),
             EnumCloseoutDecisionKind.GROUND_STATE: ("ledger_rows",),
+            EnumCloseoutDecisionKind.PR_ROWS: ("pr_tickets", "pr_subjects"),
         }
         optional: dict[EnumCloseoutDecisionKind, tuple[str, ...]] = {
             EnumCloseoutDecisionKind.PRECHECK: (
@@ -442,6 +516,7 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "prior_reversal",
                 "outcome_changed_since_reversal",
                 "released",
+                "runtime_proof",
             ),
             EnumCloseoutDecisionKind.REPORT: (
                 "project_name",
@@ -452,9 +527,19 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "released_probe_run",
                 "released_positive_control",
             ),
-            EnumCloseoutDecisionKind.REFUSE_BINDING: ("check", "criterion_label"),
+            EnumCloseoutDecisionKind.REFUSE_BINDING: (
+                "check",
+                "criterion_label",
+                "scope_overlay",
+            ),
             EnumCloseoutDecisionKind.CHECK_IDENTITIES: ("proposed_by", "accepted_by"),
             EnumCloseoutDecisionKind.SELECT_CANDIDATES: ("chunk_size", "text_state"),
+            EnumCloseoutDecisionKind.SCOPE_BUNDLE: (
+                "scope_contract_state",
+                "scope_overlay",
+                "scope_examined",
+                "scope_now",
+            ),
             EnumCloseoutDecisionKind.DECIDE_TICKET: (
                 "dod_verify_receipt",
                 "criteria_note",
@@ -463,12 +548,18 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "text_sha",
                 "description",
                 "verified_head",
+                "verify_detail",
             ),
             EnumCloseoutDecisionKind.COMPLETION: (
                 "report_ref",
                 "zero_flip_threshold_runs",
             ),
             EnumCloseoutDecisionKind.GROUND_STATE: ("zero_flip_threshold_runs",),
+            EnumCloseoutDecisionKind.PR_ROWS: (
+                "pr_watcher_state",
+                "pr_watcher_error",
+                "scope_overlay",
+            ),
         }
         for field in required[kind]:
             if getattr(self, field) is None:
@@ -566,6 +657,12 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     selected: list[str] | None = None
     deferred: list[str] | None = None
     held: list[str] | None = None
+    # scope_bundle
+    scope_bundle: dict[str, JsonValue] | None = None
+    scope_examined_next: dict[str, dict[str, JsonValue]] | None = None
+    # pr_rows
+    pr_rows: list[dict[str, JsonValue]] | None = None
+    unread_repositories: list[str] | None = None
     # decide_ticket
     decision: EnumTicketDecision | None = None
     ticket_unmet: list[ModelUnmetCriterion] | None = None
@@ -578,6 +675,7 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     # completion and ground_state
     completion_rows: list[str] | None = None
     zero_flip_alert: ModelDodCloseoutZeroFlipAlert | None = None
+    zero_flip_reading: ModelDodCloseoutZeroFlipReading | None = None
     zero_flip_streak: int | None = None
     top_deferral_reason: str | None = None
     health: EnumCloserHealth | None = None

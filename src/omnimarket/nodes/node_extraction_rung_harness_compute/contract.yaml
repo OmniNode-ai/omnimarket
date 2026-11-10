@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeExtractionRungHarnessCompute (OMN-21140, plan task TE.3)
+
+name: node_extraction_rung_harness_compute
+version: "1.0.0"
+contract_name: node_extraction_rung_harness_compute
+node_name: node_extraction_rung_harness_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure harness for one extraction rung. It replays each recorded delegation call from its recorded bytes with no network, strips a reasoning preamble the same way for every rung, recovers proposals into the one proposed-event schema, counts parse failures apart from misses and attribution mismatches, and derives the rung's chunk size from its measured window, tracing the measurement id. No model client, no ledger read, no I/O.
+
+input_model:
+  name: ModelRungHarnessRequest
+  module: omnimarket.models.extraction_rung
+
+output_model:
+  name: ModelRungHarnessResult
+  module: omnimarket.models.extraction_rung
+
+handler:
+  module: omnimarket.nodes.node_extraction_rung_harness_compute.handlers.handler_extraction_rung_harness
+  class: HandlerExtractionRungHarness
+  input_model: omnimarket.models.extraction_rung.ModelRungHarnessRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerExtractionRungHarness
+        module: omnimarket.nodes.node_extraction_rung_harness_compute.handlers.handler_extraction_rung_harness
+      event_model:
+        name: ModelRungHarnessRequest
+        module: omnimarket.models.extraction_rung
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.extraction.rung_harness
+    description: Replay a rung's recorded extraction calls offline, count parse failures apart from misses, and derive its chunk size from its measured window
+    version: 1.0.0
+
+# The request and the result both carry operator words verbatim (captured prompts,
+# admitted quotes), so both topics are on the restricted onex.cmd.omniintelligence.*
+# family, never onex.evt.* (plan section 2 privacy split).
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.extraction-rung-harness-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.extraction-rung-harnessed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.extraction-rung-harness-requested.v1
+  terminal_events:
+    success: onex.cmd.omniintelligence.extraction-rung-harnessed.v1
+
+terminal_event: onex.cmd.omniintelligence.extraction-rung-harnessed.v1
+
+# The harness result is read by the rung-selection step (plan task TE.4 onward);
+# nothing subscribes in this repository yet.
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.extraction-rung-harnessed.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21140
+  maturity: alpha
+  tags:
+    - context-pack
+    - transcript-extraction
+    - verifier

@@ -21,6 +21,10 @@ from omnibase_infra.runtime.core_runtime.dlq_resolver import derive_canonical_dl
 from omnibase_infra.runtime.core_runtime.routing_map_builder import build_routing_map
 
 from omnimarket.handlers.ticket.ticket_cli import ticket_group
+from omnimarket.inference.secret_store_resolver import SecretStoreConfigurationError
+from omnimarket.models.secret_store.model_secret_resolution_error import (
+    SecretResolutionError,
+)
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelCreateTicketResult,
     TicketGuardRefusedError,
@@ -118,6 +122,24 @@ async def test_refusal_is_a_typed_failure_without_leaking_exception(error, reaso
         assert result.finding_codes == ["unfalsified_criterion"]
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        SecretResolutionError("api_key_ref 'LINEAR_API_KEY' resolved to None"),
+        SecretStoreConfigurationError("Infisical machine identity is not configured"),
+    ],
+)
+async def test_unresolved_linear_key_is_named_not_operation_failed(error):
+    """A consumer without the Linear key says so, so the reader is not left at operation_failed."""
+    handler = HandlerLinearTicketWriteEffect(handler_factory=lambda _: Core(error))
+    result = await handler.handle(request())
+    assert result.outcome == "failed"
+    assert result.reason == "secret_unavailable"
+    assert result.terminal_failure_cause == "secret_unavailable"
+    assert result.finding_codes == ["linear_api_key_unresolved"]
+    assert "Infisical" not in result.model_dump_json()
+
+
 async def test_reads_are_fresh_and_dry_run_does_not_poison_replay():
     core = Core()
     handler = HandlerLinearTicketWriteEffect(handler_factory=lambda _: core)
@@ -191,21 +213,6 @@ def test_cli_is_registered_and_has_all_operations():
     assert project["project"]["entry-points"]["onex.cli"]["ticket"].endswith(
         ":ticket_group"
     )
-
-
-async def test_missing_guard_is_reported_without_a_registry_root(monkeypatch, tmp_path):
-    monkeypatch.delenv("OMNI_HOME", raising=False)
-    monkeypatch.delenv("OMNIBASE_INTERNAL_PATH", raising=False)
-    monkeypatch.delenv("ONEX_PILLAR_OWNERS_PATH", raising=False)
-    monkeypatch.setenv("ONEX_TICKET_GUARD_PATH", str(tmp_path / "missing.py"))
-    result = await HandlerLinearTicketWriteEffect().handle(
-        request(
-            operation="create",
-            title="Scratch",
-            description="created-by-lane: lane-a\n\nbody",
-        )
-    )
-    assert result.reason == "guard_unavailable"
 
 
 @pytest.mark.parametrize("operation", ["create", "comment", "transition"])

@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_network_graph_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  The structure half of the node network graph. Given contract texts (each with
+  its repo and repo-relative path), the overlay (command_segment,
+  domain_segment_index, window) and a reference time, it returns vertices keyed
+  repo/name and one edge per (publisher, topic, subscriber) among the topics the
+  contracts declare. It reads every topic dialect in its own pure code. A contract
+  with a node_type key that does not parse is one vertex, state unknown with the
+  cause contract-unreadable. Every list of the document is sorted by key.
+  Containers and the state rules beyond contract-unreadable are separate work.
+  A second operation, import_relation_compute, takes the graph's import edges and the
+  relation overlay and returns every directed relation between labels with its counts, the
+  cycles among the labels, and the join ids of the piece owning each endpoint of each
+  tracked relation; an endpoint no piece owns reads as a finding (OMN-22903).
+  A third operation, dependency_gate_compute, takes that report and the frozen cross-dependency
+  baseline (a file with its own sha256, read by the caller) and returns PASS or RED with the
+  current and the frozen count; it reads RED when the count, a frozen relation, the largest
+  component or the residual back edges rose above the frozen value (OMN-23136).
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: network_graph_compute
+    handler:
+      name: HandlerNetworkGraphCompute
+      module: omnimarket.nodes.node_network_graph_compute.handlers.handler_network_graph_compute
+  - operation: import_relation_compute
+    topic: onex.cmd.omnimarket.import-relation-compute-requested.v1
+    handler:
+      name: HandlerImportRelationCompute
+      module: omnimarket.nodes.node_network_graph_compute.handlers.handler_import_relation_compute
+    input_model: omnimarket.models.import_relations.model_import_relations.ModelImportRelationRequest
+    output_model: omnimarket.models.import_relations.model_import_relations.ModelImportRelationReport
+  - operation: dependency_gate_compute
+    topic: onex.cmd.omnimarket.dependency-gate-compute-requested.v1
+    handler:
+      name: HandlerDependencyGateCompute
+      module: omnimarket.nodes.node_network_graph_compute.handlers.handler_dependency_gate_compute
+    input_model: omnimarket.models.import_relations.model_dependency_gate.ModelDependencyGateRequest
+    output_model: omnimarket.models.import_relations.model_dependency_gate.ModelDependencyGateResult
+handler:
+  module: omnimarket.nodes.node_network_graph_compute.handlers.handler_network_graph_compute
+  class: HandlerNetworkGraphCompute
+  input_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphRequest
+  output_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphDocument
+input_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphRequest
+output_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphDocument
+descriptor:
+  node_archetype: compute
+  purity: pure  # contract texts in, document out; no I/O library is imported
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+  - main
+inputs:
+  contracts:
+    type: tuple
+    required: true
+    description: Contract files, each with its repo and repo-relative path.
+  overlay:
+    type: ModelNetworkGraphOverlay
+    required: true
+    description: command_segment, domain_segment_index and window, handed in by the caller.
+  reference_time:
+    type: datetime
+    required: true
+    description: The reference time the document is generated at.
+outputs:
+  generated_at:
+    type: datetime
+  overlay:
+    type: ModelNetworkGraphOverlay
+  vertices:
+    type: tuple
+  edges:
+    type: tuple
+terminal_event: onex.evt.omnimarket.network-graph-computed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.network-graph-compute-requested.v1
+  - onex.cmd.omnimarket.import-relation-compute-requested.v1
+  - onex.cmd.omnimarket.dependency-gate-compute-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.network-graph-computed.v1
+  - onex.evt.omnimarket.import-relation-computed.v1
+  - onex.evt.omnimarket.dependency-gate-computed.v1
+  - onex.evt.omnimarket.dependency-gate-failed.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.network-graph-compute-requested.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.import-relation-compute-requested.v1
+  producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
+- topic: onex.cmd.omnimarket.dependency-gate-compute-requested.v1
+  producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
+externally_consumed_topics:
+- onex.evt.omnimarket.network-graph-computed.v1
+- onex.evt.omnimarket.import-relation-computed.v1
+- onex.evt.omnimarket.dependency-gate-computed.v1
+- onex.evt.omnimarket.dependency-gate-failed.v1

@@ -104,6 +104,7 @@ class Pr:
     gate_since: datetime | None = None
     gate_reasons: tuple[str, ...] = ()
     process_fix: bool = False
+    priority_class: str | None = None
     rerun_runs: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -125,6 +126,8 @@ class Pr:
             "process_fix": self.process_fix,
             "rerun_runs": list(self.rerun_runs),
         }
+        if self.priority_class is not None:
+            data["priority_class"] = self.priority_class
         if self.ci == "red":
             data["red_class"] = self.red_class
             data["red_checks"] = list(self.red_checks)
@@ -574,6 +577,43 @@ def test_cause_scenario_s22_fix_merges_members_rerun_and_go_green() -> None:
 
 
 @pytest.mark.unit
+def test_merge_order_cause_fix_first_then_factory_fix_then_feature() -> None:
+    """OMN-22122: the PR a shared cause waits on merges first, then factory-fix PRs, then feature PRs.
+
+    The feature PR is the oldest and the cause fix the newest and unclassified, so neither age nor a class
+    alone gives the asserted order."""
+    fix = Pr(99, ci="pending", red_checks=(), annotations={})
+    factory = Pr(
+        50, ci="pending", red_checks=(), annotations={}, priority_class="factory-fix"
+    )
+    feature = Pr(
+        10, ci="pending", red_checks=(), annotations={}, priority_class="feature"
+    )
+    world = CauseWorld([*three(), fix, factory, feature])
+    key = key_for()
+    assert dispatched(world.step()) == [key]
+    world.result(key, "cause_fix_submitted", fix_ref=fix.key, fix_head=fix.head_sha)
+    world.step()
+    for pr in (fix, factory, feature):
+        pr.ci = "green"
+    merged = [a.subject for a in actions_of(world.step(), "merge")]
+    assert merged == [fix.key, factory.key, feature.key]
+    # negative control: with no cause fix the same PRs merge in class order, the oldest feature PR last
+    plain = CauseWorld(
+        [
+            green(99),
+            green(50, priority_class="factory-fix"),
+            green(10, priority_class="feature"),
+        ]
+    )
+    assert [a.subject for a in actions_of(plain.step(), "merge")] == [
+        f"{REPO}#50",
+        f"{REPO}#10",
+        f"{REPO}#99",
+    ]
+
+
+@pytest.mark.unit
 def test_cause_scenario_s23_three_failed_attempts_park_with_one_ticket_then_fallback() -> (
     None
 ):
@@ -721,6 +761,71 @@ def test_cause_scenario_s27_cause_not_shared_returns_members_to_per_pr_rung_zero
     prs[0].head += 1  # a member's head moves
     decision = world.step()
     assert key in dispatched(decision)
+
+
+def _not_shared_world(**extra: Any) -> tuple[CauseWorld, list[Pr], str]:
+    """A cause leased on three PRs whose worker answered cause_not_shared on base A."""
+    prs = three()
+    world = CauseWorld(prs, base_heads=_base(BASE_A), **extra)
+    key = key_for()
+    assert dispatched(world.step()) == [key]
+    world.result(key, "cause_not_shared", reason="each member fails on its own")
+    world.step()  # the verdict is recorded; the members go back to the per-PR path
+    return world, prs, key
+
+
+@pytest.mark.unit
+def test_verdict_base_head_holds_across_a_member_set_change_on_the_same_base() -> None:
+    # the recorded relapse: same signature, the member set and heads change, the
+    # base head does not, and the last verdict was cause_not_shared
+    world, prs, key = _not_shared_world()
+    prs[2].state = "merged"  # a member leaves
+    prs[0].head += 1  # a member's head moves
+    prs.append(Pr(4))  # a new PR fails the same signature
+    world.prs[prs[3].key] = prs[3]
+    for _ in range(3):
+        decision = world.step()
+        assert not [s for s in dispatched(decision) if is_cause_subject(s)]
+    assert world.cause(key).outcome.value == "cause_not_shared"
+    assert prs[3].key in {
+        s for d in world.decisions for s in per_pr_dispatched(d)
+    }  # the new member takes its own PR fix path
+
+
+@pytest.mark.unit
+def test_verdict_base_head_leases_the_cause_again_once_the_base_moves() -> None:
+    world, prs, key = _not_shared_world()
+    prs[0].head += 1
+    assert not [s for s in dispatched(world.step()) if is_cause_subject(s)]
+    world.extra["base_heads"] = _base(BASE_B)
+    assert key in dispatched(world.step())
+
+
+@pytest.mark.unit
+def test_verdict_base_head_unread_base_keeps_the_member_head_rule() -> None:
+    # no base head read when the verdict came: the verdict holds only while every
+    # member sits at the head it was given on
+    prs = three()
+    world = CauseWorld(prs)
+    key = key_for()
+    assert dispatched(world.step()) == [key]
+    world.result(key, "cause_not_shared", reason="each member fails on its own")
+    world.step()
+    world.step()  # the kill of the answered worker
+    prs[0].head += 1
+    assert key in dispatched(world.step())
+
+
+@pytest.mark.unit
+def test_verdict_base_head_other_outcomes_do_not_hold_a_moved_member_set() -> None:
+    # an external blocker is not a not-shared verdict: it never blocks the key
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    released = _fail_attempt(world, key)
+    assert key in dispatched(released)  # one spent attempt: leased again, as before
+    assert world.cause(key).attempts == 1
+    assert world.cause(key).not_shared_base_head is None
 
 
 @pytest.mark.unit

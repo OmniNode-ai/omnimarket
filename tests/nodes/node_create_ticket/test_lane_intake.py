@@ -154,10 +154,10 @@ def test_a_dry_run_and_a_real_create_ask_the_guard_the_same_way(
     echo = tmp_path / "echo.json"
     guard_path = _plugin(tmp_path / "plugin", _ARGV_ECHO, None)
     monkeypatch.setenv("ECHO_FILE", str(echo))
-    handler = HandlerCreateTicket(linear_client=_Client(), lane_intake_policy=_POLICY)
-    monkeypatch.setattr(
-        "omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket.locate_ticket_guard",
-        lambda: guard_path,
+    handler = HandlerCreateTicket(
+        linear_client=_Client(),
+        lane_intake_policy=_POLICY,
+        ticket_guard=InstalledPluginTicketGuard(guard_path, "lane-a"),
     )
     handler.handle(ModelCreateTicketRequest(title="t", description="b", dry_run=True))
     seen = json.loads(echo.read_text(encoding="utf-8"))
@@ -203,6 +203,8 @@ def test_the_gateway_sends_the_label_ids_with_the_create(
             return {"data": {"viewer": {"id": "user-1"}}}
         if "issueLabels" in query:
             return {"data": {"issueLabels": {"nodes": [{"id": "label-1"}]}}}
+        if "GetIssueProject" in query:
+            return {"data": {"issue": {"identifier": "OMN-9", "project": None}}}
         return {"data": {"issueCreate": {"issue": {"identifier": "OMN-9", "url": "u"}}}}
 
     gateway = LinearTicketHttpGateway("k")

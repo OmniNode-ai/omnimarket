@@ -86,10 +86,113 @@ requirements:
     acceptance:
       - id: "AC22"
         statement: "AC22: the Factory floor tab has one verdict line and no lamp grid, shift report or tally, uses the glossary's plain words, shows Eastern time with UTC only in a title, counts each machine's slots under one legend, collapses lines with no plan file, and carries no text below twelve pixels -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q"
+  - id: "req-omn21733-view-tokens-s1"
+    statement: |-
+      The board's state colours come from the vendored OmniUI theme sets: the page's floor, panel, ink, muted, rule, ok, warn and stop variables alias OmniUI variables, data-theme selects the set through data-onex-theme, and the vendored theme CSS is pinned by sha256.
+    acceptance:
+      - id: "AC23"
+        statement: "AC23: --floor, --panel, --ink, --muted, --rule, --ok, --warn and --stop resolve from the vendored OmniUI theme in both themes; changing one status token in a copy of the CSS changes the stop colour, and removing the alias makes the assertion fail -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'resolve or changing or removing or every_theme'"
+      - id: "AC24"
+        statement: "AC24: the vendored OmniUI theme CSS is pinned and a pin test fails when a vendored file's sha256 differs from the pin -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k pin"
+      - id: "AC25"
+        statement: "AC25: the publish copies the vendored theme files beside the page, ahead of it, under the names the contract declares -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'declared_theme or links_exactly'"
+  - id: "req-omn21733-lines-match-reality"
+    statement: |-
+      The floor's lines match the work: a plan with no manifest and no table is drawn from its own task paragraphs and linked to merged work only through its tickets and pull requests, a plan on an unmerged branch is drawn from that branch until it merges, the one-runtime line reads each lane's application containers over ssh and draws a host it cannot read as UNKNOWN with the cause, and an unread runner fleet names why.
+    acceptance:
+      - id: "AC27"
+        statement: "AC27: a plan whose manifest and plans-today table are both empty is drawn from its bold-led task paragraphs, each task linked only through the tickets and pull requests its lead names and the overlay's task links, never through a bare id such as T5 -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
+      - id: "AC28"
+        statement: "AC28: a plan that is only on an unmerged ref is read from the ref the overlay names until a plan of the same path is on the clone's branch -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k unmerged_ref"
+      - id: "AC29"
+        statement: "AC29: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
+      - id: "AC30"
+        statement: "AC30: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
+  - id: "req-omn21733-slot-truth"
+    statement: |-
+      The floor draws each machine's free slots as the figure the tick's admission reads, and a machine the admission refuses is drawn as refused with the reading's reason, never as free.
+    acceptance:
+      - id: "AC31"
+        statement: "AC31: each machine in the record carries free_slots, which is the pool reading's lane_slots cell when its line has one, else the cap less the placed units, never negative and zero when the reading carries an admission or lane refusal, and an admission object (open, refused or unread, with the reading's reason); the page draws refused with the reason in place of free squares and sums only open machines -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_slot_truth.py tests/nodes/node_factory_floor_publish_effect/test_page_slot_truth.py -q"
+  - id: "req-omn21733-cloud-card"
+    statement: |-
+      The cloud card lists every cloud account that can start a session, draws each account's open sessions as the number open in the session list built from the same receipts, and draws a cap, a credit or an open count that was not read as unread, never as zero.
+    acceptance:
+      - id: "AC41"
+        statement: "AC41: an account draws the number of its sessions that are open in the cloud session list, counted from the same receipts that build the list and never from the entries of the accounts file, an open session the capped list would cut is still listed and counted, and a disagreeing accounts file is said in a stale-entry note beside the account -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'open_sessions_of_its_own_list or no_stale_note or capped_list_would_cut or the_open_figure'"
+      - id: "AC42"
+        statement: "AC42: every ready account of the accounts file is drawn, an account with no cap draws its open count with cap unread, an account with no credit draws credit unread, and an open count that could not be read draws open unread and never zero -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'every_ready_account or both_ready_accounts or never_zero'"
+      - id: "AC43"
+        statement: "AC43: a signed-in account the overlay does not declare is not drawn as a card but is counted in the cloud note with the cause, not dropped silently -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov -k 'overlay_does_not_declare'"
+      - id: "AC44"
+        statement: "AC44: the cloud card's headline count of open sessions equals the sum of the open counts of the accounts drawn beneath it -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k headline_open_count"
+  - id: "req-omn21733-publish-cadence"
+    statement: |-
+      The floor publisher finishes inside its tick and survives one lost ssh connection: independent input steps run together, a step with a fresh output is skipped, and a transfer whose connection did not open is retried before the run is refused.
+    acceptance:
+      - id: "AC45"
+        statement: "AC45: consecutive steps the contract marks concurrent run in threads and report in contract order, hosts, pool, friction and process_health are marked and factory_floor is not, and a step naming fresh_relpath and fresh_seconds is skipped while its output is younger and runs when it is older -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
+      - id: "AC46"
+        statement: "AC46: a transfer whose ssh connection did not open (exit 255) is retried twice before the publish is refused, and a command that ran is never retried -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k transfer_retries"
+  - id: "req-omn21733-floor-p0-projection"
+    statement: |-
+      The factory floor compute node projects one condition, blocker, progress, gates, line evidence and data age for every line, so every surface reads the same facts: built percent counts merged work tasks only with gates counted apart, unknown is never zero, and a line is complete only when its work is done and every gate has passed.
+    acceptance:
+      - id: "AC47"
+        statement: "AC47: Line B projects progress completed=6, total=48, percent=12.5 with gates passed/failed/waiting counted apart and never in the total -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k line_b_work_tasks_and_gates"
+      - id: "AC48"
+        statement: "AC48: a line stopped only by soft causes while a live non-stalled lane works it projects condition building with its blocker kept, and no field reads stopped -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k one_condition_building_keeps_blocker"
+      - id: "AC49"
+        statement: "AC49: a missing total projects progress.state unknown with percent None, zero declared tasks projects no_tasks, and a known 0 of 6 projects known with percent 0.0 -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k unknown_is_not_zero"
+      - id: "AC50"
+        statement: "AC50: every work task done with a gate failed or waiting never projects condition complete -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k all_tasks_done_gate_pending_not_complete"
+      - id: "AC51"
+        statement: "AC51: a task done only by a terminal outcome or a closed ticket counts toward condition and not toward progress.completed, and line_evidence carries merged, running_on_dev and verified apart with None for an unread source -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k merged_only_percent_and_separate_evidence"
+      - id: "AC52"
+        statement: "AC52: every line, undrawn lines included, carries data_age -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k data_age_on_every_line"
+      - id: "AC53"
+        statement: "AC53: the change is proven by a real publish: the served factory-floor.json carries progress, gates, condition and data_age on its lines after the publish -- falsifier: grep -c '^class ModelFloorProgress' src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py"
+  - id: "req-omn21733-p0-page"
+    statement: |-
+      The Dashboard and the Floor draw one projected condition, blocker and progress for each line, a neutral progress bar of merged work tasks with gates counted apart, memory as used over total, load per core as a number against its reference, a machine that refuses work above its capacity, and a decorative car that encodes no data.
+    acceptance:
+      - id: "AC60"
+        statement: "AC60: both pages derive the pill, row and stoppage text from `L.condition` and `L.blocker` only; one fixture renders the same condition on the Dashboard and the Floor, and a stop with a live lane never shows Building beside Stopped -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k one_condition_both_pages"
+      - id: "AC61"
+        statement: "AC61: the progress bar is constant-colour for every condition, shows completed/total work tasks with gates counted apart, draws unknown without aria-valuenow, and never reads Complete with a gate pending -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k progress_bar_neutral_and_honest"
+      - id: "AC62"
+        statement: "AC62: the memory gauge label, fill and text encode used/total, and a missing total draws no bar -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k memory_gauge_matches_label"
+      - id: "AC63"
+        statement: "AC63: load per core renders as a number against a stated reference and not as a percent bar -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k load_per_core_is_a_number"
+      - id: "AC64"
+        statement: "AC64: a machine that refuses work says so above its capacity, and a 7/6 overflow stays visible as \"1 over capacity\" -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k refusing_machine_and_overflow"
+      - id: "AC65"
+        statement: "AC65: the car is a decorative icon with no data and is `aria-hidden` -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k car_is_decorative"
+      - id: "AC66"
+        statement: "AC66: the change is proven on the real site after a publish: the served page and factory-floor.json read from the tailnet site show the new bar text, the \"Memory used\" label and the refusing-machine line, recorded as installed=<host>:<revision> with observed=<what ran> -- falsifier: curl -s \"$FACTORY_FLOOR_URL\" | grep -c \"Memory used\" prints 1 or more after the publish, where the variable holds the served site address from the deployment overlay"
+  - id: "req-omn21733-floor-truth-1415"
+    statement: |-
+      A line the record carries no condition for is never counted as running on the Dashboard or the Floor, Needs you holds only what the operator decides, and a lane at its container budget is drawn against its target.
+    acceptance:
+      - id: "AC67"
+        statement: "AC67: a line with no condition is drawn not read: the lines lamp, the Floor tab and the verdict never read Running for it, and the Floor verdict is amber -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q -k unread_line_is_not_counted_as_running"
+      - id: "AC68"
+        statement: "AC68: Needs you holds only the operator's items (a stopped line) and names no internal worker; quiet workers, failing changes, unread lines and unread sources are listed apart in plain words, with the unread sources named -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q -k needs_you_holds_only_the_operators_items"
+      - id: "AC69"
+        statement: "AC69: a lane's application containers are drawn against its declared target beside its budget, so a lane at its budget with a lower target reads as work still to do -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q -k at_its_budget_is_drawn_against_its_target"
+  - id: "req-omn21733-single-integration-state"
+    statement: |-
+      The floor has one definition of integration state, built and done: the integrating state dev already carries (OMN-22106), with this change's projection fields reading it and declaring no second one.
+    acceptance:
+      - id: "AC70"
+        statement: "AC70: the input model and the compute contract declare exactly one integration_state with its pass and fail verdicts and one running_evidence input, the handler maps a merged item without running evidence to the integrating state and a proven running merge to done, and while the running-on-dev records are unread a line with merged work reads its progress as unknown with its merged count named, never as a known 0 -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q -k unread_running_progress_is_unknown"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
     command: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov"
+  - kind: "tests"
+    description: "The four suites that hold the floor's tests. They live under tests/nodes; the node directories under src hold none, so a pytest over them collects nothing and exits 5."
+    command: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_compute/test_hold_exemption.py tests/nodes/node_factory_floor_compute/test_live_lines.py tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py tests/nodes/node_factory_floor_compute/test_undrawn_lines.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -319,3 +422,294 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac23"
+    description: "AC23 the state colours resolve from the vendored OmniUI theme in both themes."
+    source: "manual"
+    binds_ac: ["AC23"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'resolve or changing or removing or every_theme'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac24"
+    description: "AC24 the vendored theme CSS matches its sha256 pin."
+    source: "manual"
+    binds_ac: ["AC24"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k pin"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac25"
+    description: "AC25 the publish copies the theme files beside the page under the declared names."
+    source: "manual"
+    binds_ac: ["AC25"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'declared_theme or links_exactly'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-view-tokens-s1-deploy"
+    description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires the theme bridge script, which is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^<script id=\"theme-bridge\">'"
+  - id: "dod-omn21733-ac27"
+    description: "AC27 task paragraphs, scoped links and the indexed ledger lookups agree with their definitions."
+    source: "manual"
+    binds_ac: ["AC27"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov --tb=line -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac28"
+    description: "AC28 a plan on an unmerged ref is drawn from the ref until it merges."
+    source: "manual"
+    binds_ac: ["AC28"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k unmerged_ref"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac29"
+    description: "AC29 lane containers are read per declared host and an unread host is UNKNOWN with its cause."
+    source: "manual"
+    binds_ac: ["AC29"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac30"
+    description: "AC30 an unread runner fleet names its cause."
+    source: "manual"
+    binds_ac: ["AC30"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k runner_fleet"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac31"
+    description: "AC31 a machine's free slots are the tick's own figure and a refused machine is drawn as refused."
+    source: "manual"
+    binds_ac: ["AC31"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_slot_truth.py tests/nodes/node_factory_floor_publish_effect/test_page_slot_truth.py -q --no-cov --tb=line"
+
+  - id: "dod-omn21733-ac41"
+    description: "AC41 an account's open figure is the count of open sessions in its own list, with a stale-entry note when the accounts file disagrees."
+    source: "manual"
+    binds_ac: ["AC41"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'open_sessions_of_its_own_list or no_stale_note or capped_list_would_cut or the_open_figure'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac42"
+    description: "AC42 every ready account is drawn and an unread cap, credit or open count is drawn unread, never zero."
+    source: "manual"
+    binds_ac: ["AC42"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'every_ready_account or both_ready_accounts or never_zero'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac43"
+    description: "AC43 a signed-in account the overlay does not declare is counted in the cloud note with its cause."
+    source: "manual"
+    binds_ac: ["AC43"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov --tb=line -k overlay_does_not_declare"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac44"
+    description: "AC44 the cloud card's headline open count is the sum of its drawn accounts' open counts."
+    source: "manual"
+    binds_ac: ["AC44"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k headline_open_count"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac45"
+    description: "AC45 concurrent input steps overlap and report in contract order, and a fresh output is skipped."
+    source: "manual"
+    binds_ac: ["AC45"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac46"
+    description: "AC46 an ssh connection that did not open is retried and then refused."
+    source: "manual"
+    binds_ac: ["AC46"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k transfer_retries"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-floor-suites"
+    description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."
+    source: "manual"
+    binds_ac: ["AC27", "AC28", "AC29", "AC30"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_compute/test_hold_exemption.py tests/nodes/node_factory_floor_compute/test_live_lines.py tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py tests/nodes/node_factory_floor_compute/test_undrawn_lines.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-integration-proof"
+    description: "The pushed head ran the floor's test suites on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane floor-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21733-ac47"
+    description: "AC47 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC47"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k line_b_work_tasks_and_gates"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac48"
+    description: "AC48 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC48"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k one_condition_building_keeps_blocker"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac49"
+    description: "AC49 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC49"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k unknown_is_not_zero"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac50"
+    description: "AC50 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC50"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k all_tasks_done_gate_pending_not_complete"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac51"
+    description: "AC51 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC51"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k merged_only_percent_and_separate_evidence"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac52"
+    description: "AC52 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC52"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k data_age_on_every_line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac53"
+    description: "AC53 hosted-runner deploy probe computes a projection, publishes it to a temporary site using a local shell in place of SSH, and reads the JSON over real HTTP. It checks progress, gates, condition and data_age on manifest and undrawn lines. This is local publish evidence; the deployed site's publish readback remains outstanding."
+    source: "manual"
+    binds_ac: ["AC53"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_factory_floor_publish_effect/test_projection_publish.py -q --no-cov --tb=line"
+        cwd: "."
+      - check_type: "command"
+        check_value: "grep -c '^class ModelFloorProgress' src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py"
+  - id: "dod-omn21733-ac60"
+    description: "AC60 both pages derive the pill, row and stoppage text from `L.condition` and `L.blocker` only; one fixture renders the same condition on the Dashboard and the Floor, and a stop with a live lane never shows Building beside Stopped."
+    source: "manual"
+    binds_ac: ["AC60"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k one_condition_both_pages"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac61"
+    description: "AC61 the progress bar is constant-colour for every condition, shows completed/total work tasks with gates counted apart, draws unknown without aria-valuenow, and never reads Complete with a gate pending."
+    source: "manual"
+    binds_ac: ["AC61"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k progress_bar_neutral_and_honest"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac62"
+    description: "AC62 the memory gauge label, fill and text encode used/total, and a missing total draws no bar."
+    source: "manual"
+    binds_ac: ["AC62"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k memory_gauge_matches_label"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac63"
+    description: "AC63 load per core renders as a number against a stated reference and not as a percent bar."
+    source: "manual"
+    binds_ac: ["AC63"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k load_per_core_is_a_number"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac64"
+    description: "AC64 a machine that refuses work says so above its capacity, and a 7/6 overflow stays visible as \"1 over capacity\"."
+    source: "manual"
+    binds_ac: ["AC64"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k refusing_machine_and_overflow"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac65"
+    description: "AC65 the car is a decorative icon with no data and is `aria-hidden`."
+    source: "manual"
+    binds_ac: ["AC65"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k car_is_decorative"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac66"
+    description: "AC66 the pages this publish serves carry the Memory used label. This binds the page sources the publish ships (the Dashboard and the Floor), which lack the label at the merge base. It does not show the served site: the served-site read is the separate unbound check dod-omn21733-ac66-served-site, run at the local Done gate."
+    source: "manual"
+    binds_ac: ["AC66"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py -q --no-cov --tb=line -k memory_gauge_matches_label"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac70"
+    description: "AC70 the floor keeps dev's one integration state, and while the running-on-dev records are unread a line with merged work reads its progress as unknown with the merged count named, never a known 0."
+    source: "manual"
+    binds_ac: ["AC70"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q --no-cov --tb=line -k unread_running_progress_is_unknown"
+        cwd: "."
+  - id: "dod-omn21733-ac66-served-site"
+    description: "AC66 served-site probe, unbound: after a real publish the served page carries the Memory used label. Hosted CI cannot reach the tailnet, so only the local Done gate runs this check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "test \"$(curl -s \"$FACTORY_FLOOR_URL\" | grep -c 'Memory used')\" -ge 1"
+        cwd: "."
+  - id: "dod-omn21733-ac67"
+    description: "AC67 a line with no condition is drawn not read and never counted as running."
+    source: "manual"
+    binds_ac: ["AC67"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q --no-cov --tb=line -k unread_line_is_not_counted_as_running"
+        cwd: "."
+  - id: "dod-omn21733-ac68"
+    description: "AC68 Needs you holds only the operator's items and names no internal worker; the unread sources are named."
+    source: "manual"
+    binds_ac: ["AC68"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q --no-cov --tb=line -k needs_you_holds_only_the_operators_items"
+        cwd: "."
+  - id: "dod-omn21733-ac69"
+    description: "AC69 a lane's containers are drawn against its declared target."
+    source: "manual"
+    binds_ac: ["AC69"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov --tb=line -k at_its_budget_is_drawn_against_its_target"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py -q --no-cov --tb=line -k declared_target_reaches_the_record_lane_row"
+        cwd: "."

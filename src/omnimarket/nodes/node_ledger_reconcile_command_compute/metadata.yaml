@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_reconcile_command_compute
+version: "1.0.0"
+description: Decide the ledger reconcile command and cache environment from caller-supplied resolver and executable facts.
+omnibase_core_compat: ">=0.47.53,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_ledger_reconcile_command_compute: omnimarket.nodes.node_ledger_reconcile_command_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies:
+  - omnibase-core>=0.47.53,<0.48.0
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, onex-ledger-reconcile]
+node_role: compute
+pack: "routing"
+display_name: "Ledger Reconcile Command Compute"

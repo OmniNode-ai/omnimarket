@@ -1,0 +1,121 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_progress_alert_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_work_progress_alert_effect.models.model_work_progress_alert_trigger.ModelWorkProgressAlertTrigger
+description: >
+  Stall alerts, effect side. On the runtime heartbeat, at most once per
+  check_interval_seconds bucket of its overlay, one query of work_ledger_rows
+  yields the CLAIM, STATUS and TERMINAL rows of every lane with a CLAIM inside
+  lookback_seconds. Each live lane becomes a subject (phases placed, claimed,
+  pr_open; earliest rows by row_ts then row_id; a TERMINAL or an ignore match
+  removes the lane; owner is the earliest CLAIM's parent= else the lane id) and
+  node_work_progress_compute judges the subjects against the overlay budgets.
+  Each finding emits one stall event and one slack-publish command under the
+  finding's one idempotency key, and every evaluation ends on the evaluated
+  event. Both overlays are read at evaluation time, never while the runtime wires
+  the node; a missing overlay refuses the evaluation. An unreadable source judges
+  no lane and the evaluated event names the failure. The effect owns no store.
+
+handler:
+  module: omnimarket.nodes.node_work_progress_alert_effect.handlers.handler_work_progress_alert
+  class: HandlerWorkProgressAlert
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: work_progress_alert
+      handler:
+        name: HandlerWorkProgressAlert
+        module: omnimarket.nodes.node_work_progress_alert_effect.handlers.handler_work_progress_alert
+      handler_module: omnimarket.nodes.node_work_progress_alert_effect.handlers.handler_work_progress_alert
+
+terminal_event: onex.evt.omnimarket.work-progress-evaluated.v1
+
+golden_path:
+  - "The existing onex.evt.platform.node-heartbeat.v1 triggers a contract-throttled evaluation"
+  - "One read-only query of work_ledger_rows returns the rows of every lane with a CLAIM inside the lookback"
+  - "The gatherer builds one subject per live lane and node_work_progress_compute returns one finding per lane over the budget of its phase"
+  - "Each finding publishes onex.evt.omnimarket.work-progress-stalled.v1 and onex.cmd.omnimarket.slack-publish.v1 under the same idempotency key"
+  - "Every evaluation leaves on onex.evt.omnimarket.work-progress-evaluated.v1 with counts, or the refusal or unreadable-source reason"
+
+reads_source:
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+
+# Settings (ignore, lookback_seconds, check_interval_seconds) live in the overlay
+# <root>/node_work_progress_alert_effect/overlay.yaml; none is packaged.
+
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack destination resolved at the effect boundary through the canonical
+      secret store using this contract's ref; no channel literal or direct env read.
+    required: true
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.cmd.omnimarket.slack-publish.v1
+    - onex.evt.omnimarket.work-progress-stalled.v1
+    - onex.evt.omnimarket.work-progress-evaluated.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.work-progress-alert-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-progress-stalled.v1
+  - onex.evt.omnimarket.work-progress-evaluated.v1
+
+published_events:
+  - event_type: WorkProgressStalled
+    topic: onex.evt.omnimarket.work-progress-stalled.v1
+    description: One lane over the budget of its phase, under the finding's idempotency key.
+  - event_type: WorkProgressEvaluated
+    topic: onex.evt.omnimarket.work-progress-evaluated.v1
+    description: Counts of one evaluation, or the refusal or unreadable-source reason.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+dod_evidence:
+  - test: tests/nodes/node_work_progress_alert_effect/test_stall_emits_command.py
+    description: "A stalled lane yields one stall event and one slack-publish command with one key, repeated by the next evaluation; a new entering row gives a new key"
+  - test: tests/nodes/node_work_progress_alert_effect/test_gather_lanes.py
+    description: "Phases, entering rows, tie-break, owner, lookback admission, TERMINAL and ignore rules of the plan section 2.1"
+  - test: tests/nodes/node_work_progress_alert_effect/test_unreadable_and_refused.py
+    description: "An unreadable source emits nothing and is named on the evaluated event; a missing overlay refuses the evaluation, not the wiring"
+  - test: tests/nodes/node_work_progress_alert_effect/test_golden_chain_work_progress_alert.py
+    description: "Heartbeat and Slack hops meet shipped contracts and the command validates against the Slack node's input model"
+  - test: tests/nodes/node_work_progress_alert_effect/test_work_progress_alert_profiles.py
+    description: "Overlay values change evaluations, subjects and findings under the in-memory and Redpanda overlay profiles"
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pyyaml>=6.0"
+    - "pydantic>=2.0"
+    - "psycopg2-binary>=2.9"
+
+metadata:
+  transport_type: kafka
+  description: "Lane stall alert effect over the work ledger projection"
+  author: "OmniNode Platform Team"
+  tags: [effect, observability, alerting, stall]

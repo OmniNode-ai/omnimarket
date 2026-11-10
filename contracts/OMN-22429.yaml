@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-22429
+title: Host desired state and host converge are modelled in TLA+ before build, 17 invariants each with a mutant that breaks it
+summary: Adds docs/formal/host_desired_state and docs/formal/host_converge, laid out as docs/formal/remote_lane_stop is. Each holds the TLA+ model, the design Model.cfg, one mutant cfg per invariant, the TLC outputs under results and a design-review verdict. Model files, recorded evidence and focused acceptance tests; no runtime code or node change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22429-design-passes
+  statement: Both models pass TLC in their design configuration.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The design configuration passes TLC -- falsifier: either `results/Model.out` contains `Error:`, or either lacks `Model checking completed. No error has been found.`'
+- id: req-omn22429-mutants
+  statement: Each of the seventeen invariants has a mutant that fails exactly that invariant.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: Each of the seventeen mutants runs and fails exactly its invariant -- falsifier: for any invariant listed above, `mut_<Invariant>.cfg` or `results/mut_<Invariant>.out` is missing, or the output reports no violation or a violation of another invariant.'
+- id: req-omn22429-verdicts
+  statement: Both models have a design-review verdict that passes.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: Both have a design-review verdict -- falsifier: either `results/design_review_verdict.txt` is absent, or either does not end `VERDICT: PASS`.'
+evidence_requirements:
+- kind: tests
+  description: Focused acceptance tests validate both model designs, every one-knob mutant, full-state-space exactness and review verdicts against the committed evidence digests.
+  command: uv run pytest tests/formal/test_host_state_models_omn22429.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22429-ac1
+  description: AC1 both design outputs complete without errors and exit 0, check all invariants, and the evidence hashes match the model, configurations, outputs and review bytes replayed on the lab host.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/formal/test_host_state_models_omn22429.py -q --no-cov --tb=line -k design
+    cwd: .
+- id: dod-omn22429-ac2
+  description: AC2 all seventeen mutants change exactly their named design knob, retain all invariants, exit with an invariant violation and a counterexample for only their target; the complete-state-space exactness inventory covers every mutant.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/formal/test_host_state_models_omn22429.py -q --no-cov --tb=line -k mutant
+    cwd: .
+- id: dod-omn22429-ac3
+  description: AC3 both review verdicts end with exactly one VERDICT PASS and pin the SHA256 of the current model.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/formal/test_host_state_models_omn22429.py -q --no-cov --tb=line -k verdict
+    cwd: .

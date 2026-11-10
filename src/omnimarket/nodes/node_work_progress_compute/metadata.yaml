@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_progress_compute
+version: "1.0.0"
+description: Finds lanes whose current phase entry strictly exceeds its supplied budget
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_work_progress_compute: omnimarket.nodes.node_work_progress_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - omnibase_infra
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, stall, progress, deterministic]
+node_role: compute
+pack: "liveness"
+display_name: "Work Progress Compute"

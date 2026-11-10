@@ -35,6 +35,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -43,9 +45,19 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+    resolve_delegation_backend,
+    resolve_timeout_seconds,
+)
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_api_key_loop_safe,
+)
+from omnimarket.nodes.node_typed_decision_effect.handlers.typed_decision_event import (
+    ModelTypedDecisionEventRouting,
+    ProtocolTypedDecisionEventPublisher,
+    record_typed_decision_event,
 )
 from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision import (
     EnumTypedDecisionDecider,
@@ -59,11 +71,6 @@ from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision imp
     ModelTypedDecisionShadowResult,
     ModelTypedDecisionWorkflowRequest,
     ModelTypedDecisionWorkflowResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-    resolve_delegation_backend,
-    resolve_timeout_seconds,
 )
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -113,7 +120,11 @@ class HandlerTypedDecision:
         bifrost_config_path: Path | None = None,
         bifrost_overlay_path: Path | None = None,
         refused_repositories: tuple[str, ...] | None = None,
+        event_publisher: ProtocolTypedDecisionEventPublisher | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        self._event_publisher = event_publisher
+        self._clock = clock
         self._transport = transport
         self._secret_store = secret_store
         self._bifrost_config_path = bifrost_config_path
@@ -124,6 +135,9 @@ class HandlerTypedDecision:
         self._scoping = ModelWorkUnitScoping.model_validate(
             _load_contract_block("work_unit_scoping")
         )
+        self._event_routing = ModelTypedDecisionEventRouting.model_validate(
+            _load_contract_block("delegation_event")
+        )
         self._refused_digests = frozenset(
             refused_repositories
             if refused_repositories is not None
@@ -131,6 +145,24 @@ class HandlerTypedDecision:
         )
 
     def handle(self, request: ModelTypedDecisionRequest) -> ModelTypedDecisionResult:
+        """Decide, then write the decision's delegation terminal (OMN-23334).
+
+        Every result, the refused and the failed included, leaves one
+        ``delegation_events`` row through the injected publisher, so the census
+        counts what the backend was asked and what came of it.
+        """
+        result = self._decide(request)
+        if self._event_publisher is not None:
+            record_typed_decision_event(
+                request,
+                result,
+                self._event_routing,
+                self._event_publisher,
+                self._clock,
+            )
+        return result
+
+    def _decide(self, request: ModelTypedDecisionRequest) -> ModelTypedDecisionResult:
         refusal = self._refuse_unless_permitted(request)
         if refusal is not None:
             return refusal

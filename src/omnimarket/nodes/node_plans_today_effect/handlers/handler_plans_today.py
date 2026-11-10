@@ -554,8 +554,11 @@ def load_watcher(path: Path, now: datetime, max_age_min: int) -> Watcher:
         f = v.get("facts", {})
         if f.get("state") not in ("OPEN", "MERGED"):
             continue
-        blob = f"{f.get('title', '')}\n{f.get('body', '')}\n{f.get('head_ref', '')}"
-        for t in set(TICKET_RE.findall(blob.replace("omn-", "OMN-"))):
+        # A pull request is the work of the tickets its own title and branch name. Its body is not read: a
+        # dependency bump copies other repositories' commit titles into its body, and every ticket id in them
+        # would otherwise attribute the bump to a task that has nothing to do with it.
+        name = f"{f.get('title', '')}\n{f.get('head_ref', '')}"
+        for t in set(TICKET_RE.findall(name.replace("omn-", "OMN-"))):
             by_ticket.setdefault(t, []).append(key)
     return Watcher(tick, prs, by_ticket)
 

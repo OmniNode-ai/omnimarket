@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_row_grammar_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The canonical row grammar of the rolling work ledger as a node. Judges one row's shape, a payload
+  of rows, or a payload against the ledger text already written, and prints the grammar as JSON.
+  Behaviour-preserving port of the grammar the ledger append command enforces: about a dozen
+  canonical row types, their required fields, the legacy type map, structured holds and scoped
+  releases, consent shape, the TERMINAL delegation cells and the CLAIM and TERMINAL worktree cells.
+  Reads the environment variables and paths those rules name (the registry root, the lane's
+  delegation receipt directory, the worktree a TERMINAL says it removed, and the private data clone
+  the repos overlay names for relative worktree paths) and writes nothing. Publishes the library
+  only; no caller is switched to it by this node.
+input_model:
+  name: ModelLedgerRowGrammarRequest
+  module: omnimarket.nodes.node_ledger_row_grammar_compute.models.model_ledger_row_grammar
+output_model:
+  name: ModelLedgerRowGrammarResult
+  module: omnimarket.nodes.node_ledger_row_grammar_compute.models.model_ledger_row_grammar
+handler:
+  module: omnimarket.nodes.node_ledger_row_grammar_compute.handlers.handler_ledger_row_grammar
+  class: HandlerLedgerRowGrammar
+  input_model: omnimarket.nodes.node_ledger_row_grammar_compute.models.model_ledger_row_grammar.ModelLedgerRowGrammarRequest
+  output_model: omnimarket.nodes.node_ledger_row_grammar_compute.models.model_ledger_row_grammar.ModelLedgerRowGrammarResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ledger_row_grammar_compute.handlers.handler_ledger_row_grammar:HandlerLedgerRowGrammar
+  handlers:
+    - operation: judge_ledger_row
+      handler:
+        name: HandlerLedgerRowGrammar
+        module: omnimarket.nodes.node_ledger_row_grammar_compute.handlers.handler_ledger_row_grammar
+descriptor:
+  node_archetype: compute
+  purity: effectful  # reads the environment, the lane's delegation receipt directory and one path's existence; writes nothing
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: true, enum: [row_refusals, payload_refusal, state_refusal, grammar], description: Which question is asked.}
+  line: {type: str, required: false, description: The row to judge, for row_refusals.}
+  payload: {type: str, required: false, description: The rows to append, for payload_refusal and state_refusal.}
+  existing: {type: str, required: false, description: The ledger text already written, for state_refusal.}
+  ledger_name: {type: str, required: false, description: The ledger file name; only a governed name is judged.}
+outputs:
+  operation: {type: str}
+  refusals: {type: list}
+  refusal: {type: str}
+  admitted: {type: bool}
+  grammar_version: {type: str}
+  grammar_json: {type: str}
+terminal_event: onex.evt.omnimarket.ledger-row-grammar-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ledger-row-grammar-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ledger-row-grammar-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ledger-row-grammar-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-row-grammar-completed.v1
+metadata:
+  transport_type: inmemory
+  description: ledger row grammar judgments
+  author: OmniNode Team
+  created: "2026-11-01"
+  related_tickets: [OMN-21373]

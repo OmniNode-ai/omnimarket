@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: pr_state_read_effect
+contract_name: node_pr_state_read_effect
+node_name: node_pr_state_read_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Reads a pull request's state from the pr_state projection exposure and refuses
+  a row older than the declared limit. HandlerPrStateRead judges one row and
+  returns a typed result (fresh, stale, absent); HandlerPrStateWait polls the
+  exposure for rows observed after the last page until a fresh row reaches a
+  terminal verdict, or returns a typed timeout. Neither makes a GitHub request.
+node_type: effect
+lifecycle: experimental
+input_model:
+  name: ModelPrStateReadRequest
+  module: omnimarket.models.pr_state.model_pr_state_read_request
+output_model:
+  name: ModelPrStateReadResult
+  module: omnimarket.models.pr_state.model_pr_state_read_result
+
+handler:
+  name: HandlerPrStateRead
+  module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_read
+  class: HandlerPrStateRead
+  input_model: omnimarket.models.pr_state.model_pr_state_read_request.ModelPrStateReadRequest
+  output_model: omnimarket.models.pr_state.model_pr_state_read_result.ModelPrStateReadResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: pr_state_read
+      handler:
+        name: HandlerPrStateRead
+        module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_read
+      event_model:
+        name: ModelPrStateReadRequest
+        module: omnimarket.models.pr_state.model_pr_state_read_request
+    # The `onex pr-state` command gives it a page source, clock and sleep; with
+    # none it reads through a page source that has no client and refuses.
+    - operation: pr_state_wait
+      handler:
+        name: HandlerPrStateWait
+        module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_wait
+      event_model:
+        name: ModelPrStateWaitRequest
+        module: omnimarket.models.pr_state.model_pr_state_read_request
+    # The one handler that makes a request: GET /projection/{topic}, through
+    # the client the `onex pr-state` command gives it.
+    - operation: pr_state_page_fetch
+      handler:
+        name: HandlerPrStatePageSource
+        module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_page_source
+        handler_type: http
+      event_model:
+        name: ModelPrStatePageRequest
+        module: omnimarket.models.pr_state.model_pr_state_page_fetch
+
+# The one HTTP request the node makes, declared so the compliance sweep sees
+# the transport HandlerPrStatePageSource uses.
+endpoints:
+  projection_page:
+    path: /projection/{topic}
+    method: GET
+    description: "Read-only: one page of the pr_state exposure from the projection API."
+
+# Run from the `onex pr-state` command, not by a bus command: it subscribes to
+# and publishes no topic.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "onex pr-state read | onex pr-state wait, which builds the handlers in process and prints their typed results"
+metadata:
+  # This describes how the node is invoked. The CLI calls its typed handlers
+  # in process; HTTP belongs to HandlerPrStatePageSource above. Declaring http
+  # here makes runtime discovery require command/terminal topics it cannot use.
+  transport_type: local
+  description: Reads pull request state from the pr_state projection through the onex pr-state command.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+
+# The values the read surface judges by. projection_topic names the exposure
+# that node_projection_pr_state declares; a test holds the two equal.
+pr_state_read:
+  projection_topic: onex.snapshot.projection.pr-state.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  max_row_age_seconds: 300
+  wait_poll_seconds: 5
+  terminal_verdicts:
+    - GREEN
+    - RED
+  terminal_states:
+    - closed
+    - merged

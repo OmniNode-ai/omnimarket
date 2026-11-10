@@ -28,13 +28,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
+from omnimarket.handlers.routing.routing_policy_helpers import resolve_routing_policy
 from omnimarket.nodes.node_conflict_hunk_effect.models.model_conflict_resolved_event import (
     ModelConflictResolvedEvent,
 )
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
     ModelConflictHunkCommand,
 )
-from omnimarket.routing.routing_policy_helpers import resolve_routing_policy
 
 _log = logging.getLogger(__name__)
 

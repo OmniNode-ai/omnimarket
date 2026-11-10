@@ -39,9 +39,49 @@ handler_routing:
     handler:
       name: HandlerReportsPublish
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports_publish
+  - operation: read_delegation_report
+    handler:
+      name: HandlerDelegationReport
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report.ModelDelegationReportRequest
+  - operation: read_runner_fleet
+    handler:
+      name: HandlerFleetObservationSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source.ModelFleetObservationSourceRequest
+  - operation: read_friction_rollup
+    handler:
+      name: HandlerFrictionRollupSource
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source.ModelFrictionRollupStepSettings
+  - operation: prepare_process_health
+    handler:
+      name: HandlerProcessHealthPayload
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload.ModelProcessHealthPayloadRequest
+    output_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload.ModelProcessHealthPayloadResult
+  - operation: publish_operator_reports
+    handler:
+      name: HandlerOperatorAccess
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_operator_access
+  - operation: emit_seam_count
+    handler:
+      name: HandlerSeamEmitter
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_seam_emitter
+    input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+    output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The publish effect emits the sender side of the publish seams once the steps that build them land.
+published_events:
+  - event_type: ModelSeamCount
+    topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - event_type: ModelSeamWindowClose
+    topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 runtime_dispatch:
   external_trigger: python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
 descriptor:
@@ -52,11 +92,15 @@ descriptor:
   timeout_ms: 900000
   side_effects:
   - runs the lab host reading, the pool read of the machines (which writes its own receipt), the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
-  - reads the factory floor JSON and the packaged pages (the tab page and the factory floor page)
+  - reads the factory floor JSON and the packaged pages (the tab page, the compare page, the delegation tracker page and the factory floor page)
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
+  - reads the runner projection's saved observation inside the deployed runtime and mirrors it to the floor input, or writes an unread cause when the producer cannot be read
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
+  - OMN-23227: writes every one of those files first to a local copy under the registry home (the overlay's local_copy_relpath), then to each serving host the overlay names, each host on its own; a host that fails never stops another, a host whose connection did not open is skipped for the rest of the run, and the served status names the hosts that missed files (the operator-only reports are not copied locally)
   - writes a timestamped snapshot of the record under the history subdirectory on the serving host, and removes past-window snapshots beyond the declared count there
   - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
+  - reads the tailnet status on the publishing host, writes the operator-only allowed-address include to the access directory beside the serving directory, reloads the web server container and reads its configuration back over ssh
+  - writes the operator-only reports (page and data) to the serving directory once the web server carries the gate, and removes them from it when it does not
   - writes last-run.json into the tick's state directory
 
 # Where the record is, which input steps run before it is read, and what the served files are called. Paths are
@@ -69,22 +113,60 @@ descriptor:
 # The friction step keeps the 24-hour window of the rollup's report (the part with the classes the record reads).
 # Steps run in order. A step that is not required may fail: the status file records it and the page shows that
 # source as unread. The factory floor effect is last and required: without a record nothing is published.
+delegation_report:
+  local_group: local
+  fallback_group: other
+  groups:
+  - name: local
+    tiers: [local]
+    backend_prefixes: [local-]
+  - name: GLM
+    backend_contains: [claude-glm]
+    model_prefixes: [glm-]
+  - name: Codex
+    backend_contains: [codex]
 runtime:
   home_env: OMNI_HOME
   plugin_root_env: CLAUDE_PLUGIN_ROOT
   overlay_file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY
   # The site's page is the tab page (the dashboard and the four tabs); the factory floor artwork is its own page, drawn
   # inside the Factory floor tab, so both are packaged and both are published.
-  page_relpath: page/index.html
+  # OMN-19998: the site's address shows the simple floor (page/simple.html, published as index.html); the tab page with
+  # every line, machine and report is page/detail.html, published as detail.html, and is the simple page's one link.
+  page_relpath: page/detail.html
+  simple_page_relpath: page/simple.html
+  simple_data_relpath: .claude_scratch/factory-floor/floor-simple.json
+  simple_reads_relpath: .claude_scratch/factory-floor/floor-simple-reads.json
+  # OMN-23018: the running comparison against 1, 7 and 30 days ago (page/compare.html, published as compare.html).
+  compare_page_relpath: page/compare.html
+  compare_data_relpath: .claude_scratch/factory-floor/floor-compare.json
+  # OMN-23081: the delegation tracker (page/delegation.html, published as delegation.html) and what node_floor_delegation_effect
+  # writes (relative to the registry home). The name delegation.json is the lab projection windows' (names.delegation), so the
+  # tracker's data is delegation-tracker.json.
+  delegation_tracker_page_relpath: page/delegation.html
+  delegation_tracker_data_relpath: .claude_scratch/factory-floor/delegation-tracker.json
   floor_page_relpath: page/floor/index.html
+  # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
+  # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.
+  theme_css_relpath: page/vendor/omniui
+  # The site's icons: an SVG, a 32 px PNG and an apple-touch icon, drawn from one mark in the site's own colours. Each is
+  # published under its own name at the site's root, ahead of the pages, and every page head links them with a path that
+  # resolves from where the page is served.
+  icons_relpath: page/icons
   evidence_file: last-run.json
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
   process_health_relpath: .onex_state/process-health/process-health.json
-  # The delegation counts of a window, a JSON object {generated_at, window: {start, end}, total, outcomes:
-  # [{label, count, tone}], routes: [{label, done, total}], why}. No node writes it yet: when the file is absent or
-  # is not that shape nothing is published and the page draws the delegation card as unread.
-  delegation_relpath: .claude_scratch/delegation/delegation-window.json
+  # The floor needs daily values and summaries; only the detailed report needs
+  # hundreds of thousands of range observations. Preserve those in a gzip file,
+  # published before the small summary. The report reader's 8 MiB bound stays.
+  process_health_payload:
+    max_source_bytes: 268435456
+    max_summary_bytes: 8388608
+    detail_file: process-health-detail.json.gz
+  # The publisher reads the lab projection through the existing delegation_health overlay.
+  # Both windows share one database clock and snapshot; unread reads replace stale counts.
+  delegation_relpath: .onex_state/delegation-report/delegation-window.json
   # Which plans are lines is the factory floor effect's overlay. This node reads that overlay's plan_path_contains
   # to tell the page which lines are declared, so a declared line with no plan is drawn as unread.
   lines_overlay:
@@ -95,49 +177,269 @@ runtime:
   # stopped, with the declared text as its plan_path), and its detail
   # names the missing lines, so a line the board cannot draw is never silent.
   record_step: factory_floor
+  # OMN-21733: the four input steps before the record are independent of each other, so they run together
+  # (`concurrent`), and the process-health series, which moves in days and cost 3 m 50 s of git log reads per run,
+  # is rebuilt only when its file is older than 900 s. Measured 2026-11-02 on the launching Mac under the Background
+  # clamp: one run took 10 m 0 s in sequence against a 300 s tick, so the heartbeat the throughput tick judges
+  # (older than twice the interval is MISSING) was stale for half of every cycle.
   steps:
+  # The hosts step listens for a fixed window (two advertisement cadences plus two seconds, 22 s) after the command starts.
+  # Measured 2026-11-01 on the launching Mac at load 56 on 24 cores: 27 s in the foreground, 103 s as the registry module tick
+  # runs it (launchd ProcessType Background clamps CPU), so 120 s refused it on a load spike.
   - name: hosts
+    concurrent: true
     kind: capture
     required: false
-    timeout_seconds: 120
+    timeout_seconds: 60
     argv: ["{home}/omnibase_infra/scripts/onex", "lab-work", "hosts", "--json", "--bus-lane", "{bus_lane}"]
     output_relpath: .claude_scratch/lab-run/hosts.json
   # The landing placement's pool read of every machine (load, memory, swap, cap, or UNREADABLE), the one the
   # throughput tick reads; it writes its receipt (hosts-probe/latest.json in the remote-lane directory), which
-  # node_factory_floor_effect reads for the machine bays. It takes about 30 seconds: every host is probed over its link.
+  # node_factory_floor_effect reads for the machine bays. Every host is probed in parallel and the launching Mac probes
+  # itself with a full parity probe that the plugin bounds at 60 s. Measured 2026-11-01 at load 56 on 24 cores: the pool read
+  # took 66 s in the foreground, and the Mac's own probe 20 s in the foreground against 139 s under the Background clamp, which
+  # drew h200 unread.
   - name: pool
+    concurrent: true
     kind: command
     required: false
-    timeout_seconds: 180
+    timeout_seconds: 60
     argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
+    concurrent: true
     kind: copy
     required: false
-    timeout_seconds: 30
+    timeout_seconds: 10
     source_relpath: .onex_state/friction-rollup/latest.json
     select: [windows, 24h]
     output_relpath: .claude_scratch/friction/friction-report.json
   - name: process_health
+    concurrent: true
     kind: module
     required: false
-    timeout_seconds: 600
+    timeout_seconds: 90
     module: omnimarket.nodes.node_process_health_effect.runtime_process_health
+    fresh_relpath: .onex_state/process-health/process-health.json
+    fresh_seconds: 900
+  - name: runner_fleet
+    concurrent: true
+    kind: runner_fleet
+    required: false
+    timeout_seconds: 10
+    output_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # OMN-23083: join J2 (piece 2 to piece 3), run for each host its overlay names. A canary on the host publishes one command,
+  # placement consumes the host's capacity advertisement and one correlated result returns on the bus; the node writes the
+  # canary's chain (piece 2) and the seam's chain (piece 3) under one correlation id to the emission journal, before the
+  # simple floor reads its receipts. With no step here the join was built and tested and never run: the floor read J2 with
+  # no golden chain from it (measured on the served board of 2026-11-08 05:07Z: golden_at and error_at both empty).
+  # Not required: when the bus cannot be read the step is recorded failed and no chain is written, which the floor reads
+  # as J2 not run, never as success. It runs with the other input steps, so it adds nothing past the slowest member.
+  - name: join_j2
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_host_reading_effect.runtime_host_reading
+    # The run's own bound sits inside the step's: a step killed at timeout_seconds cannot close the chains it started, and the floor
+    # reads each start with no terminal as start_without_terminal. A host still open at --deadline-seconds ends its chains typed.
+    args: ["join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}", "--deadline-seconds", "60"]
+  # OMN-23086: join J5 (piece 5 to piece 6). Each piece 5 golden reading the journal does not show piece 6 answering gets one
+  # ledger append under the identity the secret store resolves, read back from the projection, and piece 6's chain on the
+  # journal under the reading's correlation id; a reading already answered appends nothing. It joins the concurrent group, so
+  # it adds nothing past the slowest member (90 s). Not required: when it fails the floor still reads and J5 stays unpassed.
+  - name: join_j5
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5
+    args: ["run"]
+  # OMN-22936: join J6 (piece 6 to piece 7). Each piece 6 golden reading the journal does not show piece 7 answering gets one stop
+  # on a test piece in the in-memory gate store, its durable and projected audit row read back, the next send of that piece
+  # refused by the store and a send of another test piece admitted, and piece 7's chain on the journal under the reading's
+  # correlation id; a reading already answered stops nothing. Once per window it also writes piece 7's own error chain, the
+  # fence drill (a stop with no answer by its deadline leaves the send refused), as a drill chain. It joins the concurrent group, so
+  # it adds nothing past the slowest member (90 s); the drill holds a stop's commit for the overlay's silence (a few seconds).
+  # Not required: when it fails the floor still reads and J6 stays unpassed.
+  - name: join_j6
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_gate_store_effect.runtime_join_j6
+    args: ["run"]
+  # OMN-23420: the J7 run, the join's caller. Join J7 joins piece 7 (process spine) to piece 8 (central test harness): each run
+  # answers piece 7's golden stop drill readings with a send past a stop whose lab check posts on a test head, in an in-memory
+  # twin, and writes piece 8's chain under the reading's id; once per window it writes piece 8's own error chain (a superseded
+  # attempt posts nothing). Concurrent beside join_j6, so the longest path stays the slowest member (90 s). Not required: when it
+  # fails the floor still reads and J7 stays unpassed.
+  - name: join_j7
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7
+    args: ["run"]
+  # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
+  # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
+  # writes the same file in milliseconds; a failed rollup leaves the copy's file.
+  - name: friction_classed
+    concurrent: true
+    kind: friction_rollup
+    required: false
+    timeout_seconds: 90
+    output_relpath: .claude_scratch/friction/friction-report.json
+    rollup:
+      # The ledger is on the bus: the window's rows come from typed reads of the kinds below, one chunk of
+      # ledger_chunk_hours at a time, through the command the variable holds. A failed or truncated read refuses the step
+      # and the previous report stays; nothing here reads a file.
+      ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+      ledger_read_timeout_seconds: 60
+      ledger_row_limit: 5000
+      ledger_row_kinds: [FRICTION, CORRECTION, STATUS, TERMINAL, CLAIM, MSG]
+      ledger_chunk_hours: 24
+      window_hours: 24
+      bucket_hours: 2
+      umbrella_tickets: [OMN-17427]
+      class_overlay_id: node_friction_rollup_compute
+      class_overlay_file_env: ONEX_FRICTION_CLASS_OVERLAY
+  # OMN-22864: the downstream piece's typed refusal of every real upstream failure (the joins its overlay declares), written to
+  # the emission journal before the simple floor reads it. node_join_refusal_effect runs only when something calls it; with no step here
+  # each failure of piece 2 to 5 read downstream_missing_typed_failure 900 s later. It is independent of the other input steps
+  # (it reads the ledger and appends to the journal), so it joins their group and adds nothing to the longest declared path.
+  # Not required: when it fails the floor still reads, and the floor's chains row names the joins that stayed unanswered.
+  - name: join_refusal
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_refusal_effect
+    args: ["run"]
+  # OMN-23081: the delegation tracker. It reads the latest scheduled run of each delegation scenario's workflow through the
+  # source-control node, one at a time (parallel reads queue behind each other) and stops starting reads at its own 70 s deadline,
+  # then reads the ticket mirror, the pull request watcher and the factory floor record and writes delegation-tracker.json.
+  # It runs with the other input steps, so it adds nothing past the group's 90 s; the lanes it shows come from the record of the
+  # cycle before (the record is written after this group), which it refuses past 15 minutes. Not required: when it fails the
+  # previous file stays and the Delegation tab draws its own age, red past 15 minutes.
+  - name: delegation_tracker
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_floor_delegation_effect
+    args: ["run", "--home", "{home}"]
+  # OMN-23315: the beta board. It reads the probes' finished runs one at a time inside its own 50 s deadline and the ledger's newest
+  # rows, writes beta-board.json and copies beta.html and beta-board.json to every host its overlay lists (the same web servers that
+  # serve the floor). Not required: when it fails the previous page stays on each host and its Computed line shows its age.
+  - name: beta_board
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 85
+    module: omnimarket.nodes.node_beta_board_effect
+    args: ["run", "--home", "{home}"]
+  # OMN-23205 (plan task M1): the MVP launch block's scheduled read. It lists the latest scheduled runs of each producer workflow the
+  # block's overlay names through the source-control node, one at a time (the reads queue behind each other), the least recently read
+  # first, stopping at its own 80 s stage deadline, and keeps the answers in a record that the simple floor's command route reads. It runs
+  # with the other input steps, so it adds nothing past the group's 90 s. Not required: when it fails the previous record stays, and
+  # a read older than 30 minutes is drawn stale on the block, so a reading is NOT WORKING with that reason and never read as current.
+  - name: mvp_launch_reads
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}", "--mvp-reads"]
+  # OMN-23391: the bus projections the floor takes its inputs from (the overlay store's fleet first). The step reads each snapshot topic
+  # for one window (the overlay's, 4 s) and writes the bundle with every projection's own time; a projection older than its own bound
+  # reads unknown on the simple floor and one that cannot be read is written unread with its reason. It runs with the other input steps,
+  # before the simple floor reads the bundle, so it adds nothing past the group's 90 s. Not required: when it fails the previous
+  # bundle stays and every projection in it ages from its own as_of, never from the bundle's write time.
+  - name: floor_projections
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 60
+    module: omnimarket.nodes.node_floor_projection_read_effect
+    args: ["--home", "{home}"]
+  # OMN-23122: join J16 (piece 16 to piece 17). One run per cycle reads the newest eval reading of piece 16 on the ledger and the
+  # floor record, and writes piece 16's chain and piece 17's chain under one correlation id to the emission journal, before the
+  # simple floor reads its receipts. With no step here the join was tested and never run: the served floor read J16 not_run
+  # (measured on the served board of 2026-11-08 08:16Z: golden_age_s and error_age_s both empty, last_run_age_s empty).
+  # Not required: when the ledger cannot be read the step is recorded failed and no chain is written, which the floor reads as
+  # J16 not run, never as success. It reads the ledger and appends to the journal, so it joins the concurrent group and adds
+  # nothing to the longest declared path.
+  - name: join_j16
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_j16_effect
+    args: ["run"]
   - name: factory_floor
     kind: module
     required: true
-    timeout_seconds: 600
+    timeout_seconds: 30
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
+  # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
+  # required: when it fails the previous floor-simple.json stays and the page draws its own age, red past 15 minutes.
+  - name: floor_simple
+    kind: module
+    required: false
+    timeout_seconds: 15
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}", "--defer-canary"]
+  # OMN-23018: the floor's numbers are kept as a dated history and compared with 1, 7 and 30 days ago. Not required: when it
+  # fails the previous floor-compare.json stays and the compare page draws its own age, red past 15 minutes.
+  - name: floor_compare
+    kind: module
+    required: false
+    timeout_seconds: 15
+    module: omnimarket.nodes.node_floor_compare_effect
+    args: ["--home", "{home}"]
+  # After the page and the record are served: the hosted canary's status, from the page as served now (OMN-19998, 17a).
+  after_publish_steps:
+  - name: floor_canary
+    kind: module
+    required: true
+    timeout_seconds: 20
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}", "--publish-canary"]
   names:
-    page: index.html
+    page: detail.html
+    simple_page: index.html
+    simple_data: floor-simple.json
+    simple_reads: floor-simple-reads.json
+    compare_page: compare.html
+    compare_data: floor-compare.json
+    delegation_tracker_page: delegation.html
+    delegation_tracker_data: delegation-tracker.json
     floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json
     delegation: delegation.json
     status: publish-status.json
+    theme_css: [onex.theme.light.css, onex.theme.dark.css, onex.theme.warm.css]  # vendored OmniUI theme files, not topics
+    icons: [favicon.svg, favicon-32.png, apple-touch-icon.png]
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
+  # OMN-22699: the cycle bound and the time each phase after the input steps may take. The longest path the contract
+  # allows is the sum of: each group of concurrent input steps at its slowest member's timeout_seconds, the delegation
+  # read, the copies, the history prune, the after-publish steps and the final status write. A test holds that sum under
+  # bound_seconds, so a timeout raised past the bound fails the build instead of showing as a slow page. The handler
+  # clamps every delegation read, copy, prune and status write to what its phase has left, so these numbers are real
+  # limits. Measured 2026-11-07 on the launching Mac (served publish-status.json): hosts 24 s, pool 18 to 22 s, the
+  # factory floor record 24 s, the simple floor 11 to 12 s, delegation 7 to 8 s, the whole input phase 59 to 60 s; the
+  # process-health rebuild (only when its file is older than 900 s) took 82 s on a lab host. A step that reaches its
+  # timeout is recorded failed with the seconds it took.
+  cycle:
+    bound_seconds: 240
+    delegation_timeout_seconds: 15
+    copy_budget_seconds: 40
+    history_prune_budget_seconds: 8
+    final_status_seconds: 5
   # The record's history: every publish also stores the record as a timestamped snapshot under <history_root>/<subdirectory>/
   # (history_root is the overlay's, normally the serving directory), written to a temporary name and renamed in without
   # replacing an existing name. A snapshot is never rewritten. Pruning removes only snapshots older than days, oldest
@@ -160,6 +462,17 @@ runtime:
       remote: reports/index.html
     manifest: reports/manifest.json
     entries:
+    - id: delegation
+      title: Delegation, local and escalated
+      summary: Real delegation runs over two and twenty-four hours, by rung, model and host, with outcomes and local endpoint probes.
+      href: ../
+      refresh: tick
+      data:
+      - name: Lab delegation projection windows
+        remote: delegation.json
+        relpath: .onex_state/delegation-report/delegation-window.json
+        as_of_key: generated_at
+        publish: false
     - id: factory_floor
       title: Lean Factory Floor
       summary: Every plan as a car on its assembly line, the lab bays, the shipping dock and the stoppages.
@@ -185,6 +498,7 @@ runtime:
         relpath: .onex_state/process-health/process-health.json
         as_of_key: generated_at
         publish: false
+        projection: process_health_summary
     - id: decision_map
       title: October decision map
       summary: Problems the system ran into, the decisions they led to, and whether each problem came back after the change.
@@ -199,6 +513,26 @@ runtime:
         remote: reports/decision-map/decisions.json
         relpath: .claude_scratch/reports/decision-map/decisions.json
         as_of_key: asof
+  # The reports only the operator's own devices may read (OMN-22119). They are published to the serving directory like
+  # the reports above but are never listed in the manifest, the index or the shared page: the web server answers 403
+  # to every address that is not one of the operator's own devices. Before any of these files is written the publish
+  # writes the allowed-address include to the access directory beside the serving directory, reloads the web server
+  # and reads its configuration back; a server that does not carry the gate has these files withdrawn and the publish
+  # refuses. The owner's login is the overlay's owner_login key; the addresses are read from the tailnet status at
+  # every publish and are never written down.
+  operator_reports:
+    access:
+      tailscale_argv: ["tailscale", "status", "--json"]
+      # Platform classes of the operator's own devices (the status's OS field): the Macs and the phone. The owner
+      # login also owns lab hosts; those are not the operator's hand and are not admitted.
+      operator_os: ["macOS", "iOS"]
+      access_dirname: access
+      include_name: operator-only.conf
+      container_name: omninode-factory-floor-web
+      gate_marker: operator-only report gate
+    # Read by the operator-only pages for the age of their data; the shared manifest never lists these reports.
+    manifest: reports/decision-quality/manifest.json
+    entries:
     - id: decision_quality
       title: Decision quality, October
       summary: How the operator's 465 October rulings held up, what was reversed or reshaped, and which directions had to be restated.

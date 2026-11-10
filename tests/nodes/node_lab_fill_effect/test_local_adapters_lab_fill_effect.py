@@ -12,10 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.ticket_query.model_ticket_facts import ModelTicketFactsOutput
 from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillPortError
-from omnimarket.nodes.node_lab_fill_effect.protocols import (
-    local_lab_fill_adapters as adapters,
-)
 from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
     LocalApprovedWork,
     LocalBriefBlocks,
@@ -206,6 +204,38 @@ def test_brief_blocks_refuse_rules_that_lack_a_required_marker(tmp_path: Path) -
         LocalBriefBlocks(skills).blocks(ticket="OMN-7", brief_path=str(brief))
 
 
+def test_brief_blocks_name_the_rules_file_and_reason_when_the_reader_fails(
+    tmp_path: Path,
+) -> None:
+    """OMN-23025: the skip detail names the unreadable rules file, not only the exception class."""
+    skills = _skills(tmp_path)
+    (skills.parent / "scripts/lane_rules_block.py").write_text(
+        "import sys\n"
+        "print('lane rules block is missing: /clone/lane_rules/lane-rules-block.md', file=sys.stderr)\n"
+        "sys.exit(2)\n"
+    )
+    brief = tmp_path / "b.md"
+    brief.write_text("# Lane\n")
+    with pytest.raises(LabFillPortError) as raised:
+        LocalBriefBlocks(skills).blocks(ticket="OMN-7", brief_path=str(brief))
+    text = str(raised.value)
+    assert "lane_rules_block.py exit 2" in text
+    assert "/clone/lane_rules/lane-rules-block.md" in text
+
+
+def test_brief_blocks_name_a_rules_reader_that_cannot_start(tmp_path: Path) -> None:
+    skills = _skills(tmp_path)
+    # no lane_rules_block.py in the plugin: the interpreter names the missing path
+    brief = tmp_path / "b.md"
+    brief.write_text("# Lane\n")
+    with pytest.raises(
+        LabFillPortError, match=r"lane_rules_block\.py exit 2"
+    ) as raised:
+        LocalBriefBlocks(skills).blocks(ticket="OMN-7", brief_path=str(brief))
+    assert "lane_rules_block.py" in str(raised.value)
+    assert "No such file" in str(raised.value)
+
+
 def test_pr_claims_parse_the_registry_listing(tmp_path: Path) -> None:
     cli = tmp_path / "cli.py"
     cli.write_text(
@@ -316,25 +346,37 @@ def test_claims_bridge_failure_is_named(
         LocalOwnerReader().claims(str(tmp_path / "L.md"), ["OMN-1"])
 
 
-def _linear(monkeypatch: pytest.MonkeyPatch, node: dict[str, object] | None) -> None:
-    nodes = [] if node is None else [node]
-    monkeypatch.setattr(
-        adapters,
-        "_graphql",
-        lambda _query, _timeout_s=20.0: {"issues": {"nodes": nodes}},
-    )
+class _FakeFacts:
+    """Stands in for the node-backed ticket facts reader (OMN-22418)."""
+
+    def __init__(self, node: dict[str, object] | None) -> None:
+        self._node = node
+
+    def read(self, ticket: str) -> ModelTicketFactsOutput:
+        if self._node is None:
+            raise LabFillPortError(f"{ticket} not found in Linear")
+        state = self._node["state"]
+        assignee = self._node.get("assignee")
+        assert isinstance(state, dict)
+        return ModelTicketFactsOutput(
+            identifier=str(self._node["identifier"]),
+            state_type=str(state["type"]),
+            assignee_id=str(assignee["id"]) if isinstance(assignee, dict) else "",
+        )
+
+
+def _linear(node: dict[str, object] | None) -> LocalLiveChecks:
+    return LocalLiveChecks(facts=_FakeFacts(node))
 
 
 def test_live_checks_assignment_and_completion_and_fences(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    checks = LocalLiveChecks()
     monkeypatch.setattr(
         LocalLiveChecks, "_fences", staticmethod(lambda _ledger: {"OMN-9"})
     )
     kwargs = {"pr": "", "operator_id": "me", "ledger_path": "/l"}
-    _linear(
-        monkeypatch,
+    checks = _linear(
         {
             "identifier": "OMN-1",
             "state": {"type": "started"},
@@ -345,8 +387,7 @@ def test_live_checks_assignment_and_completion_and_fences(
         checks.skip_reason(ticket="OMN-1", kind="ticket", **kwargs)[0]
         == "assigned-other"
     )
-    _linear(
-        monkeypatch,
+    checks = _linear(
         {"identifier": "OMN-1", "state": {"type": "completed"}, "assignee": None},
     )
     assert checks.skip_reason(ticket="OMN-1", kind="wiring", **kwargs)[0] == "done"
@@ -354,12 +395,11 @@ def test_live_checks_assignment_and_completion_and_fences(
         "",
         "",
     )  # only approved kinds skip on completion
-    _linear(
-        monkeypatch,
+    checks = _linear(
         {"identifier": "OMN-9", "state": {"type": "started"}, "assignee": {"id": "me"}},
     )
     assert checks.skip_reason(ticket="OMN-9", kind="ticket", **kwargs)[0] == "fenced"
-    _linear(monkeypatch, None)
+    checks = _linear(None)
     with pytest.raises(LabFillPortError, match="not found"):
         checks.skip_reason(ticket="OMN-2", kind="ticket", **kwargs)
 
@@ -371,11 +411,10 @@ def test_live_checks_fences_that_cannot_be_read_stop_the_lane(
         raise LabFillPortError("onex-triage-fences: FileNotFoundError")
 
     monkeypatch.setattr(LocalLiveChecks, "_fences", staticmethod(broken))
-    _linear(
-        monkeypatch,
+    checks = _linear(
         {"identifier": "OMN-1", "state": {"type": "started"}, "assignee": None},
     )
-    reason = LocalLiveChecks().skip_reason(
+    reason = checks.skip_reason(
         ticket="OMN-1", kind="ticket", pr="", operator_id="me", ledger_path="/l"
     )
     assert reason[0] == "fences-unreadable"
@@ -413,14 +452,6 @@ def test_live_checks_pr_hold_labels(
     assert LocalLiveChecks._pr_hold("omnimarket#99")[0] == "pr-state-unreadable"
     monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(tmp_path / "missing.json"))
     assert LocalLiveChecks._pr_hold("omnimarket#5")[0] == "pr-state-unreadable"
-
-
-def test_graphql_without_a_key_names_the_missing_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
-    with pytest.raises(LabFillPortError, match="LINEAR_API_KEY is missing"):
-        adapters._graphql("{x}")
 
 
 def test_appender_is_declared_by_environment_only(

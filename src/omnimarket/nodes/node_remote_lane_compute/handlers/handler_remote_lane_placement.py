@@ -43,11 +43,32 @@ readings) has zero free lane slots, for either engine, until the alarm resolves 
 reads (``swap_alarm_open``). At 2026-10-30T01:25Z a lab host paged at load 30 to 58 and swap-in up to
 167 MB/s while the pool counted it 6 to 9 free Claude slots, so ``--placement auto`` never overflowed
 to a cloud session.
+
+Brief inputs (OMN-19998): a lane whose brief needs inputs on its host (a map entry, a clone, a
+patch or a plan branch, ``required_inputs``) takes only a host whose reading holds every one
+(``present_inputs``); a reading that did not check them keeps the host off. When a host would take
+the lane but for its inputs and none holding them does, the result is INPUT_ABSENT naming each
+absent input, so the dispatch refuses the send instead of starting a lane that cannot find its input.
+
+Reach (OMN-22887): a brief that reads another host or a port names the route as a ``route:<target>``
+input (``route:h201``, ``route:broker-admin:dev``). A host whose reading lacks that route, or was not
+checked for it, takes no lane, and its verdict reads ``no-route: <target>`` instead of ``input-absent``.
+On 2026-11-07 lanes placed on h106 could not work: it had no ssh key to h201 and no route to the broker
+admin port, and placement ranked it by free capacity alone.
 """
 
 from __future__ import annotations
 
+from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
+    ModelFSMSubcontract,
+)
+
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
+from omnimarket.handlers.rules_stop_gate import (
+    engine_stop_scopes,
+    gate_dispatch,
+    load_andon_stop_contract,
+)
 from omnimarket.models.model_engine_experiment import (
     CLAUDE_RUNGS,
     CODEX_UNGRANTABLE_CAPABILITIES,
@@ -60,12 +81,7 @@ from omnimarket.models.model_engine_experiment import (
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
-from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
-from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
-    lane_model_refusal,
-)
-
-from ..models import (
+from omnimarket.models.remote_lane_placement import (
     CODEX_ENGINE,
     EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
@@ -77,6 +93,11 @@ from ..models import (
     ModelRemoteLaneReconcileIntent,
     ModelRemoteLaneRungVerdict,
     ModelRemoteLaneVenvDrift,
+)
+from omnimarket.models.stop_gate import EnumStopGateOutcome
+from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
 )
 
 _VENV_DRIFT = "venv-drift"
@@ -142,6 +163,66 @@ def contributor_lane_refusal(
     return None
 
 
+# An input named ``route:<target>`` is a route the brief reads over (``route:h201``, ``route:broker-admin:dev``);
+# the host's reading holds it only when the reader proved the host reaches that target (OMN-22887).
+ROUTE_PREFIX = "route:"
+
+
+def input_refusal(
+    request: ModelRemoteLanePlacementRequest, reading: ModelRemoteLaneHostReading
+) -> str | None:
+    """Why this host lacks an input the lane's brief needs, else None (a lane needing none is never judged)."""
+    if not request.required_inputs:
+        return None
+    if reading.present_inputs is None:
+        return "input-unread: the reader did not check " + ", ".join(
+            request.required_inputs
+        )
+    present = set(reading.present_inputs)
+    absent = [item for item in request.required_inputs if item not in present]
+    unreachable = [
+        item[len(ROUTE_PREFIX) :] for item in absent if item.startswith(ROUTE_PREFIX)
+    ]
+    missing = [item for item in absent if not item.startswith(ROUTE_PREFIX)]
+    reasons: list[str] = []
+    if unreachable:
+        reasons.append("no-route: " + ", ".join(unreachable))
+    if missing:
+        reasons.append("input-absent: " + ", ".join(missing))
+    return "; ".join(reasons) or None
+
+
+def repair_pin_line(
+    request: ModelRemoteLanePlacementRequest,
+    pick: ModelRemoteLaneHostReading | None,
+) -> str | None:
+    """The line that says a repair lane pinned to its own target was not kept there (OMN-23389).
+
+    On 2026-11-09 the first cleanup lane for h053 was pinned to h053, which refused admission with a full disk, so
+    the repair never ran. A repair lane is never run on the host it repairs; the pin names the target.
+    """
+    target = request.repair_target
+    if target is None or request.pinned_host != target or pick is None:
+        return None
+    refused = next(
+        (
+            r.lane_admission_refusal
+            for r in request.readings
+            if r.name == target and r.lane_admission_refusal is not None
+        ),
+        None,
+    )
+    why = (
+        f"it refuses admission ({refused})"
+        if refused
+        else "a repair lane never runs on the host it repairs"
+    )
+    return (
+        f"REPAIR-PIN-REFUSED pinned to {target}: {why}; placed on {pick.name}, "
+        f"which reaches {target} over ssh"
+    )
+
+
 def effective_lane_slots(reading: ModelRemoteLaneHostReading) -> int:
     """The free lane slots the pool counts for this host: none while the host is swapping."""
     return 0 if swap_refusal(reading) is not None else reading.lane_slots
@@ -195,16 +276,26 @@ def _venv_reason(
 
 
 def _select(
-    request: ModelRemoteLanePlacementRequest, blocked: dict[str, str]
+    request: ModelRemoteLanePlacementRequest,
+    blocked: dict[str, str],
+    check_inputs: bool = True,
 ) -> tuple[ModelRemoteLaneHostReading | None, dict[str, str]]:
-    """The pick and every host's reason for not being it, with ``blocked`` hosts kept off."""
+    """The pick and every host's reason for not being it, with ``blocked`` hosts kept off.
+
+    ``check_inputs`` False judges the hosts as if the brief needed no input, to tell INPUT_ABSENT from NO_HOST.
+    """
     codex = request.engine == CODEX_ENGINE
     limited = set(request.codex_limited_hosts if codex else request.limited_hosts)
     expired = set() if codex else set(request.auth_expired_hosts)
     reasons: dict[str, str] = {}
     admitted: list[ModelRemoteLaneHostReading] = []
+    target = request.repair_target
     for reading in request.readings:
-        if reading.name in limited:
+        if target is not None and reading.name == target:
+            reasons[reading.name] = (
+                "repair-target: a repair lane runs on another host and reaches this one over ssh"
+            )
+        elif reading.name in limited:
             reasons[reading.name] = "usage-limited"
         elif reading.name in expired:
             reasons[reading.name] = "auth-expired"
@@ -216,8 +307,18 @@ def _select(
             reasons[reading.name] = swapping
         elif reading.lane_admission_refusal is not None:
             reasons[reading.name] = f"admission: {reading.lane_admission_refusal}"
-        elif request.pinned_host and reading.name != request.pinned_host:
+        elif (
+            request.pinned_host
+            and request.pinned_host != target
+            and reading.name != request.pinned_host
+        ):
             reasons[reading.name] = "not-pinned"
+        elif target is not None and (
+            reading.ssh_reach is None or target not in reading.ssh_reach
+        ):
+            reasons[reading.name] = f"no-ssh-to-{target}"
+        elif check_inputs and (absent := input_refusal(request, reading)) is not None:
+            reasons[reading.name] = absent
         else:
             admitted.append(reading)
 
@@ -324,8 +425,13 @@ class HandlerRemoteLanePlacement:
     composition (OMN-21475); a caller may inject a validated ladder.
     """
 
-    def __init__(self, engines: ModelEngineLadder | None = None) -> None:
+    def __init__(
+        self,
+        engines: ModelEngineLadder | None = None,
+        stop_fsm: ModelFSMSubcontract | None = None,
+    ) -> None:
         self._engines = load_engine_ladder() if engines is None else engines
+        self._stop_fsm = stop_fsm
 
     def handle(
         self, request: ModelRemoteLanePlacementRequest
@@ -373,7 +479,12 @@ class HandlerRemoteLanePlacement:
                 )
             rungs.append(
                 ModelRemoteLaneRungVerdict(
-                    engine=rung, reason=f"no-capacity: {result.outcome.value}"
+                    engine=rung,
+                    reason=(
+                        f"stopped: {result.refusal}"
+                        if result.outcome == EnumRemoteLaneOutcome.STOPPED
+                        else f"no-capacity: {result.outcome.value}"
+                    ),
                 )
             )
             last_result = result
@@ -401,6 +512,27 @@ class HandlerRemoteLanePlacement:
                     for reading in request.readings
                 ),
             )
+        gate = None
+        if request.stop_gate is not None:
+            if self._stop_fsm is None:
+                self._stop_fsm = load_andon_stop_contract()[0]
+            gate = gate_dispatch(
+                request.stop_gate,
+                engine_stop_scopes(request.engine, self._engines),
+                self._stop_fsm,
+            )
+            if gate.outcome is EnumStopGateOutcome.REFUSE:
+                return ModelRemoteLanePlacementResult(
+                    host=None,
+                    engine=request.engine,
+                    verdicts=tuple(
+                        ModelRemoteLaneHostVerdict(host=r.name, reason=gate.line)
+                        for r in request.readings
+                    ),
+                    outcome=EnumRemoteLaneOutcome.STOPPED,
+                    refusal=gate.line,
+                    stop_gate=gate,
+                )
         pick, reasons = _select(request, {})
         blocked: dict[str, str] = {}
         if _drift_judged(request):
@@ -440,8 +572,17 @@ class HandlerRemoteLanePlacement:
                 else:
                     outcome = EnumRemoteLaneOutcome.VENV_UNKNOWN
                 pick = None
+        input_line: str | None = None
         if pick is not None:
             outcome = EnumRemoteLaneOutcome.ADMITTED
+        elif outcome is EnumRemoteLaneOutcome.NO_HOST and request.required_inputs:
+            # The send is refused before it is made: a host would take the lane but for its inputs.
+            would_take, _ = _select(request, blocked, check_inputs=False)
+            if would_take is not None:
+                outcome = EnumRemoteLaneOutcome.INPUT_ABSENT
+                input_line = (
+                    f"{would_take.name} {reasons.get(would_take.name, 'input-absent')}"
+                )
 
         verdicts = []
         for reading in request.readings:
@@ -460,4 +601,7 @@ class HandlerRemoteLanePlacement:
             outcome=outcome,
             venv_drift=venv_drift,
             reconcile=reconcile,
+            refusal=input_line,
+            stop_gate=gate,
+            repair_pin_refused=repair_pin_line(request, pick),
         )

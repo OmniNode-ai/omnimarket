@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_seam_deadline_probe_effect
+version: 1.0.0
+description: Per-seam reading with a deadline (base-first piece 3) - demands each declared seam's command on the bus and reads whether its result arrives in time.
+pack: operator_tooling
+node_role: effect
+display_name: Seam Deadline Probe Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_seam_deadline_probe_effect: omnimarket.nodes.node_seam_deadline_probe_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+- omnibase-infra>=0.1.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- reading
+- seam

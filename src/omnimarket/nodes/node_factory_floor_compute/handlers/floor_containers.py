@@ -27,6 +27,8 @@ def _rows(
             observed=lane.observed,
             budget=lane.budget,
             alarm_key=alarms.get((lane.host, lane.lane), ""),
+            target=lane.target,
+            detail=lane.detail,
         )
         for lane in verdict.lanes
     )
@@ -40,6 +42,7 @@ def _rows(
             observed=alarm.observed,
             budget=alarm.budget,
             alarm_key=alarm.key,
+            detail=alarm.detail,
         )
         for alarm in verdict.alarms
         if (alarm.host, alarm.lane) not in covered

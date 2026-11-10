@@ -21,6 +21,10 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileRunCompletedEvent,
     ModelWorktreeReconcileRunResult,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
+    probe_class,
+    route_needs_human,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolClock,
     ProtocolWorktreeDecider,
@@ -81,8 +85,11 @@ class HandlerWorktreeReconcile:
         except Exception as exc:
             facts = ()
             errors.append(f"discovery_failed:{type(exc).__name__}:{str(exc)[:200]}")
-        decisions = reconcile(
-            ModelWorktreeReconcileRequest(facts=facts, policy=command.policy)
+        decisions = route_needs_human(
+            reconcile(
+                ModelWorktreeReconcileRequest(facts=facts, policy=command.policy)
+            ),
+            facts,
         )
         ambiguous = {
             row.path
@@ -154,7 +161,9 @@ class HandlerWorktreeReconcile:
                 e.decision.decision == Decision.NEEDS_HUMAN for e in events
             ),
             failures=len(errors)
-            + sum(e.error is not None or bool(e.facts.probe_errors) for e in events),
+            + sum(
+                e.error is not None or probe_class(e.facts) == "failed" for e in events
+            ),
             freed_bytes=sum(
                 e.facts.size_bytes or 0
                 for e in events
@@ -277,7 +286,8 @@ class HandlerWorktreeReconcile:
             )
         # A REMOVE justified by remote/merge evidence must still have it.
         return (
-            not (old.head_on_remote or old.content_merged)
+            not (old.head_on_remote or old.content_merged or old.merged_pr_head)
             or new.head_on_remote
             or new.content_merged
+            or new.merged_pr_head
         )

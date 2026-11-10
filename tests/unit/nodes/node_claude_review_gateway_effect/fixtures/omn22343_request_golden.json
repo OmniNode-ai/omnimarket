@@ -1,0 +1,55 @@
+{
+  "max_tokens": 4096,
+  "messages": [
+    {
+      "content": [
+        {
+          "cache_control": {
+            "ttl": "5m",
+            "type": "ephemeral"
+          },
+          "text": "DIFF OF PR A",
+          "type": "text"
+        },
+        {
+          "text": "persona: security",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "system": [
+    {
+      "cache_control": {
+        "ttl": "1h",
+        "type": "ephemeral"
+      },
+      "text": "rubric and catalog",
+      "type": "text"
+    },
+    {
+      "cache_control": {
+        "ttl": "1h",
+        "type": "ephemeral"
+      },
+      "text": "standing rules of the repository",
+      "type": "text"
+    }
+  ],
+  "tool_choice": {
+    "name": "submit_verdict",
+    "type": "tool"
+  },
+  "tools": [
+    {
+      "description": "Submit the structured result.",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "submit_verdict"
+    }
+  ]
+}

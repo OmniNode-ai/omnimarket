@@ -1,0 +1,8 @@
+{
+ "hosts": {
+  "lab-a": {
+   "installed_revision": "3f5a9c1e7b2d",
+   "running": true
+  }
+ }
+}
