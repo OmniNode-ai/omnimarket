@@ -51,8 +51,6 @@ dod_evidence:
 - id: dod-omn23560-ac5-freshness-at-head
   description: The freshness test, whose limit of 50 is unchanged, passes at the head with this change's own three test files recorded. The 24 hour reading on the development tip is the runtime step, taken after the merge through the item below.
   source: manual
-  binds_ac:
-  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov -n 0 -p no:randomly
@@ -60,6 +58,8 @@ dod_evidence:
 - id: dod-omn23560-ac5-integration-proof-lab
   description: Runs the freshness test at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The 24 hour reading on the development tip is taken after the merge.
   source: manual
+  binds_ac:
+  - AC5
   execution_scope: local_done_gate
   checks:
   - check_type: command
