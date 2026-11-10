@@ -155,7 +155,10 @@ dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the first release that carries the lane process
+    # types (ModelLaneProcessRunResult, ModelLaneProcessStartResult, ModelLaneStartSpec) the floor fill
+    # orchestrator imports from omnibase_spi.contracts.services. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
     # event and writes no row raises ProjectionNotMaterializedError instead of
@@ -1572,7 +1575,7 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # for external installs.
 # OMN-22472: core and infra move together; this core tag is the one infra dev-20261110042858-440ae9e031dc locks (omnibase_infra#5815) and carries the ticket validator (omnibase_core#2281) the floor-task ticket nodes import.
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261109065232-cd128b790ec6" }
-omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108015921-ace601e12033" }
+omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261109115518-43412633ed5c" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261106074413-b4fa53dcb119" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
@@ -1719,7 +1722,10 @@ override-dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the first release that carries the lane process
+    # types (ModelLaneProcessRunResult, ModelLaneProcessStartResult, ModelLaneStartSpec) the floor fill
+    # orchestrator imports from omnibase_spi.contracts.services. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
     # runtime wire the delegation projection binding at all. An override
