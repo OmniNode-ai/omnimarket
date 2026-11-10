@@ -282,10 +282,10 @@ def _overlap(
                 if not (a[0] <= b[1] and b[0] <= a[1]):
                     continue
                 via = _set_aside(match, b, replaced) if replaced else None
-                if via is None:
+                if via is None or not replaced:
                     counted = b
                     break
-                owners = tuple(sorted({replaced[sha] for sha in via}))  # type: ignore[index]
+                owners = tuple(sorted({replaced[sha] for sha in via}))
                 aside.append(
                     ModelSetAsideOverlap(
                         pr=pr_ref,
