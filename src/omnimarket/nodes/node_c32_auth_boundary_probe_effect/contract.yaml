@@ -31,15 +31,6 @@ handler:
   module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.handlers.handler_c32_auth_boundary_probe
   class: HandlerC32AuthBoundaryProbe
   input_model: omnimarket.nodes.node_c32_auth_boundary_probe_effect.models.model_c32_probe.ModelC32ProbeRequest
-handler_routing:
-  routing_strategy: payload_type_match
-  handlers:
-    - handler:
-        name: HandlerC32AuthBoundaryProbe
-        module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.handlers.handler_c32_auth_boundary_probe
-      event_model:
-        name: ModelC32ProbeRequest
-        module: omnimarket.nodes.node_c32_auth_boundary_probe_effect.models.model_c32_probe
 descriptor:
   node_archetype: effect
   purity: impure
