@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ci_summary_registry_compute
+version: "1.0.0"
+description: "Resolves the CI Summary poller's sweep-exclusion and per-check advisory/blocking registries - pure COMPUTE"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ci_summary_registry_compute: "omnimarket.nodes.node_ci_summary_registry_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ci", "ci-summary", "registry"]
+pack: "pr_lifecycle"
+display_name: "CI Summary Registry"
+node_role: "compute"
