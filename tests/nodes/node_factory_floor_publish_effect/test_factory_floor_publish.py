@@ -342,10 +342,12 @@ FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
 FLOOR_DELEGATION = "omnimarket.nodes.node_floor_delegation_effect"
 BETA_BOARD = "omnimarket.nodes.node_beta_board_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
+FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
 JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 JOIN_J5 = "omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5"
 JOIN_J6 = "omnimarket.nodes.node_gate_store_effect.runtime_join_j6"
+JOIN_J7 = "omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7"
 HEALTH = {"generated_at": "2026-10-31T12:00:00Z", "days": [], "summary": {}}
 
 
@@ -392,7 +394,9 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             JOIN_J2,
             JOIN_J5,
             JOIN_J6,
+            JOIN_J7,
             FLOOR_DELEGATION,
+            FLOOR_PROJECTIONS,
             BETA_BOARD,
             FLOOR_SIMPLE,
         ]
@@ -431,11 +435,13 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "join_j2",
         "join_j5",
         "join_j6",
+        "join_j7",
         "friction_classed",
         "join_refusal",
         "delegation_tracker",
         "beta_board",
         "mvp_launch_reads",
+        "floor_projections",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -461,7 +467,9 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and JOIN_REFUSAL not in argv
                 and JOIN_J2 not in argv
                 and JOIN_J5 not in argv
+                and FLOOR_PROJECTIONS not in argv
                 and JOIN_J6 not in argv
+                and JOIN_J7 not in argv
             ):
                 barrier.wait()
             return super().__call__(argv, stdin, timeout)
