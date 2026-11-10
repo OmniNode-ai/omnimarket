@@ -30,11 +30,10 @@ from tests.nodes.node_reading_writer_effect.reading_support import (
 HEAD_LIMIT = 3600
 GOAL = 10
 WAITING_THRESHOLD = 10
-CANARY_MAX_AGE = 93600
 
 
 def landing_overlay_document() -> dict[str, Any]:
-    """The test overlay with piece 9 readable from the watcher snapshot and the daily canary."""
+    """The test overlay with piece 9 readable from the snapshot of real landing alone."""
     document = overlay_document()
     document["order"] = [1, 6, 9, 15]
     document["pieces"].append(
@@ -49,14 +48,6 @@ def landing_overlay_document() -> dict[str, Any]:
                 "merge_window_seconds": 3600,
                 "waiting_threshold": WAITING_THRESHOLD,
                 "snapshot_max_age_seconds": 900,
-                "canary": {
-                    "source_id": "canary",
-                    "row_type": "STATUS",
-                    "lane": "landing-canary",
-                    "mode": "newest",
-                    "pass_when": [{"cell": "outcome", "op": "eq", "value": "landed"}],
-                    "max_age_seconds": CANARY_MAX_AGE,
-                },
             },
             "injected_fault": "hold one eligible head for over an hour in a test repository",
         }
@@ -96,6 +87,7 @@ def snapshot(
 
 
 def canary_row(*, landed: bool = True, at_offset_hours: int = 5) -> str:
+    """A row of the retired synthetic canary. The reading must not read it (RULING 2026-11-08T14:38:40Z)."""
     return (
         f"{stamp(START - timedelta(hours=at_offset_hours))} | STATUS | lane=landing-canary"
         f" | principal=dev-test | actor=script:landing-canary | model=none"
