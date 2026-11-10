@@ -54,6 +54,7 @@ from omnimarket.models.work_state_projection import (
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     FileLedgerRowSource,
+    read_queries,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
@@ -121,12 +122,16 @@ def source_readers(
             raise SourceUnreadableError(f"{rt['ledger']['path_env']} unset")
         rows: list[Any] = []
         since = now - timedelta(hours=float(rt["ledger"]["lookback_hours"]))
-        for row_type in rt["ledger"]["row_types"]:
-            read = ledger.read(
-                ModelLedgerQuery(
-                    since=since, until=now + timedelta(days=1), row_type=row_type
-                )
+        row_types = tuple(rt["ledger"]["row_types"])
+        queries = tuple(
+            ModelLedgerQuery(
+                since=since, until=now + timedelta(days=1), row_type=row_type
             )
+            for row_type in row_types
+        )
+        # One pass over the ledger files for every row type (OMN-23081); a source without the batch port reads once each.
+        reads = read_queries(ledger, queries)
+        for row_type, read in zip(row_types, reads, strict=True):
             if read.error is not None:
                 raise SourceUnreadableError(f"{row_type} {read.error}")
             rows.extend(read.rows)
