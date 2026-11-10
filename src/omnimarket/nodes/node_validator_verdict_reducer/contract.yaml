@@ -21,22 +21,25 @@ description: >
   one-way ratchet baselines and the count of canonical validators that have run.
 input_model:
   name: ModelVerdictFoldRequest
-  module: omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict
+  module: omnimarket.models.model_validator_verdict
   description: One pull request head's validator outcomes and ratchet readings.
 output_model:
   name: ModelVerdictFoldResult
-  module: omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict
+  module: omnimarket.models.model_validator_verdict
   description: The verdict, the ratchet moves, the canonical-validator count and the new state.
 handler:
   module: omnimarket.nodes.node_validator_verdict_reducer.handlers.handler_validator_verdict_reducer
   class: HandlerValidatorVerdictReducer
-  input_model: omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict.ModelVerdictFoldRequest
-  output_model: omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict.ModelVerdictFoldResult
+  input_model: omnimarket.models.model_validator_verdict.ModelVerdictFoldRequest
+  output_model: omnimarket.models.model_validator_verdict.ModelVerdictFoldResult
 # Not a runtime-dispatched handler: HandlerValidatorVerdictReducer takes its overlay and store as
 # constructor parameters; node_validator_workflow_orchestrator builds and calls it.
 event_bus:
   subscribe_topics: []
   publish_topics: []
+dependency_ownership:
+  overlay: "Owned by node_validator_workflow_orchestrator, which loads the node overlay and constructs the handler in process."
+  store: "Owned by node_validator_workflow_orchestrator, which builds the configured verdict store and injects it."
 runtime_dispatch:
   external_trigger: Called by node_validator_workflow_orchestrator with one pull request head's outcomes.
 descriptor:

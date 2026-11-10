@@ -40,6 +40,13 @@ descriptor:
   idempotent: true
   timeout_ms: 600000
 terminal_event: onex.evt.omnimarket.validator-workflow-completed.v1
+dependency_ownership:
+  overlay: "Owned by the caller that loads the node overlay and constructs the handler in process."
+  reader: "Owned by the caller; built from the overlay's change-reader backend."
+  contracts: "Owned by the caller; the validator contracts the run reads."
+  reducer: "Owned by the caller; the node_validator_verdict_reducer handler it injects."
+  emitter: "Owned by the caller; the outcome emitter it injects."
+  gate: "Owned by the caller; the gate it injects."
 runtime_dispatch:
   external_trigger: true
 # The topics by role; the handler reads these and holds no topic string.

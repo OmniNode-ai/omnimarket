@@ -16,7 +16,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict import (
+from omnimarket.models.model_validator_verdict import (
     EnumRatchetDirection,
 )
 

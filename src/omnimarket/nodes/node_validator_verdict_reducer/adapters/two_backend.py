@@ -11,16 +11,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from omnimarket.models.model_validator_verdict import (
+    ModelRatchetReading,
+    ModelValidatorOutcome,
+    ModelVerdictFoldRequest,
+)
 from omnimarket.nodes.node_validator_verdict_reducer.adapters.verdict_store import (
     InMemoryVerdictStore,
 )
 from omnimarket.nodes.node_validator_verdict_reducer.handlers.handler_validator_verdict_reducer import (
     HandlerValidatorVerdictReducer,
-)
-from omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict import (
-    ModelRatchetReading,
-    ModelValidatorOutcome,
-    ModelVerdictFoldRequest,
 )
 from omnimarket.nodes.node_validator_verdict_reducer.overlay import example_overlay
 from omnimarket.nodes.node_validator_verdict_reducer.protocols import (

@@ -32,7 +32,7 @@ from omnibase_core.models.validation.model_canonical_file_shape_tree import (
 from omnibase_core.validation.checker_canonical_file_shape import load_rule_set
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict import (
+from omnimarket.models.model_validator_verdict import (
     ModelRatchetReading,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow import (

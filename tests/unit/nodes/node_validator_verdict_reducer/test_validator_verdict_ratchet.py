@@ -9,6 +9,15 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.model_validator_verdict import (
+    EnumPrVerdict,
+    EnumRatchetDirection,
+    ModelRatchetReading,
+    ModelValidatorOutcome,
+    ModelVerdictFoldRequest,
+    ModelVerdictFoldResult,
+    ModelVerdictState,
+)
 from omnimarket.nodes.node_validator_verdict_reducer.adapters import two_backend
 from omnimarket.nodes.node_validator_verdict_reducer.adapters.verdict_store import (
     InMemoryVerdictStore,
@@ -18,15 +27,6 @@ from omnimarket.nodes.node_validator_verdict_reducer.handlers.handler_validator_
     REASON_UNDECLARED,
     HandlerValidatorVerdictReducer,
     fold,
-)
-from omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict import (
-    EnumPrVerdict,
-    EnumRatchetDirection,
-    ModelRatchetReading,
-    ModelValidatorOutcome,
-    ModelVerdictFoldRequest,
-    ModelVerdictFoldResult,
-    ModelVerdictState,
 )
 from omnimarket.nodes.node_validator_verdict_reducer.overlay import (
     ModelRatchetDeclaration,

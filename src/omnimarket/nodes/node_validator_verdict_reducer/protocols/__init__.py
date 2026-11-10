@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict import (
+from omnimarket.models.model_validator_verdict import (
     ModelVerdictState,
 )
 

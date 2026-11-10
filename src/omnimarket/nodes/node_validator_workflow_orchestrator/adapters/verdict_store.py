@@ -11,11 +11,11 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from omnimarket.models.model_validator_verdict import (
+    ModelVerdictState,
+)
 from omnimarket.nodes.node_validator_verdict_reducer.adapters.verdict_store import (
     InMemoryVerdictStore,
-)
-from omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict import (
-    ModelVerdictState,
 )
 from omnimarket.nodes.node_validator_verdict_reducer.overlay import (
     ModelVerdictReducerOverlay,

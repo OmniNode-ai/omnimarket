@@ -14,13 +14,13 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.nodes.node_validator_verdict_reducer.handlers.handler_validator_verdict_reducer import (
-    HandlerValidatorVerdictReducer,
-)
-from omnimarket.nodes.node_validator_verdict_reducer.models.model_validator_verdict import (
+from omnimarket.models.model_validator_verdict import (
     EnumPrVerdict,
     ModelValidatorOutcome,
     ModelVerdictFoldRequest,
+)
+from omnimarket.nodes.node_validator_verdict_reducer.handlers.handler_validator_verdict_reducer import (
+    HandlerValidatorVerdictReducer,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.validator_selection import (
     choose,
