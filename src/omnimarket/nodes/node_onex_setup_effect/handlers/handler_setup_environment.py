@@ -8,6 +8,7 @@ model-PR implementation with its legacy state writer explicitly disabled.
 
 from __future__ import annotations
 
+import os
 import stat
 from pathlib import Path
 from typing import Literal
@@ -43,12 +44,19 @@ _Step = Literal["workspace", "user_config", "runtime_config", "identity", "model
 
 def _read(path: Path) -> str | None:
     try:
-        info = path.lstat()
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
         return None
-    if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
+    except OSError:
+        raise ValueError("Expected a bounded regular setup file") from None
+    with os.fdopen(fd, "rb") as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
+            raise ValueError("Expected a bounded regular setup file")
+        raw = source.read(1024 * 1024 + 1)
+    if len(raw) > 1024 * 1024:
         raise ValueError("Expected a bounded regular setup file")
-    return path.read_text()
+    return raw.decode()
 
 
 class HandlerSetupEnvironment:
@@ -190,10 +198,19 @@ class HandlerSetupEnvironment:
 
     def apply(self, plan: ModelSetupPlan) -> None:
         if self.name == "workspace":
+            if plan.workspace.exists() and not plan.workspace.is_dir():
+                raise ValueError(
+                    "Choose a directory; the existing workspace file was preserved"
+                )
+            owned = _read(plan.workspace / ".onex-setup-workspace")
+            legacy = _read(plan.workspace / ".omninode-dev-setup")
+            if owned is not None and owned != "onex setup\n":
+                raise ValueError("The workspace marker is foreign and was preserved")
             if (
                 plan.workspace.exists()
                 and any(plan.workspace.iterdir())
-                and _read(plan.workspace / ".onex-setup-workspace") is None
+                and owned != "onex setup\n"
+                and legacy != "This workspace was created by omninode-dev-setup.\n"
             ):
                 raise ValueError("Review the foreign workspace before onboarding")
             original.ensure_workspace(plan.workspace)

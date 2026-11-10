@@ -89,6 +89,7 @@ def test_installed_verify_observes_empty_install_without_writes(
     assert {
         "preflight",
         "workspace",
+        "workspace-repositories",
         "user_config",
         "runtime_config",
         "identity",

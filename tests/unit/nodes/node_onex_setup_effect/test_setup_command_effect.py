@@ -88,6 +88,12 @@ def test_workspace_and_tenant_environment_cannot_bleed_into_setup(
         "ONEX_CONFIG_DIR",
         "ONEX_TENANT_ID",
         "ONEX_TENANT_SLUG",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     )
     for name in names:
         monkeypatch.setenv(name, "INHERITED_SENTINEL")

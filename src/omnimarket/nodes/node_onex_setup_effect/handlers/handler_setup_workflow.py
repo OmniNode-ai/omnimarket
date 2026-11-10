@@ -153,10 +153,15 @@ class HandlerSetupWorkflow:
             from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
                 HandlerSetupPreflight,
             )
+            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workspace import (
+                HandlerSetupWorkspace,
+            )
 
             steps = (
                 HandlerSetupPreflight(require_tools=False),
                 HandlerSetupBaseTools(secrets=tuple((credentials or {}).values())),
+                HandlerSetupEnvironment(name="workspace", onex_home=onex_home),
+                HandlerSetupWorkspace(),
                 *(
                     HandlerSetupEnvironment(
                         name=name,
@@ -165,7 +170,6 @@ class HandlerSetupWorkflow:
                         model_step=model_step,
                     )
                     for name in (
-                        "workspace",
                         "user_config",
                         "runtime_config",
                         "identity",

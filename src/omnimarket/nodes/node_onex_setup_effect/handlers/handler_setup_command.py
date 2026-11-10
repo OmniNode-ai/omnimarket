@@ -63,6 +63,12 @@ class HandlerSetupCommand:
             "ONEX_CONFIG_DIR",
             "ONEX_TENANT_ID",
             "ONEX_TENANT_SLUG",
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_COMMON_DIR",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
         ):
             environment.pop(name, None)
         for name, value in tuple(environment.items()):
