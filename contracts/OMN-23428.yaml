@@ -23,7 +23,9 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23428-ac1-harness-failure-answered
-  description: The ten tests pass; TestFailingControl reads the run id chain broken when the overlay has no journal_upstream.
+  description: |-
+    The ten tests pass; TestFailingControl reads the run id chain broken when the overlay has no journal_upstream.
+    must-fail-control: impossible (test-only): this pull request adds a test and no omnimarket code; the changed value is the J8 overlay entry in the overlays repository (pull request 184), and the test's own failing controls build the overlay without it
   source: manual
   binds_ac:
   - AC1
