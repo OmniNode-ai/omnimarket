@@ -1,0 +1,22 @@
+name: node_topic_provision_dry_run_effect
+version: "0.1.0"
+description: "Topic provision dry run: lists the live broker topics and counts how many would exist under the provision rule, read-only"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_topic_provision_dry_run_effect: "omnimarket.nodes.node_topic_provision_dry_run_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "topic-provision", "read-only"]
+pack: "topic_hygiene"
+display_name: "Topic Provision Dry Run"
+node_role: "effect"

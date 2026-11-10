@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Example overlay for node_topic_provision_plan_compute.
+#
+# Copy to overlay.yaml and adjust. All values are placeholders; no host names.
+#
+# mode: the provision rule mode (all, profile, or profile_and_manifest).
+#   When set, this overrides the contract's config.rule.mode.
+# profile: the active runtime profile name (e.g. main, staging, ci).
+# lane_manifest: the list of contract names this lane provisions.
+#   Required for profile_and_manifest mode; must be non-empty.
+# contract_roots: directories to scan for contract.yaml files.
+# bootstrap_env: the environment variable name holding the broker address,
+#   used by the read-only dry run to count live topics.
+mode: profile_and_manifest
+profile: main
+lane_manifest:
+  - example-contract-a
+  - example-contract-b
+contract_roots:
+  - /path/to/contracts
+bootstrap_env: BROKER_ADDRESS
