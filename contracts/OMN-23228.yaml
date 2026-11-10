@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-23228
+title: The size-band falsifier selects a medium-request test when run with -k medium_stays_free
+summary: The size-band paid-rule test file parametrized its small and medium cases by prompt text, so the pytest selector medium_stays_free matched no test. The two cases now carry the ids small_stays_free and medium_stays_free, so the selector runs the medium case, which skips the paid rung and ends returned_to_caller. The test body, the contract and every bound are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23228-medium-selector
+  statement: The selector medium_stays_free chooses the medium-request case of the size-band paid-rule test.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the selector medium_stays_free chooses exactly one test in the size-band paid-rule file and it passes -- falsifier: `uv run pytest tests/unit/delegation/test_size_band_paid_rule.py -k medium_stays_free -q`'
+evidence_requirements:
+- kind: tests
+  description: The medium case is selected by name and passes.
+  command: uv run --frozen pytest tests/unit/delegation/test_size_band_paid_rule.py -k medium_stays_free -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23228-ac1-selector
+  description: Runs the size-band paid-rule file with the selector medium_stays_free; it selects one test and that test passes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_size_band_paid_rule.py -k medium_stays_free -q --no-cov
+    cwd: .
+- id: dod-omn23228-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23228 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_size_band_paid_rule.py -k medium_stays_free -q --no-cov
+    cwd: .
