@@ -1,0 +1,74 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23113
+title: The lane GitHub read wrapper asks the gateway cache before it spends a read unit from the budget
+summary: >-
+  Lanes repeatedly end saying their GitHub read budget ran out before they read a failing check. Measured on a lab host over 97 lanes: 206 charged GitHub reads against a budget of 8 per lane, 181 of them scm job-log reads, and 110 of 462 successful job-log reads were another window of a job already read. The lane wrapper keyed its cache on the exact argument list and charged one unit for any key miss, so another byte window or step of a job log the gateway already held cost a unit although the gateway serves it with no GitHub call. node_lane_github_budget_effect now runs onex scm job-log-cached with the same arguments before it reserves a unit; a hit is served and logged as action cache (no unit), and a non-zero exit, a timeout or a CLI without the verb falls through to the unchanged charged read. The bound of 8 is unchanged and nothing is muted.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23113-probe-before-charge
+    statement: >-
+      A job-log read the gateway cache can answer spends no budget unit, a read it cannot answer is charged exactly as before, and the quota consumers count only charged reads.
+    acceptance:
+      - id: AC1
+        statement: "AC1: omnimarket#5414 is titled with this ticket and carries its own contract file for it, and a real-CLI test of one window read spends one unit without the cache and zero units with it -- falsifier: uv run pytest of the lane read wrapper test files on the base and on the branch"
+      - id: AC2
+        statement: "AC2: with the branch installed on the launching host, the quota consumers (remote-lane wrapper, quota_consumers, queue-status) report fewer charged job-log reads per lane over the next hour than the 206 over 97 lanes measured -- falsifier: uv run pytest of the quota consumer read test over a recorded charge log plus the charge log counted per lane after install"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The wrapper's probe tests, the pre-dispatch tests and the budget tests, one file at a time, plus the quota consumer read test.
+    command: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23113-ac1-probe-tests
+    description: >-
+      The five probe tests pass on the branch: more windows of a held job spend no unit and make no GitHub call, a job the gateway does not hold is still charged and refused at the bound of 8, a CLI without the verb falls back to the charged read, and a hung probe is a miss. The named injected break (the probe disabled) makes two windows of one held job spend 2 units and the third refused with code 78; on origin/dev the probe file does not exist.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_gateway_cache_probe.py -q -p no:randomly --no-cov -n0
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_pre_dispatch.py -q -p no:randomly --no-cov -n0
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_lane_github_budget.py -q -p no:randomly --no-cov -n0
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23113-ac2-quota-consumer-read
+    description: >-
+      quota_consumers counts only allowed and fallback rows, so a cache-served window (action cache, no unit) is absent from the per-lane charged count. The recorded-charge-log test of the consumer passes on the branch. The per-lane count after install on the launching host is read at the local Done gate, because the launching host is not reachable from the hosted runner.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_lane_github_budget.py -k "remote_snapshot_counted_once_and_local_auth_cache_and_refusal_excluded" -q -p no:randomly --no-cov -n0
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_github_budget_effect/test_job_log_gateway_cache_probe.py -k "quota_consumers_count_one_charged_read" -q -p no:randomly --no-cov -n0
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23113-ac2-charge-log-after-install
+    description: >-
+      The charge log of the launching host, counted per lane after the branch is installed, shows fewer charged job-log reads per lane over one hour than 206 over 97 lanes. Runs at the local Done gate.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: test -s "${ONEX_STATE_DIR:-$OMNI_HOME/.onex_state}/gh-calls.log"
+  - id: dod-omn23113-integration-proof-onex-cli
+    description: >-
+      The integration proof: the installed onex CLI, not a test fixture, lists the job-log-cached verb the wrapper probes (a miss makes no GitHub call), and its own contract reader, handed the merge-base contract and this head's, answers with exactly one ADDED policy key, job_log_cache_probe_timeout_seconds, and nothing removed or changed, which is the whole of this change's contract effect. onex contract diff exits 2 on any difference, so the proof asserts on its output and never on its exit code. Hosted CI cannot run a local_done_gate item, so it binds no criterion.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          onex scm job-log-cached --help | grep -q "a miss makes no GitHub call" && git show "$(git merge-base origin/dev HEAD):src/omnimarket/nodes/node_lane_github_budget_effect/contract.yaml" > /tmp/omn23113-merge-base-contract.yaml && onex contract diff /tmp/omn23113-merge-base-contract.yaml src/omnimarket/nodes/node_lane_github_budget_effect/contract.yaml | tee /tmp/omn23113-contract-diff.txt | grep -q job_log_cache_probe_timeout_seconds && grep -q "Added: 1" /tmp/omn23113-contract-diff.txt && grep -q "Removed: 0" /tmp/omn23113-contract-diff.txt && grep -q "Changed: 0" /tmp/omn23113-contract-diff.txt
+        cwd: ${OMNI_HOME}/omnimarket

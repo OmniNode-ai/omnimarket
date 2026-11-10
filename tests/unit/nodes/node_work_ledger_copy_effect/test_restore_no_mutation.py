@@ -24,6 +24,7 @@ from omnimarket.nodes.node_work_ledger_copy_effect.models import (
     ModelSnapshotOverlay,
     ModelSnapshotResult,
 )
+from omnimarket.nodes.node_work_ledger_copy_effect.protocols import CopyStepError
 from tests.unit.nodes.node_work_ledger_copy_effect.support_snapshot import (
     RecordingRunner,
     assert_no_mutation,
@@ -37,7 +38,11 @@ _EXAMPLE = (
     Path(__file__).resolve().parents[4]
     / "src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.snapshot.example.yaml"
 )
-_ALLOWED = frozenset({"/usr/local/bin/example-export", "nc", "onex-ledger"})
+_APPEND = "/usr/local/bin/example-bus-append"
+_ALLOWED = frozenset({"/usr/local/bin/example-export", "nc", _APPEND})
+
+
+_ENVIRONMENT = {"ONEX_LEDGER_BUS_APPEND_COMMAND": f"{_APPEND} --bus-lane dev"}
 
 
 def _overlay(tmp_path: Path) -> ModelSnapshotOverlay:
@@ -57,7 +62,7 @@ def _runner(*, nc_exit: int = 1) -> RecordingRunner:
         {
             "/usr/local/bin/example-export": (0, _export()),
             "nc": (nc_exit, ""),
-            "onex-ledger": (0, ""),
+            _APPEND: (0, ""),
         }
     )
 
@@ -66,12 +71,12 @@ def _job_and_drill(
     tmp_path: Path, runner: RecordingRunner
 ) -> tuple[ModelSnapshotOverlay, ModelSnapshotResult, ModelDrillResult]:
     overlay = _overlay(tmp_path)
-    made = create_handler_work_ledger_snapshot(overlay, {}, run=runner).handle(
-        snapshot_request()
-    )
-    drilled = create_handler_work_ledger_restore_drill(overlay, {}, run=runner).handle(
-        drill_request(None)
-    )
+    made = create_handler_work_ledger_snapshot(
+        overlay, _ENVIRONMENT, run=runner, local_host=overlay.store.host
+    ).handle(snapshot_request())
+    drilled = create_handler_work_ledger_restore_drill(
+        overlay, _ENVIRONMENT, run=runner, local_host=overlay.drill.host
+    ).handle(drill_request(None))
     return overlay, made, drilled
 
 
@@ -95,7 +100,10 @@ def test_job_and_drill_pass_and_issue_only_allowed_commands(tmp_path: Path) -> N
         overlay.source.host,
         str(overlay.source.port),
     )
-    row = next(argv for argv in runner.commands if argv[0] == "onex-ledger")[-1]
+    sent = next(argv for argv in runner.commands if argv[0] == _APPEND)
+    assert sent[1:3] == ("--bus-lane", "dev")
+    assert sent[sent.index("--host") + 1] == overlay.report_host
+    (row,) = runner.rows_sent
     assert "| STATUS |" in row
     assert "outcome=drill-passed" in row
     assert "ticket=OMN-1 " in row.replace("|", "")
@@ -138,3 +146,42 @@ def test_the_export_text_is_what_the_snapshot_holds(tmp_path: Path) -> None:
     first = json.loads((run_dir / "topic.jsonl").read_text().splitlines()[0])
     assert first == {"seq": 1, "row_id": "id-1", "text": "row 1 | text"}
     assert overlay.store.host != overlay.source.host
+
+
+def test_error_chain_a_drill_report_with_no_bus_route_raises_naming_the_variable(
+    tmp_path: Path,
+) -> None:
+    runner = _runner()
+    overlay = _overlay(tmp_path)
+    create_handler_work_ledger_snapshot(overlay, {}, run=runner).handle(
+        snapshot_request()
+    )
+    with pytest.raises(
+        CopyStepError, match="ONEX_LEDGER_BUS_APPEND_COMMAND is not set"
+    ):
+        create_handler_work_ledger_restore_drill(overlay, {}, run=runner).handle(
+            drill_request(None)
+        )
+    assert not [argv for argv in runner.commands if argv[0] == _APPEND]
+
+
+def test_error_chain_a_refused_bus_append_raises_and_leaves_no_rows_file(
+    tmp_path: Path,
+) -> None:
+    runner = RecordingRunner(
+        {
+            "/usr/local/bin/example-export": (0, _export()),
+            "nc": (1, ""),
+            _APPEND: (65, ""),
+        }
+    )
+    overlay = _overlay(tmp_path)
+    create_handler_work_ledger_snapshot(overlay, {}, run=runner).handle(
+        snapshot_request()
+    )
+    with pytest.raises(CopyStepError, match="the ledger append exited 65"):
+        create_handler_work_ledger_restore_drill(
+            overlay, _ENVIRONMENT, run=runner
+        ).handle(drill_request(None))
+    sent = next(argv for argv in runner.commands if argv[0] == _APPEND)
+    assert not Path(sent[sent.index("--rows-file") + 1]).exists()

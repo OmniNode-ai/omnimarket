@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-23376
+title: The lab fill stops dispatching tickets whose work is already merged and closes them on evidence instead
+summary: The lab-fill dispatch plan and send gate read whether a merged change already names a ticket, from the PR watcher's state and the canonical clones' default branches (no GitHub read), and whether a lane already reported the ticket built with passing falsifiers. A ticket either names is not dispatched; it is handed to the closer with the evidence it holds. The fill's DoD-verify lane, which rebuilt a worktree and a virtual environment to find the work built, is the closer's work now. The switch of the frozen lab-fill script to these nodes is the separate move-and-delete change that waits on a release.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23376-no-lane-for-built-work
+  statement: The fill sends no lane for a ticket whose work a merged change or a lane's own passing report already carries, and the closer receives it with its evidence.
+  acceptance:
+  - id: AC1
+    statement: "AC1: before dispatch the fill reads whether a merged change already carries the ticket and skips it -- falsifier: uv run pytest over the fill dispatch tests with a ticket whose merged PR cites it fails today by dispatching it"
+  - id: AC2
+    statement: "AC2: a ticket a lane reports already built with passing falsifiers goes to the closer with that evidence and is not dispatched again -- falsifier: the same ticket dispatched twice in a day after rollout"
+evidence_requirements:
+- kind: tests
+  description: The lab fill plan, effect and selection node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute tests/nodes/node_lab_fill_effect tests/nodes/node_lab_fill_selection_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn23376-ac1-merged-ticket-skipped
+  description: A ticket a merged change names is not dispatched by the plan and goes to the closer; the send gate stops it too, the watcher's window and a stale watcher notwithstanding because the clones are read beside it. With the plan's closer rule replaced by one that reads no fact, the same ticket is dispatched on each of 48 runs and the first three tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_closer_route.py tests/nodes/node_lab_fill_effect/test_merged_history_lab_fill.py tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -q --no-cov -n 0 -p no:randomly -k "merged or clone or watcher or dod_verify"
+    cwd: .
+- id: dod-omn23376-ac2-built-report-to-closer
+  description: A TERMINAL that reports a ticket already built with a falsifiers=pass cell routes the ticket to the closer with the lane and its evidence, and the same ticket is not dispatched on any of 48 runs in a day. A report whose falsifiers did not pass, or that has no falsifiers cell, stops nothing.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_closer_route.py tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -q --no-cov -n 0 -p no:randomly -k "built or day"
+    cwd: .
+- id: dod-omn23376-chains
+  description: The golden chain (the contract's plan operation resolved the way the runtime resolves it) and the error chain (a malformed closer fact is refused; an unread merge state is never read as clear) over the plan and the clone reader.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_closer_route.py tests/nodes/node_lab_fill_effect/test_merged_history_lab_fill.py -q --no-cov -n 0 -p no:randomly -k "chain or unread or refuses"
+    cwd: .
+- id: dod-omn23376-deploy-readback
+  description: Deploy probe. The shared closer rule is present in the tree this change ships, read through gh api at the checked-out commit so hosted CI can run it before merge. It fails at a base that has no such rule.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/rules_lab_fill_closer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^def closer_route' > /dev/null
+    cwd: .
+- id: dod-omn23376-integration-proof
+  description: The pushed head ran the three lab fill node test directories on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23376 -- uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute tests/nodes/node_lab_fill_effect tests/nodes/node_lab_fill_selection_compute -q --no-cov -n 0 -p no:randomly'
+    cwd: .

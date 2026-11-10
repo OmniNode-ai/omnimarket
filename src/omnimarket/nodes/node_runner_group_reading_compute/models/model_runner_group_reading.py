@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.model_reading import EnumReadingVerdict
 
@@ -41,12 +41,16 @@ class EnumRepositoryVisibility(StrEnum):
 
 
 class ModelGroupRunner(BaseModel):
-    """One runner of a group, by name and labels."""
+    """One runner of a group, by name, labels and whether the organization lists it online.
+
+    ``online`` is None when the read did not carry the runner's status; that reads UNKNOWN for a subject that needs it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(min_length=1)
     labels: tuple[str, ...] = ()
+    online: bool | None = None
 
 
 class ModelGroupFact(BaseModel):
@@ -88,6 +92,55 @@ class ModelCanaryFacts(BaseModel):
     runs: tuple[ModelCanaryRun, ...] = ()
 
 
+class ModelMergeGroupJobFact(BaseModel):
+    """One completed merge-group job read from a run record: its repository, its result and the runner that ran it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    run_id: int
+    repository: str = Field(min_length=1)
+    repository_visibility: EnumRepositoryVisibility
+    conclusion: str = Field(min_length=1)
+    runner_name: str | None = None
+    runner_group_id: int | None = None
+
+
+class ModelPrivateQueuePool(BaseModel):
+    """One merge-queue runner pool of the overlay: its runners' name prefix, the host that carries it and how many must be online."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    runner_name_prefix: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    expected_online_members: int = Field(gt=0)
+
+
+class ModelPrivateQueueSettings(BaseModel):
+    """The overlay's private merge-queue pools: the group's name and the pools, which must sit on at least ``min_hosts`` hosts (OMN-23387)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    group_name: str = Field(min_length=1)
+    pools: tuple[ModelPrivateQueuePool, ...] = Field(min_length=1)
+    # A floor of two: a pool set that rests on one host stops the whole queue when that host does.
+    min_hosts: int = Field(ge=2)
+
+    @model_validator(mode="after")
+    def _pools_span_min_hosts(self) -> ModelPrivateQueueSettings:
+        hosts = sorted({p.host for p in self.pools})
+        if len(hosts) < self.min_hosts:
+            raise ValueError(
+                f"the merge-queue pools resolve to {len(hosts)} host(s) ({', '.join(hosts)}), "
+                f"fewer than the {self.min_hosts} the overlay requires"
+            )
+        prefixes = [p.runner_name_prefix for p in self.pools]
+        if len(set(prefixes)) != len(prefixes):
+            raise ValueError(
+                "two merge-queue pools declare the same runner name prefix"
+            )
+        return self
+
+
 class ModelRunnerGroupReadingSettings(BaseModel):
     """The overlay's settings; no default here is a policy."""
 
@@ -95,6 +148,7 @@ class ModelRunnerGroupReadingSettings(BaseModel):
 
     lab_runner_labels: tuple[str, ...] = Field(min_length=1)
     max_age_seconds: int = Field(gt=0)
+    private_queue: ModelPrivateQueueSettings | None = None
 
 
 class ModelRunnerGroupReadingRequest(BaseModel):
@@ -109,6 +163,7 @@ class ModelRunnerGroupReadingRequest(BaseModel):
     groups: tuple[ModelGroupFact, ...] = ()
     repositories: tuple[ModelRepositoryFact, ...] = ()
     canary: ModelCanaryFacts | None = None
+    merge_group_jobs: tuple[ModelMergeGroupJobFact, ...] | None = None
     read_failure: EnumGroupReadFailure | None = None
 
 

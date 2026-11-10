@@ -43,9 +43,18 @@ _C = EnumPilotBarComparator
 def compute_bar_hash(
     bar: Sequence[ModelPilotBarCriterion], algorithm: str = "sha256"
 ) -> str:
-    """Hash the bar's criteria in a canonical form: sorted by metric, sorted keys."""
+    """Hash the bar's criteria in a canonical form.
+
+    Sorted by metric, then comparator, then threshold, with sorted keys, so the
+    order of constraints that share a metric does not change the hash.
+    """
     canonical = json.dumps(
-        [c.model_dump(mode="json") for c in sorted(bar, key=lambda c: c.metric)],
+        [
+            c.model_dump(mode="json")
+            for c in sorted(
+                bar, key=lambda c: (c.metric, c.comparator.value, c.threshold)
+            )
+        ],
         sort_keys=True,
         separators=(",", ":"),
     )

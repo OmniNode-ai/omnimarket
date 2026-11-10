@@ -65,7 +65,7 @@ class ModelBaselineReading(BaseModel):
     name: NonEmptyStr
     kind: EnumBaselineMetricKind
     #: A count, or a time in seconds.
-    value: float = Field(ge=0)
+    value: float = Field(ge=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _count_is_whole(self) -> Self:
@@ -83,13 +83,21 @@ class ModelBaselineRuntimeResult(BaseModel):
     observed_at: AwareDatetime
     readings: tuple[ModelBaselineReading, ...]
 
+    @model_validator(mode="after")
+    def _names_unique(self) -> Self:
+        names = [r.name for r in self.readings]
+        duplicated = sorted({n for n in names if names.count(n) > 1})
+        if duplicated:
+            raise ValueError(f"runtime readings named twice: {duplicated}")
+        return self
+
 
 class ModelFrozenBaselineMetric(ModelBaselineReading):
     """One value of the frozen baseline, with the direction that is worse and the room allowed."""
 
     worse_when: EnumBaselineWorseWhen
     #: Absolute distance past the baseline that still reads as not worse.
-    tolerance: float = Field(ge=0)
+    tolerance: float = Field(ge=0, allow_inf_nan=False)
 
 
 class ModelFrozenBaseline(BaseModel):
@@ -128,9 +136,9 @@ class ModelBaselineComparison(BaseModel):
     name: NonEmptyStr
     kind: EnumBaselineMetricKind
     worse_when: EnumBaselineWorseWhen
-    tolerance: float
-    baseline_value: float
-    observed_value: float | None
+    tolerance: float = Field(allow_inf_nan=False)
+    baseline_value: float = Field(allow_inf_nan=False)
+    observed_value: float | None = Field(allow_inf_nan=False)
     outcome: EnumBaselineOutcome
 
 

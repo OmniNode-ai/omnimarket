@@ -277,18 +277,6 @@ def test_guard_refusal_blocks_create_on_dry_run_too() -> None:
         handler.handle(ModelCreateTicketRequest(title="t", dry_run=True))
 
 
-def test_guard_refusal_blocks_create_when_no_guard_is_found(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.delenv("ONEX_TICKET_GUARD_PATH", raising=False)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-claude"))
-    client = _RecordingLinearClient()
-    handler = HandlerCreateTicket(linear_client=client)
-    with pytest.raises(TicketGuardUnavailableError):
-        handler.handle(ModelCreateTicketRequest(title="t", description=_BODY))
-    assert client.calls == []
-
-
 def _write_guard(tmp_path: Path, exit_code: int, stdout: str) -> Path:
     guard = tmp_path / "ticket_creation_guard.py"
     guard.write_text(

@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_run_spill_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Spill the idle state of a pool host's runs to its disk, restore it after a boot, preserve a worktree's
+  uncommitted change as a patch and age the spill out. Moved from the host installer's RAM-filesystem upkeep
+  (RULING 2026-11-03T18:40:27Z) with three changes: a file is copied sparse (its holes stay holes, so a sparse test
+  fixture does not become a dense file on the disk), a directory whose name matches a declared skip name or pattern
+  (build output and pytest temp directories) is never entered, and a spill stops when the spill root would pass the
+  byte cap the host's overlay row declares. Every host, name, pattern and cap is a row of the node overlay.
+input_model:
+  name: ModelLabRunSpillRequest
+  module: omnimarket.nodes.node_lab_run_spill_effect.models.model_lab_run_spill
+output_model:
+  name: ModelLabRunSpillResult
+  module: omnimarket.nodes.node_lab_run_spill_effect.models.model_lab_run_spill
+handler:
+  name: HandlerLabRunSpill
+  module: omnimarket.nodes.node_lab_run_spill_effect.handlers.handler_lab_run_spill
+entrypoint:
+  name: NodeLabRunSpillEffect
+  module: omnimarket.nodes.node_lab_run_spill_effect.node
+execution:
+  deterministic: false
+  side_effects: true
+overlay:
+  file: overlay.yaml
+  environment_pin: ONEX_LAB_RUN_SPILL_OVERLAY
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+  - sparse-aware copies of run state files into the declared spill root
+  - copies of spilled run state back into an empty runs directory
+  - removal of spilled entries untouched for the declared days
+metadata:
+  ticket: OMN-23384
+  transport_type: in_process

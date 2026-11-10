@@ -185,6 +185,9 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_secret_request_refusal import (
+    load_secret_request_refusal,
+)
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecisionRequest,
 )
@@ -280,6 +283,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     TENANT_OVERLAY_TIER_NAME,
     describe_no_higher_tier_available,
     is_free_tier,
+    lead_backend_refs,
     next_eligible_tier,
     quota_blocked_backend_refs,
     resolve_task_class_max_escalations,
@@ -827,13 +831,20 @@ def inference_error_cause(
 
 
 def quality_result_cause(
-    *, no_rung_can_satisfy: bool, fail_category: str | None
+    *,
+    no_rung_can_satisfy: bool,
+    fail_category: str | None,
+    policy_refusal: bool = False,
 ) -> EnumEscalationCause:
     """Classify a refused answer on the bus path (OMN-21213).
 
     ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
-    which the lists declare as the terminal ``quality_veto``.
+    which the lists declare as the terminal ``quality_veto``. A rung's refusal
+    of a secret or exfiltration request on policy grounds is its own cause,
+    ``policy_refusal`` (OMN-23216), which the lists declare terminal.
     """
+    if policy_refusal:
+        return EnumEscalationCause.POLICY_REFUSAL
     if no_rung_can_satisfy:
         return EnumEscalationCause.QUALITY_VETO
     if fail_category == "rubric_failed":
@@ -4405,7 +4416,20 @@ class HandlerDelegationWorkflow:
                 for attempt in workflow.escalation_history
             )
         )
-        no_rung_can_satisfy = result.no_rung_can_satisfy or repeated_deterministic_floor
+        # OMN-22212, OMN-23216: a refused secret or exfiltration request is the
+        # right answer and no costlier rung improves it, so it ends the run on the
+        # bus as it does on the local port: the declared lists make the cause
+        # terminal and the typed reason is the contract's own.
+        policy_refusal = (
+            workflow.request is not None
+            and not quality_accepted
+            and load_secret_request_refusal().refuses(
+                workflow.request.prompt, result.failure_reasons
+            )
+        )
+        no_rung_can_satisfy = (
+            result.no_rung_can_satisfy or repeated_deterministic_floor or policy_refusal
+        )
         acceptance_decision, acceptance_reason = self._acceptance_decision(
             pre_filter_rejected=pre_filter_rejected,
             # OMN-21077: for a code class the acceptance criteria are the
@@ -4574,6 +4598,7 @@ class HandlerDelegationWorkflow:
         refusal_cause = quality_result_cause(
             no_rung_can_satisfy=no_rung_can_satisfy,
             fail_category=result.fail_category,
+            policy_refusal=policy_refusal,
         )
         retry_local_intents = (
             self._maybe_retry_local(
@@ -4612,7 +4637,9 @@ class HandlerDelegationWorkflow:
             # same refusal.
             error_retryable=not no_rung_can_satisfy,
             non_retryable_reason=(
-                "repeated_deterministic_floor"
+                load_secret_request_refusal().terminal_failure_reason
+                if policy_refusal
+                else "repeated_deterministic_floor"
                 if repeated_deterministic_floor
                 else _NO_RUNG_CAN_SATISFY_REASON
                 if no_rung_can_satisfy
@@ -4625,6 +4652,7 @@ class HandlerDelegationWorkflow:
             cause=quality_result_cause(
                 no_rung_can_satisfy=no_rung_can_satisfy,
                 fail_category=result.fail_category,
+                policy_refusal=policy_refusal,
             ),
         )
         terminal_failure_reason = decision.terminal_failure_reason
@@ -4963,6 +4991,26 @@ class HandlerDelegationWorkflow:
         ):
             return None
         workflow.local_retry_count += 1
+
+        # OMN-23329: a lead rung (the small local model placed first in its tier)
+        # that missed the quality gate is not retried on itself. Excluding it for
+        # the rest of this workflow lands the retry on the tier's next rung.
+        decision_in_flight = workflow.routing_decision
+        missed_ref = (
+            decision_in_flight.selected_backend_ref
+            if decision_in_flight is not None
+            else ""
+        )
+        if (
+            cause is EnumEscalationCause.QUALITY_GATE_REFUSED
+            and missed_ref
+            and missed_ref in lead_backend_refs()
+            and missed_ref not in workflow.transport_failed_backend_refs
+        ):
+            workflow.transport_failed_backend_refs = (
+                *workflow.transport_failed_backend_refs,
+                missed_ref,
+            )
 
         # Bank this rejected draft's spend + served tokens BEFORE the inference
         # reset below discards ``workflow.inference_*``. For a free tier the cost is

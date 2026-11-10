@@ -43,13 +43,17 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
     WorkLedgerReadError,
     load_work_ledger_query_source,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_page import (
+    rows_page,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_state_answer import (
     decode_cursor,
     encode_cursor,
+    hold_lines,
+    inbox_answer,
     load_hold_stale_after,
     parse_claims_since,
-    stale_hold,
-    stale_hold_row,
+    partition_stale_holds,
     state_answer,
 )
 
@@ -149,7 +153,34 @@ class HandlerWorkLedgerQuery:
         parsed = replay.parse_rows(records)
         if request.principal is not None:
             parsed = [r for r in parsed if r.token("principal") == request.principal]
-        answer = self._answer(request, parsed, now, self._hold_stale_after)
+        if (
+            request.query is EnumWorkLedgerQueryKind.ROWS
+            and request.page_size is not None
+        ):
+            try:
+                total, page, next_cursor = rows_page(
+                    parsed,
+                    lanes=request.lanes or ((request.lane,) if request.lane else ()),
+                    page_size=request.page_size,
+                    cursor=request.cursor,
+                    kinds=request.kinds,
+                    since=request.since,
+                    ticket=request.ticket,
+                    pr=request.pr,
+                    row_ref=request.row_ref,
+                    term=request.term,
+                )
+            except WorkLedgerReadError as exc:
+                return self._fail(base, str(exc), page_size=request.page_size)
+            answer = {
+                "matched": total,
+                "rows": tuple(page),
+                "lines": tuple(r.text for r in page),
+                "page_size": request.page_size,
+                "next_cursor": next_cursor,
+            }
+        else:
+            answer = self._answer(request, parsed, now, self._hold_stale_after)
         return base.model_copy(
             update={
                 **answer,
@@ -261,17 +292,16 @@ class HandlerWorkLedgerQuery:
                 surface=request.surface,
                 to=request.to,
             )
-            holds = [
-                h
-                for h in holds
-                if not stale_hold(h.until, h.row.row_ts, now, stale_after)
-            ]
-            return {"matched": len(holds), "holds": tuple(holds), "hold_counts": counts}
+            live, stale = partition_stale_holds(holds, now, stale_after)
+            return {
+                "matched": len(live),
+                "holds": tuple(live),
+                "hold_counts": counts,
+                "lines": hold_lines(live, stale, counts, now, stale_after),
+            }
         if kind is EnumWorkLedgerQueryKind.INBOX:
             lanes = request.lanes or ((request.lane,) if request.lane else ())
-            fresh = [r for r in rows if not stale_hold_row(r, now, stale_after)]
-            boxes = tuple(replay.inbox(fresh, lane) for lane in lanes)
-            return {"matched": sum(len(b.entries) for b in boxes), "inbox": boxes}
+            return inbox_answer(rows, lanes, now, stale_after)
         if kind is EnumWorkLedgerQueryKind.OPEN_CLAIMS:
             claims = replay.open_claims(
                 rows, lane=request.lane, claims_since=request.claims_since

@@ -53,6 +53,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_github_git_credential_effect/test_git_credential_helper.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn22613-broker-refusal-exit
+  description: A broker that refuses the helper's read of the result topic ends the helper with exit 69 and a bus unavailable line on stderr, with no traceback.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_github_git_credential_effect/test_git_credential_helper.py -q --no-cov -n 0 -p no:randomly -k broker_refusal
+    cwd: .
 - id: dod-omn22613-integration-proof
   description: A lab host pushes through the helper with no stored login reachable. GH_CONFIG_DIR points at a directory with no login and git's own helpers are cleared, so only the node's sealed, repository-narrowed token can authenticate the push. Hosted CI holds no broker login, so only the local Done gate runs this check.
   source: manual

@@ -30,6 +30,7 @@ from omnimarket.handlers.emission_sink import (
 )
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    find_node_overlay,
     load_structured_overlay,
 )
 from omnimarket.models.floor_17a import (
@@ -62,6 +63,11 @@ from omnimarket.models.floor_17a.model_customer_health import (
     ModelCustomerHealthRequest,
     ModelHealthReadingIn,
 )
+from omnimarket.models.floor_17a.model_mvp_launch import (
+    ModelMvpLaunchBlock,
+    ModelMvpLaunchOverlay,
+    ModelMvpLaunchRequest,
+)
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
@@ -78,14 +84,25 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     ModelLedgerFloorRead,
     read_ledger_facts,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources import (
+    CommandMvpRunSource,
+    ProtocolMvpRunSource,
+    RecordMvpRunSource,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.owner_source import (
+    check_owner_source,
+)
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
+    disk_expected_hosts,
     load_record,
+    merge_lanes,
     overlay_store_events,
     parse_time,
     read_admissions,
     read_broker_lag,
+    read_delegation_tickets,
     read_deploy_lag,
     read_disk,
     read_hosts,
@@ -93,15 +110,21 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     read_queue_age,
     read_runner_groups,
     read_watcher,
+    read_work_state,
     record_lanes,
     record_slots,
     record_stoppages,
+    work_state_lanes,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent import (
     deploy_agent_events,
     http_fetch,
     read_deploy_agent,
     record_deploy_agent,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.worklist_sources import (
+    projected_in_scope_prs,
+    read_worklist,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
     CanaryPublishError,
@@ -120,6 +143,9 @@ from omnimarket.nodes.node_lab_state_alarm_effect.handlers.slack_api import (
 )
 from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_customer_health import (
     HandlerCustomerHealth,
+)
+from omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_mvp_launch import (
+    HandlerMvpLaunch,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
@@ -140,22 +166,38 @@ OWN_CONTRACT = NODE_DIR / "contract.yaml"
 T = TypeVar("T")
 
 
-class ModelServeOverlay(BaseModel):
-    """The one fact this node reads from the publish node's overlay: where the page answers."""
+class ModelServeTarget(BaseModel):
+    """Another serving host of the publish node's overlay: where it answers (OMN-23081)."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     serve_url: str
 
 
+class ModelServeOverlay(BaseModel):
+    """The facts this node reads from the publish node's overlay: where the page answers, on every serving host."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    serve_url: str
+    extra_targets: tuple[ModelServeTarget, ...] = ()
+
+    @property
+    def serve_urls(self) -> tuple[str, ...]:
+        """Every serving host's address, the overlay's first host first: the served page is read from the first that answers."""
+        return (self.serve_url, *(t.serve_url for t in self.extra_targets))
+
+
 class ModelSourcePaths(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     record_relpath: str
+    work_state_relpath: str
     watcher_relpath: str
     controller_state_dir_env: str
     controller_state_dir_fallback: str
     controller_admissions_name: str
+    controller_state_name: str
     controller_admissions_tail_bytes: int
     friction_report_relpath: str
     runner_fleet_relpath: str
@@ -198,6 +240,24 @@ class ModelStatePaths(BaseModel):
     canary_clone: str
 
 
+class ModelMvpLaunchRuntime(BaseModel):
+    """The MVP launch block (OMN-23205): its overlay and the command route its run histories are read through."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    overlay: ModelOverlayRef
+    command_env: str = Field(min_length=1)
+    timeout_seconds: int = Field(gt=0)
+    # The scheduled read the command route answers from (a step of the floor publish) and the launch candidate manifest file.
+    onex_relpath: str = Field(min_length=1)
+    reads_relpath: str = Field(min_length=1)
+    candidate_relpath: str = Field(min_length=1)
+    read_timeout_seconds: int = Field(gt=0)
+    stage_deadline_seconds: int = Field(gt=0)
+    refresh_seconds: int = Field(gt=0)
+    reads_max_age_seconds: int = Field(gt=0)
+
+
 class ModelFloorSimpleRuntime(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -207,6 +267,7 @@ class ModelFloorSimpleRuntime(BaseModel):
     alarm_overlay: ModelOverlayRef
     # The customer health line's overlay (OMN-22923, 17b): which pieces make up the customer path and the line's own bound.
     health_overlay: ModelOverlayRef
+    mvp_launch: ModelMvpLaunchRuntime
     goal_scope_overlay: ModelOverlayRef
     serve_overlay: ModelOverlayRef
     served_record_name: str
@@ -291,7 +352,9 @@ class HandlerFloorSimpleTick:
         | None = None,
         deploy_agent_fetch: Callable[[str], Mapping[str, Any] | None] | None = None,
         ledger_source: ProtocolLedgerRowSource | None = None,
+        mvp_source: ProtocolMvpRunSource | None = None,
     ) -> None:
+        self._mvp_source = mvp_source
         self._ledger_source = ledger_source
         self._deploy_agent_fetch = deploy_agent_fetch
         self._sink = sink
@@ -500,6 +563,10 @@ class HandlerFloorSimpleTick:
             env,
             file_env=rt.lab_overlay.file_env,
         )
+        if lab_ov.owner_source is not None:
+            floor_path = self._floor_overlay_path(rt, env)
+            if floor_path is not None:
+                check_owner_source(floor_path, lab_ov.owner_source)
         goal_scope = self._load_goal_scope(rt, env)
         try:
             doc, canary = self._cycle(
@@ -554,6 +621,18 @@ class HandlerFloorSimpleTick:
             red_rule=doc.red_rule.state,
             emitted=emitted(),
             canary=canary,
+        )
+
+    @staticmethod
+    def _floor_overlay_path(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> Path | None:
+        """The file the floor overlay was loaded from, found the way ``load_structured_overlay`` finds it."""
+        pinned = env.get(rt.floor_overlay.file_env, "").strip()
+        return (
+            Path(pinned)
+            if pinned
+            else find_node_overlay(rt.floor_overlay.overlay_id, env)
         )
 
     def _close_abandoned(
@@ -658,8 +737,9 @@ class HandlerFloorSimpleTick:
         piece = floor_ov.rebuild.lab_state_piece
         ledger = self._read_ledger(rt, floor_ov, env, now)
         go = ledger.facts.go_given_through if ledger.facts is not None else None
+        go_pieces = ledger.facts.go_pieces if ledger.facts is not None else ()
         ledger_events = ledger.facts.events if ledger.facts is not None else ()
-        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events)
+        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events, go_pieces)
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -667,11 +747,18 @@ class HandlerFloorSimpleTick:
             or (row.error_age_s > floor_ov.error_drill_after_s)
         ):
             self._drill(step)
-            pre = self._receipts(sink, floor_ov, self._clock(), rt, go, ledger_events)
+            pre = self._receipts(
+                sink, floor_ov, self._clock(), rt, go, ledger_events, go_pieces
+            )
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
         record_path = home / rt.sources.record_relpath
+        work_state = read_work_state(home / rt.sources.work_state_relpath)
+        controller_dir = Path(
+            env.get(rt.sources.controller_state_dir_env, "").strip()
+            or Path.home() / rt.sources.controller_state_dir_fallback
+        )
 
         def read_all() -> tuple[
             dict[str, Any] | None, list[ModelLabSourceRead], WatcherReading | None
@@ -683,10 +770,6 @@ class HandlerFloorSimpleTick:
                 record = None
             except FloorSourceError:
                 record = None
-            controller_dir = Path(
-                env.get(rt.sources.controller_state_dir_env, "").strip()
-                or Path.home() / rt.sources.controller_state_dir_fallback
-            )
             watcher = read_watcher(
                 home / rt.sources.watcher_relpath,
                 now,
@@ -699,6 +782,7 @@ class HandlerFloorSimpleTick:
                 merge_window_minutes=floor_ov.numbers.merge_window_minutes,
                 scope=goal_scope,
                 conflict_states=lab_ov.conflict_merge_states,
+                projected=projected_in_scope_prs(work_state),
             )
             lane_dir = Path(
                 env.get(rt.sources.remote_lane_dir_env, "").strip()
@@ -709,7 +793,12 @@ class HandlerFloorSimpleTick:
                 read_runner_groups(
                     home / rt.sources.runner_fleet_relpath, lab_ov, record
                 ),
-                read_disk(lane_dir / rt.sources.pool_receipt, lab_ov),
+                read_disk(
+                    lane_dir / rt.sources.pool_receipt,
+                    lab_ov,
+                    now,
+                    disk_expected_hosts(record, lab_ov),
+                ),
                 read_queue_age(watcher, lab_ov),
                 read_deploy_lag(record, now, lab_ov),
                 read_broker_lag(
@@ -800,7 +889,9 @@ class HandlerFloorSimpleTick:
         )
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
-            lambda: self._receipts(sink, floor_ov, now, rt, go, ledger_events),
+            lambda: self._receipts(
+                sink, floor_ov, now, rt, go, ledger_events, go_pieces
+            ),
             lambda out: {
                 "chains": len(out.chains),
                 "findings": len(out.findings),
@@ -812,6 +903,22 @@ class HandlerFloorSimpleTick:
         )
         record_read_at = (
             parse_time(record["generated_at"]) if record is not None else None
+        )
+        worklist = read_worklist(
+            watcher_path=home / rt.sources.watcher_relpath,
+            controller_state_path=controller_dir / rt.sources.controller_state_name,
+            projection=work_state,
+            scope=goal_scope,
+            overlay=floor_ov.worklist,
+            excluded_classes=floor_ov.numbers.excluded_pr_classes,
+            conflict_states=lab_ov.conflict_merge_states,
+            now=now,
+        )
+        delegation_spec = floor_ov.causes.delegation_idle
+        delegation_tickets = (
+            read_delegation_tickets(work_state, delegation_spec)
+            if delegation_spec is not None
+            else None
         )
         floor_input = ModelFloorSimpleInput(
             now=now,
@@ -833,7 +940,10 @@ class HandlerFloorSimpleTick:
                 home / rt.sources.friction_report_relpath
             ),
             stoppages=record_stoppages(record) if record else (),
-            lanes=record_lanes(record) if record else (),
+            lanes=merge_lanes(
+                record_lanes(record) if record else (),
+                work_state_lanes(work_state) if work_state else (),
+            ),
             lab=lab,
             receipts=receipts,
             receipts_covered_s=rt.state.emission_window_hours * 3600,
@@ -846,12 +956,26 @@ class HandlerFloorSimpleTick:
             shadows=ledger.facts.shadows if ledger.facts is not None else (),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
+            go_pieces=go_pieces,
             sources_read={
                 "floor_record": record is not None,
+                "work_state_projection": work_state is not None,
                 "pull_request_watcher": watcher is not None,
                 "goal_scope": goal_scope is not None,
                 "ledger": ledger.facts is not None,
+                **(
+                    {"worklist": worklist is not None}
+                    if floor_ov.worklist is not None
+                    else {}
+                ),
+                **(
+                    {"delegation_tickets": delegation_tickets is not None}
+                    if delegation_spec is not None
+                    else {}
+                ),
             },
+            worklist=worklist,
+            delegation_tickets=delegation_tickets,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
         )
@@ -864,6 +988,7 @@ class HandlerFloorSimpleTick:
             },
         )
         doc = self._with_health(rt, env, doc, floor_ov, step)
+        doc = self._with_mvp_launch(rt, env, home, doc, floor_ov, step)
         payload = {
             "lab_reads": [r.model_dump(mode="json") for r in reads],
             "floor_input": floor_input.model_dump(mode="json"),
@@ -941,6 +1066,77 @@ class HandlerFloorSimpleTick:
         )
         return doc.model_copy(update={"health": health})
 
+    def _with_mvp_launch(
+        self,
+        rt: ModelFloorSimpleRuntime,
+        env: Mapping[str, str],
+        home: Path,
+        doc: ModelFloorSimple,
+        floor_ov: ModelFloorSimpleOverlay,
+        step: Callable[..., Any],
+    ) -> ModelFloorSimple:
+        """Add the MVP launch block (OMN-23205, plan task M1), read from the producers' scheduled runs.
+
+        An overlay that cannot be read leaves every one of the 17 readings NOT WORKING with the reason, never absent and
+        never WORKING; the floor still publishes. A source that cannot be read is that reading's NOT WORKING reason.
+        """
+        try:
+            mvp_ov = load_structured_overlay(
+                rt.mvp_launch.overlay.overlay_id,
+                ModelMvpLaunchOverlay,
+                env,
+                file_env=rt.mvp_launch.overlay.file_env,
+            )
+        except NodeOverlayError as exc:
+            return doc.model_copy(
+                update={
+                    "mvp_launch": HandlerMvpLaunch.refused(
+                        now=doc.generated_at,
+                        max_age_s=floor_ov.freshness_max_age_s,
+                        reason="overlay-unreadable",
+                        detail=type(exc).__name__,
+                    )
+                }
+            )
+        command = env.get(rt.mvp_launch.command_env, "").strip()
+        source = self._mvp_source or (
+            CommandMvpRunSource(command, rt.mvp_launch.timeout_seconds)
+            if command
+            else RecordMvpRunSource(
+                home / rt.mvp_launch.reads_relpath,
+                home / rt.mvp_launch.candidate_relpath,
+                rt.mvp_launch.reads_max_age_seconds,
+                doc.generated_at,
+            )
+        )
+
+        def decide() -> ModelMvpLaunchBlock:
+            specs = {s.id: s for s in (*mvp_ov.readings, *mvp_ov.scenarios)}
+            histories = {
+                i: source.read_history(s)
+                for i, s in specs.items()
+                if s.kind == "scheduled"
+            }
+            return HandlerMvpLaunch().handle(
+                ModelMvpLaunchRequest(
+                    now=doc.generated_at,
+                    overlay=mvp_ov,
+                    histories=histories,
+                    candidate=source.read_candidate(),
+                )
+            )
+
+        block: ModelMvpLaunchBlock = step(
+            "node_product_floor_verdict_compute:decide_mvp_launch",
+            decide,
+            lambda out: {
+                "readings": len(out.readings),
+                "named": len(out.named),
+                "working": int(out.state == "WORKING"),
+            },
+        )
+        return doc.model_copy(update={"mvp_launch": block})
+
     @staticmethod
     def _drill(step: Callable[..., Any]) -> None:
         """One defined fault through the real reader: a corrupt floor record payload."""
@@ -988,6 +1184,7 @@ class HandlerFloorSimpleTick:
         rt: ModelFloorSimpleRuntime,
         go: int | None,
         ledger_events: tuple[ModelNodeEmission, ...],
+        go_pieces: tuple[int, ...] = (),
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
         # A chain is read whole: the closing failure of an abandoned start is stamped the bound after the start, so
@@ -1008,6 +1205,7 @@ class HandlerFloorSimpleTick:
                     p.piece
                     for p in ov.pieces
                     if (go is not None and p.piece <= go)
+                    or p.piece in go_pieces
                     or p.piece in ov.rebuild.step0_pieces
                 }
                 | {e.piece for e in emissions}
@@ -1039,15 +1237,19 @@ class HandlerFloorSimpleTick:
             return self._served
 
         def read() -> set[str] | None:
-            url = self._served_url(rt, env)
-            if url is None:
-                return None
-            return fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+            for url in self._served_urls(rt, env):
+                ids = fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+                if ids is not None:
+                    return ids
+            return None
 
         return read
 
     @staticmethod
-    def _served_url(rt: ModelFloorSimpleRuntime, env: Mapping[str, str]) -> str | None:
+    def _served_urls(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> tuple[str, ...]:
+        """The served record's address on each serving host, in the overlay's order; empty when the overlay is unread."""
         try:
             serve = load_structured_overlay(
                 rt.serve_overlay.overlay_id,
@@ -1056,8 +1258,10 @@ class HandlerFloorSimpleTick:
                 file_env=rt.serve_overlay.file_env,
             )
         except NodeOverlayError:
-            return None
-        return serve.serve_url.rstrip("/") + "/" + rt.served_record_name
+            return ()
+        return tuple(
+            url.rstrip("/") + "/" + rt.served_record_name for url in serve.serve_urls
+        )
 
     @staticmethod
     def _planted_offline(
@@ -1127,12 +1331,16 @@ class HandlerFloorSimpleTick:
             return "skipped_drill"
         read = self._served_times
         if read is None:
-            url = self._served_url(rt, env)
-            if url is None:
+            urls = self._served_urls(rt, env)
+            if not urls:
                 return "unpublished_no_serve_address"
 
             def read_served() -> tuple[datetime | None, datetime | None] | None:
-                return fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                for url in urls:
+                    times = fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                    if times is not None:
+                        return times
+                return None
 
             read = read_served
         times = read()

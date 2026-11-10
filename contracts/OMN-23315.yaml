@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23315
+title: The beta board is served as a web page on the lab beside the factory floor, from omnimarket, with no part of it in the cloud repository
+summary: node_beta_board_effect reads an overlay that declares the milestone's criteria, carriers, probes, ledger readings and serving hosts, reads each probe's finished runs through the source-control node and the ledger's newest rows, computes each criterion's state (pass, fail, stale, unread), since when and owner ticket, and publishes beta.html and beta-board.json to the web server of every host the overlay lists, beside the factory floor. The page lists the probes still read from a cloud repository. No file of the cloud repository changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23315-beta-board
+  statement: The beta board is a page on the lab hosts that serve the factory floor, computed in omnimarket from an overlay and from readings, with nothing of it added to the cloud repository.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an omnimarket node holds the beta board''s criteria, carriers and probes as an overlay (no hard-coded ids) and computes each criterion''s state from readings on the bus and the ledger -- falsifier: uv run pytest tests -q -k beta_board in omnimarket, failing with a criterion''s reading removed'
+  - id: AC2
+    statement: 'AC2: the board is served as a web page on the same lab hosts and the same way as the factory floor (h051 and its h053 backup), with each criterion''s state, since when, and its owner ticket -- falsifier: curl of the served beta board page on both hosts returns every M4 criterion with a state and a reading age'
+  - id: AC3
+    statement: 'AC3: nothing of the new board is added to the cloud repository; it reads that repository only where a probe has not moved yet, and names each such probe -- falsifier: the PR diff touches no cloud-repository file, and the page lists probes still read from there'
+evidence_requirements:
+- kind: tests
+  description: The beta board tests pass, including the removed-reading control
+  command: uv run --frozen pytest tests/nodes/node_beta_board_effect tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23315-beta-board-tests
+  description: Runs the beta board tests (the state rules with a reading removed, the readers, the golden chain and the error chains) and the publisher's step-order tests.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_beta_board_effect tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov
+    cwd: .
+- id: dod-omn23315-no-cloud-repository-file
+  description: The change set names no file of the cloud repository; the page lists the probes still read from there (the page test asserts the list).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_beta_board_effect/test_golden_chain_beta_board.py -k cloud -q --no-cov
+    cwd: .
+- id: dod-omn23315-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23315 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_beta_board_effect -q --no-cov
+    cwd: .

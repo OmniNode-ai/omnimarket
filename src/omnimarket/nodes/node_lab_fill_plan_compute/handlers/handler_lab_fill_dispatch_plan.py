@@ -26,6 +26,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cmp_to_key
 
+from omnimarket.handlers.rules_lab_fill_closer import closer_route
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillCloserRoute
+
 from ..models import (
     ModelLabFillDispatchItem,
     ModelLabFillDispatchPlanRequest,
@@ -301,6 +304,14 @@ def _class_rank(name: str, cfg: ModelLabFillPlanConfig) -> int:
     return classes.index(name) if name in classes else -1
 
 
+def _machinery_segment(
+    candidate: dict[str, object], priority: Mapping[str, int]
+) -> int:
+    """0 ranks before machinery by tier, 1 with it (machinery included), 2 after it."""
+    delta = priority[str(candidate["kind"])] - priority[MACHINERY]
+    return 0 if delta < 0 else 1 if delta == 0 else 2
+
+
 def _compare(
     x: dict[str, object],
     y: dict[str, object],
@@ -312,19 +323,23 @@ def _compare(
     by_gate = int(truthy(x.get("gated"))) - int(truthy(y.get("gated")))
     if by_gate:
         return by_gate
-    # Machinery is ranked against every kind by the contract's tier order alone (OMN-22413), so the
-    # class and landing ranks judge only the pairs that hold no machinery lane.
-    if MACHINERY not in (x["kind"], y["kind"]):
-        by_class = _class_rank(lane_class(x, cfg), cfg) - _class_rank(
-            lane_class(y, cfg), cfg
-        )
-        if by_class:
-            return by_class
-        by_landing = int(not truthy(x.get("landing"))) - int(
-            not truthy(y.get("landing"))
-        )
-        if by_landing:
-            return by_landing
+    # Machinery is ranked against every kind by the contract's tier order alone (OMN-22413). Each lane
+    # sits before, with, or after machinery's own rank, and that segment is the next sort key, so the
+    # class and landing ranks only order lanes inside one segment and the order stays transitive under
+    # any tier_order. Machinery leads the lanes that share its rank.
+    by_segment = _machinery_segment(x, priority) - _machinery_segment(y, priority)
+    if by_segment:
+        return by_segment
+    if MACHINERY in (x["kind"], y["kind"]):
+        return int(y["kind"] == MACHINERY) - int(x["kind"] == MACHINERY)
+    by_class = _class_rank(lane_class(x, cfg), cfg) - _class_rank(
+        lane_class(y, cfg), cfg
+    )
+    if by_class:
+        return by_class
+    by_landing = int(not truthy(x.get("landing"))) - int(not truthy(y.get("landing")))
+    if by_landing:
+        return by_landing
     by_kind = priority[str(x["kind"])] - priority[str(y["kind"])]
     if by_kind:
         return by_kind
@@ -348,6 +363,7 @@ class HandlerLabFillDispatchPlan:
         cfg = request.config
         fenced = set(request.fenced)
         skipped: list[ModelLabFillSkipEntry] = []
+        routed: list[ModelLabFillCloserRoute] = []
         ok: list[dict[str, object]] = []
         for candidate in request.candidates:
             if (
@@ -360,7 +376,23 @@ class HandlerLabFillDispatchPlan:
             if why:
                 skipped.append(_entry(candidate, cfg, why))
             elif isinstance(candidate, dict):
-                ok.append(normalize_pr(candidate))
+                # OMN-23376: work a merged change or a lane's own report already carries is the closer's, not a lane's.
+                ticket = text_of(candidate.get("ticket"))
+                route = closer_route(
+                    ticket,
+                    text_of(candidate.get("kind")),
+                    merged_prs=request.merged_prs.get(ticket, ()),
+                    built=request.built_reports,
+                    exempt_kinds=request.closer_exempt_kinds,
+                    closer=request.closer,
+                )
+                if route is None:
+                    ok.append(normalize_pr(candidate))
+                elif ticket not in {r.ticket for r in routed}:
+                    routed.append(route)
+                    skipped.append(_entry(candidate, cfg, route.reason.value))
+                else:
+                    skipped.append(_entry(candidate, cfg, "duplicate"))
         # A stable sort keeps the approved file's value order inside the approved tier.
         priority = kind_priority(request.machinery or machinery_policy())
         ok.sort(key=cmp_to_key(lambda x, y: _compare(x, y, priority, cfg)))
@@ -511,4 +543,6 @@ class HandlerLabFillDispatchPlan:
             skipped=tuple(skipped),
             deferred=tuple(deferred),
             budget=budget,
+            # Set only when there is a route, so a plan with none answers the keys the workflow reads today.
+            **({"closer": tuple(routed)} if routed else {}),
         )
