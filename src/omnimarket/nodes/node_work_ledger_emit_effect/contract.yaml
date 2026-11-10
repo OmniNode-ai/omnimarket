@@ -9,9 +9,12 @@ description: >
   rolling-ledger row, types it (a pure parse into one of the eleven canonical
   row-type events) and hands the event to node_event_emit_effect: the local
   spool outbox, never-drop for duty_critical topics, drained to the lab bus by
-  the path every hook event already uses. This node holds no Kafka client and no
-  producer code; the skill and the onex-ledger dual write call it and never
-  reach the bus directly. The markdown file stays authoritative in stage 1.
+  the path every hook event already uses. OMN-23452: the broker it drains to is the
+  one this node's contract overlay declares (event_bus, resolved by
+  resolve_dialable_broker), never KAFKA_BOOTSTRAP_SERVERS; a node with no declaration
+  answers a typed broker_not_declared result naming the overlay, and the row stays on
+  the spool. The skill and the onex-ledger dual write call this node and never reach
+  the bus directly. The markdown file stays authoritative in stage 1.
 
 handler:
   module: omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit

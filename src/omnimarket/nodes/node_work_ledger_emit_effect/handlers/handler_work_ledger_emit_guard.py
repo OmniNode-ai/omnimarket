@@ -18,7 +18,8 @@ THE RULE. An emit is refused when BOTH hold:
    production write and, through SystemExit, restarted the runtime every few minutes
    (OMN-17427).
 2. The bus the emit would publish through is real: ``KAFKA_BOOTSTRAP_SERVERS`` names a
-   host that is not loopback. Spool-only mode still persists the row before resolving
+   host that is not loopback, or the broker the node's contract overlay declares (OMN-23452)
+   names a non-loopback host. Spool-only mode still persists the row before resolving
    a publish adapter; a later invocation can drain that row to the shared broker.
    It therefore cannot remove the test signal (OMN-21338).
 
@@ -35,7 +36,12 @@ import argparse
 import os
 import sys
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
+from omnimarket.handlers.bus_binding.node_broker import resolve_dialable_broker
 from omnimarket.handlers.network_bindings import network_hosts
+from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_declared_broker_emit import (
+    NODE_NAME,
+)
 
 GUARD_NAME = "ledger-test-write-guard"
 TEST_CONTEXT_ENV = "ONEX_TEST_CONTEXT"
@@ -70,6 +76,14 @@ class HandlerWorkLedgerEmitGuard:
     def real_bus_host(cls) -> str | None:
         """The first non-loopback broker host the emit would publish to, else None."""
         for server in os.environ.get(BOOTSTRAP_ENV, "").split(","):
+            host = cls._server_host(server).lower()
+            if host not in {"", *network_hosts("loopback.hosts")}:
+                return host
+        try:
+            binding = resolve_dialable_broker(NODE_NAME)
+        except LabRunBusError:
+            return None
+        for server in (binding.bootstrap_servers or "").split(","):
             host = cls._server_host(server).lower()
             if host not in {"", *network_hosts("loopback.hosts")}:
                 return host
