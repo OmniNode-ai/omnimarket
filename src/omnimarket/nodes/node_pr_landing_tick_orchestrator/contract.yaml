@@ -87,6 +87,14 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
     failure: "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
   external_trigger: "A compare command from the floor reading or a replay run; decider, writer and publisher are injected."
+# The landing snapshot step's tick record, which this node's topic reader reads under its
+# overlay's consumer group. It is a consumed event, not an event_bus subscription, so the
+# runtime wires no handler subscription for it; the topic itself is provisioned from the
+# snapshot step's event_bus.publish_topics (OMN-23494).
+consumed_events:
+  - event_type: ModelLandingTickRecord
+    topic: "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
+    description: The landing snapshot step's tick record, read by this node's topic reader under its overlay's consumer group; declared as a consumed event and not in event_bus.subscribe_topics so the runtime wires no handler subscription for it (OMN-23494).
 descriptor:
   node_archetype: orchestrator
   purity: side_effecting
