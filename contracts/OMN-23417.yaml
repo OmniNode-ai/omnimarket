@@ -61,6 +61,15 @@ dod_evidence:
   - check_type: command
     check_value: 'env CLOSING_ROW_PARITY_BOOTSTRAP="$CLOSING_ROW_PARITY_BOOTSTRAP" uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py -m closing_row_parity -q --no-cov -p no:randomly'
     cwd: .
+- id: dod-omn23417-join-fill-reader
+  description: Runs the join of the stopped lane's needs cell and the fill that continues it (the fill's reader is lane contfill's omnimarket#5699 change); the pin reads the fill carrying the cell only inside the quoted rows, and the planted renames read broken.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_needs_fill_reader.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn23417-integration-proof-lab
   description: Runs the stopped-lane reader over the ledger the lab drill's lane wrote, at the pushed head on a lab host through the lab work runner. The drill itself (a real lane ending blocked, its TERMINAL read back) is recorded in the pull request's Lab line.
   source: manual
