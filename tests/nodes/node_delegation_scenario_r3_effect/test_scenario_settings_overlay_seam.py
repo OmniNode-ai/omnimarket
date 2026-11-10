@@ -19,6 +19,9 @@ from omnimarket.handlers.delegation_scenario_settings import (
     load_settings_overlay,
     read_host_env_names,
 )
+from omnimarket.models.model_delegation_scenario_settings import (
+    ModelScenarioSettingsOverlay,
+)
 from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers import (
     handler_scenario_r2 as r2,
 )
@@ -41,7 +44,7 @@ R3_RUNTIME = r3.load_runtime()
 R5_RUNTIME = r5.load_runtime()
 
 
-def _overlay(node: str, relpath: str | None):  # type: ignore[no-untyped-def]
+def _overlay(node: str, relpath: str | None) -> ModelScenarioSettingsOverlay:
     assert relpath is not None, f"{node} declares no settings overlay"
     return load_settings_overlay(NODES / node / relpath)
 
