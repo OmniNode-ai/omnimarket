@@ -49,6 +49,14 @@ class ModelSeamAnswer(BaseModel):
     crossing: EnumSeamCrossing
     elapsed_ms: int | None = Field(default=None, ge=0)
     detail: str = ""
+    #: Ms from the start of the send to the broker acknowledging it.
+    send_ack_ms: int | None = Field(default=None, ge=0)
+    #: Ms from the start of the send to the correlated reply arriving after the deadline, inside
+    #: the listen window.
+    late_reply_ms: int | None = Field(default=None, ge=0)
+    #: The reply envelope's own creation time minus the command envelope's creation time, in ms;
+    #: may be negative with clock skew.
+    reply_stamp_ms: int | None = None
 
 
 class ModelSeamReading(BaseModel):
@@ -61,6 +69,16 @@ class ModelSeamReading(BaseModel):
     deadline_seconds: float
     correlation_id: str
     detail: str = ""
+    #: Ms from the start of the send to the broker acknowledging it.
+    send_ack_ms: int | None = Field(default=None, ge=0)
+    #: Ms from the start of the send to the correlated reply arriving after the deadline, inside
+    #: the listen window.
+    late_reply_ms: int | None = Field(default=None, ge=0)
+    #: The reply envelope's own creation time minus the command envelope's creation time, in ms;
+    #: may be negative with clock skew.
+    reply_stamp_ms: int | None = None
+    #: How long past the deadline the probe kept reading for a late reply; 0 listened no longer.
+    late_listen_seconds: float = Field(default=0.0, ge=0)
 
 
 class ModelSeamDeadlineResult(BaseModel):
