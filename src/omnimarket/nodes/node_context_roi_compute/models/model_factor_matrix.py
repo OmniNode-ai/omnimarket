@@ -163,6 +163,53 @@ def build_canonical_factor_matrix() -> tuple[ModelFactorArm, ...]:
     )
 
 
+def build_code_eval_context_arms() -> tuple[ModelFactorArm, ...]:
+    """The three context arms a code-eval trial is sent with (OMN-23629).
+
+    Kept apart from the canonical matrix on purpose: the context-ROI battery runs
+    every canonical arm, so a code-eval arm added there would change what the
+    battery runs. The baseline arm is the canonical ``off`` arm, reused, so the
+    two sets share one vocabulary: ``EnumArmLabel`` over ``EnumContextFactor``.
+
+    Order: off, exemplar_only, tiered_pack.
+    """
+    return (
+        arm_by_label(build_canonical_factor_matrix(), EnumArmLabel.OFF),
+        ModelFactorArm(
+            label=EnumArmLabel.EXEMPLAR_ONLY,
+            factors=(EnumContextFactor.EXEMPLAR,),
+            required_factors=(EnumContextFactor.EXEMPLAR,),
+            optional_factors=(),
+            is_negative_control=False,
+            notes=(
+                "Exemplar factor only (code-eval arm, OMN-23629). "
+                "EXEMPLAR required: an arm that asks for an exemplar and gets "
+                "none is unscorable."
+            ),
+        ),
+        ModelFactorArm(
+            label=EnumArmLabel.TIERED_PACK,
+            factors=(
+                EnumContextFactor.INVARIANTS,
+                EnumContextFactor.CANONICAL_SHAPES,
+                EnumContextFactor.EXEMPLAR,
+                EnumContextFactor.ARCHITECTURE_PATTERNS,
+            ),
+            required_factors=(EnumContextFactor.EXEMPLAR,),
+            optional_factors=(
+                EnumContextFactor.INVARIANTS,
+                EnumContextFactor.CANONICAL_SHAPES,
+                EnumContextFactor.ARCHITECTURE_PATTERNS,
+            ),
+            is_negative_control=False,
+            notes=(
+                "The delegation_payload_local tiers (code-eval arm, OMN-23629). "
+                "EXEMPLAR required; the other tiers optional (warn if absent)."
+            ),
+        ),
+    )
+
+
 def arm_by_label(
     matrix: tuple[ModelFactorArm, ...],
     label: EnumArmLabel,
@@ -177,4 +224,5 @@ def arm_by_label(
 __all__ = [
     "arm_by_label",
     "build_canonical_factor_matrix",
+    "build_code_eval_context_arms",
 ]

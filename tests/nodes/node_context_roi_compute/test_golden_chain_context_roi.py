@@ -38,6 +38,7 @@ from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
 from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
     arm_by_label,
     build_canonical_factor_matrix,
+    build_code_eval_context_arms,
 )
 from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import (
     EnumFailureStage,
@@ -317,6 +318,7 @@ class TestFactorMatrix:
         self, matrix: tuple[ModelFactorArm, ...]
     ) -> None:
         labels = {arm.label for arm in matrix}
+        labels |= {arm.label for arm in build_code_eval_context_arms()}
         assert labels == set(EnumArmLabel)
 
     def test_matrix_canonical_order(self, matrix: tuple[ModelFactorArm, ...]) -> None:

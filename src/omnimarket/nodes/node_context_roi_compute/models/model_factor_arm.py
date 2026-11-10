@@ -41,6 +41,9 @@ class EnumArmLabel(StrEnum):
     STRUCTURED_CONTEXT = "structured_context"
     STRUCTURED_PLUS_GUIDANCE_CHUNKS = "structured_plus_guidance_chunks"
     FULL_GUIDANCE_NEGATIVE_CONTROL = "full_guidance_negative_control"
+    # Code-eval context arms (OMN-23629)
+    EXEMPLAR_ONLY = "exemplar_only"
+    TIERED_PACK = "tiered_pack"
 
 
 class ModelFactorArm(BaseModel):
