@@ -13,6 +13,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The owner map publisher, its projection read back with the controller's state file deleted, and the board's work list built from it pass."
     command: "uv run --frozen pytest tests/nodes/node_floor_owner_map_publish_effect tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov"
+  - kind: "tests"
+    description: "The work-state publication, the lane list read from the projection with the work-state file absent, and a lane list older than its bound read as a cause."
+    command: "uv run --frozen pytest tests/nodes/node_work_state_projection_effect tests/nodes/node_floor_simple_effect/test_work_state_lanes_floor_simple.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -48,5 +51,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/nodes/node_floor_owner_map_publish_effect tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn23391-lane-list-projection"
+    description: "AC2, lane list input: the work-state node publishes its projection with the time it was built (refused over its byte bound, never cut), the floor draws its lanes from the projection with the work-state file absent, and a lane list older than its bound is a cause on the board and draws no lane."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_work_state_projection_effect tests/nodes/node_floor_simple_effect/test_work_state_lanes_floor_simple.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
