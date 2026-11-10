@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23452-declared-broker
-  description: Runs the declared-broker tests. The test module imports handler_work_ledger_declared_broker_emit and patches declared_kafka_bus, both absent at the merge base, so the file fails there; with the variable unset the base answers KeyError for KAFKA_BOOTSTRAP_SERVERS.
+  description: Runs the declared-broker tests. The test module patches declared_kafka_bus of container_work_ledger_emit_effect, absent at the merge base, so the file fails there; with the variable unset the base answers KeyError for KAFKA_BOOTSTRAP_SERVERS.
   source: manual
   binds_ac:
   - AC1

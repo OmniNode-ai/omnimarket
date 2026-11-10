@@ -19,8 +19,8 @@ import yaml
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.handlers.network_bindings import network_host, network_port
-from omnimarket.nodes.node_work_ledger_emit_effect.handlers import (
-    handler_work_ledger_declared_broker_emit as declared,
+from omnimarket.nodes.node_work_ledger_emit_effect.container import (
+    container_work_ledger_emit_effect as declared,
 )
 
 _AMBIENT = (
@@ -43,6 +43,8 @@ def install_emit_lane(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     event_bus: dict[str, object] | None,
+    *,
+    broker: str | None = None,
 ) -> Path:
     """Write the lane declaration and the emit node's overlay (``event_bus`` omitted when None)."""
     for name in _AMBIENT:
@@ -55,7 +57,7 @@ def install_emit_lane(
             {
                 "lanes": {
                     "dev": {
-                        "broker": loopback_broker(),
+                        "broker": broker or loopback_broker(),
                         "security_protocol": "PLAINTEXT",
                     }
                 }

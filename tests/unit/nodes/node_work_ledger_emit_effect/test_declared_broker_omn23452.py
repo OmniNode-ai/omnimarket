@@ -20,7 +20,7 @@ from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     KafkaEventPublisher,
 )
-from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_declared_broker_emit import (
+from omnimarket.nodes.node_work_ledger_emit_effect.container.container_work_ledger_emit_effect import (
     HandlerWorkLedgerDeclaredBrokerEmit,
     declared_kafka_bus,
 )
@@ -120,3 +120,20 @@ def test_the_sasl_secret_of_the_lane_never_reaches_the_publish_identity(
     bus = declared_kafka_bus(binding)
     assert marker not in repr(bus)
     assert marker not in str(bus)
+
+
+def test_a_test_process_never_dials_a_declared_broker_that_is_not_loopback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: dict[str, str]
+) -> None:
+    install_emit_lane(tmp_path, monkeypatch, KAFKA_DEV, broker="lane-broker.test:19092")
+    bus = OpenInmemoryBus()
+    route_declared_bus(monkeypatch, bus)
+
+    result = HandlerWorkLedgerEmit().handle(
+        ModelWorkLedgerEmitRequest(row=rows["CLAIM"])
+    )
+
+    assert result.accepted is False
+    assert result.published is False
+    assert "ledger-test-write-guard" in (result.error or "")
+    assert bus.dialed == []
