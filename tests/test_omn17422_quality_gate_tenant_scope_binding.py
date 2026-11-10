@@ -102,6 +102,7 @@ from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     HOUSE_TENANT_UUID,
 )
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _BETA_TENANT_SLUG = "beta-business-proof"
 _BETA_TENANT_UUID = "91c74442-1233-4c97-b191-911a10346fdf"
@@ -600,8 +601,9 @@ async def _rls_enforced_runner() -> AsyncIterator[
         await admin.execute(f"SET search_path TO {schema}, public")
         await admin.execute(_APP_DASHBOARD_ROLE_SQL)
         for migration_path in sorted(_MIGRATIONS_DIR.glob("*.sql")):
+            # OMN-21970: the node's migrations may name public.; apply them here.
             await admin.execute(
-                migration_path.read_text(encoding="utf-8").replace(
+                for_isolated_schema(migration_path.read_text(encoding="utf-8")).replace(
                     "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
                 )
             )
@@ -634,6 +636,12 @@ async def _rls_enforced_runner() -> AsyncIterator[
         await admin.execute(
             f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA {schema} "
             f"TO {writer_role}"
+        )
+        # OMN-21970: delegation_events.projection_cursor is a BIGSERIAL, so an
+        # insert takes nextval() from its sequence, as the migration grants
+        # tenant_projection_writer on a real lane.
+        await admin.execute(
+            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {schema} TO {writer_role}"
         )
         runner = DelegationProjectionRunner()
         runner.db.rebind(_dsn_for(writer_role, writer_secret, schema=schema))

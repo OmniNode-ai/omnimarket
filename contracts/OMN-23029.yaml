@@ -57,3 +57,12 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_check_modes_omn23029.py -q -n 0 --no-cov -k 'fails_closed or overlay_does_not_declare'
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23029-integration-proof
+    description: >-
+      On the live repository the CI Summary check reports a conclusion for a pull request whose external checks include Tessl Reviewer, read through the source-control node rather than from a fixture. The sweep that admits the advisory neutral runs inside that check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: onex scm pr-checks OmniNode-ai/omnimarket#5363 | grep -q 'CI Summary'
+        cwd: .

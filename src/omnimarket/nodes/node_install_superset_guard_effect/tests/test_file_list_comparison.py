@@ -13,9 +13,11 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.nodes.node_install_superset_guard_effect.handlers.handler_install_superset import (
+from omnimarket.handlers.install_file_list import (
     file_list_comparison,
     pattern_matches,
+)
+from omnimarket.nodes.node_install_superset_guard_effect.handlers.handler_install_superset import (
     tree_differences,
 )
 

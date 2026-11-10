@@ -23,6 +23,15 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.models.seam_reading.model_attach_on_demand import (
+    ModelAttachOnDemandRequest,
+)
+from omnimarket.models.seam_reading.model_required_sender import (
+    EnumSeamTrigger,
+    ModelDemandedVerdict,
+    ModelRequiredSenderRequest,
+    ModelSeamCounts,
+)
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     reason_token,
     stamp_text,
@@ -33,6 +42,7 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
 from omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline import (
     EnumSeamCrossing,
     EnumSeamFault,
+    ModelSeamAnswer,
     ModelSeamDeadlineCommand,
     ModelSeamDeadlineResult,
     ModelSeamDemand,
@@ -42,7 +52,11 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.overlay import (
     ModelSeamDeadlineOverlay,
     ModelSeamSpec,
 )
-from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import ProtocolSeamBus
+from omnimarket.nodes.node_seam_deadline_probe_effect.protocols import (
+    ProtocolAttachOnDemand,
+    ProtocolRequiredSender,
+    ProtocolSeamBus,
+)
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
@@ -68,6 +82,43 @@ def _cell(text: str) -> str:
     return text.replace("|", "/").replace(" ", "_")
 
 
+def reply_state(reading: ModelSeamReading) -> str:
+    """Whether the seam's reply came, named from the reading alone.
+
+    ``ontime`` a reply crossed by the deadline; ``late`` a reply arrived inside the bounded listen
+    after it; ``silent`` nothing arrived but the probe kept listening past the deadline;
+    ``unlistened`` nothing arrived and no late listen was configured; ``none`` for the crossings
+    that never reach a reply (an error answer, an unreadable bus, a failed attach). A late reply
+    names nothing about the verdict: the deadline is missed either way.
+    """
+    if reading.crossing is EnumSeamCrossing.RESULT:
+        return "ontime"
+    if reading.crossing is EnumSeamCrossing.NO_RESULT_BY_DEADLINE:
+        if reading.late_reply_ms is not None:
+            return "late"
+        if reading.late_listen_seconds > 0:
+            return "silent"
+        return "unlistened"
+    return "none"
+
+
+def _seam_cells(reading: ModelSeamReading) -> list[str]:
+    """The row's cells for one seam: the crossing cell, then the reply-listening cells."""
+    return [
+        f"seam_{reading.seam}={reading.verdict.value}:{reading.crossing.value}:"
+        f"{'none' if reading.elapsed_ms is None else reading.elapsed_ms}ms/"
+        f"{int(reading.deadline_seconds * 1000)}ms",
+        f"seam_{reading.seam}_reply={reply_state(reading)}",
+        f"seam_{reading.seam}_send_ack_ms="
+        f"{'none' if reading.send_ack_ms is None else reading.send_ack_ms}",
+        f"seam_{reading.seam}_late_ms="
+        f"{'none' if reading.late_reply_ms is None else reading.late_reply_ms}",
+        f"seam_{reading.seam}_stamp_ms="
+        f"{'none' if reading.reply_stamp_ms is None else reading.reply_stamp_ms}",
+        f"seam_{reading.seam}_listen_ms={int(reading.late_listen_seconds * 1000)}",
+    ]
+
+
 class HandlerSeamDeadline:
     """Run the overlay's seams over the injected bus."""
 
@@ -80,7 +131,11 @@ class HandlerSeamDeadline:
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
         new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
+        required_sender: ProtocolRequiredSender,
+        attach_on_demand: ProtocolAttachOnDemand | None = None,
     ) -> None:
+        self._attach_on_demand = attach_on_demand
+        self._required_sender = required_sender
         self._overlay = overlay
         self._host = host
         self._bus = bus
@@ -102,6 +157,60 @@ class HandlerSeamDeadline:
             deadline_seconds=0.0
             if fault is EnumSeamFault.DEADLINE_ZERO
             else seam.deadline_seconds,
+            late_listen_seconds=seam.late_listen_seconds,
+        )
+
+    def _read(self, seam: ModelSeamSpec, demand: ModelSeamDemand) -> ModelSeamAnswer:
+        """Demand a seam's command; an on-demand seam's node is attached for the demand only."""
+        if not seam.on_demand:
+            return self._bus.demand(demand)
+        if self._attach_on_demand is None:
+            return ModelSeamAnswer(
+                crossing=EnumSeamCrossing.ATTACH_FAILED, detail="no-attacher"
+            )
+        attached = self._attach_on_demand.handle(
+            ModelAttachOnDemandRequest(
+                correlation_id=demand.correlation_id,
+                seam=demand.seam,
+                command_topic=demand.command_topic,
+                result_topic=demand.result_topic,
+                consumer_group_prefix=demand.consumer_group_prefix,
+                payload=demand.payload,
+                error_keys=demand.error_keys,
+                deadline_seconds=demand.deadline_seconds,
+            )
+        )
+        return ModelSeamAnswer(
+            crossing=attached.crossing or EnumSeamCrossing.ATTACH_FAILED,
+            elapsed_ms=attached.elapsed_ms,
+            detail=(attached.failure or "").rsplit(":", 1)[-1]
+            if attached.crossing is EnumSeamCrossing.ATTACH_FAILED
+            else "",
+        )
+
+    def _counts(
+        self, readings: list[ModelSeamReading], now: datetime
+    ) -> tuple[ModelSeamCounts | None, tuple[str, ...]]:
+        """Seam counts of the declarations, and the required automatic seams with no sender."""
+        declarations = self._overlay.seam_declarations
+        if not declarations:
+            return None, ()
+        on_demand = {
+            d.seam for d in declarations if d.trigger is EnumSeamTrigger.ON_DEMAND
+        }
+        read = self._required_sender.handle(
+            ModelRequiredSenderRequest(
+                declarations=declarations,
+                demanded=tuple(
+                    ModelDemandedVerdict(seam=r.seam, verdict=r.verdict)
+                    for r in readings
+                    if r.seam in on_demand
+                ),
+                now=now,
+            )
+        )
+        return read.counts, tuple(
+            v.seam for v in read.verdicts if v.reason == "no-bound-sender"
         )
 
     def handle(self, command: ModelSeamDeadlineCommand) -> ModelSeamDeadlineResult:
@@ -121,7 +230,7 @@ class HandlerSeamDeadline:
         readings = []
         for seam in chosen:
             demand = self._demand(seam, command.fault)
-            answer = self._bus.demand(demand)
+            answer = self._read(seam, demand)
             readings.append(
                 ModelSeamReading(
                     seam=seam.name,
@@ -133,23 +242,38 @@ class HandlerSeamDeadline:
                     deadline_seconds=demand.deadline_seconds,
                     correlation_id=demand.correlation_id,
                     detail=answer.detail,
+                    send_ack_ms=answer.send_ack_ms,
+                    late_reply_ms=answer.late_reply_ms,
+                    reply_stamp_ms=answer.reply_stamp_ms,
+                    late_listen_seconds=demand.late_listen_seconds,
                 )
             )
         failed = [r for r in readings if r.verdict is not EnumReadingVerdict.WORKING]
+        counts, no_sender = self._counts(readings, now)
         unreadable = (
             all(r.crossing is EnumSeamCrossing.BUS_UNREADABLE for r in failed)
             and failed
         )
         reasons = (
-            ("ok",)
-            if not failed
-            else tuple(f"{r.seam}:{r.crossing.value}" for r in failed)
-        )
+            *(f"{r.seam}:{r.crossing.value}" for r in failed),
+            *(f"{seam}:no-bound-sender" for seam in no_sender),
+        ) or ("ok",)
+        failures = [
+            part
+            for part in (
+                f"seam-not-crossed:{','.join(f'{r.seam}:{r.crossing.value}' for r in failed)}"
+                if failed
+                else "",
+                f"required-sender-missing:{','.join(no_sender)}" if no_sender else "",
+            )
+            if part
+        ]
+        broken = bool(failed or no_sender)
         result = ModelSeamDeadlineResult(
             correlation_id=command.correlation_id,
-            status="failed" if failed else "completed",
+            status="failed" if broken else "completed",
             verdict=EnumReadingVerdict.NOT_WORKING
-            if failed
+            if broken
             else EnumReadingVerdict.WORKING,
             outcome=EnumReadingOutcome.SOURCE_UNREADABLE
             if unreadable
@@ -157,7 +281,8 @@ class HandlerSeamDeadline:
             reasons=reasons,
             fault=command.fault,
             seams=tuple(readings),
-            failure=f"seam-not-crossed:{','.join(reasons)}" if failed else None,
+            failure=";".join(failures) if broken else None,
+            counts=counts,
         )
         return self._publish(command, now, result)
 
@@ -218,11 +343,15 @@ class HandlerSeamDeadline:
             f"seams={len(result.seams)}",
             f"working={working}",
             *(
-                f"seam_{r.seam}={r.verdict.value}:{r.crossing.value}:"
-                f"{'none' if r.elapsed_ms is None else r.elapsed_ms}ms/"
-                f"{int(r.deadline_seconds * 1000)}ms"
-                for r in result.seams
+                (
+                    f"seams_automatic={result.counts.automatic}",
+                    f"seams_on_demand={result.counts.on_demand}",
+                    f"required_without_sender={result.counts.required_without_sender}",
+                )
+                if result.counts is not None
+                else ()
             ),
+            *(cell for r in result.seams for cell in _seam_cells(r)),
             f"history_days={self._overlay.history_days}",
             f"probed_at={stamp_text(now)}",
             f"published_at={stamp_text(now)}",
@@ -280,6 +409,10 @@ def events_of(
                 "elapsed_ms": reading.elapsed_ms,
                 "deadline_seconds": reading.deadline_seconds,
                 "demand_correlation_id": reading.correlation_id,
+                "send_ack_ms": reading.send_ack_ms,
+                "late_reply_ms": reading.late_reply_ms,
+                "reply_stamp_ms": reading.reply_stamp_ms,
+                "reply": reply_state(reading),
             },
         )
         for reading in result.seams
@@ -321,4 +454,10 @@ def answer_command(
     ]
 
 
-__all__ = ["HandlerSeamDeadline", "answer_command", "events_of", "load_topics"]
+__all__ = [
+    "HandlerSeamDeadline",
+    "answer_command",
+    "events_of",
+    "load_topics",
+    "reply_state",
+]

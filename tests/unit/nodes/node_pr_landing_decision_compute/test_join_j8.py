@@ -31,6 +31,7 @@ from omnimarket.handlers.emission_sink import (
 )
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
+    ModelFloorReceipts,
     ModelJoinDef,
     ModelNodeEmission,
     ModelPieceDef,
@@ -172,8 +173,8 @@ class _Rig:
             chain.failure("lab_check_not_posted", "no check run reached the head")
 
 
-def _fold(emissions: list[ModelNodeEmission], now: datetime) -> tuple[str, list[str]]:
-    receipts = HandlerFloorReceipt().handle(
+def _floor(emissions: list[ModelNodeEmission], now: datetime) -> ModelFloorReceipts:
+    return HandlerFloorReceipt().handle(
         ModelFloorReceiptInput(
             now=now,
             emissions=tuple(emissions),
@@ -194,6 +195,10 @@ def _fold(emissions: list[ModelNodeEmission], now: datetime) -> tuple[str, list[
             chain_deadline_s=CHAIN_DEADLINE_S,
         )
     )
+
+
+def _fold(emissions: list[ModelNodeEmission], now: datetime) -> tuple[str, list[str]]:
+    receipts = _floor(emissions, now)
     join = next(j for j in receipts.joins if j.join == POLICY.join_id)
     return join.state, [f.code for f in receipts.findings]
 
@@ -483,6 +488,50 @@ HOSTED_OPEN = {
 }
 
 
+def test_runner_group_golden_the_floor_shows_j8_with_ages_beside_a_clean_group_read() -> (
+    None
+):
+    """AC3: the group read is clean and the floor's J8 reading carries the age of each side, growing with the clock."""
+    assert (
+        public_repos_reaching_lab(
+            InMemoryGroupSnapshotSource(_snapshot(LAB_CLOSED, HOSTED_OPEN)).read()
+        )
+        == ()
+    )
+    rig = _Rig()
+    rig.upstream_chain("j8-age-golden", posted=True)
+    rig.join.handle(
+        ModelJoinJ8Request(
+            correlation_id="j8-age-golden",
+            pr=PR,
+            facts=_facts(_lab_check(_run(CURRENT))),
+        )
+    )
+    rig.upstream_chain("j8-age-error", posted=False)
+    rig.join.handle(
+        ModelJoinJ8Request(
+            correlation_id="j8-age-error", pr=PR, facts=_facts(_lab_check())
+        )
+    )
+    early_at = NOW + timedelta(minutes=5)
+    late_at = NOW + timedelta(hours=1)
+    early = _floor(rig.sink.events, early_at)
+    late = _floor(rig.sink.events, late_at)
+
+    join = next(j for j in early.joins if j.join == POLICY.join_id)
+    assert join.state == "passed"
+    assert join.golden_at is not None
+    assert join.error_at is not None
+    for receipts, at in ((early, early_at), (late, late_at)):
+        piece = next(p for p in receipts.pieces if p.piece == POLICY.to_piece)
+        assert piece.golden_age_s == int((at - join.golden_at).total_seconds())
+        assert piece.error_age_s == int((at - join.error_at).total_seconds())
+    early_piece = next(p for p in early.pieces if p.piece == POLICY.to_piece)
+    late_piece = next(p for p in late.pieces if p.piece == POLICY.to_piece)
+    assert early_piece.golden_age_s is not None
+    assert late_piece.golden_age_s == early_piece.golden_age_s + 3300
+
+
 def test_runner_group_golden_no_public_repository_reaches_a_lab_runner() -> None:
     source = InMemoryGroupSnapshotSource(_snapshot(LAB_CLOSED, HOSTED_OPEN))
     assert public_repos_reaching_lab(source.read()) == ()
@@ -556,3 +605,17 @@ def test_runner_group_control_break_a_read_that_ignores_the_public_flag_reads_cl
         }
     )
     assert public_repos_reaching_lab(closed) == (), "the break must turn the read clean"
+
+
+@pytest.mark.unit
+def test_handler_constructs_without_injected_dependencies() -> None:
+    """The boot resolver builds the handler with no arguments: the policy loads from the contract."""
+    handler = HandlerLandingJoinJ8()
+    assert handler._policy == load_join_j8_policy()
+
+
+@pytest.mark.unit
+def test_handler_without_sink_refuses_to_emit() -> None:
+    handler = HandlerLandingJoinJ8()
+    with pytest.raises(ValueError, match="without an emission sink"):
+        handler._emit("cid-1", "phase")

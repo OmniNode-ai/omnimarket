@@ -258,3 +258,121 @@ def test_error_a_failure_is_never_read_without_its_start_at_the_window_edge(
     assert [
         f.subject for f in receipts.findings if f.code == "failure_without_start"
     ] == []
+
+
+COMPARE = "node_floor_compare_effect:run_floor_compare_cycle"
+COMPARE_SUBJECT = f"piece {PIECE} {COMPARE}"
+
+
+def test_golden_the_next_cycle_closes_a_start_the_comparison_cycle_left_open(
+    tmp_path: Path,
+) -> None:
+    """The board's row of 2026-11-08 08:09Z: the comparison cycle was killed past the publish step's limit (OMN-22864)."""
+    sink = InMemoryEmissionSink()
+    sink.emit(start(COMPARE, ORPHAN, timedelta(minutes=30)))
+    home = build_home(tmp_path)
+    assert open_chains(sink, home) == [COMPARE_SUBJECT]
+    result = handler(sink).run(
+        ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+    )
+    assert result.ok
+    closure = [
+        e for e in sink.events if e.correlation_id == ORPHAN and e.phase == "failure"
+    ]
+    assert [(e.node, e.failure_code, e.piece) for e in closure] == [
+        (COMPARE, ABANDONED_CODE, PIECE)
+    ]
+    assert open_chains(sink, home) == []
+
+
+def test_error_the_comparison_start_stays_open_when_it_is_not_declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The injected break: the contract does not name the comparison chain, and the receipt reader reads the open start."""
+    sink = InMemoryEmissionSink()
+    sink.emit(start(COMPARE, ORPHAN, timedelta(minutes=30)))
+    undeclared = load_runtime().model_copy(update={"abandon_chains": ()})
+    monkeypatch.setattr(tick, "load_runtime", lambda *_a, **_k: undeclared)
+    home, ok = run_cycle(tmp_path, sink)
+    assert ok
+    assert [e for e in sink.events if e.failure_code == ABANDONED_CODE] == []
+    assert open_chains(sink, home) == [COMPARE_SUBJECT]
+
+
+def test_the_comparison_chain_is_closed_but_is_not_a_pipeline_chain() -> None:
+    """No join reads it: declaring it for closure changes no join."""
+    rt = load_runtime()
+    assert COMPARE in rt.abandon_chains
+    assert COMPARE not in rt.pipeline_chains
+
+
+J2_SEAM = "node_lab_placement_compute:join_j2"
+J2_CANARY = "node_host_reading_effect:join_j2"
+J2_SEAM_PIECE = 3
+J2_CANARY_PIECE = 2
+
+
+def start_on(piece: int, node: str, cid: str, age: timedelta) -> ModelNodeEmission:
+    return ModelNodeEmission.model_validate(
+        {
+            "node": node,
+            "piece": piece,
+            "correlation_id": cid,
+            "phase": "start",
+            "emitted_at": NOW - age,
+            "backend": "real",
+            "drill": False,
+        }
+    )
+
+
+def test_golden_the_next_cycle_closes_the_j2_seam_start_a_killed_join_left_open(
+    tmp_path: Path,
+) -> None:
+    """The floor row of 2026-11-08 21:00Z: piece 3 node_lab_placement_compute:join_j2, start_without_terminal (OMN-23230)."""
+    sink = InMemoryEmissionSink()
+    sink.emit(start_on(J2_CANARY_PIECE, J2_CANARY, ORPHAN, timedelta(hours=2)))
+    sink.emit(start_on(J2_SEAM_PIECE, J2_SEAM, ORPHAN, timedelta(hours=2)))
+    home = build_home(tmp_path)
+    assert open_chains(sink, home) == [
+        f"piece {J2_CANARY_PIECE} {J2_CANARY}",
+        f"piece {J2_SEAM_PIECE} {J2_SEAM}",
+    ]
+    result = handler(sink).run(
+        ModelFloorSimpleTickRequest(home=str(home)), environ=environ(home)
+    )
+    assert result.ok
+    closure = sorted(
+        (e.node, e.piece, e.failure_code)
+        for e in sink.events
+        if e.correlation_id == ORPHAN and e.phase == "failure"
+    )
+    assert closure == [
+        (J2_CANARY, J2_CANARY_PIECE, ABANDONED_CODE),
+        (J2_SEAM, J2_SEAM_PIECE, ABANDONED_CODE),
+    ]
+    assert open_chains(sink, home) == []
+
+
+def test_error_the_j2_seam_start_stays_open_when_the_contract_does_not_name_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The injected break: the contract names no other piece's chains, and the receipt reader reads the open seam start."""
+    sink = InMemoryEmissionSink()
+    sink.emit(start_on(J2_SEAM_PIECE, J2_SEAM, ORPHAN, timedelta(hours=2)))
+    undeclared = load_runtime().model_copy(update={"abandon_other_pieces": ()})
+    monkeypatch.setattr(tick, "load_runtime", lambda *_a, **_k: undeclared)
+    home, ok = run_cycle(tmp_path, sink)
+    assert ok
+    assert [e for e in sink.events if e.failure_code == ABANDONED_CODE] == []
+    assert open_chains(sink, home) == [f"piece {J2_SEAM_PIECE} {J2_SEAM}"]
+
+
+def test_error_a_young_j2_seam_start_is_left_to_the_join_that_is_still_running(
+    tmp_path: Path,
+) -> None:
+    sink = InMemoryEmissionSink()
+    sink.emit(start_on(J2_SEAM_PIECE, J2_SEAM, ORPHAN, timedelta(seconds=30)))
+    _home, ok = run_cycle(tmp_path, sink)
+    assert ok
+    assert [e for e in sink.events if e.failure_code == ABANDONED_CODE] == []

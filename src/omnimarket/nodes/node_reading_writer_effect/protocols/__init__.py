@@ -4,8 +4,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,6 +25,9 @@ class ModelLedgerQuery(BaseModel):
     row_type: str
     lane: str | None = None
     term: str | None = None
+    #: The correlation id of the run asking. The command route puts it on the wire (the reader's request requires one);
+    #: a query without one is sent without one, and a reader that requires it refuses.
+    correlation_id: str | None = None
 
 
 class ModelLedgerRead(BaseModel):
@@ -69,6 +73,18 @@ class ProtocolLedgerRowSource(Protocol):
     def read(self, query: ModelLedgerQuery) -> ModelLedgerRead: ...
 
 
+@runtime_checkable
+class ProtocolLedgerBatchRowSource(ProtocolLedgerRowSource, Protocol):
+    """A row source that answers many queries from one pass over the ledger (OMN-23081).
+
+    The answers come back in the order of the queries and each holds what ``read`` of that query alone would hold.
+    """
+
+    def read_many(
+        self, queries: Sequence[ModelLedgerQuery]
+    ) -> tuple[ModelLedgerRead, ...]: ...
+
+
 class ProtocolReadingAppender(Protocol):
     """Append reading rows. Redelivery under one request id must not write twice."""
 
@@ -81,6 +97,7 @@ __all__ = [
     "ModelLedgerQuery",
     "ModelLedgerRead",
     "ProtocolLandingSource",
+    "ProtocolLedgerBatchRowSource",
     "ProtocolLedgerRowSource",
     "ProtocolReadingAppender",
 ]

@@ -306,6 +306,23 @@ def _ensure_delegation_routing_tiers_path(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.fixture(autouse=True)
+def _paid_rung_size_band_rule_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Declare no paid-rung size band for the local dispatch port (OMN-23180).
+
+    The contract's default ``paid_from_size_band: L`` skips a paid rung for any
+    smaller request. Tests that walk a paid ladder with a short prompt are about
+    the ladder, not about which band may reach it, so the port reads no band
+    here. ``tests/unit/delegation/test_size_band_paid_rule.py`` binds the real
+    resolver back and tests the rule.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as port_mod,
+    )
+
+    monkeypatch.setattr(port_mod, "resolve_paid_from_size_band", lambda _t: None)
+
+
+@pytest.fixture(autouse=True)
 def _ensure_bifrost_contract_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """Bind BIFROST_CONTRACT_PATH to the canonical packaged file and clear
     BIFROST_OVERLAY_PATH, UNCONDITIONALLY (OMN-16435, tightening OMN-15628).
@@ -1292,3 +1309,18 @@ def compaction_bus():
     yield factory
     for harness in reversed(harnesses):
         harness.close()
+
+
+@pytest.fixture
+def host_capacity_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """The ``host_capacity`` overlay at the starting values the node ships as its example (OMN-23337)."""
+    example = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_host_capacity_compute/overlay.example.yaml"
+    )
+    root = tmp_path / "overlay_roots"
+    target = root / "host_capacity" / "overlay.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    return target

@@ -68,7 +68,10 @@ def _snapshot_verb(verb: str) -> int:
                     run_id=started.strftime("%Y%m%dT%H%M%SZ"), started_at=started
                 )
             )
-            sys.stdout.write(f"{made.outcome.value} run={made.run_id} {made.detail}\n")
+            warned = f" warning={made.warning}" if made.warning else ""
+            sys.stdout.write(
+                f"{made.outcome.value} run={made.run_id} {made.detail}{warned}\n"
+            )
             return 0 if made.ok else 1
         drilled = create_handler_work_ledger_restore_drill(overlay, os.environ).handle(
             ModelDrillRequest(started_at=started)

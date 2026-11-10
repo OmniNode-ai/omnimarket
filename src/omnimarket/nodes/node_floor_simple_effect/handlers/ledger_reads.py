@@ -33,6 +33,9 @@ from omnimarket.models.floor_17a import (
     ModelShadowReading,
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    read_queries,
+)
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ProtocolLedgerRowSource,
@@ -48,6 +51,8 @@ class ModelLedgerFacts(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     go_given_through: int
+    # The pieces opened by name (RULING rows by subject), beyond the in-order go.
+    go_pieces: tuple[int, ...] = ()
     go_rows: tuple[str, ...] = ()
     events: tuple[ModelNodeEmission, ...] = ()
     # The newest reading row of each piece the reading writer wrote, and how many matching rows could not be read as one.
@@ -113,6 +118,65 @@ def go_given_through(rows: list[ModelLedgerEvidenceRow], rule: ModelGoRule) -> i
     while granted.get(through + 1, False):
         through += 1
     return through
+
+
+_PIECE_NUMBER = re.compile(r"\d+|\bto\b", re.IGNORECASE)
+_PARENTHETICAL = re.compile(r"\([^)]*\)")
+
+
+def pieces_named(text: str) -> tuple[int, ...]:
+    """The piece numbers a subject lists: ``7 (name) and piece 11`` is 7 and 11, ``2 to 6`` is 2 to 6.
+
+    Words in brackets are labels and carry no number. A ``to`` between two numbers makes the range; a range that runs
+    backwards names nothing.
+    """
+    out: list[int] = []
+    previous: int | None = None
+    ranged = False
+    for token in _PIECE_NUMBER.finditer(_PARENTHETICAL.sub(" ", text)):
+        if token.group(0).lower() == "to":
+            ranged = previous is not None
+            continue
+        number = int(token.group(0))
+        if ranged and previous is not None:
+            if number > previous:
+                out.extend(range(previous + 1, number + 1))
+        else:
+            out.append(number)
+        previous = number
+        ranged = False
+    return tuple(out)
+
+
+def opened_pieces(
+    rows: list[ModelLedgerEvidenceRow], rule: ModelGoRule
+) -> tuple[int, ...]:
+    """The pieces rulings opened by name, from the rulings in ``rows``, whatever their place in the order.
+
+    A RULING row of the rule's lane, on one of its ``open_tickets`` (the rule's own ticket is read in order by the go), whose question matches
+    ``open_pattern`` names the pieces it opens in its ``list`` group. The newest ruling that names a piece decides it, so a
+    later answer that is not affirmative takes the piece back. A rule that declares no open pattern opens nothing.
+    """
+    if rule.open_pattern is None or rule.open_affirmative_pattern is None:
+        return ()
+    opening = re.compile(rule.open_pattern)
+    affirmative = re.compile(rule.open_affirmative_pattern)
+    tickets = set(rule.open_tickets)
+    opened: dict[int, bool] = {}
+    for row in sorted(rows, key=lambda r: r.stamp):
+        if (
+            row.row_type != RULING_ROW_TYPE
+            or row.lane != rule.lane
+            or row.cells.get("ticket") not in tickets
+        ):
+            continue
+        matched = opening.search(row.cells.get("question", ""))
+        if matched is None:
+            continue
+        said_yes = affirmative.search(verbatim_answer(row)) is not None
+        for piece in pieces_named(matched.group("list")):
+            opened[piece] = said_yes
+    return tuple(sorted(p for p, yes in opened.items() if yes))
 
 
 def _row_matches(row: ModelLedgerEvidenceRow, match: ModelRowMatch) -> bool:
@@ -260,36 +324,65 @@ def read_ledger_facts(
 ) -> ModelLedgerFloorRead:
     """Read the go rulings and the piece event rows. Any read of those that fails fails the whole read, with its reason.
 
+    The ledger is read once per cycle (OMN-23081): every query is built first and a source with a single-pass read
+    answers them all from one scan of the live file and its rolls. Before, each query scanned and parsed every line
+    again, which took 14 s of the publisher's 15 s step limit. The answers are used in the order the queries were asked,
+    so the reason a failed read gives is the same as before.
+
     A shadow row is advisory telemetry: a failed shadow query is listed in ``shadows_unread`` and costs no other fact.
     """
     until = now + _FUTURE_SLACK
     go_rule = overlay.rebuild.go
-    rulings = source.read(
-        ModelLedgerQuery(
-            since=now - timedelta(days=go_rule.lookback_days),
-            until=until,
-            row_type=RULING_ROW_TYPE,
-            lane=go_rule.lane,
-        )
-    )
-    if rulings.error is not None:
-        return ModelLedgerFloorRead(error=f"go rulings unread: {rulings.error}")
     # One read per (row type, lane) of the rules; a row two rules would both read is one row.
     wanted: dict[tuple[str, str], int] = {}
     for rule in overlay.piece_events:
         for match in (rule.golden, rule.error):
             key = (match.row_type, match.lane)
             wanted[key] = max(wanted.get(key, 0), rule.lookback_days)
-    event_rows: dict[str, ModelLedgerEvidenceRow] = {}
-    for (row_type, lane), days in sorted(wanted.items()):
-        read = source.read(
+    event_keys = sorted(wanted.items())
+    reading_rule = overlay.ledger_readings
+    queries: list[ModelLedgerQuery] = [
+        ModelLedgerQuery(
+            since=now - timedelta(days=go_rule.lookback_days),
+            until=until,
+            row_type=RULING_ROW_TYPE,
+            lane=go_rule.lane,
+        ),
+        *(
             ModelLedgerQuery(
                 since=now - timedelta(days=days),
                 until=until,
                 row_type=row_type,
                 lane=lane,
             )
+            for (row_type, lane), days in event_keys
+        ),
+    ]
+    if reading_rule is not None:
+        queries.append(
+            ModelLedgerQuery(
+                since=now - timedelta(days=reading_rule.lookback_days),
+                until=until,
+                row_type=reading_rule.row_type,
+                lane=reading_rule.lane,
+            )
         )
+    queries.extend(
+        ModelLedgerQuery(
+            since=now - timedelta(days=shadow_rule.lookback_days),
+            until=until,
+            row_type=shadow_rule.row_type,
+            lane=shadow_rule.lane,
+        )
+        for shadow_rule in overlay.ledger_shadows
+    )
+    answers = iter(read_queries(source, queries))
+    rulings = next(answers)
+    if rulings.error is not None:
+        return ModelLedgerFloorRead(error=f"go rulings unread: {rulings.error}")
+    event_rows: dict[str, ModelLedgerEvidenceRow] = {}
+    for (row_type, lane), _days in event_keys:
+        read = next(answers)
         if read.error is not None:
             return ModelLedgerFloorRead(
                 error=f"{row_type} rows of {lane} unread: {read.error}"
@@ -298,16 +391,8 @@ def read_ledger_facts(
             event_rows[row.raw] = row
     readings: tuple[ModelReadingRow, ...] = ()
     rejected = 0
-    reading_rule = overlay.ledger_readings
     if reading_rule is not None:
-        read = source.read(
-            ModelLedgerQuery(
-                since=now - timedelta(days=reading_rule.lookback_days),
-                until=until,
-                row_type=reading_rule.row_type,
-                lane=reading_rule.lane,
-            )
-        )
+        read = next(answers)
         if read.error is not None:
             return ModelLedgerFloorRead(
                 error=f"{reading_rule.row_type} rows of {reading_rule.lane} unread: {read.error}"
@@ -317,14 +402,7 @@ def read_ledger_facts(
     shadows_rejected = 0
     shadows_unread: list[str] = []
     for shadow_rule in overlay.ledger_shadows:
-        shadow_read = source.read(
-            ModelLedgerQuery(
-                since=now - timedelta(days=shadow_rule.lookback_days),
-                until=until,
-                row_type=shadow_rule.row_type,
-                lane=shadow_rule.lane,
-            )
-        )
+        shadow_read = next(answers)
         if shadow_read.error is not None:
             shadows_unread.append(
                 f"{shadow_rule.row_type} rows of {shadow_rule.lane} unread: {shadow_read.error}"
@@ -339,11 +417,20 @@ def read_ledger_facts(
     return ModelLedgerFloorRead(
         facts=ModelLedgerFacts(
             go_given_through=go,
+            go_pieces=opened_pieces(rows, go_rule),
             go_rows=tuple(
                 r.stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
                 for r in sorted(rows, key=lambda r: r.stamp)
-                if r.cells.get("ticket") == go_rule.ticket
-                and re.search(go_rule.question_pattern, r.cells.get("question", ""))
+                if (
+                    r.cells.get("ticket") == go_rule.ticket
+                    and re.search(go_rule.question_pattern, r.cells.get("question", ""))
+                )
+                or (
+                    go_rule.open_pattern is not None
+                    and r.row_type == RULING_ROW_TYPE
+                    and r.cells.get("ticket") in go_rule.open_tickets
+                    and re.search(go_rule.open_pattern, r.cells.get("question", ""))
+                )
             ),
             events=piece_events(list(event_rows.values()), overlay.piece_events),
             readings=readings,

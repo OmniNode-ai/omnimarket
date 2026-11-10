@@ -1,0 +1,3 @@
+{"t":"load","call":"load","pid":1896,"pidversion":4719,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24935807335,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"execve","pid":1896,"pidversion":4719,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24936216448,"tb_numer":125,"tb_denom":3,"detail":"/tmp/control_tree"}
+{"t":"load","call":"load","pid":1896,"pidversion":4721,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24961227762,"tb_numer":125,"tb_denom":3,"detail":""}

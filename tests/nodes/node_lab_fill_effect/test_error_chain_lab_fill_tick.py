@@ -21,6 +21,7 @@ from .fakes import (
     FakeBlocks,
     FakeChecks,
     FakeClock,
+    FakeMerged,
     FakeOwners,
     FakeRunner,
 )
@@ -65,6 +66,7 @@ def _handler(
         claims_facts=LabFillClaimFacts(index={}, open_claims=[], staleness_hours=12)
     )
     launch = HandlerLabFillLaunch(
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=approved,
         blocks=blocks or FakeBlocks(),

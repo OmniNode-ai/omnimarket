@@ -1,0 +1,38 @@
+schema_version: 1.0.0
+ticket_id: OMN-22900
+title: h202 takes lab lanes again - the host table drift read holds a failing control on the old h202 rows
+summary: The host rows of h202 were corrected in the copies of the lab host table by earlier work. This change adds the failing control the criterion names to the host table copies drift read tests. The old rows (h202 available false in the packaged and config copies, unit_slots 3 and available true in the overlays copy, h202 missing from a copy) read NOT WORKING and name each differing field, and the corrected rows (h202 available with the same cap in every copy) read WORKING. No source file changes. The placement run of a trivial brief on h202 and the drift node run against the live copies are lab runs recorded in the pull request, not changed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22900-h202-rows-control
+  statement: The host table copies drift read names every field that differs for h202 across the copies on the old rows, and reads WORKING on the corrected rows.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every host table copy placement reads gives h202 available with its cap, its capacity advertisement is on the bus, its open drift items are closed, and the remote-lane runner places a lane on it, with a failing control on the old rows -- falsifier: the drift node run plus onex-remote-lane placement of a trivial brief reading host=h202'
+evidence_requirements:
+- kind: tests
+  description: The h202 rows tests of the host table copies drift read, with the old rows as the failing control.
+  command: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22900-ac1-tests
+  description: The h202 rows tests and the existing drift read tests pass; the old rows read NOT WORKING and the corrected rows read WORKING.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov
+- id: dod-omn22900-integration-proof
+  description: The focused tests run on a lab host at the pushed head, and the lab run is recorded in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22900 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov
+    cwd: .

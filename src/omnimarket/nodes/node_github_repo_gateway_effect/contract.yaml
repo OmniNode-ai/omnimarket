@@ -7,7 +7,7 @@
 # returns a small discriminated-union result. Reuses the existing GitHub
 # GraphQL/REST transport; performs no mutation and no subprocess shell-out.
 name: node_github_repo_gateway_effect
-contract_version: {major: 1, minor: 5, patch: 0}
+contract_version: {major: 1, minor: 7, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 2, patch: 0}
 lifecycle: experimental
@@ -17,6 +17,9 @@ lifecycle: experimental
 job_log_cache:
   root: null
   ttl_seconds: 86400
+  # OMN-23032: a lane's `onex scm job-log` answers from this cache only; a miss is
+  # refused naming the cache path. node_job_log_filler_effect fills the cache.
+  lane_reads_cache_only: true
 
 cli_aliases:
   job-log-cached:
@@ -28,7 +31,7 @@ description: >
   EFFECT (read-only): typed GitHub repo status reader. Selects one read
   operation (pr_status, ci_checks, open_prs_list, branch_protection,
   review_gate, merge_commit_sha, ticket_ref, workflow_runs, run_jobs,
-  job_log_tail, artifacts, pr_text, releases, pr_heads, commit_check_runs,
+  job_log_tail, job_log_fill, artifacts, pr_text, releases, pr_heads, commit_check_runs,
   merged_pr, pr_review_threads, open_pr_facts) and returns a small typed object
   so callers replace raw `gh pr checks/view --json`, `gh run list/view`, job
   log reads, `gh run download`, `gh release list`, commit check-run reads,
@@ -54,6 +57,12 @@ description: >
   or falls back to HTTP. Use the first read's bus binding for gateway-shared
   bytes; --bus inmemory uses the canonical adapter on the calling host and
   can reuse covered byte ranges from its previous successful job-log cache.
+  A lane's `job-log` read is cache-only while job_log_cache.lane_reads_cache_only
+  is true, and a miss is refused naming the cache path; node_job_log_filler_effect
+  fills the cache from the merge-relevant runs of open pull requests. A lane that
+  meets such a miss before the filler reaches the job runs `job-log-fill` (operation
+  job_log_fill): the gateway serves the job from the cache, or on a miss downloads that
+  one job's log into the cache and returns it (OMN-23308).
   Missing ranges and uncached step metadata remain misses; a partial cached
   answer is never represented as a whole log. A github_job_logs/overlay.yaml
   under ONEX_SKILL_OVERLAY_ROOTS can set root and ttl_seconds. Shared gateway
@@ -86,6 +95,9 @@ operations:
     description: "Request ModelGithubGatewayRequest, result ModelRunJobsResult; replaces gh run view."
   - name: job_log_tail
     description: "Request ModelGithubGatewayRequest, result ModelJobLogTailResult; replaces gh run view --log / actions/jobs/<id>/logs."
+  # OMN-23308: a lane's cache miss is filled on demand for the one named job.
+  - name: job_log_fill
+    description: "Request ModelGithubGatewayRequest, result ModelJobLogTailResult; serves the cached log of one job, or on a miss downloads that one log into the host-shared cache and returns it (a lane's `onex scm job-log-fill`)."
   - name: artifacts
     description: "Request ModelGithubGatewayRequest, result ModelArtifactsResult; replaces gh run download."
   - name: pr_text

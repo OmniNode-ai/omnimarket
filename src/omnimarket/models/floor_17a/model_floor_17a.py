@@ -12,7 +12,18 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.models.floor_17a.model_delegation_idle import (
+    ModelDelegationIdleOverlay,
+    ModelDelegationTicketIn,
+)
+from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
+from omnimarket.models.floor_17a.model_worklist import (
+    ModelWorklistClass,
+    ModelWorklistItemIn,
+    ModelWorklistOverlay,
+)
 
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
@@ -69,6 +80,10 @@ class ModelJoinDef(_Frozen):
     from_piece: int = Field(ge=1, le=18)
     to_piece: int = Field(ge=1, le=18)
     label: str = Field(min_length=1)
+    # The join's judging bound (OMN-23086), declared by the overlay: a from-piece chain whose newest event is older than this
+    # instant is not judged, because the join's to-piece could not have answered it. A chain at or after the bound is judged
+    # as ever, so a chain that is really broken stays red. ``None`` judges every chain in the window.
+    judged_since: AwareDatetime | None = None
 
 
 class ModelPieceDef(_Frozen):
@@ -238,6 +253,16 @@ class ModelRunnerPlanRule(_Frozen):
     restore: str = ""
 
 
+class ModelOwnerSourceOverlay(_Frozen):
+    """Where owner entries may come from (OMN-23388): the floor overlay file must equal its own git checkout's ``remote_ref``."""
+
+    # The ref of the overlays repository's main (for example ``origin/main``); the floor overlay file, which carries the
+    # owner map, must be byte-equal to the same file at this ref, or the cycle refuses it naming the source.
+    remote_ref: str = Field(min_length=1)
+    # How long one git read may take before the source counts as unreadable.
+    git_timeout_s: int = Field(default=20, gt=0)
+
+
 class ModelLabStateOverlay(_Frozen):
     """The overlay of the lab-state reader and node: the sources and how each is read."""
 
@@ -248,6 +273,16 @@ class ModelLabStateOverlay(_Frozen):
     deploy_lag_lookback_days: int = Field(gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
+    # Hosts the pool probe does not read; every other host of the floor record needs a disk line in the pool receipt.
+    disk_unprobed_hosts: tuple[str, ...] = ()
+    # A host the pool refuses only on load that its own placed units explain is busy with our work, not failing (OMN-22870).
+    # ``own_load_marker`` is the refusal part the placement prints when the units placed on the host explain the load over the
+    # bar; ``load_bar_markers`` are the load bar's own refusal parts. A refusal made of those parts alone, with the own-load
+    # part among them, reads fine; any other part (memory, disk, parity, heat, link) and a load nothing placed explains stay red.
+    # An empty ``own_load_marker`` turns the reading off, so every refusal reads red as before.
+    own_load_marker: str = ""
+    load_bar_markers: tuple[str, ...] = ()
+    refusal_separator: str = "; "
     # Merge states of the watcher that mean the branch conflicts: a green pull request in one is not waiting to be armed.
     conflict_merge_states: tuple[str, ...] = ()
     # The host table and plan rules that split the offline runners into parked on purpose and real problems.
@@ -256,6 +291,9 @@ class ModelLabStateOverlay(_Frozen):
     deploy_agent_url: str = ""
     deploy_agent_history: int = Field(default=50, gt=0)
     deploy_agent_timeout_s: int = Field(default=10, gt=0)
+    # When declared, the floor overlay's owner entries are accepted only from this ref of the overlays repository
+    # (OMN-23388); ``None`` checks no source.
+    owner_source: ModelOwnerSourceOverlay | None = None
 
     @model_validator(mode="after")
     def _one_per_kind(self) -> ModelLabStateOverlay:
@@ -374,6 +412,9 @@ class ModelFloorLane(_Frozen):
     liveness: str = "unread"
     # The holdup ids the lane owns by an owns=floor:<id> cell on its CLAIM or a STATUS row.
     owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell): a lane on a child ticket is
+    # on the work of a cause whose declared owner is that parent.
+    parent_ticket: str = ""
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -392,6 +433,8 @@ class ModelFloorCauseIn(_Frozen):
     prs: tuple[str, ...] = ()
     needs_operator: bool = False
     last_seen: datetime | None = None
+    # When a STATUS row reported the stoppage resolved: a stoppage not seen since is not occurring, whatever the window.
+    resolved_at: datetime | None = None
     # The cost the reporter logged for a stoppage (the reporter's own figure, not a measurement).
     reported_cost_minutes: float | None = None
 
@@ -414,8 +457,16 @@ class ModelFloorCause(_Frozen):
     members: tuple[str, ...] = ()
     last_seen: datetime | None = None
     last_seen_age_s: int | None = None
-    # A stoppage: true when it was seen inside the overlay's window, false when not, ``None`` for a cause that is not one.
+    # A stoppage: true when it was seen inside the overlay's window, false when not or when a STATUS row reported it resolved
+    # after its last row, ``None`` for a cause that is not one.
     still_occurring: bool | None = None
+    resolved_at: datetime | None = None
+    # Who is on it, as far as the floor can tell (OMN-23388): ``owned`` when a live lane is on the row, ``unowned`` when
+    # none is and the owner map and the lane list were fresh and read, ``unknown`` when none is but either input was
+    # stale or unread. Only ``unowned`` says nobody is on it.
+    owner_state: Literal["owned", "unowned", "unknown"] = "unowned"
+    # Why the owner is unknown, with the read's age; empty unless ``owner_state`` is ``unknown``.
+    owner_note: str = ""
 
 
 class ModelFloorJoinRow(_Frozen):
@@ -491,6 +542,22 @@ class ModelRebuild(_Frozen):
     next_text: str
     # The highest piece the ledger's go rulings cover, or ``None`` when the ledger could not be read: unread is not zero.
     go_given_through: int | None
+    # The pieces a ruling opened by name beyond the in-order go (OMN-23313); empty when none, or when the ledger was unread.
+    go_pieces: tuple[int, ...] = ()
+
+
+class ModelOwnerInputs(_Frozen):
+    """The two inputs of "who is on it", judged by age (OMN-23388); ``None`` on the document is an overlay that judges none."""
+
+    unknown: bool
+    # Why, naming each input that is stale or unread with its age; empty when both were fresh and read.
+    reason: str = ""
+    # Seconds since the owner map was read; ``None`` when it was not read.
+    owner_map_age_s: int | None = None
+    owner_map_max_age_s: int | None = None
+    # Seconds since the lane list was read; ``None`` when it was not read.
+    lanes_age_s: int | None = None
+    lanes_max_age_s: int | None = None
 
 
 class ModelRedRule(_Frozen):
@@ -503,6 +570,12 @@ class ModelRedRule(_Frozen):
     # Every red cause that no overlay owners entry or lab source names an owner for (OMN-22862): the board says nobody
     # is on these by construction, so the ids are shown rather than counted.
     unowned_red: tuple[str, ...] = ()
+    # Every red cause no live lane is on, whatever tickets it lists as owners (OMN-23243): a listed owner ticket with no
+    # running lane carries nothing, so the rule reads NOT WORKING and names the row instead of counting it as carried.
+    uncarried_red: tuple[str, ...] = ()
+    # Every red cause no live lane is on while the owner map or the lane list was stale or unread (OMN-23388): the board
+    # cannot say nobody is on these, so they are named here and never in ``unowned_red`` or ``uncarried_red``.
+    owner_unknown_red: tuple[str, ...] = ()
 
 
 class ModelHealthReadingUsed(_Frozen):
@@ -559,6 +632,13 @@ class ModelFloorSimple(_Frozen):
     )
     # The customer health line (OMN-22923, 17b); ``None`` is a record written before the line existed.
     health: ModelFloorHealthLine | None = None
+    # The MVP launch block (OMN-23205): 17 readings of the launch bar; ``None`` is a record written before the block existed.
+    mvp_launch: ModelMvpLaunchBlock | None = None
+    # The board's work list (OMN-23184): every in-scope item that needs help, one row per class, members paged. ``None`` is a
+    # record written before the list existed, or an overlay that declares none.
+    worklist: tuple[ModelWorklistClass, ...] | None = None
+    # The owner map and lane list as judged this cycle (OMN-23388); ``None`` when the overlay declares no judgment.
+    owner_inputs: ModelOwnerInputs | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -576,6 +656,13 @@ class ModelGoRule(_Frozen):
     lookback_days: int = Field(gt=0)
     question_pattern: str = Field(min_length=1)
     affirmative_pattern: str = Field(min_length=1)
+    # A piece opened by subject, apart from the in-order go (OMN-23313): a RULING row of ``lane`` on any of
+    # ``open_tickets`` (``ticket`` is read in order above) whose question matches ``open_pattern`` opens the pieces its group ``list`` names, wherever they sit in
+    # the order, when the verbatim answer matches ``open_affirmative_pattern``; a later ruling that names a piece and does not
+    # match takes it back. The three are declared together or not at all, and a rule without them opens nothing by subject.
+    open_tickets: tuple[str, ...] = ()
+    open_pattern: str | None = Field(default=None, min_length=1)
+    open_affirmative_pattern: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _patterns(self) -> ModelGoRule:
@@ -586,6 +673,20 @@ class ModelGoRule(_Frozen):
             raise ValueError(f"a go rule pattern does not compile: {exc}") from exc
         if "first" not in question.groupindex:
             raise ValueError("the question pattern names a group called first")
+        if (self.open_pattern is None) != (self.open_affirmative_pattern is None):
+            raise ValueError(
+                "open_pattern and open_affirmative_pattern are declared together"
+            )
+        if self.open_pattern is not None and self.open_affirmative_pattern is not None:
+            try:
+                opened = re.compile(self.open_pattern)
+                re.compile(self.open_affirmative_pattern)
+            except re.error as exc:
+                raise ValueError(f"an open pattern does not compile: {exc}") from exc
+            if "list" not in opened.groupindex:
+                raise ValueError("the open pattern names a group called list")
+        elif self.open_tickets:
+            raise ValueError("open_tickets are declared with the open patterns")
         return self
 
 
@@ -642,6 +743,27 @@ class ModelLedgerReadingRule(_Frozen):
     lookback_days: int = Field(gt=0)
 
 
+class ModelStartCriterion(_Frozen):
+    """When a rebuild piece starts without the operator's say (RULING 2026-11-07T12:20:46Z): its prerequisites read true.
+
+    The piece is admitted when every piece in ``after_working`` reads WORKING on the floor's own readings. The criterion
+    is data of the overlay; no piece number is named in code.
+    """
+
+    piece: int = Field(ge=1, le=18)
+    after_working: tuple[int, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _prerequisites(self) -> ModelStartCriterion:
+        if self.piece in self.after_working or any(
+            not 1 <= p <= 18 for p in self.after_working
+        ):
+            raise ValueError(
+                "a start criterion names other pieces between 1 and 18 as its prerequisites"
+            )
+        return self
+
+
 class ModelShadowField(_Frozen):
     """One cell of a shadow row the floor shows, under the label it shows it by."""
 
@@ -682,6 +804,8 @@ class ModelRebuildOverlay(_Frozen):
     # The piece shown when the go cannot be read; with the go read, the strip names the first admitted piece not yet working.
     current_piece: int = Field(ge=1, le=18)
     step0_pieces: tuple[int, ...] = ()
+    # A piece with a start criterion is admitted as soon as its prerequisites read WORKING, with or without a go.
+    start_criteria: tuple[ModelStartCriterion, ...] = ()
     lab_state_piece: int = Field(ge=1, le=18)
     # A piece whose own reading does not cover everything its name says also draws from these lab sources: piece -> ids.
     piece_lab_sources: dict[int, tuple[str, ...]] = Field(default_factory=dict)
@@ -697,8 +821,20 @@ class ModelNumbersOverlay(_Frozen):
     record_max_age_s: int = Field(gt=0)
 
 
+class ModelOwnerInputsOverlay(_Frozen):
+    """What makes "who is on it" readable (OMN-23388): the lab source that reads the owner map, and the lane list's bound."""
+
+    # The id of the lab source whose reading is the owner map's (the overlay store source). Its own declared bound is the
+    # owner map's maximum age; a source it did not report, or that was not read, is an owner map that was not read.
+    owner_map_source: str = Field(min_length=1)
+    # The lane list (the floor record's lanes) is older than this many seconds: its owners are unknown.
+    lanes_max_age_s: int = Field(gt=0)
+
+
 class ModelCauseOverlay(_Frozen):
     max_shown: int = Field(gt=0)
+    # The delegation:idle row (OMN-23313); ``None`` declares none and the floor draws none.
+    delegation_idle: ModelDelegationIdleOverlay | None = None
     titles: dict[str, str] = Field(default_factory=dict)
     owners: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     needs_operator: tuple[str, ...] = ()
@@ -708,6 +844,9 @@ class ModelCauseOverlay(_Frozen):
     estimated_cost_stoppages: tuple[str, ...] = ()
     # A stoppage seen within this many seconds of the clock is still occurring; ``None`` does not judge it.
     still_occurring_within_s: int | None = Field(default=None, gt=0)
+    # When declared, a row with no lane on it reads owner unknown, not unowned, while the owner map or lane list is stale or
+    # unread (OMN-23388); ``None`` judges neither input.
+    owner_inputs: ModelOwnerInputsOverlay | None = None
 
 
 class ModelFloorSimpleOverlay(_Frozen):
@@ -728,6 +867,8 @@ class ModelFloorSimpleOverlay(_Frozen):
     error_drill_after_s: int = Field(gt=0)
     chain_deadline_s: int = Field(gt=0)
     details_href: str = Field(min_length=1)
+    # The board's work list (OMN-23184); ``None`` declares none and the floor draws none.
+    worklist: ModelWorklistOverlay | None = None
 
     @model_validator(mode="after")
     def _eighteen(self) -> ModelFloorSimpleOverlay:
@@ -781,16 +922,25 @@ class ModelFloorSimpleInput(_Frozen):
     lanes: tuple[ModelFloorLane, ...] = ()
     lab: ModelLabStateOutput | None
     receipts: ModelFloorReceipts | None
+    # How far back the loaded receipt chains reach; a count over a longer window is incomplete, so it is unread.
+    receipts_covered_s: int | None = Field(default=None, gt=0)
     readings: dict[int, ModelReadingRow] | None = None
     shadows: tuple[ModelShadowReading, ...] = ()
     # The highest piece with a go, read from the ledger's rulings; ``None`` when the ledger could not be read.
     go_given_through: int | None
+    # The pieces a ruling opened by name beyond the in-order go (OMN-23313).
+    go_pieces: tuple[int, ...] = ()
     alarms: tuple[ModelFloorAlarmLine, ...] = ()
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None
     outside_goal: ModelOutsideGoal = Field(
         default_factory=lambda: ModelOutsideGoal(read=False)
     )
+    # The work list's items as the sources read them; ``None`` is a list that was not read (drawn as an unread input).
+    worklist: tuple[ModelWorklistItemIn, ...] | None = None
+    # The operator-owned delegation tickets whose start criterion reads true (OMN-23313); ``None`` is a list that was not
+    # read (drawn as an unread input), ``()`` is a list that was read and holds none.
+    delegation_tickets: tuple[ModelDelegationTicketIn, ...] | None = None
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------

@@ -10,6 +10,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.models.seam_reading.model_required_sender import ModelSeamCounts
+from omnimarket.models.seam_reading.model_seam_demand import (
+    EnumSeamCrossing,
+    ModelSeamDemand,
+)
 
 
 class EnumSeamFault(StrEnum):
@@ -25,15 +30,6 @@ class EnumSeamFault(StrEnum):
     DEADLINE_ZERO = "deadline-zero"
 
 
-class EnumSeamCrossing(StrEnum):
-    """What came back for one demanded command."""
-
-    RESULT = "result"
-    RESULT_ERROR = "result-error"
-    NO_RESULT_BY_DEADLINE = "no-result-by-deadline"
-    BUS_UNREADABLE = "bus-unreadable"
-
-
 class ModelSeamDeadlineCommand(BaseModel):
     """Run every seam the overlay declares, or the ones named."""
 
@@ -45,21 +41,6 @@ class ModelSeamDeadlineCommand(BaseModel):
     fault: EnumSeamFault = EnumSeamFault.NONE
 
 
-class ModelSeamDemand(BaseModel):
-    """One command to send and the result topic to read for its correlated answer."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    seam: str = Field(min_length=1)
-    command_topic: str = Field(min_length=1)
-    result_topic: str = Field(min_length=1)
-    consumer_group_prefix: str = Field(min_length=1)
-    correlation_id: str = Field(min_length=1)
-    payload: dict[str, str | int | bool]
-    error_keys: tuple[str, ...] = Field(min_length=1)
-    deadline_seconds: float = Field(ge=0)
-
-
 class ModelSeamAnswer(BaseModel):
     """What the bus saw for one demand. ``detail`` is a cell-safe token, never answer content."""
 
@@ -68,6 +49,14 @@ class ModelSeamAnswer(BaseModel):
     crossing: EnumSeamCrossing
     elapsed_ms: int | None = Field(default=None, ge=0)
     detail: str = ""
+    #: Ms from the start of the send to the broker acknowledging it.
+    send_ack_ms: int | None = Field(default=None, ge=0)
+    #: Ms from the start of the send to the correlated reply arriving after the deadline, inside
+    #: the listen window.
+    late_reply_ms: int | None = Field(default=None, ge=0)
+    #: The reply envelope's own creation time minus the wall time the send began, in ms (two hosts'
+    #: clocks, so it carries their skew; may be negative).
+    reply_stamp_ms: int | None = None
 
 
 class ModelSeamReading(BaseModel):
@@ -80,6 +69,16 @@ class ModelSeamReading(BaseModel):
     deadline_seconds: float
     correlation_id: str
     detail: str = ""
+    #: Ms from the start of the send to the broker acknowledging it.
+    send_ack_ms: int | None = Field(default=None, ge=0)
+    #: Ms from the start of the send to the correlated reply arriving after the deadline, inside
+    #: the listen window.
+    late_reply_ms: int | None = Field(default=None, ge=0)
+    #: The reply envelope's own creation time minus the wall time the send began, in ms (two hosts'
+    #: clocks, so it carries their skew; may be negative).
+    reply_stamp_ms: int | None = None
+    #: How long past the deadline the probe kept reading for a late reply; 0 listened no longer.
+    late_listen_seconds: float = Field(default=0.0, ge=0)
 
 
 class ModelSeamDeadlineResult(BaseModel):
@@ -93,6 +92,8 @@ class ModelSeamDeadlineResult(BaseModel):
     fault: EnumSeamFault
     seams: tuple[ModelSeamReading, ...] = ()
     failure: str | None = None
+    #: The seam counts of the overlay's declarations; None when it declares none.
+    counts: ModelSeamCounts | None = None
     row_key: str | None = None
     ledger: str = "not-written"
     row: str | None = None

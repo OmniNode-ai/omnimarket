@@ -9,10 +9,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidatesRequest,
     ModelFloorFillStateEntry,
+    ModelFloorStartCriterion,
     ModelFloorTaskPayloadVerdict,
 )
 
@@ -118,6 +119,25 @@ def sent(
     )
 
 
+def none_criteria(floor_record: str | None) -> tuple[ModelFloorStartCriterion, ...]:
+    """A ``Start when: none`` criterion for every task the record's own note marks ready: the pre-criterion tables."""
+    if floor_record is None:
+        return ()
+    try:
+        lines = list(json.loads(floor_record)["lines"])
+        return tuple(
+            ModelFloorStartCriterion(
+                line_id=line["line_id"], task_id=it["id"], start_when="Start when: none"
+            )
+            for line in lines
+            for station in line.get("stations", [])
+            for it in station.get("items", [])
+            if it.get("state") == "prep" and str(it.get("note", "")).startswith("ready")
+        )
+    except (ValueError, KeyError, TypeError):
+        return ()
+
+
 def request(**overrides: Any) -> ModelFloorFillCandidatesRequest:
     fields: dict[str, Any] = {
         "now": NOW,
@@ -130,6 +150,7 @@ def request(**overrides: Any) -> ModelFloorFillCandidatesRequest:
         "stopped_continue_rule": RULE,
     }
     fields.update(overrides)
+    fields.setdefault("start_criteria", none_criteria(fields["floor_record"]))
     return ModelFloorFillCandidatesRequest(**fields)
 
 

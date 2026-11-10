@@ -90,6 +90,24 @@ class ModelLandingRoute(BaseModel):
     conflict_merge_states: tuple[str, ...] = ()
 
 
+class ModelLandingProjectionRoute(BaseModel):
+    """Where piece 9's snapshot comes from on a lab host: the pr_state projection, read through the pr_state read node.
+
+    The projection API address is not a key here. It is the ``projection_api_url`` of the
+    ``node_pr_state_read_effect`` overlay, found under ``ONEX_SKILL_OVERLAY_ROOTS`` like every other overlay.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The only discriminator of this shape against the watcher file route: a value of ``projection``.
+    source: Literal["projection"]
+    #: The goal scope overlay: its id, and the variable that pins its file.
+    goal_scope_overlay_id: str = Field(min_length=1)
+    goal_scope_file_env: str = Field(min_length=1)
+    #: The watcher classes that are green and waiting (an eligible head).
+    queue_classes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelReadingScheduleHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -98,6 +116,28 @@ class ModelReadingScheduleHost(BaseModel):
     #: The venv whose interpreter runs the installed unit, relative to the registry root (or absolute). A
     #: dedicated venv of a worktree or a release, never a dispatch venv.
     venv: str = Field(min_length=1)
+
+
+class ModelReadingAppendRetry(BaseModel):
+    """Passes that write again a piece whose append failed, inside the same run and window (OMN-23119)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Passes after the first; 0 writes each piece once.
+    passes: int = Field(ge=0)
+    #: Seconds before each pass, so a bus that timed out has time to answer.
+    pause_seconds: int = Field(ge=0)
+
+
+class ModelReadingReadRetry(BaseModel):
+    """Passes that read a source again when its read failed, inside the same run (OMN-23119)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Passes after the first; 0 reads each source once.
+    passes: int = Field(ge=0)
+    #: Seconds before each pass, so a bus that was slow has time to answer.
+    pause_seconds: int = Field(ge=0)
 
 
 class ModelTwoBackendReading(BaseModel):
@@ -124,8 +164,12 @@ class ModelReadingOverlay(BaseModel):
     order: tuple[int, ...]
     pieces: tuple[ModelPieceReadingSpec, ...]
     #: Required when a piece carries landing requirements.
-    landing_route: ModelLandingRoute | None = None
+    landing_route: ModelLandingRoute | ModelLandingProjectionRoute | None = None
     schedule_hosts: tuple[ModelReadingScheduleHost, ...] = ()
+    #: A piece whose append failed is written again by up to ``passes`` passes; absent, each piece is written once.
+    append_retry: ModelReadingAppendRetry | None = None
+    #: A source whose read failed is read again by up to ``passes`` passes; absent, each source is read once.
+    read_retry: ModelReadingReadRetry | None = None
     #: Environment the installed unit carries (the routes' commands and their roots).
     unit_environment: dict[str, str] = Field(default_factory=dict)
     #: The piece whose row also carries the two-backend count; absent, no row does.

@@ -95,5 +95,14 @@ projection_api:
   bus_backed: true
   key_columns: [tenant_id, code, subject]
   tenant_column: tenant_id
+  # OMN-23414: the OMN-23159 opt-out was self-expiring and has expired. The
+  # omnidash local status page declares the reader it was waiting for, in
+  # src/pages/local/status.contracts.yaml as the `status-alerts-local-alerts`
+  # data binding on projection_topic onex.snapshot.projection.local-alerts.v1,
+  # so `consumers: none` and `consumers_reason` are both deleted here and
+  # exposure-reader-coverage now checks that reader instead of a reason. The
+  # exposure stays `bus_backed: true` so the gate still reads it; a standing
+  # opt-out over a live reader is how an escape hatch turns into a permanent
+  # amnesty entry.
 metadata:
   transport_type: kafka

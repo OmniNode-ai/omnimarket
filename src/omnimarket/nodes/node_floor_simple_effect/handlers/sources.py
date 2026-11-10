@@ -8,9 +8,10 @@ empty value for a source it could not read. Paths are the contract's; limits and
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -28,10 +29,21 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
     ModelRunnerPlanRule,
 )
+from omnimarket.models.floor_17a.model_delegation_idle import (
+    ModelDelegationIdleOverlay,
+    ModelDelegationTicketIn,
+)
+from omnimarket.models.work_state_projection import (
+    EnumCriterionReading,
+    EnumWorkItemKind,
+    EnumWorkItemState,
+    ModelWorkStateResult,
+)
 
 TICKET = re.compile(r"\bOMN-\d+\b")
 SIZE_UNITS = {"K": 1 / 1024 / 1024, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
 TAIL_BYTES = 400_000
+CACHED_CELL = re.compile(r"\bcached=(\d+(?:\.\d+)?)s\b")
 # No admission record given: the lists alone decide. ``None`` instead is a record that could not be read.
 NO_ADMISSIONS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
@@ -100,10 +112,156 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             pr=str(item.get("pr") or ""),
             liveness=str(item.get("liveness") or "unread"),
             owns=tuple(str(o) for o in item.get("owns") or () if o),
+            parent_ticket=str(item.get("parent_ticket") or ""),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
     )
+
+
+# A lane item's attributes are the aliases its CLAIM cells name; these are the prefixes a floor row can be named by.
+_CAUSE_PREFIX = "cause:"
+_OWNS_PREFIX = "pr:floor:"
+_TICKET_PREFIX = "ticket:"
+_PR_PREFIX = "pr:"
+_LIVENESS_OF_STATE = {
+    EnumWorkItemState.IN_PROGRESS: "unread",
+    EnumWorkItemState.STOPPED: "dead",
+    EnumWorkItemState.DONE: "finished",
+}
+
+
+def read_work_state(path: Path) -> ModelWorkStateResult | None:
+    """The work-state projection as the projection node wrote it, or None when it is absent or not a projection."""
+    try:
+        return ModelWorkStateResult.model_validate_json(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+
+
+def read_delegation_tickets(
+    projection: ModelWorkStateResult | None, spec: ModelDelegationIdleOverlay
+) -> tuple[ModelDelegationTicketIn, ...] | None:
+    """The operator-owned delegation tickets whose start criterion reads true and that are not done (OMN-23313).
+
+    A ticket is delegation work when its parent chain reaches one of the overlay's epics (an epic is not its own member),
+    and the operator's when its tracker assignee is one of the overlay's operator assignees. ``None`` when the projection
+    is absent or no ticket in it carries an assignee at all: the tracker snapshot was the compact form, ownership was not
+    read, and an empty list there would call every ticket nobody's.
+    """
+    if projection is None:
+        return None
+    tickets = {
+        i.ticket: i
+        for i in projection.items
+        if i.kind is EnumWorkItemKind.TICKET and i.ticket
+    }
+    if not any(i.assignee for i in tickets.values()):
+        return None
+    epics = set(spec.epics)
+    operators = set(spec.operator_assignees)
+
+    def under_epic(parent: str | None) -> bool:
+        seen: set[str] = set()
+        while parent and parent not in seen:
+            if parent in epics:
+                return True
+            seen.add(parent)
+            parent = tickets[parent].parent if parent in tickets else None
+        return False
+
+    return tuple(
+        ModelDelegationTicketIn(
+            ticket=i.ticket or "", title=i.title, assignee=i.assignee or ""
+        )
+        for _, i in sorted(tickets.items())
+        if i.assignee in operators
+        and i.state is not EnumWorkItemState.DONE
+        and i.criterion is EnumCriterionReading.TRUE
+        and under_epic(i.parent)
+    )
+
+
+def work_state_lanes(projection: ModelWorkStateResult) -> tuple[ModelFloorLane, ...]:
+    """Each projected lane as the floor draws it, attributed to rows by the cells of its CLAIM alone.
+
+    A ``cause=<row id>`` cell and an ``owns=floor:<row id>`` cell name a floor row; the ``ticket`` and ``owns`` pull
+    request cells give the lane's ticket and pull request. No owner is read from any overlay.
+    """
+    lanes: list[ModelFloorLane] = []
+    for item in projection.items:
+        if item.kind is not EnumWorkItemKind.LANE:
+            continue
+        name = item.key.removeprefix("lane:")
+        attrs = item.attributes
+        owns = tuple(
+            dict.fromkeys(
+                [
+                    a.removeprefix(_CAUSE_PREFIX)
+                    for a in attrs
+                    if a.startswith(_CAUSE_PREFIX)
+                ]
+                + [
+                    a.removeprefix(_OWNS_PREFIX)
+                    for a in attrs
+                    if a.startswith(_OWNS_PREFIX)
+                ]
+            )
+        )
+        ticket = next(
+            (
+                a.removeprefix(_TICKET_PREFIX)
+                for a in attrs
+                if a.startswith(_TICKET_PREFIX)
+            ),
+            "",
+        )
+        pr = next(
+            (
+                a.removeprefix(_PR_PREFIX)
+                for a in attrs
+                if a.startswith(_PR_PREFIX)
+                and not a.startswith(_OWNS_PREFIX)
+                and "#" in a
+            ),
+            "",
+        )
+        lanes.append(
+            ModelFloorLane(
+                lane=name,
+                ticket=ticket,
+                stalled=False,
+                pr=pr,
+                liveness=_LIVENESS_OF_STATE[item.state],
+                owns=owns,
+            )
+        )
+    return tuple(lanes)
+
+
+def merge_lanes(
+    record: tuple[ModelFloorLane, ...], projected: tuple[ModelFloorLane, ...]
+) -> tuple[ModelFloorLane, ...]:
+    """The record's lanes keep their process reading; the projection adds what its CLAIM cells say, and any lane the
+    record does not list."""
+    by_name = {lane.lane: lane for lane in projected}
+    merged: list[ModelFloorLane] = []
+    for lane in record:
+        extra = by_name.pop(lane.lane, None)
+        if extra is None:
+            merged.append(lane)
+            continue
+        merged.append(
+            lane.model_copy(
+                update={
+                    "ticket": lane.ticket or extra.ticket,
+                    "pr": lane.pr or extra.pr,
+                    "owns": tuple(dict.fromkeys((*lane.owns, *extra.owns))),
+                }
+            )
+        )
+    merged.extend(by_name.values())
+    return tuple(merged)
 
 
 def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]:
@@ -116,6 +274,12 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
             last_seen: datetime | None = parse_time(item.get("last_seen"))
         except ValueError:
             last_seen = None
+        try:
+            resolved_at: datetime | None = (
+                parse_time(item["resolved_at"]) if item.get("resolved_at") else None
+            )
+        except ValueError:
+            resolved_at = None
         cost = item.get("cost_minutes")
         out.append(
             ModelFloorCauseIn(
@@ -126,6 +290,7 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
                 size_unit="occurrences",
                 tickets=tuple(str(t) for t in item.get("tickets", [])),
                 last_seen=last_seen,
+                resolved_at=resolved_at,
                 reported_cost_minutes=float(cost)
                 if isinstance(cost, int | float)
                 else None,
@@ -226,7 +391,11 @@ def read_watcher(
     scope: ModelGoalScope | None,
     conflict_states: tuple[str, ...] = (),
     admissions: Mapping[str, Mapping[str, Any]] | None = NO_ADMISSIONS,
+    projected: frozenset[str] = frozenset(),
 ) -> WatcherReading | None:
+    """``projected`` holds the pull requests (``repo#n``) the work-state projection keeps in scope through the goal's ticket
+    rule. The goal scope's lists name 58 pull requests and the rule admits the rest by ticket, so reading the lists alone left
+    the red class holding the 2 listed ones while the controller counted 60 to 70 (OMN-23184)."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         last_tick = parse_time(data["last_tick"])
@@ -254,6 +423,8 @@ def read_watcher(
             str(facts.get("head_ref", "")),
             str(facts.get("body", "")),
         )
+        if where == "unlisted" and str(key) in projected:
+            where = "in_scope"
         if where != "in_scope":
             outside += 1
             paused += where == "paused"
@@ -273,7 +444,18 @@ def read_watcher(
                 if isinstance(d, list) and len(d) > 2 and d[2]
             ]
             if done:
-                ages.append((key, max(int((now - max(done)).total_seconds() // 60), 0)))
+                # OMN-23056: the wait starts when the pull request could be landed. Checks that finished while it was a
+                # draft are older than that, so a handoff to landing for this very head moves the start forward to it.
+                started = max(done)
+                handoff = value.get("handoff")
+                if (
+                    isinstance(handoff, dict)
+                    and handoff.get("at")
+                    and handoff.get("head") == facts.get("head_sha")
+                ):
+                    with contextlib.suppress(ValueError):
+                        started = max(started, parse_time(handoff["at"]))
+                ages.append((key, max(int((now - started).total_seconds() // 60), 0)))
                 merge_state = str((value.get("review") or {}).get("merge_state") or "")
                 if merge_state in conflict_states:
                     conflicted.add(str(key))
@@ -328,6 +510,23 @@ def _by_kind(overlay: ModelLabStateOverlay, kind: str) -> ModelLabSourceDef:
     return next(s for s in overlay.sources if s.kind == kind)
 
 
+def _busy_with_own_units(reason: str, overlay: ModelLabStateOverlay) -> bool:
+    """True when the pool's refusal is the load bar alone and the units placed on the host explain that load (OMN-22870).
+
+    The placement prints the own-load part only when the load bar refuses and the load less the cost of the units placed
+    there is inside the bar. A host full of our own work refuses new work; it is not failing. Any other refusal part,
+    and a load nothing placed explains (no own-load part), is not this case.
+    """
+    marker = overlay.own_load_marker
+    if not marker:
+        return False
+    parts = [p.strip() for p in reason.split(overlay.refusal_separator) if p.strip()]
+    if not any(p.startswith(marker) for p in parts):
+        return False
+    allowed = (marker, *overlay.load_bar_markers)
+    return all(p.startswith(allowed) for p in parts)
+
+
 def read_hosts(
     record: Mapping[str, Any] | None, overlay: ModelLabStateOverlay
 ) -> ModelLabSourceRead:
@@ -353,14 +552,22 @@ def read_hosts(
             subjects.append(ModelLabSubject(name=host, ok=False, note="unread"))
             continue
         admission = m.get("admission") or {}
+        reason = str(admission.get("reason", ""))
         refused = admission.get("state") == "refused"
+        if refused and _busy_with_own_units(reason, overlay):
+            subjects.append(
+                ModelLabSubject(
+                    name=host,
+                    ok=True,
+                    note=f"busy with its own placed units: {reason}"[:140],
+                )
+            )
+            continue
         subjects.append(
             ModelLabSubject(
                 name=host,
                 ok=not refused,
-                note=str(admission.get("reason", ""))[:140]
-                if refused
-                else "advertising",
+                note=reason[:140] if refused else "advertising",
             )
         )
     working = sum(1 for s in subjects if s.ok)
@@ -564,7 +771,38 @@ def _free_gb(entry: str, key: str) -> float | None:
     return float(match.group(1)) * SIZE_UNITS[match.group(2)] if match else None
 
 
-def read_disk(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def _cached_s(rest: str) -> float:
+    """Seconds the host's cell text was already old when the receipt was written (the probe's ``cached=<n>s`` cell), else 0."""
+    match = CACHED_CELL.search(rest)
+    return float(match.group(1)) if match else 0.0
+
+
+def disk_expected_hosts(
+    record: Mapping[str, Any] | None, overlay: ModelLabStateOverlay
+) -> tuple[str, ...]:
+    """The hosts the pool receipt must hold a disk line for: every machine of the floor record that is not declared out or
+    in repair and that the overlay does not list as unprobed. A host the receipt lacks is unread, never absent."""
+    if record is None:
+        return ()
+    machines = [m for m in record["floor"].get("machines", []) if isinstance(m, dict)]
+    return tuple(
+        host
+        for m in machines
+        if (host := str(m.get("host", "")))
+        and str(m.get("state", "")) not in overlay.declared_host_states
+        and host not in overlay.disk_unprobed_hosts
+    )
+
+
+def read_disk(
+    path: Path,
+    overlay: ModelLabStateOverlay,
+    now: datetime | None = None,
+    expected_hosts: Sequence[str] = (),
+) -> ModelLabSourceRead:
+    """A host is above the bar only when every disk figure the overlay names is read, no older than the source's bound
+    and at or over the bar. A figure that is unread, a host the receipt holds no line for, and a figure older than its
+    bound count as not above the bar (OMN-23224); the bar is the overlay's and is not changed here."""
     source = _by_kind(overlay, "disk")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -580,21 +818,40 @@ def read_disk(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
     subjects: list[ModelLabSubject] = []
     for entry in readings:
         host, _, rest = str(entry).partition(":")
-        free = [f for k in overlay.disk_keys if (f := _free_gb(rest, k)) is not None]
-        if not free:
-            subjects.append(
-                ModelLabSubject(name=host, ok=False, note="no disk figure in the read")
+        figures = {k: _free_gb(rest, k) for k in overlay.disk_keys}
+        free = [f for f in figures.values() if f is not None]
+        unread = [k for k, f in figures.items() if f is None]
+        age_s = _cached_s(rest) + (
+            max((now - started).total_seconds(), 0.0) if now is not None else 0.0
+        )
+        low = min(free) if free else None
+        why: list[str] = []
+        if unread:
+            why.append(f"{', '.join(unread)} unread in the pool receipt")
+        if low is not None and low < floor:
+            why.append(f"{low:.1f} GB free, under the {floor:g} GB floor")
+        if age_s > source.max_age_s:
+            why.append(
+                f"reading {age_s:.0f} s old, over the {source.max_age_s} s bound"
             )
-            continue
-        low = min(free)
         subjects.append(
             ModelLabSubject(
                 name=host,
-                ok=low >= floor,
-                value=round(low, 1),
-                note=f"{low:.1f} GB free{'' if low >= floor else f', under the {floor:g} GB floor'}",
+                ok=not why,
+                value=None if low is None else round(low, 1),
+                note="; ".join(why) if why else f"{low:.1f} GB free",
             )
         )
+    held = {s.name for s in subjects}
+    subjects.extend(
+        ModelLabSubject(
+            name=missing,
+            ok=False,
+            note="no line in the pool receipt, so its disk is unread",
+        )
+        for missing in expected_hosts
+        if missing not in held
+    )
     if not subjects:
         return _unread(source.id, "the pool receipt holds no host")
     low_hosts = [s.name for s in subjects if not s.ok]
@@ -683,12 +940,16 @@ def read_deploy_lag(
                 )
     lags.sort(key=lambda x: -x[1])
     limit = source.limit if source.limit is not None else 0.0
+    # A merge reads "not running" only for want of evidence; when the count could not read the running build, say so on
+    # the row, so a red that means "not placed" is not read as "not deployed".
+    unread = [str(u) for u in merged.get("evidence_unread") or [] if str(u)]
+    unread_note = f"; evidence unread: {unread[0][:110]}" if unread else ""
     subjects = [
         ModelLabSubject(
             name=key,
             ok=lag <= limit,
             value=float(lag),
-            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}",
+            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}{unread_note}",
         )
         for key, lag in lags[:3]
     ]
@@ -705,17 +966,33 @@ def read_deploy_lag(
     )
 
 
-def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def _last_run(path: Path) -> tuple[datetime, dict[str, Any]]:
+    """The finished time and the reports by condition of the last line of a run record."""
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        size = handle.tell()
+        handle.seek(max(size - TAIL_BYTES, 0))
+        lines = handle.read().splitlines()
+    record = json.loads(lines[-1])
+    return parse_time(record["finished_at"]), {
+        r["condition"]: r for r in record["reports"]
+    }
+
+
+def read_broker_lag(
+    path: Path, overlay: ModelLabStateOverlay, lag_path: Path, lag_condition: str
+) -> ModelLabSourceRead:
+    """The broker conditions from the lab alarm's last run, the lag condition from the lag node's last run.
+
+    The alarm script's own lag condition watches a fixed list of consumer groups, one of which nobody has
+    consumed since its writer was folded into the runtime; its lag grows with every delegation event and
+    reads ALARM at every tick. The lag node derives the live groups from the running image, so its run
+    replaces that one condition. Either record missing or unparseable is unread, never a smaller list, and
+    the reading is as old as the older of the two runs.
+    """
     source = _by_kind(overlay, "broker_lag")
     try:
-        with path.open("rb") as handle:
-            handle.seek(0, 2)
-            size = handle.tell()
-            handle.seek(max(size - TAIL_BYTES, 0))
-            lines = handle.read().splitlines()
-        record = json.loads(lines[-1])
-        finished = parse_time(record["finished_at"])
-        reports = {r["condition"]: r for r in record["reports"]}
+        finished, reports = _last_run(path)
     except OSError as exc:
         return _unread(
             source.id,
@@ -723,6 +1000,19 @@ def read_broker_lag(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSource
         )
     except (ValueError, KeyError, IndexError, TypeError):
         return _unread(source.id, "the lab alarm's last run record cannot be parsed")
+    try:
+        lag_finished, lag_reports = _last_run(lag_path)
+        if lag_condition not in lag_reports:
+            raise KeyError(lag_condition)
+    except OSError as exc:
+        return _unread(
+            source.id,
+            f"the lag node's run record cannot be opened ({type(exc).__name__})",
+        )
+    except (ValueError, KeyError, IndexError, TypeError):
+        return _unread(source.id, "the lag node's last run record cannot be parsed")
+    reports[lag_condition] = lag_reports[lag_condition]
+    finished = min(finished, lag_finished)
     subjects: list[ModelLabSubject] = []
     for condition in overlay.broker_conditions:
         report = reports.get(condition)

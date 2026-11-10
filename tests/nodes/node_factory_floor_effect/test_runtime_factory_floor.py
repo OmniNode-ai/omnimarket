@@ -30,6 +30,7 @@ pytestmark = pytest.mark.unit
 
 NODES = Path(__file__).resolve().parents[3] / "src/omnimarket/nodes"
 CONTRACT = NODES / "node_factory_floor_effect/contract.yaml"
+LEDGER_KINDS = frozenset(load_contract(CONTRACT).runtime.ledger_kinds)
 COMPUTE_CONTRACT = NODES / "node_factory_floor_compute/contract.yaml"
 NOW = datetime(2026, 10, 31, 12, 0, 0, tzinfo=UTC)
 
@@ -289,7 +290,12 @@ def test_a_declared_plan_with_no_file_is_written_as_a_stopped_line_with_its_caus
     assert main(_argv(world, "--plan", "wave-plan", "--plan", "absent-plan")) == 0
     document = json.loads(_output(world).read_text(encoding="utf-8"))
     lines = {line["line_id"]: line for line in document["lines"]}
-    assert list(lines) == ["2026-10-31-wave-plan", "absent-plan"]
+    # plans-today also selects the old plan as a plan-class line beside the two declared ones.
+    assert list(lines) == [
+        "2026-10-31-wave-plan",
+        "absent-plan",
+        "2026-10-01-old-plan",
+    ]
     absent = lines["absent-plan"]
     assert (absent["condition"], absent["source"]) == ("stopped", "undrawn")
     assert absent["plan_path"] == "absent-plan"
@@ -328,7 +334,10 @@ def test_determinism_or_cli_two_runs_write_identical_bytes(
 def test_determinism_or_cli_overlay_selects_the_plans_when_no_flag_is_given(
     world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    overlay = _write(world["tmp"] / "overlay.yaml", "plan_path_contains: [old-plan]\n")
+    overlay = _write(
+        world["tmp"] / "overlay.yaml",
+        "plan_path_contains: [old-plan]\nprocesses: []\nroles: []\nrelease_required_repos: []\nheld_gates: []\n",
+    )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
     assert main(_argv(world)) == 0
     lines = json.loads(_output(world).read_text(encoding="utf-8"))["lines"]
@@ -378,18 +387,14 @@ def test_determinism_or_cli_refuses_an_invalid_manifest(
 # --------------------------------------------------------------------------------- the loaders
 
 
-def test_determinism_or_cli_ledger_parse_reads_cells_and_keeps_one_row_per_quiet_kind() -> (
+def test_determinism_or_cli_ledger_parse_reads_cells_and_keeps_every_row_of_a_contract_kind() -> (
     None
 ):
-    rows = parse_ledger_text(LEDGER)
+    rows = parse_ledger_text(LEDGER, LEDGER_KINDS)
     kinds = [r.kind for r in rows]
-    assert kinds == [
-        "CLAIM",
-        "HOLD",
-        "STATUS",
-        "MSG",
-    ]  # the older MSG of lane-b is dropped
-    claim, hold, status, msg = rows
+    # MSG is a contract ledger kind (OMN-22368), so the older MSG of lane-b with no recipient is kept too.
+    assert kinds == ["MSG", "CLAIM", "HOLD", "STATUS", "MSG"]
+    _older_msg, claim, hold, status, msg = rows
     assert (claim.task, claim.tickets, claim.text) == (
         "W0.2",
         ("OMN-100",),
@@ -414,7 +419,7 @@ def test_determinism_or_cli_ledger_parse_keeps_every_ask_and_every_answer() -> N
             "L4 2026-10-31T09:10:00Z | ACK | from=orchestrator-31d9 | to=lane-b | an ack that answers nothing",
         ]
     )
-    rows = parse_ledger_text(text)
+    rows = parse_ledger_text(text, LEDGER_KINDS)
     asks = [r for r in rows if r.kind == "MSG"]
     assert [(r.row_id, r.to, r.tickets) for r in asks] == [
         ("ask-1", "orchestrator-31d9", ("OMN-100",)),
@@ -511,7 +516,8 @@ def test_determinism_or_cli_a_hold_without_a_reason_cell_carries_its_free_text_a
     rows = parse_ledger_text(
         "L1 2026-10-29T01:31:43Z | HOLD | lane=a | id=x-andon-hold | to=all | ticket=OMN-1 | "
         "refuses handoff of work that is not validator logic\n"
-        "L2 2026-10-29T01:32:43Z | HOLD | lane=a | id=y | reason=explicit | ticket=OMN-1 | other text\n"
+        "L2 2026-10-29T01:32:43Z | HOLD | lane=a | id=y | reason=explicit | ticket=OMN-1 | other text\n",
+        LEDGER_KINDS,
     )
     assert [row.reason for row in rows] == [
         "refuses handoff of work that is not validator logic",
@@ -528,6 +534,10 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         yaml.safe_dump(
             {
                 "plan_path_contains": ["wave-plan"],
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
                 "host_table_relpath": "tables/hosts.yaml",
                 "machines": [
                     {
@@ -647,6 +657,10 @@ def test_cli_removes_dead_and_finished_workers_but_keeps_a_live_quiet_worker(
         yaml.safe_dump(
             {
                 "plan_path_contains": ["wave-plan"],
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
                 "machines": [{"host": "h051", "label": "Bay one"}],
             }
         ),
@@ -711,6 +725,10 @@ def test_machine_bays_without_a_host_table_name_leave_caps_to_the_pool_read_and_
         yaml.safe_dump(
             {
                 "plan_path_contains": ["wave-plan"],
+                "processes": [],
+                "roles": [],
+                "release_required_repos": [],
+                "held_gates": [],
                 "machines": [{"host": "h201", "label": "Bay one"}],
             }
         ),

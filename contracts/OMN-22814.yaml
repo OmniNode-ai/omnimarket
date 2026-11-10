@@ -1,48 +1,48 @@
 schema_version: 1.0.0
 ticket_id: OMN-22814
-title: The floor's friction report is classed with the overlay home's class rules, so a stoppage row names its class and owner
-summary: The factory floor publish node gains a friction_rollup step kind and a friction_classed contract step. It reads the ledger and its archive rolls inside the 24-hour window, runs node_friction_rollup_compute with the class_rules and class_owners of the overlay home (overlay id node_friction_rollup_compute, file env ONEX_FRICTION_CLASS_OVERLAY) and writes the 24-hour friction report to the path the floor already reads. A missing or invalid overlay or an unset ledger path fails the step and keeps the previous report. The shipped overlay.example.yaml names every measured family from the 108 unclassified rows.
+title: The friction rollup unit passes the class rules from the overlay home, so stoppages the rules name are classed on the floor
+summary: The friction rollup tick node (node_friction_rollup_tick_effect) reads its class rules and class owners from the overlay home (overlay id node_friction_rollup_compute, file env ONEX_FRICTION_CLASS_OVERLAY, else the overlay roots) instead of the example file the compute node ships, and passes them to the rollup. A missing, unreadable or invalid rules file leaves the rules unapplied; the tick still finishes with exit 3 and the status row, the log line and the report name class-rules=unapplied with the exception type.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-omn22814-friction-classed
-  statement: The floor's friction report is built by the rollup node with the class rules in the overlay home, so a row with no class cell names the class its text matches and the owner of that class.
+- id: req-omn22814-tick-overlay-home
+  statement: The friction rollup tick passes the overlay home's class rules to the rollup, so a row with no class cell names the class its text matches, and a rules file that cannot be read is reported as unapplied with its cause.
   acceptance:
   - id: AC1
-    statement: 'AC1: each measured family of friction rows is named by the shipped class rules and the floor reader sees the class on its row, while a row naming no recorded cause stays unclassified -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py -q --no-cov'
+    statement: 'AC1: the rollup unit reads the class rules from the overlay home and classes the 46 rows the rules name, in a test over today''s rows with a failing control -- falsifier: uv run pytest of the friction rollup unit test on the recorded rows'
   - id: AC2
-    statement: 'AC2: the step reads every setting from the contract and the overlay, and a missing overlay, a pattern that does not compile or an unset ledger path fails the step and keeps the previous report -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov'
+    statement: 'AC2: a missing rules file is reported on the floor as unclassified with its cause, never as a crash -- falsifier: uv run pytest of the missing-rules error chain test'
 evidence_requirements:
 - kind: tests
-  description: The friction step tests and the floor publish tests.
-  command: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov
+  description: The friction rollup tick tests.
+  command: uv run --frozen pytest tests/nodes/node_friction_rollup_tick_effect -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22814-ac1
-  description: The golden and the control tests of the class rules pass.
+  description: The golden test classes the recorded rows with the overlay home's rules and its control leaves them unclassified.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_tick_effect/test_class_rules_from_overlay_home.py -q --no-cov
 - id: dod-omn22814-ac2
-  description: The error tests of the step and the floor publish tests pass.
+  description: The error-chain tests of the missing, unconfigured and malformed rules file pass.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_friction_rollup_tick_effect/test_golden_chain_friction_rollup_tick_effect.py -q --no-cov
 - id: dod-omn22814-integration-proof
-  description: The lab run of the step tests at the pushed head, with the failing control on the dev revision of the node, is recorded in the pull request body; the local Done gate re-runs the node's tests on a lab host at the pushed head.
+  description: The lab run of the tick tests at the pushed head is recorded in the pull request body; the local Done gate re-runs the node's tests on a lab host at the pushed head.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22814 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22814 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_friction_rollup_tick_effect -q --no-cov
     cwd: .

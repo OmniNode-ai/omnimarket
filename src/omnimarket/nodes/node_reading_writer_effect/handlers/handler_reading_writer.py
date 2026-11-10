@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -48,6 +49,7 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOver
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLandingRead,
     ModelLedgerQuery,
+    ModelLedgerRead,
     ProtocolLandingSource,
     ProtocolLedgerRowSource,
     ProtocolReadingAppender,
@@ -165,7 +167,9 @@ class HandlerReadingWriter:
         revision: str | None = None,
         landing: ProtocolLandingSource | None = None,
         two_backend_source: ProtocolEffectBackendReportSource | None = None,
+        pause: Callable[[float], None] = time.sleep,
     ) -> None:
+        self._pause = pause
         self._landing = landing
         self._two_backend_source = two_backend_source
         self._overlay = overlay
@@ -174,10 +178,13 @@ class HandlerReadingWriter:
         self._clock = clock
         self._compute = compute or HandlerReadingCompute()
         self._revision = revision or load_revision()
+        # Answers read earlier in the cycle being run, by query: see _read. Emptied when a window starts.
+        self._cycle_reads: dict[ModelLedgerQuery, ModelLedgerRead] = {}
 
     # -- the window -------------------------------------------------------------------------
 
     def handle(self, command: ModelReadingWindowCommand) -> ModelReadingWindowResult:
+        self._cycle_reads = {}
         now = self._clock().astimezone(UTC)
         length = self._overlay.window.length_seconds
         delay = self._overlay.window.close_delay_seconds
@@ -201,6 +208,8 @@ class HandlerReadingWriter:
             )
             for piece in wanted
         )
+        if command.write:
+            outcomes = self._retry_failed(outcomes, start, end, cutoff, now)
         return ModelReadingWindowResult(
             correlation_id=command.correlation_id,
             status="completed",
@@ -209,6 +218,39 @@ class HandlerReadingWriter:
             cutoff=cutoff,
             pieces=outcomes,
         )
+
+    def _retry_failed(
+        self,
+        outcomes: tuple[ModelReadingPieceOutcome, ...],
+        start: datetime,
+        end: datetime,
+        cutoff: datetime,
+        now: datetime,
+    ) -> tuple[ModelReadingPieceOutcome, ...]:
+        """Write again each piece whose append failed, for the passes the overlay declares (OMN-23119).
+
+        An hourly tick that drops one piece leaves its reading older than the bound at the next tick, so a failed append is
+        retried in the same run. The window, the clock and so the row key and content are the same, so a row that did land
+        before its reply timed out reads back as already written, and a failing piece keeps its append-failed outcome.
+        """
+        retry = self._overlay.append_retry
+        if retry is None:
+            return outcomes
+        current = list(outcomes)
+        for _ in range(retry.passes):
+            failed = [
+                i for i, o in enumerate(current) if o.ledger.startswith("append-failed")
+            ]
+            if not failed:
+                break
+            self._pause(retry.pause_seconds)
+            # A row a lost reply left behind must be read back, so a retry pass asks the ledger again.
+            self._cycle_reads = {}
+            for i in failed:
+                current[i] = self._piece(
+                    self._overlay.spec(current[i].piece), start, end, cutoff, now, True
+                )
+        return tuple(current)
 
     @staticmethod
     def _failed(
@@ -241,12 +283,47 @@ class HandlerReadingWriter:
             return _UNREAD
         return str(read.report.not_on_both_count)
 
+    def _read_again_on_error(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        """Read a source; when the read fails, ask again for the passes the overlay declares (OMN-23119).
+
+        The bound of the read is never raised: a slow bus reply is asked for again, and a source that stays dead
+        still reads UNKNOWN after the last pass.
+        """
+        read = self._source.read(query)
+        retry = self._overlay.read_retry
+        if retry is None:
+            return read
+        for _ in range(retry.passes):
+            if read.error is None:
+                break
+            self._pause(retry.pause_seconds)
+            read = self._source.read(query)
+        return read
+
+    def _read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
+        """One read per distinct query in a cycle (OMN-23119).
+
+        The replay check asks the same question, the reading rows of this window, once for every
+        computed piece. Through the command route each ask is a process and a bus round trip of
+        its own, about 9 s when the lab is quiet and the 60 s bus timeout when the read node is
+        stalled, and the one that stalls turns its piece UNKNOWN for the hour. An answer is kept
+        only when it was read: an error is never kept, so the next ask reads again. A read that
+        fails is asked again for the passes the overlay's read_retry declares.
+        """
+        kept = self._cycle_reads.get(query)
+        if kept is not None:
+            return kept
+        read = self._read_again_on_error(query)
+        if read.error is None:
+            self._cycle_reads[query] = read
+        return read
+
     def _evidence(
         self, spec: ModelPieceReadingSpec, end: datetime
     ) -> tuple[ModelReadingSourceRows, ...]:
         gathered = []
         for source in spec.all_sources:
-            read = self._source.read(
+            read = self._read(
                 ModelLedgerQuery(
                     since=end - timedelta(seconds=source.max_age_seconds),
                     until=end,
@@ -275,7 +352,7 @@ class HandlerReadingWriter:
         self, piece: int, window_start: datetime, window_end: datetime, now: datetime
     ) -> tuple[tuple[ModelLedgerEvidenceRow, ...], str | None]:
         publish = self._overlay.publish
-        read = self._source.read(
+        read = self._read(
             ModelLedgerQuery(
                 since=window_end,
                 until=now + timedelta(seconds=1),
@@ -387,6 +464,14 @@ class HandlerReadingWriter:
                     }
                 )
                 result = tagged(result)
+        elif result.outcome is EnumReadingOutcome.SOURCE_UNREADABLE:
+            # A computed reading is immutable under its row key (OMN-23119): a later run whose source timed out must not
+            # put an UNKNOWN row over the reading the window already has. With none, the attempt is still recorded.
+            existing, error = self._existing(spec.piece, start, end, now)
+            if error is None and any(
+                row.cells.get("key") == result.row_key for row in existing
+            ):
+                return outcome(result, "kept-computed-reading")
         row = build_reading_row(
             result,
             two_backend_pending=pending,

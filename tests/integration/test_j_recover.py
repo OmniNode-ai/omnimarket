@@ -37,7 +37,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
 )
 from omnimarket.lab_work.bus import _bytes
 from omnimarket.models.dev_merge_redeploy_overlay import ModelDevMergeRedeployPolicy
-from omnimarket.models.landing_decision import ModelLandingAction
+from omnimarket.models.landing_decision import ModelLandingAction, ModelLandingFacts
 from omnimarket.models.model_repo_merged import ModelRepoMerged
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers import (
     DevMergeRedeployHost,
@@ -142,9 +142,11 @@ class RecordingMergeWriter:
     def __init__(self) -> None:
         self.merged: list[ModelLandingAction] = []
 
-    def perform(self, action: ModelLandingAction) -> None:
+    def perform(self, action: ModelLandingAction, facts: ModelLandingFacts) -> bool:
         if action.kind.value == "merge":
             self.merged.append(action)
+            return True
+        return False
 
 
 def fix_policy(repo: str) -> ModelDevMergeRedeployPolicy:

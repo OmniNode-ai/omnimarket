@@ -16,14 +16,18 @@ import json
 import re
 from typing import Any
 
-from ..models import (
+from omnimarket.models.remote_lane_close import (
     FAILED_OUTCOME,
     LANE_OUTCOMES,
     REJECTED_OUTCOME,
+    ModelRemoteLaneNeedsPolicy,
     ModelRemoteLaneResult,
     ModelRemoteLaneResultRequest,
 )
+from omnimarket.nodes.node_remote_lane_close_compute.overlay import load_needs_policy
+
 from .first_turn_context import first_turn_context
+from .lane_needs import lane_needs, report_text
 from .receipt_usage import receipt_usage
 
 DELEGATION_LINE_RE = re.compile(r"^[^\S\r\n]*`?DELEGATION[^\S\r\n]+(.*)$", re.M)
@@ -201,6 +205,9 @@ def waiting_on_background(final_message: str | None) -> bool:
 class HandlerRemoteLaneResult:
     """Decide how a finished remote lane closes from its exit code and final message."""
 
+    def __init__(self, needs_policy: ModelRemoteLaneNeedsPolicy | None = None) -> None:
+        self._needs_policy = needs_policy or load_needs_policy()
+
     def handle(self, request: ModelRemoteLaneResultRequest) -> ModelRemoteLaneResult:
         message = request.final_message
         problem = delegation_problem(message, request.delegation_reasons)
@@ -222,6 +229,12 @@ class HandlerRemoteLaneResult:
         }
         if withdrawn_by is not None:
             ledger_cells["withdrawn-by"] = withdrawn_by
+        needs = lane_needs(message, outcome, self._needs_policy)
+        report = report_text(message, self._needs_policy)
+        if needs is not None:
+            ledger_cells["needs"] = needs.cell
+        if report:
+            ledger_cells["report"] = report
         return ModelRemoteLaneResult(
             outcome=outcome,
             problem=problem,
@@ -234,4 +247,6 @@ class HandlerRemoteLaneResult:
             ),
             withdrawn_by=withdrawn_by,
             ledger_cells=ledger_cells,
+            needs=needs,
+            report_text=report,
         )

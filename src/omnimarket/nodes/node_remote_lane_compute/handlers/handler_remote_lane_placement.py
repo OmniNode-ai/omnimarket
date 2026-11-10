@@ -75,13 +75,7 @@ from omnimarket.models.model_engine_experiment import (
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
-from omnimarket.models.stop_gate import EnumStopGateOutcome
-from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
-from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
-    lane_model_refusal,
-)
-
-from ..models import (
+from omnimarket.models.remote_lane_placement import (
     CODEX_ENGINE,
     EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
@@ -93,6 +87,11 @@ from ..models import (
     ModelRemoteLaneReconcileIntent,
     ModelRemoteLaneRungVerdict,
     ModelRemoteLaneVenvDrift,
+)
+from omnimarket.models.stop_gate import EnumStopGateOutcome
+from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
 )
 
 _VENV_DRIFT = "venv-drift"
@@ -175,6 +174,37 @@ def input_refusal(
     return None
 
 
+def repair_pin_line(
+    request: ModelRemoteLanePlacementRequest,
+    pick: ModelRemoteLaneHostReading | None,
+) -> str | None:
+    """The line that says a repair lane pinned to its own target was not kept there (OMN-23389).
+
+    On 2026-11-09 the first cleanup lane for h053 was pinned to h053, which refused admission with a full disk, so
+    the repair never ran. A repair lane is never run on the host it repairs; the pin names the target.
+    """
+    target = request.repair_target
+    if target is None or request.pinned_host != target or pick is None:
+        return None
+    refused = next(
+        (
+            r.lane_admission_refusal
+            for r in request.readings
+            if r.name == target and r.lane_admission_refusal is not None
+        ),
+        None,
+    )
+    why = (
+        f"it refuses admission ({refused})"
+        if refused
+        else "a repair lane never runs on the host it repairs"
+    )
+    return (
+        f"REPAIR-PIN-REFUSED pinned to {target}: {why}; placed on {pick.name}, "
+        f"which reaches {target} over ssh"
+    )
+
+
 def effective_lane_slots(reading: ModelRemoteLaneHostReading) -> int:
     """The free lane slots the pool counts for this host: none while the host is swapping."""
     return 0 if swap_refusal(reading) is not None else reading.lane_slots
@@ -241,8 +271,13 @@ def _select(
     expired = set() if codex else set(request.auth_expired_hosts)
     reasons: dict[str, str] = {}
     admitted: list[ModelRemoteLaneHostReading] = []
+    target = request.repair_target
     for reading in request.readings:
-        if reading.name in limited:
+        if target is not None and reading.name == target:
+            reasons[reading.name] = (
+                "repair-target: a repair lane runs on another host and reaches this one over ssh"
+            )
+        elif reading.name in limited:
             reasons[reading.name] = "usage-limited"
         elif reading.name in expired:
             reasons[reading.name] = "auth-expired"
@@ -254,8 +289,16 @@ def _select(
             reasons[reading.name] = swapping
         elif reading.lane_admission_refusal is not None:
             reasons[reading.name] = f"admission: {reading.lane_admission_refusal}"
-        elif request.pinned_host and reading.name != request.pinned_host:
+        elif (
+            request.pinned_host
+            and request.pinned_host != target
+            and reading.name != request.pinned_host
+        ):
             reasons[reading.name] = "not-pinned"
+        elif target is not None and (
+            reading.ssh_reach is None or target not in reading.ssh_reach
+        ):
+            reasons[reading.name] = f"no-ssh-to-{target}"
         elif check_inputs and (absent := input_refusal(request, reading)) is not None:
             reasons[reading.name] = absent
         else:
@@ -542,4 +585,5 @@ class HandlerRemoteLanePlacement:
             reconcile=reconcile,
             refusal=input_line,
             stop_gate=gate,
+            repair_pin_refused=repair_pin_line(request, pick),
         )

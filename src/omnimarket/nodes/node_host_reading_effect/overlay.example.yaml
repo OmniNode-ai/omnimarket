@@ -59,6 +59,10 @@ canary:
   wrapper_end_marker: EXAMPLE-WRAPPER-END
   pool_admitted_marker: "admitted ("
   pool_unreadable_marker: unreadable
+  # The lane wrapper's stub exits with one of these codes and prints the marker when the host's installed lane guard copy is
+  # absent, after the pool read admitted the host: such a host fails the reading with a reason that names the guard (OMN-22869).
+  guard_missing_exit_codes: [78]
+  guard_missing_marker: LANE-GUARD-MISSING
   pool_parked_markers:
     - "host table:"
     - not in the pool
@@ -87,6 +91,7 @@ join_j1:
   emission:
     home_env: EXAMPLE_FLOOR_HOME
     journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  control_node: node_join_j1_control_absent
   injected_fault: Remove a required node's package from the repository the graph reads
 # The J2 join (piece 2 to piece 3): a canary on each pooled host publishes one command, placement
 # consumes the host's advertisement and one correlated result returns on the bus.

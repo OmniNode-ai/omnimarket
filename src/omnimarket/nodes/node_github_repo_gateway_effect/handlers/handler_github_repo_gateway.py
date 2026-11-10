@@ -45,14 +45,17 @@ from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
+    ModelJobLogFillResult,
     ModelJobLogTailResult,
 )
+from omnimarket.models.model_job_log_cache_miss import JOB_LOG_CACHE_MISS
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_job_log_cache import (
     ModelCachedJobLog,
     ModelJobLogCachePolicy,
 )
 from omnimarket.nodes.node_github_repo_gateway_effect.read_operations import (
+    read_job_log_fill,
     read_job_log_tail,
 )
 from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
@@ -65,20 +68,32 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 _HANDLER_ID = "node_github_repo_gateway_effect"
+_JOB_LOG_OPERATIONS = frozenset(
+    {EnumGithubGatewayOperation.JOB_LOG_TAIL, EnumGithubGatewayOperation.JOB_LOG_FILL}
+)
+
+
+def declared_cache_policy() -> ModelJobLogCachePolicy:
+    """The policy as the overlay or the contract declares it, with no root resolved."""
+    overlay_id = "github_job_logs"
+    if find_node_overlay(overlay_id) is not None:
+        return load_structured_overlay(overlay_id, ModelJobLogCachePolicy)
+    import yaml
+
+    contract = Path(__file__).parents[1] / "contract.yaml"
+    return ModelJobLogCachePolicy.model_validate(
+        yaml.safe_load(contract.read_text())["job_log_cache"]
+    )
+
+
+def lane_reads_cache_only() -> bool:
+    """Whether a lane's ``job-log`` read answers from the cache only (declared, never coded)."""
+    return declared_cache_policy().lane_reads_cache_only
 
 
 def cache_policy() -> ModelJobLogCachePolicy:
     """Use the existing host read-cache root, with an optional typed overlay."""
-    overlay_id = "github_job_logs"
-    if find_node_overlay(overlay_id) is not None:
-        policy = load_structured_overlay(overlay_id, ModelJobLogCachePolicy)
-    else:
-        import yaml
-
-        contract = Path(__file__).parents[1] / "contract.yaml"
-        policy = ModelJobLogCachePolicy.model_validate(
-            yaml.safe_load(contract.read_text())["job_log_cache"]
-        )
+    policy = declared_cache_policy()
     root = policy.root or (
         resolve_onex_state_root(purpose="GitHub job-log cache")
         / "github-read-cache"
@@ -115,11 +130,19 @@ class JobLogCacheTransport:
     ) -> None:
         self.root, self.transport, self.ttl_seconds = root, transport, ttl_seconds
 
-    def handle(self, request: ModelGithubGatewayRequest) -> ModelJobLogTailResult:
+    def handle(
+        self, request: ModelGithubGatewayRequest
+    ) -> ModelJobLogTailResult | ModelJobLogFillResult:
         if request.job_id is None:
             raise ValueError("job log requires job_id")
         self.request = request
-        legacy = self._legacy_view(request)
+        # A fill wants the whole log in the shared cache, so it never settles for a runner's
+        # partial copy of the window.
+        legacy = (
+            None
+            if request.operation is EnumGithubGatewayOperation.JOB_LOG_FILL
+            else self._legacy_view(request)
+        )
         if legacy is not None:
             return legacy
         key = hashlib.sha256(
@@ -133,7 +156,12 @@ class JobLogCacheTransport:
             fcntl.flock(lock, fcntl.LOCK_EX)
             # The read function applies the same tail, offset and timestamp step
             # semantics to local bytes as it does to a live transport.
-            return read_job_log_tail(cast(GitHubReadTransportProtocol, self), request)
+            read = (
+                read_job_log_fill
+                if request.operation is EnumGithubGatewayOperation.JOB_LOG_FILL
+                else read_job_log_tail
+            )
+            return read(cast(GitHubReadTransportProtocol, self), request)
 
     def _legacy_view(
         self, request: ModelGithubGatewayRequest
@@ -199,7 +227,12 @@ class JobLogCacheTransport:
 
     def _network(self) -> GitHubReadTransportProtocol:
         if self.request.cache_only or self.transport is None:
-            raise GitHubTransportError("JOB-LOG-CACHE-MISS: no GitHub call made")
+            raise GitHubTransportError(
+                f"{JOB_LOG_CACHE_MISS}: no GitHub call made; job {self.request.job_id} "
+                f"of {self.request.repo} is not under the job-log cache path "
+                f"{self.root} (entry {self.raw.name}); node_job_log_filler_effect "
+                f"fills that cache from merge-relevant runs"
+            )
         return self.transport
 
     def _metadata(self) -> ModelCachedJobLog | None:
@@ -337,7 +370,10 @@ class HandlerGithubRepoGatewayEffect:
             else RealGitHubReadTransport(await resolve_github_token_async())
         )
         result: GithubGatewayResult
-        if request.operation is EnumGithubGatewayOperation.JOB_LOG_TAIL:
+        if request.operation in _JOB_LOG_OPERATIONS:
+            # job_log_fill and an uncached job_log_tail share one path: a hit is served from
+            # the host-shared cache, and a miss downloads that one job's log (the transport
+            # above is None only for a cache_only tail, which refuses the miss instead).
             policy = cache_policy()
             assert policy.root is not None
             result = await asyncio.to_thread(
