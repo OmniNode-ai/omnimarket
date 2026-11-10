@@ -57,7 +57,8 @@ def empty(tmp_path: Path) -> dict[str, str]:
 def test_an_empty_overlay_root_refuses_naming_the_key(
     tmp_path: Path, read, key: str
 ) -> None:
-    with pytest.raises(NodeOverlayError, match=key.replace(".", r"\.")):
+    # an absent overlay file is refused naming the overlay id and the file, not the key
+    with pytest.raises(NodeOverlayError, match=r"idle_slot_fill/overlay\.yaml"):
         read(empty(tmp_path))
 
 
@@ -112,7 +113,7 @@ def test_the_handler_refuses_naming_the_key_when_no_overlay_supplies_it(
         ],
         standing_tickets={"cause-red": "OMN-9101"},
     )
-    with pytest.raises(NodeOverlayError, match=r"idle_slot_fill\.process_fix_roles"):
+    with pytest.raises(NodeOverlayError, match=r"idle_slot_fill/overlay\.yaml"):
         handler.HandlerIdleSlotFill().handle(request)
 
 
@@ -125,7 +126,7 @@ def test_unread_experiment_designs_are_reported_not_swallowed(
     assert sources.experiments is not None
     _, note = handler.read_generated(sources, None, {}, "2026-10-19T16:00:00Z")
     assert "experiments unread" in note
-    assert "idle_slot_fill.experiment_designs" in note
+    assert "idle_slot_fill/overlay.yaml" in note
     with pytest.raises(NodeOverlayError) as caught:
         overlay.experiment_designs(env)
     assert len(str(caught.value)) > 160
