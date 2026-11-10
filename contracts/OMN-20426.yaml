@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-20426
+title: capability_scores stays empty on the lab because node_canary_score_reducer had no writer; its writer merged in omnimarket#3346 and this contract binds the recorded evidence
+summary: HandlerCanaryScoreReducer gained handle(), which validates the ModelCanaryReport wire payload and upserts one capability_scores row per scored model keyed on (model_key, task_type) with the house tenant id. The fix merged as omnimarket#3346 (ba718a90c95d4cd5201398324a7fa1bd8e325ab9). This contract carries no product change; it binds the chain test and the recorded dev-lane evidence to the three criteria so the closer can close the ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20426-capability-scores-writer
+  statement: An adr-canary-completed event that reaches node_canary_score_reducer through the real contract dispatch becomes a capability_scores upsert, and on the dev lane one published event leaves at least one row in public.capability_scores.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a RED-first chain test drives an adr-canary-completed payload with one successful model score through the real contract dispatch of node_canary_score_reducer and asserts a capability_scores upsert is requested, failing on current dev -- falsifier: uv run pytest tests/chains/test_canary_score_reducer_writes_capability_scores.py -v in omnimarket'
+  - id: AC2
+    statement: 'AC2: the live break is named with file and line evidence from the dev lane (subscription, event model, writer or tenant authority), each hop proved by a log line or a bus offset -- falsifier: the lane receipt cites no evidence for one of the four hops'
+  - id: AC3
+    statement: 'AC3: after the fix is hotpatched onto the dev lane and one adr-canary-completed event is published, the dev lane count of public.capability_scores is at least 1, with a positive control on a table known to hold rows -- falsifier: select count(*) from public.capability_scores on the dev lane returns 0 after the event'
+evidence_requirements:
+- kind: tests
+  description: The five chain tests of the capability_scores writer pass on dev and fail with the handler restored to its state before omnimarket#3346 (five failed, AttributeError on handle).
+  command: uv run --frozen pytest tests/chains/test_canary_score_reducer_writes_capability_scores.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20426-chain-test
+  description: 'Runs the whole chain file. The merged fix is omnimarket#3346 (ba718a90c95d4cd5201398324a7fa1bd8e325ab9), which added HandlerCanaryScoreReducer.handle(). The five tests pass on dev (5 passed). With the handler file restored to its pre-fix version (git show ba718a90c^), the same file reads 5 failed with AttributeError: HandlerCanaryScoreReducer has no attribute handle. Recorded by lane d20426-1220 on the dev lane head and read again by lane cap20426-1235 at dc64c3f3eabe6e66c7daed2a357f33af686d8653 (5 passed; 5 failed with the pre-fix handler).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/test_canary_score_reducer_writes_capability_scores.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn20426-hop-dispatch
+  description: 'Runs the dispatch hop test, which enters the real contract dispatch, auto-wiring arm selection and the projection write path and fails when the projection arm finds no handle() on the handler. The four hops recorded on the dev lane by lane d20426-1220 on 2026-11-09: (1) subscription, runtime log 12:19:52 "Auto-wired subscription: topic=onex.evt.omnimarket.adr-canary-completed.v1 consumer_group=local.omnimarket.canary_score_reducer.consume.1.0.0 node=canary_score_reducer" under the tenant-projection profile; (2) producer, only node_adr_canary_orchestrator publishes the topic (terminal_event, contract.yaml line 27); (3) event model and handler, the projection arm calls handle() and the published probe event validated as ModelCanaryReport, bus offset partition 0 offset 1 of onex.evt.omnimarket.adr-canary-completed.v1; (4) writer and tenant authority, the row was written with the house tenant id. Hosted CI re-runs the dispatch test only; the log lines and the offset are recorded evidence of the dev lane and CI cannot read them.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/test_canary_score_reducer_writes_capability_scores.py -q -n 0 --no-cov -p no:randomly -k test_canary_completed_event_reaches_the_database
+    cwd: .
+- id: dod-omn20426-row-upsert
+  description: 'Runs the row-content test: handle() turns the wire payload into capability_scores rows keyed per model. On the dev lane (container omninode-runtime on h201, image revision 2c66ae87024aa4cd9fb874066d70fc38db11bca5, which already holds handle()) lane d20426-1220 published one probe event (model_key omn20426-ac3-probe, success true) to onex.evt.omnimarket.adr-canary-completed.v1 and then read public.capability_scores in database omnidash_analytics: 1 row, omn20426-ac3-probe | adr_extraction | total_count 2 | last_updated 2026-11-09 12:19:52+00. Positive control read in the same postgres: public.agent_actions in database omnibase_infra count 32562, and pg_stat_user_tables n_live_tup public.delegation_events 102312 (estimate) in omnidash_analytics. Not read: the row count in omnidash_analytics before the publish. Hosted CI re-runs the upsert test only; the database read is recorded evidence of the dev lane.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/test_canary_score_reducer_writes_capability_scores.py -q -n 0 --no-cov -p no:randomly -k test_successful_report_upserts_one_row_per_scored_model
+    cwd: .
+- id: dod-omn20426-producer-and-subscription
+  description: Reads the two contracts the first two hops rest on. The orchestrator declares the adr-canary-completed topic as its terminal event and the reducer's contract subscribes to it. It passes at the merge base by design (the fix did not touch either contract), so it is a structural regression check and binds no criterion.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'grep -q "^terminal_event: .*adr-canary-completed[.]v1" src/omnimarket/nodes/node_adr_canary_orchestrator/contract.yaml && grep -q "^    - .*adr-canary-completed[.]v1" src/omnimarket/nodes/node_canary_score_reducer/contract.yaml'
+    cwd: .

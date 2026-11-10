@@ -38,3 +38,12 @@ floor_fill:
   stopped_report_chars: 2000
   # The rule a continuation brief ends with.
   stopped_continue_rule: "Continue the predecessor's work; do not repeat what its report says is done."
+  # The argv of the lane start node's entry for a continuation lane; {lane} {key} {ticket} {attempt} and {brief}
+  # (the path of the brief file the fill writes, what the entry's --brief reads) are filled per start. It must
+  # carry {brief} and must not name the script runner. The entry also requires --overlay, --ledger, --pool-snapshot, --model
+  # and --run-id, which are this deployment's, so the command carries them (the run id is the lane name, which carries the attempt).
+  stopped_runner_command: [example-node-entry, --overlay, /srv/example/lane-start-overlay.yaml, --ledger, /srv/example/ledger.md, --pool-snapshot, /srv/example/pool-snapshot.json, --model, example-model, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}", --brief, "{brief}", --run-id, "{lane}"]
+  # Where the stopped lanes' report paths (as the floor record names them) are read from.
+  stopped_reports_root: /srv/example/registry
+  # Where the fill writes each continuation's brief file (<lane>.md; the lane name carries the attempt).
+  stopped_brief_directory: /srv/example/briefs
