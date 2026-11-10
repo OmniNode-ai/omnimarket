@@ -1,0 +1,143 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""The pool hosts' hook-event names, read from the host table the deployment names (OMN-22755).
+
+A hook event's ``host`` is the machine's own name and the ledger names a pool host by id. A host
+table declares both: each host id with the machine names it answers to. The alarm derives its
+host aliases from that table instead of holding a second list, so a host added to the table is
+attributed the day it is added. A table that cannot be read is an error the caller turns into an
+unreadable event table, never into an empty alias set that passes.
+
+The table is the one lab host list: YAML ``hosts:`` holding a list of rows, each with a ``name`` (the host id)
+and a ``target`` and ``fallback_targets`` (how it is reached), and the ``hostnames`` the row declares for the
+names its hook events carry (omnimarket ModelLabHostRow). A host answers to its declared ``hostnames`` and to
+each ``target`` or ``fallback_targets`` entry that is a machine name (an address, which no event carries, is
+skipped). The older mapping ``hosts: {<host id>: {hostnames: [<name>, ...]}}`` is read the same way. Every
+other key of a host is ignored; a host that gives no name is not attributable and is left out.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import os
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+
+
+class HostTableError(ValueError):
+    """The host table could not be read as a table of hosts and their names."""
+
+
+def event_label(hostname: str) -> str:
+    """The lowercased first DNS label a hook event of ``hostname`` carries."""
+    return hostname.strip().lower().split(".", 1)[0]
+
+
+def _is_address(name: str) -> bool:
+    try:
+        ipaddress.ip_address(name.strip().strip("[]"))
+    except ValueError:
+        return False
+    return True
+
+
+def _row_names(row: Mapping[str, Any], path: Path) -> tuple[str, list[str]]:
+    """The host id of one row of the real table and every machine name it gives, declared names first."""
+    host = row.get("name")
+    if not isinstance(host, str) or not host.strip():
+        raise HostTableError(f"{path}: a host row has no name")
+    names: list[str] = []
+    declared = row.get("hostnames")
+    if declared is not None:
+        if not isinstance(declared, list) or not all(
+            isinstance(n, str) for n in declared
+        ):
+            raise HostTableError(f"{path}: hostnames of {host} is not a list of names")
+        names.extend(declared)
+    fallbacks = row.get("fallback_targets") or []
+    if not isinstance(fallbacks, list):
+        raise HostTableError(f"{path}: fallback_targets of {host} is not a list")
+    for target in [row.get("target"), *fallbacks]:
+        if isinstance(target, str) and target.strip():
+            # ``login@machine`` names the machine after the login.
+            machine = target.rsplit("@", 1)[-1]
+            if not _is_address(machine):
+                names.append(machine)
+    return host, names
+
+
+def _declared_hosts(document: object, path: Path) -> dict[str, list[str]]:
+    """Each host id of the document with the machine names it gives, from either shape of ``hosts``."""
+    hosts = document.get("hosts") if isinstance(document, dict) else None
+    if isinstance(hosts, list) and hosts:
+        rows: dict[str, list[str]] = {}
+        for row in hosts:
+            if not isinstance(row, Mapping):
+                raise HostTableError(f"{path}: a host row is not a mapping")
+            host, names = _row_names(row, path)
+            if host in rows:
+                raise HostTableError(f"{path}: the host {host} is declared twice")
+            rows[host] = names
+        return rows
+    if not isinstance(hosts, Mapping) or not hosts:
+        raise HostTableError(f"{path}: no hosts mapping or list of host rows")
+    mapped: dict[str, list[str]] = {}
+    for host, declared in hosts.items():
+        listed = declared.get("hostnames") if isinstance(declared, Mapping) else None
+        if not listed:
+            continue
+        if not isinstance(listed, list) or not all(isinstance(n, str) for n in listed):
+            raise HostTableError(f"{path}: hostnames of {host} is not a list of names")
+        mapped[str(host)] = listed
+    return mapped
+
+
+def read_host_aliases(path: Path) -> dict[str, tuple[str, ...]]:
+    """Map each host id of the table at ``path`` to the event labels it answers to.
+
+    Raises ``HostTableError`` when the file is unreadable, is not a table of hosts, or gives one
+    label to two hosts (an event of that name could not be attributed to either).
+    """
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise HostTableError(f"{path}: {' '.join(str(exc).split())[:200]}") from exc
+    aliases: dict[str, tuple[str, ...]] = {}
+    owner: dict[str, str] = {}
+    for host, names in _declared_hosts(document, path).items():
+        labels = tuple(dict.fromkeys(event_label(n) for n in names if n.strip()))
+        for label in labels:
+            if owner.setdefault(label, host) != host:
+                raise HostTableError(
+                    f"{path}: the event name {label} belongs to {owner[label]} and {host}"
+                )
+        if labels:
+            aliases[host] = labels
+    if not aliases:
+        raise HostTableError(f"{path}: no host gives a machine name")
+    return aliases
+
+
+def read_unavailable_hosts(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[frozenset[str], str]:
+    """The host ids the lab host table declares unavailable, and why it could not be read ('' when read).
+
+    A host with ``available: false`` takes no lane (OMN-22778): lane rows that name it are not lane work
+    that lost its hook events. The table is the one lab host list, read the way every other consumer reads
+    it (``resolve_lab_hosts_table``). A table that cannot be read gives an empty set and the reason, so the
+    caller keeps counting every host and says so; it never hides a host on a guess.
+    """
+    env = os.environ if environ is None else environ
+    try:
+        table = resolve_lab_hosts_table(env)
+    except (
+        Exception
+    ) as exc:  # any unreadable table is reported, never raised into the tick
+        return frozenset(), " ".join(f"{type(exc).__name__}: {exc}".split())[:200]
+    return frozenset(row.name for row in table.hosts if not row.available), ""

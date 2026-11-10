@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22542"
+title: "The status page reads the pr-state exposure, so exposure-reader-coverage passes on every omnimarket pin"
+summary: "node_projection_pr_state declares onex.snapshot.projection.pr-state.v1 with bus_backed: true. The exposure-reader-coverage gate counts only an omnidash component or a typed status-page slot as a reader, so the gate was red on every omnimarket contract pin pull request in omnibase_infra. The node now declares one backend_readers entry and the status page reads that slot and renders it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-reader"
+    statement: "The pr-state exposure has a declared reader: the status page reads it through a typed backend_readers slot and refuses a missing declaration."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_projection_pr_state declares one backend_readers entry (onex_status_page, slot pr_state, route /) and build_morning_page reads that slot from the declaring exposure, refusing with backend_reader_missing when no exposure declares it -- falsifier: uv run pytest tests/projection/test_pr_state_status_page_reader.py -q"
+      - id: "AC2"
+        statement: "AC2: the rendered status page shows the pr-state panel with escaped cell text and a refused panel when the exposure is absent -- falsifier: uv run pytest tests/projection/test_pr_state_status_page_reader.py -q -k render"
+      - id: "AC3"
+        statement: "AC3: the recorded status page responses of the projection query parity suite carry the new panel and both apps still answer them identically -- falsifier: uv run pytest tests/projection/test_t17_projection_query_node_parity.py -q"
+      - id: "AC4"
+        statement: "AC4: the declared (id, route, slot) triple equals a read_backend_projection call in morning_page.py, and a declaration with another slot name is refused by the same comparison -- falsifier: uv run pytest tests/projection/test_pr_state_status_page_reader.py -q -k backend_reader_declaration"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1, AC2 and AC4: the status page reads the pr-state slot from its declared exposure, renders it and refuses an undeclared slot."
+    command: "uv run pytest tests/projection/test_pr_state_status_page_reader.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: the query node and the service answer the recorded status page identically."
+    command: "uv run pytest tests/projection/test_t17_projection_query_node_parity.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22542-ac1-ac2-ac4-reader"
+    description: "AC1, AC2 and AC4: the status page reads the pr-state exposure through its declared backend_readers slot."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_pr_state_status_page_reader.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC4"]
+  - id: "dod-omn22542-ac3-parity"
+    description: "AC3: the recorded status page responses carry the pr-state panel and both apps answer them identically."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_t17_projection_query_node_parity.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn22542-integration-proof"
+    description: "Run the status page suite and the parity suite on a lab host at the pushed head. The pr_state slot and its panel do not exist at the merge base, so the new suite is red there. The hosted verifier cannot dispatch lab work, so this check belongs to the local Done gate."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22542 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_pr_state_status_page_reader.py tests/projection/test_t17_projection_query_node_parity.py -q --no-cov -p no:randomly"
+        cwd: "."

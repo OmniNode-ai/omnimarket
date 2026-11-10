@@ -28,7 +28,9 @@
   "policy": {
     "raw_gh_read_budget": 0,
     "gateway_cache_misses_per_lane": 8,
+    "job_log_default_bytes": 65536,
     "job_log_ttl_seconds": 86400,
+    "job_log_cache_probe_timeout_seconds": 120,
     "run_view_ttl_seconds": 30,
     "auth_status_ttl_seconds": 300,
     "auth_status_stale_seconds": 21600,
@@ -47,7 +49,8 @@
       ],
       "command_topic": "onex.cmd.omnimarket.github-repo-gateway-read-requested.v1",
       "terminal_topic": "onex.evt.omnimarket.github-repo-gateway-read-completed.v1",
-      "transport": "onex scm"
+      "transport": "onex scm",
+      "dispatch_receipt": "The CLI wraps the existing bus with this node's dispatch receipt handler, which durably marks command_may_have_run before attempting publication; only a failed call with an untouched typed receipt releases its lane reservation. Unknown outcomes remain charged. Older CLIs refuse the required hidden option before dispatch."
     }
   },
   "contract_version": {

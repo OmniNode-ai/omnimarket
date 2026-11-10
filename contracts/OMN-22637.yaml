@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-22637
+title: The work ledger read node honours newest-per-lane limit and refuses an answer over the broker bound with a typed, non-retryable refusal
+summary: node_work_ledger_query_effect ignored limit for newest-per-lane and had no size bound, so one unbounded read answered 73 MB on the dev lane, the broker refused the record and the dead letter replay redelivered the command until the query consumer jammed. The node now answers the newest limit lanes, and every answer over the contract's answer_bound (declared under the broker's max_request_size) is replaced by a returned status=refused answer that names the bound, the size and the bounded form and is never retryable.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22637-limit
+  statement: newest-per-lane honours limit like rows does, and matched still counts every lane.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: newest-per-lane with limit=3 answers the newest 3 lanes and matched is the lane count -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_answer_bound.py -k limit -q --no-cov'
+- id: req-omn22637-bound
+  statement: Every answer is measured as JSON against the contract's answer_bound; one over it is replaced by a typed refusal that fits under the broker's max_request_size.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the recorded 73 MB case answers status=refused with the bound, the size and a suggested limit, and the refusal wrapped in the event envelope is under 1,048,588 bytes -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_answer_bound.py -k recorded_case -q --no-cov'
+  - id: AC3
+    statement: 'AC3: the recorded case test is red on the node before the change and green after it -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_answer_bound.py -q --no-cov'
+- id: req-omn22637-terminal
+  statement: A refusal is returned, never raised, and never claims to be retryable.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a refusal is a returned answer, repeats identically, cannot be built retryable, a database error stays an error, and a bound over the broker limit does not load -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_answer_bound.py -k error -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: The node's answer bound suite and the existing query suites
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect tests/test_golden_chain_work_ledger_query.py tests/test_work_ledger_query_inmemory_bus.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22637-answer-bound
+  description: Replays the recorded 73 MB newest-per-lane shape through the node and checks the limit, the refusal, the envelope size and the error cases.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_answer_bound.py -q --no-cov
+    cwd: .
+- id: dod-omn22637-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22637 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect tests/test_golden_chain_work_ledger_query.py -q --no-cov
+    cwd: .

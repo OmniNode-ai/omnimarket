@@ -28,7 +28,15 @@ def test_contract_golden_chain(tmp_path: Path) -> None:
     )
     assert contract["name"] == "node_lane_placement_recovery_effect"
     assert contract["lifecycle"] == "experimental"
+    # HandlerPlacementWait takes the host's runtime ports in its constructor and its
+    # request carries the host's clock, sleep and liveness callables, so node.py
+    # calls it in process and the contract routes nothing. It lives in the file the
+    # contract binds, so the file-shape ratchet finds it bound.
     assert "handler_routing" not in contract
+    wait_module = importlib.import_module(
+        "omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_claude_account_limit"
+    )
+    assert callable(wait_module.HandlerPlacementWait.handle)
     assert "transport_type" not in contract["metadata"]
     assert contract["metadata"]["related_tickets"] == ["OMN-21373"]
     assert (

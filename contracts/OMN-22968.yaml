@@ -1,0 +1,43 @@
+schema_version: 1.0.0
+ticket_id: OMN-22968
+title: 'The bad-batch replay set is verified, the 14 full-disk lane deaths quoted from the base-first plan are found in the records or the set is corrected'
+summary: The 14 full-disk lane deaths quoted from the base-first plan are read against the rolling ledger. The ledger holds 16 failed Codex lane deaths on h051 in the quoted window, 14 of them with a nonzero engine exit; the fixture lists each with its ledger row and the checks run on any runner with no ledger present. The replay tests feed each of the 16 deaths through the lane result sweep node's classify with the vocabulary its overlay example ships, and a planted misclassification is reported.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22968-set
+  statement: The replay set lists each death with the ledger row it was read from, and its count is either matched to the quote or corrected with the unmatched entries listed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each of the 14 deaths is matched to a receipt or ledger row, or the set''s count is corrected with the unmatched ones listed -- falsifier: uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k matched_or_corrected'
+  - id: AC2
+    statement: 'AC2: the classifier tests replay the set and a deliberate misclassification fails -- falsifier: uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k replay_fails_on_misclass'
+evidence_requirements:
+- kind: tests
+  description: The matched-or-corrected tests over the replay set, with ten planted breaks that each must be reported.
+  command: uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k matched_or_corrected
+- kind: tests
+  description: The replay of the set through the lane result sweep classifier, with a classifier that never reads failed, one that misses the two zero-exit deaths, and a vocabulary that maps failed to done, each of which must be reported.
+  command: uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k replay_fails_on_misclass
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22968-ac1
+  description: The matched-or-corrected tests pass on the branch, and each planted break (a dropped death, a wrong count, a death outside the window, a duplicate run, a missing STATUS row, a missing note) is reported by the check.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k matched_or_corrected
+- id: dod-omn22968-ac2
+  description: The replay tests pass on the branch, and each deliberate misclassification (a classifier that never reads failed, one that reads the two zero-exit deaths as partial, a vocabulary that maps failed to done) is reported by the replay.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k replay_fails_on_misclass

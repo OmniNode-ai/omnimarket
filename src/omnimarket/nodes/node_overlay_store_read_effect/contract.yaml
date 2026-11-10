@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-22478, RULING 2026-11-06T00:23:28Z. The one reader of loaded overlays, the host table first. The
+# store is a protocol (omnibase_spi ProtocolOverlayStore) with an in-memory default; the overlay selects the
+# backend. A host selects bus_snapshot, the projection's snapshot topic, because only a runtime connects to
+# a database (RULING 2026-08-09). Each host keeps a stamped local snapshot, so placement and the lab tool
+# work with the broker and the database down.
+name: overlay_store_read_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Refreshes a host's snapshot of each overlay it keeps from the store and reports each read's state and age.
+output_model: omnimarket.models.overlay_store.ModelOverlayStoreReading
+handler:
+  module: omnimarket.nodes.node_overlay_store_read_effect.handlers.handler_overlay_store_read
+  class: HandlerOverlayStoreRead
+  output_model: omnimarket.models.overlay_store.ModelOverlayStoreReading
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [bus-read, bus-publish, file-write]
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: true
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.overlay-store-read.v1
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-overlay-store-fleet.v1
+externally_consumed_topics:
+  # The fleet verb of this node reads it, outside the runtime.
+  - onex.evt.omnimarket.overlay-store-read.v1
+  # The floor reads each host's published view of the fleet through node_floor_projection_read_effect (OMN-23391).
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-overlay-store-fleet.v1
+# Read directly by a host's bus client within read_window_s, never dispatched by a runtime, so it is no
+# subscription of this node: node_projection_overlay_store publishes it.
+snapshot_read:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.overlay-store.v1
+# The tick publishes this host's view of the fleet, keyed by the projection id, so the floor does not depend on one host's file.
+fleet_projection:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.floor-overlay-store-fleet.v1
+overlay:
+  node: node_overlay_store_read_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: kafka
+  ticket: OMN-22478

@@ -1,14 +1,72 @@
 schema_version: "1.0.0"
-ticket_id: OMN-22478
-title: "Automated code review holds no merge in omnimarket"
+ticket_id: "OMN-22478"
+title: "B0: the reading writer node and the hourly read-only probes"
 summary: >-
-  Operator RULING 2026-11-05T20:27:56Z takes the automated code review out of what holds a merge. CI Summary stops
-  asserting Hostile Review Gate and Hostile Reviewer (adversarial gate), the manifest stops calling them required, the queue stops mirroring them, and the reviewer starts no run on a pull request. The
-  workflow, its scripts and their tests stay. The static PR Arch Review Gate is unchanged.
+  B0 of the base-first plan adds node_reading_compute (a reading as a pure function of ledger rows in a window
+  closed at a fixed time plus ten minutes) and node_reading_writer_effect (the only writer of reading rows, with
+  the hourly probes and their own systemd user timer, installed and rolled back by the node).
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn22478-reading-writer"
+    statement: >-
+      A reading is a pure function of ledger rows in a closed window, only the reading writer writes reading rows,
+      and each failure is a typed event and a ledger row.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: A planted ledger yields the expected reading row: verdict, outcome, reason, window, key, content, manifest and the injected fault, and the row passes the ledger row grammar."
+      - id: "AC2"
+        statement: "AC2: A planted conflicting duplicate fails the window; an identical duplicate is dropped by key."
+      - id: "AC3"
+        statement: "AC3: A replay under the same key with different content is a replay failure and the first row stands."
+      - id: "AC4"
+        statement: "AC4: A stale source reads NOT WORKING (fail, not warn); an unreadable source and a piece with no producer read UNKNOWN with a reason, never blank."
+      - id: "AC5"
+        statement: "AC5: The golden chain ends in the success event under one correlation id, every error chain ends in its typed failure event with a ledger row, and each named injected break turns a chain assertion red."
+      - id: "AC6"
+        statement: "AC6: The ledger is read through the route the overlay names: it follows the variable when the path moves, the old path is refused, and an unset variable refuses naming itself."
+      - id: "AC7"
+        statement: "AC7: Only the reading writer node builds reading rows, and a probe appends nothing."
+      - id: "AC8"
+        statement: "AC8: The hourly unit renders from the contract, survives a reboot (Persistent timer), installs only on a declared host and rolls back by uninstall."
+  - id: "req-omn22478-host-readings"
+    statement: >-
+      Read-only hourly probes read state that exists only on a writing host (its ledger outbox, its old ledger
+      names), one row per probe per run, in the same reading shape, each shown failing by a named injected break.
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: A stale queued request (over the bound), a refused file or an unreadable queued file reads the outbox NOT WORKING on both backends; a queue inside the bound reads WORKING."
+      - id: "AC10"
+        statement: "AC10: An old ledger name restored to a regular file, removed or pointed elsewhere reads NOT WORKING on both backends; a configured path that is itself an old name cannot pass."
+      - id: "AC11"
+        statement: "AC11: The golden chain ends in the success event under one correlation id; an unreadable source, an append that does not land, a bad payload and an undeclared host each end in a typed failure, and the schedule installs and rolls back on systemd and launchd."
+  - id: req-omn22478-host-row-ledger-path
+    statement: The lab host row model takes the ledger_path column the lab host table carries, under the launcher's rule.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: a row declaring ledger_path loads with it and a relative one refuses -- falsifier: the table is refused whole at the base'
+  - id: req-omn22478-registry-overlay-documents
+    statement: The overlay home holds typed models for the registry-wide configuration documents, and a document with no pinned model is refused.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: the registry-wide overlay documents load through ModelRegistryDocuments models, the vocabulary overlay keeps an open key set while refusing any value that is not a list of strings, a stamp or a day count -- falsifier: uv run --frozen pytest tests/unit/models/test_registry_overlay_documents_omn22478.py -q --no-cov'
+  - id: req-omn22478-token-probe-zsh
+    statement: The lab claude-token probe runs under zsh, the ssh login shell of a macOS lab host, so a token swap no longer fails every account with exit 127.
+    acceptance:
+      - id: AC14
+        statement: 'AC14: the probe script answers under zsh with a timeout on the path -- falsifier: the unquoted timeout variable did not split under zsh, so the probe exited 127 and the swap restored the old token'
 evidence_requirements:
+  - kind: "tests"
+    description: "The focused test files."
+    command: "uv run pytest tests/nodes/node_reading_compute tests/nodes/node_reading_writer_effect -q --no-cov --refuse-skips"
+  - kind: "tests"
+    description: "CI Summary's external layers pass with no reviewer row, and the reviewer starts no run."
+    command: "uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov"
+  - kind: tests
+    description: The registry-wide overlay documents load through their models the way the overlay home loads them.
+    command: uv run --frozen pytest tests/unit/models/test_registry_overlay_documents_omn22478.py -q --no-cov
   - kind: tests
     description: CI Summary's external layers pass with no reviewer row, and the reviewer starts no run.
     command: uv run --frozen pytest tests/ci/test_review_gate_removed_omn22478.py -q --no-cov
@@ -20,6 +78,142 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn22478-ac1"
+    description: >-
+      A planted ledger yields the expected reading row: verdict, outcome, reason, window, key, content, manifest and the injected fault, and the row passes the ledger row grammar. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_compute/test_reading_compute.py::test_planted_input_yields_the_expected_reading tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_every_declared_piece_gets_a_row_and_the_rows_pass_the_ledger_grammar -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac2"
+    description: >-
+      A planted conflicting duplicate fails the window; an identical duplicate is dropped by key. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_compute/test_reading_compute.py::test_a_conflicting_duplicate_fails_the_window tests/nodes/node_reading_compute/test_reading_compute.py::test_an_identical_duplicate_is_dropped_by_key tests/nodes/node_reading_writer_effect/test_reading_chain_events.py::test_error_chain_a_conflicting_duplicate_fails_the_window_for_that_piece -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac3"
+    description: >-
+      A replay under the same key with different content is a replay failure and the first row stands. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_a_replay_with_different_content_is_a_replay_failure_and_the_first_row_stands tests/nodes/node_reading_writer_effect/test_reading_chain_events.py::test_error_chain_a_replay_with_different_content_fails -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac4"
+    description: >-
+      A stale source reads NOT WORKING (fail, not warn); an unreadable source and a piece with no producer read UNKNOWN with a reason, never blank. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_compute/test_reading_compute.py::test_a_stale_source_reads_not_working_and_fails_rather_than_warns tests/nodes/node_reading_compute/test_reading_compute.py::test_an_unreadable_source_reads_unknown_never_blank tests/nodes/node_reading_compute/test_reading_compute.py::test_a_piece_with_no_producer_today_reads_unknown_with_its_reason -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac5"
+    description: >-
+      The golden chain ends in the success event under one correlation id, every error chain ends in its typed failure event with a ledger row, and each named injected break turns a chain assertion red. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_chain_events.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac6"
+    description: >-
+      The ledger is read through the route the overlay names: it follows the variable when the path moves, the old path is refused, and an unset variable refuses naming itself. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_the_file_route_follows_the_variable_when_the_ledger_moves tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_an_unset_route_variable_refuses_naming_itself -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac7"
+    description: >-
+      Only the reading writer node builds reading rows, and a probe appends nothing. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_only_the_reading_writer_builds_reading_rows tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_a_probe_computes_everything_and_appends_nothing -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac8"
+    description: >-
+      The hourly unit renders from the contract, survives a reboot (Persistent timer), installs only on a declared host and rolls back by uninstall. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac9"
+    description: >-
+      A stale queued request, a refused file or an unreadable queued file reads the outbox NOT WORKING on both backends.
+    source: "manual"
+    binds_ac: ["AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_reading_effect/test_host_readings.py -q --no-cov --refuse-skips -k outbox"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac10"
+    description: >-
+      An old ledger name restored to a regular file, removed or pointed elsewhere reads NOT WORKING on both backends.
+    source: "manual"
+    binds_ac: ["AC10"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_reading_effect/test_host_readings.py -q --no-cov --refuse-skips -k old_name"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac11"
+    description: >-
+      The chain tests, the CLI and the schedule on both schedulers.
+    source: "manual"
+    binds_ac: ["AC11"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_reading_effect/test_host_reading_chain_events.py tests/nodes/node_host_reading_effect/test_host_reading_cli.py tests/nodes/node_host_reading_effect/test_host_reading_schedule.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-integration-proof"
+    description: >-
+      The pushed head ran the reading nodes' suites on a lab host through the lab work runner and exited 0.
+      The hourly unit's installation and its runs on the pool host are read after merge from the installed unit and its rows.
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478 -- uv run --frozen pytest tests/nodes/node_reading_compute tests/nodes/node_reading_writer_effect -q -p no:randomly --no-cov'
+        cwd: "."
+  - id: "dod-omn22478-deploy-runtime-container"
+    description: >-
+      A hosted runner starts the reading writer in an isolated Python 3.12 container. The hourly
+      verb must append one row per declared piece and the probe must append nothing. This runs
+      the PR's source and configured transport end to end without a pool host or private overlay.
+    source: "manual"
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: "command"
+        check_value: 'docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/reading-venv -v "$PWD:/workspace:ro" -w /workspace ghcr.io/astral-sh/uv:python3.12-bookworm uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_cli.py::test_hourly_writes_one_row_per_piece_for_a_window_through_the_configured_routes tests/nodes/node_reading_writer_effect/test_reading_cli.py::test_probe_writes_nothing -q --no-cov -p no:randomly -p no:cacheprovider'
+        cwd: "."
+  - id: dod-omn22478-registry-overlay-documents-models
+    description: AC4. The registry-wide overlay document models load valid documents and refuse invalid values; the suite cannot pass if the models are absent or accept a bad value.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/models/test_registry_overlay_documents_omn22478.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-registry-docs-integration-proof
+    description: The pushed head ran the registry document models' suite on a lab host through the lab-work surface and exited 0.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478-registry-docs -- uv run --frozen pytest tests/unit/models/test_registry_overlay_documents_omn22478.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn22478-market-review-holds-no-merge
     description: A head with no reviewer row passes CI Summary's external layers, and no pull request starts the reviewer.
     source: manual
@@ -31,8 +225,51 @@ dod_evidence:
   - id: dod-omn22478-composed-boot-broker-budget
     description: The composed-runtime-boot job's own broker starts on a fixed budget of at least 4G written into the env file by a sizing step that fails when the template drops the dial, and a read-back step fails when the broker started on any other budget. This is the CI harness's capacity, not a loosened check; every health step of the job is unchanged.
     source: manual
-    binds_ac: [AC4]
+    binds_ac: [AC13]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/docker/test_composed_boot_broker_budget_omn22478.py -q --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-host-row-integration-proof
+    description: >-
+      The pushed head validates a host row that declares ledger_path on a lab host through the lab work runner,
+      and refuses a relative one. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478 -- uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ledger_path.py -q --no-cov'
+        cwd: .
+  - id: dod-omn22478-host-row-ledger-path
+    description: A host row that declares ledger_path loads with it, and a relative one refuses as the launcher refuses it.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ledger_path.py -q --no-cov
+        cwd: .
+  - id: dod-omn22478-r2-integration-proof
+    description: The R2 dev-merge redeploy node (OMN-22537, omnimarket#5152) is a runtime path under this ticket's mechanism. Run its chain tests on a lab host at the pushed head. This proves the node's chains on the lab, not a correlated dev merge through a running node; the cutover proof is a separate read.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478-r2 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/dev_merge_redeploy -q --no-cov
+        cwd: .
+  - id: dod-omn22478-token-probe-zsh
+    description: The probe script never runs an unquoted variable as a command, which zsh does not split (the cause of exit 127 on a macOS lab host), and runs the timeout through an array. Fails at the merge base, where the probe line starts with the unquoted timeout variable. A test that ran the script under zsh was removed because it skips on every runner without zsh and the skip-count ratchet refuses a new skip.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py -q --no-cov -k never_runs_an_unquoted_variable
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn22478-token-probe-zsh-integration-proof
+    description: The pushed head ran the lab claude-token node's suite on a lab host through the lab-work surface and exited 0.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478-token-probe --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_claude_token_effect -q --no-cov
+        cwd: .

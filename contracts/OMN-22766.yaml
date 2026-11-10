@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-22766
+title: "The floor names the lane that owns each holdup from owns=floor cells on live CLAIM and STATUS rows"
+summary: "A lane matched a floor holdup only by its ticket or pull request, so stoppage, chain and piece holdups printed nobody is on it whoever was. A lane now owns a holdup by an owns=floor:<holdup id> cell (comma list) on its CLAIM or a later STATUS row, read by the effect's ledger parser, carried on the factory floor's lane list and used by the simple floor's colour rule. A stalled, ended, dead or finished lane is on nothing. The stale rule and every alarm bound are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22766-holdup-owners
+  statement: "The floor says which lane is on a holdup, from the lane's own owns=floor cell, and says nobody is on it when no live lane owns it."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a live lane whose CLAIM or STATUS carries owns=floor:<holdup id> makes the floor draw that holdup amber with the lane named, from recorded ledger rows through the effect parser, the factory floor lane list and the simple floor -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: with the owns cells unread (the code before the change) the same rows draw the holdup red with nobody on it, so the test fails without the change -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py -q --no-cov'
+  - id: AC3
+    statement: 'AC3: a lane that ended with a TERMINAL, a stalled lane, a dead or finished lane, a lane with no owns cell, an owns cell naming an id the floor does not print and an owns cell on a MSG row are never counted as on a holdup -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: "The floor names the lane that owns each holdup from owns=floor cells"
+  command: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22766-tests
+  description: "The floor says which lane is on a holdup, from the lane's own owns=floor cell, and says nobody is on it when no live lane owns it."
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py -q --no-cov
+    cwd: .
+- id: dod-omn22766-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22766 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_effect tests/nodes/node_floor_simple_compute tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov
+    cwd: .

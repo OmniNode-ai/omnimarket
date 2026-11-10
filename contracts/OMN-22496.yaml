@@ -1,0 +1,76 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22496"
+title: "The stale-base fixture's scratch repositories run git with signing off, so the prerequisite test passes on a machine with tag.gpgsign=true"
+summary: "The stale-base regression test's Repo.git helper inherited the developer's global git config, so its plain lightweight tags exited 128 where tag.gpgsign=true and the ticket-contract-prerequisite-regression hook refused every signed commit on such a machine. Repo.git now runs git with tag and commit signing off, only inside the test's own scratch repositories."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22496-fixture-signing-off"
+    statement: |-
+      The stale-base fixture passes whatever the developer's global signing settings are.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: with tag.gpgsign=true and commit.gpgsign=true in the developer's global git config, the stale-base fixture's test file fails at omnimarket dev 4f751fb96 and passes 7 of 7 at the fix"
+      - id: "AC2"
+        statement: "AC2: with signing off the same file still passes 7 of 7 at dev and at the fix"
+  - id: "req-omn22496-command-wrapped-pytest-binds"
+    statement: |-
+      A command check that wraps uv run pytest over an existing repo test file binds that file, so the signing-on and signing-off items above are not read as unbound.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: contract_binds_violations reads the pytest argv inside a wrapper command check and binds the file it names, and still refuses a wrapper that runs no pytest and one naming a path not in the tree -- falsifier: tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest fails at the merge base, where only test_passes checks are parsed"
+  - id: "req-omn22496-checks-run-inside-omni-home"
+    statement: |-
+      Every check in this contract runs inside the full omnimarket clone under OMNI_HOME, so the evidence sweep's sparse contract-only clone never becomes a check's working directory.
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: every check in contracts/OMN-22496.yaml declares cwd ${OMNI_HOME}/omnimarket, and a check with cwd \".\" or no cwd is named by the guard test"
+evidence_requirements:
+  - kind: "tests"
+    description: "The stale-base test file passes with global signing on and with it off."
+    command: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22496-signing-on"
+    description: "Under a HOME whose .gitconfig turns tag and commit signing on, the stale-base test file passes 7 of 7. At dev 4f751fb96 the same run gives 2 failed and 5 errors."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'h=$(mktemp -d) && printf \"[tag]\\n\\tgpgsign = true\\n[commit]\\n\\tgpgsign = true\\n\" > \"$h/.gitconfig\" && UV_CACHE_DIR=\"${UV_CACHE_DIR:-$HOME/.cache/uv}\" HOME=\"$h\" uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22496-signing-off"
+    description: "Under a HOME whose .gitconfig sets no signing key, the same file passes 7 of 7, so behaviour without signing is unchanged."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'h=$(mktemp -d) && : > \"$h/.gitconfig\" && UV_CACHE_DIR=\"${UV_CACHE_DIR:-$HOME/.cache/uv}\" HOME=\"$h\" uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22496-command-wrapped-pytest-binds"
+    description: "AC3: a command check that prepares a HOME and then runs uv run pytest binds the file it names; the negative controls still refuse a wrapper with no pytest run and one naming a path not in the tree."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_still_refuses_a_command_with_no_pytest_run tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22496-checks-run-inside-omni-home"
+    description: "AC4: the guard test reads this contract and finds no check outside ${OMNI_HOME}/omnimarket; its planted cwd \".\" and missing-cwd controls are each named by the test."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn22496_contract_checks_run_inside_omni_home.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"

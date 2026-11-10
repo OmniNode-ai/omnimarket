@@ -40,32 +40,32 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final, Literal
 
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_drop_reason import (
+from omnimarket.models.floor_fill.enum_floor_fill_drop_reason import (
     EnumFloorFillDropReason,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_entry_state import (
+from omnimarket.models.floor_fill.enum_floor_fill_entry_state import (
     EnumFloorFillEntryState,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_trigger import (
+from omnimarket.models.floor_fill.enum_floor_fill_trigger import (
     EnumFloorFillTrigger,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_intent import (
+from omnimarket.models.floor_fill.model_floor_fill_intent import (
     ModelFloorFillIntent,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_observation import (
+from omnimarket.models.floor_fill.model_floor_fill_observation import (
     ModelFloorFillReservedChecked,
     ModelFloorFillReserveRequested,
     ModelFloorFillSentChecked,
     ModelFloorFillStartFailed,
     ModelFloorFillTicketStored,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_reduce_input import (
+from omnimarket.models.floor_fill.model_floor_fill_reduce_input import (
     ModelFloorFillReduceInput,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_reduce_output import (
+from omnimarket.models.floor_fill.model_floor_fill_reduce_output import (
     ModelFloorFillReduceOutput,
 )
-from omnimarket.nodes.node_floor_fill_reducer.models.model_floor_fill_state import (
+from omnimarket.models.floor_fill.model_floor_fill_state import (
     ModelFloorFillEntry,
     ModelFloorFillState,
     line_and_task,
@@ -96,11 +96,12 @@ def lane_name(key: str, attempt: int) -> str:
     """``floor-<line_id>-<task_id>-<h8>-a<attempt>``: a function of the key and the count.
 
     ``<h8>`` is the first eight hex digits of the sha256 of the key, which tells apart the
-    keys whose ids concatenate alike (``a-b`` + ``c`` and ``a`` + ``b-c``).
+    keys whose ids concatenate alike (``a-b`` + ``c`` and ``a`` + ``b-c``) and a dotted id (``W0.1``) from its
+    dashed twin (``W0-1``): the dot of an id is written as ``-`` in the name.
     """
     line_id, task_id = line_and_task(key)
     h8 = hashlib.sha256(key.encode()).hexdigest()[:8]
-    return f"floor-{line_id}-{task_id}-{h8}-a{attempt}"
+    return f"floor-{line_id}-{task_id}-{h8}-a{attempt}".replace(".", "-")
 
 
 @dataclass(frozen=True)

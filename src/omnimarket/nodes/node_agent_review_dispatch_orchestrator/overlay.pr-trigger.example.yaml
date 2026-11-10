@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Install as agent_review_pr_trigger/overlay.yaml in the deployment's overlay roots.
+# The existing dispatch, signer and verifier overlays retain the review policy.
+repositories: [example-org/example-repo]
+base_branches: [main]
+scm_bus:
+  kind: kafka
+  lane: example
+read_timeout_seconds: 60
+state_subdirectory: agent-review-commands

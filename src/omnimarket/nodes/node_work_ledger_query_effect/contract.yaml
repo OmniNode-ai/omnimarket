@@ -31,6 +31,8 @@ description: >
   exactly when error is set), the page_size it was cut to and a watermark, the
   newest projected_at of the state table at the read; a page that has more
   carries next_cursor.
+  A rows query carrying page_size answers one keyset page, oldest first, with the
+  rows' lines and a next_cursor while more remain; its lanes are a union.
   A rows query carrying history reads an explicit ledger_seq interval using an exclusive
   database-ingest cutoff. It retains raw rows and source names, checks source
   coverage before discovery filters, and binds cursors to the request and the
@@ -65,6 +67,17 @@ work_ledger_query:
     binding_ref: omninode_runtime_service
     dsn_env: OMNINODE_INTERNAL_DB_URL
     parity_receipt_lane: work-ledger-parity
+  # An until=open HOLD with no RELEASE older than this is stale, not in force: holds lists it under
+  # a stale heading with its age and inbox does not count it (cutover plan section 13, answer 2).
+  hold_stale_after_days: 14
+  # Every answer travels as one record on the completed topic. The producer
+  # refuses a record over its max_request_size (1,048,588 on the dev bus), and
+  # an unbounded newest-per-lane answer measured 73 MB there (OMN-22478). An
+  # answer over max_answer_bytes is replaced by a typed refusal.
+  answer_bound:
+    broker_max_request_size: 1048588
+    envelope_headroom_bytes: 131072
+    max_answer_bytes: 917516
 db_io:
   db_tables:
     - name: work_ledger_rows

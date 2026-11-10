@@ -1,0 +1,249 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Requests and results of the remote-lane placement decision (OMN-20669).
+
+A host reading arrives already evaluated: the admission bar, the Codex bar, the lane
+slots and the free capacity are the placement reader's numbers for that host at read
+time. This node chooses among them; it reads no host and holds no host identity.
+
+The dispatch venv's lock hash of the launching host (the request) and of each host
+(its reading) arrive the same way (OMN-20862). When they differ and that drift alone
+keeps every host from taking the lane, the result is VENV_DRIFT with one reconcile
+intent, never a bare no-host.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+
+from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
+from omnimarket.models.model_engine_ladder import ladder_of
+from omnimarket.models.stop_gate import ModelStopGateFacts, ModelStopGateResult
+
+_FROZEN = ConfigDict(frozen=True, extra="forbid")
+
+CODEX_ENGINE = "codex"
+
+RECONCILE_SCRIPT = "omnibase_infra/scripts/reconcile-workspace-venvs.sh"
+
+
+class EnumRemoteLaneOutcome(StrEnum):
+    """How a placement ended: admitted, no host, or no host because of dispatch-venv state."""
+
+    ADMITTED = "ADMITTED"
+    NO_HOST = "NO_HOST"
+    VENV_DRIFT = "VENV_DRIFT"
+    # A hash the drift check needs was not supplied: not a pass, not a drift.
+    VENV_UNKNOWN = "VENV_UNKNOWN"
+    # An open andon stop in an enforce class refused the engine; the result names the stop and its swarm lane.
+    STOPPED = "STOPPED"
+    # A host would take the lane but lacks an input the brief needs (a map entry, a clone, a patch
+    # or a plan branch), and no host holding every input took it: the send is refused before it is made.
+    INPUT_ABSENT = "INPUT_ABSENT"
+
+
+class ModelRemoteLaneHostReading(BaseModel):
+    """One pool host as the placement reader saw it."""
+
+    model_config = _FROZEN
+
+    name: str = Field(min_length=1)
+    local: bool = False
+    engines: tuple[str, ...] = ()
+    lane_admission_refusal: str | None = None
+    codex_refusal: str | None = None
+    lane_slots: int = 0
+    lane_cap: int = 0
+    placed: int = Field(default=0, ge=0)
+    # None: the reader could not rank the host (an unreadable host, -inf to the reader,
+    # which a JSON bus envelope cannot carry as a number). It ranks below every host.
+    rank_free: float | None = 0.0
+    mem_avail_gb: float = 0.0
+    # The lock hash of this host's dispatch venv. None: the reader did not read it (an old
+    # producer); on a drift-judged request that is VENV_UNKNOWN, never a pass.
+    dispatch_venv_hash: str | None = Field(default=None, min_length=1)
+    # The host-swapping measurement of the throughput tick (OMN-17232): the probe's own paging
+    # readings, and whether the tick's host pool alarm still holds ``host-swapping`` open for
+    # this host (it resolves after two clean reads, so a host that pages in bursts stays flagged
+    # between bursts). None / False: an old producer, which places as before.
+    swap_in_kb_s: float | None = None
+    mem_psi_avg60: float | None = None
+    mem_pressure: int | None = None
+    swap_alarm_open: bool = False
+    # A collaborator machine (the host table's ``contributor: true``). It takes a lane only bound to
+    # its own collaborator lane, never to a lane the non-contributor hosts bind, and only while that
+    # lane can take a lane. False: an ordinary pool host, judged as before.
+    contributor: bool = False
+    # The lane a lane on this host is bound to (the host table's ``lane_binding``, else its
+    # ``ledger_bus_lane``). None: the row declares none, so a contributor host takes no lane.
+    bus_lane: str | None = None
+    # The host table's ``lane_ready`` and ``lane_not_ready_reason``: whether ``bus_lane`` can take a
+    # lane today. Fail closed: a contributor row is not ready until its data says so.
+    lane_ready: bool = False
+    lane_not_ready_reason: str | None = None
+    # The inputs of the request's ``required_inputs`` the placement reader found on this host. None: the
+    # reader did not check them, which keeps the host off a lane that needs inputs (fail closed).
+    present_inputs: tuple[str, ...] | None = None
+    # The hosts this host reached over ssh when the reader took its reading (OMN-23389). A lane that repairs
+    # another host runs here only when the repair target is in this list. None: the reader did not try, which
+    # keeps the host off a repair lane (fail closed).
+    ssh_reach: tuple[str, ...] | None = None
+
+
+class ModelRemoteLaneAttempt(BaseModel):
+    """One finished attempt on the engine ladder (OMN-21396)."""
+
+    model_config = _FROZEN
+
+    engine: str
+    model: str
+    outcome: str
+    failure_cause: str = "none"
+    duration_s: int = Field(default=0, ge=0)
+
+    @field_validator("engine")
+    @classmethod
+    def validate_engine(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("engine must be a rung of the engine ladder")
+        return value
+
+
+class ModelRemoteLaneLadder(BaseModel):
+    """Route limits, local readiness and finished attempts for a lane (OMN-21396)."""
+
+    model_config = _FROZEN
+
+    lane: str = Field(min_length=1)
+    ticket: str | None = None
+    lane_kind: str | None = None
+    risk_class: str | None = None
+    # The lane's declared Required capabilities: values.
+    required_capabilities: tuple[str, ...] = ()
+    ceiling: str
+    claude_required: bool = False
+    pinned: bool = False
+    landing_worker: bool = False
+    code_edit_ready: bool = False
+    local_model_slots: int = Field(default=0, ge=0)
+    attempts: tuple[ModelRemoteLaneAttempt, ...] = ()
+    # complexity:<band B4 or above> or sonnet-failed:<run or lane>; Opus needs one.
+    escalation_reason: str | None = None
+
+    @field_validator("ceiling")
+    @classmethod
+    def validate_ceiling(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("ceiling must be a rung of the engine ladder")
+        return value
+
+
+class ModelRemoteLaneRungVerdict(BaseModel):
+    """Why one rung was refused or chosen (OMN-21396)."""
+
+    model_config = _FROZEN
+
+    engine: str
+    reason: str
+
+
+class ModelRemoteLanePlacementRequest(BaseModel):
+    """The lane's engine, an optional pinned host, the live host marks and every reading."""
+
+    model_config = _FROZEN
+
+    engine: str = Field(min_length=1)
+    pinned_host: str | None = None
+    limited_hosts: tuple[str, ...] = ()
+    codex_limited_hosts: tuple[str, ...] = ()
+    auth_expired_hosts: tuple[str, ...] = ()
+    readings: tuple[ModelRemoteLaneHostReading, ...] = ()
+    # The launching host's dispatch-venv lock hash: the hash every host must hold. Drift is
+    # judged when it, any reading's hash, or ``dispatch_venv_required`` is present; a request
+    # with none of them is an old producer's and places as before.
+    launching_venv_hash: str | None = Field(default=None, min_length=1)
+    dispatch_venv_required: bool = False
+    ladder: ModelRemoteLaneLadder | None = None
+    # The same reason for a request without ladder facts (the legacy single-engine placement).
+    escalation_reason: str | None = None
+    # The lane the lane is bound to, when the caller binds it. None: the host's own ``bus_lane``.
+    lane: str | None = Field(default=None, min_length=1)
+    # The open andon stops (read by the caller from the exception queue), the ``andon_stop`` overlay's
+    # policy, now and the lane's exemption claim and bindings (OMN-21958). None: no gate is installed
+    # and the decision is as before. A class in ``observe`` mode refuses nothing.
+    stop_gate: ModelStopGateFacts | None = None
+    # The inputs the lane's brief needs on its host, each named ``<kind>:<value>`` (``map-entry:<lane>``,
+    # ``clone:<repo>``, ``patch:<path>``, ``plan-branch:<branch>``, and for a target the brief reads over,
+    # ``route:h201`` or ``route:broker-admin:dev``). A host takes the lane only when its
+    # reading's ``present_inputs`` holds every one. Empty: an old producer's request, placed as before.
+    required_inputs: tuple[str, ...] = ()
+    # The host a repair lane repairs (OMN-23389). A repair lane never runs on the host it repairs: that host is
+    # off the pick whatever its admission reading says, a pin to it names the target and not the run host, and
+    # the lane runs on a host whose reading reached the target over ssh. None: an ordinary lane, placed as before.
+    repair_target: str | None = Field(default=None, min_length=1)
+
+
+class ModelRemoteLaneHostVerdict(BaseModel):
+    """Why one host did or did not take the lane."""
+
+    model_config = _FROZEN
+
+    host: str
+    reason: str
+
+
+class ModelRemoteLaneHostVenv(BaseModel):
+    """One host's dispatch-venv lock hash as read, None when it was not read."""
+
+    model_config = _FROZEN
+
+    host: str
+    hash: str | None = None
+
+
+class ModelRemoteLaneVenvDrift(BaseModel):
+    """Both sides of a dispatch-venv drift: the launching host's hash and each blocked host's."""
+
+    model_config = _FROZEN
+
+    launching_hash: str | None
+    hosts: tuple[ModelRemoteLaneHostVenv, ...]
+
+
+class ModelRemoteLaneReconcileIntent(BaseModel):
+    """The one reconcile to run for a drift: the script, the hosts it repairs, the hash to reach.
+
+    An intent only: this node runs nothing. A consumer of the decided event runs it once.
+    """
+
+    model_config = _FROZEN
+
+    script: str = RECONCILE_SCRIPT
+    hosts: tuple[str, ...]
+    target_hash: str | None
+
+
+class ModelRemoteLanePlacementResult(BaseModel):
+    """The chosen host and engine, or none, with a verdict for every reading."""
+
+    model_config = _FROZEN
+
+    host: str | None
+    engine: str
+    local: bool = False
+    verdicts: tuple[ModelRemoteLaneHostVerdict, ...] = ()
+    outcome: EnumRemoteLaneOutcome = EnumRemoteLaneOutcome.NO_HOST
+    venv_drift: ModelRemoteLaneVenvDrift | None = None
+    reconcile: ModelRemoteLaneReconcileIntent | None = None
+    rung: str | None = None
+    rungs: tuple[ModelRemoteLaneRungVerdict, ...] = ()
+    experiment: ModelEngineExperimentRow | None = None
+    # The refusal line that names the stop and its swarm lane, when a stop kept the engine off.
+    refusal: str | None = None
+    # ``stop_gate``'s answer for the engine when the request carried stop facts, whatever the outcome
+    # (an observed stop is named here and refuses nothing).
+    stop_gate: ModelStopGateResult | None = None
+    # A repair lane pinned to its target is placed elsewhere; this line names the pin and why it was not kept.
+    repair_pin_refused: str | None = None

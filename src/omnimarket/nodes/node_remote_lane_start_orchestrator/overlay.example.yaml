@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The remote_lane_start section the leader reads (pass it with --overlay). Every key is required:
+# a missing one refuses naming remote_lane_start.<key>. All values here are synthetic; supply your
+# deployment's facts. The PR that adds this node maps each key to the runner script line it replaces.
+remote_lane_start:
+  # The one shape the node runs; the runner script keeps every other one.
+  supported_engines: [claude]
+  supported_placements: [lab]
+  # The engine command; {model}, {brief} and {lane} are filled from the request.
+  engine_argv: [claude, -p, "{brief}", --model, "{model}", --output-format, stream-json, --verbose]
+  engine_environment:
+    EXAMPLE_LANE_MODE: headless
+  start_timeout_seconds: 60
+  prepare_timeout_seconds: 300
+  host_call_timeout_seconds: 60
+  poll_interval_seconds: 5
+  stop_grace_seconds: 30
+  receipt_dir: /var/lib/example/remote-lanes
+  host_run_root: /var/lib/example/lane-runs
+  registry_root_candidates: [/srv/example/registry]
+  registry_marker: example_marker_dir
+  # The repository directory holding the host's lane-closeout command, beside the registry root (optional; empty leaves
+  # the closeout step to the runner script).
+  closeout_tool_repo: example_tools
+  # The variable that closeout command reads the lane's ledger copy path from (all three closeout keys, or none).
+  closeout_ledger_env: EXAMPLE_LEDGER_FILE
+  # The variable that closeout command reads the registry root from (all three closeout keys, or none).
+  closeout_registry_env: EXAMPLE_REGISTRY_ROOT
+  # Where the host keeps installed plugin trees, one directory per tree (optional; empty leaves the step to the runner).
+  plugin_store: $HOME/example-store/plugins
+  ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
+  # Starts the engine in a session of its own; a host with no setsid binary names a shim.
+  detach_argv: [setsid]
+  # Put before the host's PATH in every host script (a non-interactive ssh shell lacks the user bin directory).
+  host_path_prefix: "$HOME/.local/bin:/usr/local/bin"
+  # The host's Claude token pool: the engine's login is drawn through this node on the placed host (first
+  # unlimited label in the pool's draw order), and the label drawn rides on the CLAIM as login=<label>.
+  login_pool_module: example.token_pool_node
+  login_pool_python_relative: .example-venv/bin/python
+  login_draw_timeout_seconds: 30
+  # The ledger writer's argv prefix; the ledger path from --ledger follows it.
+  ledger_append_argv: [example-ledger-writer]
+  # bus where the host's ledger of record is the bus (a direct file append is refused there).
+  ledger_write_via: bus
+  ledger_writer_principal: example-principal
+  # The runner script's CLAIM and STATUS actor, so a row of this node reads as the runner's own row.
+  actor: script:onex-remote-lane
+  displaces: a lane on the busy launching host
+  est_hours: 2
+  priority: other
+  claim_text: "remote lane on {host} via node_remote_lane_start_orchestrator"
+# What the stopped-line fill runs to start a lane: this node's entry, never the runner script.
+floor_fill:
+  runner_command: [onex, run-node, node_remote_lane_start_orchestrator, --]

@@ -8,12 +8,17 @@ the time. Every vocabulary and limit comes from the request's config; this modul
 An ask is a captured prompt item whose kind the config tracks (ask, idea). Its state comes from
 the ledger rows tied to it, folded oldest first:
 
-* ``done``: a row cites ``closes-ask=<id>`` with evidence (a merged pull request, or a TERMINAL,
-  RULING or answer row by stamp), a STATUS ``state=done`` cites the ask with the same evidence, a
-  send row (``send_kinds``) cites the ask or a message row (``answer_kinds``) cites it with
-  ``closes-ask=`` (neither one a pull-request handoff), the operator
-  withdrew it (a capture row ``state=dropped``, or a CORRECTION citing it), a linked lane ended
-  with a done outcome, or a RULING recorded it without a pending mechanism;
+* ``done``: a done-check verdict row (a STATUS on the config's ``check_lane`` citing the ask) reads
+  the pass verdict, a send row (``send_kinds``) cites the ask or a message row (``answer_kinds``)
+  cites it with ``closes-ask=`` (neither one a pull-request handoff), the operator withdrew it (a
+  capture row ``state=dropped``, or a CORRECTION citing it), or a RULING recorded it without a
+  pending mechanism;
+* ``unverified``: a report or a merge claimed it done (a ``closes-ask=`` or STATUS ``state=done``
+  row with evidence, or a linked lane's done outcome: the ``checked_resolutions``) and no done
+  check has read true since. A report is not the done: the ask stays open with no running lane
+  (orchestrator 2026-11-06T14:27:51Z);
+* ``failed``: such a report or merge, and the newest done-check verdict row for the ask reads the
+  fail verdict (``check_fail_verdict``); the verdict is shown and the ask is open (OMN-22729);
 * ``owned``: a linked CLAIM has no closing TERMINAL, the lane ended handed-off, or a STATUS
   ``state=owned`` names its ``owner=``;
 * ``parked``: a STATUS ``state=parked`` (with ``reason=`` and ``seq=``) or a HOLD cites it;
@@ -412,9 +417,27 @@ def _decide(
     tickets: list[str] = []
     evidence: list[str] = []
     shared: list[str] = []
+    claimed: str | None = None
+    done_check: str | None = None
+    verdict: str | None = None
     for event in events:
         row = event.row
         if row.at < ask.said_at:
+            continue
+        if row.cells.get(config.done_check_cell):
+            done_check = row.cells[config.done_check_cell]
+        if row.kind == "STATUS" and row.lane == config.check_lane:
+            if not (event.explicit and ask.ask_id in _explicit_refs(row, config)):
+                continue
+            evidence.append(row.ref())
+            used.append(row)
+            verdict = row.cells.get(config.check_verdict_cell)
+            # The newest verdict row rules: a later FALSE or UNKNOWN reopens an ask a TRUE closed.
+            done = "checked" if verdict == config.check_pass_verdict else None
+            continue
+        if done == "checked":
+            # Only a later verdict row can change a checked ask; the operator's words and the
+            # lane's rows after the check do not.
             continue
         evidence.append(row.ref())
         used.append(row)
@@ -449,12 +472,18 @@ def _decide(
             else:
                 evidence.pop()
                 continue
+            if done in config.checked_resolutions:
+                claimed, done = done, None
+                continue
             break
         if row.kind == "CLAIM":
             owner = row.lane
         elif row.kind == "TERMINAL":
             outcome = row.cells.get("outcome", "")
             if outcome in config.done_outcomes:
+                if "terminal" in config.checked_resolutions:
+                    claimed, owner = "terminal", None
+                    continue
                 done = "terminal"
                 break
             if outcome in config.handoff_outcomes:
@@ -485,6 +514,10 @@ def _decide(
     state: EnumAskState
     if done is not None:
         state = EnumAskState.DONE
+    elif claimed is not None and owner is None and verdict == config.check_fail_verdict:
+        state = EnumAskState.FAILED
+    elif claimed is not None and owner is None:
+        state = EnumAskState.UNVERIFIED
     elif owner is not None:
         state = EnumAskState.OWNED
     elif base is not None:
@@ -521,6 +554,9 @@ def _decide(
         park_seq=seq,
         link=link,
         resolution=done,
+        claimed_resolution=claimed if done is None else None,
+        done_check=done_check,
+        check_verdict=verdict,
         evidence=tuple(evidence),
         shared_terms=tuple(shared) if link is EnumAskLink.INFERRED else (),
         age_minutes=round(age, 1),
@@ -742,12 +778,16 @@ def _counts(entries: list[ModelAskEntry]) -> ModelAskCounts:
         done=n(EnumAskState.DONE),
         dropped=n(EnumAskState.DROPPED),
         new=n(EnumAskState.NEW),
+        unverified=n(EnumAskState.UNVERIFIED),
+        failed=n(EnumAskState.FAILED),
         total=len(entries),
     )
 
 
 _ORDER = (
     EnumAskState.DROPPED,
+    EnumAskState.FAILED,
+    EnumAskState.UNVERIFIED,
     EnumAskState.NEW,
     EnumAskState.PARKED,
     EnumAskState.OWNED,
@@ -768,7 +808,7 @@ def render_text(report: ModelAskStateReport, excerpt_chars: int) -> str:
     lines = [
         f"Operator asks since {report.since.strftime(_STAMP_FORMAT)}, read "
         f"{report.generated_at.strftime(_STAMP_FORMAT)}: {c.total} tracked; "
-        f"{c.dropped} DROPPED, {c.new} new, {c.parked} parked, {c.owned} owned, "
+        f"{c.dropped} DROPPED, {c.failed} FAILED, {c.unverified} UNVERIFIED, {c.new} new, {c.parked} parked, {c.owned} owned, "
         f"{c.ticketed} ticketed, {c.done} done. {wip_text}."
     ]
     flagged = [e for e in report.asks if e.restated_flag]

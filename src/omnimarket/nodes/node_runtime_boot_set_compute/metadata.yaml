@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runtime_boot_set_compute
+version: 1.0.0
+description: Judge one runtime boot against the boot set its deployment declares. A boot that loads a contract or
+  subscribes a topic outside the declared set, a deployment with no declared set, and a declared name no contract
+  announces each read FAIL with the rule named; a boot that was not read reads UNKNOWN, and UNKNOWN fails.
+pack: distributed_validation
+node_role: compute
+display_name: Runtime Boot Set Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_runtime_boot_set_compute: omnimarket.nodes.node_runtime_boot_set_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- runtime-boot-set-compute
+- OMN-23366

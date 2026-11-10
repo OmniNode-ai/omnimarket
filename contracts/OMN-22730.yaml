@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-22730
+title: The ledger query node lists an open-ended HOLD with no RELEASE older than 14 days as stale and leaves it out of the holds and inbox counts
+summary: node_work_ledger_query_effect reads work_ledger_query.hold_stale_after_days from its contract (14). An until=open HOLD with no RELEASE older than that is printed under a stale heading with its age, is not in holds' matched count and is not counted by inbox, which prints how many it left out. A HOLD with an end stamp expires on its own and is never stale by age.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22730-stale-hold
+  statement: A hold or inbox reader moved onto the query node must not count the open-ended holds that the file never shows, so a lane's CLEAR does not turn into HELD.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an until=open HOLD older than 14 days with no RELEASE is listed as stale and is not counted by holds or inbox, while one 13 days old is counted -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_stale_holds.py -q --no-cov, red when the handler is reverted'
+  - id: AC2
+    statement: 'AC2: the 14 day bound comes from the node contract setting and not from a literal, so a 7 day setting turns the 13 day hold stale -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_stale_holds_chain.py -q --no-cov -k bound'
+  - id: AC3
+    statement: 'AC3: the stale rule has a golden chain event test and an error chain event test, and the injected break (a hold whose opening row is not a ledger row) emits the error terminal event and not the golden answer -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_stale_holds_chain.py -q --no-cov -k chain'
+  - id: AC4
+    statement: 'AC4: once the dev query node runs this revision, its holds answer prints the stale holds on their own line -- falsifier: onex ledger query --query holds prints a line starting HOLD stale='
+evidence_requirements:
+- kind: tests
+  description: The stale rule, its chains and the query node neighbours.
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect tests/test_golden_chain_work_ledger_query.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22730-ac1
+  description: The stale-hold tests pass, aged 13 and 15 days, and the holds answer they build prints the HOLD stale= line.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_stale_holds.py -q --no-cov
+    cwd: .
+- id: dod-omn22730-ac2-ac3
+  description: The contract-held bound and the golden and error chains pass.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_stale_holds_chain.py -q --no-cov
+    cwd: .
+- id: dod-omn22730-dev-node-names-stale
+  description: Once the dev query node runs this revision, its holds answer names the stale holds on their own line. Hosted CI cannot reach the lab bus, so only the local Done gate runs this unbound live read; AC4 is bound to the stale-hold tests that assert the same line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query holds | grep -q 'HOLD stale='
+    cwd: .
+- id: dod-omn22730-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22730 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect -q --no-cov
+    cwd: .

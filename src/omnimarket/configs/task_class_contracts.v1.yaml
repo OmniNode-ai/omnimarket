@@ -22,6 +22,14 @@
 #   tier tried. When tier_order is absent, the routing_tiers.yaml declaration
 #   order is used instead; that file is the source of truth for fallback order.
 #
+# escalation_policy.paid_from_size_band: OPTIONAL S|M|L (OMN-23180). The smallest
+#   measured size band whose request may reach a paid rung; a paid rung met by a
+#   smaller request is a skip with cause size_band_below_paid, so a small task
+#   stays on free models and, with every free rung spent, goes back to its caller.
+#   Operator ruling 2026-11-08T13:46:43Z: only large tasks (L) may reach a paid
+#   rung. The top-level `paid_from_size_band` below is the default every class
+#   inherits; a class's own escalation_policy value overrides it.
+#
 # escalation_policy.entry_share: OPTIONAL {tier: cheap_frontier, share: 0.25}.
 #   OMN-20163: a deterministic fraction (0.0..1.0) of correlation ids starts on
 #   this free tier, which must be named in tier_order and must not already be
@@ -861,6 +869,11 @@ size_band_thresholds:
   units: {s_max: 3, m_max: 10}
   steps: {s_max: 3, m_max: 8}
 
+# OMN-23180: the smallest size band whose request may reach a paid rung. Every
+# class inherits this default; task_classes.<class>.escalation_policy.paid_from_size_band
+# may override it. Operator ruling 2026-11-08T13:46:43Z: large tasks only.
+paid_from_size_band: L
+
 # OMN-19407: the class a prompt resolves to when no class's `selection`
 # predicate claims it. This is a GRADING decision, so the contract owns it: it
 # used to be a constant inside the `onex delegate` CLI, which no contract
@@ -991,7 +1004,8 @@ facts_first_prompt:
 #   retry_on: another attempt on the same rung, within the rung's retry budget.
 #   move_on: the run continues on a different rung.
 #   skip_on: a rung not attempted, with its typed reason.
-#   terminate_on: the run ends with no later provider call.
+#   terminate_on: the run ends with no later provider call. policy_refusal
+#     (OMN-23216) is a local rung's refusal of a secret or exfiltration request.
 # quality_gate_refused is a retry because a free rung re-drafts up to its tier's
 # max_retries before the run moves (OMN-14234); a paid rung's budget is zero, so
 # a refusal there moves at once. A customer route's budget is its declared
@@ -1024,10 +1038,12 @@ transitions_default: &transitions_default
     - budget_exhausted
     - cost_class_not_allowed
     - beyond_class_limit
+    - size_band_below_paid
     - rung_not_reachable_from_runtime
   terminate_on:
     - pinned_backend_failed
     - quality_veto
+    - policy_refusal
     - escalation_limit
     - ladder_exhausted
     - non_retryable_failure
@@ -1557,6 +1573,14 @@ task_classes:
     # to a genuinely separate provider.
     escalation_policy:
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "The text below is one section of a longer document. Do the original document task for this section only.\n\n{source}"
       tier_order:
         - local
         - cheap_frontier
@@ -2215,6 +2239,14 @@ task_classes:
       # to the metered tier. max_escalations rises by one so the ladder can
       # still be walked to its last entry.
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "Review only the following part of a larger change. Report each finding with its file path and line.\n\n{source}"
       tier_order:
         - local
         - cheap_frontier
@@ -2318,6 +2350,14 @@ task_classes:
         max: 1.0
     escalation_policy:
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "Review only the following part of a larger change. Report each finding with its file path and line.\n\n{source}"
       # OMN-17427: withheld and no tier serves it, so no tier_order is declared.
       # Restore the ladder in the same change that restores use_for entries.
   summarization:
@@ -2471,6 +2511,14 @@ task_classes:
     # to a genuinely separate provider.
     escalation_policy:
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "The text below is one part of a longer document. Summarize this part only, faithfully and concisely.\n\n{source}"
       tier_order:
         - local
         - cheap_frontier

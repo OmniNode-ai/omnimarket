@@ -1,0 +1,506 @@
+{
+ "abstain_regex": "not in (the )?(context|corpus|excerpts?)|no (information|mention|record|adr|decision)|(does|do|did) not (say|specify|mention|state|contain|describe|cover|include)|not (stated|specified|mentioned|found|covered|provided|available)|cannot (find|answer|be determined)|unable to find|no .{0,40}(was|were) found|NOT IN CONTEXT|insufficient",
+ "scoring": "A non-abstain question is correct when every group in all_of has at least one regex alternative that matches the answer (case-insensitive, re.search). An abstain question (empty all_of) is correct when abstain_regex matches the answer and the answer is under 600 characters.",
+ "questions": [
+  {
+   "id": "L1",
+   "category": "lexical",
+   "question": "How many required status contexts were kept intact when the OCC merge queue was removed?",
+   "all_of": [
+    [
+     "\\b7\\b",
+     "\\bseven\\b"
+    ]
+   ],
+   "gold": "Seven (7) required status contexts were kept intact."
+  },
+  {
+   "id": "L2",
+   "category": "lexical",
+   "question": "Which library and version renders Pydantic-generated JSON Schema with no custom field?",
+   "all_of": [
+    [
+     "@rjsf/core"
+    ],
+    [
+     "6\\.5\\.1"
+    ]
+   ],
+   "gold": "@rjsf/core 6.5.1 with @rjsf/validator-ajv8."
+  },
+  {
+   "id": "L3",
+   "category": "lexical",
+   "question": "What are the three tiers of agent routing, in the order they run?",
+   "all_of": [
+    [
+     "explicit"
+    ],
+    [
+     "\\bLLM\\b|semantic"
+    ],
+    [
+     "fuzzy"
+    ]
+   ],
+   "gold": "Tier 1 explicit trigger matching, tier 2 LLM-based semantic routing, tier 3 fuzzy trigger matching."
+  },
+  {
+   "id": "L4",
+   "category": "lexical",
+   "question": "Which single aggregate rollup context does omnibase_core keep as required under Model B?",
+   "all_of": [
+    [
+     "CI Summary"
+    ]
+   ],
+   "gold": "CI Summary."
+  },
+  {
+   "id": "L5",
+   "category": "lexical",
+   "question": "What does the routing hook return when no candidate is above the confidence threshold?",
+   "all_of": [
+    [
+     "matched\\W{0,6}false|no[- ]match"
+    ],
+    [
+     "no_candidate_above_threshold|no candidate|no agent|explicit"
+    ]
+   ],
+   "gold": "An explicit no-match signal (matched: false, reason no_candidate_above_threshold) and no agent selection."
+  },
+  {
+   "id": "L6",
+   "category": "lexical",
+   "question": "Which ADR number belonged to the withdrawn July 2026 beta priority lock, and which ADR superseded it?",
+   "all_of": [
+    [
+     "0021"
+    ],
+    [
+     "0053"
+    ]
+   ],
+   "gold": "ADR-0021, superseded by ADR-0053."
+  },
+  {
+   "id": "L7",
+   "category": "lexical",
+   "question": "How many characters is the sanitized prompt preview sent to the observability topic?",
+   "all_of": [
+    [
+     "\\b100\\b"
+    ]
+   ],
+   "gold": "100 characters."
+  },
+  {
+   "id": "L8",
+   "category": "lexical",
+   "question": "Why does Dependabot PR approval remain a manual step?",
+   "all_of": [
+    [
+     "manual"
+    ],
+    [
+     "platform limitation|GitHub (platform )?limitation|limitation"
+    ]
+   ],
+   "gold": "It is a GitHub platform limitation, not a pipeline gap, so it stays manual."
+  },
+  {
+   "id": "L9",
+   "category": "lexical",
+   "question": "Which ordering values may a projection use for canonical ordering, and when may event time be used?",
+   "all_of": [
+    [
+     "sequence"
+    ],
+    [
+     "contract"
+    ]
+   ],
+   "gold": "Ingest-assigned sequence, projection version or another contracted monotonic value; event_time_ms only when its clock authority is defined by contract."
+  },
+  {
+   "id": "P1",
+   "category": "paraphrase",
+   "question": "Why was a dashboard card that shows tiles plus a list of recommendations kept out of the generic tile cluster component?",
+   "all_of": [
+    [
+     "bespoke|stay"
+    ],
+    [
+     "flat|uniform|heterogene|secondary|no slot"
+    ]
+   ],
+   "gold": "It stays bespoke: the tile adapter models a flat array of uniform tiles with no slot for a secondary heterogeneous recommendation list."
+  },
+  {
+   "id": "P2",
+   "category": "paraphrase",
+   "question": "What was the real reason merges stalled in July 2026, and what was done about it?",
+   "all_of": [
+    [
+     "tooling|skill[- ]based|merge[- ]sweep"
+    ],
+    [
+     "not (a )?capacity|runbook|manual"
+    ]
+   ],
+   "gold": "A merge-sweep tooling miss (the skill-based sweep did not work), not a capacity deadlock; merges were driven by the runbook and manual sweep."
+  },
+  {
+   "id": "P3",
+   "category": "paraphrase",
+   "question": "What rule stops the base library from importing network, queue or database client packages directly, and what is used in their place?",
+   "all_of": [
+    [
+     "protocol"
+    ],
+    [
+     "aiohttp|httpx|requests|kafka|asyncpg|psycopg|forbidden"
+    ]
+   ],
+   "gold": "Core has a forbidden-dependency table; protocol interfaces such as ProtocolHttpClient replace the client libraries."
+  },
+  {
+   "id": "P4",
+   "category": "paraphrase",
+   "question": "How is an empty dashboard state made checkable by a machine?",
+   "all_of": [
+    [
+     "data-empty-state-reason"
+    ]
+   ],
+   "gold": "The typed reason value is exposed on the data-empty-state-reason attribute."
+  },
+  {
+   "id": "P5",
+   "category": "paraphrase",
+   "question": "Why was driving the Dependabot approval with a browser robot turned down?",
+   "all_of": [
+    [
+     "fragil|brittle"
+    ],
+    [
+     "UI|browser session|session"
+    ]
+   ],
+   "gold": "It is fragile: it depends on GitHub UI structure and needs browser session management."
+  },
+  {
+   "id": "P6",
+   "category": "paraphrase",
+   "question": "Who may write the evidence companion for a change, and who may not?",
+   "all_of": [
+    [
+     "autogen|independent verifier"
+    ],
+    [
+     "must not|may not|not author|never|cannot|implementing agent"
+    ]
+   ],
+   "gold": "Only the autogen tick or an independent verifier; the implementing agent must not author its own."
+  },
+  {
+   "id": "P7",
+   "category": "paraphrase",
+   "question": "What keeps a language model's claim from changing the state of the factory control loop?",
+   "all_of": [
+    [
+     "gate|verified fact|oracle"
+    ],
+    [
+     "deterministic|candidate generator|FSM|finite state"
+    ]
+   ],
+   "gold": "The control plane is a deterministic FSM that consumes only verified facts from gates; models are gated candidate generators."
+  },
+  {
+   "id": "P8",
+   "category": "paraphrase",
+   "question": "When processing cannot proceed correctly, what may the system do and what must it never do?",
+   "all_of": [
+    [
+     "quarantine|dead[- ]letter|delay|degraded"
+    ],
+    [
+     "silently drop|guess|reorder|complete truth"
+    ]
+   ],
+   "gold": "It may delay, quarantine, dead-letter or mark projections degraded; it must not silently drop events, guess missing state, reorder without authority or present degraded data as complete."
+  },
+  {
+   "id": "M1",
+   "category": "multihop",
+   "question": "The decision that replaced the two-database split uses how many physical databases and how many contract-declared domains?",
+   "all_of": [
+    [
+     "\\bone\\b|\\bsingle\\b|\\b1\\b"
+    ],
+    [
+     "\\bthree\\b|\\b3\\b"
+    ]
+   ],
+   "gold": "One physical application database with three contract-declared domains (ADR-0027, which supersedes ADR-0026)."
+  },
+  {
+   "id": "M2",
+   "category": "multihop",
+   "question": "Which accepted decision replaced the July beta priority lock, and what does its beta consist of?",
+   "all_of": [
+    [
+     "0053"
+    ],
+    [
+     "local"
+    ],
+    [
+     "own (model )?keys?|bring your own|own API key|own key"
+    ]
+   ],
+   "gold": "ADR-0053: a local install, the user's own model keys, no hosted service."
+  },
+  {
+   "id": "M3",
+   "category": "multihop",
+   "question": "Reducer output exceptions defer to a later decision as the canonical statement of the pattern. Which one, and which exception class does it use?",
+   "all_of": [
+    [
+     "0037"
+    ],
+    [
+     "ModelOnexError"
+    ]
+   ],
+   "gold": "ADR-0037, which uses ModelOnexError."
+  },
+  {
+   "id": "M4",
+   "category": "multihop",
+   "question": "The core-infra dependency boundary decision relates to a risk record about transport-import branch protection. What status does that risk record carry?",
+   "all_of": [
+    [
+     "mitigated"
+    ]
+   ],
+   "gold": "Mitigated (ADR-0038)."
+  },
+  {
+   "id": "M5",
+   "category": "multihop",
+   "question": "What does RSD stand for after the renaming decision, and what does the decision it umbrellas propose?",
+   "all_of": [
+    [
+     "recursive system design"
+    ],
+    [
+     "bisect|bisection"
+    ]
+   ],
+   "gold": "Recursive System Design; it umbrellas ADR-0052, adaptive recursive contract bisection."
+  },
+  {
+   "id": "M6",
+   "category": "multihop",
+   "question": "What superseded the two-database decision, and what were the tenant database's invariant requirements?",
+   "all_of": [
+    [
+     "0027"
+    ],
+    [
+     "tenant_id|row-level security|RLS|tenant-isolation|isolation policy"
+    ]
+   ],
+   "gold": "ADR-0027 superseded it; the old tenant-database invariant I-1 required tenant_id NOT NULL, forced row-level security and a tenant-isolation policy."
+  },
+  {
+   "id": "M7",
+   "category": "multihop",
+   "question": "One decision removes YAML loading from the synchronous hook path and another forbids silent fallback in routing. What does each of them have the hook return?",
+   "all_of": [
+    [
+     "candidate"
+    ],
+    [
+     "no[- ]match|matched\\W{0,6}false|explicit"
+    ]
+   ],
+   "gold": "The first returns a JSON list of candidate agents with confidence scores; the second returns an explicit no-match signal instead of silently substituting general-purpose."
+  },
+  {
+   "id": "M8",
+   "category": "multihop",
+   "question": "Which two other doctrine documents does the degrade-safely doctrine reference?",
+   "all_of": [
+    [
+     "fail[- ]fast"
+    ],
+    [
+     "authoritative[- ]projections?"
+    ]
+   ],
+   "gold": "fail-fast-and-loud and authoritative-projections-own-truth."
+  },
+  {
+   "id": "A1",
+   "category": "aggregate",
+   "question": "List the ADRs that concern the omnidash dashboard.",
+   "all_of": [
+    [
+     "0039"
+    ],
+    [
+     "0040"
+    ],
+    [
+     "0041"
+    ],
+    [
+     "0042"
+    ],
+    [
+     "0043"
+    ]
+   ],
+   "gold": "ADR-0039, 0040, 0041, 0042 and 0043."
+  },
+  {
+   "id": "A2",
+   "category": "aggregate",
+   "question": "Which ADRs are superseded or withdrawn?",
+   "all_of": [
+    [
+     "0021"
+    ],
+    [
+     "0026"
+    ]
+   ],
+   "gold": "ADR-0021 (withdrawn, superseded by 0053) and ADR-0026 (superseded by 0027)."
+  },
+  {
+   "id": "A3",
+   "category": "aggregate",
+   "question": "Which ADRs are dated 2026-02-19?",
+   "all_of": [
+    [
+     "0045"
+    ],
+    [
+     "0046"
+    ],
+    [
+     "0047"
+    ],
+    [
+     "0048"
+    ],
+    [
+     "0049"
+    ]
+   ],
+   "gold": "ADR-0045, 0046, 0047, 0048 and 0049."
+  },
+  {
+   "id": "E1",
+   "category": "planted",
+   "question": "Why was the nightly lab canary moved off Thursday, and what is the decision code?",
+   "all_of": [
+    [
+     "firmware"
+    ],
+    [
+     "PL-4471"
+    ]
+   ],
+   "gold": "It overlapped the weekly firmware window; decision PL-4471."
+  },
+  {
+   "id": "E2",
+   "category": "planted",
+   "question": "What number fixes the sampling in the pilot that estimates spend?",
+   "all_of": [
+    [
+     "8123"
+    ]
+   ],
+   "gold": "The fixed seed is 8123."
+  },
+  {
+   "id": "E3",
+   "category": "planted",
+   "question": "How long are files kept in scratch on the second pool host, and what drives that number?",
+   "all_of": [
+    [
+     "\\b19\\b"
+    ],
+    [
+     "\\b17\\b"
+    ]
+   ],
+   "gold": "19 days: 17 days of history plus 2 days of slack."
+  },
+  {
+   "id": "E4",
+   "category": "planted",
+   "question": "When does documentation review duty change hands each month, and what happens when that date is a weekend?",
+   "all_of": [
+    [
+     "14"
+    ],
+    [
+     "09:30|9:30"
+    ],
+    [
+     "monday"
+    ]
+   ],
+   "gold": "The 14th at 09:30 Eastern; on a weekend it moves to the next Monday."
+  },
+  {
+   "id": "E5",
+   "category": "planted",
+   "question": "What is the team's name for freezing a pass bar before any result, and which experiment first used it?",
+   "all_of": [
+    [
+     "lantern pass"
+    ],
+    [
+     "durable[- ]workflow"
+    ]
+   ],
+   "gold": "Lantern Pass; the durable-workflow experiment on the first pool host."
+  },
+  {
+   "id": "E6",
+   "category": "planted",
+   "question": "Who receives escalations for the billing sandbox now, and what prompted the change?",
+   "all_of": [
+    [
+     "platform on-call|on-call"
+    ],
+    [
+     "two missed pages|missed pages"
+    ]
+   ],
+   "gold": "The platform on-call role, after two missed pages."
+  },
+  {
+   "id": "X1",
+   "category": "abstain",
+   "question": "What is the maximum number of retries the Gamma scheduler allows per job?",
+   "all_of": [],
+   "gold": "The corpus does not say."
+  },
+  {
+   "id": "X2",
+   "category": "abstain",
+   "question": "Which ADR chose PostgreSQL logical replication for tenant failover?",
+   "all_of": [],
+   "gold": "No ADR in the corpus says this."
+  }
+ ]
+}

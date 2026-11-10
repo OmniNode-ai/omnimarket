@@ -10,11 +10,20 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Literal
 
+from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+from omnimarket.handlers.relay_admission import (
+    CoreRelayAdmission,
+    load_relay_requires_rule,
+    relay_admission_refusals,
+    relay_rows,
+)
+from omnimarket.models.model_relay_admission import ModelRelayRequiresRule
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelAppendIfAbsentPolicy,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+    ModelWorkLedgerJudgeAcceptance,
     ModelWorkLedgerTerminalRefused,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
@@ -26,6 +35,11 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
 )
 from omnimarket.nodes.node_work_ledger_append_effect.writer_principals import (
     WriterPrincipals,
+)
+from omnimarket.protocols.protocol_relay_admission import ProtocolRelayAdmission
+from omnimarket.protocols.protocol_work_ledger_judge_acceptance import (
+    ProtocolJudgeAcceptanceRecorder,
+    ProtocolJudgeSequenceSource,
 )
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ([^|\r\n]+) \| ")
@@ -86,8 +100,18 @@ class HandlerWorkLedgerAppendEffect:
         writers: WriterPrincipals | None = None,
         append_lock: ProtocolLedgerAppendLock | None = None,
         append_if_absent: ModelAppendIfAbsentPolicy | None = None,
+        relay_admission: ProtocolRelayAdmission | None = None,
+        relay_rule: ModelRelayRequiresRule | None = None,
+        acceptance_recorder: ProtocolJudgeAcceptanceRecorder | None = None,
+        sequence_source: ProtocolJudgeSequenceSource | None = None,
     ) -> None:
+        # OMN-23152: the judge records each row it accepts, with the sequence it gave, so the emit
+        # gate can refuse a row the judge never saw. A bare construction records nothing.
+        self._acceptance_recorder = acceptance_recorder
+        self._sequence_source = sequence_source
         self._runner = runner
+        self._relay_admission = relay_admission or CoreRelayAdmission()
+        self._relay_rule = relay_rule or load_relay_requires_rule()
         self._reader = reader
         # The runtime boot resolver constructs a declared handler from injectable
         # params alone; the serve command supplies the real runner and reader, and
@@ -204,6 +228,15 @@ class HandlerWorkLedgerAppendEffect:
             return receipt(
                 EnumWorkLedgerAppendStatus.REFUSED, 65, "unknown ledger row type"
             )
+        relay_refusals = relay_admission_refusals(
+            relay_rows(request.rows), self._relay_admission, self._relay_rule
+        )
+        if relay_refusals:
+            return receipt(
+                EnumWorkLedgerAppendStatus.REFUSED,
+                65,
+                "\n".join((*relay_refusals, self._relay_rule.fix)),
+            )
         if any(row_type in _AUTHORITY_TYPES for row_type in rows) and (
             authenticated_principal != self._operator_principal
         ):
@@ -314,6 +347,8 @@ class HandlerWorkLedgerAppendEffect:
                     f"request id {request.request_id} already belongs to different rows or principal: "
                     f"ledger digest {blocks_digest(existing_rows)}, request digest {blocks_digest(requested_rows)}",
                 )
+            # A redelivered request is answered, and its rows stay accepted after a restart.
+            self._record_acceptance(request, stamped_rows, cell)
             return receipt(
                 EnumWorkLedgerAppendStatus.DUPLICATE, 0, "already appended", landed
             )
@@ -344,6 +379,7 @@ class HandlerWorkLedgerAppendEffect:
         if result.exit_code == 0 or len(landed) == len(rows):
             # A non-zero exit after the rows landed (the stranded-clone signal, 78)
             # still appended them: the receipt says accepted and carries the text.
+            self._record_acceptance(request, stamped_rows, cell)
             return receipt(EnumWorkLedgerAppendStatus.ACCEPTED, 0, tail, landed)
         status = (
             EnumWorkLedgerAppendStatus.REFUSED
@@ -351,6 +387,22 @@ class HandlerWorkLedgerAppendEffect:
             else EnumWorkLedgerAppendStatus.ERROR
         )
         return receipt(status, result.exit_code, tail)
+
+    def _record_acceptance(
+        self, request: ModelWorkLedgerAppendRequest, stamped_rows: str, cell: str
+    ) -> None:
+        """Write one acceptance per accepted row the judge gave a sequence (OMN-23152)."""
+        if self._acceptance_recorder is None or self._sequence_source is None:
+            return
+        for block in _request_blocks(stamped_rows, cell):
+            row_id = work_ledger_row_id("\n".join(block).strip())
+            seq = self._sequence_source.sequence_of(row_id)
+            if seq is not None:
+                self._acceptance_recorder.record(
+                    ModelWorkLedgerJudgeAcceptance(
+                        row_id=row_id, ledger_seq=seq, request_id=request.request_id
+                    )
+                )
 
 
 def terminal_refused(
