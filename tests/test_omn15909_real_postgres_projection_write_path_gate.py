@@ -58,6 +58,9 @@ import pytest
 from omnibase_core.models.delegation.wire import EnumTierCostType, ModelTierCost
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.nodes.node_projection_delegation.handlers.delegation_runtime_coalescing import (
+    HandlerCoalescingProjection,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
     SNAPSHOT_GRAIN_COLUMN,
     DelegationProjectionRunner,
@@ -1291,6 +1294,7 @@ class TestRuntimeDeliveryCoalescesTheAggregateRepublish:
             seam._connect_standalone_databases = _noop_async
             seam._close_standalone_databases = _noop_async
             seam._producer = _CapturingProducer()
+            assert isinstance(runner, HandlerCoalescingProjection)
             runner._coalescer.window_s = 30.0
             correlation_id = str(uuid4())
             data = _real_delegation_completed_payload(
