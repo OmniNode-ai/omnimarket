@@ -72,7 +72,9 @@ def test_caller_pins_a_tag_at_or_after_the_fix(caller: dict[str, Any]) -> None:
 )
 def test_hook_rev_names_the_commit_of_the_callers_tag(caller: dict[str, Any]) -> None:
     ref = _pinned_ref(caller["workflow"], caller["uses"])
-    sha12 = _TAG.fullmatch(ref).group(2)  # type: ignore[union-attr]
+    match = _TAG.fullmatch(ref)
+    assert match is not None, f"{ref!r} is not a dev-merge tag"
+    sha12 = match.group(2)
     config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
     revs = [
         str(repo["rev"])
