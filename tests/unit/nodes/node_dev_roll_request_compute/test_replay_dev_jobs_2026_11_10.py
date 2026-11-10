@@ -99,7 +99,7 @@ def replay(
     real = [j for j in jobs if j["status"] != "superseded" and j["completed_at"]]
     duration = timedelta(
         seconds=median(
-            (_t(str(j["completed_at"])) - _t(str(j["accepted_at"]))).total_seconds()  # type: ignore[operator]
+            (_t(str(j["completed_at"])) - _t(str(j["accepted_at"]))).total_seconds()
             for j in real
         )
     )
@@ -134,7 +134,8 @@ def replay(
             rolls.append(decision)
             covered = set(decision.rolled_event_ids)
             pending = [e for e in pending if e.event_id not in covered]
-            running = (decision.would_request.git_ref, now, now + duration)  # type: ignore[union-attr]
+            assert decision.would_request is not None
+            running = (decision.would_request.git_ref, now, now + duration)
         now += timedelta(seconds=_TICK_SECONDS)
     return rolls
 

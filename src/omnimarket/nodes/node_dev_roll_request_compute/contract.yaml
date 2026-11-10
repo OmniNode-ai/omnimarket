@@ -60,9 +60,6 @@ event_bus:
     patch: 0
   subscribe_topics:
     - onex.cmd.omnimarket.dev-roll-decision-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.dev-roll-decided.v1
-    - onex.evt.omnimarket.dev-roll-refused.v1
 published_events:
   - event_type: "DevRollDecided"
     topic: onex.evt.omnimarket.dev-roll-decided.v1
@@ -83,13 +80,19 @@ handler_routing:
         module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts"
       topic: onex.cmd.omnimarket.dev-roll-decision-requested.v1
       description: "One decision tick: pending tip events and the last roll."
+# The decided and refused events are the results a caller of the decision awaits (the topic graph gate counts
+# runtime_dispatch.terminal_events as externally consumed), like node_pr_landing_decision_compute.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.dev-roll-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.dev-roll-decided.v1"
+    failure: "onex.evt.omnimarket.dev-roll-refused.v1"
 consumed_events:
   - event_type: ModelDevRollFacts
     topic: "onex.cmd.omnimarket.dev-roll-decision-requested.v1"
     description: "One decision tick's facts; declared so the platform topic provisioner creates the topic."
-  - event_type: ModelDevTipChanged
-    topic: "onex.evt.omnimarket.dev-tip-changed.v1"
-    description: "The dev_tip_changed event the merged-change CI job will publish (not wired in the shadow build); the reader that folds these into the facts is a later piece."
+# ModelDevTipChanged (topic onex.evt.omnimarket.dev-tip-changed.v1) is the event the merged-change CI job will publish; it is not a
+# consumed_events entry yet because nothing produces it in this shadow build (the topic graph gate refuses an orphaned consumer).
 descriptor:
   node_archetype: compute
   purity: pure

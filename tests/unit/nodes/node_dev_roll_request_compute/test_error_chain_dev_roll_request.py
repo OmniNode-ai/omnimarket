@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -36,7 +37,9 @@ from tests.unit.nodes.node_dev_roll_request_compute.conftest import NOW, facts, 
 pytestmark = pytest.mark.unit
 
 
-async def _send(policy: ModelDevRollPolicy, payload: dict[str, object]):  # type: ignore[no-untyped-def]
+async def _send(
+    policy: ModelDevRollPolicy, payload: dict[str, Any]
+) -> tuple[Any, UUID]:
     dispatch, transport, broker, _topics = chain(policy)
     correlation_id = uuid4()
     await transport.send(
@@ -87,7 +90,7 @@ async def test_a_malformed_sha_never_produces_a_decision(
     policy: ModelDevRollPolicy,
 ) -> None:
     payload = facts((tip(age_seconds=3000),)).model_dump(mode="json")
-    payload["pending_events"][0]["sha"] = "not-a-sha"  # type: ignore[index]
+    payload["pending_events"][0]["sha"] = "not-a-sha"
     broker, _cid = await _send(policy, payload)
     assert on(broker, DEV_ROLL_DECIDED_TOPIC_V1) == []
     assert on(broker, DEV_ROLL_REFUSED_TOPIC_V1) == []

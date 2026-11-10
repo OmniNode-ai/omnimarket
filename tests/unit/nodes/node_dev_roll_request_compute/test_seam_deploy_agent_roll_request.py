@@ -13,6 +13,8 @@ reading) by running the same field comparison against the agent's own model.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
@@ -26,7 +28,7 @@ from tests.unit.nodes.node_dev_roll_request_compute.conftest import facts, tip
 
 pytestmark = pytest.mark.unit
 
-AGENT_ROLL_REQUEST_CONTRACT = {
+AGENT_ROLL_REQUEST_CONTRACT: dict[str, Any] = {
     "read_at": "omnibase_infra dev 389b31d66d08",
     "model": "ModelRebuildRequested (extra fields forbidden)",
     "required": {"correlation_id", "requested_by", "scope", "runtime_lane"},
@@ -58,13 +60,13 @@ def test_our_request_has_no_field_the_agent_forbids() -> None:
     allowed = (
         AGENT_ROLL_REQUEST_CONTRACT["required"]
         | AGENT_ROLL_REQUEST_CONTRACT["optional"]
-    )  # type: ignore[operator]
+    )
     assert set(ModelDevRollRequest.model_fields) <= allowed
 
 
 def test_our_request_carries_every_field_the_agent_requires() -> None:
     required = AGENT_ROLL_REQUEST_CONTRACT["required"]
-    assert required <= set(ModelDevRollRequest.model_fields)  # type: ignore[operator]
+    assert required <= set(ModelDevRollRequest.model_fields)
 
 
 def test_a_roll_decision_payload_stays_inside_the_agents_enums(
@@ -74,8 +76,8 @@ def test_a_roll_decision_payload_stays_inside_the_agents_enums(
     assert isinstance(d, ModelDevRollDecided)
     assert d.would_request is not None
     payload = d.would_request.wire_payload()
-    assert payload["scope"] in AGENT_ROLL_REQUEST_CONTRACT["scope"]  # type: ignore[operator]
-    assert payload["runtime_lane"] in AGENT_ROLL_REQUEST_CONTRACT["runtime_lane"]  # type: ignore[operator]
+    assert payload["scope"] in AGENT_ROLL_REQUEST_CONTRACT["scope"]
+    assert payload["runtime_lane"] in AGENT_ROLL_REQUEST_CONTRACT["runtime_lane"]
     assert set(payload) == set(OUR_REQUEST_FIELDS)
     assert isinstance(payload["git_ref"], str)
     assert len(payload["git_ref"]) == 40
@@ -98,7 +100,7 @@ def test_failing_control_a_renamed_field_would_leave_the_agents_required_set() -
     allowed = (
         AGENT_ROLL_REQUEST_CONTRACT["required"]
         | AGENT_ROLL_REQUEST_CONTRACT["optional"]
-    )  # type: ignore[operator]
+    )
     assert not renamed <= allowed, (
         "an invented field name is outside the agent's contract"
     )
