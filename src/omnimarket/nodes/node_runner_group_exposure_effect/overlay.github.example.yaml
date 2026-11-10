@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# Synthetic values: the real-backend overlay (reads the GitHub REST API). The token is read from
-# the environment variable named in token_env; its value is never written here.
+# Synthetic values: the real-backend overlay (reads the GitHub REST API). The source mints a
+# fresh GitHub App installation token once per read from the named secrets; set token_mint to
+# null to read the environment variable named in token_env instead. No secret value is ever
+# written here, only the NAME of a secret-store reference.
 settings:
   public_reach_events: [pull_request_target, pull_request, issue_comment]
   max_age_seconds: 3600
@@ -12,5 +14,10 @@ source:
   group_id: 7
   group_labels: [example-private-group]
   token_env: EXAMPLE_GROUP_READ_TOKEN
+  # Set token_mint to null to read token_env instead.
+  token_mint:
+    org: example-org
+    app_id_secret: EXAMPLE_APP_ID
+    private_key_secret: EXAMPLE_APP_PRIVATE_KEY
   max_calls: 40
   timeout_seconds: 10

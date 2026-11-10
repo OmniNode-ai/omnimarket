@@ -80,6 +80,8 @@ def test_fill_contract_facts(tmp_path: Path) -> None:
         "ledger_append_argv": [sys.executable, str(writer)],
         "ledger_write_via": "local",
         "ledger_writer_principal": PRINCIPAL,
+        # This test proves the fill's facts, not the provisioning (test_remote_lane_start_provisioning does).
+        "provisioning": {"steps": []},
     }
     overlay_path = tmp_path / "overlay.yaml"
     overlay_path.write_text(yaml.safe_dump(overlay), encoding="utf-8")

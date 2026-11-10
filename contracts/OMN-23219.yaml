@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-23219
+title: Every lab host that runs lanes receives the private-repo visibility snapshot
+summary: The snapshot publisher copied the file only to the hosts its caller named, and the unit named three, so a lane placed on h053 or h051 found no snapshot and the private-repo-runner-placement hook refused its commit. The publisher now reads the lab host table and adds every host that takes lanes to the caller's list; a table that cannot be read fails the run loudly while the named hosts still receive the file.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23219-lane-hosts-receive-snapshot
+  statement: A publish run writes the snapshot to every host the lab host table says takes lanes, as well as the hosts its caller names.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the publisher''s host table lists every host that takes lanes, and a publish run writes a snapshot younger than 24 hours to h053 -- falsifier: uv run pytest on the publisher host-table test, then ssh h053 stat of the snapshot file'
+  - id: AC2
+    statement: 'AC2: a regression test built from the recorded hook refusal on h053 (hook-preflight exit 3, no snapshot) fails on the current host table and passes on the fix -- falsifier: uv run pytest tests -q -k prrp_snapshot_hosts'
+evidence_requirements:
+- kind: tests
+  description: The publisher tests pass, the host-table tests among them.
+  command: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23219-ac1-host-table
+  description: The host-table tests pass; the lab table's lane-taking rows (cap not 0, no launcher, no contributor) are added to the caller's hosts, an unavailable one is reported skipped, and the caller's own row wins for a host it names.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect -q --no-cov -k "prrp_snapshot_hosts_only_rows or prrp_snapshot_hosts_an_unavailable or prrp_snapshot_hosts_a_host_the_caller or prrp_snapshot_hosts_the_table_alone"
+    cwd: .
+- id: dod-omn23219-ac2-recorded-refusal
+  description: The recorded h053 refusal (hook-preflight exit 3, no snapshot, last publish wrote h200, h201 and h202) leaves h053 without the file at the merge base and with it at the head.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect -q --no-cov -k prrp_snapshot_hosts
+    cwd: .
+- id: dod-omn23219-unreadable-table
+  description: A lab host table that cannot be read fails the run with an ALARM and no heartbeat, and no host receives the file.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect -q --no-cov -k prrp_snapshot_hosts_an_unreadable_table
+    cwd: .
+- id: dod-omn23219-integration-proof
+  description: After a publish run from this branch's code, h053 holds a snapshot written within the last 24 hours (a read of the live host, not of a test double). It reads absent at the merge base.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: ssh -o BatchMode=yes -o ConnectTimeout=10 h053 'find "$HOME/.omninode/prrp/variables-snapshot.json" -mmin -1440 | grep -c .'
+    cwd: .

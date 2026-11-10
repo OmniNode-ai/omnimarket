@@ -81,6 +81,8 @@ runtime:
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r3_legs.yaml
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
   # Leg b: the paid rung is a real OpenRouter model on the probe key. The key VALUE is read from the variable named below when
   # the call is made and is never printed, logged, emitted or stored. Enabled with an empty variable the run is red, never skipped.
   leg_b_enabled: true
@@ -93,7 +95,7 @@ schedule:
   unit_name: onex-delegation-scenario-r3
   state_directory: .onex_state/delegation-scenario-r3
   timeout_seconds: 900
-  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND]
   # The probe key is loaded from this file under the home directory, so its value never sits in the unit.
   environment_file: .config/onex/scenario-r3.env
   cadence:
