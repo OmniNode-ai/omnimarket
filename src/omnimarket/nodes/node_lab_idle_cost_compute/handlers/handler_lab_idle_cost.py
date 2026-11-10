@@ -15,7 +15,7 @@ import re
 from datetime import UTC, datetime
 
 from omnimarket.handlers.ledger_row_grammar import parse_row
-from omnimarket.nodes.node_stall_responder_compute.models import (
+from omnimarket.nodes.node_lab_idle_cost_compute.models import (
     ModelLabIdleCostRequest,
     ModelLabIdleCostResult,
 )
@@ -75,10 +75,13 @@ class HandlerLabIdleCost:
     """Pure: ledger rows and a start in, the lane-minutes of lab-idle FRICTION since then out."""
 
     def handle(self, request: ModelLabIdleCostRequest) -> ModelLabIdleCostResult:
-        since = _calendar_moment(request.since)
+        start = request.since or sum_start(request.rows)
+        if start is None:
+            raise ValueError("since is empty and rows hold no ledger row to count from")
+        since = _calendar_moment(start)
         if since is None:
             raise ValueError(
-                f"since must be a UTC stamp like 2026-11-07T00:35:28Z, got {request.since!r}"
+                f"since must be a UTC stamp like 2026-11-07T00:35:28Z, got {start!r}"
             )
         if request.until:
             until = _calendar_moment(request.until)
@@ -88,7 +91,7 @@ class HandlerLabIdleCost:
                 )
             if until < since:
                 raise ValueError(
-                    f"until must not be earlier than since, got since={request.since!r} "
+                    f"until must not be earlier than since, got since={start!r} "
                     f"until={request.until!r}"
                 )
         total = 0.0
@@ -99,9 +102,7 @@ class HandlerLabIdleCost:
             row = parse_row(line, types=frozenset({"FRICTION"}))
             if row is None or row.value("class") != "lab-idle":
                 continue
-            if row.stamp < request.since or (
-                request.until and row.stamp > request.until
-            ):
+            if row.stamp < start or (request.until and row.stamp > request.until):
                 continue
             minutes = _lane_minutes(row.value("cost"))
             if minutes is None:
@@ -109,14 +110,12 @@ class HandlerLabIdleCost:
                 continue
             total += minutes
             counted += 1
-        segment = (
-            f"lab-idle {_figure(total)} lane-min ({counted} rows since {request.since}"
-        )
+        segment = f"lab-idle {_figure(total)} lane-min ({counted} rows since {start}"
         segment += f", {unreadable} unreadable)" if unreadable else ")"
         return ModelLabIdleCostResult(
             lane_minutes=total,
             rows=counted,
             unreadable=unreadable,
-            since=request.since,
+            since=start,
             segment=segment,
         )
