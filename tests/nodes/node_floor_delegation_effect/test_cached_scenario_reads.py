@@ -15,12 +15,25 @@ from pathlib import Path
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_sources import (
     read_scenarios,
 )
+from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_tracker import (
+    build_tracker,
+)
 from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
     ModelScenarioRead,
     ModelScenarioReads,
 )
 
-from .support import NOW, RT, FakeRunner, iso, read, run, runs_answer, write_home
+from .support import (
+    NOW,
+    RT,
+    FakeRunner,
+    inputs,
+    iso,
+    read,
+    run,
+    runs_answer,
+    write_home,
+)
 
 DECL = RT.scenarios[0]
 OTHERS = [d for d in RT.scenarios if d.id != DECL.id]
@@ -57,6 +70,20 @@ def test_r5_cached_run_list_a_timed_out_read_keeps_the_cached_run_list_while_it_
     assert (
         kept.read_at == cached.read_at
     )  # still the old read: it ages out, it is never refreshed by a failure
+
+
+def test_r5_cached_run_list_the_served_tracker_row_is_not_unread_after_a_timed_out_read(
+    tmp_path: Path,
+) -> None:
+    home = write_home(tmp_path)
+    _seed(home, read(DECL.id, run("success", 30), read_minutes_ago=10))
+    got = read_scenarios(
+        RT, home, NOW, _runner((124, "", "timed out after 25 s")), clock=lambda: NOW
+    )
+    doc = build_tracker(RT, inputs(reads=got.reads), NOW)
+    served = next(s for s in doc.scenarios if s.id == DECL.id)
+    assert served.state == "pass"
+    assert served.state != "unread"
 
 
 def test_r5_cached_run_list_a_failed_read_older_than_the_max_age_is_drawn_unread(

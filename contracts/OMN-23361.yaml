@@ -52,14 +52,16 @@ dod_evidence:
     cwd: .
 - id: dod-omn23361-ac2-served-floor
   description: >-
-    The delegation-tracker.json R5 row on the served floor is read after the next publish following the merge and the floor publisher
-    install; it is recorded in the pull request thread. Pending until that publish.
+    The tracker built from a scenario read that timed out while the cached run list is young draws the R5 row as a result, not unread;
+    on the dev pre-image of the reader the same test fails (the row is unread). The delegation-tracker.json R5 row on the served floor
+    is read after the next publish following the merge and the floor publisher install, and recorded in the pull request thread.
+    That served read is pending until that publish.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: test -f contracts/OMN-23361.yaml
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -k r5_cached_run_list_the_served_tracker_row tests/nodes/node_floor_delegation_effect/test_cached_scenario_reads.py
     cwd: .
 - id: dod-omn23361-integration-proof
   description: The R5 cached-run-list tests and the R1 throttle-retry tests run on a lab host at the pushed head through the lab-work node.
