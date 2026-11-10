@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23425
+title: 'Lane start nodes refuse unfillable templates at load, carry the host PATH prefix, pin the fill seam (child of OMN-22848)'
+summary: 'Lane start nodes refuse unfillable templates at load and carry the host PATH prefix; the fill to entry seam is pinned by a test.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-child-lane-start-hardening
+  statement: The lane start entry refuses a settings value it cannot fill before any CLAIM, puts the engine on the host PATH, and pins its seam with the fill orchestrator.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a placeholder in engine_argv or claim_text that str.format cannot fill from the request fields is refused when the settings load, naming remote_lane_start.engine_argv or remote_lane_start.claim_text, and the entry exits 64 with no CLAIM row -- falsifier: `-k an_unfillable_placeholder`.'
+  - id: AC2
+    statement: 'AC2: the overlay key remote_lane_start.host_path_prefix is required, an empty string adds nothing, and the ssh transport exports the prefix before the prepare and start scripts and refuses a prefix with characters beyond path characters and $NAME references -- falsifier: `-k ssh_transport_path_prefix`.'
+  - id: AC3
+    statement: 'AC3: the seam between the floor fill orchestrator and the lane start entry is pinned: every flag the fill passes is accepted by the entry, the fill fills exactly four placeholders, and the six flags the fill does not supply are the pinned gap -- falsifier: `-k fill_seam`.'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of both lane start nodes.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder or ssh_transport_path_prefix or fill_seam'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-OMN-23425-ac1
+  description: An unfillable engine_argv or claim_text is refused at load naming its key and the entry writes no CLAIM row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder'
+    cwd: .
+- id: dod-OMN-23425-ac2
+  description: The ssh transport puts the engine on the host PATH from the overlay prefix and refuses a prefix that could run a command.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'ssh_transport_path_prefix'
+    cwd: .
+- id: dod-OMN-23425-ac3
+  description: The fill to entry seam test fails when either side changes shape.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'fill_seam'
+    cwd: .
