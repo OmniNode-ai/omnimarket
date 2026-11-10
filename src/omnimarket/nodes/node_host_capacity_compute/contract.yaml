@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Capacity Compute
+# Direct invocation only: no event bus or terminal event.
+name: "node_host_capacity_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Judge one lab host from its measured capacity reading (logical cores, memory, swap activity, one-minute
+  load) against the overlay-held limits: load per core and free memory as a share of total are the
+  admission bars, never an absolute load number. The same reading gives the host's slot cap: its running
+  lanes plus the slots its measured headroom still holds (cpu and memory, none while it swaps), held
+  between the overlay floor and ceiling. The host is admitted exactly when it has a free slot, so
+  admission and the floor's slots number agree. The verdict carries every input and limit it came from.
+input_model:
+  name: "ModelHostCapacityRequest"
+  module: "omnimarket.models.model_host_capacity"
+  description: "Typed inputs for host capacity."
+output_model:
+  name: "ModelHostCapacityVerdict"
+  module: "omnimarket.models.model_host_capacity"
+  description: "Typed result of host capacity."
+handler:
+  module: "omnimarket.nodes.node_host_capacity_compute.handlers.handler_host_capacity"
+  class: "HandlerHostCapacity"
+  input_model: "omnimarket.models.model_host_capacity.ModelHostCapacityRequest"
+  output_model: "omnimarket.models.model_host_capacity.ModelHostCapacityVerdict"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_capacity_compute.handlers.handler_host_capacity:HandlerHostCapacity"
+  handlers:
+    - operation: "handle"
+      handler:
+        name: "HandlerHostCapacity"
+        module: "omnimarket.nodes.node_host_capacity_compute.handlers.handler_host_capacity"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler with one host capacity reading and the host_capacity overlay limits."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Host Capacity Compute — pure policy with no external transport."
+  author: "OmniNode Team"
+  created: "2026-11-09"
+  tags: ['compute', 'host-capacity', 'OMN-23337']
+  related_tickets: ['OMN-23337']

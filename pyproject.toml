@@ -380,6 +380,7 @@ node_autopilot_orchestrator = "omnimarket.nodes.node_autopilot_orchestrator"
 node_baseline_capture = "omnimarket.nodes.node_baseline_capture"
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare"
 node_beacon_trace_capture_effect = "omnimarket.nodes.node_beacon_trace_capture_effect"
+node_beta_board_effect = "omnimarket.nodes.node_beta_board_effect"
 node_binding_conformance_compute = "omnimarket.nodes.node_binding_conformance_compute"
 node_binding_parity_orchestrator = "omnimarket.nodes.node_binding_parity_orchestrator"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
@@ -555,6 +556,8 @@ node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_
 node_delegation_eval_orchestrator = "omnimarket.nodes.node_delegation_eval_orchestrator"
 node_delegation_eval_run_orchestrator = "omnimarket.nodes.node_delegation_eval_run_orchestrator"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
+node_delegation_events_defect_scan_compute = "omnimarket.nodes.node_delegation_events_defect_scan_compute"
+node_delegation_events_defect_scan_effect = "omnimarket.nodes.node_delegation_events_defect_scan_effect"
 node_delegation_experiment_record_compute = "omnimarket.nodes.node_delegation_experiment_record_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_ground_truth_label_compute"
@@ -564,6 +567,8 @@ node_delegation_orchestrator = "omnimarket.nodes.node_delegation_orchestrator"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_delegation_quality_gate_reducer = "omnimarket.nodes.node_delegation_quality_gate_reducer"
+node_delegation_readiness_verdict_compute = "omnimarket.nodes.node_delegation_readiness_verdict_compute"
+node_delegation_readiness_verdict_effect = "omnimarket.nodes.node_delegation_readiness_verdict_effect"
 node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_receipt_verdict_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
@@ -574,6 +579,7 @@ node_delegation_scenario_days_compute = "omnimarket.nodes.node_delegation_scenar
 node_delegation_scenario_days_effect = "omnimarket.nodes.node_delegation_scenario_days_effect"
 node_delegation_scenario_r2_effect = "omnimarket.nodes.node_delegation_scenario_r2_effect"
 node_delegation_scenario_r4_effect = "omnimarket.nodes.node_delegation_scenario_r4_effect"
+node_delegation_scenario_r5_effect = "omnimarket.nodes.node_delegation_scenario_r5_effect"
 node_delegation_scenario_r6_effect = "omnimarket.nodes.node_delegation_scenario_r6_effect"
 node_delegation_seam_measure_compute = "omnimarket.nodes.node_delegation_seam_measure_compute"
 node_delegation_seam_orchestrator = "omnimarket.nodes.node_delegation_seam_orchestrator"
@@ -720,6 +726,7 @@ node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
 node_host_bringup_orchestrator = "omnimarket.nodes.node_host_bringup_orchestrator"
 node_host_bringup_plan_compute = "omnimarket.nodes.node_host_bringup_plan_compute"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
+node_host_capacity_compute = "omnimarket.nodes.node_host_capacity_compute"
 node_host_drain_effect = "omnimarket.nodes.node_host_drain_effect"
 node_host_drift_check_effect = "omnimarket.nodes.node_host_drift_check_effect"
 node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
@@ -787,6 +794,7 @@ node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_ta
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_lab_history_archive_effect = "omnimarket.nodes.node_lab_history_archive_effect"
 node_lab_host_key_distribution_effect = "omnimarket.nodes.node_lab_host_key_distribution_effect"
+node_lab_host_repair_dispatch_effect = "omnimarket.nodes.node_lab_host_repair_dispatch_effect"
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
@@ -833,6 +841,7 @@ node_lane_guard_unit_effect = "omnimarket.nodes.node_lane_guard_unit_effect"
 node_lane_host_discovery_compute = "omnimarket.nodes.node_lane_host_discovery_compute"
 node_lane_liveness_compute = "omnimarket.nodes.node_lane_liveness_compute"
 node_lane_model_policy_compute = "omnimarket.nodes.node_lane_model_policy_compute"
+node_lane_parent_notice_recovery_effect = "omnimarket.nodes.node_lane_parent_notice_recovery_effect"
 node_lane_pin_fallback_compute = "omnimarket.nodes.node_lane_pin_fallback_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
 node_lane_process_effect = "omnimarket.nodes.node_lane_process_effect"
@@ -907,6 +916,7 @@ node_migration_sync_effect = "omnimarket.nodes.node_migration_sync_effect"
 node_migration_sync_plan_compute = "omnimarket.nodes.node_migration_sync_plan_compute"
 node_model_comparison_runner = "omnimarket.nodes.node_model_comparison_runner"
 node_model_eval_orchestrator = "omnimarket.nodes.node_model_eval_orchestrator"
+node_model_overlay_write_effect = "omnimarket.nodes.node_model_overlay_write_effect"
 node_model_router = "omnimarket.nodes.node_model_router"
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
 node_model_work_receipt_join_compute = "omnimarket.nodes.node_model_work_receipt_join_compute"
@@ -1110,6 +1120,7 @@ node_prune_binding_effect = "omnimarket.nodes.node_prune_binding_effect"
 node_public_consumer_check_compute = "omnimarket.nodes.node_public_consumer_check_compute"
 node_push_validation_effect = "omnimarket.nodes.node_push_validation_effect"
 node_pytest_failure_digest_compute = "omnimarket.nodes.node_pytest_failure_digest_compute"
+node_pytest_full_suite_host_guard = "omnimarket.nodes.node_pytest_full_suite_host_guard"
 node_quality_scoring_compute = "omnimarket.nodes.node_quality_scoring_compute"
 node_question_guard_compute = "omnimarket.nodes.node_question_guard_compute"
 node_read_only_principal_effect = "omnimarket.nodes.node_read_only_principal_effect"
@@ -1535,14 +1546,14 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261108072811-e64fe3502b45" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261109210547-8b4382a1606d" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-# OMN-22472: core and infra move together; this core tag is the one infra dev-20261108072811-e64fe3502b45 locks and carries omnibase_core#2258.
+# OMN-22472: core and infra move together; this core tag is the one infra dev-20261109210547-8b4382a1606d locks and carries omnibase_core#2258.
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261108014124-2fe30fd9dc47" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108015921-ace601e12033" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261106074413-b4fa53dcb119" }
