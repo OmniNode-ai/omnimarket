@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23611
+title: "Piece 16 pilot measurement: hourly reading of each pilot's pass bar and result"
+summary: Rebuild piece 16 (context, memory and evals) had no producer. The pilot manifest check (node_pilot_manifest_check_compute) judges one pilot against its frozen bar but nothing ran it. A new compute node aggregates that check over every declared pilot into one reading verdict, and a new effect node reads the pilots' result rows from the ledger, runs the aggregation and appends one STATUS row an hour that the reading writer's piece 16 source reads.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23611-pilot-measurement
+  statement: Piece 16 has a producer, a pilot manifest check run over each declared pilot, and a reading row that fails on a pilot with no frozen bar, a missed gating bar or a run that ended with no result.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a pilot with no frozen pass bar, or whose bar hash differs from the declared hash, makes the piece 16 reading row NOT_WORKING -- falsifier: pytest tests/nodes/node_pilot_measurement_compute -q fails at the base commit'
+  - id: AC2
+    statement: 'AC2: a pilot whose measured result misses a bar that gates the reading, or that ended with no result inside its deadline, makes the row NOT_WORKING; all bars met makes it WORKING -- falsifier: pytest tests/nodes/node_pilot_measurement_compute -q fails at the base commit'
+  - id: AC3
+    statement: 'AC3: the golden and the error chain events of the effect node are emitted and the row is selected by the piece 16 reading source and read by join J16 -- falsifier: pytest tests/nodes/node_pilot_measurement_effect -q fails at the base commit'
+  - id: AC4
+    statement: 'AC4: integrated: after the next hourly reading publish on the lab, the served floor line for piece 16 reads WORKING or NOT WORKING with a reading age, not UNKNOWN with no producer -- falsifier: curl the served floor json and read the piece 16 entry reading_state and reading_age_s'
+evidence_requirements:
+- kind: tests
+  description: The compute, effect and seam tests at the pushed head. At the base commit the node packages do not exist, so every test errors on import.
+  command: env -u PYTHONPATH uv run pytest tests/nodes/node_pilot_measurement_compute tests/nodes/node_pilot_measurement_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23611-ac1-compute
+  description: The compute node's tests pass at the pushed head; each rule and each named mutation is a test, and none can pass at the base commit where the node does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pilot_measurement_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23611-ac3-effect
+  description: The effect node's run, fact-row, golden and error chain event tests and the seam tests (pilot row to measurement, measurement to the reading writer's piece 16 source, reading row to join J16) pass at the pushed head on the in-memory ledger.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pilot_measurement_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23611-integration-proof
+  description: The pushed head ran the compute, effect and seam tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23611 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pilot_measurement_compute tests/nodes/node_pilot_measurement_effect -q --no-cov'
+    cwd: .

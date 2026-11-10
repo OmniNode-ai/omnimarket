@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Pilot Measurement Compute (OMN-19998, OMN-23611, rebuild piece 16)
+#
+# Pure compute: handle(ModelPilotMeasurementRequest) -> ModelPilotMeasurementResult. The caller supplies the
+# pilots' declarations (their pass bars, which bars gate the reading, their result deadlines), the facts the
+# pilots reported and the time. The judgement of one pilot is node_pilot_manifest_check_compute's (OMN-22979);
+# this node runs it per pilot and aggregates. This contract holds no bar, deadline or threshold.
+name: node_pilot_measurement_compute
+contract_name: node_pilot_measurement_compute
+node_name: node_pilot_measurement_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Piece 16's measurement at a read time. WORKING while every started pilot froze the bar it declared before it
+  started, reported a result inside its declared deadline and met every bar that gates the reading. NOT WORKING
+  when a started pilot's manifest is refused (no bar hash, another bar's hash, a bar frozen after the start),
+  when it ended with no result past its deadline, or when it missed a bar that gates the reading. UNKNOWN when the
+  pilots' facts could not be read, when no pilot was declared, or when no declared pilot has started. A pilot that
+  misses only bars that do not gate the reading is rejected as a pilot and the reading still reads WORKING.
+  No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: pilot_measurement
+      handler:
+        name: HandlerPilotMeasurement
+        module: omnimarket.nodes.node_pilot_measurement_compute.handlers.handler_pilot_measurement
+
+handler:
+  module: omnimarket.nodes.node_pilot_measurement_compute.handlers.handler_pilot_measurement
+  class: HandlerPilotMeasurement
+  input_model: omnimarket.models.model_pilot_measurement.ModelPilotMeasurementRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelPilotMeasurementRequest
+  module: omnimarket.models.model_pilot_measurement
+  description: The pilots' declarations, the facts the pilots reported and the time to read at.
+output_model:
+  name: ModelPilotMeasurementResult
+  module: omnimarket.models.model_pilot_measurement
+  description: The verdict at that time, its reasons, the counts, and the pilots pending, rejected or accepted.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.pilot-measurement-read-requested.v1"
+    operation: "pilot_measurement"
+
+terminal_event: onex.evt.omnimarket.pilot-measurement-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pilot-measurement-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pilot-measurement-read.v1
+
+# The pilot measurement effect node gathers the pilots' facts and appends the reading row; it calls this handler in process.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.pilot-measurement-read-requested.v1
+    producer: "the pilot measurement effect node, which gathers the pilots' facts; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.pilot-measurement-read.v1
+
+metadata:
+  description: "Piece 16 measurement: each declared pilot checked against its frozen pass bar and result, one reading verdict"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-10"
+  tags: [compute, pilot-measurement, reading, pure]
+  related_tickets: ["OMN-19998", "OMN-23611"]
