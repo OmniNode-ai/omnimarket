@@ -1,0 +1,6 @@
+# Overlay of the needs= cell policy (OMN-23417): <root>/node_remote_lane_close_compute/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. Every key is required; the real values live in the overlays repository.
+actions: [rerun, update-branch, close, install, ruling, admin, ticket, release-recut]
+target_pattern: "[A-Za-z0-9][A-Za-z0-9._#/@:-]{0,119}"
+report_chars: 800
+cell_required_outcomes: [blocked, partial]
