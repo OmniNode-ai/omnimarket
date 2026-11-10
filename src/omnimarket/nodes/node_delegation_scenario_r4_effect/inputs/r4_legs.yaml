@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scenario R4 ladders (readiness plan 2.2, OMN-23173). Each leg is a rungs-mode probe ladder: every rung is a loopback stub
+# with a scripted behaviour. The healthy rung answers `answer`; the scenario compares the returned bytes to `answer_marker`.
+# The prompt is a plain task; the answer is long enough for the quality gate and carries the marker, so a gate that accepted
+# a wrong answer would still turn the row red on the byte comparison.
+class_ceiling_ms: 60000
+answer_marker: R4-FIXED-ANSWER-7f3a
+answer: >-
+  ### ANSWER
+
+  According to Smith (2020) and the theorem in section 3, the tradeoff is significant because the evidence shows X;
+  therefore we conclude Y. See references [12] for the methodical analysis and the risk profile this approach carries in
+  practice. Marker R4-FIXED-ANSWER-7f3a.
+prompt: Explain the tradeoff between a stopped rung and a healthy one in two sentences.
+#: failure classes the closed list of K4a (omnimarket EnumDelegationEndOfLadderReason) allows on an all-down run.
+end_of_ladder_reasons: [every_rung_failed, every_rung_rate_limited, no_rung_reachable, escalation_limit_reached, quality_veto]
+recover_legs:
+  - name: stopped_then_healthy
+    expect_failure_class: model_unavailable
+    rungs:
+      - {backend_id: r4-stopped, model_id: stub-stopped, behaviour: stopped, timeout_ms: 5000}
+      - {backend_id: r4-healthy, model_id: stub-healthy, behaviour: answer, timeout_ms: 30000}
+  - name: killed_then_healthy
+    expect_failure_class: model_unavailable
+    rungs:
+      - {backend_id: r4-killed, model_id: stub-killed, behaviour: killed, timeout_ms: 5000}
+      - {backend_id: r4-healthy, model_id: stub-healthy, behaviour: answer, timeout_ms: 30000}
+  - name: slow_then_healthy
+    expect_failure_class: timeout
+    rungs:
+      - {backend_id: r4-slow, model_id: stub-slow, behaviour: slow, delay_ms: 8000, timeout_ms: 1500}
+      - {backend_id: r4-healthy, model_id: stub-healthy, behaviour: answer, timeout_ms: 30000}
+all_down_leg:
+  name: every_rung_down
+  rungs:
+    - {backend_id: r4-down-a, model_id: stub-down-a, behaviour: stopped, timeout_ms: 5000}
+    - {backend_id: r4-down-b, model_id: stub-down-b, behaviour: status, status_code: 503, timeout_ms: 5000}
+# A slow rung, then a rung with no credential, then a healthy one. A probe-ladder rung names a loopback stub and has no
+# credential field, so the leg cannot be built from a ladder file today. It stays a named, failing assertion until the
+# probe rung can declare an absent credential; it is never skipped and never counted as passed.
+credential_absent_leg:
+  runnable: false
+  gap: a probe rung has no credential setting, so the third-rung-answers leg (K8) cannot be expressed as a ladder file
