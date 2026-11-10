@@ -1,0 +1,39 @@
+{
+  "ticket": "OMN-22712",
+  "host": "h202",
+  "measured_at": "2026-11-08T21:05Z",
+  "venv_copy": {
+    "files": 39351,
+    "entries": 46823,
+    "kind": "copy of the lab dispatch venv"
+  },
+  "moved_packages": [
+    "click 8.4.2 -> 8.1.7",
+    "rich 13.9.4 -> 13.7.1",
+    "pygments 2.21.0 -> 2.17.2"
+  ],
+  "metric": "total system calls from strace -f -c over the whole process tree, interpreter start and uv included",
+  "recorded_before_file_events": 121929,
+  "old_pass": {
+    "command": "cp -a <venv> <clone>; uv pip install --no-deps --python <clone>/bin/python click==8.1.7 rich==13.7.1 pygments==2.17.2",
+    "total_syscalls": 795297
+  },
+  "new_pass": {
+    "command": "python -m omnimarket.nodes.node_venv_atomic_install_effect.handlers.handler_venv_atomic_install_cli --venv-root <venv> --lock-file <lock> --staging-dir <sibling> --journal <sibling> --uv uv",
+    "total_syscalls": 17814,
+    "status": "installed",
+    "listing_after": "only the click, rich and pygments entries differ from the listing before",
+    "first_reading_before_commit_aware_moves": 20403
+  },
+  "limit": 40000,
+  "measured_code_commit": "77a25162ecb1d31e929a9cbfc04c19815647c745",
+  "failure_injection_on_the_copy": {
+    "injected": "exchange error on the second exchange",
+    "status": "rolled_back",
+    "entries_before": 46822,
+    "entries_after": 46822,
+    "path_inode_size_identical": true,
+    "staging_removed": true,
+    "journal_removed": true
+  }
+}
