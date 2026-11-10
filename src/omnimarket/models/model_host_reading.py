@@ -37,7 +37,8 @@ class EnumCanaryEnding(StrEnum):
     a failure of the host:
     a wrapper that was killed or a result that cannot be read is ``untyped``, a canary cut at its
     deadline is ``timed-out`` (never free capacity), a host the pool read could not reach is
-    ``unreachable``.
+    ``unreachable``, and a host the pool read admitted whose lane wrapper then refused to start for
+    want of its installed lane guard copy is ``guard-missing`` (no lane can start there).
     """
 
     TYPED = "typed"
@@ -46,6 +47,7 @@ class EnumCanaryEnding(StrEnum):
     UNTYPED = "untyped"
     TIMED_OUT = "timed-out"
     UNREACHABLE = "unreachable"
+    GUARD_MISSING = "guard-missing"
 
 
 class ModelCanaryHost(BaseModel):
