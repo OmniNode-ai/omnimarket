@@ -1573,6 +1573,14 @@ task_classes:
     # to a genuinely separate provider.
     escalation_policy:
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "The text below is one section of a longer document. Do the original document task for this section only.\n\n{source}"
       tier_order:
         - local
         - cheap_frontier
@@ -2231,6 +2239,14 @@ task_classes:
       # to the metered tier. max_escalations rises by one so the ladder can
       # still be walked to its last entry.
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "Review only the following part of a larger change. Report each finding with its file path and line.\n\n{source}"
       tier_order:
         - local
         - cheap_frontier
@@ -2334,6 +2350,14 @@ task_classes:
         max: 1.0
     escalation_policy:
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "Review only the following part of a larger change. Report each finding with its file path and line.\n\n{source}"
       # OMN-17427: withheld and no tier serves it, so no tier_order is declared.
       # Restore the ladder in the same change that restores use_for entries.
   summarization:
@@ -2487,6 +2511,14 @@ task_classes:
     # to a genuinely separate provider.
     escalation_policy:
       max_escalations: 2
+      # OMN-20172: the ladder on a rubric failure is one configuration swap on the
+      # same model and backend, then shrink (split, run the units on the same model
+      # and backend, recombine, check the whole), then escalate. These are its caps.
+      max_config_swaps: 1
+      max_split_depth: 2
+      unit_attempts_per_unit: 2
+      # The wording of one unit's prompt; {source} is only that unit's slice.
+      shrink_unit_prompt: "The text below is one part of a longer document. Summarize this part only, faithfully and concisely.\n\n{source}"
       tier_order:
         - local
         - cheap_frontier

@@ -1,0 +1,29 @@
+DelegationShrinkRetry model verdict (OMN-20172)
+===============================================
+
+Reviewer: a separate Claude Sonnet subagent (no Codex, per the step-0 engine rule), run read-only
+as an adversarial reviewer of the model, its configs and the TLC results against plan section
+13.6 and 13.10. The rule given to the reviewer: APPROVE only with no BLOCKER and no MAJOR finding.
+
+Rounds
+------
+
+round 1  REJECT  3 MAJOR
+         (UnitCap=6 contradicted "twice the unit count" and made the unbounded-split mutation
+         pass only by that accident; nothing enforced that the swap and shrink rungs are tried
+         before escalating; a failed unit escalated the whole request instead of escalating
+         alone and still reaching the whole check)
+round 2  model sha256=c5b26b65c4c7469f2c52116811866827aa2172d20a20777ad6ca61ce81747201  APPROVE  0 MAJOR, 6 MINOR
+
+Fixes made after round 1: UnitCap = 2 x UnitCount, counted for each split level; a unit that
+fails and cannot split escalates alone and the units are recombined and the whole is checked;
+a wholeChecked variable; the EscalateOnlyWhenExhausted invariant with mutation M7; one split
+guard; the abstractions stated in the model header.
+
+Round 2 minors kept open, for the implementation lane to cover in handler tests: the unit cap
+is per split level (the plan text says "twice the unit count" and does not say per level); no
+property pins the unit-escalates-alone path; RunUnits collapses per-unit retries into one
+choice; ResplitAvail ignores the band-must-shrink check (a handler guard); only one redelivery
+of the terminal event is modelled; a verdict of the corner with neither rung is design_neither_rung.
+
+verdict: APPROVE model=DelegationShrinkRetry.tla sha256=c5b26b65c4c7469f2c52116811866827aa2172d20a20777ad6ca61ce81747201
