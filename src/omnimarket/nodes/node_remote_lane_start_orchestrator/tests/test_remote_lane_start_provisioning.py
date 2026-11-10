@@ -449,3 +449,14 @@ def test_build_real_hands_the_overlays_runtime_config_to_the_transport(
     plan = overlay_provisioning()
     assert vars(transport)["_runtime_config"] == plan["runtime_config_text"]
     assert vars(transport)["_runtime_config_target"] == plan["runtime_config_target"]
+
+
+def test_the_overlay_plan_lists_retain_run_artifacts_last_and_only_for_a_started_engine() -> (
+    None
+):
+    plan = ModelLaneProvisioningPlan.model_validate(overlay_provisioning())
+    last = plan.steps[-1]
+    assert last.step.value == "retain_run_artifacts"
+    assert last.phase.value == "after_close"
+    assert last.only_if_engine_started is True
+    assert last.fatal is False

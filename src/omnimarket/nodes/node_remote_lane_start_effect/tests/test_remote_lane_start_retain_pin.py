@@ -125,30 +125,3 @@ def test_the_day_the_pin_carries_the_model_the_guard_turns_red() -> None:
 def test_the_scripted_transport_answers_ok_for_retain() -> None:
     scripted = ScriptedLaneHostTransport(ModelScriptedTransportScript())
     assert scripted.retain_run_artifacts(REQUEST).ok is True
-
-
-def test_the_overlay_plan_lists_retain_run_artifacts_last_and_only_for_a_started_engine() -> (
-    None
-):
-    import copy
-    from pathlib import Path
-
-    import yaml
-
-    from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_provisioning import (
-        ModelLaneProvisioningPlan,
-    )
-
-    example = (
-        Path(__file__).resolve().parents[2]
-        / "node_remote_lane_start_orchestrator"
-        / "overlay.example.yaml"
-    )
-    document = yaml.safe_load(example.read_text(encoding="utf-8"))
-    section = document["remote_lane_start"]["provisioning"]
-    plan = ModelLaneProvisioningPlan.model_validate(copy.deepcopy(section))
-    last = plan.steps[-1]
-    assert last.step.value == "retain_run_artifacts"
-    assert last.phase.value == "after_close"
-    assert last.only_if_engine_started is True
-    assert last.fatal is False
