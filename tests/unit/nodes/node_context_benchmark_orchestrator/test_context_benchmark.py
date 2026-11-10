@@ -711,3 +711,83 @@ def test_context_benchmark_report_sign_test_is_exact() -> None:
     assert sign_test_p(0, 0) == 1.0
     assert sign_test_p(10, 0) == pytest.approx(2 / 1024)
     assert sign_test_p(3, 3) == 1.0
+
+
+def test_context_benchmark_models_single_file_prompt_asks_for_one_fence_only(
+    source: Path, tmp_path: Path
+) -> None:
+    from omnimarket.nodes.node_context_benchmark_orchestrator.handlers.lane_runners import (
+        route_prompt,
+    )
+
+    work = tmp_path / "w"
+    work.mkdir()
+    (work / "a.py").write_text("x = 1")
+    prompt = route_prompt(_task(), work, None)
+    assert "Current file a.py:\n```\nx = 1\n```" in prompt
+    assert (
+        "Reply with the complete new content of a.py as one fenced code block "
+        "and nothing else." in prompt
+    )
+    assert (
+        "###" not in prompt
+    )  # the code_generation gate rejects prose outside the fence
+
+
+def test_context_benchmark_models_single_file_bare_fence_is_applied(
+    source: Path, tmp_path: Path
+) -> None:
+    from omnimarket.nodes.node_context_benchmark_orchestrator.handlers.lane_runners import (
+        apply_file_blocks,
+    )
+
+    work = tmp_path / "w"
+    (work / "tests").mkdir(parents=True)
+    (work / "tests" / "check.txt").write_text("keep")
+    (work / "a.py").write_text("x = 1\n")
+    out = "Here is the complete new content of a.py:\n```python\nx = 2\n```\n"
+    assert apply_file_blocks(out, _task(), work) == 1
+    assert (work / "a.py").read_text() == "x = 2\n"
+    assert (work / "tests" / "check.txt").read_text() == "keep"
+
+
+def test_context_benchmark_models_multi_file_prompt_keeps_heading_format(
+    source: Path, tmp_path: Path
+) -> None:
+    from omnimarket.nodes.node_context_benchmark_orchestrator.handlers.lane_runners import (
+        route_prompt,
+    )
+
+    work = tmp_path / "w"
+    (work / "sub").mkdir(parents=True)
+    (work / "a.py").write_text("x = 1")
+    (work / "sub" / "b.py").write_text("y = 2")
+    task = ModelBenchmarkTask(
+        task_id="t3",
+        prompt="do it",
+        check_argv=("check",),
+        edit_files=("a.py", "sub/b.py"),
+        protected_paths=("tests",),
+    )
+    prompt = route_prompt(task, work, None)
+    assert "Current files:" in prompt
+    assert "### a.py\n```\nx = 1\n```" in prompt
+    assert "### sub/b.py\n```\ny = 2\n```" in prompt
+    assert "heading line `### <path>` followed by one fenced code block" in prompt
+
+
+def test_context_benchmark_models_runtime_reads_route_settings_from_contract() -> None:
+    from omnimarket.nodes.node_context_benchmark_orchestrator.runtime_context_benchmark import (
+        lane_spec,
+        load_route_settings,
+    )
+
+    settings = load_route_settings()
+    assert settings == {
+        "caller_lane": "context-benchmark-1715",
+        "ticket": "OMN-21896",
+        "transport_flags": "--bus kafka --lane dev --locus deployed-lane",
+    }
+    assert lane_spec("qwen", "lab-model").model_id == "lab-model"
+    with pytest.raises(SystemExit):
+        lane_spec("qwen")

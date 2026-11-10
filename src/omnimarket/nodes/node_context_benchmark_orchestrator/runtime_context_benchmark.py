@@ -36,7 +36,6 @@ from omnimarket.nodes.node_context_benchmark_orchestrator.models.model_context_b
 )
 
 _PILOT = Path(__file__).parent / "pilot" / "pilot_tasks.yaml"
-_QWEN = "Qwen3.8-27B"
 
 
 def materialize_pilot(dest: Path) -> list[ModelBenchmarkTask]:
@@ -48,7 +47,14 @@ def materialize_pilot(dest: Path) -> list[ModelBenchmarkTask]:
     return [ModelBenchmarkTask.model_validate(t) for t in spec["tasks"]]
 
 
-def lane_spec(name: str) -> ModelBenchmarkLaneSpec:
+def load_route_settings() -> dict[str, str]:
+    contract = yaml.safe_load(
+        (Path(__file__).parent / "contract.yaml").read_text(encoding="utf-8")
+    )
+    return {str(k): str(v) for k, v in contract["route"].items()}
+
+
+def lane_spec(name: str, local_model_id: str = "") -> ModelBenchmarkLaneSpec:
     if name == "claude":
         return ModelBenchmarkLaneSpec(
             lane=EnumBenchmarkLane.CLAUDE_HEADLESS, model_id="claude-headless"
@@ -64,8 +70,10 @@ def lane_spec(name: str) -> ModelBenchmarkLaneSpec:
             backend_id="cloud-typesafe-jev",
         )
     if name == "qwen":
+        if not local_model_id:
+            raise SystemExit("the qwen lane needs --local-model-id")
         return ModelBenchmarkLaneSpec(
-            lane=EnumBenchmarkLane.DELEGATE_ROUTE, model_id=_QWEN
+            lane=EnumBenchmarkLane.DELEGATE_ROUTE, model_id=local_model_id
         )
     if name.startswith("route:"):
         backend = name.split(":", 1)[1]
@@ -84,16 +92,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scratch", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--host", default=socket.gethostname())
+    parser.add_argument(
+        "--local-model-id",
+        default=os.environ.get("ONEX_BENCHMARK_LOCAL_MODEL_ID", ""),
+        help="model id the qwen lane records (the lab model the route serves)",
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--agent-timeout", type=float, default=900.0)
     parser.add_argument("--onex-bin", default=os.environ.get("ONEX_BIN"))
     parser.add_argument("--state-root", default=os.environ.get("ONEX_STATE_DIR"))
     parser.add_argument(
         "--route-flags",
-        default="--bus kafka --lane dev --locus deployed-lane",
+        default=load_route_settings()["transport_flags"],
         help="transport flags for onex delegate",
     )
     args = parser.parse_args(argv)
+    route_settings = load_route_settings()
 
     scratch, out = Path(args.scratch), Path(args.out)
     scratch.mkdir(parents=True, exist_ok=True)
@@ -120,15 +134,15 @@ def main(argv: list[str] | None = None) -> int:
     route = LaneDelegateRoute(
         onex_bin=args.onex_bin or "",
         state_root=Path(args.state_root or "."),
-        lane="context-benchmark-1715",
-        ticket="OMN-21896",
+        lane=route_settings["caller_lane"],
+        ticket=route_settings["ticket"],
         transport_flags=tuple(args.route_flags.split()),
     )
     handler = HandlerContextBenchmark(runners={EnumBenchmarkLane.DELEGATE_ROUTE: route})
     request = ModelContextBenchmarkRequest(
         source_dir=str(source),
         tasks=tuple(tasks),
-        lanes=tuple(lane_spec(n) for n in lane_names),
+        lanes=tuple(lane_spec(n, args.local_model_id) for n in lane_names),
         scratch_dir=str(scratch / "arms"),
         host=args.host,
         agent_timeout_seconds=args.agent_timeout,
