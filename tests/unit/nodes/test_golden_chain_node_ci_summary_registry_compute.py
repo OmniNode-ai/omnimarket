@@ -226,3 +226,18 @@ def test_contract_declares_a_compute_node_with_an_importable_handler() -> None:
         == "onex.cmd.omnimarket.ci-summary-registry-requested.v1"
     )
     assert contract["handler"]["class"] == HandlerCiSummaryRegistry.__name__
+
+
+def test_contract_publishes_the_resolved_and_failed_terminal_events() -> None:
+    contract = yaml.safe_load(
+        (Path(_node_pkg.__file__).parent / "contract.yaml").read_text(encoding="utf-8")
+    )
+    terminal = contract["runtime_dispatch"]["terminal_events"]
+    assert terminal["success"] == "onex.evt.omnimarket.ci-summary-registry-resolved.v1"
+    assert terminal["failure"] == "onex.evt.omnimarket.ci-summary-registry-failed.v1"
+    assert sorted(contract["event_bus"]["publish_topics"]) == sorted(
+        [
+            "onex.evt.omnimarket.ci-summary-registry-resolved.v1",
+            "onex.evt.omnimarket.ci-summary-registry-failed.v1",
+        ]
+    )
