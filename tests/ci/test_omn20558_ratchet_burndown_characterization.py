@@ -45,7 +45,8 @@ _WORKFLOWS: Final[Path] = _REPO_ROOT / ".github" / "workflows"
 # dev-merge tags in OMN-17427, the sibling-pin train workflow in OMN-21895,
 # the prompt cost estimate contract workflow in OMN-22126, and the TruffleHog
 # digest pin and drift workflow in OMN-23008, and three ci.yml setup-uv uses replaced
-# in OMN-21968 (the census path installs uv from PyPI; its cache step uses actions/cache).
+# in OMN-21968 (the census path installs uv from PyPI; its cache step uses actions/cache),
+# and the rate-limit pin move (imperative-contract-guard and kb-doc-gate callers) in OMN-23542.
 _GOLDEN: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "omn20558_workflow_action_refs.json"
 )

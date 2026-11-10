@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-23542
+title: Move omnimarket's two shared check pins to the repaired versions
+summary: The imperative-contract-guard and kb-doc-gate callers pinned reusable workflows that checked their validator out with an empty ref, so every run called the rate-limited default-branch API. The callers now pin the dev-merge tags that carry omnibase_core#2306 and omniclaude#3251, the kb-doc-gate pre-commit hook rev moves to the same commit, and the kb-doc-gate raw-sha exception leaves the pin overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23542-pin-move
+    statement: The callers of the two repaired reusable workflows name a dev-merge tag at or after the tag that carries the repair, and the local hook and the CI caller name the same commit.
+    acceptance:
+      - id: AC1
+        statement: "AC1: omnimarket's imperative-contract-guard caller pins omnibase_core at a commit that contains omnibase_core#2306, and its kb-doc-gate caller pins omniclaude at a commit that contains omniclaude#3251 -- falsifier: pytest tests/ci/test_workflow_pin_move_omn_rate_limit.py -q fails on the old pins and passes on the new ones"
+      - id: AC2
+        statement: "AC2: the pin fixture and the caller tests name the same two new pins -- falsifier: pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py tests/ci/test_omn20558_ratchet_burndown_characterization.py -q"
+      - id: AC3
+        statement: "AC3: integrated: on a fresh omnimarket head the checkout step of imperative-contract-guard and kb-doc-gate names a 40-hex ref and makes no default-branch lookup -- falsifier: onex scm job-log read of each job on the head shows a Resolve pin line with a 40-hex commit, or a default-branch lookup line (then the criterion fails)"
+evidence_requirements:
+  - kind: tests
+    description: The focused pin test, with the pre-image failing control (3 of its 6 tests fail on the callers and hook as origin/dev holds them), and the two neighbouring pin tests.
+    command: uv run pytest tests/ci/test_workflow_pin_move_omn_rate_limit.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23542-tests
+    description: The focused pin test passes on the branch and fails on the callers and hook as origin/dev holds them.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_workflow_pin_move_omn_rate_limit.py -q
+  - id: dod-omn23542-neighbours
+    description: The fixture and caller tests that name the same pins pass.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py tests/ci/test_action_pin_wiring_omn17427.py -q
+  - id: dod-omn23542-integration-proof
+    description: Run the focused pin tests on a lab host at the pushed head. The live read of the two checkout steps (AC3) is taken from the job logs of the pushed head after the PR watcher reads it and goes in a PR comment naming the head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23542 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_workflow_pin_move_omn_rate_limit.py -q --no-cov

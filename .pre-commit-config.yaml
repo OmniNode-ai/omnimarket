@@ -461,6 +461,8 @@ repos:
         exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/omnimarket/validators/no_baseline_refreeze\\.py|src/omnimarket/validators/no_literal_event_type_in_tests\\.py|src/omnimarket/validators/contract_topic_graph\\.py|src/dep_health_allowlist\\.yaml|src/omnimarket/cli/.*)$"
 
   # KB doc gate (OMN-16589) — blocks new/regrown non-KB markdown docs.
+  # OMN-23542: rev moved to omniclaude#3251's merge commit, the same commit the CI
+  # caller's dev-merge tag names.
   #
   # OMN-16613 bumped this pin from 82a3394c (omniclaude#2047, the OMN-16589
   # pilot) to omniclaude dev 6bfba15f. The pilot validator's config parser
@@ -472,7 +474,7 @@ repos:
   # (.github/workflows/kb-doc-gate.yml) is pinned to the same commit so the
   # local and CI verdicts cannot diverge.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: 6bfba15f7d103ddaa9e949c459e95153b1ca6a94  # pragma: allowlist secret
+    rev: 6f8f3646a88e12f6577a7989ceec3c3504889be6  # pragma: allowlist secret
     hooks:
       - id: kb-doc-gate
         require_serial: true
