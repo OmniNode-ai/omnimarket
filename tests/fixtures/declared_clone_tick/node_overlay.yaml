@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# The shape of the node overlay the overlays repository declares (the lane is a stand-in); that
-# repository carries the same key assertions on its side (OMN-23557).
-backend: redpanda
-bus_lane: example-lane
+# The shape of the node overlay the overlays repository declares; that repository carries the same key assertions on its side (OMN-23557).
+backend: inmemory
 host_name_env: LAB_WORK_HOST_NAME
 wait_seconds: 120.0
