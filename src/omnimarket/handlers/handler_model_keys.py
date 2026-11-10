@@ -761,16 +761,6 @@ def add_key(
     return result
 
 
-def add_local(url: str | None, model: str) -> ModelModelTestResult | None:
-    """Register a keyless local model server at ``url`` with ``model`` and return its first test."""
-    tests = (
-        model_handler()
-        .handle(ModelModelSetupRequest(operation="add_local", url=url, models=(model,)))
-        .tests
-    )
-    return tests[0] if tests else None
-
-
 def list_providers() -> tuple[ModelModelStatus, ...]:
     """Each provider: set up or not, its models and its last test result."""
     return model_handler().handle(ModelModelSetupRequest(operation="status")).providers

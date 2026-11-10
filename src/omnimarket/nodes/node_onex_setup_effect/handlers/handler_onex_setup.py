@@ -31,6 +31,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
 from omnibase_core.errors.model_onex_error import ModelOnexError
@@ -44,6 +45,11 @@ from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupState,
     ModelOnexSetupStepOutcome,
 )
+
+if TYPE_CHECKING:
+    from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
+        ModelModelTestResult,
+    )
 
 SETUP_STEPS: tuple[str, ...] = (
     "workspace",
@@ -411,6 +417,21 @@ def _step_runtime_config(
     return runtime_config, written or recorded
 
 
+def _add_local_model(url: str | None, model: str) -> ModelModelTestResult | None:
+    """Register a keyless local model server at ``url`` with ``model`` and return its first test."""
+    from omnimarket.handlers import handler_model_keys as model_keys
+    from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
+        ModelModelSetupRequest,
+    )
+
+    tests = (
+        model_keys.model_handler()
+        .handle(ModelModelSetupRequest(operation="add_local", url=url, models=(model,)))
+        .tests
+    )
+    return tests[0] if tests else None
+
+
 def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
     """Store the key through the handler ``onex models add`` uses, then read one delegation's receipt.
 
@@ -427,7 +448,7 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
     model = request.model or ""
     try:
         if provider in KEYLESS_PROVIDERS:
-            result = model_keys.add_local(request.url, model)
+            result = _add_local_model(request.url, model)
         else:
             key = request.key.get_secret_value() if request.key is not None else ""
             result = model_keys.add_key(provider, key, (model,), url=request.url)
