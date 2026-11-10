@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-23617
+title: Two scheduled jobs that cannot find their overlay report it once, not on every tick
+summary: 'The floor and work-state scheduled effects raised NodeOverlayNotFoundError on every runtime tick while their overlay was absent from the dev runtime overlay root; each raise was replayed up to 5 times to the shared runtime-tick topic and every other consumer group logged a skip line per replay. A ScheduledOverlayRefusalLatch now logs one typed refusal per distinct cause and one recovery line, and both handlers return no event instead of raising, retrying the load on the next tick.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23617-refusal-once
+  statement: A scheduled effect with a missing overlay logs its refusal once per distinct cause and recovers when the overlay appears.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a scheduled node that fails on every tick because its overlay is missing writes one error line for that cause, however many times the failed tick is replayed -- falsifier: the replay test fails at the base commit because the handler raises on the first call'
+  - id: AC2
+    statement: 'AC2: a node that fails on a different cause logs a second error line, and one that recovers after the overlay appears logs one recovered line and runs -- falsifier: the changed-cause and recovery tests fail when the latch swallows a changed cause'
+  - id: AC3
+    statement: 'AC3: the golden chain (overlay present, the due tick still emits and logs no refusal) holds on both nodes -- falsifier: the golden test fails if a refusal is logged on a due tick with its overlay present'
+  - id: AC4
+    statement: 'AC4: integrated: on the dev runtime on h201 after a roll carrying the change, the error lines for the two scheduled nodes over 10 minutes number at most one per node per distinct cause -- falsifier: docker logs omninode-runtime counted per minute for 10 minutes shows more than one error line for the same cause'
+evidence_requirements:
+- kind: tests
+  description: The refusal-once test file and the two nodes' tests at the pushed head.
+  command: uv run --frozen pytest tests/handlers/test_scheduled_overlay_refusal_once.py tests/nodes/node_floor_simple_scheduled_effect tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23617-ac1
+  description: "One failed tick replayed five times logs one refusal line on each node; the test fails against the unchanged handlers (4 failed, 2 passed at the base)."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_scheduled_overlay_refusal_once.py -k replayed_five_times -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23617-ac2
+  description: "A changed cause logs again, recovery logs once and the node runs, a refusal after recovery logs again."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_scheduled_overlay_refusal_once.py -k 'changed_cause or appearing_later or follows_a_recovery' -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23617-ac3
+  description: "The golden chain of both scheduled nodes and their existing error chains pass."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_scheduled_overlay_refusal_once.py tests/nodes/node_floor_simple_scheduled_effect tests/nodes/node_work_state_projection_scheduled_effect -k 'golden or error' -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23617-ac4
+  description: "The hosted part of AC4: the replay test counts the log lines of one failed tick replayed five times. The running-runtime read waits for the roll that carries the change."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_scheduled_overlay_refusal_once.py -k replayed_five_times -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23617-integration-proof
+  description: "The pushed head ran the refusal-once tests and both nodes' tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23617 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_scheduled_overlay_refusal_once.py tests/nodes/node_floor_simple_scheduled_effect tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

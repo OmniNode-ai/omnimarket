@@ -10,7 +10,7 @@ back empty, that is the result for that task on that path. The harness retries
 only its own plumbing -- reading a file it just wrote -- and nothing that would
 give the model a second attempt at the same prompt.
 
-**Paid escalation is disabled on the local path** (``ONEX_DELEGATION_ALLOW_PAID=0``).
+**Paid escalation is disabled on the local path** (``ONEX_DELEGATION_ALLOW_PAID=0``): metered rungs go, free non-local rungs stay (OMN-18308).
 The operator asked what the LOCAL model can do; leaving escalation on would
 measure the escalation chain and bill for the privilege. When the local tier's
 answer is refused by the quality gate, the harness recovers the rejected text
