@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at
+# <root>/node_public_consumer_check_compute/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+# No key has a default.
+#
+#   source_backend  checkout_scan (the deployment) or in_memory (the tests)
+#   scopes          each public repository and published package searched; root_env names the
+#                   variable holding the directory of its checkout or unpacked package
+#   max_file_bytes  a larger file is not read
+#   skip_dirs       directory names never read
+source_backend: in_memory
+scopes:
+  - kind: public_repository
+    name: example-public-repo
+    root_env: EXAMPLE_PUBLIC_REPO_ROOT
+  - kind: published_package
+    name: example-published-package
+    root_env: EXAMPLE_PUBLISHED_PACKAGE_ROOT
+max_file_bytes: 1048576
+skip_dirs: [".git", "node_modules", "__pycache__"]

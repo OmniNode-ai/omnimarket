@@ -31,6 +31,20 @@ repos:
         files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: catalog-http-mounts
+        name: Catalog runtime HTTP mounts (plans, usage privileges)
+        entry: uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/models/model_catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: envelope-example-route-nodes
+        name: Example-envelope route nodes (runtime HTTP mount)
+        entry: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_envelope_example_.*|src/omnimarket/handlers/envelope_example/.*|src/omnimarket/models/model_(envelope_example|onex_envelope)\.py|tests/nodes/(envelope_example_.*|node_envelope_example_.*))$
+        pass_filenames: false
+        stages: [pre-commit]
       # OMN-22156: the same guard runs in the required CI lint job, on every PR.
       - id: morning-phase-tools-guard
         name: Morning phase tools guard and wiring
@@ -1108,6 +1122,16 @@ repos:
         pass_filenames: false
         files: '(?i)(\.(yaml|yml|json|toml|env|template)$|(^|/)\.env($|\.)|\.env\.|(^|/)(docker[-.]compose|compose)([^/]*$)|^src/omnimarket/validators/no_coding_plan_endpoint\.py$)'
         stages: [manual]
+
+      # OMN-22917: the no-file census ratchet (plan 4.3, reading 2). Executable readers and writers of the
+      # ledger file's name or path variable may not grow past src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml.
+      - id: ledger-file-census
+        name: Ledger file census ratchet
+        language: system
+        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        pass_filenames: false
+        files: '\.(py|sh|bash|zsh|ya?ml|json|toml|plist|service|timer|cfg|ini|js|ts|mjs|cjs|tmpl|j2)$'
+        stages: [pre-commit]
 
       - id: event-registry-drift
         name: Event registry drift validator

@@ -136,11 +136,27 @@
     "runner": "lab host h202, lane durations-c0825, Python 3.13.15; the next CI refresh replaces these entries",
     "base_sha": "370eb11de08d810bb8dc445f9401c19de3091846"
   },
+  "supplement_omn23104": {
+    "ticket": "OMN-23104",
+    "recorded_on": "2026-11-08",
+    "files_added": 52,
+    "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. 17 tests in 3 files failed or errored on this host for lack of ONEX_ALARM_DISPATCH_COMMAND and docker, so those files' times are partial.",
+    "runner": "lab host h101, lane landing-L31319, the next CI refresh replaces these entries",
+    "base_sha": "268cea8c487cec9fee4de504fb54f8e9bdafbf27"
+  },
   "supplement_omn22573": {
     "recorded_on": "2026-11-08",
     "files_added": 51,
     "basis": "summed per-test seconds per file from one serial run of the CI shard pytest flags without coverage",
     "runner": "lab host h053, not a GitHub-hosted runner; the next refresh from source runs replaces these entries"
+  },
+  "supplement_omn22909": {
+    "ticket": "OMN-22909",
+    "recorded_on": "2026-11-08",
+    "files_added": 58,
+    "basis": "Each file the record did not hold, summed from its measured pytest per-test seconds (junit) in one serial run with -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. Tests that need Postgres or other lab services failed or errored early on this host, so their entries are lower bounds.",
+    "runner": "lab host h101, lane landing-L31260, Python 3.14.7; the next CI refresh replaces these entries",
+    "base_sha": "47f6f503831ed507cf75475a273b007ce72e00d4"
   },
   "supplement_omn22906": {
     "ticket": "OMN-22906",
@@ -149,5 +165,41 @@
     "basis": "Each test file this branch adds that the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run of those files with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. The real-postgres projection test errored for want of a database on the runner, so its entry covers only the tests that ran.",
     "runner": "lab host h106, lane landing-L31273, Python 3.12; the next CI refresh replaces these entries",
     "base_sha": "ec58c63e8c202dc6d26a8ca791e587082fbcbba1"
+  },
+  "supplement_omn22917": {
+    "recorded_on": "2026-11-08",
+    "files_added": 5,
+    "basis": "Each file the record did not hold, summed from its measured pytest setup, call and teardown seconds in one serial run with -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; files with a failing or erroring test on this host are left out; existing entries left as they were.",
+    "runner": "lab host h101, Python 3.12; the next CI refresh replaces these entries",
+    "base_sha": "bfbdc6ce41e8deb53680135754539b3a273cf938"
+  },
+  "supplement_omn22935": {
+    "ticket": "OMN-22935",
+    "recorded_on": "2026-11-08",
+    "files_added": 4,
+    "basis": "Four work-state projection test files the record did not hold, each the pytest session seconds of one serial run of that file with --no-cov; existing entries left as they were.",
+    "runner": "lab host h101, lane landing-L31295; the next CI refresh replaces these entries",
+    "base_sha": "bfbdc6ce41e8deb53680135754539b3a273cf938"
+  },
+  "supplement_omn23013": {
+    "recorded_on": "2026-11-08",
+    "files_added": 13,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h053, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "042bd2e3d520546767285442bcb519a01791aa95"
+  },
+  "supplement_omn22917_landing": {
+    "recorded_on": "2026-11-09",
+    "files_added": 53,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with -m 'not kafka'; existing entries left as they were",
+    "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "743b54f32265ce64821a537be26191b7526d1032"
+  },
+  "supplement_omn23250_lab_fill": {
+    "recorded_on": "2026-11-09",
+    "files_added": 53,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with -m 'not kafka'; existing entries left as they were",
+    "runner": "lab host h201, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "06cf69041a369e222fab7c76b37e34919d947d5b"
   }
 }

@@ -18,6 +18,7 @@ _Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 class EnumSnapshotOutcome(StrEnum):
     WRITTEN = "snapshot-written"
     REFUSED_SAME_HOST = "refused-same-host"
+    REFUSED_NOT_STORE_HOST = "refused-not-on-store-host"
     REFUSED_EMPTY = "refused-empty-source"
     SOURCE_FAILED = "source-failed"
     STORE_FAILED = "store-failed"
@@ -31,6 +32,7 @@ class EnumDrillOutcome(StrEnum):
     REFUSED_SOURCE_REACHABLE = "refused-source-reachable"
     REFUSED_PROBE_FAILED = "refused-probe-failed"
     REFUSED_SAME_HOST = "refused-same-host"
+    REFUSED_NOT_DRILL_HOST = "refused-not-on-drill-host"
     REBUILD_MISMATCH = "rebuild-mismatch"
 
 
@@ -173,7 +175,10 @@ class ModelSnapshotOverlay(BaseModel):
     source: ModelSnapshotSource
     store: ModelSnapshotStore
     drill: ModelRestoreDrillSettings
-    report_append_argv: tuple[str, ...] = Field(min_length=1)
+    #: The variable that holds the bus append command; the drill's STATUS row goes over the bus, never to a file.
+    report_append_command_env: str = Field(min_length=1)
+    #: The host name the bus append attributes the row to.
+    report_host: str = Field(min_length=1)
     report_lane: str = Field(min_length=1)
     report_ticket: str = Field(pattern=r"^OMN-[0-9]+$")
     report_actor: str = Field(min_length=1)

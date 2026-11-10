@@ -22,16 +22,19 @@ is what a window prune would use.
 
 from __future__ import annotations
 
-import asyncio
 import json
-from collections.abc import Coroutine
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import yaml
 
+from omnimarket.handlers.writer_pool_host import (
+    WriterPoolHost,
+    build_pool_adapter,
+    load_writer_pool_settings,
+)
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.models.model_writer_pool_settings import ModelWriterPoolSettings
 from omnimarket.nodes.node_projection_session_content.handlers.session_content_fold import (
     SUBSCRIBE_TOPIC,
     SessionContentFoldError,
@@ -102,8 +105,6 @@ _UPSERT = f"""
         content_capture = COALESCE(existing.content_capture, EXCLUDED.content_capture)
 """
 
-_T = TypeVar("_T")
-
 
 def _parameters(row: ModelSessionContentRow) -> list[Any]:
     values = row.model_dump()
@@ -129,11 +130,31 @@ class SessionContentProjectionWriter(BaseProjectionRunner):
     #: and no dedicated writer process exists for this node.
     onex_runtime_inprocess_dispatch = True
 
-    def __init__(self, contract_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        contract_path: Path | None = None,
+        pool_settings: ModelWriterPoolSettings | None = None,
+    ) -> None:
         super().__init__()
         path = contract_path or Path(__file__).resolve().parent.parent / "contract.yaml"
         with open(path, encoding="utf-8") as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
+        # The pool is sized by the contract's writer_pool, and opened by the
+        # first message because the runtime binds the DSN after construction.
+        self._pool_host = WriterPoolHost(
+            "session_content_writer",
+            lambda: build_pool_adapter(self.db, self._pool_host.settings),
+            pool_settings
+            or load_writer_pool_settings("node_projection_session_content"),
+        )
+
+    def start_pool(self) -> None:
+        """Open the one pool now rather than on the first message."""
+        self._pool_host.start()
+
+    def close_pool(self) -> None:
+        """Close the pool; a message after this raises ``WriterPoolClosedError``."""
+        self._pool_host.close()
 
     @property
     def topics(self) -> list[str]:
@@ -152,41 +173,9 @@ class SessionContentProjectionWriter(BaseProjectionRunner):
         other shape is treated as zero rows and suppresses the terminal event.
         """
         topic = request.topic_or(SUBSCRIBE_TOPIC)
-        meta = request.message_meta(topic)
         data = {k: v for k, v in request.payload.items() if not k.startswith("_")}
-        result = self._run(self._project_one_message(topic, data, meta))
+        result = self._pool_host.run(lambda db: self._write(db, topic, data))
         return result.model_dump()
-
-    async def _project_one_message(
-        self, topic: str, data: dict[str, Any], meta: MessageMeta
-    ) -> ModelSessionContentWriteResult:
-        """Own the pool for exactly the loop this message is projected on."""
-        db = self._message_db()
-        await db.connect()
-        try:
-            return await self._write(db, topic, data)
-        finally:
-            await db.close()
-
-    def _message_db(self) -> Any:
-        """The adapter that one runtime-dispatched message writes through.
-
-        The contract declares ``consume_concurrency``, so the runtime may run
-        several messages at once, each in its own thread and event loop. A
-        pool belongs to the loop that opened it. Sharing the writer's adapter
-        would let concurrent messages close each other's pool mid-statement.
-        Each message therefore gets its own adapter on the DSN the runtime
-        bound (OMN-21091). It has one connection, because the message writes
-        one row. A test double is not an ``AsyncpgAdapter`` and is used as
-        given.
-        """
-        # Lazy import, as in BaseProjectionRunner (OMN-15800 AC6).
-        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
-
-        db = self.db
-        if isinstance(db, AsyncpgAdapter):
-            return AsyncpgAdapter(dsn=db.dsn, min_size=1, max_size=1)
-        return db
 
     async def _write(
         self, db: Any, topic: str, data: dict[str, Any]
@@ -207,16 +196,6 @@ class SessionContentProjectionWriter(BaseProjectionRunner):
         """The base runner's standalone entry. Same write as :meth:`handle`."""
         await self._write(self.db, topic, data)
         return True
-
-    @staticmethod
-    def _run(coro: Coroutine[Any, Any, _T]) -> _T:
-        """Drive one coroutine from a synchronous entry, inside a loop or not."""
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, coro).result()
 
 
 __all__ = [

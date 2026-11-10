@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.lab_fill import ModelLabFillLaunch
 
+from .model_lab_fill_send_gate import CLOSER_EXEMPT_KINDS, DEFAULT_FACT_HOSTS
+
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 RUN_KEY_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{4}Z)?$"
 LANE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
@@ -68,6 +70,10 @@ class ModelLabFillOwnerFactsRequest(BaseModel):
     ledger_path: str
     pr_claim_cli: str = ""
     watcher_state_path: str = ""
+    # The work-state projection's file; empty reads the one the projection node writes under the registry home.
+    work_state_path: str = ""
+    # A projection older than this is unreadable, never free (an unread owner is not a free one).
+    work_state_max_age_s: float = Field(default=1800.0, gt=0, allow_inf_nan=False)
 
 
 class ModelLabFillOwnerFacts(BaseModel):
@@ -86,6 +92,9 @@ class ModelLabFillOwnerFacts(BaseModel):
     staleness_hours: float
     pr_claims: dict[str, str] | str
     watcher_merged: dict[str, tuple[str, ...]] | str
+    # Ticket -> the live lanes the work-state projection attributes to it from their CLAIM cells; None when the projection
+    # is not published yet (it adds no reading), a string when it exists and could not be read.
+    work_state_owners: dict[str, tuple[str, ...]] | str | None = None
 
 
 class ModelLabFillLaunchRequest(BaseModel):
@@ -108,6 +117,13 @@ class ModelLabFillLaunchRequest(BaseModel):
     lanes_left: int = Field(default=1, ge=1)
     min_lane_s: int = Field(default=15, ge=1)
     default_slice_s: int = Field(default=420, ge=1)
+    # OMN-23277, the send gate. The PR watcher's state the merged-ticket skip reads ("" reads the host's own copy).
+    watcher_state_path: str = ""
+    closer_exempt_kinds: tuple[str, ...] = CLOSER_EXEMPT_KINDS
+    # Hosts whose facts a brief may cite, hosts the caller knows the facts need, and each host's reach.
+    fact_hosts: tuple[str, ...] = DEFAULT_FACT_HOSTS
+    needs_hosts: tuple[str, ...] = ()
+    host_reach: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
 
 
 class ModelLabFillLaunchResult(BaseModel):
@@ -122,6 +138,9 @@ class ModelLabFillLaunchResult(BaseModel):
     brief_has_delegation: bool = False
     detail: str = ""
     elapsed_s: int = 0
+    # OMN-23277: the node that owns a merged ticket's close-out, and the merged pull requests that sent it there.
+    routed_to: str = ""
+    merged_prs: tuple[str, ...] = ()
 
 
 class ModelLabFillReceiptLane(BaseModel):

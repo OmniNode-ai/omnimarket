@@ -106,6 +106,21 @@ class FakeChecks:
 
 
 @dataclass
+class FakeMerged:
+    """The merged pull requests per ticket the send gate reads (OMN-23277); none merged by default."""
+
+    by_ticket: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    fail: str = ""
+    calls: list[str] = field(default_factory=list)
+
+    def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]:
+        self.calls.append(ticket)
+        if self.fail:
+            raise LabFillPortError(self.fail)
+        return self.by_ticket.get(ticket, ())
+
+
+@dataclass
 class FakeBlocks:
     text: str = "STANDING RULES\n\n3a.9 Delegation\n\n3a.10 lab\n"
     fail: str = ""
@@ -155,6 +170,7 @@ class FakeOwners:
     claims_facts: LabFillClaimFacts | None = None
     registry: Mapping[str, str] | None = None
     merged: Mapping[str, Sequence[str]] | None = None
+    work_state: Mapping[str, Sequence[str]] | None = None
     fail: Mapping[str, str] = field(default_factory=dict)
     called: list[str] = field(default_factory=list)
 
@@ -176,6 +192,14 @@ class FakeOwners:
         if "watcher" in self.fail:
             raise LabFillPortError(self.fail["watcher"])
         return self.merged or {}
+
+    def work_state_owners(
+        self, state_path: str, max_age_s: float
+    ) -> Mapping[str, Sequence[str]] | None:
+        self.called.append("work_state")
+        if "work_state" in self.fail:
+            raise LabFillPortError(self.fail["work_state"])
+        return self.work_state
 
 
 @dataclass

@@ -83,13 +83,19 @@ class LabFillClaimFacts:
 
 
 class ProtocolLabFillOwnerReader(Protocol):
-    """The ownership sources: the claim store, the PR claim registry and the PR watcher."""
+    """The ownership sources: the claim store, the PR claim registry, the PR watcher and the work-state projection."""
 
     def claims(self, ledger_path: str, tickets: Sequence[str]) -> LabFillClaimFacts: ...
 
     def pr_claims(self, cli_path: str) -> Mapping[str, str]: ...
 
     def watcher_merged(self, state_path: str) -> Mapping[str, Sequence[str]]: ...
+
+    def work_state_owners(
+        self, state_path: str, max_age_s: float
+    ) -> Mapping[str, Sequence[str]] | None:
+        """Ticket -> the live lanes the work-state projection attributes to it, or None when none is published."""
+        ...
 
 
 class ProtocolLabFillTicketFacts(Protocol):
@@ -110,6 +116,12 @@ class ProtocolLabFillLiveChecks(Protocol):
         operator_id: str,
         ledger_path: str,
     ) -> tuple[str, str]: ...
+
+
+class ProtocolLabFillMergedWork(Protocol):
+    """The merged pull requests that name a ticket (``repo#number``), read from the PR watcher's state (OMN-23277)."""
+
+    def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]: ...
 
 
 class ProtocolLabFillBriefBlocks(Protocol):
