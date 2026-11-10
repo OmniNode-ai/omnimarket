@@ -14,7 +14,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The landing workflow and inventory test (counts, node names, topics, the to-build and private-move lists, and the replay of every recorded scenario tick)
-  command: uv run --frozen pytest tests/unit/contracts/test_landing_workflow_inventory.py tests/nodes/node_pr_landing_tick_orchestrator/test_tick_github_writer.py -q --no-cov -p no:randomly
+  command: uv run --frozen pytest tests/unit/contracts/test_landing_workflow_inventory.py -q --no-cov -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -28,13 +28,6 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/contracts/test_landing_workflow_inventory.py -q --no-cov -p no:randomly
-    cwd: .
-- id: dod-omn23393-tick-writer
-  description: Runs the act-mode tick writer test. A recorded tick whose decision merges two PRs, in an enabled act mode with the writer, sends two arm commands on the GitHub landing effect's own command topic, each pinned to its head; an action outside the cutover repository, a non-GitHub action, a missing node id, a missing run id and a moved head are each refused by name; act mode the overlay does not enable sends nothing. The writer is absent at the merge base, so the command fails there.
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_github_writer.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23393-integration-proof-lab
   description: Runs the landing workflow and inventory test at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.

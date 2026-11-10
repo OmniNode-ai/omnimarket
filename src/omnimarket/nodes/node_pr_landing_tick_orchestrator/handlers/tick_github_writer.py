@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Act-mode writer of the landing tick orchestrator onto node_pr_landing_github_effect (OMN-23393).
+"""Act-mode writer of the landing tick orchestrator onto node_pr_landing_github_effect (OMN-23393, OMN-23405).
 
 The tick orchestrator calls a writer only in an enabled act mode. This writer turns each
 decision action into one command of the single GitHub landing effect, or a typed refusal, and
@@ -14,11 +14,14 @@ publishes the command on the effect's own command topic. It never calls GitHub i
 - every other action (workers, companions, escalations, observe-only) is not a GitHub write
   of this effect and is refused as such; its own node performs it.
 - an action outside the overlay's cutover repository is refused: the script owns it.
+
+The PR's node id, merge-queue base and failed run ids are read from the tick's own facts
+(ModelLandingPrFacts), never from a side channel: a write the facts cannot pin is refused.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -39,12 +42,15 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
     ModelLandingAction,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
+    ModelLandingFacts,
+    ModelLandingPrFacts,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     ProtocolTickPublisher,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_write import (
     EnumTickWriteRefusal,
-    ModelTickWriteFacts,
     ModelTickWriteOutcome,
 )
 
@@ -75,7 +81,7 @@ def plan_write(
     action: ModelLandingAction,
     *,
     cutover_repository: str,
-    write_facts: dict[str, ModelTickWriteFacts],
+    pr_facts: Mapping[str, ModelLandingPrFacts],
     mode: EnumPrLandingGithubMode,
     correlation_id: UUID,
 ) -> ModelTickWriteOutcome:
@@ -109,10 +115,10 @@ def plan_write(
         return _refused(
             action, EnumTickWriteRefusal.NO_HEAD, f"{kind.value} names no head"
         )
-    facts = write_facts.get(subject)
+    facts = pr_facts.get(subject)
     if facts is None:
         return _refused(
-            action, EnumTickWriteRefusal.NO_WRITE_FACTS, f"no write facts for {subject}"
+            action, EnumTickWriteRefusal.NO_WRITE_FACTS, f"no tick facts for {subject}"
         )
     if facts.head_sha != action.head_sha:
         return _refused(
@@ -147,6 +153,11 @@ def plan_write(
     return ModelTickWriteOutcome(action=action, request=request)
 
 
+def pr_facts_of(facts: ModelLandingFacts) -> dict[str, ModelLandingPrFacts]:
+    """The tick's PR facts keyed by PR, as the decision's action subjects name them."""
+    return {pr.pr: pr for pr in facts.prs}
+
+
 class GithubEffectTickWriter:
     """A ProtocolTickWriter that sends each action to the GitHub landing effect over the bus."""
 
@@ -155,30 +166,36 @@ class GithubEffectTickWriter:
         *,
         publisher: ProtocolTickPublisher,
         cutover_repository: str,
-        write_facts: Iterable[ModelTickWriteFacts],
         mode: EnumPrLandingGithubMode,
         command_topic: str | None = None,
         correlation_ids: Callable[[], UUID] = uuid4,
     ) -> None:
         self._publisher = publisher
         self._cutover = cutover_repository
-        self._facts = {f.pr: f for f in write_facts}
         self._mode = mode
         self._topic = command_topic or effect_command_topic()
         self._ids = correlation_ids
         self.outcomes: list[ModelTickWriteOutcome] = []
 
-    def perform(self, action: ModelLandingAction) -> None:
+    def perform(self, action: ModelLandingAction, facts: ModelLandingFacts) -> bool:
+        """Send the action's command when the tick's facts pin it; whether one was sent."""
         outcome = plan_write(
             action,
             cutover_repository=self._cutover,
-            write_facts=self._facts,
+            pr_facts=pr_facts_of(facts),
             mode=self._mode,
             correlation_id=self._ids(),
         )
         self.outcomes.append(outcome)
-        if outcome.request is not None:
-            self._publisher.publish(self._topic, outcome.request)
+        if outcome.request is None:
+            return False
+        self._publisher.publish(self._topic, outcome.request)
+        return True
 
 
-__all__: list[str] = ["GithubEffectTickWriter", "effect_command_topic", "plan_write"]
+__all__: list[str] = [
+    "GithubEffectTickWriter",
+    "effect_command_topic",
+    "plan_write",
+    "pr_facts_of",
+]

@@ -1,26 +1,23 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Act-mode write models of the landing tick orchestrator (OMN-23393).
+"""Act-mode write models of the landing tick orchestrator (OMN-23393, OMN-23405).
 
 A decision action becomes one command of node_pr_landing_github_effect, or a typed refusal.
-The facts the action does not carry (the PR's GraphQL node id, the failed run ids) come in a
-per-PR write fact the tick's snapshot supplies.
+The facts the action does not carry (the PR's GraphQL node id, the failed run ids) are read
+from the tick's own facts: ModelLandingPrFacts.pr_node_id and failed_run_ids.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from omnimarket.events.pr_landing_github.model_pr_landing_github_request import (
     ModelPrLandingGithubRequest,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
     ModelLandingAction,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
-    PR_KEY_PATTERN,
 )
 
 
@@ -36,22 +33,6 @@ class EnumTickWriteRefusal(StrEnum):
     HEAD_MOVED = "head_moved"
 
 
-class ModelTickWriteFacts(BaseModel):
-    """What one PR's write needs beyond its action, read by the tick's snapshot."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    pr: str = Field(..., pattern=PR_KEY_PATTERN)
-    head_sha: str = Field(..., pattern=r"^[0-9a-f]{40}$")
-    pr_node_id: str | None = Field(default=None, min_length=1)
-    merge_queue: bool = Field(
-        default=False, description="The base lands through a merge queue: enqueue."
-    )
-    failed_run_ids: tuple[int, ...] = Field(
-        default=(), description="The head's failed workflow run ids, for a rerun."
-    )
-
-
 class ModelTickWriteOutcome(BaseModel):
     """One action's write: the command sent, or the refusal and its reason."""
 
@@ -65,6 +46,5 @@ class ModelTickWriteOutcome(BaseModel):
 
 __all__: list[str] = [
     "EnumTickWriteRefusal",
-    "ModelTickWriteFacts",
     "ModelTickWriteOutcome",
 ]

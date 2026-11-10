@@ -71,7 +71,7 @@ steps:
     node: node_pr_landing_github_effect
     command_topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
     role: the only GitHub write (merge pinned to the head, rerun, update-branch, arm, disarm)
-    writer: GithubEffectTickWriter of node_pr_landing_tick_orchestrator (merge is arm or enqueue at the head; other action kinds are refused as not a GitHub write; an action outside the cutover repository is refused)
+    writer: GithubEffectTickWriter of node_pr_landing_tick_orchestrator (merge is arm or enqueue at the head; other action kinds are refused as not a GitHub write; an action outside the cutover repository is refused; the PR node id and the head's failed run ids are read from the tick facts, pr_node_id and failed_run_ids of each PR, which the snapshot step fills)
   - id: superseded_sweep
     node: node_superseded_run_cancel_effect
     command_topic: onex.cmd.omnimarket.superseded-run-sweep-requested.v1
