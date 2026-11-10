@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23641
+title: 'Register the unit tree install node so Tests (Split 1/20) passes again'
+summary: 'The unit tree install node merged without its entry in the package list of runnable nodes (the onex.nodes entry points in pyproject.toml), so the market node runtime dogfood test, which requires every node directory to be registered, fails 8 cases in Tests (Split 1/20) on every change that includes the merge. One line registers the node, copied from its sibling node_overlay_tree_install_effect.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23641-unit-tree-install-entry
+  statement: The package registers node_unit_tree_install_effect under onex.nodes so the market node runtime dogfood inventory finds an entry point for the node directory.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: pyproject.toml lists node_unit_tree_install_effect under onex.nodes, pointing at omnimarket.nodes.node_unit_tree_install_effect -- falsifier: pytest tests/test_market_node_runtime_dogfood.py -q fails with 8 failures naming node_unit_tree_install_effect when the line is removed'
+  - id: AC2
+    statement: 'AC2: the check Tests (Split 1/20) is green on a pull request head that contains the fix -- falsifier: the job''s log shows 8 failed in tests/test_market_node_runtime_dogfood.py'
+  - id: AC3
+    statement: 'AC3: integrated: the omnimarket package installed in the dev runtime lists node_unit_tree_install_effect among its onex.nodes entry points -- falsifier: importlib.metadata entry_points(group="onex.nodes") run in the dev runtime lacks the name'
+evidence_requirements:
+- kind: tests
+  description: The dogfood test file and the node's own tests pass at the pushed head; with the pyproject line removed by an injected break the dogfood test file fails 8 cases naming node_unit_tree_install_effect.
+  command: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py tests/nodes/node_unit_tree_install_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23641-dogfood-tests
+  description: The market node runtime dogfood test and the unit tree install node's own tests pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/test_market_node_runtime_dogfood.py tests/nodes/node_unit_tree_install_effect -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn23641-entry-point-listed
+  description: The pyproject.toml onex.nodes table holds the node_unit_tree_install_effect entry.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: 'grep -n "^node_unit_tree_install_effect = \"omnimarket.nodes.node_unit_tree_install_effect\"$" pyproject.toml'
+    cwd: .
+- id: dod-omn23641-installed-entry-point
+  description: 'Integrated: the installed omnimarket package lists node_unit_tree_install_effect among its onex.nodes entry points, read through importlib.metadata the way the runtime reads them. The same read is repeated in the dev runtime after the merge deploys.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: 'uv run --frozen python -c "from importlib.metadata import entry_points; names = {e.name for e in entry_points(group=''onex.nodes'')}; assert ''node_unit_tree_install_effect'' in names, sorted(names)[-3:]"'
+    cwd: .
+- id: dod-omn23641-integration-proof-lab
+  description: Runs the dogfood test at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23641 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -n 0 -p no:randomly'
+    cwd: .
