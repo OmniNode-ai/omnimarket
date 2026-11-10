@@ -110,7 +110,7 @@ def parse_ledger_row(
         "tickets": tickets,
         "cells": tuple(cells),
         "free_text": " | ".join(free),
-        "raw_row": raw,
+        "raw_row": raw_row,
         "source": source,
     }
 
