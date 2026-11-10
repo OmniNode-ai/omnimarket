@@ -34,10 +34,11 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_lane_needs_omn23417.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23417-end-to-end-close
-  description: Runs a lane's final message through the close node, the orchestrator and the ledger writer's grammar. A blocked lane naming a rerun writes needs=rerun:omnibase_core#2302 and its report; the control with the forwarding dropped writes neither.
+  description: Runs a lane's final message through the close node, the orchestrator and the ledger writer's grammar. A blocked lane naming a rerun writes needs=rerun:omnibase_core#2302 and its report; the control with the forwarding dropped writes neither. The TERMINAL rows are read back from the ledger rows the writer was handed, which is the hosted-runnable read of AC3; the drill on a lab host is the unbound dod-omn23417-integration-proof-lab item.
   source: manual
   binds_ac:
   - AC1
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_closing_row_needs.py -q --no-cov -p no:randomly
@@ -52,11 +53,9 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23417-join-real-broker
-  description: Runs the join test on a plaintext lab Redpanda broker the caller started for the proof (never the dev lane's). Hosted CI cannot reach it, so only the local Done gate runs this item.
+  description: Runs the join test on a plaintext lab Redpanda broker the caller started for the proof (never the dev lane's). Hosted CI cannot reach it, so only the local Done gate runs this item; it is bound to no criterion, the hosted join items above carry AC2.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: 'env CLOSING_ROW_PARITY_BOOTSTRAP="$CLOSING_ROW_PARITY_BOOTSTRAP" uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py -m closing_row_parity -q --no-cov -p no:randomly'
@@ -74,8 +73,6 @@ dod_evidence:
   description: Runs the stopped-lane reader over the ledger the lab drill's lane wrote, at the pushed head on a lab host through the lab work runner. The drill itself (a real lane ending blocked, its TERMINAL read back) is recorded in the pull request's Lab line.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23417 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_remote_lane_close_compute/test_join_closing_row_needs.py -q --no-cov -p no:randomly'
