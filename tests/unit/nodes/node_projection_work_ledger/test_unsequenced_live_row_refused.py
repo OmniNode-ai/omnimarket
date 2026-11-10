@@ -111,7 +111,9 @@ def test_the_contract_declares_the_required_sources_and_the_config_requires_the_
         )
 
 
-def test_the_refused_row_is_published_to_the_contract_dlq_topic() -> None:
+def test_the_refused_row_is_published_to_the_contract_dlq_topic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The error half: the poison route puts the refusal and its reason on the declared DLQ."""
     published: list[tuple[str, bytes]] = []
 
@@ -123,7 +125,7 @@ def test_the_refused_row_is_published_to_the_contract_dlq_topic() -> None:
 
     db = _FakeDb()
     writer = _writer(db)
-    writer.get_publish_fn = get_publish_fn  # type: ignore[method-assign]
+    monkeypatch.setattr(writer, "get_publish_fn", get_publish_fn)
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
     assert writer.poison_dlq_topics == contract["event_bus"]["dlq_topics"]
     data = {

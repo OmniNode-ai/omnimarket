@@ -26,6 +26,11 @@ class ModelWorkLedgerEmitRequest(BaseModel):
     ledger_id: str = Field(default=DEFAULT_LEDGER_ID, min_length=1)
     event: ModelWorkEvent | None = None
     provenance_kind: Literal["markdown", "typed"] = "markdown"
+    ledger_seq: int | None = Field(
+        default=None,
+        ge=1,
+        description="The sequence the judge assigned the row when it accepted it (OMN-23152).",
+    )
     source: str = Field(
         default="ledger-emit",
         min_length=1,

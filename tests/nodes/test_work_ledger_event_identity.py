@@ -16,6 +16,7 @@ from omnimarket.events.model_ledger_row_event import (
 from omnimarket.nodes.node_projection_work_ledger.models import (
     ModelWorkLedgerProjectionInbound,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 from tests.nodes.work_ledger_fixtures import records_for_all_ledger_row_types
 
 RAW_ROW = "2026-09-28T11:00:00Z | CLAIM | lane=acceptance-lane | ticket=OMN-20001 | est ~1 lane-hours; displaces none; (OMN-20001) | paired source"
@@ -184,9 +185,10 @@ async def test_real_markdown_and_typed_pair_reconcile_one_immutable_row(
 
     adapter = _Adapter()
     producer = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE,
         emitter=HandlerEventEmitEffect(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=adapter
-        )
+        ),
     )
     inbound = paired_inbound()
     legacy_result = producer.handle(ModelWorkLedgerEmitRequest(row=RAW_ROW))
@@ -489,9 +491,10 @@ def test_registered_v2_producer_routes_all_eleven_core_row_types(tmp_path):
 
     adapter = _Adapter()
     producer = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE,
         emitter=HandlerEventEmitEffect(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=adapter
-        )
+        ),
     )
     records = records_for_all_ledger_row_types()
     index = {record.event.event_id: record.event for record in records}

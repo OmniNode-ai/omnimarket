@@ -82,6 +82,8 @@ from omnimarket.projection.runner import (
 
 ROWS_TABLE = "omninode_internal.work_ledger_rows"
 STATE_TABLE = "omninode_internal.work_ledger_state"
+CONFLICTS_TABLE = "omninode_internal.work_ledger_seq_conflicts"
+SEQ_CONFLICT_REASON = "ledger_seq already held by another row"
 
 # A row first projected by an older emitter or the emit backfill gains its seq
 # when the sequenced event arrives. A stored seq is immutable, never overwritten.
@@ -92,6 +94,21 @@ _INSERT_ROW = f"""
     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
     ON CONFLICT (row_id) DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq
     WHERE {ROWS_TABLE}.ledger_seq IS NULL AND EXCLUDED.ledger_seq IS NOT NULL
+"""
+
+# OMN-23152: the unique index on (ledger_id, ledger_seq) refuses a second row for a held sequence.
+# The writer judges the collision first, under the ledger's advisory lock, so a refusal is a recorded
+# conflict and never a poison message that stalls the consumer.
+_SEQ_HOLDER = f"""
+    SELECT row_id FROM {ROWS_TABLE}
+    WHERE ledger_id = $1 AND ledger_seq = $2 AND row_id <> $3
+"""
+
+_INSERT_SEQ_CONFLICT = f"""
+    INSERT INTO {CONFLICTS_TABLE}
+        (row_id, ledger_id, ledger_seq, held_row_id, raw_row, source, reason)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (row_id) DO NOTHING
 """
 
 _ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
@@ -330,6 +347,22 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         row = result.row
         async with self._db.pool.acquire() as conn, conn.transaction():
             await conn.execute(_ADVISORY_LOCK, f"work-ledger:{request.ledger_id}")
+            if row.ledger_seq is not None:
+                holder = await conn.fetchval(
+                    _SEQ_HOLDER, row.ledger_id, row.ledger_seq, row.row_id
+                )
+                if holder is not None:
+                    await conn.execute(
+                        _INSERT_SEQ_CONFLICT,
+                        row.row_id,
+                        row.ledger_id,
+                        row.ledger_seq,
+                        holder,
+                        row.raw_row,
+                        row.source,
+                        SEQ_CONFLICT_REASON,
+                    )
+                    return 0
             await conn.execute(
                 _INSERT_ROW,
                 row.row_id,
