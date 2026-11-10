@@ -310,6 +310,33 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql
       access: read_write
       role: lab_job_transitions
+    # OMN-23055 (rebuild plan section 7.5, step 0 row 3): the four relations of the gate
+    # store's Postgres backend. Declared here for the same OMN-15361 SQL gate reason as the
+    # lab job read models above. Created directly in omninode_internal.
+    - name: gate_store_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_state
+    - name: gate_store_reservations
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_reservations
+    - name: gate_store_safety
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_safety
+    - name: gate_store_steps
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_steps
     # OMN-17427: durable execution claims and the ordered transition outbox of
     # node_llm_delegation_call_effect's lab-job handler. Declared here for the
     # same OMN-15361 SQL gate reason as the lab job read models above. Created

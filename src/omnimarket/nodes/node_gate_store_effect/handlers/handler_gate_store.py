@@ -3,14 +3,17 @@
 """The gate store effect: ``handle(ModelGateStoreRequest) -> ModelGateStoreResult``.
 
 The backend is injected; the in-memory twin is the default and the ``gate_store`` overlay
-selects it. The Postgres backend is not built yet: the overlay naming it is refused with a
-typed error, never answered by the twin. ``answer_command`` is the bus edge: one command in,
-the typed event it produces out.
+selects it. The Postgres backend is built (``store_postgres``): the overlay names the variable
+that holds its DSN, the runtime builds the connect function from it, and a backend whose
+connection is missing is refused with a typed error, never answered by the twin.
+``answer_command`` is the bus edge: one command in, the typed event it produces out.
 """
 
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -25,6 +28,10 @@ from omnimarket.models.model_gate_store import (
 )
 from omnimarket.nodes.node_gate_store_effect.handlers.store_in_memory import (
     InMemoryGateStore,
+)
+from omnimarket.nodes.node_gate_store_effect.handlers.store_postgres import (
+    Connect,
+    PostgresGateStore,
 )
 from omnimarket.protocols.protocol_gate_store import ProtocolGateStore
 
@@ -41,10 +48,40 @@ def load_topics(path: Path = CONTRACT) -> dict[str, str]:
     return dict(contract["topics"])
 
 
-def build_store(policy: ModelGateStorePolicy) -> ProtocolGateStore:
-    """The backend the overlay names; refuses one that is not built."""
+def connect_from_overlay(
+    policy: ModelGateStorePolicy, environ: Mapping[str, str] | None = None
+) -> Connect:
+    """The connect function the overlay's postgres block names; the DSN value is read here only."""
+    settings = policy.postgres
+    if settings is None:
+        raise GateStoreBackendNotBuiltError(
+            "backend postgres needs the overlay's postgres block"
+        )
+    env = os.environ if environ is None else environ
+    dsn = env.get(settings.dsn_env)
+    if not dsn:
+        raise GateStoreBackendNotBuiltError(
+            f"the variable {settings.dsn_env} named by the overlay is not set"
+        )
+
+    def connect() -> object:
+        import psycopg2
+
+        return psycopg2.connect(dsn, connect_timeout=settings.connect_timeout_seconds)
+
+    return connect
+
+
+def build_store(
+    policy: ModelGateStorePolicy, connect: Connect | None = None
+) -> ProtocolGateStore:
+    """The backend the overlay names; a postgres backend with no connection is refused."""
     if policy.backend is EnumGateStoreBackend.IN_MEMORY:
         return InMemoryGateStore(policy)
+    if policy.backend is EnumGateStoreBackend.POSTGRES:
+        return PostgresGateStore(
+            policy, connect if connect is not None else connect_from_overlay(policy)
+        )
     raise GateStoreBackendNotBuiltError(
         f"gate store backend {policy.backend.value} is not built"
     )
