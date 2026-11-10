@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_stability_lane_refresh_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. All values here are synthetic; supply your host's facts. No key has a default. A second host's lane
+# is a second overlay root, never a second copy of the node.
+lane: example-lane
+box_id: example-box
+probe_host: localhost
+health_port: 18085
+expected_environment: example-env
+# Environment variable names are the ones the lane's compose file reads on this host.
+ports:
+  EXAMPLE_POSTGRES_EXTERNAL_PORT: 15436
+caps:
+  EXAMPLE_RUNTIME_MEMORY_LIMIT: 1024M
+consumer_groups:
+  EXAMPLE_CONSUMER_GROUP_PREFIX: example-box
+workspace_config_root: /example/config-clone
+registry_root: /example/registry_root
+pin_file: /example/config-clone/config/lab/lane-overlays/example-lane.release-pin.yaml
+refresh_script: /example/registry_root/omnibase_infra/scripts/runtime_build/refresh_stability_lane.sh
+state_dir: /example/state/stability-lane-refresh
+deploy_reason: "OMN-0: example refresh"
+refresh_timeout_seconds: 3600
+health_timeout_seconds: 10

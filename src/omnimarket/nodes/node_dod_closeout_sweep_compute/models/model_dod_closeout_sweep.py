@@ -434,6 +434,12 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     scope_text_state: list[dict[str, JsonValue]] | None = None
     scope_contract_state: list[dict[str, JsonValue]] | None = None
     scope_overlay: ModelCloseoutScopeOverlay | None = None
+    # scope_bundle (OMN-23282): what the closer recorded of each ticket's last selection
+    # ({id: {examined_at, key, streak}}), and the instant this selection is made, from which the
+    # result's scope_examined_next is the memory after it. Absent: nothing was recorded and
+    # nothing is returned to record.
+    scope_examined: dict[str, dict[str, JsonValue]] | None = None
+    scope_now: str | None = None
     # pr_rows (scope_overlay is shared with scope_bundle): the tickets to report on, the squash
     # merge subjects read from each overlay repository's default branch (a repository the caller
     # could not read is absent, never empty), and the PR watcher's state (absent when it could
@@ -531,6 +537,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
             EnumCloseoutDecisionKind.SCOPE_BUNDLE: (
                 "scope_contract_state",
                 "scope_overlay",
+                "scope_examined",
+                "scope_now",
             ),
             EnumCloseoutDecisionKind.DECIDE_TICKET: (
                 "dod_verify_receipt",
@@ -651,6 +659,7 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     held: list[str] | None = None
     # scope_bundle
     scope_bundle: dict[str, JsonValue] | None = None
+    scope_examined_next: dict[str, dict[str, JsonValue]] | None = None
     # pr_rows
     pr_rows: list[dict[str, JsonValue]] | None = None
     unread_repositories: list[str] | None = None

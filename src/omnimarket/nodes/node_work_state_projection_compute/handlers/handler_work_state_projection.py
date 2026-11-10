@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -37,10 +38,12 @@ from omnimarket.models.work_state_projection import (
     EnumScopeStatus,
     EnumWorkItemKind,
     EnumWorkItemState,
+    ModelAncestorSource,
     ModelCommitmentSource,
     ModelCriterionPart,
     ModelLaneReceiptSource,
     ModelPullRequestSource,
+    ModelTicketSource,
     ModelWorkItem,
     ModelWorkScope,
     ModelWorkStateRequest,
@@ -212,21 +215,39 @@ class _Draft:
     pr: ModelPullRequestSource | None = None
     check: str | None = None
     commitment: ModelCommitmentSource | None = None
+    needs_ticket: bool = False
     assignee: str | None = None
     parent: str | None = None
 
 
-def _ticket_in_scope(
-    ticket: str | None, scope: ModelWorkScope, parents: dict[str, str | None]
+def ticket_in_scope(
+    ticket: str | None,
+    scope: ModelWorkScope,
+    tickets: Mapping[str, ModelTicketSource],
+    max_hops: int,
+    ancestors: Mapping[str, ModelAncestorSource] | None = None,
 ) -> bool:
+    """Whether a ticket is in the goal's scope: it, or an ancestor up to `max_hops` parents above it, is a goal root
+    or sits in a project the goal lists (by name or by id). The walk goes upward and the first ticket that decides
+    ends it: a paused ticket on the way up wins over the root or project above it. A ticket the sources do not name
+    has no project and no parent, so the chain ends there. A ticket the open list does not hold is looked up in
+    `ancestors` (the snapshot's unassigned or closed ancestors); a ticket row wins over an ancestor row."""
     seen: set[str] = set()
-    while ticket and ticket not in seen:
+    hops = 0
+    while ticket and ticket not in seen and hops <= max_hops:
         if ticket in scope.paused_tickets:
             return False
         if ticket in scope.in_scope_tickets:
             return True
+        source = tickets.get(ticket) or (ancestors or {}).get(ticket)
+        if source is not None and any(
+            name and name in scope.in_scope_projects
+            for name in (source.project, source.project_id)
+        ):
+            return True
         seen.add(ticket)
-        ticket = parents.get(ticket)
+        ticket = source.parent if source is not None else None
+        hops += 1
     return False
 
 
@@ -236,25 +257,18 @@ class HandlerWorkStateProjection:
     def handle(self, request: ModelWorkStateRequest) -> ModelWorkStateResult:
         rules = request.rules
         scope = request.scope
-        parents = {t.ticket_id: t.parent for t in request.tickets}
-        projects = {t.ticket_id: t.project for t in request.tickets}
+        by_id = {t.ticket_id: t for t in request.tickets}
+        by_ancestor = {a.ticket_id: a for a in request.ancestors}
         done_tickets = {
             t.ticket_id
             for t in request.tickets
             if t.state_type in rules.ticket_done_state_types
         }
 
-        def ticket_scope(ticket: str | None) -> bool:
-            if ticket is None:
-                return False
-            if ticket in scope.paused_tickets:
-                return False
-            if _ticket_in_scope(ticket, scope, parents):
-                return True
-            return (
-                bool(projects.get(ticket))
-                and projects.get(ticket) in scope.in_scope_projects
-            )
+        max_hops = rules.scope_chain_max_hops
+        exempt_authors = tuple(
+            re.compile(p) for p in rules.ticketless_pr_exempt_author_patterns
+        )
 
         drafts: dict[str, _Draft] = {}
         for t in request.tickets:
@@ -269,7 +283,7 @@ class HandlerWorkStateProjection:
                 done_reason=f"ticket state type {t.state_type}",
                 requires=tuple(normalize_ref(r, rules) for r in t.requires),
                 scope=EnumScopeStatus.IN_SCOPE
-                if ticket_scope(t.ticket_id)
+                if ticket_in_scope(t.ticket_id, scope, by_id, max_hops, by_ancestor)
                 else EnumScopeStatus.PAUSED,
                 assignee=t.assignee,
                 parent=t.parent,
@@ -277,7 +291,9 @@ class HandlerWorkStateProjection:
         for p in request.plan_tasks:
             key = f"plan:{p.plan}#{p.task_id}"
             ticket_done = p.ticket is not None and p.ticket in done_tickets
-            in_scope = p.plan in scope.in_scope_plans or ticket_scope(p.ticket)
+            in_scope = p.plan in scope.in_scope_plans or ticket_in_scope(
+                p.ticket, scope, by_id, max_hops, by_ancestor
+            )
             drafts[key] = _Draft(
                 key=key,
                 kind=EnumWorkItemKind.PLAN_TASK,
@@ -299,13 +315,20 @@ class HandlerWorkStateProjection:
             in_scope = short not in scope.paused_prs and (
                 short in scope.in_scope_prs
                 or pr.repo in scope.in_scope_repos
-                or ticket_scope(pr.ticket)
+                or ticket_in_scope(pr.ticket, scope, by_id, max_hops, by_ancestor)
             )
             scope_status = (
                 EnumScopeStatus.IN_SCOPE if in_scope else EnumScopeStatus.PAUSED
             )
             if is_open and pr.ticket:
                 open_pr_of_ticket[pr.ticket].append(key)
+            cites_ticket = bool(pr.ticket or pr.body_ticket)
+            needs_ticket = (
+                is_open
+                and not pr.draft
+                and not cites_ticket
+                and not any(rx.search(pr.author) for rx in exempt_authors)
+            )
             drafts[key] = _Draft(
                 key=key,
                 kind=EnumWorkItemKind.PULL_REQUEST,
@@ -316,6 +339,7 @@ class HandlerWorkStateProjection:
                 done_reason=f"pull request {pr.state.lower()}",
                 scope=scope_status,
                 pr=pr,
+                needs_ticket=needs_ticket,
             )
             if not is_open:
                 continue
@@ -516,6 +540,7 @@ class HandlerWorkStateProjection:
                     live_lane=live_lane,
                     left=left,
                     owner=d.commitment.owner if d.commitment else None,
+                    needs_ticket=d.needs_ticket,
                     assignee=d.assignee,
                     parent=d.parent,
                 )

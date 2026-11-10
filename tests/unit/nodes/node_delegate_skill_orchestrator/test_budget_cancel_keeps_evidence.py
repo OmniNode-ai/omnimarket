@@ -355,6 +355,9 @@ async def test_a_retry_on_the_customer_route_keeps_the_earlier_rung(
 ) -> None:
     """The 429 came back to the port, which re-issued the same route."""
     customer_ref, db_path = _customer_route(monkeypatch, tmp_path)
+    # OMN-23176: the row declares a wait before a re-issue, longer than this stub
+    # budget; this test is about the evidence the re-issue leaves, not the wait.
+    monkeypatch.setattr(port_mod, "byok_backend_retry_wait_seconds", lambda _ref: 0.0)
     # Each call runs in a fresh child process, so the first call is told apart
     # by a file, not by state in this one.
     first_call_marker = tmp_path / "first-call-made"
