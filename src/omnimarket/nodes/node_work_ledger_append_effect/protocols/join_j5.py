@@ -9,7 +9,6 @@ live ledger file's name. A real backend is another adapter of the same three por
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
@@ -25,8 +24,6 @@ from omnimarket.models.work_ledger_append import (
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_append_command import (
     ModelAppendCommandResult,
 )
-
-_ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 
 #: File names that are the live ledger, taken from the row grammar that governs it; a scratch lane never takes one.
 LIVE_LEDGER_FILE_NAMES = GOVERNED_LEDGER_NAMES
@@ -119,29 +116,52 @@ class InMemoryProjectedRows:
         return tuple(self._rows.values())
 
 
-def logical_rows(text: str) -> list[tuple[int, str]]:
-    """Each logical row of ``text`` as ``(line number of its header, row)``.
+def _is_row_header(line: str) -> bool:
+    return bool(line.strip()) and not line.startswith((" ", "\t"))
 
-    A logical row is a stamp line plus its continuation lines, blank lines dropped and the whole trimmed: the row
-    shape the ledger's own splitter hands the projection, so the durable text and the projected row are compared
-    in one representation."""
-    groups: list[tuple[int, list[str]]] = []
-    for number, line in enumerate(text.splitlines(), start=1):
-        if _ROW_START.match(line):
-            groups.append((number, [line]))
-        elif groups and line.strip():
-            groups[-1][1].append(line)
-    return [(number, "\n".join(lines).strip()) for number, lines in groups]
+
+def row_blocks(text: str) -> list[tuple[int, str]]:
+    """Each row of ``text`` as ``(1-based line number of its header, header plus continuation lines)``.
+
+    A row is its header line and the lines after it up to the next header; trailing blank lines are not part of it.
+    """
+    lines = text.splitlines()
+    blocks: list[tuple[int, str]] = []
+    start: int | None = None
+    for index, line in enumerate([*lines, "x"]):
+        if index == len(lines) or _is_row_header(line):
+            if start is not None:
+                block = lines[start:index]
+                while block and not block[-1].strip():
+                    block.pop()
+                blocks.append((start + 1, "\n".join(block)))
+            start = index
+    return blocks
+
+
+def durable_row(text: str, ledger_seq: int) -> str:
+    """The whole durable row whose header is at ``ledger_seq``: continuation lines included."""
+    for seq, block in row_blocks(text):
+        if seq == ledger_seq:
+            return block
+    lines = text.splitlines()
+    return lines[ledger_seq - 1] if 0 < ledger_seq <= len(lines) else ""
+
+
+def _terminated(text: str) -> str:
+    """``text`` ends in a newline, so the next row opens its own line."""
+    return text if not text or text.endswith("\n") else text + "\n"
 
 
 def _project_appended(
     projection: InMemoryProjectedRows, ledger_id: str, text: str, rows: str
 ) -> None:
-    """Tell the projection each appended logical row at its position, as the row event would."""
-    first = len(text.splitlines()) - len(rows.splitlines())
-    for number, raw_row in logical_rows(rows):
+    """Tell the projection each appended row, continuation lines included, at its position, as the row event would."""
+    appended = rows if rows.endswith("\n") else rows + "\n"
+    first = len(text.splitlines()) - len(appended.splitlines()) + 1
+    for offset, block in row_blocks(appended):
         projection.project(
-            raw_row=raw_row, ledger_id=ledger_id, ledger_seq=first + number
+            raw_row=block, ledger_id=ledger_id, ledger_seq=first + offset - 1
         )
 
 
@@ -165,9 +185,7 @@ class InMemoryJoinLedger:
 
     def append(self, rows: str) -> ModelAppendCommandResult:
         self.append_calls.append(rows)
-        if self._text and not self._text.endswith("\n"):
-            self._text += "\n"
-        self._text += rows if rows.endswith("\n") else rows + "\n"
+        self._text = _terminated(self._text) + _terminated(rows)
         _project_appended(self._projection, self._ledger_id, self._text, rows)
         return ModelAppendCommandResult(exit_code=0)
 
@@ -182,7 +200,7 @@ class ScratchFileJoinLedger:
         projection: InMemoryProjectedRows,
         ledger_id: str = "rolling-work-ledger",
     ) -> None:
-        # A link is followed: a scratch name that resolves to the live file is the live file.
+        # The name is checked as given and after links are followed: a scratch-named link to the live file is the live file.
         for name in (path.name, path.resolve().name):
             if name in LIVE_LEDGER_FILE_NAMES:
                 raise ValueError(
@@ -199,11 +217,11 @@ class ScratchFileJoinLedger:
         return self._path.read_text(encoding="utf-8")
 
     def append(self, rows: str) -> ModelAppendCommandResult:
-        existing = self.read_text()
+        before = self.read_text()
         with self._path.open("a", encoding="utf-8") as stream:
-            if existing and not existing.endswith("\n"):
-                stream.write("\n")
-            stream.write(rows if rows.endswith("\n") else rows + "\n")
+            stream.write(
+                ("" if before == _terminated(before) else "\n") + _terminated(rows)
+            )
         _project_appended(self._projection, self._ledger_id, self.read_text(), rows)
         return ModelAppendCommandResult(exit_code=0)
 
@@ -218,5 +236,4 @@ __all__ = [
     "ProtocolStoreIdentities",
     "ScratchFileJoinLedger",
     "StoreIdentityUnresolvedError",
-    "logical_rows",
 ]

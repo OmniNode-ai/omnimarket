@@ -31,6 +31,9 @@ from omnimarket.models.work_ledger_append import (
     ModelJoinJ5Request,
     ModelJoinJ5Result,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
+    _request_lines,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerReader,
 )
@@ -39,18 +42,15 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
     ProtocolProjectedRows,
     ProtocolStoreIdentities,
     StoreIdentityUnresolvedError,
-    logical_rows,
+    durable_row,
 )
 
 _NODE = "node_work_ledger_append_effect"
 _SECTION = "join_j5"
-_EPOCH = datetime.min.replace(tzinfo=UTC)
-_TERMINAL_PHASES = frozenset({"success", "failure"})
 _DURABLE = frozenset(
     {
         EnumWorkLedgerAppendStatus.ACCEPTED,
         EnumWorkLedgerAppendStatus.DUPLICATE,
-        EnumWorkLedgerAppendStatus.ALREADY_PRESENT,
     }
 )
 
@@ -70,29 +70,6 @@ def load_join_j5_policy(contract: Mapping[str, Any] | None = None) -> ModelJoinJ
         if key not in section:
             raise ValueError(f"{_NODE} contract {_SECTION}.{key} is absent")
     return ModelJoinJ5Policy(**section)
-
-
-class _SilentChain:
-    """The chain of a request the journal already holds a terminal for: it emits nothing.
-
-    The floor judges one chain per node, piece and correlation id, and a chain ends once. A replayed request or a
-    retry under the same correlation id keeps the evidence already written; a second start or a terminal after a
-    terminal would turn it into a broken chain."""
-
-    def start(self) -> None:
-        return None
-
-    def resume(self) -> None:
-        return None
-
-    def success(self, counters: dict[str, int] | None = None) -> None:
-        return None
-
-    def failure(self, code: str, detail: str = "") -> None:
-        return None
-
-    def refuse(self, code: str, detail: str = "") -> None:
-        return None
 
 
 class HandlerWorkLedgerJoinJ5:
@@ -157,35 +134,19 @@ class HandlerWorkLedgerJoinJ5:
     def handle(self, request: ModelJoinJ5Request) -> ModelJoinJ5Result:
         policy = self._policy
         append, ledger, identities, projection, sink = self._wired()
-        phases = {
-            event.phase
-            for event in sink.read(_EPOCH)
-            if event.node == policy.emission_node
-            and event.piece == policy.to_piece
-            and event.correlation_id == request.correlation_id
-        }
-        chain: ChainEmitter | _SilentChain
-        if phases & _TERMINAL_PHASES:
-            chain = _SilentChain()
-        else:
-            chain = ChainEmitter(
-                sink,
-                node=policy.emission_node,
-                piece=policy.to_piece,
-                clock=self._clock,
-                correlation_id=request.correlation_id,
-                backend=self._backend,
-            )
-        started = "start" in phases
+        chain = ChainEmitter(
+            sink,
+            node=policy.emission_node,
+            piece=policy.to_piece,
+            clock=self._clock,
+            correlation_id=request.correlation_id,
+            backend=self._backend,
+        )
         try:
             principal = identities.resolve(request.identity_ref)
         except StoreIdentityUnresolvedError as exc:
             code = policy.identity_unresolved_failure_code
-            if started:
-                chain.resume()
-                chain.failure(code, str(exc))
-            else:
-                chain.refuse(code, str(exc))
+            chain.refuse(code, str(exc))
             return ModelJoinJ5Result(
                 outcome=EnumJoinJ5Outcome.REFUSED_IDENTITY_UNRESOLVED,
                 correlation_id=request.correlation_id,
@@ -193,14 +154,18 @@ class HandlerWorkLedgerJoinJ5:
                 detail=str(exc),
             )
 
-        if started:
-            chain.resume()
-        else:
+        # A replay of a request already on the ledger belongs to the chain its first run emitted: a second start and
+        # terminal under the same correlation id would read as duplicate_start / success_and_failure on the floor.
+        replay = bool(
+            _request_lines(ledger.read_text(), f"req={request.append.request_id}")
+        )
+        if not replay:
             chain.start()
         receipt = append.handle(request.append, writer_principal=principal)
         if receipt.status not in _DURABLE or not receipt.ledger_lines:
             code = policy.append_not_accepted_failure_code
-            chain.failure(code, f"{receipt.status.value}: {receipt.message}")
+            if not replay:
+                chain.failure(code, f"{receipt.status.value}: {receipt.message}")
             return ModelJoinJ5Result(
                 outcome=EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED,
                 correlation_id=request.correlation_id,
@@ -209,26 +174,20 @@ class HandlerWorkLedgerJoinJ5:
                 receipt=receipt,
             )
 
-        # Success covers every row of the accepted operation: each one must be on the ledger as this request's row under
-        # the resolved principal (a conditional no-op names another writer's row) and read back from the projection.
-        durable_rows = dict(logical_rows(ledger.read_text()))
-        request_cell = f"req={request.append.request_id}"
-        principal_cell = f"principal={principal}"
-        first_projected = None
-        for ledger_seq in receipt.ledger_lines:
-            durable = durable_rows.get(ledger_seq)
-            header = (
-                []
-                if durable is None
-                else [c.strip() for c in durable.splitlines()[0].split("|")]
-            )
-            if request_cell not in header or principal_cell not in header:
+        # Every landed row is read back, not only the first: the request may carry several.
+        ledger_seq = receipt.ledger_lines[0]
+        text = ledger.read_text()
+        first_projected_id: str | None = None
+        for seq in receipt.ledger_lines:
+            durable = durable_row(text, seq)
+            # The receipt's position counts the ledger host's file. A copy that is short, stale or another file holds some
+            # other row there, and a projection that holds that row would read as a landing: the durable row must be this
+            # request's.
+            if f"req={request.append.request_id}" not in durable:
                 code = policy.append_not_accepted_failure_code
-                detail = (
-                    f"the durable row at ledger_seq {ledger_seq} is not this request's row "
-                    f"({request_cell}) under {principal_cell}"
-                )
-                chain.failure(code, detail)
+                detail = f"the ledger line at position {seq} is not the row of request {request.append.request_id}"
+                if not replay:
+                    chain.failure(code, detail)
                 return ModelJoinJ5Result(
                     outcome=EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED,
                     correlation_id=request.correlation_id,
@@ -239,18 +198,19 @@ class HandlerWorkLedgerJoinJ5:
                 )
             projected = projection.read_row(
                 ledger_id=request.append.ledger_id,
-                ledger_seq=ledger_seq,
+                ledger_seq=seq,
                 raw_row=durable,
                 correlation_id=request.correlation_id,
             )
             if projected is None or projected.raw_row != durable:
                 code = policy.projected_row_missing_failure_code
                 detail = (
-                    f"no projected row at ledger_seq {ledger_seq}"
+                    f"no projected row at ledger_seq {seq}"
                     if projected is None
-                    else f"the projected row at ledger_seq {ledger_seq} differs from the durable row"
+                    else f"the projected row at ledger_seq {seq} differs from the durable row"
                 )
-                chain.failure(code, detail)
+                if not replay:
+                    chain.failure(code, detail)
                 return ModelJoinJ5Result(
                     outcome=EnumJoinJ5Outcome.PROJECTED_ROW_MISSING,
                     correlation_id=request.correlation_id,
@@ -259,17 +219,22 @@ class HandlerWorkLedgerJoinJ5:
                     receipt=receipt,
                     ledger_seq=ledger_seq,
                 )
-            if first_projected is None:
-                first_projected = projected
+            if first_projected_id is None:
+                first_projected_id = projected.row_id
 
-        rows = len(receipt.ledger_lines)
-        chain.success({"rows_appended": rows, "rows_projected": rows})
+        if not replay:
+            chain.success(
+                {
+                    "rows_appended": len(receipt.ledger_lines),
+                    "rows_projected": len(receipt.ledger_lines),
+                }
+            )
         return ModelJoinJ5Result(
             outcome=EnumJoinJ5Outcome.LANDED,
             correlation_id=request.correlation_id,
             receipt=receipt,
-            ledger_seq=receipt.ledger_lines[0],
-            projected_row_id=first_projected.row_id if first_projected else None,
+            ledger_seq=ledger_seq,
+            projected_row_id=first_projected_id,
         )
 
 

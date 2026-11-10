@@ -86,9 +86,7 @@ def _row_text(request_id: object) -> str:
     return f"2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={request_id} | j5 probe row"
 
 
-def _request(
-    cid: str, ref: str = IDENTITY_REF, rows: str | None = None
-) -> ModelJoinJ5Request:
+def _request(cid: str, ref: str = IDENTITY_REF) -> ModelJoinJ5Request:
     request_id = uuid4()
     return ModelJoinJ5Request(
         correlation_id=cid,
@@ -96,7 +94,7 @@ def _request(
         append=ModelWorkLedgerAppendRequest(
             request_id=request_id,
             ledger_id=LEDGER_ID,
-            rows=_row_text(request_id) if rows is None else rows.format(req=request_id),
+            rows=_row_text(request_id),
             requested_by_lane="j5-test",
             requesting_host="test-host",
             requested_at=NOW,
@@ -113,14 +111,11 @@ class _Rig:
         identities: dict[str, str] | None = None,
         projection_hears_ledger: bool = True,
         guess_writer_when_unresolved: bool = False,
-        projection: InMemoryProjectedRows | None = None,
-        header: str | None = None,
     ) -> None:
-        self.projection = projection or InMemoryProjectedRows()
+        self.projection = InMemoryProjectedRows()
         self.heard = InMemoryProjectedRows()
         self.ledger = InMemoryJoinLedger(
-            projection=self.projection if projection_hears_ledger else self.heard,
-            **({} if header is None else {"header": header}),
+            projection=self.projection if projection_hears_ledger else self.heard
         )
         self.store = InMemoryStoreIdentities(
             {IDENTITY_REF: STORE_PRINCIPAL} if identities is None else identities
@@ -479,150 +474,178 @@ def test_control_the_contract_declares_the_join_settings_and_the_unresolved_code
         )
 
 
-# --- review findings (omnimarket#5286) ----------------------------------------------------------------------------
+# --- review findings on PR 5286 (OMN-22914): each test failed on the branch before its fix ---------------------------
+
+
+def _request_with_rows(
+    cid: str, rows: str, append_if_absent_row_id: str | None = None
+) -> ModelJoinJ5Request:
+    """A request whose rows text is the caller's; ``{rid}`` in it is the request id."""
+    request_id = uuid4()
+    return ModelJoinJ5Request(
+        correlation_id=cid,
+        identity_ref=IDENTITY_REF,
+        append=ModelWorkLedgerAppendRequest(
+            request_id=request_id,
+            ledger_id=LEDGER_ID,
+            rows=rows.replace("{rid}", str(request_id)),
+            requested_by_lane="j5-test",
+            requesting_host="test-host",
+            requested_at=NOW,
+            append_if_absent_row_id=append_if_absent_row_id,
+        ),
+    )
+
 
 _TWO_ROWS = (
-    "2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={req} | first row\n"
-    "2026-11-07T12:00:01Z | STATUS | lane=j5-test | req={req} | second row"
+    "2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={rid} | first row\n"
+    "2026-11-07T12:00:01Z | STATUS | lane=j5-test | req={rid} | second row"
 )
 
 
-class _DropsSecondRow(InMemoryProjectedRows):
-    """Injected break: the projection hears the first row of a request and never the second."""
-
-    def project(self, *, raw_row: str, ledger_id: str, ledger_seq: int) -> None:
-        if "second row" not in raw_row:
-            super().project(raw_row=raw_row, ledger_id=ledger_id, ledger_seq=ledger_seq)
-
-
-def test_join_j5_multi_row_append_is_not_landed_when_a_later_row_never_projects() -> (
-    None
-):
-    rig = _Rig(projection=_DropsSecondRow())
-    cid = uuid4().hex
-    rig.upstream_chain(cid, resolves=True)
-
-    result = rig.join.handle(_request(cid, rows=_TWO_ROWS))
-
-    assert result.outcome is EnumJoinJ5Outcome.PROJECTED_ROW_MISSING
-    mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
-    assert [e.phase for e in mine] == ["start", "failure"]
-
-
-def test_join_j5_multi_row_append_counts_every_row_it_landed_and_projected() -> None:
+def test_join_j5_every_landed_row_is_read_back_and_counted() -> None:
+    """Failed before: the join verified only ledger_lines[0], so ``rows_appended`` read 1 for a two-row append."""
     rig = _Rig()
     cid = uuid4().hex
     rig.upstream_chain(cid, resolves=True)
 
-    result = rig.join.handle(_request(cid, rows=_TWO_ROWS))
+    result = rig.join.handle(_request_with_rows(cid, _TWO_ROWS))
 
     assert result.outcome is EnumJoinJ5Outcome.LANDED
     mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
     assert mine[-1].counters == {"rows_appended": 2, "rows_projected": 2}
 
 
-def test_join_j5_indented_continuation_is_part_of_the_projected_logical_row() -> None:
+def test_join_j5_a_later_landed_row_the_projection_never_heard_fails_typed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed before: ``assert result.outcome is PROJECTED_ROW_MISSING`` saw LANDED, the second row was never read."""
     rig = _Rig()
     cid = uuid4().hex
     rig.upstream_chain(cid, resolves=True)
-    rows = (
-        "2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={req} | header text\n"
-        "  continuation text kept with its row"
-    )
+    project = rig.projection.project
 
-    result = rig.join.handle(_request(cid, rows=rows))
+    def drop_second(*, raw_row: str, ledger_id: str, ledger_seq: int) -> None:
+        if "second row" not in raw_row:
+            project(raw_row=raw_row, ledger_id=ledger_id, ledger_seq=ledger_seq)
+
+    monkeypatch.setattr(rig.projection, "project", drop_second)
+
+    result = rig.join.handle(_request_with_rows(cid, _TWO_ROWS))
+
+    assert result.outcome is EnumJoinJ5Outcome.PROJECTED_ROW_MISSING
+    mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
+    assert [e.phase for e in mine] == ["start", "failure"]
+
+
+_ROW_WITH_CONTINUATION = (
+    "2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={rid} | header\n"
+    "    continuation line one\n"
+    "    continuation line two"
+)
+
+
+def test_join_j5_projected_row_keeps_the_continuation_lines_of_the_durable_row() -> (
+    None
+):
+    """Failed before: ``assert 'continuation line one' in projected.raw_row`` (only the header line was projected)."""
+    rig = _Rig()
+    cid = uuid4().hex
+    rig.upstream_chain(cid, resolves=True)
+
+    result = rig.join.handle(_request_with_rows(cid, _ROW_WITH_CONTINUATION))
 
     assert result.outcome is EnumJoinJ5Outcome.LANDED
     projected = rig.projection.read_row(
         ledger_id=LEDGER_ID, ledger_seq=result.ledger_seq
     )
     assert projected is not None
-    assert projected.raw_row.endswith("\n  continuation text kept with its row")
+    assert "continuation line one" in projected.raw_row
+    assert projected.raw_row.endswith("    continuation line two")
 
 
-def test_join_j5_append_after_a_ledger_without_a_final_newline_keeps_both_rows() -> (
-    None
-):
-    rig = _Rig(header="# In-memory ledger")
+def test_join_j5_a_projection_that_lost_the_continuation_lines_is_not_landed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed before: ``assert result.outcome is PROJECTED_ROW_MISSING`` saw LANDED (header-only comparison)."""
+    rig = _Rig()
     cid = uuid4().hex
     rig.upstream_chain(cid, resolves=True)
+    project = rig.projection.project
 
-    result = rig.join.handle(_request(cid))
+    def header_only(*, raw_row: str, ledger_id: str, ledger_seq: int) -> None:
+        project(
+            raw_row=raw_row.splitlines()[0], ledger_id=ledger_id, ledger_seq=ledger_seq
+        )
+
+    monkeypatch.setattr(rig.projection, "project", header_only)
+
+    result = rig.join.handle(_request_with_rows(cid, _ROW_WITH_CONTINUATION))
+
+    assert result.outcome is EnumJoinJ5Outcome.PROJECTED_ROW_MISSING
+
+
+@pytest.mark.parametrize("backend", ["memory", "file"])
+def test_join_j5_a_header_without_a_final_newline_does_not_swallow_the_row(
+    backend: str, tmp_path: Path
+) -> None:
+    """Failed before: the row was glued onto the header line, so ``assert result.outcome is LANDED`` saw a refusal."""
+    projection = InMemoryProjectedRows()
+    ledger: InMemoryJoinLedger | ScratchFileJoinLedger
+    if backend == "memory":
+        ledger = InMemoryJoinLedger(projection=projection, header="# header, no eol")
+    else:
+        scratch = tmp_path / "scratch-no-eol.md"
+        scratch.write_text("# header, no eol", encoding="utf-8")
+        ledger = ScratchFileJoinLedger(scratch, projection=projection)
+    sink = InMemoryEmissionSink()
+    join = HandlerWorkLedgerJoinJ5(
+        append=HandlerWorkLedgerAppendEffect(
+            ledger,
+            ledger,
+            "test-host",
+            writer_principals=(STORE_PRINCIPAL,),
+            operator_principal="operator",
+        ),
+        ledger=ledger,
+        identities=InMemoryStoreIdentities({IDENTITY_REF: STORE_PRINCIPAL}),
+        projection=projection,
+        sink=sink,
+        policy=POLICY,
+        clock=_Clock(),
+        backend="in_memory",
+    )
+
+    result = join.handle(_request(uuid4().hex))
 
     assert result.outcome is EnumJoinJ5Outcome.LANDED
-    assert rig.ledger.read_text().splitlines()[0] == "# In-memory ledger"
-    assert result.ledger_seq == 2
+    lines = ledger.read_text().splitlines()
+    assert lines[0] == "# header, no eol"
+    assert lines[result.ledger_seq - 1].startswith("2026-11-07T12:00:00Z | STATUS")
 
 
-def test_join_j5_scratch_file_without_a_final_newline_keeps_its_last_line(
-    tmp_path: Path,
-) -> None:
-    scratch = tmp_path / "scratch-lane-ledger.md"
-    scratch.write_text("# Scratch lane ledger", encoding="utf-8")
-    projection = InMemoryProjectedRows()
-    scratch_ledger = ScratchFileJoinLedger(scratch, projection=projection)
-    row = "2026-11-07T12:00:00Z | STATUS | lane=j5-test | req=x | row"
-
-    scratch_ledger.append(row)
-
-    assert scratch.read_text(encoding="utf-8").splitlines() == [
-        "# Scratch lane ledger",
-        row,
-    ]
-    assert projection.read_row(ledger_id=LEDGER_ID, ledger_seq=2) is not None
-
-
-def test_join_j5_replayed_request_keeps_one_valid_floor_chain() -> None:
+def test_join_j5_a_replayed_request_emits_no_second_start_or_success() -> None:
+    """Failed before: the replay emitted a second start and success, ``[start, success, start, success]``."""
     rig = _Rig()
     cid = uuid4().hex
     rig.upstream_chain(cid, resolves=True)
     request = _request(cid)
 
     first = rig.join.handle(request)
-    again = rig.join.handle(request)
+    second = rig.join.handle(request)
 
     assert first.outcome is EnumJoinJ5Outcome.LANDED
-    assert again.outcome is EnumJoinJ5Outcome.LANDED
-    assert again.receipt is not None
-    assert again.receipt.status is EnumWorkLedgerAppendStatus.DUPLICATE
+    assert second.receipt is not None
+    assert second.receipt.status is EnumWorkLedgerAppendStatus.DUPLICATE
     mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
     assert [e.phase for e in mine] == ["start", "success"]
-    state, _, findings = _fold(rig.sink.events, NOW)
+    state, _golden, findings = _fold(rig.sink.events, NOW)
     assert (state, findings) == ("golden_only", [])
 
 
-def test_join_j5_retry_after_a_projection_failure_does_not_add_a_success_to_the_failed_chain() -> (
-    None
-):
-    rig = _Rig(projection_hears_ledger=False)
-    cid = uuid4().hex
-    rig.upstream_chain(cid, resolves=True)
-    request = _request(cid)
-    assert rig.join.handle(request).outcome is EnumJoinJ5Outcome.PROJECTED_ROW_MISSING
-    rig.heard.project(
-        raw_row=rig.ledger.read_text().splitlines()[1],
-        ledger_id=LEDGER_ID,
-        ledger_seq=2,
-    )
-    rig.projection.project(
-        raw_row=rig.ledger.read_text().splitlines()[1],
-        ledger_id=LEDGER_ID,
-        ledger_seq=2,
-    )
-
-    rig.join.handle(request)
-
-    _, _, findings = _fold(rig.sink.events, NOW)
-    assert findings == []
-
-
-def test_join_j5_conditional_no_op_on_another_writers_row_is_not_landed() -> None:
-    """ALREADY_PRESENT names a row the request did not write; it is no evidence the requested row landed."""
+def test_join_j5_an_id_already_held_by_another_request_is_not_a_landed_row() -> None:
+    """Failed before: ``assert second.outcome is APPEND_NOT_ACCEPTED`` saw LANDED (ALREADY_PRESENT counted as durable)."""
     rig = _Rig()
-    cid = uuid4().hex
-    rig.upstream_chain(cid, resolves=True)
-    other = "2026-11-07T11:00:00Z | STATUS | lane=other | principal=someone-else | req=other | id=ROW1 | their row"
-    rig.ledger.append(other)
     append = HandlerWorkLedgerAppendEffect(
         rig.ledger,
         rig.ledger,
@@ -630,50 +653,74 @@ def test_join_j5_conditional_no_op_on_another_writers_row_is_not_landed() -> Non
         writer_principals=(STORE_PRINCIPAL,),
         operator_principal="operator",
         append_if_absent=ModelAppendIfAbsentPolicy(
-            row_id_cell="id", lock_suffix=".lock", lock_wait_seconds=1.0
+            row_id_cell="id", lock_suffix=".test-append.lock", lock_wait_seconds=30
         ),
     )
-    rig.join._append = append
-    request = _request(
-        cid,
-        rows="2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={req} | id=ROW1 | mine",
+    join = HandlerWorkLedgerJoinJ5(
+        append=append,
+        ledger=rig.ledger,
+        identities=rig.store,
+        projection=rig.projection,
+        sink=rig.sink,
+        policy=POLICY,
+        clock=rig.clock,
+        backend="in_memory",
     )
-    request = request.model_copy(
-        update={
-            "append": request.append.model_copy(
-                update={"append_if_absent_row_id": "ROW1"}
-            )
-        }
+    row = "2026-11-07T12:00:00Z | STATUS | lane=j5-test | id=row-x | req={rid} | "
+    first = join.handle(
+        _request_with_rows(
+            uuid4().hex, row + "first text", append_if_absent_row_id="row-x"
+        )
+    )
+    cid = uuid4().hex
+    rig.upstream_chain(cid, resolves=True)
+
+    second = join.handle(
+        _request_with_rows(cid, row + "other text", append_if_absent_row_id="row-x")
     )
 
-    result = rig.join.handle(request)
+    assert first.outcome is EnumJoinJ5Outcome.LANDED
+    assert second.receipt is not None
+    assert second.receipt.status is EnumWorkLedgerAppendStatus.ALREADY_PRESENT
+    assert second.outcome is EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED
+    assert second.failure_code == POLICY.append_not_accepted_failure_code
+    assert "other text" not in rig.ledger.read_text()
 
-    assert result.receipt is not None
-    assert result.receipt.status is EnumWorkLedgerAppendStatus.ALREADY_PRESENT
-    assert result.outcome is not EnumJoinJ5Outcome.LANDED
-    mine = [e for e in rig.sink.events if e.piece == POLICY.to_piece]
-    assert [e.phase for e in mine] == ["start", "failure"]
 
-
-def test_join_j5_scratch_symlink_to_the_live_ledger_name_is_refused(
+def test_join_j5_a_scratch_name_that_links_to_the_live_ledger_is_refused(
     tmp_path: Path,
 ) -> None:
+    """Failed before: ``pytest.raises(ValueError)`` did not raise for a symlink named like a scratch file."""
     live = tmp_path / sorted(LIVE_LEDGER_FILE_NAMES)[0]
-    live.write_text("# live\n", encoding="utf-8")
-    alias = tmp_path / "scratch-alias.md"
-    alias.symlink_to(live)
+    live.write_text("# live ledger\n", encoding="utf-8")
+    link = tmp_path / "scratch-link.md"
+    link.symlink_to(live)
 
     with pytest.raises(ValueError, match="live ledger"):
-        ScratchFileJoinLedger(alias, projection=InMemoryProjectedRows())
-    assert live.read_text(encoding="utf-8") == "# live\n"
+        ScratchFileJoinLedger(link, projection=InMemoryProjectedRows())
+
+    assert live.read_text(encoding="utf-8") == "# live ledger\n"
 
 
-def test_join_j5_row_ending_in_a_space_is_landed_not_reported_missing() -> None:
+def test_join_j5_a_row_with_trailing_whitespace_lands_and_reads_back_equal() -> None:
+    """Failed before: ``assert result.outcome is LANDED`` saw PROJECTED_ROW_MISSING (the projection trimmed the row)."""
     rig = _Rig()
     cid = uuid4().hex
     rig.upstream_chain(cid, resolves=True)
-    rows = "2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={req} | trailing space "
 
-    result = rig.join.handle(_request(cid, rows=rows))
+    result = rig.join.handle(
+        _request_with_rows(
+            cid,
+            "2026-11-07T12:00:00Z | STATUS | lane=j5-test | req={rid} | probe row   ",
+        )
+    )
 
     assert result.outcome is EnumJoinJ5Outcome.LANDED
+    projected = rig.projection.read_row(
+        ledger_id=LEDGER_ID, ledger_seq=result.ledger_seq
+    )
+    assert projected is not None
+    assert (
+        projected.raw_row == rig.ledger.read_text().splitlines()[result.ledger_seq - 1]
+    )
+    assert projected.raw_row.endswith("probe row   ")
