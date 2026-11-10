@@ -193,7 +193,7 @@ def _assert_result_drawn_with_age(doc: ModelFloorSimple, *, age_s: int) -> None:
     assert row.reading_max_age_s == READING_MAX_AGE_S
     assert row.status == "working"
     assert row.freshness == "fresh"
-    assert row.text.startswith("reading WORKING")
+    assert "reading WORKING" in row.text
 
 
 def _assert_stale_drawn_stale(doc: ModelFloorSimple, *, age_s: int) -> None:

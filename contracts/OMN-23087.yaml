@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: "AC1: join J8 reads passed from a real run of golden and error heads, and each named injected break reads broken -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8_live.py -q"
+- id: req-omn23087-preflight-startup-failure
+  statement: The Repo Evidence Dependency preflight fails at once, naming the run id, when the Repo Evidence Gate run for the head ended startup_failure, and keeps waiting in every other state.
+  acceptance:
+  - id: AC2
+    statement: "AC2: the preflight step in the workflow files that carry it exits 1 on a startup_failure gate run and keeps waiting otherwise -- falsifier: uv run pytest tests/ci/test_repo_evidence_preflight_startup_failure_omn23087.py -q"
 evidence_requirements:
 - kind: tests
   description: The acceptance tests of this ticket at the pushed head.
@@ -53,4 +58,13 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23087 -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8_live.py tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn23087-preflight-startup-failure
+  description: The preflight tests run each workflow's real step script against stubbed gate runs and read exit 1 for startup_failure and continued waiting for every other state.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_preflight_startup_failure_omn23087.py -q --no-cov -n 0 -p no:randomly
     cwd: .
