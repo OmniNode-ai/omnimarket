@@ -45,6 +45,8 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.host-drift-plugin-sync-requested.v1
 descriptor:
   node_archetype: effect
+  runtime_profiles:
+  - effects
   purity: effectful
   idempotent: true
   timeout_ms: 900000
