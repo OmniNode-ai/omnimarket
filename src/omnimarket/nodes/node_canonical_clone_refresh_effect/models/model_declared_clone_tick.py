@@ -7,9 +7,17 @@ writes the unit's evidence. Every deployment value comes from the overlay, the h
 contract or the environment; nothing is hard-coded in the tick.
 """
 
-from typing import Literal, Self
+from enum import StrEnum
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class EnumDeclaredCloneTickBackend(StrEnum):
+    """The bus profile the overlay selects."""
+
+    INMEMORY = "inmemory"
+    REDPANDA = "redpanda"
 
 
 class ModelDeclaredCloneTickOverlay(BaseModel):
@@ -17,18 +25,23 @@ class ModelDeclaredCloneTickOverlay(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: Literal["inmemory", "redpanda"]
+    backend: EnumDeclaredCloneTickBackend
     bus_lane: str | None = None
     host_name_env: str = Field(min_length=1)
     wait_seconds: float = Field(gt=0)
 
     @model_validator(mode="after")
     def _check_lane(self) -> Self:
-        if self.backend == "redpanda" and not (self.bus_lane and self.bus_lane.strip()):
+        if self.backend is EnumDeclaredCloneTickBackend.REDPANDA and not (
+            self.bus_lane and self.bus_lane.strip()
+        ):
             raise ValueError("the redpanda backend requires a non-empty bus_lane")
-        if self.backend == "inmemory" and self.bus_lane is not None:
+        if (
+            self.backend is EnumDeclaredCloneTickBackend.INMEMORY
+            and self.bus_lane is not None
+        ):
             raise ValueError("the inmemory backend forbids a bus_lane")
         return self
 
 
-__all__ = ["ModelDeclaredCloneTickOverlay"]
+__all__ = ["EnumDeclaredCloneTickBackend", "ModelDeclaredCloneTickOverlay"]

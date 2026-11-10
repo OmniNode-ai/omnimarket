@@ -46,6 +46,7 @@ from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_
     ModelDeclaredCloneRefreshRequest,
 )
 from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_tick import (
+    EnumDeclaredCloneTickBackend,
     ModelDeclaredCloneTickOverlay,
 )
 
@@ -53,6 +54,11 @@ NODE = "node_canonical_clone_refresh_effect"
 EXIT_OK = 0
 EXIT_REFUSED = 1
 EXIT_INDETERMINATE = 3
+# The lane bus opener's name for each profile the overlay can select.
+BUS_KIND = {
+    EnumDeclaredCloneTickBackend.INMEMORY: "inmemory",
+    EnumDeclaredCloneTickBackend.REDPANDA: "kafka",
+}
 
 
 def host_name(overlay: ModelDeclaredCloneTickOverlay, env: Mapping[str, str]) -> str:
@@ -174,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def open_bus() -> Any:
         return open_lab_run_bus(
-            bus="inmemory" if overlay.backend == "inmemory" else "kafka",
+            bus=BUS_KIND[overlay.backend],
             lane=overlay.bus_lane,
             kafka_bootstrap=None,
             **{_REGISTRY_KW: args.registry_root},
