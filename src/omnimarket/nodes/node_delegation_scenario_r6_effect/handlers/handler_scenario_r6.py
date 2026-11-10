@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerScenarioR6 is built by the node CLI factory (build_runner) with the contract runtime block, not routed by handler_routing or imported by name
 """Scenario R6, a task longer than 240 seconds completes under a configured 600 second ceiling (OMN-23174, readiness plan 2.2).
 
 One run drives the delegation skill handler with a synthetic summarization request and a rungs-mode probe ladder whose one
