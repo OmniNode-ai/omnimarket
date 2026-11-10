@@ -4,7 +4,7 @@
 
 The golden chain reads the contract and resolves every named pair through the
 handler; the error chain refuses an unnamed pair and, through
-measured_correct_ceiling, raises on an absent or broken overlay and reads a copy
+measured_correct_ceiling, reads no ceiling from an absent overlay and raises on a broken one and reads a copy
 of the fixture overlay. Every mutation replaces one rule and runs the chain it
 breaks; the mutated chain must raise AssertionError, which shows the assertion
 can fail. The unmutated chains are green in the controls.
@@ -24,7 +24,6 @@ import yaml
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_ROOTS_ENV,
     NodeOverlayError,
-    NodeOverlayNotFoundError,
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     measured_correct_ceiling,
@@ -150,10 +149,9 @@ def run_error_chain_input_ceiling(tmp_path: Path) -> None:
     assert result.refusal is EnumCodeBudgetRefusal.UNNAMED_INPUT_CEILING
     assert input_ceiling_overlay_key("local-coder", "test") in result.detail
 
-    # No overlay roots at all: the read raises, it does not fall back to a default.
-    assert_ceiling_read_raises(
-        NodeOverlayNotFoundError,
-        lambda: measured_correct_ceiling("local-coder", "code_generation", environ={}),
+    # No overlay roots at all (a clean install): no ceilings are declared, so none applies; the read does not invent one.
+    assert (
+        measured_correct_ceiling("local-coder", "code_generation", environ={}) is None
     )
 
     # An overlay that is not a YAML mapping: the read raises.

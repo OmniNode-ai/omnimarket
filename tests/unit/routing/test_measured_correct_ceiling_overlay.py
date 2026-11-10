@@ -189,18 +189,18 @@ def test_refusal_names_the_lowered_ceiling_and_its_overlay_key(
     assert _OVERLAY_KEY in ceiling_reasons[0]
 
 
-def test_absent_or_broken_overlay_raises_never_answers_false(
+def test_absent_overlay_declares_no_ceiling_and_broken_overlay_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No overlay to read is a raise, never a silent ``False``.
+    """A clean install names no overlay: no ceiling applies. A broken overlay raises.
 
-    A roots list that names no root holding the overlay means no overlay is
-    found at all; a present overlay that is not a mapping is broken, a
-    different raise.
+    A roots list that names no root holding the overlay declares no ceilings (the
+    customer clean-install gate runs there); a present overlay that is not a
+    mapping is broken, and that is a raise, never a default.
     """
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "absent_roots"))
-    with pytest.raises(NodeOverlayNotFoundError):
-        exceeds_measured_correct_ceiling(_CODER, _TASK, 4560)
+    assert exceeds_measured_correct_ceiling(_CODER, _TASK, 4560) is False
+    assert ceiling_module.measured_correct_ceiling(_CODER, _TASK) is None
 
     root = tmp_path / "broken_roots"
     target = root / "node_delegation_code_budget_compute" / "overlay.yaml"

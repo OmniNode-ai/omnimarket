@@ -9,8 +9,9 @@ correctly. Since OMN-23631 the ceiling is an overlay value, the key
 ``delegation.code_budget.input_ceilings.<backend>.<task_class>`` of
 ``node_delegation_code_budget_compute``, read through that node's
 ``input_ceiling`` operation; there is no packaged value and no fallback. A
-missing or unreadable overlay raises :class:`NodeOverlayError`. The overlay is
-read on every call, so a changed ceiling is in force on the next routing.
+install with no overlay root naming the code budget overlay (a customer's clean install) declares no ceilings, so
+none applies; an overlay that is present but unreadable or invalid raises :class:`NodeOverlayError`, never a default.
+The overlay is read on every call, so a changed ceiling is in force on the next routing.
 
 A rung is not offered a task above its ceiling, and an answer from above the
 ceiling that the class scorer did not pass is refused by the gate.
@@ -24,7 +25,10 @@ from functools import lru_cache
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
 from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
     ModelGroundingBudgetByTaskClass,
 )
@@ -79,12 +83,16 @@ def measured_correct_ceiling(
 
     Read through ``node_delegation_code_budget_compute``'s ``input_ceiling``
     operation. A pair the overlay does not name has no ceiling (it was never
-    measured); an overlay that is absent or unreadable raises
+    measured), and an install no overlay root names the overlay on declares no
+    ceilings at all. An overlay that is present but unreadable or invalid raises
     :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`, never a default.
     """
-    overlay = load_structured_overlay(
-        CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
-    )
+    try:
+        overlay = load_structured_overlay(
+            CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
+        )
+    except NodeOverlayNotFoundError:
+        return None
     result = HandlerDelegationCodeBudget().handle(
         ModelCodeBudgetRequest(
             operation="input_ceiling",
