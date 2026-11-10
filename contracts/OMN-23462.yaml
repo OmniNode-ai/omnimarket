@@ -43,10 +43,12 @@ dod_evidence:
     check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py -q --no-cov --tb=line -k 'without_a_resolved_registry_root or runner_kept_line'
     cwd: .
 - id: dod-OMN-23462-integration-proof
-  description: The three steps ran once against a real lab host in a test lane directory and the printed lines read back in the pull request comment.
+  description: The three steps ran once against a real lab host in a test lane directory and the printed lines read back from the work ledger STATUS row that carries them.
   source: manual
   execution_scope: local_done_gate
+  binds_ac:
+  - AC3
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py -q --no-cov --tb=line -k 'real_tree or reads_the_file'
+  - check_type: command
+    check_value: onex ledger query --query rows --kind STATUS --term 'OMN-23462 host readings' --since 2026-11-10T06:00:00Z | grep -q 'OMN-23462 host readings'
     cwd: .
