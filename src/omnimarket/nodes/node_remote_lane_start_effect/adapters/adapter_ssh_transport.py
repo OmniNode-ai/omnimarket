@@ -17,6 +17,7 @@ the engine and are visible in the host's process table, so a secret never goes t
 
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 from collections.abc import Sequence
@@ -110,6 +111,11 @@ class SubprocessHostCommandExecutor:
         )
 
 
+#: A PATH prefix is written inside double quotes in the host script, so it may carry only path
+#: characters and ``$NAME`` references (``$HOME``); a quote, backtick, ``$(`` or space is refused.
+_PATH_PREFIX = re.compile(r"(?:[A-Za-z0-9_./:-]|\$[A-Za-z_][A-Za-z0-9_]*)*")
+
+
 class SshLaneHostTransport:
     """Prepare, start, read and stop a lane's engine on a host with one shell script per call."""
 
@@ -122,8 +128,14 @@ class SshLaneHostTransport:
         host_run_root: str,
         call_timeout_seconds: float,
         detach_argv: Sequence[str],
+        path_prefix: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
+        if not _PATH_PREFIX.fullmatch(path_prefix):
+            raise ValueError(
+                f"remote_lane_start.host_path_prefix {path_prefix!r}: only path characters and $NAME references"
+            )
+        self._path = f'export PATH="{path_prefix}:$PATH"; ' if path_prefix else ""
         if not host_run_root:
             raise ValueError("remote_lane_start.host_run_root is required")
         self._ssh_argv = tuple(ssh_argv)
@@ -160,7 +172,7 @@ class SshLaneHostTransport:
             for c in request.registry_root_candidates
         )
         script = (
-            f"mkdir -p {q(run)} || exit 3; for clone in {tries}; do "
+            f"{self._path}mkdir -p {q(run)} || exit 3; for clone in {tries}; do "
             f'if [ -d "$clone/.git" ] || [ -f "$clone/.git" ]; then '
             f'git -C "$clone" worktree add --detach {q(workdir)} {q(request.sha)} >&2 || exit 4; '
             f'echo "ROOT=$(dirname "$clone")"; exit 0; fi; done; echo "no clone of {request.repo}" >&2; exit 5'
@@ -193,7 +205,7 @@ class SshLaneHostTransport:
         env = " ".join(q(f"{k}={v}") for k, v in request.environment)
         engine = " ".join(q(a) for a in request.engine_argv)
         inner = (
-            f"cd {q(request.workdir)} || exit 126; "
+            f"{self._path}cd {q(request.workdir)} || exit 126; "
             f"env {env} {engine} > {q(run + '/engine.log')} 2>&1 < /dev/null; "
             f"echo $? > {q(run + '/exit.tmp')}; mv {q(run + '/exit.tmp')} {q(run + '/exit')}"
         )

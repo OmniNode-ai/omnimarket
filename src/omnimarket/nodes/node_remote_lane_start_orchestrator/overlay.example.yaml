@@ -22,6 +22,8 @@ remote_lane_start:
   ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
   # Starts the engine in a session of its own; a host with no setsid binary names a shim.
   detach_argv: [setsid]
+  # Put before the host's PATH in every host script (a non-interactive ssh shell lacks the user bin directory).
+  host_path_prefix: "$HOME/.local/bin:/usr/local/bin"
   # The ledger writer's argv prefix; the ledger path from --ledger follows it.
   ledger_append_argv: [example-ledger-writer]
   # bus where the host's ledger of record is the bus (a direct file append is refused there).

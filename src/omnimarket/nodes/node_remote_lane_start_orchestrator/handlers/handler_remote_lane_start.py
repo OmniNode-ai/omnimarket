@@ -97,6 +97,7 @@ def build_real(
             host_run_root=settings.host_run_root,
             call_timeout_seconds=settings.host_call_timeout_seconds,
             detach_argv=settings.detach_argv,
+            path_prefix=settings.host_path_prefix,
         )
         return RemoteLaneStartOrchestrator(
             settings=settings,

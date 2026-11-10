@@ -64,6 +64,7 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "registry_root_candidates": ["/registry"],
         "ssh_argv": ["ssh"],
         "detach_argv": ["setsid"],
+        "host_path_prefix": "",
         "ledger_append_argv": ["fixture-ledger"],
         "ledger_write_via": "bus",
         "ledger_writer_principal": PRINCIPAL,

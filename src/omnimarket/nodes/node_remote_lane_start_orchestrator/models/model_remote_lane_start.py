@@ -7,7 +7,13 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -62,6 +68,9 @@ class ModelRemoteLaneStartSettings(BaseModel):
     registry_root_candidates: tuple[str, ...]
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
+    # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin
+    # directory); "" adds nothing. The runner script exports the same prefix before each host step.
+    host_path_prefix: str
     ledger_append_argv: tuple[str, ...] = Field(min_length=1)
     # OMN-22848: "bus" on a host whose ledger of record is the bus, where a direct
     # file append from anyone but the ledger serve is refused; "local" otherwise.
@@ -72,6 +81,29 @@ class ModelRemoteLaneStartSettings(BaseModel):
     est_hours: int = Field(ge=1)
     priority: str = Field(min_length=1)
     claim_text: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _templates_are_fillable(self) -> ModelRemoteLaneStartSettings:
+        """Refuse at load a template the core cannot fill, so none is found after the CLAIM.
+
+        The engine command and the CLAIM text are filled with ``str.format`` once the lane is
+        placed; a literal brace or a field the request does not carry would raise there, after
+        the CLAIM is written, and leave it open with no TERMINAL (seen on h051 2026-11-10).
+        """
+        for key, templates, fields in (
+            ("engine_argv", self.engine_argv, {"model": "", "brief": "", "lane": ""}),
+            ("claim_text", (self.claim_text,), {"host": "", "lane": ""}),
+        ):
+            for template in templates:
+                try:
+                    template.format(**fields)
+                except (KeyError, IndexError, ValueError) as exc:
+                    raise ValueError(
+                        f"remote_lane_start.{key}: {template!r} cannot be filled from "
+                        f"{sorted(fields)} ({type(exc).__name__}: {exc}); "
+                        "write a literal brace doubled"
+                    ) from exc
+        return self
 
     @classmethod
     def from_overlay(cls, overlay: dict[str, Any]) -> ModelRemoteLaneStartSettings:
