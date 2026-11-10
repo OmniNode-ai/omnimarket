@@ -18,14 +18,14 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines import (
-    HandlerFloorFillLines,
-)
-from omnimarket.nodes.node_floor_fill_lines_compute.models import (
+from omnimarket.models.floor_fill import (
     EnumFloorFillLinesLevel,
     EnumFloorFillLinesSource,
     ModelFloorFillLinesRequest,
     ModelFloorFillLinesResult,
+)
+from omnimarket.nodes.node_floor_fill_lines_compute.handlers.handler_floor_fill_lines import (
+    HandlerFloorFillLines,
 )
 
 pytestmark = pytest.mark.unit

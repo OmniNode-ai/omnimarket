@@ -48,6 +48,8 @@ from typing import Any
 
 import pytest
 
+from tests.helpers.isolated_schema_sql import for_isolated_schema
+
 pytestmark = pytest.mark.integration
 
 _MIGRATIONS = (
@@ -80,6 +82,8 @@ def _schema_safe(sql: str) -> str:
     A property of the test driver, not of the migration -- a plain CREATE INDEX
     is schema-equivalent on a disposable single-connection schema.
     """
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    sql = for_isolated_schema(sql)
     return sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 
@@ -314,7 +318,8 @@ class TestEveryBusBackedExposureHasAnInProcessPublisher:
         served.update(e.topic for e in handler._row_exposures)
 
         assert served == set(bus_backed), sorted(set(bus_backed) ^ served)
-        assert len(bus_backed) == 6, bus_backed
+        # OMN-21970 adds delegation.daily.v1, the seventh.
+        assert len(bus_backed) == 7, bus_backed
 
     def test_an_unservable_bus_backed_shape_fails_construction(
         self, tmp_path: Path

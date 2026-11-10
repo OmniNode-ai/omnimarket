@@ -88,6 +88,10 @@ from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_prior
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
+    SKIP_FOR_VERDICT,
+    read_lab_check,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     BLOCKED_OUTCOMES,
     CAUSE_EXCLUDED_SUSPENSIONS,
@@ -141,6 +145,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingRerunRun,
     ModelLandingSharedCheckVerdict,
     ModelLandingWorkerResult,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
+    EnumLabCheckVerdict,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,
@@ -320,6 +327,7 @@ def _record(
     lease_id: int | None,
     outcome: EnumLandingOutcome,
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE,
+    owner: str | None = None,
 ) -> None:
     fp = t.fingerprint(pr)
     t.put_record(pr, outcome=outcome, reason=reason, blocker_fingerprint=fp)
@@ -330,6 +338,7 @@ def _record(
             outcome=outcome,
             reason=reason,
             blocker_fingerprint=fp,
+            owner=owner,
         )
     )
 
@@ -1669,7 +1678,15 @@ def _mergeable(p: ModelLandingPrFacts) -> bool:
 
 
 def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
-    """Merge pinned to the head; a runtime PR lands only holding the token (R6)."""
+    """Merge pinned to the head; a runtime PR lands only holding the token (R6).
+
+    A PR that carries a lab-bound check lands only on a pass of the current attempt on this exact head (J8): any
+    other reading holds the head with its own named reason.
+    """
+    reading = read_lab_check(p, t.now, t.facts.policy)
+    if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
+        t.skips[p.pr] = SKIP_FOR_VERDICT[reading.verdict]
+        return
     if p.runtime:
         in_open_companion = any(
             c.state is EnumLandingPrState.OPEN
@@ -1773,13 +1790,118 @@ def _brief_class(p: ModelLandingPrFacts, ladder: int) -> EnumLandingBriefClass |
     return None
 
 
+def _red_from_older_base(t: _Tick, p: ModelLandingPrFacts) -> bool:
+    """A red head whose reds the base has since fixed and whose branch lacks that base.
+
+    web-app#496 at head ba2e4454 read red on ``pnpm audit`` and ``CI Summary``
+    from a minimatch advisory that web-app#497 fixed on dev (4d99e96) after the
+    branch was cut; the PR touched no package file, so lease 28879 and lease
+    28915 each wrote ``blocked reason=nothing_to_fix`` and the branch was never
+    updated. The head is red from its base when it lacks the base's newest head,
+    it has at least one red check outside the follower checks, and every such
+    check is green on that base head. A repo whose base head or green checks are
+    unread, a conflicting head and a head with a red the base also fails are the
+    PR's own: they keep the worker path.
+    """
+    if (
+        p.ci is not EnumLandingCi.RED
+        or not p.lacks_base_head
+        or p.merge_state is EnumLandingMergeState.CONFLICTING
+        or p.red_class is not EnumLandingRedClass.PRODUCT
+    ):
+        return False
+    repo = repo_of(p.pr)
+    if _base_head(t, repo) is None:
+        return False
+    followers = set(t.facts.policy.cluster_excluded_checks)
+    fixable = [c for c in p.red_checks if c not in followers]
+    if not fixable:
+        return False
+    green = {
+        check
+        for repo_checks in t.facts.base_green_checks
+        if repo_checks.repo == repo
+        for check in repo_checks.checks
+    }
+    return set(fixable) <= green
+
+
+def _cross_repo_owner(t: _Tick, p: ModelLandingPrFacts) -> str | None:
+    """The open change in another repository that every fixable red of this PR waits on.
+
+    OMN-23345: the manifest repository change #1531 removed the lab-manifest entries before its
+    infra half, omnibase_infra#5810, had merged; every omnibase_infra PR then read
+    red on the parity check, and the controller leased one worker after another on
+    PRs whose red no branch of theirs could fix (about twenty ``nothing_to_fix``
+    results from 12:15Z). Once the red is named as another repository's change
+    (``cross_repo_causes``) and that change reads open, a worker on this PR can
+    only find nothing to fix. The owner is named instead. A red check not named,
+    an owner that is this PR, merged, closed or unread, or a follower-only red
+    leaves the worker path: the controller fails open, never on a guess.
+    """
+    if p.ci is not EnumLandingCi.RED or not p.red_checks:
+        return None
+    followers = set(t.facts.policy.cluster_excluded_checks)
+    fixable = sorted({c for c in p.red_checks if c not in followers})
+    if not fixable:
+        return None
+    owner_of: dict[str, str] = {}
+    for cause in t.facts.cross_repo_causes:
+        owner = t.prs.get(cause.owner)
+        if (
+            cause.owner == p.pr
+            or owner is None
+            or owner.state is not EnumLandingPrState.OPEN
+        ):
+            continue
+        owner_of.setdefault(cause.check, cause.owner)
+    if not all(check in owner_of for check in fixable):
+        return None
+    return owner_of[fixable[0]]
+
+
+def _hold_for_cross_repo_owner(
+    t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord
+) -> bool:
+    """True while a worker would only find another repository's change to wait for.
+
+    Records ``blocked_on`` once per owner and head state, naming the owner on the
+    recorded outcome. When the owner is gone (merged, closed, unread) the record
+    is cleared so the ordinary path, a branch update, a rerun or a worker, resumes.
+    """
+    owner = _cross_repo_owner(t, p)
+    if owner is None:
+        if rec.cross_repo_owner is not None:
+            t.put_record(
+                p.pr,
+                outcome=None,
+                reason=EnumLandingOutcomeReason.NONE,
+                blocker_fingerprint="",
+                cross_repo_owner=None,
+                ladder_index=0,
+                awaiting_head=None,
+            )
+        return False
+    if (
+        rec.cross_repo_owner != owner
+        or rec.outcome is not EnumLandingOutcome.BLOCKED_ON
+    ):
+        _record(t, p.pr, None, EnumLandingOutcome.BLOCKED_ON, owner=owner)
+        t.put_record(p.pr, cross_repo_owner=owner)
+    return True
+
+
 def _update_behind(t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord) -> bool:
     """Update once per head, or retry one observed transient response after backoff.
 
     True also means waiting for the backoff: that response is not a reason to
-    spend a worker. Unknown refusals retain the existing behind-worker path.
+    spend a worker. Unknown refusals retain the existing behind-worker path. A
+    red head that lacks a base which already passes its reds is updated the
+    same way (see ``_red_from_older_base``), before any worker or rerun.
     """
-    if p.merge_state is not EnumLandingMergeState.BEHIND:
+    if p.merge_state is not EnumLandingMergeState.BEHIND and not _red_from_older_base(
+        t, p
+    ):
         return False
     # OMN-19998: the merge queue rebuilds every entry on the latest base, so an
     # update there buys a push and a fresh CI run for nothing; only a red head,
@@ -1943,6 +2065,9 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
         return
     if _shared_verdict_rerun(t, p, rec):
         return
+    if _hold_for_cross_repo_owner(t, p, rec):
+        return
+    rec = t.record_of(pr)
     suppressed = rec.outcome in BLOCKED_OUTCOMES and rec.blocker_fingerprint == fp
     if suppressed or parked:
         return

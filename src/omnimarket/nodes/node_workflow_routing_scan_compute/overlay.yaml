@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Every setting of the workflow routing scan (OMN-22948). Patterns mirror the
+# public_lab_selection rule parameters of omnibase_core, so the scan and the
+# merge gate read a runs-on the same way; a change here is a reviewed change.
+# The repositories a complete read must cover are not named here: the caller
+# injects them from its private overlay home as expected_repositories.
+hosted_label_pattern: '(?i)^(ubuntu|windows|macos)-[\w.\-]+$'
+hosted_seam_variables:
+  - OMNI_PUBLIC_PR_RUNS_ON_JSON
+  - OMNI_TRUSTED_CI_RUNS_ON_JSON
+  - OMNI_DOCKER_CI_RUNS_ON_JSON
+  - OMNI_SECURITY_SCAN_RUNS_ON_JSON
+  - OMNI_REQUIRED_CI_RUNS_ON_JSON
+self_hosted_marker: 'self-hosted'
+variable_reference_pattern: '\bvars\.([A-Za-z_][A-Za-z0-9_]*)'
+unprovable_context_pattern: '(?i)\b(?:needs|matrix|inputs|env|secrets|steps)\.'
+matrix_reference_pattern: '^\$\{\{\s*matrix\.([A-Za-z_][\w\-]*)\s*\}\}$'
+non_label_call_pattern: '(?is)contains\(\s*fromJSON\(\s*''\[[^\]]*\]''\s*\)\s*,'
+returned_literal_pattern: '(?:&&|\|\||\?|:)\s*''([^''"\[\]]+)'''
+json_array_literal_pattern: '\[\s*(?:"[^"]*"\s*,?\s*)+\]'
+uses_pattern: '^(?:(?P<owner>[^/]+)/(?P<repo>[^/]+)/|\./)(?P<path>\.github/workflows/[^@]+\.ya?ml)(?:@.+)?$'

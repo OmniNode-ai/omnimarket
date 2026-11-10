@@ -59,6 +59,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 pytestmark = pytest.mark.integration
 
@@ -119,6 +120,12 @@ _TENANT_UUID_MIGRATIONS = frozenset(
 # OMN-21015: 0060 re-creates that view again, with the same dependence.
 # OMN-20717: 0062 re-creates projection_delegation_token_usage, which groups
 # ON tenant_id, so it depends on the column and is withheld with 0039.
+# OMN-22573: 0065 re-creates projection_delegation_quality_gate, which reads
+# 0045's operational_outcome column and groups ON tenant_id, so it is withheld
+# with 0045.
+# OMN-23169: 0068 re-creates projection_delegation_summary again (without the
+# experiment rows), with the same dependence on 0045 and on tenant_id, so it is
+# withheld with 0050.
 _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
     {
         "0039_delegation_aggregate_views_per_tenant.sql",
@@ -127,6 +134,10 @@ _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
         "0055_model_routing_local_call_share.sql",
         "0060_model_routing_tier_models.sql",
         "0062_delegation_token_usage_unpriced_calls.sql",
+        # OMN-21970: 0067's per-day view groups ON tenant_id too.
+        "0067_delegation_daily_view.sql",
+        "0065_quality_gate_failure_categories_bounded.sql",
+        "0068_delegation_summary_excludes_experiment.sql",
     }
 )
 
@@ -145,6 +156,8 @@ def _live_migration_files(*, exclude: frozenset[str] | None = None) -> list[Path
 def _test_schema_safe_sql(raw_sql: str) -> str:
     """See test_omn15909's identical helper: strip CONCURRENTLY, which
     refuses to run inside asyncpg's implicit multi-statement transaction."""
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 

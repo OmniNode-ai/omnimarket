@@ -56,6 +56,15 @@ schedule:
   interval_seconds: 1800
   on_boot_seconds: 120
   timeout_seconds: 3600
+  # The tick runs behind lane work, so it yields CPU, but it must still read its disk: at the
+  # idle IO class one git read took 5 to 10 s on a lab host that served it in 0.1 s (OMN-22799),
+  # and the 60 s git budget then fired on most trees. The installer writes these into the
+  # unit's drop-in; nothing outside the installer sets them.
+  resources:
+    nice: 19
+    io_scheduling_class: best-effort
+    io_scheduling_priority: 7
+    cpu_weight: 10
 handler_routing:
   routing_strategy: operation_match
   # The reconcile handler is the node's canonical handler (handler: above). It is
@@ -101,7 +110,8 @@ inputs:
   policy:
     type: object
     required: false
-    description: Quiet/stale thresholds, clone policy and removal cap.
+    description: Quiet/stale thresholds, clone policy, removal cap and merged_only
+      (remove only merged work; every other removal rule is held at keep).
   decider_command:
     type: list[str]
     required: false
@@ -113,6 +123,13 @@ inputs:
     description: 'Argv with {path} and {branch} placeholders; exit 0 claims the pin.
       The node then requires origin to serve refs/heads/{branch} at the tree HEAD,
       read back with git ls-remote, before anything is removed.'
+  merged_pr_command:
+    type: list[str]
+    required: false
+    description: 'Argv with a {slug} placeholder; stdout lists the head commit of
+      each merged pull request of that repository, one 40-digit id per line. A tree
+      whose HEAD is one of them has pushed, landed work (reason pr_merged_head). Unset:
+      no pull request evidence is read.'
   correlation_id:
     type: str
     required: true

@@ -4,8 +4,8 @@
 
 The routing contract decides every rung of an ordinary delegation, so nothing
 can force a climb on purpose. A probe ladder names the rungs one run walks, in
-order, instead. Only synthetic traffic from the doctor's escalation check may
-carry one: the port refuses it on any other request before any provider is
+order, instead. Only synthetic traffic from the doctor's escalation check or the
+readiness suite's probes may carry one: the port refuses it on any other request before any provider is
 called. Every rung must point at a loopback endpoint, so a probe can only reach
 the stub servers its own process started.
 """
@@ -23,8 +23,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from omnimarket.handlers.network_bindings import network_hosts
 
-# The one producer surface whose synthetic requests may carry a probe ladder.
+# The producer surface the doctor's escalation check stamps on its synthetic
+# requests (OMN-21212).
 PROBE_LADDER_SOURCE_SURFACE = "doctor_escalation_check"
+
+# OMN-23162: the readiness suite's producers stamp this surface on theirs.
+READINESS_PROBE_SOURCE_SURFACE = "readiness_probe"
+
+# The producer surfaces whose synthetic requests may carry a probe ladder.
+PROBE_LADDER_SOURCE_SURFACES = frozenset(
+    {PROBE_LADDER_SOURCE_SURFACE, READINESS_PROBE_SOURCE_SURFACE}
+)
 
 _LOOPBACK_HOSTS = frozenset(network_hosts("loopback.hosts"))
 
@@ -82,12 +91,14 @@ def probe_ladder_admitted(provenance: ModelDelegationProvenance | None) -> bool:
     return (
         provenance is not None
         and provenance.traffic_class is EnumDelegationTrafficClass.SYNTHETIC
-        and provenance.source_surface == PROBE_LADDER_SOURCE_SURFACE
+        and provenance.source_surface in PROBE_LADDER_SOURCE_SURFACES
     )
 
 
 __all__ = [
     "PROBE_LADDER_SOURCE_SURFACE",
+    "PROBE_LADDER_SOURCE_SURFACES",
+    "READINESS_PROBE_SOURCE_SURFACE",
     "ModelProbeLadder",
     "ModelProbeRung",
     "probe_ladder_admitted",

@@ -9,10 +9,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
+from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorFillCandidatesRequest,
     ModelFloorFillStateEntry,
+    ModelFloorStartCriterion,
     ModelFloorTaskPayloadVerdict,
 )
 
@@ -21,6 +22,9 @@ NOW = "2026-11-02T10:45:00Z"
 MAX_AGE = 30
 MAX_LANES = 2
 WINDOW = 60
+STOPPED_LANES = 2
+REPORT_CHARS = 600
+RULE = "Push the predecessor's branch and continue from its head; do not start over and do not wait on a reply."
 
 # The ready lane tasks of the 10:40Z record, in record order, per line: the pinned table of the test.
 READY_10_40 = {
@@ -115,6 +119,25 @@ def sent(
     )
 
 
+def none_criteria(floor_record: str | None) -> tuple[ModelFloorStartCriterion, ...]:
+    """A ``Start when: none`` criterion for every task the record's own note marks ready: the pre-criterion tables."""
+    if floor_record is None:
+        return ()
+    try:
+        lines = list(json.loads(floor_record)["lines"])
+        return tuple(
+            ModelFloorStartCriterion(
+                line_id=line["line_id"], task_id=it["id"], start_when="Start when: none"
+            )
+            for line in lines
+            for station in line.get("stations", [])
+            for it in station.get("items", [])
+            if it.get("state") == "prep" and str(it.get("note", "")).startswith("ready")
+        )
+    except (ValueError, KeyError, TypeError):
+        return ()
+
+
 def request(**overrides: Any) -> ModelFloorFillCandidatesRequest:
     fields: dict[str, Any] = {
         "now": NOW,
@@ -122,8 +145,12 @@ def request(**overrides: Any) -> ModelFloorFillCandidatesRequest:
         "max_age_minutes": MAX_AGE,
         "max_fill_lanes_per_line": MAX_LANES,
         "sent_window_minutes": WINDOW,
+        "stopped_max_lanes": STOPPED_LANES,
+        "stopped_report_chars": REPORT_CHARS,
+        "stopped_continue_rule": RULE,
     }
     fields.update(overrides)
+    fields.setdefault("start_criteria", none_criteria(fields["floor_record"]))
     return ModelFloorFillCandidatesRequest(**fields)
 
 

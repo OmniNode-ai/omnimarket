@@ -7,6 +7,7 @@ from __future__ import annotations
 import importlib
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import Protocol, cast
@@ -32,6 +33,8 @@ from omnimarket.models.lane_closeout.model_lane_tree_inventory_request import (
 from omnimarket.models.lane_closeout.model_lane_tree_inventory_result import (
     ModelLaneTreeInventoryResult,
 )
+from omnimarket.models.pr_claim import EnumPrClaimOperation, ModelPrClaimRegistryRequest
+from omnimarket.nodes.node_pr_claim_registry_effect import HandlerPrClaimCloseout
 
 INVENTORY_EDGE: tuple[str, str] = (
     "node_lane_tree_inventory_effect",
@@ -88,6 +91,23 @@ class HandlerLaneCloseoutRun:
     def handle(
         self, request: ModelLaneCloseoutRunRequest
     ) -> ModelLaneCloseoutRunResult:
+        released_claims: tuple[str, ...] = ()
+        if request.claims_dir is not None:
+            if not request.engine_ended:
+                raise ValueError("claim closeout requires observed engine exit")
+            released = HandlerPrClaimCloseout().handle(
+                ModelPrClaimRegistryRequest(
+                    operation=EnumPrClaimOperation.RELEASE_ENDED_OWN_CLAIMS,
+                    claims_dir=request.claims_dir,
+                    now=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    lane_id=request.lane,
+                    run_id=request.claim_run_id or "",
+                    session_id=request.session_id,
+                    dry_run=not request.remove,
+                )
+            )
+            if request.remove:
+                released_claims = released.pr_keys
         node, operation = INVENTORY_EDGE
         inventory = _contract_handler(node, operation).handle(
             ModelLaneTreeInventoryRequest(
@@ -133,4 +153,5 @@ class HandlerLaneCloseoutRun:
             inventory=inventory,
             closeouts=tuple(closeouts),
             summary=summary,
+            released_claims=released_claims,
         )

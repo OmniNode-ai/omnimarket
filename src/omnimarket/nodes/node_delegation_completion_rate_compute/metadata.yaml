@@ -1,0 +1,24 @@
+name: node_delegation_completion_rate_compute
+version: "0.1.0"
+description: "The delegation completion rate over delegation_events for a window: R_all, R_dep and failed_rate against the bounds of an overlay"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_completion_rate_compute: "omnimarket.nodes.node_delegation_completion_rate_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_infra"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "reading", "OMN-23108"]
+pack: "pipeline"
+display_name: "Delegation Completion Rate"
+node_role: "compute"

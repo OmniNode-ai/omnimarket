@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Process Spine Reading Compute (OMN-22943, rebuild plan 3.5 row 7)
+#
+# Pure definition-B compute: handle(ModelProcessSpineReadingRequest) -> ModelProcessSpineReading.
+# The caller (the stop drill effect) supplies what the drill observed on a test admission instance, the
+# replay's result when there is one, the read time and the max age. The max age and whether the replay
+# is required travel on the request, from the drill overlay; this contract holds none.
+name: node_process_spine_reading_compute
+contract_name: node_process_spine_reading_compute
+node_name: node_process_spine_reading_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Piece 7's reading from the hourly drill and the replay. WORKING when the drill's stop committed,
+  the lane sent above the stop was refused, a control lane on another piece was admitted, the drill is
+  inside its max age and the replay (when required) has no mismatch. NOT WORKING when the test
+  instance accepts the drill's lane, refuses the control lane, did not commit the stop, the drill is
+  stale or the replay mismatches. UNKNOWN when the drill did not run or the required replay is absent.
+  Carries probed_at, published_at and max_age. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: process_spine_reading
+      handler:
+        name: HandlerProcessSpineReading
+        module: omnimarket.nodes.node_process_spine_reading_compute.handlers.handler_process_spine_reading
+
+handler:
+  module: omnimarket.nodes.node_process_spine_reading_compute.handlers.handler_process_spine_reading
+  class: HandlerProcessSpineReading
+  input_model: omnimarket.nodes.node_process_spine_reading_compute.models.ModelProcessSpineReadingRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_model:
+  name: ModelProcessSpineReadingRequest
+  module: omnimarket.nodes.node_process_spine_reading_compute.models
+  description: The drill's observation, the replay's result or none, the read time and the bounds.
+output_model:
+  name: ModelProcessSpineReading
+  module: omnimarket.nodes.node_process_spine_reading_compute.models
+  description: The reading, its reason codes, probed_at, published_at and max_age.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.process-spine-reading-requested.v1"
+    operation: "process_spine_reading"
+
+terminal_event: onex.evt.omnimarket.process-spine-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.process-spine-reading-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.process-spine-read.v1
+
+# The stop drill effect calls the handler in process and nothing publishes the request topic; the reading
+# row it writes is read by the reading writer and the floor.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.process-spine-reading-requested.v1
+    producer: "the stop drill effect's hourly run, which asks for the reading in process; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.process-spine-read.v1
+
+metadata:
+  description: "Piece 7 reading from the hourly stop drill and the replay"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-09"
+  tags: [compute, process-spine, reading, pure]
+  related_tickets: ["OMN-22943"]

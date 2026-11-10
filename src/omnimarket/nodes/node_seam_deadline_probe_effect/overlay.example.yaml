@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_seam_deadline_probe_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+bus:
+  backend: inmemory
+  lane: example-lane
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: seam-deadline
+  actor: node:node_seam_deadline_probe_effect
+  publish_max_age_seconds: 7200
+history_days: 7
+seams:
+  - name: example-query
+    command_topic: onex.cmd.example.query-requested.v1
+    result_topic: onex.evt.example.query-completed.v1
+    consumer_group_prefix: local.example.query_client.consume.v1.
+    request: {query: holds}
+    fault_request: {query: not-a-query}
+    error_keys: [error, failure_code]
+    deadline_seconds: 30
+    late_listen_seconds: 60
+injected_fault: A demanded command gets no result by its deadline
+schedule_hosts:
+  - name: example-lab-host
+    venv: example-venv
+    environment:
+      EXAMPLE_LEDGER_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
+      EXAMPLE_HOST_NAME: example-lab-host
+# Optional (OMN-22909). A seam with `on_demand: true` has a node with an on-demand path only; the
+# reading attaches it for the demand through the attach-on-demand activation. `seam_declarations`
+# names each seam's trigger and bound sender; with it the row carries seams_automatic,
+# seams_on_demand and required_without_sender, and a required automatic seam with no sender
+# fails the run:
+# seam_declarations:
+#   - {seam: example-query, trigger: automatic, required: true, sender: node_example_sender_effect}

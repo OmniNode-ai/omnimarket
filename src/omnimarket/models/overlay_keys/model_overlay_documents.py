@@ -70,6 +70,26 @@ SshIdentity = Annotated[
     AfterValidator(_identity_path),
 ]
 
+
+def _volumes_root(value: str) -> str:
+    if not value.strip("/"):
+        raise ValueError("must be a directory, not the filesystem root")
+    return value
+
+
+VolumesRoot = Annotated[
+    str,
+    StringConstraints(pattern=r"^/[A-Za-z0-9._/-]*$"),
+    AfterValidator(_volumes_root),
+]
+
+# The address of a host's iLO management processor (OMN-22870): a bare IPv4, IPv6 or DNS name, as the iLO setup verb of
+# ``node_ilo_redfish_effect`` takes it. No scheme, path, port, space or leading dash; the port and the pinned certificate live
+# in that node's own overlay.
+IloAddress = Annotated[
+    str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")
+]
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -90,17 +110,33 @@ class ModelLabHostRow(_ModelOverlayBase):
 
     name: NonEmptyStr
     target: NonEmptyStr
+    # The address of the host's iLO (HPE management processor), for the hosts that have one. The iLO setup
+    # verb of node_ilo_redfish_effect reads it, so a host is set up from its table row (OMN-22870).
+    ilo_address: IloAddress | None = None
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The names the machine's own hook events carry as their host (its native hostname), for a row whose ``target`` or
+    # ``fallback_targets`` do not give it. The quiet-host alarm attributes a hook event to the row it names, so a host
+    # whose native name is none of its destinations (an ssh alias, an address, a tailnet name) declares it here (OMN-22778).
+    hostnames: tuple[NonEmptyStr, ...] = ()
     # The login every destination of the row is reached as, the jump host (ssh ``-J``) it is reached through, and the key file
     # offered to it (OMN-17427). Omitted: ssh's own defaults, as before. The probe and the launcher pass them; this model only
     # keeps a table that carries them from being refused whole.
     ssh_user: SshUser | None = None
     proxy_jump: SshJump | None = None
     ssh_identity: SshIdentity | None = None
+    # The same three cells for the ``fallback_targets`` destinations, which a machine off the lab LAN
+    # reaches by a different route than ``target``. Omitted: the row-level cell applies. Same rules as above.
+    fallback_ssh_user: SshUser | None = None
+    fallback_proxy_jump: SshJump | None = None
+    fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
+    # The host is admitted as a Tart VM host of the clean-VM walk (OMN-23204): its admission receipt names the tart version,
+    # the image digest and the probe results. Omitted means not admitted. Independent of ``roles``, whose declaration makes the
+    # table require one desired-publisher.
+    tart: bool = False
     available: bool = True
     roles: (
         tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
@@ -143,6 +179,8 @@ class ModelLabHostRow(_ModelOverlayBase):
         ]
         | None
     ) = None
+    # Where a Mac mounts its external volume (OMN-22688): an absolute directory, never the filesystem root.
+    volumes_root: VolumesRoot | None = None
     parity_python: str | None = None
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False
@@ -215,6 +253,11 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+    # The overlay store projects the whole lab_hosts overlay into the file ONEX_LAB_RUN_HOSTS names, so a table file may hold
+    # the registry roots too; the placement reads only the hosts from it, the roots key is read from the overlay (OMN-23036).
+    registry_root_candidates: (
+        Annotated[tuple[RegistryRoot, ...], Field(min_length=1)] | None
+    ) = None
 
     @model_validator(mode="after")
     def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":

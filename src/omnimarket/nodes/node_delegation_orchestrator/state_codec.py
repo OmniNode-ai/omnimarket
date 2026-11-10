@@ -333,6 +333,42 @@ def get_default_proxy() -> DelegationWorkflowStateProxy:
     return _default_proxy
 
 
+def _abandoned_cause(workflow: DelegationWorkflowState) -> str:
+    """Name what the row itself records about why the run never finished.
+
+    OMN-22478: the sweep used to say the runtime process holding the leg went
+    away. On the dev lane on 2026-11-06 no process went away: the inference
+    effect answered in seconds, but the orchestrator never consumed the answer
+    (its subscription kept replaying older messages), or it rejected only
+    redelivered answers of superseded attempts. The row cannot know which
+    process failed, so the reason states what it does know: the attempt that
+    was in flight and the superseded answers it turned away.
+    """
+    routing = workflow.routing_decision
+    route = (
+        f" on {workflow.current_tier_name or 'unknown tier'}/{routing.selected_model}"
+        if routing is not None
+        else ""
+    )
+    if workflow.inference_attempt_ordinal == 0:
+        cause = "no inference attempt was dispatched"
+    else:
+        cause = (
+            f"no response to its in-flight inference attempt "
+            f"{workflow.inference_attempt_ordinal} "
+            f"({workflow.current_inference_attempt_id}){route} was accepted"
+        )
+    rejected = workflow.stale_response_rejections
+    if rejected:
+        newest = max(rejected, key=lambda rejection: rejection.rejected_at)
+        cause += (
+            f"; {len(rejected)} redelivered responses of superseded attempts "
+            f"were rejected, the newest at {newest.rejected_at.isoformat()} "
+            f"from attempt {newest.rejected_attempt_id}"
+        )
+    return cause
+
+
 class StateIoCodec:
     """Contract-declared state_io codec bridging the runtime dispatch seam.
 
@@ -406,10 +442,8 @@ class StateIoCodec:
             else 0
         )
         reason = (
-            f"delegation was abandoned in state {state} after the runtime "
-            f"process holding its in-flight leg went away; no response to that "
-            f"leg was ever published and its command offset was already "
-            f"committed, so it is never redelivered. Terminalised by the "
+            f"delegation was abandoned in state {state}: "
+            f"{_abandoned_cause(workflow)}. Terminalised by the "
             f"contract-declared completion bound of {max_wall_seconds}s. "
             f"Resubmit the request."
         )

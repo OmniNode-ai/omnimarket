@@ -19,6 +19,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.container.container_worktre
     create_handler_worktree_schedule,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
+    CommandMergedPrReader,
     CommandWorktreeDecider,
     CommandWorktreePinner,
     SystemClock,
@@ -26,12 +27,18 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands i
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_launchd_units import (
+    LaunchdUnitRootReader,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher import (
     ContractEventPublisher,
     publish_topics,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover import (
     GitWorktreeRemover,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_units import (
+    SystemdUnitRootReader,
 )
 
 
@@ -67,7 +74,14 @@ def run_command(
 ) -> ModelWorktreeReconcileRunResult:
     decided, completed = publish_topics()
     handler = create_handler_worktree_reconcile(
-        probe=GitWorktreeFactsProbe(),
+        probe=GitWorktreeFactsProbe(
+            unit_reader=(
+                LaunchdUnitRootReader()
+                if sys.platform == "darwin"
+                else SystemdUnitRootReader()
+            ),
+            merged_pr_reader=CommandMergedPrReader(),
+        ),
         decider=CommandWorktreeDecider(),
         pinner=CommandWorktreePinner(),
         remover=GitWorktreeRemover(),

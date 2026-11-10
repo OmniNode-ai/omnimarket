@@ -19,11 +19,16 @@ import json
 import os
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.floor_fill import (
+    ModelFloorFillCandidatesRequest,
+    ModelFloorStartCriterion,
+)
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
 )
@@ -37,20 +42,26 @@ from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
 )
-from omnimarket.nodes.node_floor_fill_candidates_compute.models import (
-    ModelFloorFillCandidatesRequest,
-)
 from omnimarket.nodes.node_floor_fill_candidates_compute.tests.support import (
+    LINE,
     NOW,
     READY_10_40,
     all_ready_payloads_ok,
     all_ready_tickets_usable,
     fixture_text,
+    item,
     minutes_before,
+    record,
     request,
     reserved,
+    usable,
 )
 
+PIECES_FIXTURE = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/fixtures"
+    / "floor-simple-2026-11-07T1232Z.json"
+)
 pytestmark = [pytest.mark.unit, pytest.mark.floor_fill_parity]
 
 BOOTSTRAP_ENV = "FLOOR_FILL_PARITY_BOOTSTRAP"
@@ -62,6 +73,59 @@ OVERLAY = ModelFactoryBindingsOverlay.model_validate(
         "proof_bindings": ["inmemory", "redpanda"],
     }
 )
+
+
+def criterion_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
+    """The start criterion on the bus: a met one (golden), an unmet one and an unparseable one (error)."""
+    pieces = PIECES_FIXTURE.read_text()
+    now = "2026-11-07T12:35:00Z"
+    tasks = {
+        "criterion:met": "Start when: piece 1 reads WORKING and omnimarket#4922 is merged",
+        "criterion:unmet": "Start when: piece 2 reads WORKING",
+        "criterion:unparseable": "Start when: the operator says go",
+    }
+    return {
+        name: request(
+            now=now,
+            floor_record=record([item("T1")], generated_at="2026-11-07T12:34:00Z"),
+            pieces_record=pieces,
+            merged_refs=("omnimarket#4922",),
+            start_criteria=(
+                ModelFloorStartCriterion(
+                    line_id=LINE, task_id="T1", start_when=start_when
+                ),
+            ),
+            ticket_verdicts=(usable(LINE, "T1", "TCK-1"),),
+        )
+        for name, start_when in tasks.items()
+    }
+
+
+def integrating_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
+    """A record whose items are integrating (merged, being shown running) reads and does not unread the stopped lane."""
+    document = json.loads(
+        record(
+            [item("T1", "integrating"), item("T2")], generated_at="2026-11-02T10:40:00Z"
+        )
+    )
+    document["floor"]["stopped"] = [
+        {
+            "lane": "lane-a",
+            "ticket": "TCK-9",
+            "outcome": "partial",
+            "branch": "branch-a",
+            "rows": ["TERMINAL outcome=partial"],
+        }
+    ]
+    return {
+        "integrating:item": request(
+            floor_record=json.dumps(document),
+            ticket_verdicts=(usable(LINE, "T2", "TCK-2"),),
+        ),
+        "integrating:unknown-state": request(
+            floor_record=record([item("T1", "unheard-of")])
+        ),
+    }
 
 
 def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
@@ -79,6 +143,8 @@ def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
             now=minutes_before(NOW, -120), ticket_verdicts=all_ready_tickets_usable()
         ),
         "fixture:absent": request(floor_record=None),
+        **criterion_scenarios(),
+        **integrating_scenarios(),
     }
 
 
@@ -272,6 +338,18 @@ def test_floor_fill_candidates_parity_scenarios_decide_what_the_node_says() -> N
     assert decisions["fixture:stale"]["unread_cause"] == "old"
     assert decisions["fixture:absent"]["unread_cause"] == "absent"
     assert json.loads(fixture_text())["generated_at"] == "2026-11-02T10:40:00Z"
+    met = decisions["criterion:met"]["lines"][0]
+    assert [c["task_id"] for c in met["candidates"]] == ["T1"]
+    unmet = decisions["criterion:unmet"]["lines"][0]
+    assert unmet["candidates"] == []
+    assert unmet["not_ready"][0]["unmet"] == ["piece 2 WORKING (reads NOT WORKING)"]
+    integrating = decisions["integrating:item"]
+    assert integrating["verdict"] == "READ"
+    assert integrating["lines"][0]["not_ready"][0]["cause"] == "integrating"
+    assert [s["lane"] for s in integrating["stopped"]] == ["lane-a"]
+    assert decisions["integrating:unknown-state"]["unread_cause"] == "malformed"
+    unparseable = decisions["criterion:unparseable"]["lines"][0]
+    assert unparseable["not_ready"][0]["cause"].startswith("start-when-unparseable:")
 
 
 def test_floor_fill_candidates_parity_in_memory_bus_matches_the_in_process_decisions() -> (

@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22497"
+title: "The sibling-pin refresh judges a dev tag on the base branch's required checks only, so a non-required red no longer holds a pin back"
+summary: "The dev-tag train called a tag red when any check run on its commit was red, so omnimarket's Auto-Merge refusal, which exits 1 on purpose and gates no merge, held sibling pins back. node_dev_tag_pin_mover_compute gains a pure verdict handler bound by its contract, and train_sources reads dev's required contexts from branch protection and rulesets together and judges only the required checks that ran: red if one is red, unread if one is running or none ran, red when the required list cannot be read. omniclaude's relock script moves onto this oracle in a second change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22497-required-checks-only"
+    statement: |-
+      A dev tag's commit is judged on the base branch's required status checks only.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the tag verdict counts only the base branch's required status checks, so a commit whose only red is a non-required check reads green, and a commit with a red required check still reads red"
+      - id: "AC2"
+        statement: "AC2: when the required-check list cannot be read, the tag reads red, never green"
+evidence_requirements:
+  - kind: "tests"
+    description: "The verdict, the required-context read and the node's routing, with gh answers shaped on a live dev tag."
+    command: "uv run pytest tests/nodes/node_dev_tag_pin_mover_compute -q -k required_checks_only --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22497-required-only"
+    description: "A commit whose only reds are non-required reads green, a required red reads red, a running required check or no required run reads unread, and the contract routes judge_dev_tag_green to the handler."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_required_checks_only_omn22497.py -q --no-cov -k 'non_required_red or required_red_still or running_required or no_required_run or end_to_end or same_verdict or contract_routes or both_read'"
+        cwd: "."
+  - id: "dod-omn22497-unreadable-is-red"
+    description: "An unreadable or empty required list, from either the protection or the ruleset read, makes the tag red, never green."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_required_checks_only_omn22497.py -q --no-cov -k 'unreadable_required_list or failed_required_read'"
+        cwd: "."
+  - id: "dod-omn22497-integration-proof"
+    description: "The pushed head runs the train's oracle on a lab host against live GitHub: omnimarket dev tag 4f751fb962c1, whose only reds are the non-required Auto-Merge and Heal release-window runs, reads green. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22497 -- uv run --frozen python -c 'import sys; from omnimarket.nodes.node_dev_tag_pin_mover_compute.train_sources import github_check_runs_green as g; sys.exit(0 if g(\"omnimarket\", \"4f751fb962c144d56fcf77f801b3620b4d460aa3\") is True else 1)'"
+        cwd: "."
+  - id: "dod-omn22497-deploy-probe"
+    description: "Deploy probe: the handler module GitHub serves at the checked-out commit defines HandlerDevTagGreenVerdict, and the checked-out train_sources calls it. The module is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dev_tag_pin_mover_compute/handlers/handler_dev_tag_green_verdict.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"class HandlerDevTagGreenVerdict\" > /dev/null'"
+        cwd: "."
+      - check_type: "command"
+        check_value: "grep -F 'HandlerDevTagGreenVerdict().handle(' src/omnimarket/nodes/node_dev_tag_pin_mover_compute/train_sources.py"
+        cwd: "."

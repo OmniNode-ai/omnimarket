@@ -25,8 +25,10 @@ def main(argv: list[str] | None = None) -> int:
     line = (
         f"linear-snapshot | {result.status} path={result.path} "
         f"issues={result.issue_count} with_description={result.with_description}"
+        + (f" mode={result.mode}" if result.mode else "")
+        + (f" age_s={result.age_s}" if result.age_s is not None else "")
     )
     sys.stdout.write(
         line + (f" reason: {result.reason}" if result.reason else "") + "\n"
     )
-    return 0 if result.status == "written" else 1
+    return 1 if result.status == "failed" else 0

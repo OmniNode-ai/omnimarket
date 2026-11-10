@@ -100,6 +100,14 @@ def terminal(
     )
 
 
+def check(ask: str, stamp: str, verdict: str, spec: str = "floor:piece=6") -> str:
+    """A done-check verdict row: the check read the running system."""
+    return (
+        f"{stamp} | STATUS | lane=ask-check | ask={ask} | done_check={spec} | "
+        f"verdict={verdict} | the done check read the running system"
+    )
+
+
 def test_ask_answered_in_chat_only_is_dropped() -> None:
     report = _run((_prompt(1, "Check the MSK topic list and send it"),))
     assert _state(report, 1) is EnumAskState.DROPPED
@@ -129,9 +137,18 @@ def test_ask_that_spawned_a_lane_is_owned_then_done() -> None:
     done_row = terminal(
         "lane-a", "2026-10-31T09:00:00Z", "2026-10-31T08:05:00Z", "done"
     )
-    done = _run((_prompt(2, "Mint the child ticket"),), (claim_row, done_row))
+    # The lane's report is not the done: the ask is open with no running lane.
+    reported = _run((_prompt(2, "Mint the child ticket"),), (claim_row, done_row))
+    assert _state(reported, 2) is EnumAskState.UNVERIFIED
+    assert _entry(reported, 2).claimed_resolution == "terminal"
+    assert _entry(reported, 2).resolution is None
+    assert reported.counts.unverified == 1
+
+    passed = check(ask_id(2), "2026-10-31T09:30:00Z", "TRUE")
+    done = _run((_prompt(2, "Mint the child ticket"),), (claim_row, done_row, passed))
     assert _state(done, 2) is EnumAskState.DONE
-    assert _entry(done, 2).resolution == "terminal"
+    assert _entry(done, 2).resolution == "checked"
+    assert _entry(done, 2).check_verdict == "TRUE"
 
 
 def test_failed_lane_with_a_ticket_leaves_the_ask_ticketed_without_one_it_is_dropped() -> (
@@ -216,8 +233,8 @@ def test_closes_ask_needs_evidence_withdrawal_needs_none() -> None:
 
     merged = f"2026-10-31T09:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=omnimarket#4700"
     report = _run((_prompt(10, "Do a thing"),), (merged,))
-    assert _state(report, 10) is EnumAskState.DONE
-    assert _entry(report, 10).resolution == "closes-ask"
+    assert _state(report, 10) is EnumAskState.UNVERIFIED
+    assert _entry(report, 10).claimed_resolution == "closes-ask"
 
     withdrawn = (
         f"2026-10-31T09:00:00Z | STATUS | lane=operator-capture | closes-ask={ask_id(10)} | "
@@ -556,8 +573,8 @@ def test_done_status_with_a_cited_send_row_closes_the_ask() -> None:
         + " | state=done | evidence=SENT-ON-BEHALF:2026-10-31T09:00:00Z | answered"
     )
     report = _run((_prompt(1, "check MSK, and send."),), (send, done))
-    assert _state(report, 1) is EnumAskState.DONE
-    assert _entry(report, 1).resolution == "closes-ask"
+    assert _state(report, 1) is EnumAskState.UNVERIFIED
+    assert _entry(report, 1).claimed_resolution == "closes-ask"
 
 
 def test_done_status_citing_a_row_that_does_not_exist_closes_nothing() -> None:
@@ -658,3 +675,79 @@ def test_unclassified_prompt_a_row_cites_is_adopted_and_others_stay_listed() -> 
     assert report.asks[0].ask_id == "ask-0fd74581d1"
     assert report.asks[0].state is EnumAskState.PARKED
     assert [u.capture_id for u in report.unclassified] == ["95b635443dfbf536"]
+
+
+def test_failing_control_an_ask_closed_on_a_report_alone_stays_open() -> None:
+    """Orchestrator 2026-11-06T14:27:51Z: a lane's done report, a merge and a STATUS state=done
+    with evidence each leave the ask open until its done check reads true; a failing check
+    keeps it open with the verdict shown."""
+    claim_row = claim("lane-b", "2026-10-31T08:05:00Z", ask_id(30))
+    rows = (
+        claim_row,
+        terminal("lane-b", "2026-10-31T09:00:00Z", "2026-10-31T08:05:00Z", "done"),
+        f"2026-10-31T09:05:00Z | STATUS | lane=lane-b | closes-ask={ask_id(30)} | evidence=omnimarket#4700",
+        check(ask_id(30), "2026-10-31T09:10:00Z", "FALSE"),
+    )
+    report = _run((_prompt(30, "Make the floor read piece 6"),), rows)
+    entry = _entry(report, 30)
+    assert entry.state is EnumAskState.FAILED
+    assert entry.check_verdict == "FALSE"
+    assert entry.done_check == "floor:piece=6"
+    assert entry.owner_lane is None
+    assert report.counts.failed == 1
+    assert "FAILED (1)" in report.text
+
+
+def _reported_done(n: int) -> tuple[str, str]:
+    return (
+        claim("lane-d", "2026-10-31T08:05:00Z", ask_id(n)),
+        terminal("lane-d", "2026-10-31T09:00:00Z", "2026-10-31T08:05:00Z", "done"),
+    )
+
+
+def test_three_states_of_a_reported_done_ask_follow_the_newest_verdict_row() -> None:
+    """OMN-22729 AC1: unverified with no verdict row, done when the newest reads TRUE, failed
+    when the newest reads FALSE; UNKNOWN (the check could not read) never closes or fails it."""
+    prompt = (_prompt(40, "Make the floor read piece 6"),)
+    base = _reported_done(40)
+    true_row = check(ask_id(40), "2026-10-31T09:10:00Z", "TRUE")
+    false_row = check(ask_id(40), "2026-10-31T09:20:00Z", "FALSE")
+    unknown_row = check(ask_id(40), "2026-10-31T09:30:00Z", "UNKNOWN")
+    assert _state(_run(prompt, base), 40) is EnumAskState.UNVERIFIED
+    assert _state(_run(prompt, (*base, true_row)), 40) is EnumAskState.DONE
+    assert _state(_run(prompt, (*base, false_row)), 40) is EnumAskState.FAILED
+    assert _state(_run(prompt, (*base, unknown_row)), 40) is EnumAskState.UNVERIFIED
+    # The newest row rules, by its stamp.
+    later_true = check(ask_id(40), "2026-10-31T09:40:00Z", "TRUE")
+    later_false = check(ask_id(40), "2026-10-31T09:40:00Z", "FALSE")
+    assert _state(_run(prompt, (*base, false_row, later_true)), 40) is EnumAskState.DONE
+    assert (
+        _state(_run(prompt, (*base, true_row, later_false)), 40) is EnumAskState.FAILED
+    )
+    assert (
+        _state(_run(prompt, (*base, true_row, unknown_row)), 40)
+        is EnumAskState.UNVERIFIED
+    )
+
+
+def test_a_passing_check_closes_an_ask_and_a_check_for_another_ask_does_not() -> None:
+    other = check(ask_id(32), "2026-10-31T09:10:00Z", "TRUE")
+    passing = check(ask_id(31), "2026-10-31T09:20:00Z", "TRUE")
+    claim_row = claim("lane-c", "2026-10-31T08:05:00Z", ask_id(31))
+    open_report = _run((_prompt(31, "Install the unit on h053"),), (claim_row, other))
+    assert _state(open_report, 31) is EnumAskState.OWNED
+    closed = _run(
+        (_prompt(31, "Install the unit on h053"),), (claim_row, other, passing)
+    )
+    assert _state(closed, 31) is EnumAskState.DONE
+    assert _entry(closed, 31).resolution == "checked"
+
+
+def test_operator_words_still_close_without_a_check() -> None:
+    withdrawn = (
+        f"2026-10-31T09:00:00Z | STATUS | lane=operator-capture | closes-ask={ask_id(33)} | "
+        'state=dropped | evidence=operator-drop | "drop it"'
+    )
+    report = _run((_prompt(33, "Do a thing"),), (withdrawn,))
+    assert _state(report, 33) is EnumAskState.DONE
+    assert _entry(report, 33).resolution == "withdrawn"

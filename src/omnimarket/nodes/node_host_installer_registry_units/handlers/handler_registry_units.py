@@ -1,26 +1,30 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Render and install launchd registry_module_tick units, with a project path override.
+"""Render and install launchd or systemd registry_module_tick units, with a project path override.
 
 A registry_module_tick unit runs ``uv run --frozen --python <brew python> --project <project> python -m <module>`` on a timer. The project is the
 canonical registry clone unless the unit contract declares ``project_path_override`` and the request names a checkout:
 then the rendered unit runs that checkout, so a fix installs from its branch without waiting for a merge. The checkout
 must be clean (the installed code equals its revision) and carry the unit's entry file. The revision the unit runs is
-read from the checkout and written to the unit's install record.
+read from the checkout and written to the unit's install record. A unit whose contract says ``platform: systemd``
+renders a user service and timer for a Linux pool host instead of a plist (OMN-22878).
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import plistlib
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +32,7 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
@@ -38,6 +43,18 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
+LOCKED_MODES = frozenset({"install", "uninstall"})
+EXIT_INSTALL_IN_PROGRESS = 75
+# After an unit is unloaded, how long the install waits for a tick still holding the unit's tick lock to end by itself, then
+# how long it waits after TERM before it sends KILL (OMN-23349).
+TICK_GRACE_S = 30.0
+TICK_TERM_WAIT_S = 10.0
+TICK_POLL_S = 0.1
+
+
+class InstallInProgressError(RuntimeError):
+    """Another install or uninstall of the same unit holds the unit's lock."""
 
 
 def interpreter_present(path: str) -> bool:
@@ -55,6 +72,30 @@ def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(argv, 127, "", str(exc))
+
+
+# launchd's ProcessType of a tick unit that declares none: Background throttles its CPU and disk reads.
+DEFAULT_PROCESS_TYPE = "Background"
+PROCESS_TYPES = frozenset({"Background", "Standard", "Adaptive", "Interactive"})
+# launchd has no run limit for a StartInterval job, so a hung run holds the job and no tick follows (the overlay store
+# refresh hung 40 minutes at 0% CPU on 2026-11-06 and the alarm opened a missed-interval episode). A unit that declares
+# run_timeout_s runs under this wrapper: it puts the command in its own process group, ends the whole group with TERM
+# and then KILL when the limit passes, and exits 124 so the job-exit alarm reads a failed exit instead of silence. The
+# command's own group is outside the job's, so the TERM launchd sends the wrapper at bootout would not reach it: the
+# wrapper ends the group on TERM, INT and HUP too (exit 128 plus the signal), or an unload leaves the run orphaned beside the next
+# install's (a job-log filler tick ran 4 h 12 min that way, OMN-23349).
+TIMEOUT_PROGRAM = (
+    "my $limit = shift; my $pid = fork(); defined $pid or exit 71; "
+    "if (!$pid) { setpgrp(0, 0); exec @ARGV; exit 127 } "
+    "my $end = sub { my $code = shift; kill 'TERM', -$pid; "
+    "for (1 .. 50) { select(undef, undef, undef, 0.1); waitpid($pid, 1); kill(0, -$pid) or last } "
+    "kill 'KILL', -$pid; exit $code }; "
+    "$SIG{ALRM} = sub { $end->(124) }; "
+    "my %n = (TERM => 15, INT => 2, HUP => 1); $SIG{$_} = sub { $end->(128 + $n{$_[0]}) } for keys %n; "
+    "alarm $limit; waitpid($pid, 0); "
+    "exit($? & 127 ? 128 + ($? & 127) : $? >> 8)"
+)
+TIMEOUT_INTERPRETER = "/usr/bin/perl"
 
 
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -83,11 +124,117 @@ class HandlerRegistryUnits:
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
         try:
-            if unit.get("kind") == "copied_tree":
-                return self.copied_unit(request, unit)
-            return self.dispatch(request, unit)
+            with self.install_lock(request, unit):
+                if unit.get("kind") == "copied_tree":
+                    return self.copied_unit(request, unit)
+                if unit.get("platform") == "systemd":
+                    return self.dispatch_systemd(request, unit)
+                return self.dispatch(request, unit)
+        except InstallInProgressError as exc:
+            return self.result(request, EXIT_INSTALL_IN_PROGRESS, error=f"{exc}\n")
         except (OSError, ValueError) as exc:
             return self.result(request, 1, error=f"{exc}\n")
+
+    @contextmanager
+    def install_lock(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> Iterator[None]:
+        """Hold the unit's lock for an install or uninstall; a second one is refused, never queued.
+
+        The lock is an advisory ``flock`` on a file in the unit's state directory, so the kernel drops it when the
+        holder ends, fails or dies and a stale lock cannot block the next install. The file names the holder.
+        """
+        if request.mode not in LOCKED_MODES:
+            yield
+            return
+        state = Path(request.registry_root) / str(unit["state_directory"])
+        state.mkdir(parents=True, exist_ok=True)
+        path = state / f"{request.unit}.install.lock"
+        with path.open("a+", encoding="utf-8") as handle:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                handle.seek(0)
+                holder = handle.read().strip() or "a holder that wrote no record"
+                raise InstallInProgressError(
+                    f"INSTALL-IN-PROGRESS: another {request.unit} install holds {path} ({holder}); "
+                    "this request changed nothing, ask the lane that owns the unit's installs"
+                ) from None
+            handle.seek(0)
+            handle.truncate()
+            handle.write(
+                f"pid={os.getpid()} mode={request.mode} project={request.project_path or 'canonical'} "
+                f"since={datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
+            )
+            handle.flush()
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    # ------------------------------------------------------------------ a tick the unload left running
+
+    def signal(self, pid: int, sig: int) -> None:
+        """Send a signal to a tick's process; a process already gone is not an error."""
+        with suppress(ProcessLookupError):
+            os.kill(pid, sig)
+
+    @staticmethod
+    def tick_holder(lock: Path) -> int | None:
+        """The pid a live tick wrote in the lock it holds (0 when it wrote none), or None when the lock is free."""
+        if not lock.is_file():
+            return None
+        with lock.open("a+", encoding="utf-8") as handle:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                handle.seek(0)
+                match = re.match(r"pid=(\d+)", handle.read())
+                return int(match.group(1)) if match else 0
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        return None
+
+    def wait_released(self, lock: Path, seconds: float) -> bool:
+        deadline = time.monotonic() + seconds
+        while self.tick_holder(lock) is not None:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(TICK_POLL_S)
+        return True
+
+    def stop_running_tick(
+        self, unit: dict[str, Any], request: ModelRegistryUnitsRequest
+    ) -> str:
+        """After the unit is unloaded, wait for a tick still holding its tick lock, then stop it.
+
+        A unit that declares ``tick_lock_file`` has a tick that holds that file, in the directory of its evidence
+        file, for as long as it runs. The wait is the tick's own chance to end; past it the tick the lock names gets
+        TERM, then KILL. A tick that outlives both refuses the install: loading the next unit beside it would put two
+        ticks on one state directory.
+        """
+        name = unit.get("tick_lock_file")
+        if not name:
+            return ""
+        lock = (Path(request.home) / str(unit["evidence_file"])).parent / str(name)
+        if self.tick_holder(lock) is None:
+            return ""
+        if self.wait_released(lock, TICK_GRACE_S):
+            return f"waited for the running tick holding {lock} to end\n"
+        holder = self.tick_holder(lock)
+        if holder is None:
+            return f"waited for the running tick holding {lock} to end\n"
+        if holder:
+            for sig, wait in (
+                (signal.SIGTERM, TICK_TERM_WAIT_S),
+                (signal.SIGKILL, TICK_TERM_WAIT_S),
+            ):
+                self.signal(holder, sig)
+                if self.wait_released(lock, wait):
+                    return f"stopped the running tick (pid {holder}) holding {lock}\n"
+        raise ValueError(
+            f"the running {unit['label']} tick (pid {holder or 'unknown'}) holds {lock} and did not stop; "
+            f"{unit['label']} was not loaded"
+        )
 
     # ------------------------------------------------------------------ plan
 
@@ -183,6 +330,14 @@ class HandlerRegistryUnits:
             )
             if supplied:
                 filled[str(name)] = supplied
+        for name in unit.get("environment_refuse_worktree_paths") or []:
+            offending = [
+                entry
+                for entry in filled.get(str(name), "").split(os.pathsep)
+                if under_worktrees(entry)
+            ]
+            if offending:
+                raise UnitRootRefusedError(request.unit, offending)
         if request.mode == "install":
             for name in unit.get("required_environment_inputs") or []:
                 if not filled.get(str(name)):
@@ -190,6 +345,143 @@ class HandlerRegistryUnits:
                         f"{name} is unset: supply the unit's declared request input or export it before installing"
                     )
         return filled
+
+    def config_target(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> Path | None:
+        """Where the unit's declared configuration file is written: the value of the environment variable the
+        declaration names, which is the path the installed unit reads (a path override included)."""
+        declared = unit.get("config_file")
+        if not declared:
+            return None
+        name = str(declared["environment"])
+        value = self.environment(request, unit).get(name)
+        if not value:
+            raise ValueError(
+                f"{request.unit} declares a configuration file at ${name}, which the unit does not set"
+            )
+        return Path(value)
+
+    def config_text(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> str:
+        """The unit's declared configuration document with every placeholder filled.
+
+        Built-in placeholders are {home}, {registry_root} and {ledger_path} (the request's, else the registry's own
+        ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
+        variable of the installing shell, and falls back to the value the unit's last install recorded, so a
+        reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
+        never written with a hole in it, except in a top-level key the declaration lists under ``optional_keys``:
+        that key is left out of the document.
+        """
+        declared = unit.get("config_file")
+        if not declared:
+            return ""
+        root = Path(request.registry_root)
+        values = {
+            "home": request.home,
+            "registry_root": request.registry_root,
+            "ledger_path": request.ledger_path
+            or str(root / "docs/tracking/ROLLING_WORK_LEDGER.md"),
+        }
+        values.update(self.config_inputs(request, unit))
+
+        def fill(node: Any) -> Any:
+            if isinstance(node, str):
+                for key, value in values.items():
+                    node = node.replace("{" + key + "}", value)
+                left = PLACEHOLDER.search(node)
+                if left is not None:
+                    raise ValueError(
+                        f"the {request.unit} configuration names {left.group(0)}, which this request does not set "
+                        "(name it as a request input, export its environment variable, or reinstall once with it)"
+                    )
+                return node
+            if isinstance(node, list):
+                return [fill(item) for item in node]
+            if isinstance(node, dict):
+                return {str(key): fill(item) for key, item in node.items()}
+            return node
+
+        document = dict(declared["document"])
+        for key in declared.get("optional_keys") or []:
+            if key in document:
+                try:
+                    fill(document[key])
+                except ValueError:
+                    del document[key]
+        return json.dumps(fill(document), indent=1) + "\n"
+
+    def config_inputs(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> dict[str, str]:
+        """The values of the configuration's declared inputs: the request, else the installing shell, else the last install."""
+        declared = (unit.get("config_file") or {}).get("inputs") or {}
+        if not declared:
+            return {}
+        root = Path(request.registry_root)
+        record = root / str(unit["state_directory"]) / f"{request.unit}.installed.json"
+        try:
+            recorded = dict(
+                json.loads(record.read_text(encoding="utf-8")).get("config_inputs")
+                or {}
+            )
+        except (OSError, ValueError, AttributeError, TypeError):
+            recorded = {}
+        found: dict[str, str] = {}
+        for name, source in declared.items():
+            value = (
+                str(getattr(request, str(source["field"]), "")).strip()
+                or os.environ.get(str(source.get("env") or ""), "").strip()
+                or str(recorded.get(str(name)) or "")
+            )
+            if value:
+                found[str(name)] = value
+        return found
+
+    @staticmethod
+    def write_config(target: Path, text: str, mode: int) -> str:
+        """Write ``text`` at ``target`` with ``mode`` and keep a differing file it replaces as ``<name>.previous``.
+
+        Returns the path of the kept copy, or '' when nothing was replaced or the content was the same.
+        """
+        target.parent.mkdir(parents=True, exist_ok=True)
+        kept = ""
+        if target.is_file() and target.read_text(encoding="utf-8") != text:
+            previous = target.with_name(target.name + ".previous")
+            shutil.copyfile(target, previous)
+            previous.chmod(mode)
+            kept = str(previous)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+        try:
+            temporary.chmod(mode)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return kept
+
+    @staticmethod
+    def timeout_args(unit: dict[str, Any]) -> str:
+        """The wrapper's ProgramArguments entries for a unit that declares run_timeout_s, else nothing."""
+        limit = unit.get("run_timeout_s")
+        if limit is None:
+            return ""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError(
+                f"{unit['label']} declares run_timeout_s {limit!r}; it must be a whole number of seconds, at least 1"
+            )
+        return "".join(
+            f"<string>{escape(part)}</string>\n    "
+            for part in (TIMEOUT_INTERPRETER, "-e", TIMEOUT_PROGRAM, str(limit))
+        )
 
     def render(
         self,
@@ -199,8 +491,22 @@ class HandlerRegistryUnits:
         uv: str,
         python: str,
     ) -> str:
+        if unit.get("environment_file"):
+            raise ValueError(
+                f"{unit['label']} declares environment_file {unit['environment_file']!r}; "
+                "launchd units do not support an environment file, declare the variables instead"
+            )
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
+        process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
+        if process_type not in PROCESS_TYPES:
+            raise ValueError(
+                f"{unit['label']} declares process_type {process_type!r}; launchd knows {sorted(PROCESS_TYPES)}"
+            )
+        timeout_args = self.timeout_args(unit)
         home, root = Path(request.home), Path(request.registry_root)
+        job_root = (
+            home / str(unit["launchd_root"]) if unit.get("launchd_root") else root
+        )
         evidence = home / str(unit["evidence_file"])
         state = root / str(unit["state_directory"])
         environment = "".join(
@@ -215,12 +521,23 @@ class HandlerRegistryUnits:
             "PYTHON": python,
             "PROJECT": str(project),
             "MODULE": str(unit["module"]),
-            "OMNI_HOME": str(root),
+            # launchd holds no grant to an external volume: a job started with a working directory there waits in getcwd
+            # forever, and one that writes there is refused. A unit may declare launchd_root, relative to the home, to stand
+            # in for the registry root in the job (working directory, OMNI_HOME, the tick's --omni-home); undeclared, the
+            # job keeps the registry root.
+            "OMNI_HOME": str(job_root),
             "EVIDENCE_DIR": str(evidence.parent),
             "HOME": str(home),
             "USER": user,
             "STATE_DIR": str(state),
+            # launchd opens the log files before the job runs, so a state directory on an external volume (a registry
+            # root that links to /Volumes) ends the job with EX_CONFIG and no log. A unit may declare log_directory,
+            # relative to the home, to keep its logs off the registry root; undeclared, the logs sit in the state directory.
+            "LOG_DIR": str(home / str(unit["log_directory"]))
+            if unit.get("log_directory")
+            else str(state),
             "START_INTERVAL": str(unit["schedule"]["start_interval"]),
+            "PROCESS_TYPE": process_type,
         }
         for key, value in values.items():
             text = text.replace(f"__{key}__", escape(value))
@@ -229,6 +546,7 @@ class HandlerRegistryUnits:
             "<true/>" if unit["schedule"]["run_at_load"] else "<false/>",
         )
         text = text.replace("__ENVIRONMENT__", environment)
+        text = text.replace("__TIMEOUT_ARGS__", timeout_args)
         text = text.replace(
             "__TICK_SYNC_ARGS__",
             "<string>--no-sync</string>" if unit.get("tick_no_sync") else "",
@@ -263,10 +581,12 @@ class HandlerRegistryUnits:
         if request.mode == "uninstall":
             stopped = self.run(["launchctl", "bootout", target])
             plist.unlink(missing_ok=True)
+            ended = self.stop_running_tick(unit, request)
             return self.result(
                 request,
                 0,
                 out=stopped.stdout
+                + ended
                 + f"removed {label} (state under {state} is left in place)\n",
             )
         if request.mode == "status":
@@ -282,6 +602,257 @@ class HandlerRegistryUnits:
             raise ValueError(f"uv is not on PATH; it runs {unit['module']} for {label}")
         python = self.interpreter_for(unit)
         text = self.render(request, unit, project, uv, python)
+        config_path = self.config_target(request, unit)
+        config = self.config_text(request, unit)
+        if request.mode == "dry-run":
+            return self.result(
+                request,
+                0,
+                out=text
+                + (f"\nconfiguration {config_path}:\n{config}" if config else ""),
+                rendered=text,
+                project=project,
+                revision=revision,
+                canonical=canonical,
+                config=config,
+                config_path=str(config_path or ""),
+            )
+        proof = self.run(
+            [
+                uv,
+                "run",
+                "--frozen",
+                "--python",
+                python,
+                "--project",
+                str(project),
+                "python",
+                "-m",
+                str(unit["module"]),
+                "--help",
+            ]
+        )
+        if proof.returncode:
+            raise ValueError(
+                f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+            )
+        state.mkdir(parents=True, exist_ok=True)
+        if unit.get("launchd_root"):
+            (home / str(unit["launchd_root"])).mkdir(parents=True, exist_ok=True)
+        kept_config = ""
+        if config_path is not None:
+            kept_config = self.write_config(
+                config_path,
+                config,
+                int(str(unit["config_file"].get("mode", "0600")), 8),
+            )
+        plist.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="registry-units-") as scratch:
+            rendered = Path(scratch) / "agent.plist"
+            rendered.write_text(text, encoding="utf-8")
+            rendered.chmod(0o600)
+            self.run(["launchctl", "bootout", target])
+            ended = self.stop_running_tick(unit, request)
+            shutil.move(str(rendered), str(plist))
+        started = self.run(["launchctl", "bootstrap", domain, str(plist)])
+        if started.returncode:
+            return self.result(
+                request,
+                started.returncode,
+                out=started.stdout,
+                error=started.stderr,
+                project=project,
+                revision=revision,
+                canonical=canonical,
+            )
+        record.write_text(
+            json.dumps(
+                {
+                    "unit": request.unit,
+                    "label": label,
+                    "project": str(project),
+                    "project_is_canonical": canonical,
+                    "revision": revision,
+                    "config_inputs": self.config_inputs(request, unit),
+                    "installed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+                indent=1,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return self.result(
+            request,
+            0,
+            out=f"installed {label}: {unit['schedule']['description']}, runs {unit['module']} from {project} at {revision}, "
+            f"heartbeat {evidence}, logs in {state}\n"
+            + ended
+            + (
+                f"wrote configuration {config_path}"
+                + (
+                    f", kept the file it replaced as {kept_config}"
+                    if kept_config
+                    else ""
+                )
+                + "\n"
+                if config_path is not None
+                else ""
+            ),
+            rendered=text,
+            project=project,
+            revision=revision,
+            canonical=canonical,
+            record=str(record),
+            config=config,
+            config_path=str(config_path or ""),
+        )
+
+    # ------------------------------------------------------------------ systemd
+
+    @staticmethod
+    def systemd_value(value: str) -> str:
+        """A value placed inside a double-quoted systemd word; one systemd cannot hold unchanged is refused."""
+        if any(c in value for c in '"\\\n'):
+            raise ValueError(
+                f"{value!r} holds a quote, backslash or newline a systemd unit cannot carry"
+            )
+        return value.replace("%", "%%")
+
+    def environment_file(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> str:
+        """The EnvironmentFile line of a systemd unit that declares one, else an empty line.
+
+        The declaration is a path relative to the home, and the line carries a leading dash, so a host that has no
+        such file still runs the unit. A path that is absolute, climbs out of the home, or holds a character an
+        unquoted systemd word cannot carry is refused: the line is never quoted, so whitespace, a quote or a
+        backslash in it would not be the path the contract declared.
+        """
+        declared = str(unit.get("environment_file") or "")
+        if not declared:
+            return ""
+        relative = Path(declared)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(
+                f"{unit['label']} declares environment_file {declared!r}; it must be a path relative to the home"
+            )
+        path = f"{request.home}/{declared}"
+        if any(character.isspace() or character in '"\\' for character in path):
+            raise ValueError(
+                f"{path!r} holds whitespace, a quote or a backslash a systemd EnvironmentFile cannot carry"
+            )
+        return f"EnvironmentFile=-{self.systemd_value(path)}"
+
+    def render_systemd(
+        self,
+        request: ModelRegistryUnitsRequest,
+        unit: dict[str, Any],
+        project: Path,
+        uv: str,
+        python: str,
+    ) -> tuple[str, str]:
+        """The service and the timer text of a systemd registry_module_tick unit."""
+        home, root = Path(request.home), Path(request.registry_root)
+        evidence = home / str(unit["evidence_file"])
+        state = root / str(unit["state_directory"])
+        interval = int(unit["schedule"]["start_interval"])
+        environment = " ".join(
+            f'"{self.systemd_value(name)}={self.systemd_value(value)}"'
+            for name, value in self.environment(request, unit).items()
+        )
+        user = self.run(["id", "-un"]).stdout.strip() or os.environ.get("USER", "")
+        values = {
+            "LABEL": str(unit["label"]),
+            "UNIT": request.unit,
+            "UV": uv,
+            "PYTHON": python,
+            "PROJECT": str(project),
+            "MODULE": str(unit["module"]),
+            "OMNI_HOME": str(root),
+            "EVIDENCE_DIR": str(evidence.parent),
+            "HOME": str(home),
+            "USER": user,
+            "STATE_DIR": str(state),
+            "RUN_TIMEOUT": str(int(unit["schedule"].get("run_timeout_s") or interval)),
+            "START_INTERVAL": str(interval),
+            "DESCRIPTION": str(unit["schedule"]["description"]),
+        }
+        service = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
+        timer = (NODE_DIR / str(unit["timer_template"])).read_text(encoding="utf-8")
+        for key, value in values.items():
+            service = service.replace(f"__{key}__", self.systemd_value(value))
+            timer = timer.replace(f"__{key}__", self.systemd_value(value))
+        service = service.replace(
+            "__ENVIRONMENT__", f"Environment={environment}" if environment else ""
+        )
+        service = service.replace(
+            "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
+        )
+        service = service.replace(
+            "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""
+        )
+        timer = timer.replace(
+            "__RUN_AT_LOAD__",
+            "OnActiveSec=1s"
+            if unit["schedule"]["run_at_load"]
+            else f"OnActiveSec={interval}",
+        )
+        left = re.search(r"__[A-Z_]+__", service + timer)
+        if (
+            left is not None
+        ):  # a template placeholder this renderer does not fill is never written
+            raise ValueError(
+                f"{unit['label']} template leaves {left.group(0)} unfilled"
+            )
+        return service, timer
+
+    def dispatch_systemd(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> ModelRegistryUnitsResult:
+        label = str(unit["label"])
+        home, root = Path(request.home), Path(request.registry_root)
+        state = root / str(unit["state_directory"])
+        evidence = home / str(unit["evidence_file"])
+        unit_dir = home / ".config/systemd/user"
+        service_path = unit_dir / f"{label}.service"
+        timer_path = unit_dir / f"{label}.timer"
+        record = state / f"{request.unit}.installed.json"
+        systemctl = ["systemctl", "--user"]
+
+        if request.mode == "kickstart":
+            done = self.run([*systemctl, "start", "--no-block", f"{label}.service"])
+            return self.result(
+                request,
+                done.returncode,
+                out=done.stdout + f"started {label}.service once\n",
+                error=done.stderr,
+            )
+        if request.mode == "uninstall":
+            stopped = self.run([*systemctl, "disable", "--now", f"{label}.timer"])
+            service_path.unlink(missing_ok=True)
+            timer_path.unlink(missing_ok=True)
+            self.run([*systemctl, "daemon-reload"])
+            return self.result(
+                request,
+                0,
+                out=stopped.stdout
+                + f"removed {label} (state under {state} is left in place)\n",
+            )
+        if request.mode == "status":
+            return self.status_systemd(request, unit, evidence, record)
+
+        project, canonical = self.project_for(request, unit)
+        if canonical and not request.expected_revision:
+            revision = self.head_of(project)
+        else:
+            revision = self.checkout_revision(project, unit, request.expected_revision)
+        uv = shutil.which("uv")
+        if uv is None:
+            raise ValueError(f"uv is not on PATH; it runs {unit['module']} for {label}")
+        python = self.interpreter_for(unit)
+        service, timer = self.render_systemd(request, unit, project, uv, python)
+        text = service + "\n" + timer
         if request.mode == "dry-run":
             return self.result(
                 request,
@@ -312,29 +883,52 @@ class HandlerRegistryUnits:
                 f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
-        plist.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="registry-units-") as scratch:
-            rendered = Path(scratch) / "agent.plist"
-            rendered.write_text(text, encoding="utf-8")
-            rendered.chmod(0o600)
-            self.run(["launchctl", "bootout", target])
-            shutil.move(str(rendered), str(plist))
-        started = self.run(["launchctl", "bootstrap", domain, str(plist)])
-        if started.returncode:
-            return self.result(
-                request,
-                started.returncode,
-                out=started.stdout,
-                error=started.stderr,
-                project=project,
-                revision=revision,
-                canonical=canonical,
-            )
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        previous = {
+            path: (path.read_bytes() if path.exists() else None)
+            for path in (service_path, timer_path)
+        }
+        for path, body in ((service_path, service), (timer_path, timer)):
+            staged = path.with_name(f".{path.name}.staged")
+            staged.write_text(body, encoding="utf-8")
+            staged.chmod(0o644)
+            staged.replace(path)
+        steps = (
+            [*systemctl, "daemon-reload"],
+            [*systemctl, "enable", f"{label}.timer"],
+            [*systemctl, "restart", f"{label}.timer"],
+        )
+        for step in steps:
+            done = self.run(step)
+            if done.returncode:
+                for (
+                    path,
+                    old,
+                ) in (
+                    previous.items()
+                ):  # put the previous unit back, never leave a half install
+                    if old is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        path.write_bytes(old)
+                self.run([*systemctl, "daemon-reload"])
+                if previous[timer_path] is not None:
+                    self.run([*systemctl, "restart", f"{label}.timer"])
+                return self.result(
+                    request,
+                    done.returncode,
+                    out=done.stdout,
+                    error=f"{' '.join(step)} failed, previous unit restored:\n{done.stderr}",
+                    project=project,
+                    revision=revision,
+                    canonical=canonical,
+                )
         record.write_text(
             json.dumps(
                 {
                     "unit": request.unit,
                     "label": label,
+                    "platform": "systemd",
                     "project": str(project),
                     "project_is_canonical": canonical,
                     "revision": revision,
@@ -349,14 +943,46 @@ class HandlerRegistryUnits:
         return self.result(
             request,
             0,
-            out=f"installed {label}: {unit['schedule']['description']}, runs {unit['module']} from {project} at {revision}, "
-            f"heartbeat {evidence}, logs in {state}\n",
+            out=f"installed {label}.timer: {unit['schedule']['description']}, runs {unit['module']} from {project} at "
+            f"{revision}, heartbeat {evidence}, logs in {state}\n",
             rendered=text,
             project=project,
             revision=revision,
             canonical=canonical,
             record=str(record),
         )
+
+    def status_systemd(
+        self,
+        request: ModelRegistryUnitsRequest,
+        unit: dict[str, Any],
+        evidence: Path,
+        record: Path,
+    ) -> ModelRegistryUnitsResult:
+        label = str(unit["label"])
+        out, failed = "", 0
+        active = self.run(["systemctl", "--user", "is-active", f"{label}.timer"])
+        if active.returncode == 0:
+            out += f"LOADED {label}.timer\n"
+        else:
+            out += f"NOT LOADED {label}\n{label} NOT RUNNING: timer is {active.stdout.strip() or 'absent'}\n"
+            failed = 1
+        interval = int(unit["schedule"]["start_interval"])
+        try:
+            age = max(0.0, time.time() - evidence.stat().st_mtime)
+            out += f"{evidence}: {int(age)} s old\n"
+            if age > STALE_INTERVALS * interval:
+                out += f"{label} NOT RUNNING: {evidence} is older than {STALE_INTERVALS * interval} s\n"
+                failed = 1
+        except OSError as exc:
+            out += f"{label} NOT RUNNING: no readable {evidence} ({exc})\n"
+            failed = 1
+        try:
+            recorded = json.loads(record.read_text(encoding="utf-8"))
+            out += f"installed revision {recorded.get('revision')} of {recorded.get('project')}\n"
+        except (OSError, ValueError):
+            out += f"no install record at {record}\n"
+        return self.result(request, failed, out=out)
 
     def head_of(self, project: Path) -> str:
         head = self.run(["git", "-C", str(project), "rev-parse", "HEAD"])
@@ -412,6 +1038,8 @@ class HandlerRegistryUnits:
         revision: str = "",
         canonical: bool = True,
         record: str = "",
+        config: str = "",
+        config_path: str = "",
     ) -> ModelRegistryUnitsResult:
         return ModelRegistryUnitsResult(
             unit=request.unit,
@@ -425,6 +1053,8 @@ class HandlerRegistryUnits:
             revision=revision,
             project_is_canonical=canonical,
             record=record,
+            config=config,
+            config_path=config_path,
         )
 
     def copied_unit(
