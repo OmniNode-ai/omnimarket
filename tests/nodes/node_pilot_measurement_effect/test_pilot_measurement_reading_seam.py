@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.floor_17a import ModelReadingRow
 from omnimarket.models.model_reading import ModelReadingWindowCommand
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     reading_rows,
@@ -144,7 +145,9 @@ def _writer_overlay(producer: ModelPilotMeasurementOverlay) -> ModelReadingOverl
     return ModelReadingOverlay.model_validate(document)
 
 
-def _floor_reading(ledger: InMemoryLedger, producer: ModelPilotMeasurementOverlay):  # type: ignore[no-untyped-def]
+def _floor_reading(
+    ledger: InMemoryLedger, producer: ModelPilotMeasurementOverlay
+) -> ModelReadingRow | None:
     """Run the writer over the producer's rows, then give the writer's rows to the floor's own reader."""
     HandlerReadingWriter(
         overlay=_writer_overlay(producer),
