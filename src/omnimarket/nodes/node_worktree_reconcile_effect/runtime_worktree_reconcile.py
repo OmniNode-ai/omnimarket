@@ -27,6 +27,9 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands i
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_launchd_units import (
+    LaunchdUnitRootReader,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher import (
     ContractEventPublisher,
     publish_topics,
@@ -72,7 +75,11 @@ def run_command(
     decided, completed = publish_topics()
     handler = create_handler_worktree_reconcile(
         probe=GitWorktreeFactsProbe(
-            unit_reader=SystemdUnitRootReader(),
+            unit_reader=(
+                LaunchdUnitRootReader()
+                if sys.platform == "darwin"
+                else SystemdUnitRootReader()
+            ),
             merged_pr_reader=CommandMergedPrReader(),
         ),
         decider=CommandWorktreeDecider(),

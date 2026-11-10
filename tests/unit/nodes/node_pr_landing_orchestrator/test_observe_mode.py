@@ -64,7 +64,7 @@ class LeakyOrchestrator(HandlerPrLandingTickOrchestrator):
     ) -> int:
         count = 0
         for action in decision.actions:
-            self._writer.perform(action)
+            self._writer.perform(action, request.facts)
             count += 1
         return count
 
