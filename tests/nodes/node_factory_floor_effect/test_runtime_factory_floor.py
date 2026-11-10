@@ -290,7 +290,12 @@ def test_a_declared_plan_with_no_file_is_written_as_a_stopped_line_with_its_caus
     assert main(_argv(world, "--plan", "wave-plan", "--plan", "absent-plan")) == 0
     document = json.loads(_output(world).read_text(encoding="utf-8"))
     lines = {line["line_id"]: line for line in document["lines"]}
-    assert list(lines) == ["2026-10-31-wave-plan", "absent-plan"]
+    # plans-today also selects the old plan as a plan-class line beside the two declared ones.
+    assert list(lines) == [
+        "2026-10-31-wave-plan",
+        "absent-plan",
+        "2026-10-01-old-plan",
+    ]
     absent = lines["absent-plan"]
     assert (absent["condition"], absent["source"]) == ("stopped", "undrawn")
     assert absent["plan_path"] == "absent-plan"

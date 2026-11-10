@@ -143,6 +143,13 @@ _POST_CONVERSION_TOKEN_USAGE_VIEW = "0062_delegation_token_usage_unpriced_calls.
 # 0045 and is withheld with it.
 _POST_CONVERSION_QUALITY_GATE_VIEW = "0065_quality_gate_failure_categories_bounded.sql"
 
+# OMN-23169: 0068 re-creates projection_delegation_summary again (without the
+# experiment rows), with the same dependence on 0045 and on tenant_id, so it is
+# withheld with 0050.
+_POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW = (
+    "0068_delegation_summary_excludes_experiment.sql"
+)
+
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
 # The registry rows, pinned as literals from the live cross-check against
@@ -296,6 +303,7 @@ def _pre_conversion_migrations() -> list[Path]:
             _POST_CONVERSION_TOKEN_USAGE_VIEW,
             _POST_CONVERSION_DAILY_VIEW,
             _POST_CONVERSION_QUALITY_GATE_VIEW,
+            _POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW,
         }
     ]
 

@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23173
+title: Scenario R4 runs every six hours on the lab as an omnimarket node, a stopped, killed or slowed model is followed by a healthy one inside the class ceiling, and an all-refused ladder ends typed
+summary: The readiness plan put the R4 producer in a workflow of the cloud repository. It now lives in omnimarket as node_delegation_scenario_r4_effect, scheduled every six hours on the lab by its own timer. One run drives the delegation skill handler with synthetic requests and rungs-mode probe ladders whose rungs are loopback stubs the node starts (stopped, killed mid-call, slowed past its deadline), each followed by a healthy rung, then a ladder with every rung down. It asserts typed terminal fields and the returned bytes, writes one ledger STATUS row (the row the green-days reading counts) and emits the result on the bus. The leg with a slowed rung, a rung with no credential and a healthy rung cannot be expressed as a probe ladder yet and is a named failing assertion.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23173-r4-rung-failures
+  statement: Each leg with a healthy last rung completes inside the class ceiling with a typed failure class per attempt that did not answer, and the every-rung-down leg ends failed, returned_to_caller, with a reason from the closed list and savings 0.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the committed R4 ladder file passes its own schema test -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r4_effect/test_r4_inputs.py -q`'
+  - id: AC2
+    statement: 'AC2: a run with a named injected break exits red for that reason and a run on the real loopback stubs shows the expected colour (red only for the credential-absent leg) -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r4_effect/test_golden_chain_scenario_r4_effect.py -q`'
+evidence_requirements:
+- kind: tests
+  description: The R4 inputs schema tests and the golden and error chain tests pass.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r4_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23173-ac1-inputs
+  description: Runs the inputs schema tests. The ladder file parses into the typed model, rejects an unknown key, builds a valid probe ladder for every leg, ends every recover leg on a healthy rung after a failing one, and names the closed list of end-of-ladder reasons.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r4_effect/test_r4_inputs.py -q --no-cov
+    cwd: .
+- id: dod-omn23173-ac2-chains
+  description: Runs the golden and error chain tests. The real loopback stubs give a typed class to a stopped, a killed and a slowed rung; a killed rung typed unknown, a healthy rung that does not answer, a wrong answer, a ceiling the run cannot meet, a wrong ladder, unreadable inputs, a failing ledger append and a failing bus emit each turn the run red for their own reason.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r4_effect/test_golden_chain_scenario_r4_effect.py -q --no-cov
+    cwd: .
+- id: dod-omn23173-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23173 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r4_effect -q --no-cov
+    cwd: .
