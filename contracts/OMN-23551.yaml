@@ -29,3 +29,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard/test_login_relative_paths.py tests/scripts/test_prepush_per_login_rows.py tests/scripts/test_prepush_guard_script_shrunk.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn23551-integration-proof-lab
+  description: Runs the node's tests and the guard script's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23551 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard tests/scripts/test_prepush_per_login_rows.py tests/scripts/test_prepush_guard_script_shrunk.py -q --no-cov -p no:randomly'
+    cwd: .
