@@ -32,7 +32,7 @@ TABLE = (
 DOCUMENT = {"schema_version": 1, "table": TABLE}
 
 
-def ENV(tmp_path: Path) -> dict[str, str]:  # noqa: N802 -- reads as the environment mapping
+def overlay_env(tmp_path: Path) -> dict[str, str]:
     return {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}
 
 
@@ -46,7 +46,7 @@ def _write_overlay(tmp_path: Path, document: dict[str, object]) -> None:
 def test_golden_overlay_loads_the_way_the_reader_loads_it(tmp_path: Path) -> None:
     _write_overlay(tmp_path, DOCUMENT)
     overlay = load_structured_overlay(
-        "prepush_logins", ModelPrepushLoginsOverlay, ENV(tmp_path)
+        "prepush_logins", ModelPrepushLoginsOverlay, overlay_env(tmp_path)
     )
     assert parse_login_rows(overlay.table) == {
         ("h051", "second-login"): (".local/bin/uv", "onex-prepush")
@@ -91,7 +91,7 @@ def test_a_wrong_login_overlay_refuses(
     _write_overlay(tmp_path, document)
     with pytest.raises(NodeOverlayError):
         load_structured_overlay(
-            "prepush_logins", ModelPrepushLoginsOverlay, ENV(tmp_path)
+            "prepush_logins", ModelPrepushLoginsOverlay, overlay_env(tmp_path)
         )
 
 
@@ -107,6 +107,6 @@ def test_injected_break_tilde_document_loads_when_the_node_rule_is_bypassed(
         tmp_path, {"schema_version": 1, "table": "h051 second-login ~/uv onex-prepush"}
     )
     overlay = load_structured_overlay(
-        "prepush_logins", ModelPrepushLoginsOverlay, ENV(tmp_path)
+        "prepush_logins", ModelPrepushLoginsOverlay, overlay_env(tmp_path)
     )
     assert overlay.table == "h051 second-login ~/uv onex-prepush"
