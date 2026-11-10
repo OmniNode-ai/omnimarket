@@ -18,8 +18,20 @@ from pathlib import Path
 import asyncpg
 import pytest
 
+from omnimarket.models.model_reading import (
+    EnumCellOp,
+    EnumSourceMode,
+    ModelCellPredicate,
+    ModelReadingSource,
+)
 from omnimarket.nodes.node_projection_work_ledger import parity
 from omnimarket.nodes.node_projection_work_ledger.parity import main
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    evidence_row_from_text,
+)
+from omnimarket.nodes.node_work_ledger_parity_receipt_effect.handlers.parity_receipt_core import (
+    receipt_owed,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -52,6 +64,7 @@ def _run(
     *,
     receipt: bool = False,
     seq_on_matched: bool = True,
+    drop_matched: int = 0,
 ) -> int:
     ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
     ledger.write_text("# ledger\n" + "\n".join(ROWS) + "\n")
@@ -62,7 +75,9 @@ def _run(
         for i, raw in enumerate(ROWS)
     ]
     export = tmp_path / "projection.json"
-    export.write_text(json.dumps({"rows": [*matched, *extras], "state": []}))
+    export.write_text(
+        json.dumps({"rows": [*matched[drop_matched:], *extras], "state": []})
+    )
     state = tmp_path / "state"
     state.mkdir(exist_ok=True)
     args = [
@@ -202,3 +217,49 @@ def test_a_failed_unsequenced_read_is_an_error_and_prints_no_report(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "ConnectionError" in captured.err
+
+
+# SEAM: the receipt row is read by two consumers that parse its cells by name: the piece 6 reading
+# (newest work-ledger-parity row passes when missing and unexplained are 0, the values of the piece 6
+# entry in the reading writer overlay) and the receipt writer's skip rule. A cell added to the row
+# must not move either reading.
+PIECE_6 = ModelReadingSource(
+    source_id="parity",
+    row_type="STATUS",
+    lane="work-ledger-parity",
+    mode=EnumSourceMode.NEWEST,
+    pass_when=(
+        ModelCellPredicate(cell="missing", op=EnumCellOp.EQ, value="0"),
+        ModelCellPredicate(cell="unexplained", op=EnumCellOp.EQ, value="0"),
+    ),
+    max_age_seconds=129600,
+)
+
+
+def _receipt_text(tmp_path: Path, capsys: pytest.CaptureFixture[str], **kw: int) -> str:
+    extras = [_entry(UNSEQUENCED_EXTRA, "2026-10-03T04:00:00Z", ledger_seq=None)]
+    _run(tmp_path, extras, receipt=True, **kw)
+    return capsys.readouterr().out.strip()
+
+
+def test_seam_a_receipt_with_extras_and_no_loss_still_passes_piece_6(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    row = _receipt_text(tmp_path, capsys)
+    evidence = evidence_row_from_text(row)
+    assert evidence is not None
+    assert evidence.cells["extra_unsequenced"] == "1"
+    assert PIECE_6.selects(evidence)
+    assert PIECE_6.passes(evidence)
+    assert receipt_owed(row, "work-ledger-parity", "2026-10-03") == "newest-clean"
+
+
+def test_seam_a_receipt_with_a_missing_row_still_fails_piece_6(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    row = _receipt_text(tmp_path, capsys, drop_matched=1)
+    evidence = evidence_row_from_text(row)
+    assert evidence is not None
+    assert (evidence.cells["missing"], evidence.cells["unexplained"]) == ("1", "1")
+    assert not PIECE_6.passes(evidence)
+    assert receipt_owed(row, "work-ledger-parity", "2026-10-03") == "newest-unhealthy"
