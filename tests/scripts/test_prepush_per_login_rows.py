@@ -117,7 +117,7 @@ def test_per_login_prepush_decision_line_names_the_logins_own_values(
 @pytest.mark.parametrize(
     "rows",
     [
-        f"h051 {SECOND} relative/uv {SECOND_WORKROOT}",
+        f"h051 {SECOND} ~/uv {SECOND_WORKROOT}",
         f"h051 {SECOND} {SECOND_UV}",
         f"h051 {SECOND} {SECOND_UV} {SECOND_WORKROOT}\nh051 {SECOND} /a /b",
     ],
@@ -128,3 +128,34 @@ def test_per_login_prepush_malformed_overlay_refuses_instead_of_reading_as_absen
     env = _env(tmp_path, rows)
     with pytest.raises(ValueError, match="per-login host row"):
         guard._table_text(REPO_ROOT, env, login=SECOND)
+
+
+def test_per_login_prepush_relative_row_resolves_under_the_logins_home_from_the_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The script asks the host's account database for the home (OMN-23551); nothing is a constant."""
+    env = _env(tmp_path, f"h051 {SECOND} .local/bin/uv onex-prepush")
+    real = guard._io()
+    homes = {SECOND: "/srv/homes/second"}
+    monkeypatch.setattr(guard, "_io", lambda: _FakeReader(real, homes))
+    row = _row(guard._table_text(REPO_ROOT, env, login=SECOND), "h051")
+    assert (row[5], row[7]) == (
+        "/srv/homes/second/.local/bin/uv",
+        "/srv/homes/second/onex-prepush",
+    )
+    homes.clear()
+    with pytest.raises(ValueError, match="has no home directory"):
+        guard._table_text(REPO_ROOT, env, login=SECOND)
+
+
+class _FakeReader:
+    """The real reader with the account database replaced by a mapping."""
+
+    def __init__(self, real: object, homes: dict[str, str]) -> None:
+        self._real, self._homes = real, homes
+
+    def login_home(self, login: str) -> str:
+        return self._homes.get(login, "")
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._real, name)
