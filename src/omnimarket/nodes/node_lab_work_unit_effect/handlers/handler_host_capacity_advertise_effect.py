@@ -39,12 +39,23 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import RuntimeHostError
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus, event_type_for
+from omnimarket.handlers.host_capacity_overlay import load_host_capacity_limits
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_host_capacity import (
+    ModelHostCapacityLimits,
+    ModelHostCapacityReading,
+    ModelHostCapacityRequest,
+)
+from omnimarket.nodes.node_host_capacity_compute.handlers.handler_host_capacity import (
+    HandlerHostCapacity,
+)
 from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
     ModelHostCapacityAdvertisement,
     ModelHostCapacityProbeRequest,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
     DISK_WATERMARK_PAGE_TOOL,
+    HostReading,
     LocalHostReader,
     ProtocolHostReader,
 )
@@ -66,10 +77,12 @@ class HandlerHostCapacityAdvertiseEffect:
         self,
         reader: ProtocolHostReader | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        limits: Callable[[], ModelHostCapacityLimits] = load_host_capacity_limits,
         watermark: Callable[[str], str | None] | None = None,
     ) -> None:
         self._reader = reader or LocalHostReader()
         self._now = now
+        self._limits = limits
         self._watermark = watermark or _watermark_level
 
     @property
@@ -87,6 +100,7 @@ class HandlerHostCapacityAdvertiseEffect:
         tools = set(reading.tools)
         if self._watermark(request.host_name) == "page":
             tools.add(DISK_WATERMARK_PAGE_TOOL)
+        max_units, record, refusal = self._slot_cap(request, reading)
         return ModelHostCapacityAdvertisement(
             host_name=request.host_name,
             cores=reading.cores,
@@ -94,10 +108,63 @@ class HandlerHostCapacityAdvertiseEffect:
             mem_available_bytes=reading.mem_available_bytes,
             tools=sorted(tools),
             running_units=request.running_units,
-            max_units=request.max_units,
+            max_units=max_units,
             rank_penalty=request.rank_penalty,
             advertised_at=self._now(),
             cadence_seconds=request.cadence_seconds,
+            mem_total_bytes=reading.mem_total_bytes,
+            swap_in_kb_s=reading.swap_in_kb_s,
+            swap_out_kb_s=reading.swap_out_kb_s,
+            slot_cap_record=record,
+            capacity_refusal=refusal,
+        )
+
+    def _slot_cap(
+        self, request: ModelHostCapacityProbeRequest, reading: HostReading
+    ) -> tuple[int, str, str]:
+        """The advertised slot cap, the line recording its inputs, and the refusal ('' when the host is admitted).
+
+        The cap is the capacity node's, held under the serve process's worker pool (``request.max_units``, the
+        most units it can run). A reading with no total memory, or no overlay to read the limits from, advertises
+        the worker pool as before and says so in the record instead of a computed cap.
+        """
+        if reading.mem_total_bytes is None:
+            return (
+                request.max_units,
+                f"fixed max_units={request.max_units}: total memory unread",
+                "",
+            )
+        try:
+            limits = self._limits()
+        except (
+            NodeOverlayError
+        ) as exc:  # the advertisement says the cap was not computed
+            logger.warning("host_capacity overlay unavailable: %s", exc)
+            return (
+                request.max_units,
+                f"fixed max_units={request.max_units}: host_capacity overlay unavailable",
+                "",
+            )
+        verdict = HandlerHostCapacity().handle(
+            ModelHostCapacityRequest(
+                reading=ModelHostCapacityReading(
+                    host=request.host_name,
+                    logical_cores=reading.cores,
+                    mem_total_gb=reading.mem_total_bytes / 1024**3,
+                    mem_avail_gb=reading.mem_available_bytes / 1024**3,
+                    swap_in_kb_s=reading.swap_in_kb_s,
+                    swap_out_kb_s=reading.swap_out_kb_s,
+                    load_one_minute=reading.load1,
+                    running_lanes=request.running_units,
+                ),
+                limits=limits,
+            )
+        )
+        cap = max(1, min(request.max_units, verdict.slot_cap))
+        return (
+            cap,
+            f"{verdict.record()} workers={request.max_units}",
+            "; ".join(verdict.refusals),
         )
 
 
