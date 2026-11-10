@@ -11,10 +11,15 @@ for real when the per-login rows stop being applied. The logins and paths here a
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from omnimarket.nodes.node_pytest_full_suite_host_guard import (
     HandlerPytestFullSuiteHostGuard,
+)
+from omnimarket.nodes.node_pytest_full_suite_host_guard.adapters import (
+    host_table_reader as reader,
 )
 from omnimarket.nodes.node_pytest_full_suite_host_guard.handlers import (
     handler_pytest_full_suite_host_guard as handler_module,
@@ -138,3 +143,100 @@ def test_injected_break_that_skips_the_login_rows_fails_the_golden_reading(
     broken = HandlerPytestFullSuiteHostGuard().handle(ask())
     assert (broken.uv, broken.workroot) == (ROW_UV, ROW_WORKROOT)
     assert broken.uv != SECOND_UV, "the golden reading above would read red here"
+
+
+# The legacy per-row override map is overlay data (OMN-19184): the request carries it, the adapter reads
+# it from the node's overlay, and the handler holds no host label.
+LEGACY_VAR = "PREPUSH_INVENTED_LEGACY_HOST"
+LEGACY_OVERLAY = f"legacy_override_by_label:\n  h051: {LEGACY_VAR}\n"
+
+
+def _with_legacy(
+    request: ModelPytestFullSuiteHostGuardRequest, mapping: dict[str, str]
+) -> ModelPytestFullSuiteHostGuardRequest:
+    return request.model_copy(
+        update={
+            "env_overrides": {LEGACY_VAR: "legacy-override-host"},
+            "legacy_override_by_label": mapping,
+        }
+    )
+
+
+def test_golden_legacy_override_from_the_overlay_map_replaces_the_row_hostname() -> (
+    None
+):
+    mapping = {"h051": LEGACY_VAR}
+    decision = HandlerPytestFullSuiteHostGuard().handle(
+        _with_legacy(ask(host="legacy-override-host"), mapping)
+    )
+    assert decision.allowed is True
+    assert "legacy-override-host" in decision.designated_hostnames
+    assert HOST_E not in decision.designated_hostnames
+
+
+def test_error_legacy_override_without_the_overlay_map_is_ignored() -> None:
+    """Failing control: with the map empty the same variable replaces nothing and the row keeps its host."""
+    decision = HandlerPytestFullSuiteHostGuard().handle(
+        _with_legacy(ask(host="legacy-override-host"), {})
+    )
+    assert decision.allowed is False
+    assert HOST_E in decision.designated_hostnames
+
+
+def test_the_handler_module_carries_no_legacy_override_constant() -> None:
+    assert not hasattr(handler_module, "_LEGACY_OVERRIDE_BY_LABEL")
+
+
+def _overlay_root(tmp_path: Path, text: str) -> dict[str, str]:
+    node_dir = tmp_path / "node_pytest_full_suite_host_guard"
+    node_dir.mkdir()
+    (node_dir / "overlay.yaml").write_text(text, encoding="utf-8")
+    return {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}
+
+
+def test_golden_adapter_reads_the_map_from_the_node_overlay(tmp_path: Path) -> None:
+    env = _overlay_root(tmp_path, LEGACY_OVERLAY)
+    assert reader.legacy_override_by_label(env) == {"h051": LEGACY_VAR}
+
+
+def test_error_adapter_reads_an_absent_overlay_as_an_empty_map(tmp_path: Path) -> None:
+    assert reader.legacy_override_by_label({}) == {}
+    assert (
+        reader.legacy_override_by_label({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)})
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "legacy_override_by_label:\n  h051: ''\n",
+        "legacy_override_by_label: []\n",
+        f"legacy_override_by_label:\n  h051: {LEGACY_VAR}\nstray: 1\n",
+        "{not yaml: [",
+    ],
+)
+def test_error_adapter_refuses_a_broken_overlay_instead_of_reading_it_as_absent(
+    tmp_path: Path, text: str
+) -> None:
+    with pytest.raises(ValueError, match="overlay"):
+        reader.legacy_override_by_label(_overlay_root(tmp_path, text))
+
+
+def test_golden_guard_script_passes_the_overlay_map_into_the_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.hooks import pytest_full_suite_host_guard as guard
+
+    env = {
+        **_overlay_root(tmp_path, LEGACY_OVERLAY),
+        LEGACY_VAR: "legacy-override-host",
+    }
+    decision = guard._decide(
+        SYNTHETIC_TABLE, env, host="legacy-override-host", login=""
+    )
+    assert decision.allowed is True
+    assert "legacy-override-host" in decision.designated_hostnames
+    monkeypatch.setattr(reader, "legacy_override_by_label", lambda _env: {})
+    broken = guard._decide(SYNTHETIC_TABLE, env, host="legacy-override-host", login="")
+    assert broken.allowed is False, "the golden reading above would read red here"

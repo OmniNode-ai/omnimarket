@@ -1,0 +1,29 @@
+{
+  "ticket": "OMN-19184",
+  "note": "Shrink-only: files in product source that still carry a lab value and are owed a move to a contract overlay. Remove an entry when its file is clean; never add one.",
+  "files_owed_a_move": [
+    "configs/delegation_class_rubrics.v1.yaml",
+    "configs/delegation_response_contract_conformance.v1.json",
+    "configs/inference_protocols.v1.yaml",
+    "configs/routing_tiers.yaml",
+    "configs/task_class_contracts.v1.yaml",
+    "cost/cost_pricing.yaml",
+    "data/model_registry/model_registry_v1.yaml",
+    "nodes/node_dev_seed_effect/fixtures/fixture_set_v1.yaml",
+    "nodes/node_generation_consumer/routing_overlay.yaml",
+    "nodes/node_host_capability_compute/lane_reader_inputs.yaml",
+    "nodes/node_host_capability_compute/lane_toolchain.yaml",
+    "nodes/node_host_installer_registry_units/contract.yaml",
+    "nodes/node_lab_disk_watermark_effect/contract.yaml",
+    "nodes/node_lab_disk_watermark_effect/overlay.yaml",
+    "nodes/node_lab_fill_effect/contract.yaml",
+    "nodes/node_lab_run_spill_effect/overlay.yaml",
+    "nodes/node_linear_ticket_write_effect/runtime_lab_proof.py",
+    "nodes/node_memory_pilot_effect/pilot/stage1/bar.json",
+    "nodes/node_reading_writer_effect/adapters/two_backend.py",
+    "nodes/node_runner_group_reading_compute/overlay.yaml",
+    "nodes/node_runner_stop_idle_proof_compute/overlay.yaml",
+    "nodes/node_silent_failure_alarm_effect/models/model_closer_liveness_options.py",
+    "nodes/node_temp_retention_effect/overlay.yaml"
+  ]
+}

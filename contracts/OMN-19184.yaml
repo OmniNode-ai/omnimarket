@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-19184
+title: Lab configuration moves out of the product source into contract overlays, first slice and the guard that fails when a value is hard-coded again
+summary: The served model id the route check compares the local rung against, and the A/B compare lab registry entries (two lab endpoints and the lab served model id), are no longer in the package. The route check reads its local model from the overlay of node_delegation_rubric_check_compute and refuses naming the field when none is supplied; the A/B compare orchestrator reads its whole registry from the overlay of node_ab_compare_orchestrator, or from a file named by ONEX_AB_COMPARE_MODELS_REGISTRY, and ships a neutral registry. Four help and message texts no longer name a lab host or address. A guard test scans every non-test file for lab hostnames, the lab LAN address, lab runtime addresses and lab-only served model ids in the values a file carries, and a shrink-only inventory names the 17 files still owed a move, so a value hard-coded again fails the test.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19184-lab-values-in-overlays
+  statement: Lab hostnames, lab addresses and lab-only served model ids are deployment facts supplied by a contract overlay, not values in the product package.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the route check reads the local served model from the node overlay and refuses naming the field when none is supplied, and the A/B compare registry comes from the node overlay with a neutral packaged default -- falsifier: pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py and tests/unit/nodes/node_ab_compare_orchestrator/test_lab_models_and_refusal.py fail at the merge base'
+  - id: AC2
+    statement: 'AC2: a lab value hard-coded again in a moved unit or in any file outside the shrink-only inventory fails the guard -- falsifier: a lab value injected into a clean source file leaves tests/ci/test_no_lab_values_in_product_source_omn19184.py green'
+evidence_requirements:
+- kind: tests
+  description: The route check, the A/B compare orchestrator and the guard pass on the branch; the same tests fail against the merge-base handlers.
+  command: uv run pytest tests/ci/test_no_lab_values_in_product_source_omn19184.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19184-ac1
+  description: AC1 the route check and the A/B compare registry read the lab values from the node overlay. At the merge base the overlay is ignored, so the A/B compare overlay tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_lab_models_and_refusal.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn19184-ac2
+  description: AC2 the guard flags a lab value in each file kind, ignores comments and docstrings, finds every moved unit clean, and fails for a file outside the inventory.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_no_lab_values_in_product_source_omn19184.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pytest_full_suite_host_guard tests/unit/models/test_node_overlay_documents_omn22478.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn19184-deploy
+  description: The route check handler reads its local model through the overlay reader, so the deployed code carries no lab model id. The deploy check runs the route check tests, which refuse a handler carrying its own lab model id.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''if grep -q route_check_local_model src/omnimarket/configs/model_bindings.v1.yaml; then echo "deploy check failed: lab model id still in the packaged bindings"; exit 1; fi'''
+    cwd: .
+  - check_type: command
+    check_value: env PATH="$PWD/.venv/bin:$PATH" onex run-node node_delegation_rubric_check_compute --help
+    cwd: .
+- id: dod-omn19184-integration-proof
+  description: The pushed head runs the route check, the A/B compare orchestrator and the guard on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19184 -- uv run pytest tests/ci/test_no_lab_values_in_product_source_omn19184.py tests/nodes/node_delegation_rubric_check_compute/test_route_check.py tests/unit/nodes/node_ab_compare_orchestrator/test_lab_models_and_refusal.py -q --no-cov
+    cwd: .
