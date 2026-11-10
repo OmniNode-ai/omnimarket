@@ -1,0 +1,4 @@
+# Test fixture of the schedule overlay (the deployed overlay lives in the overlays repository).
+run_interval_seconds: 60
+max_source_age_s: 3600
+profile: in_memory

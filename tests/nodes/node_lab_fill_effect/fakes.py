@@ -201,6 +201,14 @@ class FakeOwners:
             raise LabFillPortError(self.fail["work_state"])
         return self.work_state
 
+    def work_state_owners_from_bundle(
+        self, bundle_path: str
+    ) -> Mapping[str, Sequence[str]] | None:
+        self.called.append("work_state_bundle")
+        if "work_state_bundle" in self.fail:
+            raise LabFillPortError(self.fail["work_state_bundle"])
+        return self.work_state
+
 
 @dataclass
 class FakeAppender:

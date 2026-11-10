@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 
+from omnimarket.handlers.floor_projection import load_bundle, projection_payload
 from omnimarket.models.ticket_query.model_ticket_credential_refusal import (
     TicketQueryCredentialRefusedError,
 )
@@ -670,6 +671,15 @@ def _pr_key(value: str) -> str:
     return value.strip().lower().split("/")[-1]
 
 
+def _owners_of(projection: ModelWorkStateResult) -> Mapping[str, Sequence[str]]:
+    """Ticket -> the live lanes the projection attributes to it; both work-state readers build it here, so they cannot drift."""
+    owners: dict[str, list[str]] = {}
+    for item in projection.items:
+        if item.ticket and item.live_lane and item.kind is not EnumWorkItemKind.LANE:
+            owners.setdefault(item.ticket, []).append(item.live_lane)
+    return {t: sorted(set(lanes)) for t, lanes in owners.items()}
+
+
 class LocalOwnerReader:
     """The claim store (through its bridge), the PR claim registry CLI and the watcher's state file."""
 
@@ -793,12 +803,29 @@ class LocalOwnerReader:
         age_s = (datetime.now(UTC) - projection.as_of).total_seconds()
         if not 0 <= age_s <= max_age_s:
             raise LabFillPortError("work-state projection is stale")
-        owners: dict[str, list[str]] = {}
-        for item in projection.items:
-            if (
-                item.ticket
-                and item.live_lane
-                and item.kind is not EnumWorkItemKind.LANE
-            ):
-                owners.setdefault(item.ticket, []).append(item.live_lane)
-        return {t: sorted(set(lanes)) for t, lanes in owners.items()}
+        return _owners_of(projection)
+
+    def work_state_owners_from_bundle(
+        self, bundle_path: str
+    ) -> Mapping[str, Sequence[str]] | None:
+        """The same owners from the work_state entry of the floor projection bundle (OMN-23427).
+
+        The entry is judged against its own bound, the one the floor's reader overlay
+        declares, not the fill's: the bundle is the floor's reading of the bus, and the
+        fill takes it as the floor read it. A bundle that is not there, or an entry that
+        reads unknown, is never a free ticket.
+        """
+        path = Path(bundle_path)
+        if not path.exists():
+            raise LabFillPortError("work-state bundle absent")
+        bundle = load_bundle(path)
+        if bundle is None:
+            raise LabFillPortError("work-state bundle is not readable")
+        reading = projection_payload(bundle, "work_state", datetime.now(UTC))
+        if reading.payload is None:
+            raise LabFillPortError(f"work-state projection unread: {reading.reason}")
+        try:
+            projection = ModelWorkStateResult.model_validate(reading.payload)
+        except ValueError as exc:
+            raise LabFillPortError("work-state projection is not readable") from exc
+        return _owners_of(projection)

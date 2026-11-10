@@ -32,6 +32,11 @@ from omnimarket.models.work_state_projection.model_work_item import (
     ModelCriterionPart,
     ModelWorkItem,
 )
+from omnimarket.models.work_state_projection.model_work_state_projected_event import (
+    EnumWorkStateProjectorProfile,
+    ModelWorkStateProjectedEvent,
+    ModelWorkStateScheduleOverlay,
+)
 from omnimarket.models.work_state_projection.model_work_state_request import (
     ModelWorkStateRequest,
 )
@@ -59,6 +64,7 @@ __all__ = [
     "EnumSourceReading",
     "EnumWorkItemKind",
     "EnumWorkItemState",
+    "EnumWorkStateProjectorProfile",
     "EnumWorkStateSource",
     "ModelCommitmentSource",
     "ModelCriterionPart",
@@ -73,7 +79,9 @@ __all__ = [
     "ModelTicketSource",
     "ModelWorkItem",
     "ModelWorkScope",
+    "ModelWorkStateProjectedEvent",
     "ModelWorkStateRequest",
     "ModelWorkStateResult",
     "ModelWorkStateRules",
+    "ModelWorkStateScheduleOverlay",
 ]

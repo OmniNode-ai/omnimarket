@@ -1,0 +1,19 @@
+# Schedule overlay of node_work_state_readings_feeder_scheduled_effect (OMN-23427). Deployed values live in the overlays repository; this is the shape. The schema is
+# omnimarket's ModelFeederScheduleOverlay; no key has a default.
+run_interval_seconds: 600
+max_source_age_s: 3600
+profile: in_memory
+
+# The feed's rules are a second overlay, never keys of this file (the schedule's schema forbids extra keys). Read from
+# overlay_id node_work_state_readings_feeder_scheduled_effect_rules, pinned with ONEX_WORK_STATE_READINGS_FEED_RULES or
+# found as <root>/node_work_state_readings_feeder_scheduled_effect_rules/overlay.yaml. The schema is omnimarket's
+# ModelReadingsFeedRules; no key has a default. These values are the cells node_reading_writer_effect writes on every
+# STATUS reading row (build_reading_row in its handler): only STATUS rows carrying `src=reading` are reading rows, the
+# `key` cell carries the reading's key, the `verdict` cell its value, and the `published_at` cell's ISO time decides
+# which row of one key is the newest. One feed reads the ledger 72 hours back.
+# row_type: STATUS
+# term: src=reading
+# key_cell: key
+# value_cell: verdict
+# published_cell: published_at
+# lookback_hours: 72

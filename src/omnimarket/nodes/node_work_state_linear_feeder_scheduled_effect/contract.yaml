@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work-State Linear Snapshot Feeder Scheduled (OMN-23427, the projection's linear input)
+#
+# One of the three feeders of the work-state projection (linear, readings, receipts). The runtime scheduler emits
+# onex.intent.platform.runtime-tick.v1 far more often than the feeder needs; the shared handler gates on the schedule overlay's
+# run_interval_seconds with an in-process last-run time, runs the feeder the overlay's profile binds (in_memory: nothing is fed;
+# live: writes the newest Linear snapshot where the projection reads its tickets) and returns one compact event: the status, the time of the newest fact written and the cause when it was
+# not fed. The facts stay in the Linear snapshot linear-<UTC date>.json in the projection's linear directory; the paths and field names are node_work_state_projection_effect's contract.
+name: node_work_state_linear_feeder_scheduled_effect
+contract_name: node_work_state_linear_feeder_scheduled_effect
+node_name: node_work_state_linear_feeder_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Feeds the work-state projection's linear source on a declared schedule inside the runtime and emits a compact event. A feed that
+  could not be made, or whose newest fact is older than the overlay's bound, says so in the event and is never drawn fresh. The
+  cadence, the stale bound and the profile are the schedule overlay's; this contract and the handler hold no value.
+
+handler:
+  module: omnimarket.nodes.node_work_state_linear_feeder_scheduled_effect.handlers.handler_linear_feeder_scheduled
+  class: HandlerWorkStateLinearFeederScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: work_state.scheduled_feed_linear
+      handler:
+        name: HandlerWorkStateLinearFeederScheduled
+        module: omnimarket.nodes.node_work_state_linear_feeder_scheduled_effect.handlers.handler_linear_feeder_scheduled
+      handler_module: omnimarket.nodes.node_work_state_linear_feeder_scheduled_effect.handlers.handler_linear_feeder_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the schedule overlay's run_interval_seconds since the last run; when due, run the feeder the overlay's profile
+        binds and return the fed event.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelWorkStateFeederEvent
+  module: omnimarket.models.work_state_feeder.model_work_state_feeder
+  description: The status, the time of the newest fact written, the item count and the cause when nothing was fed.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  side_effects:
+    - the live profile writes the Linear snapshot linear-<UTC date>.json in the projection's linear directory
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "work_state.scheduled_feed_linear"
+
+terminal_event: onex.evt.omnimarket.work-state-linear-fed.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.work-state-linear-fed.v1"
+  # No node in the graph consumes the fed event yet: the projection reads the file the feeder writes. The event is the runtime's
+  # observable proof that the feeder ran and how old its newest fact was; a consuming node is a follow-up of OMN-23427.
+  externally_consumed_topics:
+    - "onex.evt.omnimarket.work-state-linear-fed.v1"
+
+published_events:
+  - event_type: ModelWorkStateFeederEvent
+    topic: onex.evt.omnimarket.work-state-linear-fed.v1
+    description: "One scheduled linear feed: status, newest fact time, item count and cause."
+
+# Where the schedule reads its settings. The overlay is found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_work_state_linear_feeder_scheduled_effect, file_env: ONEX_WORK_STATE_LINEAR_FEEDER_OVERLAY, model: omnimarket.models.work_state_feeder.model_work_state_feeder.ModelFeederScheduleOverlay}
+  # The projection's contract holds every path and field name this feeder writes under.
+  projection_contract: {contract: node_work_state_projection_effect, section: runtime.linear}
+
+metadata:
+  ticket: OMN-23427
+  transport_type: kafka

@@ -1,0 +1,5 @@
+# Schedule overlay of node_work_state_linear_feeder_scheduled_effect (OMN-23427). Deployed values live in the overlays repository; this is the shape. The schema is
+# omnimarket's ModelFeederScheduleOverlay; no key has a default.
+run_interval_seconds: 600
+max_source_age_s: 3600
+profile: in_memory

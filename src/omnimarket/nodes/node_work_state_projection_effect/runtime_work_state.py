@@ -96,6 +96,14 @@ def _runtime() -> dict[str, Any]:
     return dict(data["runtime"])
 
 
+def runtime_section() -> dict[str, Any]:
+    """The contract's runtime section: the paths and field names every input of the projection is read under.
+
+    The feeders (OMN-23427) write under these, so a path or a field renamed here moves the writer and the reader together.
+    """
+    return _runtime()
+
+
 def _env_path(env: Mapping[str, str], name: str) -> Path | None:
     value = env.get(name, "").strip()
     return Path(value) if value else None
@@ -461,4 +469,11 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["build_request", "main", "publish_projection", "run", "source_readers"]
+__all__ = [
+    "build_request",
+    "main",
+    "publish_projection",
+    "run",
+    "runtime_section",
+    "source_readers",
+]

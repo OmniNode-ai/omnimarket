@@ -74,6 +74,9 @@ class ModelLabFillOwnerFactsRequest(BaseModel):
     work_state_path: str = ""
     # A projection older than this is unreadable, never free (an unread owner is not a free one).
     work_state_max_age_s: float = Field(default=1800.0, gt=0, allow_inf_nan=False)
+    # The floor projection bundle (read from the bus by node_floor_projection_read_effect); when set, the work-state
+    # owners are read from its work_state entry, judged against that entry's own bound, and work_state_path is not read.
+    work_state_bundle_path: str = ""
 
 
 class ModelLabFillOwnerFacts(BaseModel):

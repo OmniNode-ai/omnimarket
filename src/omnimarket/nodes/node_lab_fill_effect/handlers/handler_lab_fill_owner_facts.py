@@ -85,9 +85,15 @@ class HandlerLabFillOwnerFacts:
                 merged = _error(exc)
         work_state: dict[str, tuple[str, ...]] | str | None
         try:
-            attributed = self._reader.work_state_owners(
-                request.work_state_path, request.work_state_max_age_s
-            )
+            # The floor's bundle, when the deployment names one, wins over the projection file (OMN-23427).
+            if request.work_state_bundle_path:
+                attributed = self._reader.work_state_owners_from_bundle(
+                    request.work_state_bundle_path
+                )
+            else:
+                attributed = self._reader.work_state_owners(
+                    request.work_state_path, request.work_state_max_age_s
+                )
             work_state = (
                 None
                 if attributed is None

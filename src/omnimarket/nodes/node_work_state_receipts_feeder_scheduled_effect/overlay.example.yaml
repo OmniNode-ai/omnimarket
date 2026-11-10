@@ -1,0 +1,12 @@
+# Schedule overlay of node_work_state_receipts_feeder_scheduled_effect (OMN-23427). Deployed values live in the overlays repository; this is the shape. The schema is
+# omnimarket's ModelFeederScheduleOverlay; no key has a default.
+run_interval_seconds: 600
+max_source_age_s: 3600
+profile: in_memory
+
+# The live profile's feed rules (omnimarket's ModelReceiptsFeedRules; found under ONEX_WORK_STATE_RECEIPTS_FEED_RULES or
+# the node_work_state_receipts_feeder_scheduled_effect_rules overlay). This is the shape; the source directory is synthetic.
+# source_dirs: [/example/remote-lanes]
+# source_glob: "*/*.json"
+# max_receipt_age_s: 86400
+# gathered_subdir: gathered

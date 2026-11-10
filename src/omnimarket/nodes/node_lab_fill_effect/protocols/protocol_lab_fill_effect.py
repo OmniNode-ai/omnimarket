@@ -97,6 +97,12 @@ class ProtocolLabFillOwnerReader(Protocol):
         """Ticket -> the live lanes the work-state projection attributes to it, or None when none is published."""
         ...
 
+    def work_state_owners_from_bundle(
+        self, bundle_path: str
+    ) -> Mapping[str, Sequence[str]] | None:
+        """The same owners from the work_state entry of the floor projection bundle, judged against that entry's own bound."""
+        ...
+
 
 class ProtocolLabFillTicketFacts(Protocol):
     """A ticket's workflow state type and assignee id, read through node_ticket_query."""
