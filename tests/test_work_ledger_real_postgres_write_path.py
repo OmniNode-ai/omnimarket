@@ -314,6 +314,8 @@ async def test_ledger_seq_window_presence_includes_rows_outside_window(
     )
 
     async with _migrated() as (_writer, connection, schema):
+        # Rows written before 0009 can still hold a duplicate seq; drop the index so the reader sees one.
+        await connection.execute(f"DROP INDEX {schema}.uq_work_ledger_rows_seq")
         # The window spans seqs 2..5; seq 3 exists outside its timestamp bounds.
         # Seq 4 is missing, seq 5 is duplicated, and an unsequenced row is newest.
         for row_id, seq, timestamp in (
