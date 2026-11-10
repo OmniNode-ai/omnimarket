@@ -1,6 +1,6 @@
 # Recorded day 2026-11-06 of the rolling ledger, scrubbed: lane ids replaced by synthetic ones; only the lane, ticket, class, cost, existing,
-# source-lane, pr, outcome, state and delegation cells and the closing text (cut at 300 characters) are kept; paths, URLs, hex ids, host names,
-# addresses and repository names other than omnimarket are replaced.
+# source-lane, pr, outcome, state and delegation cells and the closing text (cut at 300 characters) are kept; URLs, host names and
+# addresses are replaced. Some short hex ids, module paths and repository names other than omnimarket are retained as recorded.
 
 2026-11-06T00:00:14Z | FRICTION | lane=lane-01 | class=refusal | existing=OMN-18946 | cost=~1 lane-minute | This row exists because a hook refusal is otherwise terminal-only and unaggregated (OMN-18946)
 2026-11-06T00:00:54Z | FRICTION | lane=lane-02 | ticket=OMN-20768 | class=worker-touched-judge | pr=repo-1#5704 | cost=~0 lane-minutes of required review; non-blocking judge-touch observation | landing worker lease L27922 pushed repo-1#5704 head hex whose own change touches what judges the PR (tests/fixtures/dispatch_parity/selection-oracle-no-occ-v2.header.json (fixture)); observation only, landing continues under normal CI rules
