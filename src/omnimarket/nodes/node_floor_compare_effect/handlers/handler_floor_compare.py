@@ -58,6 +58,12 @@ from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_piece_measure i
     measure_pieces,
     read_verdicts,
 )
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_repository_names import (
+    canonical_snapshot,
+    canonical_snapshots,
+    load_repository_names,
+    unmapped_spellings,
+)
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
     ModelCompareLine,
     ModelFloorCompareOverlay,
@@ -386,6 +392,10 @@ class HandlerFloorCompare:
             rewrite_history(history_path, kept)
             snapshots = kept
         snapshots = tuple(sorted(snapshots, key=lambda s: s.at))
+        snapshots, snapshot, name_notes = self._canonical_names(
+            snapshots, snapshot, rt, home, env
+        )
+        notes = (*notes, *name_notes)
         overlay, categories_error = self._grouping(request, rt, env)
         comparison = build_comparison(
             snapshots, snapshot, rt, overlay, categories_error
@@ -419,6 +429,34 @@ class HandlerFloorCompare:
             history_written=written,
             source_notes=notes,
             categories_error=categories_error,
+        )
+
+    @staticmethod
+    def _canonical_names(
+        snapshots: tuple[ModelSnapshot, ...],
+        snapshot: ModelSnapshot,
+        rt: ModelFloorCompareRuntime,
+        home: Path,
+        env: Mapping[str, str],
+    ) -> tuple[tuple[ModelSnapshot, ...], ModelSnapshot, tuple[str, ...]]:
+        """Every per-repository key under the registry's canonical name (OMN-23134); the history file keeps what each source spelled."""
+        try:
+            names, notes = load_repository_names(
+                env, home, rt.repository_names_overlay_relpath
+            )
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return (
+                snapshots,
+                snapshot,
+                (
+                    f"the repository names overlay cannot be read ({type(exc).__name__}: {exc}); repositories stay under each source's spelling",
+                ),
+            )
+        today = canonical_snapshot(snapshot, names)
+        return (
+            canonical_snapshots(snapshots, names),
+            today,
+            (*notes, *unmapped_spellings(today, names)),
         )
 
     @staticmethod
