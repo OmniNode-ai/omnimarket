@@ -125,3 +125,30 @@ def test_the_day_the_pin_carries_the_model_the_guard_turns_red() -> None:
 def test_the_scripted_transport_answers_ok_for_retain() -> None:
     scripted = ScriptedLaneHostTransport(ModelScriptedTransportScript())
     assert scripted.retain_run_artifacts(REQUEST).ok is True
+
+
+def test_retain_is_routed_through_the_effect_handler_and_stays_not_run(
+    tmp_path: Path,
+) -> None:
+    from omnimarket.models.remote_lane_host_call.model_remote_lane_host_call import (
+        EnumLaneHostOperation,
+        ModelRemoteLaneHostCall,
+    )
+    from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
+        HandlerRemoteLaneStartEffect,
+    )
+
+    runner = Recorder(ModelHostCommandResult(exit_code=0))
+    handler = HandlerRemoteLaneStartEffect(
+        transport(runner, root=str(tmp_path / "runs"))
+    )
+    answer = handler.handle(
+        ModelRemoteLaneHostCall(
+            operation=EnumLaneHostOperation.RETAIN_RUN_ARTIFACTS, step=REQUEST
+        )
+    )
+    assert runner.argvs == []
+    assert answer.step_result is not None
+    assert_retain_is_declared_not_run(
+        omnibase_spi.contracts.services, answer.step_result
+    )
