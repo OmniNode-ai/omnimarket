@@ -19,6 +19,9 @@ from omnibase_spi.protocols.lane import ProtocolLaneHostPool
 from omnimarket.models.engine_login import (
     ModelEngineLoginPool,
 )
+from omnimarket.nodes.node_lane_guard_unit_effect.lane_guard_host_source import (
+    lane_guard_host_source,
+)
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
     SshLaneHostTransport,
 )
@@ -103,6 +106,12 @@ def build_real(
             path_prefix=settings.host_path_prefix,
             registry_root_candidates=settings.registry_root_candidates,
             registry_marker=settings.registry_marker,
+            closeout_tool_repo=settings.closeout_tool_repo,
+            closeout_ledger_env=settings.closeout_ledger_env,
+            closeout_registry_env=settings.closeout_registry_env,
+            plugin_store=settings.plugin_store,
+            ledger_write_via=settings.ledger_write_via,
+            guard_host_source=lane_guard_host_source(),
             login_pool=ModelEngineLoginPool(
                 module=settings.login_pool_module,
                 python_relative=settings.login_pool_python_relative,
