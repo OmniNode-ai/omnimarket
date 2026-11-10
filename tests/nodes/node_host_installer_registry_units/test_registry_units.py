@@ -252,7 +252,7 @@ def test_install_writes_the_plist_loads_it_and_records_the_revision_it_runs(
     assert not record["project_is_canonical"]
     verbs = [c[1] for c in run.calls if c[0] == "launchctl"]
     assert verbs == ["bootout", "bootstrap"]
-    proofs = [c for c in run.calls if c[0] == "/usr/bin/uv"]
+    proofs = [c for c in run.calls if c[0] == "env" and "/usr/bin/uv" in c]
     assert proofs
     assert str(branch) in proofs[0]
     assert "--no-sync" not in proofs[0]
@@ -280,7 +280,7 @@ def test_the_rendered_unit_and_its_proof_run_on_the_brew_interpreter(
     args = plist_of(result.rendered)["ProgramArguments"]
     assert args[args.index("--python") + 1] == BREW_PYTHON
     assert args.index("--python") < args.index("--project")
-    proof = next(c for c in run.calls if c[0] == "/usr/bin/uv")
+    proof = next(c for c in run.calls if c[0] == "env" and "/usr/bin/uv" in c)
     assert proof[proof.index("--python") + 1] == BREW_PYTHON
 
 

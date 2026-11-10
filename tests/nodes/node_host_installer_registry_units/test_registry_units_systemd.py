@@ -180,7 +180,7 @@ def test_install_writes_both_units_enables_the_timer_and_records_the_revision(
         ["restart", f"{LABEL}.timer"],
     ]
     assert not [c for c in run.calls if c[0] == "launchctl"]
-    proof = next(c for c in run.calls if c[0] == "/usr/bin/uv")
+    proof = next(c for c in run.calls if c[0] == "env" and "/usr/bin/uv" in c)
     assert str(path) in proof
     assert "--no-sync" not in proof
     record = json.loads(Path(result.record).read_text(encoding="utf-8"))

@@ -43,6 +43,8 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# The environment variable holding a unit's overlay roots; the {overlay_root} placeholder is its first root.
+OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 # The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
 LOCKED_MODES = frozenset({"install", "uninstall"})
 EXIT_INSTALL_IN_PROGRESS = 75
@@ -308,6 +310,19 @@ class HandlerRegistryUnits:
                 raise ValueError(
                     f"{name} is not a path override {request.unit} declares"
                 )
+        # {overlay_root} is the first root of the unit's effective overlay roots: the request's override when
+        # given, else the declared template filled with the other placeholders. It resolves before the loop so it
+        # can fill a value declared before ONEX_SKILL_OVERLAY_ROOTS; a unit that declares no overlay roots, or one
+        # whose value is empty, leaves it unfilled (the unfilled-placeholder refusal below then applies).
+        overlay_root = ""
+        overlay = request.path_overrides.get(OVERLAY_ROOTS_ENV)
+        if overlay is None and declared.get(OVERLAY_ROOTS_ENV):
+            text = str(declared[OVERLAY_ROOTS_ENV])
+            for key, value in values.items():
+                text = text.replace("{" + key + "}", value)
+            overlay = text
+        if overlay:
+            overlay_root = overlay.split(os.pathsep, 1)[0]
         filled: dict[str, str] = {}
         for name, template in declared.items():
             if not NAME.match(str(name)):
@@ -315,6 +330,8 @@ class HandlerRegistryUnits:
             text = str(template)
             for key, value in values.items():
                 text = text.replace("{" + key + "}", value)
+            if overlay_root:
+                text = text.replace("{overlay_root}", overlay_root)
             left = PLACEHOLDER.search(text)
             if left is not None and name not in request.path_overrides:
                 raise ValueError(
@@ -556,6 +573,20 @@ class HandlerRegistryUnits:
         )  # a plist that does not parse is never written
         return text
 
+    def proof_command(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any], argv: list[str]
+    ) -> list[str]:
+        """The start-proof argv prefixed with the rendered unit's environment, so the check runs the
+        environment the unit will run, not the installing shell's."""
+        return [
+            "env",
+            *[
+                f"{name}={value}"
+                for name, value in self.environment(request, unit).items()
+            ],
+            *argv,
+        ]
+
     # ------------------------------------------------------------------ modes
 
     def dispatch(
@@ -618,19 +649,23 @@ class HandlerRegistryUnits:
                 config_path=str(config_path or ""),
             )
         proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
+            self.proof_command(
+                request,
+                unit,
+                [
+                    uv,
+                    "run",
+                    "--frozen",
+                    "--python",
+                    python,
+                    "--project",
+                    str(project),
+                    "python",
+                    "-m",
+                    str(unit["module"]),
+                    "--help",
+                ],
+            )
         )
         if proof.returncode:
             raise ValueError(
@@ -864,19 +899,23 @@ class HandlerRegistryUnits:
                 canonical=canonical,
             )
         proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
+            self.proof_command(
+                request,
+                unit,
+                [
+                    uv,
+                    "run",
+                    "--frozen",
+                    "--python",
+                    python,
+                    "--project",
+                    str(project),
+                    "python",
+                    "-m",
+                    str(unit["module"]),
+                    "--help",
+                ],
+            )
         )
         if proof.returncode:
             raise ValueError(

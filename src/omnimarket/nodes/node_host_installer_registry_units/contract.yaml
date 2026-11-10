@@ -64,7 +64,8 @@ execution:
   deterministic: false
   side_effects: true
 # The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
-# {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given).
+# {workspace_config_root}, {plans_path}, {marketplace_root}, {overlay_root} (the first root of the unit's effective
+# ONEX_SKILL_OVERLAY_ROOTS; request inputs, refused when named and not given).
 units:
   floor-alarm:
     platform: launchd
@@ -618,7 +619,9 @@ units:
     environment:
       # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
       ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
-      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{registry_root}/overlays/overlays/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+      # The overlays clone is a sibling of the registry root; the overlay file resolves from the same overlay roots
+      # the unit carries, so one ONEX_SKILL_OVERLAY_ROOTS override corrects both.
+      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{overlay_root}/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"

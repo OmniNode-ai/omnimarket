@@ -76,8 +76,7 @@ def test_the_cutover_snapshot_unit_pins_its_own_overlay_and_the_first_does_not()
     units = load_units()
     pin = units["landing-snapshot-cutover"]["environment"][PIN_ENV]
     assert pin == (
-        "{registry_root}/overlays/overlays/"
-        "node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+        "{overlay_root}/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
     )
     assert (
         PIN_ENV
