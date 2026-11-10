@@ -59,6 +59,7 @@ def check_unavailable_exemplar_is_not_satisfied() -> None:
     assert exemplar_arm.decision is EnumContextArmDecision.NOT_SATISFIED
     assert exemplar_arm.reason is EnumContextArmReason.REQUIRED_TIER_MISSING
     assert exemplar_arm.unscorable_context is True
+    assert "exemplar (unavailable)" in exemplar_arm.detail
 
     pack_arm = handler().handle(
         request(

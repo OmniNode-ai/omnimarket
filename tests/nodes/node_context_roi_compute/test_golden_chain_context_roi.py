@@ -157,6 +157,18 @@ class TestContractYaml:
             assert topic.startswith("onex.evt."), f"publish topic bad prefix: {topic}"
             assert topic.endswith(".v1"), f"publish topic missing .v1: {topic}"
 
+    def test_contract_publishes_the_score_completed_and_failed_topics(
+        self, contract_path: Path
+    ) -> None:
+        data = yaml.safe_load(contract_path.read_text())
+        assert data["terminal_event"] == (
+            "onex.evt.omnimarket.context-roi-score-completed.v1"
+        )
+        assert data["event_bus"]["publish_topics"] == [
+            "onex.evt.omnimarket.context-roi-score-completed.v1",
+            "onex.evt.omnimarket.context-roi-score-failed.v1",
+        ]
+
     def test_contract_declares_handler(self, contract_path: Path) -> None:
         data = yaml.safe_load(contract_path.read_text())
         handler_cfg = data.get("handler", {})
