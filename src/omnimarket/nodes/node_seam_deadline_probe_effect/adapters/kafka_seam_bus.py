@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -93,44 +94,80 @@ class KafkaSeamBus:
         try:
             await transport.start()
             started = time.monotonic()
+            sent_wall = datetime.now(UTC)
             await transport.send(
                 demand.command_topic,
                 key=str(correlation).encode("utf-8"),
                 value=envelope.model_dump_json().encode("utf-8"),
                 headers={},
             )
+            send_ack_ms = int((time.monotonic() - started) * 1000)
             deadline = started + demand.deadline_seconds
-            while (left := deadline - time.monotonic()) > 0:
+            listen_until = deadline + demand.late_listen_seconds
+            while (left := listen_until - time.monotonic()) > 0:
                 messages = await transport.poll(
                     max_messages=10, timeout_ms=max(1, min(1000, int(left * 1000)))
                 )
                 for message in messages:
-                    answer = _correlated_answer(message.value, str(correlation))
-                    if answer is None:
+                    found = _correlated_answer(message.value, str(correlation))
+                    if found is None:
                         continue
+                    answer, reply_stamp = found
                     elapsed = int((time.monotonic() - started) * 1000)
+                    stamp_ms = _stamp_ms(sent_wall, reply_stamp)
                     if elapsed > demand.deadline_seconds * 1000:
+                        # A reply after the deadline is recorded, never excused: the seam
+                        # stays not working, and the row says how late and when it was made.
                         return ModelSeamAnswer(
                             crossing=EnumSeamCrossing.NO_RESULT_BY_DEADLINE,
                             elapsed_ms=elapsed,
                             detail="late",
+                            send_ack_ms=send_ack_ms,
+                            late_reply_ms=elapsed,
+                            reply_stamp_ms=stamp_ms,
                         )
                     if any(answer.get(key) for key in demand.error_keys):
                         return ModelSeamAnswer(
-                            crossing=EnumSeamCrossing.RESULT_ERROR, elapsed_ms=elapsed
+                            crossing=EnumSeamCrossing.RESULT_ERROR,
+                            elapsed_ms=elapsed,
+                            send_ack_ms=send_ack_ms,
+                            reply_stamp_ms=stamp_ms,
                         )
                     return ModelSeamAnswer(
-                        crossing=EnumSeamCrossing.RESULT, elapsed_ms=elapsed
+                        crossing=EnumSeamCrossing.RESULT,
+                        elapsed_ms=elapsed,
+                        send_ack_ms=send_ack_ms,
+                        reply_stamp_ms=stamp_ms,
                     )
-            return ModelSeamAnswer(crossing=EnumSeamCrossing.NO_RESULT_BY_DEADLINE)
+            return ModelSeamAnswer(
+                crossing=EnumSeamCrossing.NO_RESULT_BY_DEADLINE,
+                detail="silent" if demand.late_listen_seconds > 0 else "",
+                send_ack_ms=send_ack_ms,
+            )
         finally:
             await transport.close()
 
 
+def _stamp_ms(sent_at: datetime, reply_stamp: object) -> int | None:
+    """Reply envelope creation time minus the wall time the send began, in ms; None when unreadable.
+
+    Two hosts' clocks are compared, so the number carries their skew.
+    """
+    if not isinstance(reply_stamp, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(reply_stamp)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or sent_at.tzinfo is None:
+        return None
+    return int((parsed - sent_at).total_seconds() * 1000)
+
+
 def _correlated_answer(
     value: bytes | None, correlation: str
-) -> dict[str, object] | None:
-    """The answer payload of an envelope carrying ``correlation``, or None for any other record."""
+) -> tuple[dict[str, object], object] | None:
+    """The answer payload and envelope stamp of an envelope carrying ``correlation``, else None."""
     try:
         raw = json.loads(value or b"")
     except ValueError:
@@ -138,7 +175,7 @@ def _correlated_answer(
     if not isinstance(raw, dict) or raw.get("correlation_id") != correlation:
         return None
     payload = raw.get("payload")
-    return payload if isinstance(payload, dict) else {}
+    return (payload if isinstance(payload, dict) else {}), raw.get("envelope_timestamp")
 
 
 __all__ = ["KafkaSeamBus"]

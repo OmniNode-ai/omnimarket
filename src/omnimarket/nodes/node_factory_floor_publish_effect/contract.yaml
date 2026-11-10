@@ -96,6 +96,7 @@ descriptor:
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
   - reads the runner projection's saved observation inside the deployed runtime and mirrors it to the floor input, or writes an unread cause when the producer cannot be read
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
+  - OMN-23227: writes every one of those files first to a local copy under the registry home (the overlay's local_copy_relpath), then to each serving host the overlay names, each host on its own; a host that fails never stops another, a host whose connection did not open is skipped for the rest of the run, and the served status names the hosts that missed files (the operator-only reports are not copied locally)
   - writes a timestamped snapshot of the record under the history subdirectory on the serving host, and removes past-window snapshots beyond the declared count there
   - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
   - reads the tailnet status on the publishing host, writes the operator-only allowed-address include to the access directory beside the serving directory, reloads the web server container and reads its configuration back over ssh
@@ -239,7 +240,9 @@ runtime:
     required: false
     timeout_seconds: 90
     module: omnimarket.nodes.node_host_reading_effect.runtime_host_reading
-    args: ["join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}"]
+    # The run's own bound sits inside the step's: a step killed at timeout_seconds cannot close the chains it started, and the floor
+    # reads each start with no terminal as start_without_terminal. A host still open at --deadline-seconds ends its chains typed.
+    args: ["join-j2", "--bus", "kafka", "--bus-lane", "{bus_lane}", "--deadline-seconds", "60"]
   # OMN-23086: join J5 (piece 5 to piece 6). Each piece 5 golden reading the journal does not show piece 6 answering gets one
   # ledger append under the identity the secret store resolves, read back from the projection, and piece 6's chain on the
   # journal under the reading's correlation id; a reading already answered appends nothing. It joins the concurrent group, so
@@ -250,6 +253,20 @@ runtime:
     required: false
     timeout_seconds: 90
     module: omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5
+    args: ["run"]
+  # OMN-22936: join J6 (piece 6 to piece 7). Each piece 6 golden reading the journal does not show piece 7 answering gets one stop
+  # on a test piece in the in-memory gate store, its durable and projected audit row read back, the next send of that piece
+  # refused by the store and a send of another test piece admitted, and piece 7's chain on the journal under the reading's
+  # correlation id; a reading already answered stops nothing. Once per window it also writes piece 7's own error chain, the
+  # fence drill (a stop with no answer by its deadline leaves the send refused), as a drill chain. It joins the concurrent group, so
+  # it adds nothing past the slowest member (90 s); the drill holds a stop's commit for the overlay's silence (a few seconds).
+  # Not required: when it fails the floor still reads and J6 stays unpassed.
+  - name: join_j6
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_gate_store_effect.runtime_join_j6
     args: ["run"]
   # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
   # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
@@ -298,6 +315,16 @@ runtime:
     required: false
     timeout_seconds: 90
     module: omnimarket.nodes.node_floor_delegation_effect
+    args: ["run", "--home", "{home}"]
+  # OMN-23315: the beta board. It reads the probes' finished runs one at a time inside its own 50 s deadline and the ledger's newest
+  # rows, writes beta-board.json and copies beta.html and beta-board.json to every host its overlay lists (the same web servers that
+  # serve the floor). Not required: when it fails the previous page stays on each host and its Computed line shows its age.
+  - name: beta_board
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 85
+    module: omnimarket.nodes.node_beta_board_effect
     args: ["run", "--home", "{home}"]
   # OMN-23205 (plan task M1): the MVP launch block's scheduled read. It lists the latest scheduled runs of each producer workflow the
   # block's overlay names through the source-control node, one at a time (the reads queue behind each other), the least recently read

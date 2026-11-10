@@ -30,6 +30,7 @@ from omnimarket.handlers.emission_sink import (
 )
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    find_node_overlay,
     load_structured_overlay,
 )
 from omnimarket.models.floor_17a import (
@@ -88,9 +89,13 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources impor
     ProtocolMvpRunSource,
     RecordMvpRunSource,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers.owner_source import (
+    check_owner_source,
+)
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
+    disk_expected_hosts,
     load_record,
     merge_lanes,
     overlay_store_events,
@@ -161,12 +166,26 @@ OWN_CONTRACT = NODE_DIR / "contract.yaml"
 T = TypeVar("T")
 
 
-class ModelServeOverlay(BaseModel):
-    """The one fact this node reads from the publish node's overlay: where the page answers."""
+class ModelServeTarget(BaseModel):
+    """Another serving host of the publish node's overlay: where it answers (OMN-23081)."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     serve_url: str
+
+
+class ModelServeOverlay(BaseModel):
+    """The facts this node reads from the publish node's overlay: where the page answers, on every serving host."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    serve_url: str
+    extra_targets: tuple[ModelServeTarget, ...] = ()
+
+    @property
+    def serve_urls(self) -> tuple[str, ...]:
+        """Every serving host's address, the overlay's first host first: the served page is read from the first that answers."""
+        return (self.serve_url, *(t.serve_url for t in self.extra_targets))
 
 
 class ModelSourcePaths(BaseModel):
@@ -221,6 +240,15 @@ class ModelStatePaths(BaseModel):
     canary_clone: str
 
 
+class ModelAbandonedPieceChains(BaseModel):
+    """The chains of one other piece whose starts this node closes when no process can still close them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelMvpLaunchRuntime(BaseModel):
     """The MVP launch block (OMN-23205): its overlay and the command route its run histories are read through."""
 
@@ -257,6 +285,8 @@ class ModelFloorSimpleRuntime(BaseModel):
     # A start older than this with no terminal is closed by the next cycle with a typed failure (OMN-22864).
     abandon_after_seconds: int = Field(gt=0)
     abandon_chains: tuple[str, ...] = ()
+    # Starts of nodes of other pieces that a publish step runs and a kill can strand (OMN-23230), closed the same way.
+    abandon_other_pieces: tuple[ModelAbandonedPieceChains, ...] = ()
     # The chains of this node that a join reads (the cycle and its steps); the chains it emits per lab source row are not
     # among them, because no downstream piece can answer a row that reads a bad value.
     pipeline_chains: tuple[str, ...] = Field(min_length=1)
@@ -544,6 +574,10 @@ class HandlerFloorSimpleTick:
             env,
             file_env=rt.lab_overlay.file_env,
         )
+        if lab_ov.owner_source is not None:
+            floor_path = self._floor_overlay_path(rt, env)
+            if floor_path is not None:
+                check_owner_source(floor_path, lab_ov.owner_source)
         goal_scope = self._load_goal_scope(rt, env)
         try:
             doc, canary = self._cycle(
@@ -600,6 +634,18 @@ class HandlerFloorSimpleTick:
             canary=canary,
         )
 
+    @staticmethod
+    def _floor_overlay_path(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> Path | None:
+        """The file the floor overlay was loaded from, found the way ``load_structured_overlay`` finds it."""
+        pinned = env.get(rt.floor_overlay.file_env, "").strip()
+        return (
+            Path(pinned)
+            if pinned
+            else find_node_overlay(rt.floor_overlay.overlay_id, env)
+        )
+
     def _close_abandoned(
         self,
         rt: ModelFloorSimpleRuntime,
@@ -609,13 +655,26 @@ class HandlerFloorSimpleTick:
         """Close each start of this node's pipeline chains that no process can still close; the count of closures."""
         now = self._clock()
         journal = sink.read(now - timedelta(hours=rt.state.emission_window_hours))
-        closing = abandoned_starts(
-            journal,
-            now=now,
-            abandon_after_s=rt.abandon_after_seconds,
-            piece=floor_ov.rebuild.lab_state_piece,
-            nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
-        )
+        closing = [
+            *abandoned_starts(
+                journal,
+                now=now,
+                abandon_after_s=rt.abandon_after_seconds,
+                piece=floor_ov.rebuild.lab_state_piece,
+                nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
+            ),
+            *(
+                event
+                for other in rt.abandon_other_pieces
+                for event in abandoned_starts(
+                    journal,
+                    now=now,
+                    abandon_after_s=rt.abandon_after_seconds,
+                    piece=other.piece,
+                    nodes=frozenset(other.nodes),
+                )
+            ),
+        ]
         for event in closing:
             sink.emit(event)
         return len(closing)
@@ -758,7 +817,12 @@ class HandlerFloorSimpleTick:
                 read_runner_groups(
                     home / rt.sources.runner_fleet_relpath, lab_ov, record
                 ),
-                read_disk(lane_dir / rt.sources.pool_receipt, lab_ov),
+                read_disk(
+                    lane_dir / rt.sources.pool_receipt,
+                    lab_ov,
+                    now,
+                    disk_expected_hosts(record, lab_ov),
+                ),
                 read_queue_age(watcher, lab_ov),
                 read_deploy_lag(record, now, lab_ov),
                 read_broker_lag(
@@ -1197,15 +1261,19 @@ class HandlerFloorSimpleTick:
             return self._served
 
         def read() -> set[str] | None:
-            url = self._served_url(rt, env)
-            if url is None:
-                return None
-            return fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+            for url in self._served_urls(rt, env):
+                ids = fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+                if ids is not None:
+                    return ids
+            return None
 
         return read
 
     @staticmethod
-    def _served_url(rt: ModelFloorSimpleRuntime, env: Mapping[str, str]) -> str | None:
+    def _served_urls(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> tuple[str, ...]:
+        """The served record's address on each serving host, in the overlay's order; empty when the overlay is unread."""
         try:
             serve = load_structured_overlay(
                 rt.serve_overlay.overlay_id,
@@ -1214,8 +1282,10 @@ class HandlerFloorSimpleTick:
                 file_env=rt.serve_overlay.file_env,
             )
         except NodeOverlayError:
-            return None
-        return serve.serve_url.rstrip("/") + "/" + rt.served_record_name
+            return ()
+        return tuple(
+            url.rstrip("/") + "/" + rt.served_record_name for url in serve.serve_urls
+        )
 
     @staticmethod
     def _planted_offline(
@@ -1285,12 +1355,16 @@ class HandlerFloorSimpleTick:
             return "skipped_drill"
         read = self._served_times
         if read is None:
-            url = self._served_url(rt, env)
-            if url is None:
+            urls = self._served_urls(rt, env)
+            if not urls:
                 return "unpublished_no_serve_address"
 
             def read_served() -> tuple[datetime | None, datetime | None] | None:
-                return fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                for url in urls:
+                    times = fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                    if times is not None:
+                        return times
+                return None
 
             read = read_served
         times = read()

@@ -121,6 +121,12 @@ runtime:
   # limit; a kill it could not answer leaves its start for this cycle to close.
   abandon_chains:
     - node_floor_compare_effect:run_floor_compare_cycle
+  # The J2 join's chains (OMN-23230): the join-j2 publish step is killed at its 90 s limit if it hangs, and a kill cannot close
+  # the starts it made. The join now bounds its own run and closes its chains on every path it can; this closes what a hard kill
+  # still strands, and the start already open in the journal. Piece 2 is the host canary, piece 3 the placement seam.
+  abandon_other_pieces:
+    - {piece: 2, nodes: ["node_host_reading_effect:join_j2"]}
+    - {piece: 3, nodes: ["node_lab_placement_compute:join_j2"]}
   # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
   # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
   # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pytest_full_suite_host_guard
+version: "1.0.0"
+description: "Pytest Full Suite Host Guard — pure host decision for the pre-push guard (OMN-23367)."
+pack: distributed_validation
+node_role: compute
+display_name: "Pytest Full Suite Host Guard"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pytest_full_suite_host_guard: "omnimarket.nodes.node_pytest_full_suite_host_guard"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ['compute', 'pytest-full-suite-host-guard', 'OMN-23367']
