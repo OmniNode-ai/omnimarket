@@ -8,7 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.overlay_check import EnumOverlayVerdict, ModelOverlayCheck
+from omnimarket.enums.enum_overlay_verdict import EnumOverlayVerdict
+from omnimarket.models.model_overlay_check import ModelOverlayCheck
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 
 

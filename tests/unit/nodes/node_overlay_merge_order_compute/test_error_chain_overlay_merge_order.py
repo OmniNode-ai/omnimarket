@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.events.overlay_check import EnumOverlayVerdict
+from omnimarket.enums.enum_overlay_verdict import EnumOverlayVerdict
 from tests.unit.nodes.node_overlay_merge_order_compute.merge_order_support import (
     CORRELATION,
     TOPICS,

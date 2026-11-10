@@ -10,8 +10,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.overlay_check import EnumOverlayVerdict, ModelOverlayCheck
+from omnimarket.enums.enum_overlay_verdict import EnumOverlayVerdict
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_overlay_check import ModelOverlayCheck
 from omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order import (
     EnumMergeOrderVerdict,
     ModelOverlayMergeOrderResult,

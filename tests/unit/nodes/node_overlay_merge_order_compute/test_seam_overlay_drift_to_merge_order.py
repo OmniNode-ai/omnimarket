@@ -14,7 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.events.overlay_check import EnumOverlayVerdict, ModelOverlayCheck
+from omnimarket.enums.enum_overlay_verdict import EnumOverlayVerdict
+from omnimarket.models.model_overlay_check import ModelOverlayCheck
 from omnimarket.nodes.node_overlay_drift_effect.adapters.runtime_validator import (
     InProcessRuntimeValidator,
 )

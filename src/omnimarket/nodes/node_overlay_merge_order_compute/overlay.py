@@ -14,7 +14,7 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.events.overlay_check import EnumOverlayVerdict
+from omnimarket.enums.enum_overlay_verdict import EnumOverlayVerdict
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_overlay_drift_effect.overlay import (
     ModelOverlayHomeSettings,
