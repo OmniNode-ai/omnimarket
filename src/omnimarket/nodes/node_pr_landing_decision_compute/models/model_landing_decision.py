@@ -324,6 +324,10 @@ class ModelLandingRecordedOutcome(BaseModel):
     outcome: EnumLandingOutcome
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE
     blocker_fingerprint: str = ""
+    owner: str | None = Field(
+        default=None,
+        description="The change in another repository the outcome waits on (OMN-23345).",
+    )
 
 
 class ModelLandingDegraded(BaseModel):

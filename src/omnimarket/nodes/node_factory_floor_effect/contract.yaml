@@ -118,6 +118,7 @@ runtime:
     running_evidence: 60
     required_contexts: 120
     goal: 1440
+    placement: 120
   # The goal file in the plans repository: rows are ``id | what | verdict | next action | probe``; these verdicts close a row.
   goal_relpath: beta/GOAL.md
   goal_closed_verdicts: [LANDED, DONE]

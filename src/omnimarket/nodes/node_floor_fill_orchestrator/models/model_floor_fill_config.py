@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 OVERLAY_PREFIX = "floor_fill."
 SCRIPT_RUNNER_NAME = "onex_remote_lane"
 ARGV_PLACEHOLDER = "{argv}"
+BRIEF_PLACEHOLDER = "{brief}"
 
 
 class FloorFillConfigError(ValueError):
@@ -44,6 +45,9 @@ class ModelFloorFillConfig(BaseModel):
     stopped_max_lanes: int = Field(ge=1)
     stopped_report_chars: int = Field(gt=0)
     stopped_continue_rule: str = Field(min_length=1)
+    stopped_runner_command: tuple[str, ...] = Field(min_length=1)
+    stopped_reports_root: str = Field(min_length=1)
+    stopped_brief_directory: str = Field(min_length=1)
 
     @model_validator(mode="before")
     @classmethod
@@ -74,6 +78,7 @@ class ModelFloorFillConfig(BaseModel):
     def _no_script_runner(self) -> Self:
         for key, argv in (
             ("runner_command", self.runner_command),
+            ("stopped_runner_command", self.stopped_runner_command),
             ("remote_argv", self.remote_argv),
         ):
             if any(SCRIPT_RUNNER_NAME in element for element in argv):
@@ -81,6 +86,12 @@ class ModelFloorFillConfig(BaseModel):
                     f"{OVERLAY_PREFIX}{key} names the script runner; "
                     "the fill starts the lane through the node entry"
                 )
+        if not any(
+            BRIEF_PLACEHOLDER in element for element in self.stopped_runner_command
+        ):
+            raise ValueError(
+                f"{OVERLAY_PREFIX}stopped_runner_command carries no {BRIEF_PLACEHOLDER} element"
+            )
         if ARGV_PLACEHOLDER not in self.remote_argv:
             raise ValueError(
                 f"{OVERLAY_PREFIX}remote_argv carries no {ARGV_PLACEHOLDER} element"
@@ -135,6 +146,7 @@ def load_floor_fill_config(overlay: Mapping[str, Any]) -> ModelFloorFillConfig:
 
 __all__: list[str] = [
     "ARGV_PLACEHOLDER",
+    "BRIEF_PLACEHOLDER",
     "OVERLAY_PREFIX",
     "FloorFillConfigError",
     "ModelFloorFillConfig",
