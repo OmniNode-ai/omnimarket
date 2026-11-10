@@ -53,6 +53,22 @@ class ModelInMemorySource(BaseModel):
     fixture: ModelInMemoryFixture
 
 
+class ModelTokenMint(BaseModel):
+    """The GitHub App the source MINTS an installation token from, once per read.
+
+    Every field is the NAME of a secret-store reference, never a value.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The org the App is installed on.
+    org: str = Field(min_length=1)
+    #: The NAME of the secret-store reference holding the App id; never a value.
+    app_id_secret: str = Field(min_length=1)
+    #: The NAME of the secret-store reference holding the App private key; never a value.
+    private_key_secret: str = Field(min_length=1)
+
+
 class ModelGithubSource(BaseModel):
     """The GitHub source: the REST API, read only."""
 
@@ -65,7 +81,11 @@ class ModelGithubSource(BaseModel):
     #: Labels a job's runs-on names to select the group.
     group_labels: tuple[str, ...] = Field(min_length=1)
     #: The NAME of the environment variable holding the read token; the value is never stored.
+    #: Read only when ``token_mint`` is null.
     token_env: str = Field(min_length=1)
+    #: When set, the source MINTS a fresh installation token once per read instead of reading
+    #: ``token_env``; the fields name secret-store references, never values.
+    token_mint: ModelTokenMint | None
     #: Calls one read may make; the call past it is not made.
     max_calls: int = Field(ge=1)
     timeout_seconds: float = Field(gt=0)
@@ -162,6 +182,7 @@ __all__ = [
     "ModelGithubSource",
     "ModelInMemoryFixture",
     "ModelInMemorySource",
+    "ModelTokenMint",
     "load_overlay",
     "load_reading_overlay",
 ]
