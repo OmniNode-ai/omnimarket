@@ -6,9 +6,13 @@ reads:
   - {kind: TERMINAL, grep: "outcome=partial"}
   - {kind: TERMINAL, grep: "outcome=handed-off"}
   - {kind: STATUS, grep: "handed-off="}
+# The ledger reader's row source for every read (its --source: file, db or compare). On a host whose ledger record is the bus the
+# reader's own default is the bus read, which the ledger node refuses past its answer bound before the reader falls back to the file;
+# naming the file skips the refused attempt (measured 2026-11-10 on a lab host: one read 35.5 s by default, 9.5 s with the file).
+ledger_source: file
 # How many reads run together (measured: in series they took 207 s of the floor step's 231 s).
 read_workers: 4
 # One read's bound; the publisher step's own timeout_seconds bounds the pass.
-read_timeout_seconds: 120
+read_timeout_seconds: 60
 # The record covers rows this many hours past the window's edge, so it stays whole for that long; the floor's unresolved_max_age_hours must not exceed it.
 overlap_hours: 24

@@ -311,12 +311,17 @@ def _run_ledger_reader(
         return parse_ledger_text(result.stdout, kinds)
 
 
+def _source_args(source: str | None) -> list[str]:
+    """The reader's ``--source`` argument for the row source a deployment's overlay names; none named leaves the reader its own default."""
+    return [] if source is None else ["--source", source]
+
+
 def read_ledger_rows(
     *,
     window_days: int,
     cut_chars: int,
     timeout_seconds: int,
-    source: str,
+    source: str | None,
     plugin_root: Path | None,
     plugin_root_env: str,
     ledger_rows_file: Path | None,
@@ -333,7 +338,7 @@ def read_ledger_rows(
             f"{plugin_root_env} is not set: export the plugin root or supply ledger_rows_file"
         )
     reader = plugin_root / "scripts" / "onex_ledger.py"
-    query = ["query", "--source", source, "--since", f"{window_days}d", "--archives"]
+    query = ["query", *_source_args(source), "--since", f"{window_days}d", "--archives"]
     query += ["--limit", "1000000", "--cut", str(cut_chars)]
     return _run_ledger_reader(reader, query, timeout_seconds, kinds)
 
@@ -343,7 +348,7 @@ def read_unresolved_rows(
     reads: tuple[tuple[str, str], ...],
     cut_chars: int,
     timeout_seconds: int,
-    source: str,
+    source: str | None,
     plugin_root: Path | None,
     plugin_root_env: str,
     stand_in_file: Path | None,
@@ -380,16 +385,8 @@ def read_unresolved_rows(
 
     def one(read: tuple[str, str]) -> tuple[ModelFloorLedgerRow, ...]:
         kind, grep = read
-        query = [
-            "query",
-            "--source",
-            source,
-            "--archives",
-            "--kind",
-            kind,
-            "--grep",
-            grep,
-        ]
+        query = ["query", *_source_args(source), "--archives"]
+        query += ["--kind", kind, "--grep", grep]
         query += ["--limit", "1000000", "--cut", str(cut_chars)]
         return _run_ledger_reader(reader, query, timeout_seconds, all_kinds)
 

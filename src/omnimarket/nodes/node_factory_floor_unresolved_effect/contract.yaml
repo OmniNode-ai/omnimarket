@@ -5,7 +5,7 @@
 # One pass of the four unresolved ledger reads (TERMINAL blocked, partial, handed-off and STATUS handed-off= across the live
 # ledger and every archive roll), run as its own step of the factory floor publish and written as one record that
 # node_factory_floor_effect reads. The evidence moves in days, so the publisher declares the step not required with fresh_seconds.
-# Which reads, how many run together, one read's bound and the margin past the window's edge are the overlay's; the window, the
+# Which reads, from which row source (OMN-23606), how many run together, one read's bound and the margin past the window's edge are the overlay's; the window, the
 # kinds, the cut and the record's path are the floor effect's contract, read from it and never repeated here.
 name: node_factory_floor_unresolved_effect
 contract_name: node_factory_floor_unresolved_effect

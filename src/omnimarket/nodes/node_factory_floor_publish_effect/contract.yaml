@@ -382,7 +382,9 @@ runtime:
   # The evidence moves in days (a row is older than the window and a later row resolves it), so the step is rebuilt only when its
   # record is older than fresh_seconds, the way process_health is, and is not required: when it fails the previous record stays and
   # the floor reads it until its own bound (unresolved_max_age_hours), then draws the ledger unread with the cause. The reads run
-  # together (overlay: read_workers), so the step takes its slowest read. It joins the first group, so it adds nothing past 90 s.
+  # together and name their row source (the step's overlay: read_workers, ledger_source, read_timeout_seconds). Measured on the
+  # publishing Mac 2026-11-10 (OMN-23606, 4 workers, the file source, 26,977 rows from a 2.6 MB live ledger and 225 MB of archive
+  # rolls): 10.6 s, 10.4 s and 10.8 s. It joins the first group, so it adds nothing past 90 s.
   - name: factory_floor_unresolved
     concurrent: true
     kind: module
@@ -392,14 +394,14 @@ runtime:
     args: ["--home", "{home}"]
     fresh_relpath: .onex_state/factory-floor/unresolved-rows.json
     fresh_seconds: 21600
-  # OMN-19998: the record step, one window read of the ledger and every other source. Measured 2026-11-10 on lab host h053 against
-  # a copy of the ledger of 381,070 rows (226 MB) with the unresolved record in place: 50.2 s, 49.3 s and 49.8 s (three runs); from the
-  # Mac's profile (231 s less the four unresolved reads, 183 s) the step needs about 48 s there. 75 s is the measured 50 s plus half
-  # again. It was 30 s, which the step with its unresolved reads took 231 s to 365 s against, and two cutover attempts failed on.
+  # OMN-23606: the record step, one window read of the ledger and every other source, with the unresolved record read from its file.
+  # Its limit stays 30 s and the cycle bound stays 240 s. Measured on the publishing Mac 2026-11-10 at load 10 to 11, with the
+  # overlay naming the file as the ledger source and the window read running beside the step's other reads: 19.6 s, 19.5 s and
+  # 19.1 s (three runs; 24.1 s before the window read ran beside the others, 14.7 s of that the window read alone).
   - name: factory_floor
     kind: module
     required: true
-    timeout_seconds: 75
+    timeout_seconds: 30
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
   # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
@@ -455,10 +457,7 @@ runtime:
   # process-health rebuild (only when its file is older than 900 s) took 82 s on a lab host. A step that reaches its
   # timeout is recorded failed with the seconds it took.
   cycle:
-    # OMN-19998: 240 to 285. The factory_floor step's time limit went from 30 s to 75 s (measured 50 s), which adds 45 s to the longest
-    # declared path (238 s of 240 s before). The tick is 300 s. Needs the operator's say before it merges: this is the one number
-    # of this change that is a bound and not a step's own time limit.
-    bound_seconds: 285
+    bound_seconds: 240
     delegation_timeout_seconds: 15
     copy_budget_seconds: 40
     history_prune_budget_seconds: 8

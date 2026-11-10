@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-19998: the unresolved reads are their own publish step, and the publisher, the step and the floor agree on the seam.
+"""OMN-19998, OMN-23606: the unresolved reads are their own publish step, and the publisher, the step and the floor agree on the seam.
 
 Measured on the launching Mac 2026-11-10 (cProfile, three runs each): the factory floor step took 231 s against its 30 s limit,
 207 s of it five ledger reads in series (the window read and four unresolved reads). Seams pinned here, each failing when either side
 changes shape: the step's module and record path against the floor's contract, the step's freshness against the floor's age bound,
-and the longest declared path against the cycle bound with the floor's measured time limit.
+and the floor step's limit and the longest declared path against the cycle bound, which stays 240 s.
 """
 
 from __future__ import annotations
@@ -31,8 +31,11 @@ RT = load_runtime()
 FLOOR = load_contract(OWN_CONTRACT_PATH).runtime
 STEP = next(s for s in RT.steps if s.name == "factory_floor_unresolved")
 RECORD = next(s for s in RT.steps if s.name == RT.record_step)
-# Measured 2026-11-10 on lab host h053 (381,070 ledger rows): three runs of the floor step, 50.2 s, 49.3 s and 49.8 s.
-MEASURED_FLOOR_STEP_SECONDS = 50.2
+# Measured 2026-11-10 on the publishing Mac at load 10 to 11 (the file source named, the unresolved record in place, 322,088 window
+# rows): three runs of the floor step, 19.6 s, 19.5 s and 19.1 s; and of the unresolved step with 4 workers, 10.6 s, 10.4 s and 10.8 s.
+MEASURED_FLOOR_STEP_SECONDS = 19.6
+MEASURED_UNRESOLVED_STEP_SECONDS = 10.8
+CYCLE_BOUND_SECONDS = 240
 
 
 def test_the_step_runs_the_unresolved_node_before_the_record_and_is_not_required() -> (
@@ -61,10 +64,13 @@ def test_the_step_costs_the_cycle_nothing_past_its_group() -> None:
     assert STEP.timeout_seconds == max(s.timeout_seconds for s in group)
 
 
-def test_the_floor_step_has_the_measured_time_plus_headroom_and_the_cycle_still_fits() -> (
+def test_the_floor_step_has_the_measured_time_plus_headroom_under_the_unchanged_bound() -> (
     None
 ):
+    """Break: a floor limit raised to pay for slow reads (it was 75 s under a 285 s bound) fails here, not on the served page."""
     assert RECORD.required
-    assert RECORD.timeout_seconds >= MEASURED_FLOOR_STEP_SECONDS * 1.25
+    assert RECORD.timeout_seconds >= MEASURED_FLOOR_STEP_SECONDS * 1.5
+    assert STEP.timeout_seconds >= MEASURED_UNRESOLVED_STEP_SECONDS * 1.5
+    assert RT.cycle.bound_seconds == CYCLE_BOUND_SECONDS
     path = RT.declared_longest_path()
-    assert sum(path.values()) <= RT.cycle.bound_seconds, path
+    assert sum(path.values()) <= CYCLE_BOUND_SECONDS, path

@@ -328,7 +328,11 @@ class HandlerFactoryFloorEffect:
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
         # The cloud account node is a subprocess of its own and waits on nothing the ledger read produces: the two
         # run together (OMN-23081: sequential, the reads took 12 s of the step's 30 s bound).
-        cloud_pool = ThreadPoolExecutor(max_workers=1)
+        # The window read of the ledger is the reader's subprocess, the step's longest wait (OMN-23606, measured on the
+        # publishing Mac 2026-11-10: 14.7 s of 24.1 s). It runs beside the cloud read while this thread reads the plans, the
+        # merged-and-running counts and the running evidence, which wait on nothing it produces; its answer, or its refusal,
+        # is taken where the first reader of the rows needs it.
+        cloud_pool = ThreadPoolExecutor(max_workers=2)
         cloud_read = cloud_pool.submit(
             read_cloud_account_source,
             home,
@@ -336,9 +340,10 @@ class HandlerFactoryFloorEffect:
             overlay.cloud_accounts_node_command if overlay is not None else (),
         )
         kinds = frozenset(rt.ledger_kinds)
-        ledger = read_ledger_rows(
+        ledger_read = cloud_pool.submit(
+            read_ledger_rows,
             window_days=rt.ledger_window_days,
-            source=rt.ledger_source,
+            source=overlay.ledger_source if overlay is not None else None,
             cut_chars=rt.ledger_cut_chars,
             timeout_seconds=rt.ledger_timeout_seconds,
             plugin_root=Path(plugin_root) if plugin_root else None,
@@ -380,6 +385,7 @@ class HandlerFactoryFloorEffect:
         try:
             cloud_accounts, cloud_cause = cloud_read.result()
         finally:
+            # Starts no further read; the window read already running finishes and is taken below.
             cloud_pool.shutdown(wait=False)
         plans = load_plans(
             kb=Path(kb_value),
@@ -405,6 +411,7 @@ class HandlerFactoryFloorEffect:
         running_evidence, running_cause = self._read_running_evidence(
             now, host_table_path
         )
+        ledger = ledger_read.result()
         ledger_read_at = (
             _file_time(Path(request.ledger_rows_file))
             if request.ledger_rows_file

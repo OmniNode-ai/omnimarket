@@ -19,11 +19,13 @@ class ModelFactoryFloorUnresolvedRead(BaseModel):
 
 
 class ModelFactoryFloorUnresolvedOverlay(BaseModel):
-    """The deployment's reads and budgets: which reads, how many run together, how long one may take, and the margin the record keeps past the window's edge."""
+    """The deployment's reads and budgets: which reads, from which row source, how many run together, how long one may take, and the margin the record keeps past the window's edge. There is no packaged default for any of them."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     reads: tuple[ModelFactoryFloorUnresolvedRead, ...] = Field(min_length=1)
+    # The ledger reader's ``--source`` for every read (file, db or compare; the reader refuses another).
+    ledger_source: str = Field(min_length=1)
     read_workers: int = Field(gt=0)
     read_timeout_seconds: int = Field(gt=0)
     overlap_hours: int = Field(gt=0)

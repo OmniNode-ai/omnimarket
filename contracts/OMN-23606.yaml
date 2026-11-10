@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-23606"
 title: "The factory floor board's main step reads the work log once, and the older hand-offs are their own step"
-summary: "The four unresolved ledger reads leave the factory floor effect for node_factory_floor_unresolved_effect, a publish step that is not required and carries fresh_seconds; the floor effect reads one window and the step's record. The floor step's time limit is set from a measured run (50 s) plus headroom (75 s); the cycle bound moves from 240 s to 285 s with it."
+summary: "The four unresolved ledger reads leave the factory floor effect for node_factory_floor_unresolved_effect, a publish step that is not required and carries fresh_seconds; the floor effect reads one window and the step's record. Each node takes the reader's row source from its own deployment overlay, the floor step's window read runs beside its other reads, the floor step keeps its 30 s limit (measured 19.1 to 19.6 s on the publishing Mac) and the cycle bound stays 240 s."
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -17,9 +17,11 @@ requirements:
       - id: "AC2"
         statement: "AC2: the unresolved step runs its four reads together, writes its record only after all of them finished, and keeps the previous record when one fails -- falsifier: pytest tests/nodes/node_factory_floor_unresolved_effect -q"
       - id: "AC3"
-        statement: "AC3: the publisher declares the unresolved step not required with a freshness window, the floor step carries its measured time limit plus headroom, and the declared longest path fits the cycle bound -- falsifier: pytest tests/nodes/node_factory_floor_publish_effect/test_unresolved_step_seam.py -q"
+        statement: "AC3: the publisher declares the unresolved step not required with a freshness window, the floor step's limit holds its measured time plus half again, and the declared longest path fits the unchanged 240 s cycle bound -- falsifier: pytest tests/nodes/node_factory_floor_publish_effect/test_unresolved_step_seam.py -q"
       - id: "AC4"
-        statement: "AC4: integrated: on the publishing Mac, the served publish status shows the unresolved step ok and the factory floor step ok in under 75 seconds, and the unresolved-hand-offs reading is not unread -- falsifier: read publish-status.json on the Mac after the install and find either step failed or the floor step at or over 75 seconds"
+        statement: "AC4: integrated: on the publishing Mac, the served publish status shows the unresolved step ok and the factory floor step ok in under 30 seconds, and the unresolved-hand-offs reading is not unread -- falsifier: read publish-status.json on the Mac after the install and find either step failed or the floor step at or over 30 seconds"
+      - id: "AC5"
+        statement: "AC5: the reader's row source of the floor effect and of the unresolved step is each node's own overlay value and no contract names one; an overlay that names no source leaves the reader its default -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_source_named.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "The unresolved step's tests, the floor effect's unresolved-record tests and the publisher's seam tests."
@@ -36,6 +38,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_unresolved_effect tests/nodes/node_factory_floor_publish_effect/test_unresolved_step_seam.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23606-ledger-source"
+    description: "The floor effect and the unresolved step name their overlay's row source to the reader, and the floor's contract names none; the failing control is a reader that refuses its default source."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_ledger_source_named.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn23606-integration-hosted"
     description: "Hosted proxy for AC4: the publisher's seam tests show the unresolved step declared not required with a freshness window and the floor step's time limit and cycle bound fit. Neither exists at the merge base, so the control fails there. The lab run is the unbound local item below, because the hosted must-fail control can never run a local_done_gate item."

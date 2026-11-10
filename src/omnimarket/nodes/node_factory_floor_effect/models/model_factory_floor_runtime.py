@@ -133,8 +133,6 @@ class ModelFactoryFloorRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     phoenix_url_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
-    # The reader's ``--source`` for every ledger read (file, db or compare).
-    ledger_source: str = Field(min_length=1)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
     # The row kinds the effect keeps from the window.
@@ -215,6 +213,9 @@ class ModelFactoryFloorOverlay(BaseModel):
     container_read_line: str = ""
     container_hosts: tuple[ModelFactoryFloorContainerHost, ...] = ()
     container_budgets: tuple[ModelLaneContainerBudgetDeclaration, ...] = ()
+    # The ledger reader's row source for the window read (its ``--source``: file, db or compare; the reader refuses another).
+    # None names no source and leaves the reader its own default, which on a host whose ledger record is the bus is the bus read.
+    ledger_source: str | None = Field(default=None, min_length=1)
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]
     roles: tuple[str, ...]
