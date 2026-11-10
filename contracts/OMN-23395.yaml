@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-23395
+title: The landing chain's broker calls are held to the dev lane principal's grants by a seam test
+summary: The piece 9 landing chain (tests/chain/landing_chain.py) serves the decision node over the dev lane as the issued dev-lane principal. The grants for that principal live in the lab infrastructure declaration (the developer principal bindings). A seam test spells the granted topics and consumer group prefixes in this repository and holds the chain's bus against them with a recording client, so a change to either the chain's topics or its group naming reads red here, and the dev broker is not first to refuse it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23395-landing-grant-seam
+  statement: The landing chain's subscriptions and publishes stay inside the topics and group prefixes the dev-lane principal is granted, and the failure terminal is never used.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the landing chain bus subscribes and publishes only on the two granted decision topics under the two granted group prefixes -- falsifier: renaming the node group prefix in tests/chain/landing_chain.py turns tests/chain/test_landing_grant_seam.py red'
+evidence_requirements:
+- kind: tests
+  description: The landing grant seam test (granted topics, group prefixes, failure terminal unused, and a control that reads red)
+  command: uv run --frozen pytest tests/chain/test_landing_grant_seam.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23395-landing-grant-seam
+  description: Runs the landing grant seam test. It passes against the chain as written and reads red when the node group prefix in tests/chain/landing_chain.py is renamed. The test file is absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_landing_grant_seam.py -q --no-cov -p no:randomly
+    cwd: .
