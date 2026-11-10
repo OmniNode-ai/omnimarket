@@ -129,7 +129,7 @@ async def _no_exchange(*args: Any, **kwargs: Any) -> tuple[int, dict[str, Any]]:
 
 def _infisical(**kwargs: Any) -> HandlerInfisicalHttp:
     return HandlerInfisicalHttp(
-        address="http://secrets.invalid",
+        address="https://secrets.invalid",
         project_id="p",
         environment="e",
         client_id=SecretStr("id"),

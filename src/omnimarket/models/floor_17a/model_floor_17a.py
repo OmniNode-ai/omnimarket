@@ -253,6 +253,16 @@ class ModelRunnerPlanRule(_Frozen):
     restore: str = ""
 
 
+class ModelOwnerSourceOverlay(_Frozen):
+    """Where owner entries may come from (OMN-23388): the floor overlay file must equal its own git checkout's ``remote_ref``."""
+
+    # The ref of the overlays repository's main (for example ``origin/main``); the floor overlay file, which carries the
+    # owner map, must be byte-equal to the same file at this ref, or the cycle refuses it naming the source.
+    remote_ref: str = Field(min_length=1)
+    # How long one git read may take before the source counts as unreadable.
+    git_timeout_s: int = Field(default=20, gt=0)
+
+
 class ModelLabStateOverlay(_Frozen):
     """The overlay of the lab-state reader and node: the sources and how each is read."""
 
@@ -281,6 +291,9 @@ class ModelLabStateOverlay(_Frozen):
     deploy_agent_url: str = ""
     deploy_agent_history: int = Field(default=50, gt=0)
     deploy_agent_timeout_s: int = Field(default=10, gt=0)
+    # When declared, the floor overlay's owner entries are accepted only from this ref of the overlays repository
+    # (OMN-23388); ``None`` checks no source.
+    owner_source: ModelOwnerSourceOverlay | None = None
 
     @model_validator(mode="after")
     def _one_per_kind(self) -> ModelLabStateOverlay:
@@ -448,6 +461,12 @@ class ModelFloorCause(_Frozen):
     # after its last row, ``None`` for a cause that is not one.
     still_occurring: bool | None = None
     resolved_at: datetime | None = None
+    # Who is on it, as far as the floor can tell (OMN-23388): ``owned`` when a live lane is on the row, ``unowned`` when
+    # none is and the owner map and the lane list were fresh and read, ``unknown`` when none is but either input was
+    # stale or unread. Only ``unowned`` says nobody is on it.
+    owner_state: Literal["owned", "unowned", "unknown"] = "unowned"
+    # Why the owner is unknown, with the read's age; empty unless ``owner_state`` is ``unknown``.
+    owner_note: str = ""
 
 
 class ModelFloorJoinRow(_Frozen):
@@ -527,6 +546,20 @@ class ModelRebuild(_Frozen):
     go_pieces: tuple[int, ...] = ()
 
 
+class ModelOwnerInputs(_Frozen):
+    """The two inputs of "who is on it", judged by age (OMN-23388); ``None`` on the document is an overlay that judges none."""
+
+    unknown: bool
+    # Why, naming each input that is stale or unread with its age; empty when both were fresh and read.
+    reason: str = ""
+    # Seconds since the owner map was read; ``None`` when it was not read.
+    owner_map_age_s: int | None = None
+    owner_map_max_age_s: int | None = None
+    # Seconds since the lane list was read; ``None`` when it was not read.
+    lanes_age_s: int | None = None
+    lanes_max_age_s: int | None = None
+
+
 class ModelRedRule(_Frozen):
     """The reading of the rule: a red row never has work under way on its cause."""
 
@@ -540,6 +573,9 @@ class ModelRedRule(_Frozen):
     # Every red cause no live lane is on, whatever tickets it lists as owners (OMN-23243): a listed owner ticket with no
     # running lane carries nothing, so the rule reads NOT WORKING and names the row instead of counting it as carried.
     uncarried_red: tuple[str, ...] = ()
+    # Every red cause no live lane is on while the owner map or the lane list was stale or unread (OMN-23388): the board
+    # cannot say nobody is on these, so they are named here and never in ``unowned_red`` or ``uncarried_red``.
+    owner_unknown_red: tuple[str, ...] = ()
 
 
 class ModelHealthReadingUsed(_Frozen):
@@ -601,6 +637,8 @@ class ModelFloorSimple(_Frozen):
     # The board's work list (OMN-23184): every in-scope item that needs help, one row per class, members paged. ``None`` is a
     # record written before the list existed, or an overlay that declares none.
     worklist: tuple[ModelWorklistClass, ...] | None = None
+    # The owner map and lane list as judged this cycle (OMN-23388); ``None`` when the overlay declares no judgment.
+    owner_inputs: ModelOwnerInputs | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -783,6 +821,16 @@ class ModelNumbersOverlay(_Frozen):
     record_max_age_s: int = Field(gt=0)
 
 
+class ModelOwnerInputsOverlay(_Frozen):
+    """What makes "who is on it" readable (OMN-23388): the lab source that reads the owner map, and the lane list's bound."""
+
+    # The id of the lab source whose reading is the owner map's (the overlay store source). Its own declared bound is the
+    # owner map's maximum age; a source it did not report, or that was not read, is an owner map that was not read.
+    owner_map_source: str = Field(min_length=1)
+    # The lane list (the floor record's lanes) is older than this many seconds: its owners are unknown.
+    lanes_max_age_s: int = Field(gt=0)
+
+
 class ModelCauseOverlay(_Frozen):
     max_shown: int = Field(gt=0)
     # The delegation:idle row (OMN-23313); ``None`` declares none and the floor draws none.
@@ -796,6 +844,9 @@ class ModelCauseOverlay(_Frozen):
     estimated_cost_stoppages: tuple[str, ...] = ()
     # A stoppage seen within this many seconds of the clock is still occurring; ``None`` does not judge it.
     still_occurring_within_s: int | None = Field(default=None, gt=0)
+    # When declared, a row with no lane on it reads owner unknown, not unowned, while the owner map or lane list is stale or
+    # unread (OMN-23388); ``None`` judges neither input.
+    owner_inputs: ModelOwnerInputsOverlay | None = None
 
 
 class ModelFloorSimpleOverlay(_Frozen):

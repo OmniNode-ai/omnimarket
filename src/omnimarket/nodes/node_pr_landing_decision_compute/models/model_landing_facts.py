@@ -212,6 +212,23 @@ class ModelLandingPrFacts(BaseModel):
         pattern=SHA_PATTERN,
         description="The head auto-merge is armed on, if armed.",
     )
+    pr_node_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The PR's GraphQL node id, which the GitHub landing effect's arm and "
+            "enqueue need (OMN-23405). Unread: the act-mode writer refuses the "
+            "merge as no_node_id. The decision never reads it."
+        ),
+    )
+    failed_run_ids: tuple[int, ...] = Field(
+        default=(),
+        description=(
+            "This head's failed workflow run ids, which the GitHub landing "
+            "effect's rerun needs (OMN-23405). Empty: the act-mode writer refuses "
+            "a rerun as no_run_ids. The decision never reads it."
+        ),
+    )
     red_annotations: dict[str, str] = Field(
         default_factory=dict,
         description=(

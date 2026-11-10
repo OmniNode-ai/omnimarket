@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Host repair dispatch (OMN-23389, R13 of the h053 cascade plan). Read by `node_lab_host_repair_dispatch_effect`.
+#
+# One repair lane per host and alarm; the alarm repeating past the backoff is a repair that did not clear it, so the
+# node retries to the budget and then writes one escalation row. The first repair of h053 on 2026-11-09 started about
+# three hours after the disk filled: the alarm-to-repair bound is five minutes, one watermark interval.
+alarm_name: disk-watermark-page
+retry_budget: 3
+backoff_seconds: [900, 1800]
+alarm_to_repair_latency_seconds: 300
+state_file: $HOME/.local/state/onex/host-repair/state.json
+brief_dir: $HOME/.local/state/onex/host-repair/briefs
+repair_ticket: OMN-23389
+parent_lane: orchestrator-31d9
+lane_prefix: hostrepair
+measure_separator: "---FINDMNT---"
+measure_timeout_seconds: 60
+# The df and findmnt reading is taken on the target itself, over ssh from the host that runs this node.
+measure_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10, "{host}", "df -P; echo ---FINDMNT---; findmnt -rn"]
+dispatch_timeout_seconds: 120
+# The lane start node places the lane on another host that reached the target over ssh (OMN-23389, placement).
+dispatch_argv:
+  - onex
+  - run-node
+  - node_remote_lane_start_orchestrator
+  - --
+  - --overlay
+  - $OMNI_HOME/.onex_state/lab-host-repair/lane-start-overlay.yaml
+  - --ledger
+  - "{ledger}"
+  - --pool-snapshot
+  - $OMNI_HOME/.onex_state/lab-host-repair/pool-snapshot.json
+  - --ssh-reach-file
+  - $OMNI_HOME/.onex_state/lab-host-repair/ssh-reach.json
+  - --lane
+  - "{lane}"
+  - --ticket
+  - "{ticket}"
+  - --model
+  - sonnet
+  - --brief
+  - "{brief_file}"
+  - --run-id
+  - "{lane}"
+  - --parent
+  - "{parent}"
+  - --pinned-host
+  - "{target}"
+  - --repair-target
+  - "{target}"
+escalate_argv:
+  - python3
+  - $OMNI_PLUGIN_ROOT/scripts/onex_ledger.py
+  - row
+  - MSG
+  - --lane
+  - hostrepair-dispatch
+  - --ticket
+  - OMN-23389
+  - --to
+  - orchestrator-31d9
+  - --text
+  - "{row}"
+brief_template: |
+  ROUTE: band=B2 score=6 dims=S1A1R2V1N1C0J0 dest=claude model=sonnet effort=high
+
+  Repair the lab host {host}: its disk watermark alarm ({alarm}) read {used_percent} percent used at {read_at}. This is
+  attempt {attempt} of {budget}; a repeated alarm after this lane ends means this repair did not clear it.
+
+  You run on a host other than {host} and reach it over ssh ({host}). Never place work on {host}.
+
+  Measured on {host} when this lane was dispatched, df -P:
+
+  {df}
+
+  findmnt -rn:
+
+  {findmnt}
+
+  Work from this reading and re-read df and findmnt on {host} before you remove anything: remove only what the host's
+  own cleanup tools declare removable, find what filled the volume and name the flow fix that stops it refilling. Report
+  the free space before and after, and the flow fix, in your TERMINAL.

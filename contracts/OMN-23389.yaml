@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-23389
+title: Host repair is dispatched by a node from the disk alarm, on another host, and failed placements and parent notices are read and acted on
+summary: Placement takes the host a repair lane repairs and never runs the lane there; node_lab_host_repair_dispatch_effect consumes the disk watermark alarm and starts one repair lane per host and alarm with the measured df and findmnt in its brief; node_lane_parent_notice_recovery_effect reads a failed placement as failed and consumes parent notices with a durable cursor that starts one recovery lane. This contract binds the evidence so dod-verify can judge the pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23389-repair-lane-placement
+  statement: A repair lane pinned to a host that refuses admission is placed on another host that reached the target over ssh; the target is never the run host.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: placement refuses to pin a repair lane to a host that is refusing admission and places it on another host that reaches the target over ssh -- falsifier: a placement test with a repair brief pinned to a refusing host that is admitted there'
+- id: req-omn23389-repair-dispatch
+  statement: One alarm for a host and alarm name dispatches one repair lane, with the df and findmnt measured on the target in its brief, a durable dedupe key, a retry budget and backoff from the overlay, and one escalation at the budget.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a node consumes the disk watermark alarm and dispatches one repair lane per host and alarm (durable dedupe key, retry budget and backoff as overlay values) with the measured df and findmnt in its brief -- falsifier: a node test where two alarms for one host dispatch two lanes'
+- id: req-omn23389-notice-recovery
+  statement: A lane whose placement failed reads failed, and each parent notice is consumed once through a durable cursor that starts one recovery lane within a budget.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a failed placement reads as failed in the orchestrator''s lane read, and parent notices are consumed with a durable cursor that dispatches recovery once -- falsifier: a node-unavailable fixture that reads running'
+evidence_requirements:
+- kind: tests
+  description: The repair placement, repair dispatch and notice recovery tests, and the lane start repair tests
+  command: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_repair_lane_placement.py tests/nodes/node_lab_host_repair_dispatch_effect tests/nodes/node_lane_parent_notice_recovery_effect src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_repair.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23389-repair-placement
+  description: Runs the repair placement tests. A repair brief pinned to a refusing host is placed on another host that reached the target over ssh, the target is off the pick even when it would admit the lane, and a host with no ssh reach takes none. At the merge base the repair target field is absent, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_repair_lane_placement.py src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_repair.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23389-repair-dispatch
+  description: Runs the repair dispatch tests. Two alarms for one host dispatch one lane (also across a restart through the durable store), the brief carries the measured df and findmnt, a failed repair retries to its budget and escalates once. Absent at the merge base.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_host_repair_dispatch_effect/test_host_repair_dispatch.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23389-notice-recovery
+  description: Runs the notice recovery tests. A node-unavailable fixture reads failed (the control with no failure status reads running), a notice is consumed once through the durable cursor, a restart between the start and the cursor starts no second lane, and a placement that stays unavailable ends in one escalation. Absent at the merge base.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_parent_notice_recovery_effect/test_notice_recovery.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23389-integration-proof-lab
+  description: Runs the new tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23389 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_repair_lane_placement.py tests/nodes/node_lab_host_repair_dispatch_effect tests/nodes/node_lane_parent_notice_recovery_effect -q --no-cov -p no:randomly'
+    cwd: .
