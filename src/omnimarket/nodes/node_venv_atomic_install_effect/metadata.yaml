@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_venv_atomic_install_effect
+version: 1.0.0
+description: Install only the packages whose locked version moved into a staging
+  directory and exchange each package's units in place, with a journal that restores
+  every exchanged unit when the pass fails.
+pack: pr_lifecycle
+node_role: effect
+display_name: Venv Atomic Install Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_venv_atomic_install_effect: omnimarket.nodes.node_venv_atomic_install_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- venv-atomic-install
