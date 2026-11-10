@@ -253,6 +253,17 @@ def _call_bus(
             result = terminal.payload.get("result", terminal.payload)
             if failed and isinstance(result, dict):
                 result = _with_skew_reading(spec, terminal.payload, result)
+            if failed and refused_fields(terminal.payload) == ("fill_on_miss",):
+                # An older gateway does not know the flag, so the read is asked cache-only until it is redeployed (OMN-23378).
+                correlation_id = uuid.uuid4()
+                request = request.model_copy(
+                    update={
+                        "fill_on_miss": False,
+                        "cache_only": True,
+                        "correlation_id": correlation_id,
+                    }
+                )
+                continue
             return _emit(
                 ModelScmAnswer(
                     verb=spec.verb,

@@ -368,3 +368,39 @@ def test_seam_the_verb_request_round_trips_and_matches_the_fillers_shape(
     assert lane_fields.pop("fill_on_miss") is True
     assert filler_fields.pop("fill_on_miss") is False
     assert lane_fields == filler_fields
+
+
+def test_seam_a_gateway_older_than_the_client_is_asked_cache_only(
+    tmp_path, monkeypatch
+):
+    _cache_at(tmp_path, monkeypatch, "lane_miss_fill_max: 30\n")
+    transport = _recorded(JOB)
+    _wire_gateway(monkeypatch, transport)
+    seen: list[ModelGithubGatewayRequest] = []
+    original = gateway.HandlerGithubRepoGatewayEffect.handle
+
+    async def spy(self, request: ModelGithubGatewayRequest):
+        seen.append(request)
+        if request.fill_on_miss:
+            # The older node's own validation: the request field it does not know.
+            raise ValidationError.from_exception_data(
+                "ModelGithubGatewayRequest",
+                [
+                    {
+                        "type": "extra_forbidden",
+                        "loc": ("fill_on_miss",),
+                        "input": request.fill_on_miss,
+                    }
+                ],
+            )
+        return await original(self, request)
+
+    monkeypatch.setattr(gateway.HandlerGithubRepoGatewayEffect, "handle", spy)
+
+    result = _invoke(JOB)
+    assert len(seen) == 2, result.output
+    assert seen[0].fill_on_miss is True
+    assert seen[1].fill_on_miss is False
+    assert seen[1].cache_only is True
+    assert result.exit_code != 0
+    assert "JOB-LOG-CACHE-MISS" in result.output
