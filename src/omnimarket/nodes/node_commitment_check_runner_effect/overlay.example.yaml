@@ -24,7 +24,7 @@ ledger_lookback_hours: 2160
 output_tail_chars: 400
 ledger_read:
   route: file
-  path_env: ONEX_LEDGER_PATH
+  path_env: ONEX_COMMITMENT_LEDGER_SOURCE
   archive_subdir: archive
   timeout_seconds: 30
   row_limit: 5000
@@ -36,6 +36,6 @@ schedule_hosts:
   - name: example-lab-host
     venv: omnimarket/.venv
     environment:
-      ONEX_LEDGER_PATH: $OMNI_HOME/docs/tracking/ROLLING_WORK_LEDGER.md
+      ONEX_COMMITMENT_LEDGER_SOURCE: /path/to/commitment-ledger-source.md
       ONEX_LEDGER_APPEND_COMMAND: $OMNI_HOME/omnimarket/.venv/bin/python -m example.ledger_append
       ONEX_HOST_NAME: example-lab-host

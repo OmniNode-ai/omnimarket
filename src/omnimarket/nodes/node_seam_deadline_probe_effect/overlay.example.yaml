@@ -23,6 +23,7 @@ seams:
     fault_request: {query: not-a-query}
     error_keys: [error, failure_code]
     deadline_seconds: 30
+    late_listen_seconds: 60
 injected_fault: A demanded command gets no result by its deadline
 schedule_hosts:
   - name: example-lab-host

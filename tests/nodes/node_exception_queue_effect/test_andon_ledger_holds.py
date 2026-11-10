@@ -16,15 +16,18 @@ import yaml
 from omnimarket.handlers.rules_stop_gate import load_andon_stop_contract, stop_gate
 from omnimarket.models.model_andon_ledger_holds import ModelAndonLedgerHoldsRequest
 from omnimarket.models.stop_gate import (
+    EnumFloorVerdict,
     EnumReadingOrigin,
     EnumReadingVerdict,
     EnumStopEventKind,
     EnumStopGateOutcome,
     EnumStopMode,
+    ModelGoAndSeeRow,
     ModelStopEvent,
     ModelStopGateRequest,
     ModelStopPolicy,
     ModelStopReading,
+    ModelWorkingReading,
 )
 from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
     create_handler_open_stops,
@@ -185,10 +188,33 @@ def test_andon_hold_readback_clears_once_and_replay_never_reopens(
         proof_eligible=True,
         origin=EnumReadingOrigin.EXECUTED,
         covers_scope=True,
+        working=ModelWorkingReading(
+            verdict=EnumFloorVerdict.WORKING, read_at=NOW + timedelta(minutes=2)
+        ),
     )
-    _event(request.state_dir, stop.id, EnumStopEventKind.READBACK, 2, reading=fixed)
+    seen = ModelGoAndSeeRow(
+        row_id="gas-1",
+        lane_id="lane-1",
+        seen_at=NOW + timedelta(minutes=2),
+        observed="went to the stopped scope and saw it work",
+    )
+    _event(
+        request.state_dir,
+        stop.id,
+        EnumStopEventKind.READBACK,
+        2,
+        reading=fixed,
+        go_and_see=seen,
+    )
     assert len(node.handle(request).stops) == 1
-    _event(request.state_dir, stop.id, EnumStopEventKind.READBACK, 3, reading=fixed)
+    _event(
+        request.state_dir,
+        stop.id,
+        EnumStopEventKind.READBACK,
+        3,
+        reading=fixed,
+        go_and_see=seen,
+    )
     queue = request.state_dir / "exception-queue.jsonl"
     before = queue.read_bytes()
     assert NodeExceptionQueueEffect().handle(request).stops == ()
