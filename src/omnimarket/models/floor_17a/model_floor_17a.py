@@ -263,6 +263,8 @@ class ModelLabStateOverlay(_Frozen):
     deploy_lag_lookback_days: int = Field(gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
+    # Hosts the pool probe does not read; every other host of the floor record needs a disk line in the pool receipt.
+    disk_unprobed_hosts: tuple[str, ...] = ()
     # A host the pool refuses only on load that its own placed units explain is busy with our work, not failing (OMN-22870).
     # ``own_load_marker`` is the refusal part the placement prints when the units placed on the host explain the load over the
     # bar; ``load_bar_markers`` are the load bar's own refusal parts. A refusal made of those parts alone, with the own-load
