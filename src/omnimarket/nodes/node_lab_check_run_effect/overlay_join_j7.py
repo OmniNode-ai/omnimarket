@@ -67,8 +67,6 @@ class ModelJoinJ7Overlay(BaseModel):
             raise ValueError("the current attempt and the old attempt are two attempts")
         if self.repository not in self.check_run.settings.lab_repositories:
             raise ValueError("the test repository is a lab repository of the twin")
-        if self.check_run.source.backend != "inmemory":
-            raise ValueError("the twin's check-run source is the in-memory one")
         return self
 
 
