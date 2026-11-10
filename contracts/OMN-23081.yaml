@@ -81,6 +81,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_readiness_omn23081.py tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -q --no-cov
     cwd: .
+- id: dod-omn23081-publish-cycle-ssh-reuse
+  description: Runs the tests for the publish cycle's shared ssh connection and the lab host table volumes root, which fail when each ssh call opens its own connection.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_ssh_connection_reuse_omn23081.py tests/unit/lab_work/test_lab_host_table_volumes_root.py -q --no-cov
+    cwd: .
 - id: dod-omn23081-ledger-window-read
   description: Runs the windowed ledger read tests, which fail on a roll older than the window being opened, on a pre-window line being parsed, and on any row differing from an in-memory read of every line.
   source: manual

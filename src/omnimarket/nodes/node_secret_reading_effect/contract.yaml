@@ -99,6 +99,16 @@ schedule:
       randomized_delay: 60s
       persistent: true
       description: daily at 06:20 UTC, a read with a made-up machine identity, so the error event stays inside a 24-hour window
+  # The J4 join test (OMN-23085): overlays to secrets. One run resolves a key by overlay from the store and scans the node's code,
+  # log and the ledger row it writes; the row it writes is the floor's golden event for J4. Installed only where the overlay root
+  # holds the join overlay (node_secret_reading_join_j4).
+  join_j4:
+    unit_name: onex-secret-join-j4-hourly
+    cadence:
+      on_calendar: "*-*-* *:20:00"
+      randomized_delay: 60s
+      persistent: true
+      description: hourly at :20, after the hourly secret reading and before the reading writer's tick, so the floor holds a J4 golden event inside its window
 
 overlay:
   node: node_secret_reading_effect
