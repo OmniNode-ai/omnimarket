@@ -3069,6 +3069,8 @@
   "tests/test_omn22573_review_findings.py": 0.04,
   "tests/test_omn22652_live_events_qualified_insert_real_postgres.py": 0.0,
   "tests/test_omn22658_delivery_cache_real_postgres.py": 1.04,
+  "tests/test_omn22675_savings_review_findings.py": 0.17,
+  "tests/test_omn22675_savings_unpriced_single_pass_real_postgres.py": 0.17,
   "tests/test_omn22874_delegation_writer_aggregate_coalescing.py": 7.36,
   "tests/test_omn22874_real_postgres_aggregate_coalescing.py": 0.0,
   "tests/test_omn23043_savings_hook_event_skip.py": 0.023,
