@@ -1,0 +1,37 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23341"
+title: "Ownership declarations and vendored migrations for the goal trace projection"
+summary: >
+  First of three steps for the goal-trace projection (GC.11), child ticket of the goal ticket that owns the node. The application
+  database domain gate in omnibase_infra resolves each relation a migration
+  creates against scripts/application-relation-ownership.yaml at this
+  repository's dev tip, so the declarations for goal_trace_events, goal_traces
+  and the cursor sequence of goal_trace_events land here before omnibase_infra
+  vendors the migration and before the node and its migration land. No node
+  package and no SQL in this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn23341-ownership-declared"
+    statement: "The two goal-trace tables and the cursor sequence are declared in the ownership manifest exactly once."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the ownership declarations and the vendored migrations are merged on dev with their own contract file -- falsifier: uv run pytest tests -q -k ownership against omnimarket dev after the merge"
+evidence_requirements:
+  - kind: "tests"
+    description: "The ownership manifest declares both tables and the sequence."
+    command: "uv run pytest tests/test_omn20034_goal_trace_ownership_declared.py -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23341-ownership-declared"
+    description: "The manifest declares both tables once each and the cursor sequence as a sequence object. Fails at the merge base, which declares none of them."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20034_goal_trace_ownership_declared.py -q --no-cov -p no:randomly"
+        cwd: "."

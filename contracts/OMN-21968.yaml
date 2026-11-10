@@ -1,0 +1,47 @@
+schema_version: 1.0.0
+ticket_id: OMN-21968
+title: Coverage Sweep Gate red on open omnimarket pull requests traced to one cause, with a fix and a regression test
+summary: The Coverage Sweep Gate context failed closed on 14 of 15 open omnimarket heads read on 2026-11-08. Its census refuses when Detect Changes or the Tests shards did not produce shard artifacts, and the upstream jobs failed in the astral-sh/setup-uv step, whose download of uv from github.com release assets answered HTTP 504 three times. The three jobs of the census path now install uv from PyPI instead of through setup-uv, with no continue-on-error and no suppression comment, because the advisory-job gate and the canonical file shape ratchet refuse both. The coverage job keeps its uv dependency cache through actions/cache. The gate's refusal step, its aggregate step and its coverage threshold are not changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21968-uv-install-fallback
+  statement: The census path of Coverage Sweep Gate no longer depends on the setup-uv download from github.com release assets, without weakening the gate, and the red on the open heads is attributed to a named step and cause from job logs read on more than one head.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lane states, with the failing step and its output read from two different heads, whether the red is one cause or several, and names the file and line of each -- falsifier: a report that names no failing step or cites one head only'
+  - id: AC2
+    statement: 'AC2: for one cause, a fix pull request carries a regression test that fails on the current code and passes on the fix, run through uv run pytest on the named test -- falsifier: uv run pytest -k coverage_sweep_gate_cause -q in omnimarket on the PR head'
+evidence_requirements:
+- kind: tests
+  description: The regression tests of the PyPI uv install on the census path of Coverage Sweep Gate, including the pin that the gate still refuses when the shards did not run.
+  command: uv run pytest tests/ci/test_coverage_sweep_gate_cause_uv_install_fallback.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21968-ac1
+  description: The report at reports/cause-coverage-mkt-1055/result.md on the lab host names the failing step of the gate job on omnimarket#5253 (Install uv, HTTP 504 three times) and on omnimarket#5150 and #5170 (the census refusal at ci.yml and ARTIFACT_MISSING at scripts/ci/aggregate_coverage_artifacts.py), and the fix test pins the PyPI uv install on the three jobs of that path.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_coverage_sweep_gate_cause_uv_install_fallback.py -q
+- id: dod-omn21968-ac2
+  description: The five tests fail four of five on the workflow as origin/dev holds it and pass five of five on the branch. The one that passes on both is the pin that the gate's refusal and combine steps are unchanged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_coverage_sweep_gate_cause_uv_install_fallback.py -k coverage_sweep_gate_cause -q
+- id: dod-omn21968-ac3
+  description: AC3 of the ticket, not bound in this contract because no hosted check can run it before the merge. After the fix merges, one affected open head is re-run and its Coverage Sweep Gate check-run is read from the PR watcher state. Unmet until then; only the local Done gate reads it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: python3 "${OMNI_PLUGIN_ROOT:?}"/skills/merge-drain/scripts/pr_state_local.py --pr omnimarket#5170 --json
