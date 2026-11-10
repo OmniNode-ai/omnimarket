@@ -51,6 +51,7 @@ from omnimarket.nodes.node_work_ledger_seam_counter_compute.models.model_seam_co
     ModelSeamRowRef,
     ModelSeamWindow,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 
 pytestmark = pytest.mark.unit
 
@@ -73,7 +74,9 @@ class _EmitPathPublisher:
     """Adapts the real HandlerWorkLedgerEmit to the replay node's publisher protocol."""
 
     def __init__(self, emitter: _Emitter) -> None:
-        self._handler = HandlerWorkLedgerEmit(emitter=emitter)
+        self._handler = HandlerWorkLedgerEmit(
+            judge_gate=OPEN_JUDGE_GATE, emitter=emitter
+        )
 
     def publish_row(self, row: str, ledger_id: str) -> ModelReplayPublishOutcome:
         result = self._handler.handle(
