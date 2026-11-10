@@ -35,6 +35,9 @@ from omnimarket.models.delegation.model_lab_rubric import (
     ModelLabFirstPolicy,
     ModelLabRubric,
 )
+from omnimarket.models.delegation.model_task_class_escalation_policy import (
+    ModelTaskClassEscalationPolicy,
+)
 
 _DEFAULT_AUTHORITY_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "task_class_contracts.v1.yaml"
@@ -854,62 +857,6 @@ class ModelSizeBandThresholds(BaseModel):
     tokens: ModelBandEdges
     units: ModelBandEdges
     steps: ModelBandEdges
-
-
-class ModelTaskClassEscalationPolicy(BaseModel):
-    """How far and in what tier order a task class escalates (OMN-20287 types it).
-
-    ``tier_order`` is the class's own ladder, a deployment's routing choice, so
-    it is marked as a deployment fact. OMN-20172 adds the shrink-retry caps —
-    ``max_config_swaps``, ``max_split_depth`` and ``unit_attempts_per_unit`` —
-    and the ``shrink_unit_prompt`` wording. They are caps and a prompt wording,
-    not deployment facts, so none is marked; they are declared here so the
-    deployment-fact gate does not report packaged keys no model declares.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="allow")
-
-    max_escalations: int | None = None
-    paid_from_size_band: Literal["S", "M", "L"] | None = None
-    tier_order: tuple[str, ...] | None = Field(
-        default=None,
-        description="The closed, ordered set of routing tiers this class may use.",
-        json_schema_extra=deployment_fact(EnumDeploymentFactKind.ROUTING_ORDER),
-    )
-    max_config_swaps: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "The most configuration swaps on the same model and backend the "
-            "ladder may make before it shrinks or escalates (OMN-20172). None "
-            "means the class declares no cap."
-        ),
-    )
-    max_split_depth: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "The deepest a task may be split into units while shrinking "
-            "(OMN-20172). None means the class declares no cap."
-        ),
-    )
-    unit_attempts_per_unit: int | None = Field(
-        default=None,
-        ge=1,
-        description=(
-            "The most attempts one shrunk unit may be given (OMN-20172). None "
-            "means the class declares no cap."
-        ),
-    )
-    shrink_unit_prompt: str | None = Field(
-        default=None,
-        min_length=1,
-        description=(
-            "The wording of one unit's prompt while shrinking; ``{source}`` is "
-            "only that unit's slice (OMN-20172). None means the class "
-            "declares no wording."
-        ),
-    )
 
 
 class ModelExternalAcceptance(BaseModel):
