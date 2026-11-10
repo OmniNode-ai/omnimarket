@@ -74,6 +74,8 @@ HARNESS = textwrap.dedent(
     globalThis.document = {title: "", activeElement: null, body: mk("body"), documentElement: {clientWidth: 400},
       createElement: () => mk(""), querySelector: () => null, querySelectorAll: () => [],
       getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {}};
+    // The shared panel (floor-panel.js) has its own tests; the page's script only configures and refreshes it.
+    globalThis.FloorPanel = {configure() {}, sync() {}, update() {}, isOpen: () => false, restoring: false};
     globalThis.window = {addEventListener(k, f) { (listeners[k] = listeners[k] || []).push(f); }};
     globalThis.history = {state: null, pushState() {}, replaceState() {}, back() {}};
     globalThis.location = {hash: opts.hash || "", pathname: "/", search: ""};

@@ -153,6 +153,9 @@ runtime:
   # published under its own name at the site's root, ahead of the pages, and every page head links them with a path that
   # resolves from where the page is served.
   icons_relpath: page/icons
+  # The details panel and the searchable, paged list that the first page and the Better or worse page both open (OMN-23018): one
+  # script and one style file, published beside the pages ahead of them, so a reader that gets a page finds the component it links.
+  shared_relpath: page/shared
   evidence_file: last-run.json
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
@@ -408,6 +411,7 @@ runtime:
     status: publish-status.json
     theme_css: [onex.theme.light.css, onex.theme.dark.css, onex.theme.warm.css]  # vendored OmniUI theme files, not topics
     icons: [favicon.svg, favicon-32.png, apple-touch-icon.png]
+    shared: [floor-panel.js, floor-panel.css]
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60

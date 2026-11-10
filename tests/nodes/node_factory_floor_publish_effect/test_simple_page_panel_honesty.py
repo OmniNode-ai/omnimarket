@@ -28,9 +28,12 @@ def function_body(name: str) -> str:
 
 
 def test_error_the_open_panel_carries_the_refresh_failure_and_expiry_warning() -> None:
-    body = function_body("renderPanel")
+    # Every panel the shared component opens takes its top from withWarning, which puts recordWarning there.
+    body = function_body("withWarning")
     assert "recordWarning(" in body
-    assert 'getElementById("pbody").innerHTML = recordWarning(' in body
+    assert "lead: recordWarning(" in body
+    spec = function_body("specFor")
+    assert spec.count("withWarning(") == 2
     warning = function_body("recordWarning")
     assert "The last refresh failed" in warning
     assert "The floor is frozen" in warning
@@ -42,7 +45,9 @@ def test_golden_the_page_and_the_panel_draw_one_warning_and_it_clears_with_fresh
     # draw() rebuilds both the page and the open panel every ten seconds and after each load, so a warning that is a pure
     # function of (failure, age) leaves with the failure and with the expired record.
     assert "h += recordWarning(age, limit);" in function_body("draw")
-    assert "else if (openPiece != null) renderPanel();" in PAGE
+    assert "setInterval(draw, 10000);" in PAGE
+    assert "else FloorPanel.update();" in function_body("draw")
+    assert "FloorPanel.update();" in function_body("load")
     assert 'failure = ""' in function_body("load")
 
 

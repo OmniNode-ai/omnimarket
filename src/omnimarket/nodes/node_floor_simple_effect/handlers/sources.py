@@ -20,8 +20,10 @@ from typing import Any
 
 from omnimarket.handlers.floor_projection import ProjectionPayload
 from omnimarket.models.floor_17a import (
+    ModelFloorBay,
     ModelFloorCauseIn,
     ModelFloorLane,
+    ModelFloorPrItem,
     ModelGoalScope,
     ModelLabSourceDef,
     ModelLabSourceRead,
@@ -47,6 +49,7 @@ TAIL_BYTES = 400_000
 CACHED_CELL = re.compile(r"\bcached=(\d+(?:\.\d+)?)s\b")
 # No admission record given: the lists alone decide. ``None`` instead is a record that could not be read.
 NO_ADMISSIONS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
+_EPOCH = datetime.min.replace(tzinfo=UTC)
 
 
 class FloorSourceError(Exception):
@@ -103,6 +106,13 @@ def read_record(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _started_at(item: Mapping[str, Any]) -> datetime | None:
+    try:
+        return parse_time(item.get("started_at"))
+    except ValueError:
+        return None
+
+
 def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
     lanes = record["floor"].get("lanes", [])
     return tuple(
@@ -114,6 +124,8 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             liveness=str(item.get("liveness") or "unread"),
             owns=tuple(str(o) for o in item.get("owns") or () if o),
             parent_ticket=str(item.get("parent_ticket") or ""),
+            host=str(item.get("host") or ""),
+            started_at=_started_at(item),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
@@ -265,6 +277,20 @@ def merge_lanes(
     return tuple(merged)
 
 
+def record_bays(record: Mapping[str, Any]) -> tuple[ModelFloorBay, ...]:
+    """The bay rows the slots number is summed from, kept whole so a panel can list what the number counts."""
+    return tuple(
+        ModelFloorBay(
+            host=str(bay.get("host", "?")),
+            slots=int(bay.get("slots", 0)),
+            running=int(bay.get("running", 0)),
+            stale=bool(bay.get("stale")),
+        )
+        for bay in record["floor"].get("bays", [])
+        if isinstance(bay, dict)
+    )
+
+
 def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]:
     out: list[ModelFloorCauseIn] = []
     for item in record["floor"].get("stoppages", []):
@@ -380,6 +406,45 @@ class WatcherReading:
     queue_ages: tuple[tuple[str, int], ...] = ()
     # The queue-age pull requests whose branch conflicts: green checks, but they cannot be armed.
     queue_conflicted: frozenset[str] = frozenset()
+    # The pull requests the two numbers count (OMN-23018), built in the loop that counts them.
+    merge_items: tuple[ModelFloorPrItem, ...] = ()
+    open_items: tuple[ModelFloorPrItem, ...] = ()
+
+
+MAX_RED_CHECKS = 4
+MAX_REASON = 280
+
+
+def _pr_item(
+    key: str,
+    facts: Mapping[str, Any],
+    *,
+    cls: str = "",
+    reason: str = "",
+    red_checks: tuple[str, ...] = (),
+    at: object = None,
+    admitted: bool = False,
+) -> ModelFloorPrItem:
+    repo, _, number = key.rpartition("#")
+    try:
+        when: datetime | None = parse_time(at)
+    except ValueError:
+        when = None
+    title = str(facts.get("title", ""))
+    return ModelFloorPrItem(
+        key=key,
+        repo=repo or str(facts.get("repo", "")),
+        number=int(number) if number.isdigit() else int(facts.get("number") or 0),
+        title=title,
+        cls=cls,
+        reason=reason[:MAX_REASON],
+        red_checks=red_checks,
+        at=when,
+        tickets=tickets_of(title, str(facts.get("head_ref", ""))),
+        draft=bool(facts.get("draft", False)),
+        armed=bool(facts.get("armed", False)),
+        admitted_by_controller=admitted,
+    )
 
 
 def read_watcher(
@@ -414,6 +479,8 @@ def read_watcher(
     open_prs = outside = paused = 0
     ages: list[tuple[str, int]] = []
     conflicted: set[str] = set()
+    open_items: list[ModelFloorPrItem] = []
+    merge_items: list[ModelFloorPrItem] = []
     for key, value in prs.items():
         facts = value.get("facts", {})
         if facts.get("state") != "OPEN":
@@ -433,6 +500,20 @@ def read_watcher(
         cls = str(value.get("cls", ""))
         if cls not in excluded_classes:
             open_prs += 1
+            ci = value.get("ci") or {}
+            open_items.append(
+                _pr_item(
+                    str(key),
+                    facts,
+                    cls=cls,
+                    reason=str(value.get("reason") or ""),
+                    red_checks=tuple(
+                        str(r[0] if isinstance(r, list | tuple) and r else r)
+                        for r in (ci.get("red") or [])[:MAX_RED_CHECKS]
+                    ),
+                    at=facts.get("created_at"),
+                )
+            )
         counts[cls] = counts.get(cls, 0) + 1
         tickets.setdefault(cls, []).extend(
             tickets_of(str(facts.get("title", "")), str(facts.get("head_ref", "")))
@@ -481,6 +562,14 @@ def read_watcher(
             by_controller.append(str(key))
         if where == "in_scope":
             recent += 1
+            merge_items.append(
+                _pr_item(
+                    str(key),
+                    value,
+                    at=value.get("merged_at"),
+                    admitted=str(key) in by_controller,
+                )
+            )
         else:
             recent_outside += 1
     return WatcherReading(
@@ -497,6 +586,8 @@ def read_watcher(
         class_prs={k: tuple(dict.fromkeys(v)) for k, v in class_prs.items()},
         queue_ages=tuple(sorted(ages, key=lambda a: -a[1])),
         queue_conflicted=frozenset(conflicted),
+        merge_items=tuple(sorted(merge_items, key=lambda i: (i.repo, i.at or _EPOCH))),
+        open_items=tuple(sorted(open_items, key=lambda i: (i.cls, i.repo, i.number))),
     )
 
 

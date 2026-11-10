@@ -16,6 +16,9 @@ main{max-width:760px;margin:0 auto;padding:20px 16px 32px}
 .num{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
 .num b{display:block;font-size:26px;font-weight:650;line-height:1.1}.num span{font-size:13px;color:var(--mute)}
 .num.unread b{color:var(--red)}
+button.num{font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer}
+.row.fp-tap:hover,.line.fp-tap:hover{background:rgba(0,0,0,.02)}
+.rule button.fp-lnk{font-size:inherit;font-weight:inherit}
 h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .row{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start}
 .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--grey)}
@@ -23,7 +26,7 @@ h2{font-size:14px;font-weight:650;margin:20px 0 8px}
 .row b{font-weight:600}.row small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
 .strip{display:grid;grid-template-columns:repeat(18,1fr);gap:3px}
 .p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
-.p:focus-visible,.line .n a:focus-visible,#pclose:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.p:focus-visible,.line .n a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .line .n a{font-size:inherit;color:inherit;text-decoration:underline dotted}
 .p.grey{background:#e6e8eb;color:var(--mute)}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
 .p.cur{border:3px solid var(--ink);box-shadow:inset 0 0 0 2px #fff;font-weight:650}
@@ -38,19 +41,7 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 @media(max-width:480px){.now h1{font-size:19px}.num b{font-size:22px}.nums{gap:6px}.num{padding:10px}.strip{grid-template-columns:repeat(9,1fr);gap:4px}.p{height:40px;font-size:14px}}
 #tip{position:fixed;z-index:30;max-width:280px;background:var(--ink);color:#fff;border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.35;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 #tip[hidden]{display:none}#tip b{font-weight:650}#tip span{display:block;opacity:.85}
-#pback{position:fixed;inset:0;z-index:40;background:rgba(20,24,28,.35);opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s linear .2s}
-#pback.open{opacity:1;visibility:visible;transition:opacity .2s,visibility 0s}
-#ppanel{position:fixed;z-index:41;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--card);border-left:1px solid var(--line);box-shadow:-6px 0 24px rgba(0,0,0,.18);overflow:auto;overscroll-behavior:contain;transform:translateX(100%);visibility:hidden;transition:transform .22s ease,visibility 0s linear .22s;padding:16px 18px 24px}
-#ppanel.open{transform:none;visibility:visible;transition:transform .22s ease,visibility 0s}
-@media(max-width:600px){#ppanel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:82vh;border-left:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.18);transform:translateY(100%)}}
-@media(prefers-reduced-motion:reduce){#pback,#ppanel{transition:none!important}}
-.ph{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.ph h2{margin:0;font-size:20px;line-height:1.25}.pn{font-size:13px;color:var(--mute)}
-#pclose{flex:none;font:inherit;font-size:14px;font-weight:650;padding:8px 14px;min-height:40px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;cursor:pointer}
-#ppanel h3{font-size:13px;font-weight:650;color:var(--mute);margin:16px 0 4px;text-transform:uppercase;letter-spacing:.03em}#ppanel p{margin:0 0 4px;font-size:15px}
-.pst{display:inline-block;margin-top:8px;font-size:12px;font-weight:650;padding:3px 9px;border-radius:999px;border:1px solid currentColor}
-.pst.green{color:var(--green)}.pst.red{color:var(--red)}.pst.amber{color:var(--amber)}.pst.grey{color:var(--mute)}.pst.blue{color:var(--blue)}
 .pcnt{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pcnt div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.pcnt b{display:block;font-size:22px;line-height:1.1}.pcnt span{font-size:13px;color:var(--mute)}
-#ppanel .mute{color:var(--mute)}
 .tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line)}
 .tabs a{padding:8px 14px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--mute);font-size:15px;font-weight:650}
 .tabs a[aria-selected="true"]{background:var(--card);border-color:var(--line);color:var(--ink);margin-bottom:-1px}
@@ -70,11 +61,14 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 .hcell{display:grid;gap:2px;font-size:13px;color:var(--mute);min-width:0}.hcell .v{font-size:15px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .hcell .v.unread{font-weight:400;font-style:italic;color:var(--mute);font-size:13px}.chip{margin-left:6px;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--amber);color:#fff}
 .hocc{display:grid;gap:2px;font-size:14px;margin:0;padding:0;list-style:none}.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}.hocc li span:last-child{color:var(--mute);font-size:13px}
-</style></head><body><main>
+</style>
+<link rel="stylesheet" href="floor-panel.css">
+</head><body><main>
 <div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a><a role="tab" id="tab-compare" href="compare.html">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html">Delegation</a></div>
 <section id="pane-process" role="tabpanel" aria-labelledby="tab-process"><div id="app"><div class="frozen">Reading the floor...</div></div></section>
 <section id="pane-machines" role="tabpanel" aria-labelledby="tab-machines" hidden><div id="machines"><div class="frozen">Reading the machines...</div></div></section>
 </main>
+<script src="floor-panel.js"></script>
 <script>
 "use strict";
 let pieceMeasures = {}, measuresFailure = "not read yet";
@@ -108,6 +102,7 @@ async function load(){
     measuresFailure = "";
   } catch (e) { measuresFailure = String(e.message || e); }
   draw();
+  FloorPanel.update();
 }
 // The customer health line (OMN-22923, piece 17b): computed from the piece readings of this same record, drawn with its own age.
 // A line older than its own limit is drawn red whatever it says; a record with no line says so.
@@ -118,7 +113,7 @@ function healthRow(hl){
   const stale = hAge > hl.max_age_s;
   const dot = stale ? "red" : (HEALTH_DOT[hl.state] || "red");
   const note = stale ? `This line is itself ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min: do not trust it.` : `Computed ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min. Oldest reading ${hl.oldest_age_s == null ? "none" : ago(hl.oldest_age_s)}.`;
-  return `<div class="row" id="health-line"><span class="dot ${dot}"></span><div><b>${esc(hl.line)}</b><small>${note}</small></div></div>`;
+  return `<div class="row fp-tap" id="health-line" role="button" tabindex="0" data-open="health:line" aria-haspopup="dialog"><span class="dot ${dot}"></span><div><b>${esc(hl.line)}</b><small>${note}</small></div></div>`;
 }
 // The warning a refresh failure or an expired record calls for; the open panel shows it too, since it sits over the page.
 function recordWarning(age, limit){
@@ -138,49 +133,53 @@ function draw(){
   const cur = doc.rebuild.current_piece;
   // The rebuild is the first section of the page (OMN-23135). Each tile draws its own state colour; the current piece is
   // marked by an outline and aria-current, never by a colour of its own, and a one-line legend names the colours and the outline.
-  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
+  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-open="piece:${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
   h += `<div class="legend" id="strip-legend"><span><i class="sw green"></i>Green: working</span><span><i class="sw amber"></i>Amber: held up, a lane is on it</span><span><i class="sw red"></i>Red: held up, nobody on it or it needs you</span><span><i class="sw"></i>Grey: not started</span><span><i class="sw cur"></i>Outline: the piece the rebuild is on now</span></div>`;
   h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div></section>`;
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
   h += healthRow(doc.health);
-  h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
+  h += `<div class="nums">` + doc.numbers.map(n => `<button type="button" class="num fp-tap${n.read ? "" : " unread"}" title="${esc(n.basis)}" data-open="number:${esc(n.key)}" aria-haspopup="dialog" aria-label="${esc(n.value + " " + n.label + ". Opens the list behind it.")}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></button>`).join("") + `</div>`;
   const open = doc.alarms.filter(a => a.delivery !== "delivered");
-  if (open.length) h += `<div class="row"><span class="dot red"></span><div><b>${open.length} lab alarms have no delivery receipt</b><small>${open.some(a => a.delivery === "undelivered") ? "No channel has proven delivery; it needs you." : "Waiting for a delivery receipt."} Oldest raised ${ago(Math.max(...open.map(a => Math.floor((Date.now() - Date.parse(a.raised_at)) / 1000))))}.</small></div></div>`;
+  if (open.length) h += `<div class="row fp-tap" role="button" tabindex="0" data-open="alarms:open" aria-haspopup="dialog"><span class="dot red"></span><div><b>${open.length} lab alarms have no delivery receipt</b><small>${open.some(a => a.delivery === "undelivered") ? "No channel has proven delivery; it needs you." : "Waiting for a delivery receipt."} Oldest raised ${ago(Math.max(...open.map(a => Math.floor((Date.now() - Date.parse(a.raised_at)) / 1000))))}.</small></div></div>`;
   const listed = doc.causes.filter(c => c.listed);
   h += `<h2>What's holding things up, biggest first</h2>`;
   if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
   for (const c of listed.slice(0, doc.causes_shown)) {
     const who = c.state === "red" ? (c.needs_operator ? "It needs you." : c.owner_state === "unknown" ? "Owner unknown: " + c.owner_note + "." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
-    h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
+    h += `<div class="row fp-tap" role="button" tabindex="0" data-open="cause:${esc(c.id)}" aria-haspopup="dialog"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
   h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
-  for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
+  for (const l of doc.lab_state) h += `<div class="line fp-tap ${esc(l.draw)}" role="button" tabindex="0" data-open="lab:${esc(l.id)}" aria-haspopup="dialog"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
   h += `<h2>The 18 pieces, with their joins</h2>`;
   for (const p of doc.pieces) {
     const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}`).join("; ");
-    h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n"><a href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="l${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ". Opens its details.")}">${p.piece}</a></span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
+    h += `<div class="line fp-tap ${p.status === "not_started" ? "grey" : esc(p.draw)}" data-open="piece:${p.piece}"><span class="n"><a href="#piece-${p.piece}" data-piece="${p.piece}" data-open="piece:${p.piece}" data-fk="l${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ". Opens its details.")}">${p.piece}</a></span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
     for (const s of p.shadows || []) h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(s.label)}</b> <small>${esc(s.text)}${s.stale ? " (stale)" : ""}; it holds no merge</small></span><span class="a">read ${ago(s.age_s)}, max ${Math.floor(s.max_age_s / 60)} min</span></div>`;
   }
   const r = doc.red_rule;
-  h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
+  h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: <button type="button" class="fp-lnk" data-open="number:red_rows" aria-haspopup="dialog">${r.red_rows} red rows</button>, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
   if ((r.unowned_red || []).length) h += `<div class="rule bad">${r.unowned_red.length} red with no declared owner: ${r.unowned_red.map(esc).join(", ")}.</div>`;
   if ((r.owner_unknown_red || []).length) h += `<div class="rule bad">${r.owner_unknown_red.length} red with owner unknown: ${r.owner_unknown_red.map(esc).join(", ")}. ${doc.owner_inputs ? esc(doc.owner_inputs.reason) : ""}</div>`;
   if ((r.uncarried_red || []).length) h += `<div class="rule bad">${r.uncarried_red.length} red with no live lane on it: ${r.uncarried_red.map(esc).join(", ")}.</div>`;
-  if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
+  if (doc.chain_findings.length) h += `<div class="rule bad"><button type="button" class="fp-lnk" data-open="cause:chains:broken" aria-haspopup="dialog">${doc.chain_findings.length} emission chains break the contract</button>: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
   if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
   h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
-  // The strip is redrawn every ten seconds: keep the keyboard focus on the same piece, and keep the open panel current.
-  const held = document.activeElement && document.activeElement.getAttribute ? document.activeElement.getAttribute("data-fk") : null;
+  // The page is redrawn every ten seconds: keep the keyboard focus on the same piece, number or row.
+  const ae = document.activeElement;
+  const heldSel = ae && ae.getAttribute && ae.closest && ae.closest("#app")
+    ? (ae.hasAttribute("data-fk") ? `[data-fk="${ae.getAttribute("data-fk")}"]` : ae.hasAttribute("data-open") ? `[data-open="${ae.getAttribute("data-open")}"]` : null) : null;
   app.innerHTML = h;
-  if (held) { const again = app.querySelector(`[data-fk="${held}"]`); if (again) again.focus({preventScroll: true}); }
-  if (!hashApplied) { hashApplied = true; syncPanel(); } else if (openPiece != null) renderPanel();
+  if (heldSel) { const again = app.querySelector(heldSel); if (again) again.focus({preventScroll: true}); }
+  if (!hashApplied) { hashApplied = true; FloorPanel.sync(); } else FloorPanel.update();
 }
-// ---- The rebuild strip: a tooltip on hover or focus, and a side panel on click or tap. Everything is read from the record
-// the page already loads (doc.pieces, doc.causes); the address carries #piece-N, so a piece can be linked and Back closes it.
+// ---- The rebuild strip: a tooltip on hover or focus. Everything that opens (a number, a row, a piece) opens through the shared
+// panel (floor-panel.js, also read by the Better or worse page); the page only says what each key shows. Everything is read
+// from the record the page already loads (doc.details, doc.pieces, doc.health); the address carries #piece-N, #cause-ID,
+// #number-KEY and so on, so a panel can be linked and Back closes it.
 const STATUS_WORD = {working: "Working", not_working: "Not working", unknown: "Unknown", started: "Started, no reading yet", not_started: "Not started"};
 const STATUS_DRAW = p => p.status === "not_started" ? "grey" : p.draw;
-let hashApplied = false, openPiece = null, returnFocus = null, quiet = false;
+let hashApplied = false;
 const pieceOf = n => doc && doc.pieces ? doc.pieces.find(p => p.piece === n) : null;
 function whoIsOn(p){
   const ids = [p.cause_id, "piece:" + p.piece].filter(Boolean);
@@ -188,7 +187,6 @@ function whoIsOn(p){
   const uniq = xs => [...new Set(xs)];
   return {lanes: uniq(cs.flatMap(c => c.lanes || [])), prs: uniq(cs.flatMap(c => c.prs || [])), tickets: uniq(cs.flatMap(c => c.tickets || [])), unknown: (cs.find(c => c.owner_state === "unknown") || {}).owner_note || ""};
 }
-const prWords = r => { const m = /^(.+)#(\d+)$/.exec(r); return m ? m[1] + " pull request " + m[2] : r; };
 function whoLine(p){
   if (p.status === "not_started") return "Not started.";
   const w = whoIsOn(p);
@@ -199,9 +197,10 @@ function whoLine(p){
 function readAge(p){ return p.reading_age_s == null ? "No reading yet." : "Read " + ago(p.reading_age_s) + "."; }
 const tip = document.createElement("div");
 tip.id = "tip"; tip.setAttribute("role", "tooltip"); tip.hidden = true;
+document.body.append(tip);
 function showTip(a){
   const p = pieceOf(Number(a.getAttribute("data-piece")));
-  if (!p || openPiece != null || quiet) return;
+  if (!p || FloorPanel.isOpen() || FloorPanel.restoring) return;
   tip.innerHTML = `<b>${p.piece} · ${esc(p.name)}</b><span>${esc(STATUS_WORD[p.status] || p.status)}</span><span>${esc(p.reason || p.text)}</span><span>${esc(readAge(p))}</span><span>${esc(whoLine(p))}</span>`;
   tip.hidden = false;
   const r = a.getBoundingClientRect(), t = tip.getBoundingClientRect();
@@ -211,11 +210,7 @@ function showTip(a){
   a.setAttribute("aria-describedby", "tip");
 }
 function hideTip(){ tip.hidden = true; document.querySelectorAll(".p[aria-describedby]").forEach(e => e.removeAttribute("aria-describedby")); }
-const back = document.createElement("div"); back.id = "pback";
-const panel = document.createElement("aside");
-panel.id = "ppanel"; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-labelledby", "ptitle"); panel.setAttribute("aria-hidden", "true");
-panel.innerHTML = `<div class="ph"><div><div class="pn" id="pnum"></div><h2 id="ptitle"></h2></div><button id="pclose" type="button" aria-label="Close the piece details">Close</button></div><div id="pbody"></div>`;
-document.body.append(tip, back, panel);
+const ageLimit = s => s < 7200 ? Math.round(s / 60) + " minutes" : s < 172800 ? Math.round(s / 3600) + " hours" : Math.round(s / 86400) + " days";
 // The window as configured, never rounded into another interval: whole days, else whole hours, else whole minutes, else seconds.
 function windowText(s){
   const unit = (n, one, many) => n + " " + (n === 1 ? one : many);
@@ -233,19 +228,14 @@ function eventsSection(p){
   return `<h3>Events in the last ${esc(windowText(p.window_s))}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`
     + `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
 }
-function panelBody(p){
-  const w = whoIsOn(p);
-  let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(STATUS_WORD[p.status] || p.status)}</span>`;
-  h += `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
+// The part of a piece's panel only the piece row can say: what it is, the reading, the events. The owners, lanes, pull
+// requests, alarms and join checks come from doc.details["piece:N"] as the panel's own sections.
+function pieceLead(p){
+  let h = `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
   if (p.status === "not_started") return h + (hasEvents(p) ? `<h3>State</h3><p>Not started. It has no reading yet, and its events do not yet include both a golden and an error one.</p>` + eventsSection(p) : `<h3>State</h3><p>Not started. It has no reading and no events yet.</p>`) + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
   h += `<h3>Reading now</h3><p>${esc(p.reason || p.text)}</p><p class="mute">${esc(readAge(p))}${p.reading_max_age_s ? " It may be at most " + esc(ageLimit(p.reading_max_age_s)) + " old." : ""}</p>`;
   h += eventsSection(p);
   h += `<h3>Against the old way, 7 days</h3>` + measureSection(p);
-  h += `<h3>Who is on it</h3>`;
-  h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : w.unknown ? "Owner unknown: " + esc(w.unknown) + "." : "Nobody is on it."}</p>`;
-  h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
-  const joins = (p.joins || []).map(j => `${esc(j.id)}, ${esc(j.label)}: ${esc(j.state.replace("_", " "))}`);
-  if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;
   return h + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
 }
 // The piece's measure against its baseline over its first 7 days, and on day 7 the verdict (OMN-23081). Never inferred:
@@ -265,67 +255,51 @@ function measureSection(p){
   }
   return h;
 }
-const ageLimit = s => s < 7200 ? Math.round(s / 60) + " minutes" : s < 172800 ? Math.round(s / 3600) + " hours" : Math.round(s / 86400) + " days";
-function renderPanel(){
-  const p = pieceOf(openPiece);
-  if (!p) { hidePanel(); return; }
-  document.getElementById("pnum").textContent = "Piece " + p.piece + " of " + doc.pieces.length;
-  document.getElementById("ptitle").textContent = p.name;
+// The customer health line has no server panel: its readings are in the record as the line carries them.
+function healthSpec(){
+  const hl = doc.health;
+  if (!hl) return null;
+  const hAge = Math.max(0, Math.floor((Date.now() - Date.parse(hl.generated_at)) / 1000));
+  const stale = hAge > hl.max_age_s, tone = stale ? "red" : ({"WORKING": "green", "NOT WORKING": "red", "UNKNOWN": "amber"}[hl.state] || "red");
+  const tones = {fresh: "green", stale: "amber", failing: "red", unread: "grey"};
+  return {
+    key: "health:line", kicker: "Customer health", title: "The customer health line", summary: hl.line, tone: tone, pill: stale ? "Too old to trust" : hl.state,
+    facts: [{label: "State", value: hl.state}, {label: "Computed", value: "", at: hl.generated_at}, {label: "Oldest reading", value: hl.oldest_age_s == null ? "none" : ago(hl.oldest_age_s)}, {label: "May be at most", value: Math.floor(hl.max_age_s / 60) + " min old"}],
+    sources: ["Computed by the customer health node from the piece readings of this same record."],
+    sections: [
+      {heading: "Readings it used", note: "Tap one to open the piece.", empty: "The line used no reading.",
+       items: (hl.readings || []).map(x => ({title: "Piece " + x.piece + ", " + x.name, sub: (x.state || "no reading") + ", " + x.verdict + (x.age_s == null ? "" : ", read " + ago(x.age_s)), tone: tones[x.verdict] || "grey", opens: "piece:" + x.piece}))},
+      {heading: "What keeps it from working", empty: "Nothing: every reading is fresh and working.", items: (hl.named || []).map(t => ({title: t, tone: "red"}))}
+    ]
+  };
+}
+const KICKER = {number: "Number", cause: "Holdup", lab: "Lab line", alarms: "Alarms"};
+// The panel sits over the page, so a refresh failure or an expired record is drawn at the top of every panel as well (OMN-23049).
+function withWarning(s){
+  if (!s) return s;
   const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
-  document.getElementById("pbody").innerHTML = recordWarning(age, doc.freshness_max_age_s || FALLBACK_MAX_AGE_S) + panelBody(p);
+  return Object.assign({}, s, {lead: recordWarning(age, doc.freshness_max_age_s || FALLBACK_MAX_AGE_S) + (s.lead || "")});
 }
-function showPanel(n){
-  if (!pieceOf(n)) return;
-  hideTip();
-  const first = openPiece == null;
-  openPiece = n; renderPanel();
-  back.classList.add("open"); panel.classList.add("open"); panel.setAttribute("aria-hidden", "false");
-  if (first) document.getElementById("pclose").focus({preventScroll: true});
+function specFor(key){
+  if (!doc) return null;
+  if (key === "health:line") return withWarning(healthSpec());
+  const d = (doc.details || {})[key];
+  if (!d) return null;
+  const s = Object.assign({}, d, {kicker: KICKER[key.split(":")[0]] || ""});
+  if (key.startsWith("piece:")) {
+    const p = pieceOf(Number(key.slice(6)));
+    if (!p) return null;
+    Object.assign(s, {kicker: "Piece " + p.piece + " of " + doc.pieces.length, title: p.name, summary: "", facts: [], tone: STATUS_DRAW(p), pill: STATUS_WORD[p.status] || p.status, lead: pieceLead(p)});
+  }
+  return withWarning(s);
 }
-function hidePanel(){
-  if (openPiece == null) return;
-  const n = openPiece;
-  openPiece = null;
-  back.classList.remove("open"); panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true");
-  const again = document.querySelector(`#app [data-piece="${n}"]`) || returnFocus;
-  quiet = true;   // putting the focus back must not raise the tooltip
-  if (again && again.focus) again.focus({preventScroll: true});
-  quiet = false;
-}
-const pieceFromHash = () => { const m = /^#piece-(\d{1,2})$/.exec(location.hash || ""); return m ? Number(m[1]) : null; };
-function syncPanel(){ const n = pieceFromHash(); if (n != null && pieceOf(n)) showPanel(n); else hidePanel(); }
-function closePanel(){
-  if (openPiece == null) return;
-  if (history.state && history.state.piece === openPiece) history.back();   // the panel pushed the address: Back is the close
-  else { history.replaceState(null, "", location.pathname + location.search); hidePanel(); }
-}
-document.addEventListener("click", e => {
-  const a = e.target.closest ? e.target.closest("a[data-piece]") : null;
-  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
-  e.preventDefault(); returnFocus = a;
-  const n = Number(a.getAttribute("data-piece"));
-  if (pieceFromHash() !== n) history.pushState({piece: n}, "", "#piece-" + n);
-  showPanel(n);
-});
-back.addEventListener("click", closePanel);
-panel.addEventListener("click", e => { if (e.target.id === "pclose") closePanel(); });
-document.addEventListener("keydown", e => {
-  if (openPiece == null) { if (e.key === "Escape") hideTip(); return; }
-  if (e.key === "Escape") { e.preventDefault(); closePanel(); return; }
-  if (e.key !== "Tab") return;
-  const fs = [...panel.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])")];
-  if (!fs.length) return;
-  const first = fs[0], last = fs[fs.length - 1];
-  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-});
+FloorPanel.configure({resolve: specFor});
 const stripPiece = e => e.target.closest ? e.target.closest(".strip a[data-piece]") : null;
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideTip(); });
 document.addEventListener("mouseover", e => { const a = stripPiece(e); if (a) showTip(a); });
 document.addEventListener("mouseout", e => { if (stripPiece(e)) hideTip(); });
 document.addEventListener("focusin", e => { const a = stripPiece(e); if (a) showTip(a); });
 document.addEventListener("focusout", e => { if (stripPiece(e)) hideTip(); });
-window.addEventListener("popstate", syncPanel);
-window.addEventListener("hashchange", syncPanel);
 // ---- Tabs. The address picks the view: #process (also no hash or an unknown one) and #machines are deep links.
 const tabFromHash = () => { const h = String(location.hash || "").replace(/^#/, ""); return TABS.includes(h) ? h : "process"; };
 function showTab(){
