@@ -13,9 +13,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
-    EnumOverlayVerdict,
-)
+from omnimarket.events.overlay_check import EnumOverlayVerdict
 from tests.unit.nodes.node_overlay_merge_order_compute.merge_order_support import (
     CORRELATION,
     TOPICS,

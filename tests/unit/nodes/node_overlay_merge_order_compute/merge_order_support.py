@@ -9,10 +9,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
-    EnumOverlayVerdict,
-    ModelOverlayCheck,
-)
+from omnimarket.events.overlay_check import EnumOverlayVerdict, ModelOverlayCheck
 from omnimarket.nodes.node_overlay_merge_order_compute.handlers.handler_overlay_merge_order import (
     HandlerOverlayMergeOrder,
 )

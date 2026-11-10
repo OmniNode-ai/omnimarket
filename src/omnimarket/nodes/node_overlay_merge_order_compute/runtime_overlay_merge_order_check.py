@@ -19,16 +19,13 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
+from omnimarket.events.overlay_check import EnumOverlayVerdict, ModelOverlayCheck
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_overlay_drift_effect.adapters.overlay_home import (
     LocalOverlayHome,
 )
 from omnimarket.nodes.node_overlay_drift_effect.adapters.runtime_validator import (
     InProcessRuntimeValidator,
-)
-from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
-    EnumOverlayVerdict,
-    ModelOverlayCheck,
 )
 from omnimarket.nodes.node_overlay_drift_effect.protocols import (
     OverlayHomeError,

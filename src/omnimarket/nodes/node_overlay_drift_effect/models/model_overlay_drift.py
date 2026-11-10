@@ -4,26 +4,12 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.overlay_check import EnumOverlayVerdict, ModelOverlayCheck
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
-
-
-class EnumOverlayVerdict(StrEnum):
-    """One overlay against the runtime's model."""
-
-    ACCEPTED = "accepted"
-    #: The installed model refused the document (the rung_order case).
-    REJECTED = "rejected"
-    #: The pin names a module or class the runtime does not have.
-    MODEL_MISSING = "model_missing"
-    #: The overlay file is not YAML.
-    UNREADABLE = "unreadable"
-    #: A pin names an overlay the home does not hold.
-    OVERLAY_MISSING = "overlay_missing"
 
 
 class ModelOverlayPin(BaseModel):
@@ -34,17 +20,6 @@ class ModelOverlayPin(BaseModel):
     overlay_id: str = Field(pattern=r"^[a-z0-9_]+$")
     revision: str = Field(min_length=1)
     model: str = Field(pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_]\w*$")
-
-
-class ModelOverlayCheck(BaseModel):
-    """One overlay's verdict; ``fields`` names refused fields, never a value."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    overlay_id: str
-    verdict: EnumOverlayVerdict
-    fields: tuple[str, ...] = ()
-    error_class: str = ""
 
 
 class ModelRuntimeIdentity(BaseModel):

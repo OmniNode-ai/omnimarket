@@ -13,9 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
-    ModelOverlayCheck,
-)
+from omnimarket.events.overlay_check import ModelOverlayCheck
 
 OVERLAY_ID_PATTERN = r"^[a-z0-9_]+$"
 

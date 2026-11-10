@@ -17,9 +17,7 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
-from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
-    EnumOverlayVerdict,
-)
+from omnimarket.events.overlay_check import EnumOverlayVerdict
 from omnimarket.nodes.node_overlay_merge_order_compute.handlers.handler_overlay_merge_order import (
     HandlerOverlayMergeOrder,
     answer_command,

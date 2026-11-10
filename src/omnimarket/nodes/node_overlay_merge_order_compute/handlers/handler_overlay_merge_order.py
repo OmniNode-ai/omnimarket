@@ -15,9 +15,7 @@ import re
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
-    EnumOverlayVerdict,
-)
+from omnimarket.events.overlay_check import EnumOverlayVerdict
 from omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order import (
     OVERLAY_ID_PATTERN,
     EnumMergeOrderVerdict,
