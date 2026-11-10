@@ -82,6 +82,43 @@ def _cell(text: str) -> str:
     return text.replace("|", "/").replace(" ", "_")
 
 
+def reply_state(reading: ModelSeamReading) -> str:
+    """Whether the seam's reply came, named from the reading alone.
+
+    ``ontime`` a reply crossed by the deadline; ``late`` a reply arrived inside the bounded listen
+    after it; ``silent`` nothing arrived but the probe kept listening past the deadline;
+    ``unlistened`` nothing arrived and no late listen was configured; ``none`` for the crossings
+    that never reach a reply (an error answer, an unreadable bus, a failed attach). A late reply
+    names nothing about the verdict: the deadline is missed either way.
+    """
+    if reading.crossing is EnumSeamCrossing.RESULT:
+        return "ontime"
+    if reading.crossing is EnumSeamCrossing.NO_RESULT_BY_DEADLINE:
+        if reading.late_reply_ms is not None:
+            return "late"
+        if reading.late_listen_seconds > 0:
+            return "silent"
+        return "unlistened"
+    return "none"
+
+
+def _seam_cells(reading: ModelSeamReading) -> list[str]:
+    """The row's cells for one seam: the crossing cell, then the reply-listening cells."""
+    return [
+        f"seam_{reading.seam}={reading.verdict.value}:{reading.crossing.value}:"
+        f"{'none' if reading.elapsed_ms is None else reading.elapsed_ms}ms/"
+        f"{int(reading.deadline_seconds * 1000)}ms",
+        f"seam_{reading.seam}_reply={reply_state(reading)}",
+        f"seam_{reading.seam}_send_ack_ms="
+        f"{'none' if reading.send_ack_ms is None else reading.send_ack_ms}",
+        f"seam_{reading.seam}_late_ms="
+        f"{'none' if reading.late_reply_ms is None else reading.late_reply_ms}",
+        f"seam_{reading.seam}_stamp_ms="
+        f"{'none' if reading.reply_stamp_ms is None else reading.reply_stamp_ms}",
+        f"seam_{reading.seam}_listen_ms={int(reading.late_listen_seconds * 1000)}",
+    ]
+
+
 class HandlerSeamDeadline:
     """Run the overlay's seams over the injected bus."""
 
@@ -120,6 +157,7 @@ class HandlerSeamDeadline:
             deadline_seconds=0.0
             if fault is EnumSeamFault.DEADLINE_ZERO
             else seam.deadline_seconds,
+            late_listen_seconds=seam.late_listen_seconds,
         )
 
     def _read(self, seam: ModelSeamSpec, demand: ModelSeamDemand) -> ModelSeamAnswer:
@@ -204,6 +242,10 @@ class HandlerSeamDeadline:
                     deadline_seconds=demand.deadline_seconds,
                     correlation_id=demand.correlation_id,
                     detail=answer.detail,
+                    send_ack_ms=answer.send_ack_ms,
+                    late_reply_ms=answer.late_reply_ms,
+                    reply_stamp_ms=answer.reply_stamp_ms,
+                    late_listen_seconds=demand.late_listen_seconds,
                 )
             )
         failed = [r for r in readings if r.verdict is not EnumReadingVerdict.WORKING]
@@ -309,12 +351,7 @@ class HandlerSeamDeadline:
                 if result.counts is not None
                 else ()
             ),
-            *(
-                f"seam_{r.seam}={r.verdict.value}:{r.crossing.value}:"
-                f"{'none' if r.elapsed_ms is None else r.elapsed_ms}ms/"
-                f"{int(r.deadline_seconds * 1000)}ms"
-                for r in result.seams
-            ),
+            *(cell for r in result.seams for cell in _seam_cells(r)),
             f"history_days={self._overlay.history_days}",
             f"probed_at={stamp_text(now)}",
             f"published_at={stamp_text(now)}",
@@ -372,6 +409,10 @@ def events_of(
                 "elapsed_ms": reading.elapsed_ms,
                 "deadline_seconds": reading.deadline_seconds,
                 "demand_correlation_id": reading.correlation_id,
+                "send_ack_ms": reading.send_ack_ms,
+                "late_reply_ms": reading.late_reply_ms,
+                "reply_stamp_ms": reading.reply_stamp_ms,
+                "reply": reply_state(reading),
             },
         )
         for reading in result.seams
@@ -413,4 +454,10 @@ def answer_command(
     ]
 
 
-__all__ = ["HandlerSeamDeadline", "answer_command", "events_of", "load_topics"]
+__all__ = [
+    "HandlerSeamDeadline",
+    "answer_command",
+    "events_of",
+    "load_topics",
+    "reply_state",
+]

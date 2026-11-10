@@ -446,12 +446,21 @@ class RemoteLaneStartOrchestrator:
             ModelRemoteLanePlacementRequest(
                 engine=host_engine,
                 pinned_host=request.pinned_host,
+                repair_target=request.repair_target,
                 limited_hosts=snapshot.limited_hosts,
                 codex_limited_hosts=snapshot.codex_limited_hosts,
                 auth_expired_hosts=snapshot.auth_expired_hosts,
                 readings=tuple(
                     ModelRemoteLaneHostReading.model_validate(
-                        r.model_dump(exclude={"target"}), strict=False
+                        {
+                            **r.model_dump(exclude={"target"}),
+                            **(
+                                {"ssh_reach": request.host_ssh_reach[r.name]}
+                                if r.name in request.host_ssh_reach
+                                else {}
+                            ),
+                        },
+                        strict=False,
                     )
                     for r in snapshot.readings
                 ),

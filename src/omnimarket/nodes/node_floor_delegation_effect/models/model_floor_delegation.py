@@ -11,7 +11,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.nodes.node_floor_delegation_effect.models.model_delegation_routes import (
+    ModelRoutesBlock,
+    ModelRoutesSource,
+)
 
 
 class _Frozen(BaseModel):
@@ -20,6 +25,7 @@ class _Frozen(BaseModel):
 
 ScenarioState = Literal["pass", "fail", "no_run", "no_workflow", "unread"]
 ScenarioReadKind = Literal["read", "no_workflow", "unread"]
+ScenarioSource = Literal["workflow", "lab_node"]
 TicketGroup = Literal[
     "done",
     "merged_awaiting_closer",
@@ -36,19 +42,41 @@ PrState = Literal["open", "merged", "closed"]
 
 
 class ModelScenarioDecl(_Frozen):
-    """One delegation scenario: the scheduled workflow whose latest run is its result."""
+    """One delegation scenario and the source of its latest scheduled result, chosen per scenario by the overlay.
+
+    ``workflow``: the latest scheduled run of a hosted workflow (``repo`` and ``workflow`` name it). ``lab_node``: the latest
+    scheduled result a lab node wrote as a STATUS row under ``lane``, read from the bus.
+    """
 
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
+    source: ScenarioSource = "workflow"
     repo: str = Field(
-        min_length=1, description="owner/name of the repository that holds the workflow"
+        default="",
+        description="owner/name of the repository that holds the workflow (source workflow)",
     )
-    workflow: str = Field(min_length=1, description="the workflow file name")
+    workflow: str = Field(
+        default="", description="the workflow file name (source workflow)"
+    )
+    lane: str = Field(
+        default="",
+        description="the ledger lane the node writes its results under (source lab_node)",
+    )
     cadence_hours: int = Field(gt=0)
     builder_ticket: str | None = Field(
         default=None,
-        description="the plan ticket that builds the workflow; none when the workflow already exists",
+        description="the plan ticket that builds the scenario; none when it already exists",
     )
+
+    @model_validator(mode="after")
+    def _names_its_source(self) -> ModelScenarioDecl:
+        if self.source == "workflow" and not (self.repo and self.workflow):
+            raise ValueError(
+                f"scenario {self.id}: a workflow source names a repo and a workflow"
+            )
+        if self.source == "lab_node" and not self.lane:
+            raise ValueError(f"scenario {self.id}: a lab_node source names its lane")
+        return self
 
 
 class ModelOperatorAnswer(_Frozen):
@@ -76,10 +104,21 @@ class ModelDelegationContractRuntime(_Frozen):
     scenario_stage_deadline_seconds: int = Field(gt=0)
     scenario_refresh_seconds: int = Field(gt=0)
     scenario_reads_max_age_seconds: int = Field(gt=0)
+    ledger_read_command_env: str = Field(min_length=1)
+    ledger_read_timeout_seconds: int = Field(gt=0)
+    lab_node_window_days: int = Field(ge=1, le=31)
+    lab_node_rows_page_size: int = Field(gt=0)
+    lab_node_max_pages: int = Field(gt=0)
     watcher_max_age_seconds: int = Field(gt=0)
     record_max_age_seconds: int = Field(gt=0)
     details_page_size: int = Field(gt=0)
     live_lane_dead_states: tuple[str, ...]
+    # The routes reading (OMN-23381): the file the routes stage writes, how old it may be before it is drawn stale, and the table.
+    route_reads_relpath: str = Field(min_length=1)
+    routes_max_age_min: int = Field(gt=0)
+    routes_read_timeout_seconds: int = Field(gt=0)
+    routes_table: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")
+    routes_data_source: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")
 
 
 class ModelDelegationOverlay(_Frozen):
@@ -96,6 +135,8 @@ class ModelDelegationOverlay(_Frozen):
     plan_ticket_last: int = Field(gt=0)
     scenarios: tuple[ModelScenarioDecl, ...] = Field(min_length=1)
     operator_answers: tuple[ModelOperatorAnswer, ...] = ()
+    # Where the delegation events are read for the routes block. Without it the block is unread, with the reason named.
+    routes: ModelRoutesSource | None = None
 
 
 class ModelDelegationRuntime(ModelDelegationContractRuntime, ModelDelegationOverlay):
@@ -181,6 +222,7 @@ class ModelDelegationInputs(_Frozen):
     prs: tuple[ModelWatcherPr, ...]
     lanes: tuple[ModelDelegationLane, ...]
     sources: tuple[ModelSourceReading, ...]
+    routes: ModelRoutesBlock | None = None
 
 
 # ---- the tracker document ------------------------------------------------------------------------------------------------
@@ -189,8 +231,10 @@ class ModelDelegationInputs(_Frozen):
 class ModelScenarioResult(_Frozen):
     id: str
     title: str
+    source: ScenarioSource = "workflow"
     repo: str
     workflow: str
+    lane: str = ""
     cadence_hours: int
     state: ScenarioState
     result_text: str
@@ -281,18 +325,19 @@ class ModelDelegationTracker(_Frozen):
     tickets: tuple[ModelTicketResult, ...]
     sources: tuple[ModelSourceReading, ...]
     details_page_size: int
+    routes: ModelRoutesBlock
 
 
 class ModelFloorDelegationRequest(_Frozen):
     """The flags of one run: which stage, and where the registry home is."""
 
-    stage: Literal["scenarios", "build", "run"]
+    stage: Literal["scenarios", "routes", "build", "run"]
     home: str | None = None
 
 
 class ModelFloorDelegationResult(_Frozen):
     ok: bool
-    stage: Literal["scenarios", "build", "run"]
+    stage: Literal["scenarios", "routes", "build", "run"]
     wrote: str = ""
     detail: str = ""
     shippable: bool | None = None

@@ -121,6 +121,12 @@ runtime:
   # limit; a kill it could not answer leaves its start for this cycle to close.
   abandon_chains:
     - node_floor_compare_effect:run_floor_compare_cycle
+  # The J2 join's chains (OMN-23230): the join-j2 publish step is killed at its 90 s limit if it hangs, and a kill cannot close
+  # the starts it made. The join now bounds its own run and closes its chains on every path it can; this closes what a hard kill
+  # still strands, and the start already open in the journal. Piece 2 is the host canary, piece 3 the placement seam.
+  abandon_other_pieces:
+    - {piece: 2, nodes: ["node_host_reading_effect:join_j2"]}
+    - {piece: 3, nodes: ["node_lab_placement_compute:join_j2"]}
   # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
   # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
   # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
@@ -151,9 +157,6 @@ runtime:
     row_limit: 100000
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
-    # The work-state projection node's output (OMN-22935): the lanes the floor draws are attributed to its rows from their
-    # CLAIM cells in this projection, never from an owner typed into the overlay. An unreadable projection is a cause.
-    work_state_relpath: .onex_state/work-state/work-state.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
     # The landing controller's admission record (OMN-22876): the merges the floor counts include the ones on no goal list that the
     # controller admitted (its ticket rule, a release, a scope lift), so the floor reads what the controller admits. Found at
@@ -161,9 +164,6 @@ runtime:
     controller_state_dir_env: LANDING_STATE_DIR
     controller_state_dir_fallback: .local/state/omni/landing
     controller_admissions_name: admissions.jsonl
-    # The controller's state file (OMN-23184): its landing leases and the cause leases that hold shared reds. The board's work list
-    # names a pull request's owner from it; a state that cannot be read makes the list unread, never empty.
-    controller_state_name: state.json
     controller_admissions_tail_bytes: 4194304
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json
@@ -173,7 +173,19 @@ runtime:
     # lag.record_condition), not from the alarm script's record: see read_broker_lag.
     broker_lag_runs_relpath: .onex_state/lab-alarm/broker-lag-runs.jsonl
     broker_lag_condition: consumer_group_lag
-    overlay_store_relpath: .onex_state/overlay-store/fleet.json
+    # The projections the floor takes from the bus (OMN-23391): node_floor_projection_read_effect writes the bundle as a step of the
+    # publish, each projection with the time its producer stood by it, and a projection older than its own bound reads unknown. The
+    # overlay store's fleet was this node's file from the Mac's reader; it is the hosts' published views now.
+    projection_reads_relpath: .onex_state/floor-projection/projection-reads.json
+    overlay_store_projection: overlay_store_fleet
+    # The owner map (OMN-23184, OMN-23391): who holds each pull request (the controller's landing leases and the cause leases that hold
+    # shared reds), published by the controller's host from its own state. The board's work list names a pull request's owner from it;
+    # a map that is unknown (never published, or older than its bound) makes the list unread, never empty.
+    owner_map_projection: owner_map
+    # The lane list (OMN-22935, OMN-23391): the lanes the floor draws are attributed to the work-state projection's rows from their CLAIM
+    # cells, never from an owner typed into the overlay. The work-state node publishes its projection with the time it was built; one
+    # that is unknown (never published, or older than its bound) is a cause on the board, and no lane is drawn from it.
+    work_state_projection: work_state
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.

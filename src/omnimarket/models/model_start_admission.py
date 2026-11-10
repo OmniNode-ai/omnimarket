@@ -58,6 +58,8 @@ class ModelStartAdmissionRequest(BaseModel):
     reservation_id: str
     outward: bool = False
     now: float = 0.0
+    #: A drill request on a test instance: logged tagged, so a drill never reads as an operational start.
+    drill: bool = False
 
 
 class ModelStartAdmissionLogRow(BaseModel):
@@ -75,6 +77,7 @@ class ModelStartAdmissionLogRow(BaseModel):
     reason: str = ""
     epoch: int | None = None
     attempts: int = 0
+    drill: bool = False
 
 
 class ModelStartAdmissionResult(BaseModel):
@@ -90,6 +93,7 @@ class ModelStartAdmissionResult(BaseModel):
     reason: str = ""
     epoch: int | None = None
     attempts: int = 0
+    drill: bool = False
 
 
 class ModelStartAdmissionFailure(BaseModel):

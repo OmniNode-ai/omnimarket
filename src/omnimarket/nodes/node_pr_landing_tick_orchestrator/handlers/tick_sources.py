@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Snapshot sources of the landing tick orchestrator: in-memory, and Redpanda behind an injected reader.
+"""Snapshot sources of the landing tick orchestrator: in-memory, and Redpanda behind a topic reader.
 
-The overlay names the backend and its settings. The in-memory snapshots and the Redpanda topic
-reader factory are injected; this module holds no Kafka client.
+The overlay names the backend and its settings. The in-memory snapshots are injected; the Redpanda
+topic reader factory is injected in tests and defaults to the bus reader of tick_topic_reader
+(OMN-23458), which opens the overlay's declared bus lane. This module holds no Kafka client.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
@@ -35,6 +37,7 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
     OVERLAY_ID,
     EnumTickBackend,
     ModelTickOrchestratorOverlay,
+    ModelTickTopicSelection,
 )
 
 
@@ -48,7 +51,7 @@ class ProtocolTickTopicReader(Protocol):
     def read(self, max_records: int, timeout_s: float) -> Iterable[str]: ...
 
 
-TopicReaderFactory = Callable[[str, str, str], ProtocolTickTopicReader]
+TopicReaderFactory = Callable[[ModelTickTopicSelection], ProtocolTickTopicReader]
 
 
 class InMemorySnapshotSource:
@@ -60,7 +63,11 @@ class InMemorySnapshotSource:
 
 
 class RedpandaSnapshotSource:
-    """The script's tick records, read from the overlay's topic through the injected reader."""
+    """The landing snapshot step's tick records, read from the overlay's topic through the injected reader.
+
+    Each record is the shared ModelLandingTickRecord the snapshot step publishes on its record_topic
+    (OMN-23409); its facts become one snapshot with no recorded decision.
+    """
 
     def __init__(
         self,
@@ -74,16 +81,18 @@ class RedpandaSnapshotSource:
         self._timeout = poll_timeout_s
 
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]:
-        return tuple(
-            ModelTickSnapshot.model_validate_json(raw)
-            for raw in self._reader.read(self._max, self._timeout)
-        )
+        out: list[ModelTickSnapshot] = []
+        for raw in self._reader.read(self._max, self._timeout):
+            record = ModelLandingTickRecord.model_validate_json(raw)
+            out.append(
+                ModelTickSnapshot(facts=record.facts, provenance=record.provenance)
+            )
+        return tuple(out)
 
 
 _REQUIRED_FIELDS: dict[EnumTickBackend, tuple[str, ...]] = {
     EnumTickBackend.INMEMORY: (),
     EnumTickBackend.REDPANDA: (
-        "bootstrap_servers",
         "consumer_group",
         "snapshot_topic",
         "poll_timeout_s",
@@ -105,6 +114,12 @@ def load_tick_overlay(
     missing = [
         name for name in _REQUIRED_FIELDS[overlay.backend] if not getattr(overlay, name)
     ]
+    if (
+        overlay.backend is EnumTickBackend.REDPANDA
+        and not overlay.bus_lane
+        and not overlay.bootstrap_servers
+    ):
+        missing.append("bus_lane or bootstrap_servers")
     if missing:
         raise ValueError(
             f"backend {overlay.backend.value} needs overlay fields {missing}"
@@ -122,19 +137,28 @@ def build_snapshot_source(
         if inmemory is None:
             raise ValueError("backend inmemory needs the in-memory snapshots injected")
         return inmemory
-    if topic_reader_factory is None:
-        raise ValueError("backend redpanda needs a topic reader factory")
     if not (
-        overlay.bootstrap_servers
+        (overlay.bus_lane or overlay.bootstrap_servers)
         and overlay.snapshot_topic
         and overlay.consumer_group
         and overlay.poll_timeout_s
     ):
         raise ValueError("backend redpanda needs its overlay fields")
+    selection = ModelTickTopicSelection(
+        topic=overlay.snapshot_topic,
+        consumer_group=overlay.consumer_group,
+        bus_lane=overlay.bus_lane,
+        workspace_root=overlay.workspace_root,
+        bootstrap_servers=overlay.bootstrap_servers,
+    )
+    if topic_reader_factory is None:
+        from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_topic_reader import (
+            BusTickTopicReader,
+        )
+
+        topic_reader_factory = BusTickTopicReader
     return RedpandaSnapshotSource(
-        topic_reader_factory(
-            overlay.bootstrap_servers, overlay.snapshot_topic, overlay.consumer_group
-        ),
+        topic_reader_factory(selection),
         max_snapshots=overlay.max_snapshots,
         poll_timeout_s=overlay.poll_timeout_s,
     )
@@ -177,6 +201,7 @@ __all__: list[str] = [
     "ProtocolTickSnapshotSource",
     "ProtocolTickTopicReader",
     "RedpandaSnapshotSource",
+    "TopicReaderFactory",
     "build_emission",
     "build_snapshot_source",
     "load_tick_overlay",
