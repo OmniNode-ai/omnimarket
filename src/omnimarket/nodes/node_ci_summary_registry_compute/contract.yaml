@@ -64,9 +64,6 @@ consumed_events:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.ci-summary-registry-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.ci-summary-registry-resolved.v1
-    - onex.evt.omnimarket.ci-summary-registry-failed.v1
 
 dependencies:
   packages:
