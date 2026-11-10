@@ -60,6 +60,9 @@ from omnimarket.nodes.node_delegation_eval_run_orchestrator.models.model_eval_ru
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.protocols.protocol_delegation_eval_labelled_items import (
     ProtocolDelegationEvalLabelledItems,
 )
+from omnimarket.nodes.node_delegation_eval_run_orchestrator.sources.source_tenant_labelled_items import (
+    labelled_items_for_tenant,
+)
 from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
     HandlerDelegationGateEval,
 )
@@ -190,10 +193,13 @@ class HandlerDelegationEvalRun:
         gate_eval: HandlerDelegationGateEval | None = None,
         clock: Callable[[], datetime] | None = None,
         *,
+        items_source_factory: Callable[[str], ProtocolDelegationEvalLabelledItems]
+        | None = None,
         class_rubrics: Callable[[], _ClassRubricContract] | None = None,
         rubric_verdict: Callable[..., ModelAttemptRubricVerdict] | None = None,
     ) -> None:
         self._items_source = items_source
+        self._items_source_factory = items_source_factory or labelled_items_for_tenant
         self._gate_eval = gate_eval or HandlerDelegationGateEval()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._class_rubrics = (
@@ -204,16 +210,27 @@ class HandlerDelegationEvalRun:
         )
 
     def handle(self, request: ModelDelegationEvalRunRequest) -> ModelEvalRunResult:
-        if self._items_source is None:
-            raise RuntimeError("tenant-scoped labelled-item source is required")
-        items = tuple(
-            sorted(
-                self._items_source.get_labelled_items(
-                    request.manifest_id, request.rater_role, request.rubric_version
-                ),
-                key=lambda item: item.item_id,
+        source = self._items_source
+        source_failure: str | None = None
+        items: tuple[ModelGateEvalItem, ...] = ()
+        try:
+            if source is None:
+                # One source per command, bound to the command's tenant (OMN-20577).
+                source = self._items_source_factory(str(request.tenant_id))
+            items = tuple(
+                sorted(
+                    source.get_labelled_items(
+                        request.manifest_id,
+                        request.rater_role,
+                        request.rubric_version,
+                    ),
+                    key=lambda item: item.item_id,
+                )
             )
-        )
+        except Exception as exc:
+            # A bound source that cannot be built or read is a failed terminal the
+            # sender can see, never an exception nothing reports (OMN-20577).
+            source_failure = f"labelled-item source unavailable: {type(exc).__name__}"
         sha = label_set_sha256(
             items, rater_role=request.rater_role, rubric_version=request.rubric_version
         )
@@ -242,6 +259,14 @@ class HandlerDelegationEvalRun:
             "rubric_version": request.rubric_version,
             "observed_at": self._clock(),
         }
+        if source_failure is not None:
+            return ModelEvalRunResult(
+                payload=ModelDelegationEvalRunCompleted(
+                    **common,
+                    status=str(EnumGateEvalRunStatus.FAILED),
+                    failure_reasons=(source_failure,),
+                )
+            )
         if not items:
             return ModelEvalRunResult(
                 payload=ModelDelegationEvalRunCompleted(

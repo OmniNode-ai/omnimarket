@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 from omnimarket.models.model_dev_deploy_reading import (
     ModelLabPassReceiptFact,
+    ModelLineageFact,
     ModelRuntimeMerge,
     ModelRuntimeProbeFact,
 )
@@ -91,6 +92,24 @@ def _utc(text: str) -> datetime:
     return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(UTC)
 
 
+def _parse_git_log(
+    text: str, patterns: tuple[re.Pattern[str], ...]
+) -> list[tuple[str, datetime, bool]]:
+    """Parse the ``--format=\x01%H\t%cI`` log into (sha, committer time, runtime-affecting)."""
+    out: list[tuple[str, datetime, bool]] = []
+    for chunk in text.split(_START)[1:]:
+        head, *files = chunk.split("\n")
+        sha, stamp = head.split("\t")
+        out.append(
+            (
+                sha,
+                _utc(stamp),
+                any(p.fullmatch(f) for f in files if f for p in patterns),
+            )
+        )
+    return out
+
+
 class GitRuntimeMergeSource:
     """First-parent commits of the ref inside the lookback, each marked runtime-affecting by its changed files."""
 
@@ -133,23 +152,177 @@ class GitRuntimeMergeSource:
             return (), f"git log failed: {type(exc).__name__}"
         if done.returncode:
             return (), f"git log exited {done.returncode}"
-        merges: list[ModelRuntimeMerge] = []
         try:
-            for chunk in done.stdout.decode().split(_START)[1:]:
-                head, *files = chunk.split("\n")
-                sha, stamp = head.split("\t")
-                merges.append(
-                    ModelRuntimeMerge(
-                        sha=sha,
-                        merged_at=_utc(stamp),
-                        runtime_affecting=any(
-                            p.fullmatch(f) for f in files if f for p in self._patterns
-                        ),
-                    )
-                )
+            parsed = _parse_git_log(done.stdout.decode(), self._patterns)
         except (ValueError, ValidationError) as exc:
             return (), f"git log output unreadable: {type(exc).__name__}"
-        return tuple(merges), None
+        return (
+            tuple(
+                ModelRuntimeMerge(sha=sha, merged_at=stamp, runtime_affecting=affecting)
+                for sha, stamp, affecting in parsed
+            ),
+            None,
+        )
+
+
+class GitLineageSource:
+    """The clone's reading of ancestry between two exact shas, and the runtime-affecting commits between them."""
+
+    def __init__(
+        self,
+        settings: ModelMergeSettings,
+        environ: Mapping[str, str],
+        run: Runner = run_process,
+    ) -> None:
+        self._settings = settings
+        self._environ = environ
+        self._run = run
+        self._patterns = tuple(glob_regex(g) for g in settings.runtime_path_globs)
+
+    def _clone(self) -> str:
+        return self._environ.get(self._settings.clone_path_env, "").strip()
+
+    def pair(self, base_sha: str, head_sha: str) -> ModelLineageFact:
+        settings = self._settings
+        clone = self._clone()
+        if not clone:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"{settings.clone_path_env} is not set",
+            )
+        try:
+            done = self._run(
+                [
+                    "git",
+                    "-C",
+                    str(Path(clone)),
+                    "merge-base",
+                    "--is-ancestor",
+                    base_sha,
+                    head_sha,
+                ],
+                None,
+                settings.git_timeout_seconds,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"git merge-base failed: {type(exc).__name__}",
+            )
+        if done.returncode not in (0, 1):
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"git merge-base exited {done.returncode}",
+            )
+        if done.returncode == 1:
+            return ModelLineageFact(
+                base_sha=base_sha, head_sha=head_sha, relation="not-ancestor"
+            )
+        try:
+            count = self._run(
+                [
+                    "git",
+                    "-C",
+                    str(Path(clone)),
+                    "rev-list",
+                    "--first-parent",
+                    "--count",
+                    f"{base_sha}..{head_sha}",
+                ],
+                None,
+                settings.git_timeout_seconds,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"git rev-list failed: {type(exc).__name__}",
+            )
+        if count.returncode:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"git rev-list exited {count.returncode}",
+            )
+        try:
+            commits_between = int(count.stdout.decode().strip())
+        except ValueError:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason="git rev-list count is not an integer",
+            )
+        return ModelLineageFact(
+            base_sha=base_sha,
+            head_sha=head_sha,
+            relation="ancestor",
+            commits_between=commits_between,
+        )
+
+    def pair_with_runtime(self, base_sha: str, head_sha: str) -> ModelLineageFact:
+        fact = self.pair(base_sha, head_sha)
+        if fact.relation != "ancestor":
+            return fact
+        settings = self._settings
+        clone = self._clone()
+        try:
+            done = self._run(
+                [
+                    "git",
+                    "-C",
+                    str(Path(clone)),
+                    "log",
+                    "--first-parent",
+                    "-m",
+                    "--name-only",
+                    f"--format={_START}%H%x09%cI",
+                    f"{base_sha}..{head_sha}",
+                    "--",
+                ],
+                None,
+                settings.git_timeout_seconds,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"git log failed: {type(exc).__name__}",
+            )
+        if done.returncode:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"git log exited {done.returncode}",
+            )
+        try:
+            parsed = _parse_git_log(done.stdout.decode(), self._patterns)
+        except (ValueError, ValidationError) as exc:
+            return ModelLineageFact(
+                base_sha=base_sha,
+                head_sha=head_sha,
+                relation="unread",
+                unread_reason=f"git log output unreadable: {type(exc).__name__}",
+            )
+        return ModelLineageFact(
+            base_sha=base_sha,
+            head_sha=head_sha,
+            relation="ancestor",
+            commits_between=fact.commits_between,
+            runtime_affecting_between=tuple(
+                sha for sha, _, affecting in parsed if affecting
+            ),
+        )
 
 
 class LaneHealthReceiptSource:
@@ -295,6 +468,9 @@ class LabDevDeployFacts:
             overlay.receipts, overlay.thresholds.required_lane, fetch
         )
         self._probe = RuntimeProbeSource(overlay.probe, environ, fetch, run)
+        self._lineage = GitLineageSource(overlay.merges, environ, run)
+        self._lineage_rule = overlay.lineage
+        self._required_lane = overlay.thresholds.required_lane
 
     def read(self, now: datetime) -> ModelDevDeployFacts:
         merges, merges_error = self._merges.read(now)
@@ -317,10 +493,38 @@ class LabDevDeployFacts:
             )
         else:
             probes, probes_error = self._probe.read(now, settled[-1].sha)
+        lineage: list[ModelLineageFact] = []
+        if self._lineage_rule.receipt_covers_descendant and merges_error is None:
+            for merge in merges:
+                if not merge.runtime_affecting:
+                    continue
+                for receipt in receipts:
+                    if (
+                        receipt.lane == self._required_lane
+                        and receipt.result == "PASS"
+                        and receipt.sha != merge.sha
+                    ):
+                        lineage.append(self._lineage.pair(merge.sha, receipt.sha))
+        if (
+            self._lineage_rule.probe_accepts_descendant
+            and probes_error is None
+            and probes
+        ):
+            probe = probes[0]
+            if (
+                probe.observed_sha is not None
+                and probe.observed_sha != probe.expected_sha
+            ):
+                lineage.append(
+                    self._lineage.pair_with_runtime(
+                        probe.expected_sha, probe.observed_sha
+                    )
+                )
         return ModelDevDeployFacts(
             merges=merges,
             receipts=receipts,
             probes=probes,
+            lineage=tuple(lineage),
             receipts_unread_reason=receipts_error
             or (merges_error and f"merges unreadable ({merges_error})"),
             probes_unread_reason=probes_error,
@@ -328,6 +532,7 @@ class LabDevDeployFacts:
 
 
 __all__ = [
+    "GitLineageSource",
     "GitRuntimeMergeSource",
     "LabDevDeployFacts",
     "LaneHealthReceiptSource",
