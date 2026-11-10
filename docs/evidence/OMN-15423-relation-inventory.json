@@ -10036,6 +10036,7 @@
         "node_projection_delegation",
         "node_projection_runtime_error_fingerprints",
         "node_projection_traces",
+        "node_validator_estate_reading_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
