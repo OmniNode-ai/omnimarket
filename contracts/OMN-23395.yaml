@@ -29,7 +29,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23395-landing-grant-seam
-  description: Runs the landing grant seam test. It passes against the chain as written and reads red when the node group prefix in tests/chain/landing_chain.py is renamed. The test file is absent at the merge base, so the command fails there.
+  description: Runs the landing grant seam test. It passes against the chain as written and reads red when the node group prefix in tests/chain/landing_chain.py is renamed. The test file is absent at the merge base, so the command fails there; with the test file laid over the merge base, test_every_granted_topic_is_provisioned_by_a_node_contract fails, because no node contract there declares the command topic.
   source: manual
   binds_ac:
   - AC1

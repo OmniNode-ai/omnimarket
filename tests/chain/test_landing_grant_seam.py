@@ -21,9 +21,11 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Final
 
 import pytest
+from omnibase_infra.tools.contract_topic_extractor import ContractTopicExtractor
 
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
 from tests.chain.landing_chain import (
+    DECISION_CONTRACT,
     ModelLandingChainOverlay,
     RedpandaDecisionBus,
     decision_topics,
@@ -167,6 +169,27 @@ def test_topics_equal_the_node_contract() -> None:
     topics = decision_topics()
     assert topics["command"] == GRANTED_COMMAND_TOPIC
     assert topics["success"] == GRANTED_SUCCESS_TOPIC
+
+
+def test_every_granted_topic_is_provisioned_by_a_node_contract() -> None:
+    """A topic the principal is granted exists on the broker, or the chain times out.
+
+    The provisioner creates what the contracts declare in ``consumed_events``,
+    ``published_events`` and ``event_bus``, and not what ``runtime_dispatch`` names. The
+    command topic is declared by the decision node and its success terminal by the
+    ledger mirror node, which consumes it. A grant on a topic no contract declares
+    is a grant on a topic that was never created.
+    """
+    decision_dir = DECISION_CONTRACT.parent
+    mirror_dir = decision_dir.parent / "node_work_ledger_landing_mirror"
+    provisioned = {
+        entry.topic
+        for node_dir in (decision_dir, mirror_dir)
+        for entry in ContractTopicExtractor().extract(node_dir)
+    }
+    assert provisioned >= GRANTED_TOPICS, (
+        f"granted but declared by no node contract: {sorted(GRANTED_TOPICS - provisioned)}"
+    )
 
 
 def test_control_a_changed_group_prefix_is_red() -> None:
