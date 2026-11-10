@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - CI Summary Registry Compute (OMN-23505)
+#
+# Pure COMPUTE: resolves the CI Summary poller's sweep-exclusion registry and its
+# per-check advisory/blocking registry (contract plus overlay) from their parsed
+# contents into the exclusions, the conclusions each declared check adds to
+# success, and the refusals for a missing or malformed registry. The poller runs
+# with no installed packages, so the runtime module takes the request as JSON on stdin and
+# answers on stdout (the workflow step composes it with jq and keeps the answer in a
+# file the gate reads); the gate holds no loader of its own.
+---
+name: node_ci_summary_registry_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE over the parsed sweep-exclusion registry and the parsed check-mode
+  contract and overlay. A bad registry yields no entries and a named refusal and
+  admits nothing (fail closed). No I/O and no clock.
+
+input_model:
+  name: ModelCiSummaryRegistryRequest
+  module: omnimarket.nodes.node_ci_summary_registry_compute.models.model_ci_summary_registry
+  description: "The parsed registry files, or the reason one could not be read."
+
+output_model:
+  name: ModelCiSummaryRegistry
+  module: omnimarket.nodes.node_ci_summary_registry_compute.models.model_ci_summary_registry
+  description: "Exclusions, each declared check's added conclusions, and refusals."
+
+handler:
+  module: omnimarket.nodes.node_ci_summary_registry_compute.handlers.handler_ci_summary_registry
+  class: HandlerCiSummaryRegistry
+  input_model: omnimarket.nodes.node_ci_summary_registry_compute.models.model_ci_summary_registry.ModelCiSummaryRegistryRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: resolve_ci_summary_registry
+      handler:
+        name: HandlerCiSummaryRegistry
+        module: omnimarket.nodes.node_ci_summary_registry_compute.handlers.handler_ci_summary_registry
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ci-summary-registry-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.ci-summary-registry-resolved.v1
+    failure: onex.evt.omnimarket.ci-summary-registry-failed.v1
+
+consumed_events:
+  - event_type: ModelCiSummaryRegistryRequest
+    topic: onex.cmd.omnimarket.ci-summary-registry-requested.v1
+    description: The parsed registry files, sent by the poller's workflow step runtime.
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ci-summary-registry-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ci-summary-registry-resolved.v1
+    - onex.evt.omnimarket.ci-summary-registry-failed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "CI Summary sweep registry resolver - pure COMPUTE"
+  author: "OmniNode Team"
+  tags:
+    - "compute"
+    - "ci-summary"
+    - "registry"
+  related_tickets:
+    - "OMN-23505"

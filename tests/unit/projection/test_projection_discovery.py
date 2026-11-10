@@ -1028,7 +1028,9 @@ class TestOmn15800ExposureParity:
         # the seam reducer's compacted readings.
         # 83 after OMN-21970: onex.snapshot.projection.delegation.daily.v1, one
         # row per tenant per UTC day of runs and tokens, with no row cap.
-        assert len(topic_map) == 83
+        # 84 after OMN-19986: onex.snapshot.projection.local-identity.v1, the
+        # install's tenant identity and its mint time for the API Keys page.
+        assert len(topic_map) == 84
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",

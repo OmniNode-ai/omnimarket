@@ -3,8 +3,9 @@
 """``python -m <runtime module> schedule <install|uninstall|status|run-now> --this-host <host>``.
 
 Reads the overlay's ``floor_fill`` section from ``<root>/node_floor_fill_orchestrator/overlay.yaml`` under
-``ONEX_SKILL_OVERLAY_ROOTS`` and the lab host table, then hands both to the schedule handler. A refused overlay or
-host prints its refusal naming the key and exits 1.
+``ONEX_SKILL_OVERLAY_ROOTS`` and the lab host table, then hands both to the schedule handler. ``install --profile live``
+also reads the overlay's ``floor_fill_live`` section (refused, naming the key, when it is missing or unknown). A
+refused overlay or host prints its refusal naming the key and exits 1.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_fill_schedule import (
     NODE_NAME,
+    PROFILES,
     FloorFillScheduler,
     Runner,
     run_command,
@@ -32,6 +34,10 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillScheduleResult,
     load_floor_fill_config,
     load_floor_fill_schedule,
+)
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    LIVE_OVERLAY_SECTION,
+    load_floor_fill_live_settings,
 )
 
 OVERLAY_SECTION = "floor_fill"
@@ -60,17 +66,27 @@ def run_schedule(
                 default=os.environ.get("OMNI_HOME", ""),
             )
             sub.add_argument("--dry-run", action="store_true")
+            sub.add_argument("--profile", choices=PROFILES, default=PROFILES[0])
     args = parser.parse_args(list(argv))
     try:
         config = load_floor_fill_config(overlay.get(OVERLAY_SECTION, {}))
     except FloorFillConfigError as error:
         return ModelFloorFillScheduleResult(exit_code=1, stderr=f"{error}\n")
+    live = None
+    if args.verb == "install" and args.profile == "live":
+        try:
+            live = load_floor_fill_live_settings(overlay.get(LIVE_OVERLAY_SECTION, {}))
+        except FloorFillConfigError as error:
+            return ModelFloorFillScheduleResult(
+                exit_code=1, stderr=f"{', '.join(error.keys) or error}\n"
+            )
     handler = FloorFillScheduler(
         schedule=schedule or load_floor_fill_schedule(),
         config=config,
         hosts=hosts,
         home=home,
         run=run,
+        live=live,
     )
     if args.verb == "install":
         if not args.workspace_root:
