@@ -268,6 +268,18 @@ runtime:
     timeout_seconds: 90
     module: omnimarket.nodes.node_gate_store_effect.runtime_join_j6
     args: ["run"]
+  # OMN-23420: the J7 run, the join's caller. Join J7 joins piece 7 (process spine) to piece 8 (central test harness): each run
+  # answers piece 7's golden stop drill readings with a send past a stop whose lab check posts on a test head, in an in-memory
+  # twin, and writes piece 8's chain under the reading's id; once per window it writes piece 8's own error chain (a superseded
+  # attempt posts nothing). Concurrent beside join_j6, so the longest path stays the slowest member (90 s). Not required: when it
+  # fails the floor still reads and J7 stays unpassed.
+  - name: join_j7
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7
+    args: ["run"]
   # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
   # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
   # writes the same file in milliseconds; a failed rollup leaves the copy's file.
@@ -338,6 +350,18 @@ runtime:
     timeout_seconds: 90
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--mvp-reads"]
+  # OMN-23391: the bus projections the floor takes its inputs from (the overlay store's fleet first). The step reads each snapshot topic
+  # for one window (the overlay's, 4 s) and writes the bundle with every projection's own time; a projection older than its own bound
+  # reads unknown on the simple floor and one that cannot be read is written unread with its reason. It runs with the other input steps,
+  # before the simple floor reads the bundle, so it adds nothing past the group's 90 s. Not required: when it fails the previous
+  # bundle stays and every projection in it ages from its own as_of, never from the bundle's write time.
+  - name: floor_projections
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 60
+    module: omnimarket.nodes.node_floor_projection_read_effect
+    args: ["--home", "{home}"]
   - name: factory_floor
     kind: module
     required: true
