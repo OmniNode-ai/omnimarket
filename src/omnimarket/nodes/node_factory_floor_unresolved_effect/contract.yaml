@@ -41,7 +41,7 @@ input_model:
   description: The time of one pass and the plugin root the ledger reader lives under.
 output_model:
   name: ModelUnresolvedRowsRecord
-  module: omnimarket.nodes.node_factory_floor_effect.models.model_unresolved_rows_record
+  module: omnimarket.models.model_unresolved_rows_record
   description: The rows older than the window's edge, with the pass's read time and margin.
 
 runtime_dispatch:

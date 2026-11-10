@@ -68,7 +68,7 @@ def test_the_longest_declared_path_holds_under_the_cycle_bound() -> None:
         "after_publish",
         "final_status",
     }
-    assert rt.cycle.bound_seconds == 240
+    assert rt.cycle.bound_seconds == 285
     assert _longest(rt) <= rt.cycle.bound_seconds, path
 
 

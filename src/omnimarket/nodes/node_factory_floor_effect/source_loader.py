@@ -65,6 +65,9 @@ from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetRequest,
     ModelLaneContainerBudgetVerdict,
 )
+from omnimarket.models.model_unresolved_rows_record import (
+    ModelUnresolvedRowsRecord,
+)
 from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
     merge_task_links,
     prose_task_tickets,
@@ -78,9 +81,6 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runti
     ModelFactoryFloorEffectContract,
     ModelFactoryFloorPlanRef,
     ModelFactoryFloorTaskLinks,
-)
-from omnimarket.nodes.node_factory_floor_effect.models.model_unresolved_rows_record import (
-    ModelUnresolvedRowsRecord,
 )
 from omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget import (
     HandlerLaneContainerBudget,

@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
-from omnimarket.nodes.node_factory_floor_effect.models.model_unresolved_rows_record import (
+from omnimarket.models.model_unresolved_rows_record import (
     ModelUnresolvedRowsRecord,
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (

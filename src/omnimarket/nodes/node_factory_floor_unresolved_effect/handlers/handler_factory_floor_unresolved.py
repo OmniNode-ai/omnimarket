@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from omnimarket.nodes.node_factory_floor_effect.models.model_unresolved_rows_record import (
+from omnimarket.models.model_unresolved_rows_record import (
     ModelUnresolvedRowsRecord,
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
