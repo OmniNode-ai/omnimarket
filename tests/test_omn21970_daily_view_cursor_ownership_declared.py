@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """The per-day delegation view and the delegation_events walk cursor, owned in this manifest (OMN-21970).
 
-omnibase_infra vendors node_projection_delegation's 0065 and 0066 migrations before this repo ships them,
+omnibase_infra vendors node_projection_delegation's 0066 and 0067 migrations before this repo ships them,
 and its application SQL gate needs every object those migrations create or grant to have exactly one
-correctly typed owner here: the cursor sequence 0065 grants (a sequence, not covered by the
-delegation_events table entry) and the view 0066 creates (a view, not a table). Failure modes: either
+correctly typed owner here: the cursor sequence 0066 grants (a sequence, not covered by the
+delegation_events table entry) and the view 0067 creates (a view, not a table). Failure modes: either
 object is missing, declared twice, declared as the wrong kind, or declared under another schema, domain
 or owner than the tenant projection's migration runner.
 """
@@ -24,7 +24,7 @@ MANIFEST = (
     Path(__file__).resolve().parents[1] / "scripts/application-relation-ownership.yaml"
 )
 RUNNER = "service:omnimarket_projection_migration_runner"
-DAILY_VIEW_MIGRATION = "src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql"
+DAILY_VIEW_MIGRATION = "src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql"
 
 
 def _section(key: str) -> list[dict[str, Any]]:
@@ -61,7 +61,7 @@ def test_delegation_events_cursor_sequence_is_declared_once_as_a_tenant_sequence
     assert row["writers"] == []
 
 
-def test_daily_view_is_declared_once_as_a_tenant_view_produced_by_0066() -> None:
+def test_daily_view_is_declared_once_as_a_tenant_view_produced_by_0067() -> None:
     row = _only("projection_delegation_daily", "relation_evidence")
     assert row["kind"] == "view"
     assert row["database_ref"] == "application"

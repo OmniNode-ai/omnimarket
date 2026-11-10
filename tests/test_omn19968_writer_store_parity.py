@@ -69,6 +69,7 @@ from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionA
 from omnimarket.projection.protocol_database import ProtocolProjectionAttestedWrite
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 from tests.test_omn15359_ac3_replay_real_postgres import local_postgres  # noqa: F401
 from tests.test_omn16316_real_postgres_tenant_credentials_write_path import (
     TOPIC_REGISTERED,
@@ -314,7 +315,9 @@ async def test_writer_rows_equal_on_sqlite_and_postgres(
     async with _provisioned(pg) as (admin, schema):
         await _mirror_infra_usage_source_state(admin, schema)
         for migration in _LLM_COST_MIGRATIONS:
-            await admin.execute(migration.read_text(encoding="utf-8"))
+            await admin.execute(
+                for_isolated_schema(migration.read_text(encoding="utf-8"))
+            )
         postgres = PostgresSyncProjectionAdapter(_dsn(pg, schema))
         writer(postgres)
         pg_rows = _normalize(postgres.query(table))
@@ -556,7 +559,7 @@ async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
         # The migration names ``public.``; keep the proof inside the throwaway schema.
         for migration in migrations:
             await admin.execute(
-                migration.read_text(encoding="utf-8")
+                for_isolated_schema(migration.read_text(encoding="utf-8"))
                 .replace("public.", f"{schema}.")
                 # A create migration may grant the cluster-scoped dashboard
                 # reader, which a throwaway database does not have.

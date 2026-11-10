@@ -27,6 +27,8 @@ from typing import Any
 
 import pytest
 
+from tests.helpers.isolated_schema_sql import for_isolated_schema
+
 _MIGRATIONS = (
     Path(__file__).resolve().parents[1]
     / "src"
@@ -74,6 +76,8 @@ def _dsn() -> str:
 
 
 def _schema_safe(sql: str) -> str:
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    sql = for_isolated_schema(sql)
     return sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 

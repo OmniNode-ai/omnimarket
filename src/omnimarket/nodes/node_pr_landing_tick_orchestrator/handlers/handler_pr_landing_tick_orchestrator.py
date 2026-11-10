@@ -91,9 +91,11 @@ class HandlerPrLandingTickOrchestrator:
         """Perform the decision's actions, in an enabled act mode only; otherwise none."""
         if request.mode is not EnumTickMode.ACT:
             return 0
-        for action in decision.actions:
-            self._writer.perform(action)
-        return len(decision.actions)
+        return sum(
+            1
+            for action in decision.actions
+            if self._writer.perform(action, request.facts)
+        )
 
     def _failed(
         self,

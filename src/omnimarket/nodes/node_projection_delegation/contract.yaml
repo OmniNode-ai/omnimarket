@@ -317,6 +317,16 @@ db_io:
       migration: "0062_delegation_token_usage_unpriced_calls.sql"
       access: read
       role: aggregate_token_usage
+    # OMN-21970. A SQL VIEW over delegation_events, not a table: every UTC
+    # day's runs, verdicts and token totals, one row per tenant. Declared for
+    # the same reason as the views above, and it inherits delegation_events'
+    # row-level security the same way.
+    - name: projection_delegation_daily
+      database_ref: application
+      schema: public
+      migration: "0067_delegation_daily_view.sql"
+      access: read
+      role: aggregate_daily
 
 event_bus:
   subscribe_topics:
@@ -354,6 +364,7 @@ event_bus:
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.daily.v1  # onex-topic-allow: projection snapshot topic
   # OMN-13548 (D-03): malformed inbound events (ValidationError / missing required
   # fields) are routed here as a DURABLE failure signal carrying the offending
   # envelope + correlation_id, instead of being logged + dropped silently.
@@ -371,6 +382,7 @@ externally_consumed_topics:
   - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.daily.v1  # onex-topic-allow: projection snapshot topic
   - onex.evt.omnimarket.projection-delegation-applied.v1
 
 projection_api:
@@ -519,9 +531,17 @@ projection_api:
         - tenant_id
         - writer_identity
         - written_at
+        # OMN-21970: the integer walk cursor (migration 0066).
+        - projection_cursor
       order_by: written_at DESC
       freshness_column: written_at
       limit: 500
+      # OMN-21970: projection_cursor is the walk cursor, so a reader can page
+      # past the newest 500 runs to every run; the walk starts one below the
+      # smallest cursor, which only an integer cursor has. A read without
+      # `since` keeps serving the newest page by order_by, as before.
+      cursor_column: projection_cursor
+      page_selection: order_by
       # OMN-18140. THE FLAG AND ITS WRITER LAND IN THE SAME CHANGE.
       #
       # `bus_backed` without a publish site turns an honest
@@ -1166,6 +1186,41 @@ projection_api:
       order_by: updated_at DESC
       freshness_column: updated_at
       limit: 500
+    # OMN-21970: every UTC day's runs, verdicts and token totals for one tenant,
+    # so the Overview's Runs per day and Tokens per day count every run, not the
+    # newest 500 decisions rows. A SQL VIEW over delegation_events with ONE row
+    # per tenant, its "days" list oldest first: that is the singleton-aggregate
+    # shape this runner republishes after every apply, keyed like the summary.
+    - topic: onex.snapshot.projection.delegation.daily.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: projection_delegation_daily
+      schema: public
+      columns:
+        - tenant_id
+        - days
+        - total_runs
+        - latest_projection_updated_at
+      json_columns:
+        - days
+      freshness_column: latest_projection_updated_at
+      # One row per tenant, so a walk is one page; the cursor lets a truncated
+      # read say so (OMN-18043).
+      cursor_column: latest_projection_updated_at
+      limit: 1
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
+        - tenant_id
+      tenant_column: tenant_id
+      consumers: none
+      consumers_reason: >-
+        No Omnidash component placed on a shipped dashboard layout and no typed
+        status-page backend reader reads this daily aggregate yet. The change
+        that adds that reader deletes this opt-out and the
+        exposure-reader-coverage gate then checks the reader.
 
 metadata:
   transport_type: kafka
@@ -1182,6 +1237,7 @@ metadata:
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.daily.v1  # onex-topic-allow: projection snapshot topic
 
 # OMN-22664 (one-runtime plan T10, under OMN-21288): when the fold moves this
 # writer from its own container into the runtime, the runtime's consumer groups
