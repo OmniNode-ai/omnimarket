@@ -29,6 +29,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.lab_work import cli
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost
 from omnimarket.models.overlay_keys import (
@@ -485,6 +486,138 @@ def test_an_unreadable_table_refuses_instead_of_admitting(tmp_path: Path) -> Non
         load_host_table({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)})
 
 
+@pytest.fixture
+def workspace_host_env(tmp_path: Path) -> dict[str, str]:
+    """Remote-lane shape from the Nov 1-2 receipts: plugin roots omit lab_hosts.
+
+    Adding the declared config owner's overlay root made placement work in the
+    23:06:31Z receipt; the 03:01:46Z receipt still needed that manual export.
+    Keep the fixture's hosts and paths local to this test.
+    """
+    config = tmp_path / "config-owner"
+    overlay = config / "config/onex/overlays/lab_hosts/overlay.yaml"
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text(
+        TABLE_YAML
+        + "registry_root_candidates: [$HOME/registry]\nbus_lane: fixture-lane\n",
+        encoding="utf-8",
+    )
+    return {
+        "OMNI_HOME": str(tmp_path / "workspace"),
+        "ONEX_WORKSPACE_CONFIG_ROOT": str(config),
+        "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "plugin-overlays"),
+    }
+
+
+@pytest.mark.parametrize("plugin_roots", [True, False])
+def test_remote_lane_discovers_declared_workspace_host_overlay(
+    workspace_host_env: dict[str, str], plugin_roots: bool
+) -> None:
+    env = dict(workspace_host_env)
+    if not plugin_roots:
+        env.pop("ONEX_SKILL_OVERLAY_ROOTS")
+        env.pop("OMNI_HOME")  # The explicit config root alone is sufficient.
+    before = dict(env)
+    document = load_host_table(env)
+    assert document.bus_lane == "fixture-lane"
+    assert [rule.repo for rule in document.unit_needs] == ["native_audio"]
+    assert next(h for h in document.hosts if h.name == "h051").available is False
+    assert resolve_overlay_key("lab_hosts.hosts", environ=env) == document.hosts
+    assert env == before
+
+
+def test_developer_workspace_host_overlay_is_discovered(tmp_path: Path) -> None:
+    overlay = tmp_path / ".onex/workspace-config/config/onex/overlays/lab_hosts"
+    overlay.mkdir(parents=True)
+    (overlay / "overlay.yaml").write_text(
+        TABLE_YAML + "registry_root_candidates: [$HOME/registry]\n",
+        encoding="utf-8",
+    )
+    assert load_host_table({"OMNI_HOME": str(tmp_path)}).hosts[0].name == "h101"
+    # An explicit config owner never falls through to the developer directory.
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table(
+            {
+                "OMNI_HOME": str(tmp_path),
+                "ONEX_WORKSPACE_CONFIG_ROOT": str(tmp_path / "absent"),
+            }
+        )
+
+
+@pytest.mark.parametrize("source", ["file", "overlay"])
+def test_explicit_host_source_wins_over_workspace_discovery(
+    workspace_host_env: dict[str, str], tmp_path: Path, source: str
+) -> None:
+    path = tmp_path / "selected/lab_hosts/overlay.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "hosts: [{name: selected, target: 192.0.2.10}]\n"
+        + (
+            "registry_root_candidates: [$HOME/registry]\n"
+            if source == "overlay"
+            else ""
+        ),
+        encoding="utf-8",
+    )
+    env = dict(workspace_host_env)
+    if source == "file":
+        env["ONEX_LAB_RUN_HOSTS"] = str(path)
+    else:
+        env["ONEX_SKILL_OVERLAY_ROOTS"] = str(path.parent.parent)
+    assert [h.name for h in load_host_table(env).hosts] == ["selected"]
+    path.write_text("hosts: [{name: invalid}]\n", encoding="utf-8")
+    with pytest.raises(HostTableError, match="invalid"):
+        load_host_table(env)
+    if source == "file":
+        path.unlink()
+        with pytest.raises(HostTableError, match="unreadable"):
+            load_host_table(env)
+
+
+def test_workspace_discovery_uses_only_the_supplied_environment(
+    workspace_host_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for name, value in workspace_host_env.items():
+        monkeypatch.setenv(name, value)
+    assert load_host_table().hosts[0].name == "h101"
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({})
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({"ONEX_WORKSPACE_CONFIG_ROOT": str(tmp_path / "absent")})
+
+
+@pytest.mark.parametrize(
+    ("host", "load", "free_gb", "tools", "reason"),
+    [
+        ("h051", 0.1, 300, (), "unavailable"),
+        ("h999", 0.1, 32, (), "not a row"),
+        ("h101", 100, 32, (), "load"),
+        ("h101", 0.1, 0.1, (), "memory"),
+        ("h101", 0.1, 32, ("missing-tool",), "tool"),
+    ],
+)
+def test_discovered_workspace_table_keeps_placement_refusals(
+    workspace_host_env: dict[str, str],
+    rules: ModelPlacementRules,
+    host: str,
+    load: float,
+    free_gb: float,
+    tools: tuple[str, ...],
+    reason: str,
+) -> None:
+    table = load_host_table(workspace_host_env)
+    refused = _place(
+        [_ad(host, load, 12, free_gb=free_gb)],
+        table,
+        rules,
+        repo="omnimarket",
+        need_tools=tools,
+    )
+    assert not refused.placed
+    assert reason in refused.verdicts[0].reason
+    assert _place([_ad("h101", 0.1, 12)], table, rules, repo="omnimarket").placed
+
+
 def test_the_judge_command_prints_the_tables_verdicts_for_the_shim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -628,13 +761,22 @@ def _run_args(repo: str, *extra: str) -> list[str]:
     ]
 
 
+@pytest.mark.parametrize("source", ["file", "workspace"])
 def test_the_run_command_refuses_an_unavailable_host_that_advertises_and_places_the_other(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    workspace_host_env: dict[str, str],
+    source: str,
 ) -> None:
     """The bus path itself: h051 advertises 80 idle cores and the table marks it unavailable."""
     path = tmp_path / "hosts.yaml"
     path.write_text(TABLE_YAML, encoding="utf-8")
-    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(path))
+    if source == "file":
+        monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(path))
+    else:
+        monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+        for name, value in workspace_host_env.items():
+            monkeypatch.setenv(name, value)
     pool = [("h051", 0.5, 80, 300.0), ("h101", 6.0, 12, 32.0)]
 
     @asynccontextmanager
@@ -821,3 +963,35 @@ def test_run_command_describes_an_unreadable_table_and_exits_69(
     assert "placement: refused (could_not_check)" in result.output
     assert "could not be read" in result.output
     assert "no pool host can take this unit" in result.output
+
+
+@pytest.mark.unit
+def test_host_cap_zero_is_a_valid_row_and_negative_is_not() -> None:
+    """OMN-22015: a lane cap of 0 (no lane placed on the host) must not make the whole table
+    unreadable, which refused every lab-run with exit 69; a negative cap is still refused."""
+    from pydantic import ValidationError
+
+    ok = ModelLabHostsTable.model_validate(
+        {"hosts": [{"name": "h200", "target": "h200", "cap": 0}]}
+    )
+    assert ok.hosts[0].cap == 0
+    with pytest.raises(ValidationError):
+        ModelLabHostsTable.model_validate(
+            {"hosts": [{"name": "h200", "target": "h200", "cap": -1}]}
+        )
+
+
+@pytest.mark.unit
+def test_host_unit_slots_is_a_bounded_column() -> None:
+    """OMN-22015: ``unit_slots`` names how many lab-work units a host runs at once."""
+    from pydantic import ValidationError
+
+    ok = ModelLabHostsTable.model_validate(
+        {"hosts": [{"name": "h051", "target": "h051", "unit_slots": 8}]}
+    )
+    assert ok.hosts[0].unit_slots == 8
+    for bad in (0, 65):
+        with pytest.raises(ValidationError):
+            ModelLabHostsTable.model_validate(
+                {"hosts": [{"name": "h051", "target": "h051", "unit_slots": bad}]}
+            )

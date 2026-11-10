@@ -30,21 +30,31 @@ from omnibase_core.models.reducer.payloads.model_payload_fsm_transition_action i
 )
 from omnibase_core.utils.util_fsm_executor import execute_transition
 
+from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.models.stop_gate import (
+    ENGINE_SCOPE_KIND,
+    EnumFloorVerdict,
     EnumFoldStatus,
     EnumReadingOrigin,
     EnumReadingVerdict,
+    EnumReleaseReason,
     EnumStopEventKind,
     EnumStopGateOutcome,
     EnumStopGateReason,
     EnumStopMode,
     ModelAndonStopConfig,
+    ModelStopBinding,
     ModelStopEvent,
+    ModelStopExemptionClaim,
     ModelStopFoldResult,
+    ModelStopGateFacts,
     ModelStopGateRequest,
     ModelStopGateResult,
     ModelStopReading,
     ModelStopRecord,
+    ModelStopReleaseRecord,
+    ModelStopReleaseVerdict,
+    ModelStopScope,
 )
 
 _REDUCER_PACKAGE = "omnimarket.nodes.node_andon_stop_reducer"
@@ -116,6 +126,66 @@ def readback_trigger(reading: ModelStopReading) -> tuple[str, bool]:
     return "readback_unknown", False
 
 
+def release_predicate(
+    stop: ModelStopRecord, event: ModelStopEvent
+) -> ModelStopReleaseVerdict:
+    """Whether the readback ``event`` may release ``stop``: a go-and-see row and a WORKING reading.
+
+    Fixed readings alone never release a stop. The go-and-see row must say what the lane saw and be
+    dated after the stop; the reading's WORKING verdict must be dated after the stop and after the
+    newest lease began. Dates are compared strictly: a row or reading stamped at the instant of the
+    stop or the lease is not after it.
+    """
+    row = event.go_and_see
+    if row is None:
+        return ModelStopReleaseVerdict(
+            met=False, reason=EnumReleaseReason.GO_AND_SEE_MISSING
+        )
+    if not row.observed.strip():
+        return ModelStopReleaseVerdict(
+            met=False, reason=EnumReleaseReason.GO_AND_SEE_EMPTY
+        )
+    if row.seen_at <= stop.stopped_at:
+        return ModelStopReleaseVerdict(
+            met=False, reason=EnumReleaseReason.GO_AND_SEE_BEFORE_STOP
+        )
+    working = event.reading.working if event.reading is not None else None
+    if working is None:
+        return ModelStopReleaseVerdict(
+            met=False, reason=EnumReleaseReason.WORKING_READING_MISSING
+        )
+    if working.verdict is not EnumFloorVerdict.WORKING:
+        return ModelStopReleaseVerdict(
+            met=False, reason=EnumReleaseReason.WORKING_READING_NOT_WORKING
+        )
+    if working.read_at <= stop.stopped_at:
+        return ModelStopReleaseVerdict(
+            met=False, reason=EnumReleaseReason.WORKING_READING_BEFORE_STOP
+        )
+    if stop.last_lease_at is not None and working.read_at <= stop.last_lease_at:
+        return ModelStopReleaseVerdict(
+            met=False, reason=EnumReleaseReason.WORKING_READING_BEFORE_LEASE
+        )
+    return ModelStopReleaseVerdict(met=True, reason=EnumReleaseReason.MET)
+
+
+def _release_record(
+    stop: ModelStopRecord, event: ModelStopEvent
+) -> ModelStopReleaseRecord | None:
+    row = event.go_and_see
+    working = event.reading.working if event.reading is not None else None
+    if row is None or working is None:
+        return None
+    return ModelStopReleaseRecord(
+        stop_id=stop.id,
+        go_and_see_row_id=row.row_id,
+        go_and_see_lane_id=row.lane_id,
+        go_and_see_seen_at=row.seen_at,
+        working_read_at=working.read_at,
+        released_at=event.at,
+    )
+
+
 def _hand_fix_allowed(event: ModelStopEvent) -> bool:
     evidence = event.hand_fix
     return (
@@ -152,6 +222,7 @@ def _plan(
         "hand_fix_allowed": _hand_fix_allowed(event),
         "readback_complete": False,
         "fixed_readings_missing": config.consecutive_fixed_readings,
+        "release_predicate_met": False,
     }
     if kind is EnumStopEventKind.READBACK:
         if event.reading is None:
@@ -162,6 +233,7 @@ def _plan(
         context["fixed_readings_missing"] = max(
             0, config.consecutive_fixed_readings - seen
         )
+        context["release_predicate_met"] = release_predicate(stop, event).met
         return trigger, context, ""
     trigger = _PLAIN_TRIGGERS[kind]
     reason = ""
@@ -193,12 +265,15 @@ def _next_record(
     changes: dict[str, Any] = {"state": new_state}
     lease_end = event.at + timedelta(minutes=config.lease_minutes)
     if trigger == "lease_granted":
-        changes.update(swarm_lane=event.lane_id, lease_expires_at=lease_end)
+        changes.update(
+            swarm_lane=event.lane_id, lease_expires_at=lease_end, last_lease_at=event.at
+        )
     elif trigger == "lease_expired":
         if stop.lease_replacements_used < replacements_used_limit(stop, config):
             changes.update(
                 swarm_lane=event.lane_id,
                 lease_expires_at=lease_end,
+                last_lease_at=event.at,
                 lease_replacements_used=stop.lease_replacements_used + 1,
             )
         else:
@@ -251,13 +326,26 @@ async def fold_stop_event_async(
         for intent in result.intents
         if isinstance(intent.payload, ModelPayloadFSMTransitionAction)
     )
+    released = trigger == "readback_fixed" and new_state in fsm.terminal_states
+    unmet = (
+        release_predicate(stop, event).reason
+        if trigger == "readback_fixed"
+        and not released
+        and context["fixed_readings_missing"] == 0
+        else None
+    )
+    line = f"STOP {stop.id} class={stop.cls} state={new_state} trigger={trigger}"
+    if unmet is not None:
+        line += f" release={unmet.value}"
     return ModelStopFoldResult(
         status=EnumFoldStatus.APPLIED,
         stop=_next_record(stop, event, config, trigger, new_state, fsm),
         trigger=trigger,
         transition=result.transition_name or "",
         actions=actions,
-        line=(f"STOP {stop.id} class={stop.cls} state={new_state} trigger={trigger}"),
+        line=line,
+        release=_release_record(stop, event) if released else None,
+        release_reason=unmet,
     )
 
 
@@ -310,13 +398,50 @@ def _gate_one(
             line=f"ADMIT {named} mode=enforce reason=swarm_lane",
             **common,
         )
+    claim = request.exemption
+    problem = ""
+    if claim is not None:
+        problem = _exemption_problem(claim, request)
+        if not problem:
+            return ModelStopGateResult(
+                outcome=EnumStopGateOutcome.ADMIT,
+                reason=EnumStopGateReason.EXEMPT,
+                mode=mode,
+                exemption=claim.kind,
+                line=f"ADMIT {named} mode=enforce reason=exempt exemption={claim.kind.value}",
+                **common,
+            )
     return ModelStopGateResult(
         outcome=EnumStopGateOutcome.REFUSE,
         reason=EnumStopGateReason.STOP_OPEN,
         mode=mode,
-        line=f"REFUSE {named} mode=enforce",
+        line=f"REFUSE {named} mode=enforce"
+        + (f" exemption_refused={claim.kind.value}:{problem}" if claim else ""),
         **common,
     )
+
+
+def _exemption_problem(
+    claim: ModelStopExemptionClaim, request: ModelStopGateRequest
+) -> str:
+    """Why a claimed exemption is not honoured ('' when it is).
+
+    A claim is honoured only against a binding the dispatcher or the PR watcher wrote: the same kind, the
+    same ref and not expired at ``now``. A brief's own claim never reaches this function as a binding.
+    """
+    of_kind = [b for b in request.bindings if b.kind is claim.kind]
+    if not of_kind:
+        return "unbound"
+    matching = [b for b in of_kind if b.ref == claim.ref]
+    if not matching:
+        return "unrelated"
+    if any(_binding_live(b, request.now) for b in matching):
+        return ""
+    return "expired"
+
+
+def _binding_live(binding: ModelStopBinding, now: datetime) -> bool:
+    return binding.expires_at is None or binding.expires_at > now
 
 
 def stop_gate(
@@ -345,4 +470,62 @@ def stop_gate(
     results = [_gate_one(stop, request) for stop in blocking]
     return next(
         (r for r in results if r.outcome is EnumStopGateOutcome.REFUSE), results[0]
+    )
+
+
+def engine_stop_scopes(
+    engine: str, ladder: ModelEngineLadder
+) -> tuple[ModelStopScope, ...]:
+    """The engine scopes a dispatch to ``engine`` falls under: the engine as named, each ladder rung that
+    runs on it, and (when ``engine`` is a rung) the host engine of that rung. Every name is the ladder
+    contract's (``config.engine_ladder``); none is written here."""
+    keys = [engine]
+    keys.extend(entry.rung for entry in ladder.entries if entry.host_engine == engine)
+    keys.extend(entry.host_engine for entry in ladder.entries if entry.rung == engine)
+    return tuple(
+        ModelStopScope(kind=ENGINE_SCOPE_KIND, key=key) for key in dict.fromkeys(keys)
+    )
+
+
+def gate_dispatch(
+    facts: ModelStopGateFacts,
+    scopes: tuple[ModelStopScope, ...],
+    fsm: ModelFSMSubcontract,
+    *,
+    exemption: ModelStopExemptionClaim | None = None,
+) -> ModelStopGateResult:
+    """``stop_gate`` over every scope a dispatch falls under; the first refusal wins.
+
+    With no refusal the result is the first that names a stop (an observed or exempt admit), else the
+    first, which is the ``no_stop`` admit. ``exemption`` overrides the facts' own, for a dispatcher that
+    judges one candidate at a time.
+    """
+    claim = exemption if exemption is not None else facts.exemption
+    results = [
+        stop_gate(
+            ModelStopGateRequest(
+                scope=scope,
+                stops=facts.stops,
+                policy=facts.policy,
+                now=facts.now,
+                lane_id=facts.lane_id,
+                exemption=claim,
+                bindings=facts.bindings,
+            ),
+            fsm,
+        )
+        for scope in scopes
+    ]
+    refused = next(
+        (r for r in results if r.outcome is EnumStopGateOutcome.REFUSE), None
+    )
+    if refused is not None:
+        return refused
+    named = next((r for r in results if r.stop_id is not None), None)
+    if named is not None:
+        return named
+    return ModelStopGateResult(
+        outcome=EnumStopGateOutcome.ADMIT,
+        reason=EnumStopGateReason.NO_STOP,
+        line="ADMIT stop-gate reason=no_stop",
     )

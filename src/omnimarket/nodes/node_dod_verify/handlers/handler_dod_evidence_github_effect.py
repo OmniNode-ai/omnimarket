@@ -61,17 +61,15 @@ import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path
 from typing import Final
 from uuid import uuid4
 
-import yaml
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL, service_endpoint_url
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.delegated_test_loop.must_fail_models import (
     ModelPrChangedFile,
     ModelPrDiffFacts,
@@ -93,6 +91,12 @@ from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import 
     DodEvidenceLocalSource,
     canonical_clone,
     parse_repo_contract,
+)
+from omnimarket.nodes.node_dod_verify.handlers.release_index_source import (
+    PACKAGE_INDEX_JSON_URL as PACKAGE_INDEX_JSON_URL,
+)
+from omnimarket.nodes.node_dod_verify.handlers.release_index_source import (
+    pypi_release_files as pypi_release_files,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
@@ -121,12 +125,6 @@ logger = logging.getLogger(__name__)
 _GH_LIST_TIMEOUT_S = 15
 _GH_PR_TIMEOUT_S = 30
 _HANDLER_ID = "node_dod_verify.dod_evidence_github_effect"
-_DEFAULT_INDEX_TIMEOUT_S: Final[float] = 20.0
-
-# The package index this org publishes to. Read from one place so tests can
-# assert the URL shape without a network call.
-_PYPI: Final[str] = service_endpoint_url("pypi.base_url")
-PACKAGE_INDEX_JSON_URL: Final[str] = f"{_PYPI}/pypi/{{distribution}}/{{version}}/json"
 
 # ``gh pr checks --json ... state`` values that are NOT a failure. Anything
 # else (FAILURE, CANCELLED, ERROR, TIMED_OUT, ACTION_REQUIRED, PENDING,
@@ -543,38 +541,6 @@ def _exact_ticket_token_candidates(
         if pattern.search(title) or pattern.search(head_ref):
             matches.append(item)
     return matches
-
-
-def pypi_release_files(
-    distribution: str,
-    version: str,
-    *,
-    timeout_s: float = _DEFAULT_INDEX_TIMEOUT_S,
-) -> frozenset[str] | None:
-    """Read the distribution file types the index serves for one version.
-
-    ``frozenset()`` on a definite 404 (the index does not have that version);
-    ``None`` on any other failure, which is INDETERMINATE and never certifies.
-    """
-    url = PACKAGE_INDEX_JSON_URL.format(distribution=distribution, version=version)
-    try:
-        with urllib.request.urlopen(url, timeout=timeout_s) as response:
-            if response.status != 200:
-                return None
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return frozenset() if exc.code == 404 else None
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return None
-    urls = payload.get("urls")
-    if not isinstance(urls, list):
-        return None
-    types = {
-        entry["packagetype"]
-        for entry in urls
-        if isinstance(entry, dict) and isinstance(entry.get("packagetype"), str)
-    }
-    return frozenset(types)
 
 
 class HandlerDodEvidenceGithubEffect:
@@ -2176,16 +2142,6 @@ def _gate_git(repo_path: str, *args: str) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
-def _yaml_mapping(text: str) -> dict[str, object] | None:
-    try:
-        parsed = yaml.safe_load(text)
-    except yaml.YAMLError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    return {str(key): value for key, value in parsed.items()}
-
-
 class HandlerDurableEvidenceGateEffect:
     """EFFECT: evaluate the DurableEvidenceGate for one ticket with live probes."""
 
@@ -2193,26 +2149,18 @@ class HandlerDurableEvidenceGateEffect:
         self._github = (
             github if github is not None else HandlerDodEvidenceGithubEffect()
         )
-        self._local = self._github.local_source
 
     def handle(
         self, command: ModelDurableEvidenceGateRunCommand
     ) -> ModelDurableEvidenceGateRun:
         description, labels, ticket_detail = self.read_ticket(command.ticket_id)
         gate = DurableEvidenceGate(
-            is_receipt_tracked=self.is_receipt_tracked,
-            gh_pr_view=self.gh_pr_view,
-            pr_commits=self.pr_commits,
-            load_contract_on_ref=self.load_contract_on_ref,
-            load_receipts_on_ref=self.load_receipts_on_ref,
             release_tags_containing=self.release_tags_containing,
             index_release_files=pypi_release_files,
-            occ_repo_path=command.occ_repo_path,
-            occ_governance_ref=command.occ_governance_ref,
             read_repo_contract=self.read_repo_contract,
             read_repo_check_runs=self.read_repo_check_runs,
         )
-        result = gate.evaluate_default(
+        result = gate.evaluate(
             ticket_id=command.ticket_id,
             contract=command.contract,
             ticket_labels=labels,
@@ -2261,43 +2209,6 @@ class HandlerDurableEvidenceGateEffect:
         )
         return str(issue.get("description") or ""), labels, ""
 
-    # ------------------------------------------------------------ OCC probes
-
-    @staticmethod
-    def is_receipt_tracked(repo_path: str, ref: str, receipt_dir: str) -> bool:
-        rc, out = _gate_git(
-            repo_path, "ls-tree", "-r", "--name-only", ref, "--", receipt_dir
-        )
-        return rc == 0 and bool(out.strip())
-
-    @staticmethod
-    def load_contract_on_ref(
-        repo_path: str, ref: str, rel_path: str
-    ) -> dict[str, object] | None:
-        rc, out = _gate_git(repo_path, "show", f"{ref}:{rel_path}")
-        return _yaml_mapping(out) if rc == 0 else None
-
-    @staticmethod
-    def load_receipts_on_ref(
-        repo_path: str, ref: str, receipt_dir: str
-    ) -> list[dict[str, object]]:
-        rc, out = _gate_git(
-            repo_path, "ls-tree", "-r", "--name-only", ref, "--", receipt_dir
-        )
-        if rc != 0:
-            return []
-        payloads: list[dict[str, object]] = []
-        for name in sorted(out.splitlines()):
-            if not name.endswith(".yaml"):
-                continue
-            rc, text = _gate_git(repo_path, "show", f"{ref}:{name}")
-            payload = _yaml_mapping(text) if rc == 0 else None
-            if payload is None:
-                continue
-            payload.setdefault("__source_name__", Path(name).name)
-            payloads.append(payload)
-        return payloads
-
     # ------------------------------------------------------------ PR probes
 
     def _lookup(
@@ -2307,49 +2218,6 @@ class HandlerDurableEvidenceGateEffect:
         event = output.events[0]
         assert isinstance(event, ModelDodEvidenceGithubLookupResultEvent)
         return event
-
-    def gh_pr_view(self, repo: str, pr_number: int) -> tuple[str, str | None]:
-        view: object = self._local.pr_view(repo, pr_number)
-        merge = view.get("mergeCommit") if isinstance(view, dict) else None
-        if not isinstance(view, dict) or (
-            str(view.get("state") or "").upper() == "MERGED"
-            and not (isinstance(merge, dict) and merge.get("oid"))
-        ):
-            # OMN-21146: the gateway node, never the gh CLI.
-            read = self._github.gateway_merged_pr(repo, pr_number)
-            if isinstance(read, str):
-                return "UNKNOWN", None
-            return read.state, read.merge_commit_sha
-        merge = view.get("mergeCommit")
-        oid = str(merge.get("oid") or "") if isinstance(merge, dict) else ""
-        return str(view.get("state") or "UNKNOWN").upper(), oid or None
-
-    @staticmethod
-    def pr_commits(repo: str, pr_number: int) -> tuple[str, ...]:
-        try:
-            proc = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "view",
-                    str(pr_number),
-                    "--repo",
-                    repo,
-                    "--json",
-                    "commits",
-                    "--jq",
-                    ".commits[].oid",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=_GH_PR_TIMEOUT_S,
-                check=False,
-            )
-        except (subprocess.TimeoutExpired, OSError):
-            return ()
-        if proc.returncode != 0:
-            return ()
-        return tuple(line.strip() for line in proc.stdout.splitlines() if line.strip())
 
     @staticmethod
     def release_tags_containing(repo: str, commit_sha: str) -> tuple[str, ...] | None:

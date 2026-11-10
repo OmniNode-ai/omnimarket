@@ -7,6 +7,9 @@ from omnimarket.models.bus_binding.model_bus_binding import (
     EnumBusBindingState,
     ModelBusBindingDecision,
     ModelBusBindingOrder,
+    ModelBusBindingResolution,
+    ModelBusBindingSettlementPolicy,
+    ModelBusBindingTickEvidence,
 )
 
 __all__ = [
@@ -14,4 +17,7 @@ __all__ = [
     "EnumBusBindingState",
     "ModelBusBindingDecision",
     "ModelBusBindingOrder",
+    "ModelBusBindingResolution",
+    "ModelBusBindingSettlementPolicy",
+    "ModelBusBindingTickEvidence",
 ]

@@ -20,7 +20,11 @@ import yaml
 from omnibase_core.models.delegation.wire import EnumDelegationTerminalFailureCause
 
 from omnimarket.enums.enum_delegation_acceptance import EnumDelegationAcceptanceReason
+from omnimarket.enums.enum_delegation_end_of_ladder_reason import (
+    EnumDelegationEndOfLadderReason,
+)
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.handlers.routing import byok_provider_backends
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
@@ -29,7 +33,6 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
 )
-from omnimarket.routing import byok_provider_backends
 from tests.chains.local.harness import (
     BYOK_BACKEND_ID,
     PROVIDER_SLUG,
@@ -54,6 +57,18 @@ _EXPECTED_CAUSES = {
     "timeout": EnumDelegationTerminalFailureCause.TIMEOUT,
     "gate_veto": EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED,
     "truncation": EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED,
+}
+#: OMN-23165: the run's reason is one word from the closed end-of-ladder list;
+#: the provider's own cause stays on the rung's attempt record.
+_EXPECTED_END_REASONS = {
+    "wrong_key": EnumDelegationEndOfLadderReason.EVERY_RUNG_FAILED,
+    "quota": EnumDelegationEndOfLadderReason.EVERY_RUNG_RATE_LIMITED,
+    "gate_veto": EnumDelegationEndOfLadderReason.QUALITY_VETO,
+    "truncation": EnumDelegationEndOfLadderReason.QUALITY_VETO,
+}
+_EXPECTED_RUNG_CLASSES = {
+    "wrong_key": "provider_auth_failed",
+    "quota": "rate_limited",
 }
 _PROMPT = "write a function parse_semver that parses a semver string"
 #: The veto fault runs as a ``document`` task, whose class declares the
@@ -174,15 +189,20 @@ def _assert_failed(response: ModelDelegateSkillResponse, fault: str) -> None:
             response.model_dump(mode="json")
         )
         return
-    # OMN-21264: the chosen model failed, so the run goes back to its caller;
-    # the cause that decided it stays readable as the reason.
+    # OMN-21264: the chosen model failed, so the run goes back to its caller.
+    # OMN-23165: its reason is one word from the closed list, and the cause that
+    # decided the rung stays readable on the rung's own attempt record.
     assert (
         response.terminal_failure_cause
         is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
     ), response.model_dump(mode="json")
-    assert response.terminal_failure_reason == _EXPECTED_CAUSES[fault].value, (
+    assert response.terminal_failure_reason == _EXPECTED_END_REASONS[fault].value, (
         response.model_dump(mode="json")
     )
+    if fault in _EXPECTED_RUNG_CLASSES:
+        assert response.attempts[-1].failure_class == _EXPECTED_RUNG_CLASSES[fault], (
+            response.model_dump(mode="json")
+        )
 
 
 async def test_wrong_key_is_auth_failed(
@@ -260,8 +280,11 @@ async def test_the_five_faults_have_pairwise_distinct_evidence_and_none_reads_pr
     assert (
         len(
             {
-                responses[fault].terminal_failure_reason
-                or responses[fault].terminal_failure_cause
+                (
+                    responses[fault].terminal_failure_reason
+                    or responses[fault].terminal_failure_cause,
+                    responses[fault].attempts[-1].failure_class,
+                )
                 for fault in ("wrong_key", "quota", "timeout")
             }
         )

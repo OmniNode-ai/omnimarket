@@ -26,6 +26,9 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers import (
     handler_ticket_contract_prerequisite as push,
 )
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
+    ModelTicketContractPrerequisiteRequest,
+)
 
 pytestmark = pytest.mark.unit
 TICKET = "OMN-18595"
@@ -131,6 +134,17 @@ def test_unreadable_base_keeps_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    assert _check(monkeypatch, tmp_path, head, "no-such-base") == (
-        missing_contract_message(TICKET),
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    # With no explicit title the commit subjects need the base; an unreadable base
+    # turns that git error into a typed refusal rather than granting an exemption.
+    # An explicit title keeps the contract refusal instead (test_missing_base.py).
+    result = push.HandlerTicketContractPrerequisite().handle(
+        ModelTicketContractPrerequisiteRequest(head=head, base="no-such-base")
     )
+    assert not result.passed
+    assert result.head_sha is None
+    assert len(result.failures) == 1
+    assert "ticket contract preflight could not read" in result.failures[0]
+    assert "no-such-base" in result.failures[0]

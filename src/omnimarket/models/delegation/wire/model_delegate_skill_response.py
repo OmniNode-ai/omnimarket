@@ -47,6 +47,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
+from omnimarket.enums.enum_delegation_end_of_ladder_reason import (
+    EnumDelegationEndOfLadderReason,
+)
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
@@ -110,13 +113,27 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # OMN-20168 declared ``configuration`` on the attempt below, after omniclaude's
 # pin carried the consumer that dropped it.
 #
+# OMN-19996 adds ``secret_ref``: the key reference a customer-key rung ran on.
+# The deployed delegation terminal carries none, so a later change declares
+# the field and has both dispatch ports fill it per attempt, after a release
+# carrying this consumer reaches omniclaude's pin.
+#
 # OMN-21842 adds ``gate_record``: the checks the in-process gate evaluated,
 # skipped and failed on an attempt and the rule that decided, keyed by
 # correlation id and attempt index. The port stamps it on its own attempt
 # entry and publishes it to the quality-gate-result topic; this consumer
 # accepts and drops it first (OMN-18868 consumer-first), and the declared
 # field lands once omniclaude's pin carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned", "gate_record"})
+#
+# OMN-22224 adds ``duration_ms``: how long a rung took, 0 for a rung never
+# sent. This consumer-first step 1 of 2 accepts and drops it; a later change
+# declares the field once omniclaude's pin carries this consumer.
+#
+# OMN-22474 declared ``secret_ref`` below (step 2 of OMN-19996's two-PR
+# delivery), so it is no longer listed here.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
+    {"backend_pinned", "duration_ms", "gate_record"}
+)
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
@@ -130,10 +147,10 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 #
 # Response-source provenance is declared after its consumer-first release.
 #
-# OMN-21344: ``budget_source`` names where a run's execution budget came from
-# (the task-class contract or a site overlay). The consumer accepts it here
-# first; the producer stamps it once omniclaude's pin carries this consumer.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"budget_source"})
+# OMN-21344 declared ``budget_source`` as a real terminal field below, after
+# omniclaude's pin carried the consumer that accepted it, so the set is empty
+# until the next consumer-first terminal key.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
 # Accept the next receiver's keys without declaring producer fields. Keep the
 # construction-failure distinction privately: its failed topic can preserve a
 # true gate flag, and its absent score must not become a measured zero.
@@ -243,6 +260,14 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     provider_code: str | None = Field(
         default=None,
         description="Provider-native error code (z.ai 1302, RESOURCE_EXHAUSTED).",
+    )
+    # OMN-22474: the customer key this rung ran on, so a run that used keys X
+    # then Y moves both keys' last_used_at. A reference, never a value; left out
+    # of the dump when absent, so a run with no customer key serialises as before.
+    secret_ref: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Minted tenant key reference this rung ran on; absent otherwise.",
     )
     # OMN-16932: the accept/climb verdict for this rung, carried onto the
     # CONSUMER-facing terminal rather than left in orchestrator-internal state.
@@ -551,6 +576,11 @@ class ModelDelegateSkillResponse(BaseModel):
         """Removed reasoning for in-process callers; not a new wire field."""
         return self._response_reasoning
 
+    @property
+    def failed_acceptance_declared(self) -> bool:
+        """True when the terminal records its own failed acceptance (OMN-21607)."""
+        return declares_failed_acceptance(self)
+
     def retain_response_reasoning(self, reasoning: str) -> Self:
         """Attach in-process evidence without changing the frozen wire fields."""
         self._response_reasoning = reasoning
@@ -831,6 +861,21 @@ class ModelDelegateSkillResponse(BaseModel):
         description=(
             "Span id of the command the terminal answers. Absent means the "
             "command carried none."
+        ),
+    )
+
+    # OMN-21344 AC2: where the execution budget this run was held to came from,
+    # the task-class contract entry or a site overlay file. The receipt copies
+    # it beside budget_evidence or budget_refusal. Absent means the producer
+    # resolved no budget for the class.
+    budget_source: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description=(
+            "``contract:<file>#execution_budgets.<class>`` or "
+            "``overlay:<path>#execution_budgets.<class>``. Absent means no "
+            "budget was resolved for the task class."
         ),
     )
 
@@ -1210,15 +1255,28 @@ class ModelDelegateSkillResponse(BaseModel):
         # reserved for the one event that has no ladder -- a request refused
         # before dispatch. A timeout or a provider fault made at least one
         # call, and a zero there hides the rung that was in flight.
+        #
+        # OMN-23165: the second event with no ladder is a run that found no
+        # rung it could call. It made no provider call, so its count is zero,
+        # and it ends ``returned_to_caller`` naming ``no_rung_reachable``: the
+        # caller does the task, the same as when every chosen model failed.
         if (
             self.attempts_count == 0
             and self.terminal_failure_cause
             is not EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+            and not (
+                self.terminal_failure_cause
+                is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
+                and self.terminal_failure_reason
+                == EnumDelegationEndOfLadderReason.NO_RUNG_REACHABLE.value
+            )
         ):
             msg = (
                 "attempts_count (0) is reserved for a request refused before "
-                "dispatch: terminal_failure_cause must be "
-                f"refused_before_dispatch, got {self.terminal_failure_cause}"
+                "dispatch or a run with no reachable rung: terminal_failure_cause "
+                "must be refused_before_dispatch, or returned_to_caller with "
+                "terminal_failure_reason no_rung_reachable, got "
+                f"{self.terminal_failure_cause}"
             )
             raise ValueError(msg)
 
@@ -1547,6 +1605,52 @@ def resolve_terminal_failure_cause(
     return None
 
 
+#: OMN-23165: the dispatch port's own spelling of a spent escalation budget on
+#: ``terminal_failure_reason`` (``port_local_delegation_dispatch``), so a run
+#: that stopped on the limit keeps that word through the hand-back.
+ESCALATION_LIMIT_PORT_REASON = "max_escalation_attempts_reached"
+
+_RATE_LIMITED_CLASS = EnumDelegationFailureClass.RATE_LIMITED.value
+_UNREACHABLE_CLASS = EnumDelegationFailureClass.MODEL_UNAVAILABLE.value
+
+
+def resolve_end_of_ladder_reason(
+    attempts: Sequence[ModelDelegateSkillAttemptRecord],
+    *,
+    port_stop_reason: str | None = None,
+) -> EnumDelegationEndOfLadderReason:
+    """Name, from the closed list, why no model in the ladder answered.
+
+    OMN-23165. The last rung's cause is an open set and says what went wrong
+    last, not what ended the run. The reason is read from the whole record, in
+    this order:
+
+    1. no attempt: no rung could be called, ``no_rung_reachable``;
+    2. the port stopped on the task class's escalation budget,
+       ``escalation_limit_reached``;
+    3. the quality gate refused an answer and none was accepted,
+       ``quality_veto``;
+    4. every rung answered with a rate limit, ``every_rung_rate_limited``;
+    5. every rung was unreachable, ``no_rung_reachable``;
+    6. anything else, ``every_rung_failed``.
+    """
+    if not attempts:
+        return EnumDelegationEndOfLadderReason.NO_RUNG_REACHABLE
+    if port_stop_reason == ESCALATION_LIMIT_PORT_REASON:
+        return EnumDelegationEndOfLadderReason.ESCALATION_LIMIT_REACHED
+    if _gate_decided(attempts):
+        return EnumDelegationEndOfLadderReason.QUALITY_VETO
+    classes = [(attempt.failure_class or "").strip().lower() for attempt in attempts]
+    if all(
+        cls == _RATE_LIMITED_CLASS or attempt.http_status == 429
+        for cls, attempt in zip(classes, attempts, strict=True)
+    ):
+        return EnumDelegationEndOfLadderReason.EVERY_RUNG_RATE_LIMITED
+    if all(cls == _UNREACHABLE_CLASS for cls in classes):
+        return EnumDelegationEndOfLadderReason.NO_RUNG_REACHABLE
+    return EnumDelegationEndOfLadderReason.EVERY_RUNG_FAILED
+
+
 def _authoritative_attempt_ladder_verdict(
     response: ModelDelegateSkillResponse,
 ) -> bool | None:
@@ -1571,6 +1675,33 @@ def _evidence_indicates_success(response: ModelDelegateSkillResponse) -> bool:
     if attempt_verdict is not None:
         return attempt_verdict
     return response.quality_gate_passed
+
+
+def declares_failed_acceptance(response: ModelDelegateSkillResponse) -> bool:
+    """Say whether the terminal itself records that its answer failed acceptance.
+
+    OMN-21607. A terminal that reports ``quality_gate_passed=False`` AND names
+    the acceptance it failed (a failed acceptance criterion, a failed quality
+    gate, or a score below the required bar) has said the answer was refused.
+    A bare ``quality_gate_passed=False`` with none of that still says nothing,
+    because several ports never report the flag. Pure: reads the response only.
+    """
+    if response.quality_gate_passed:
+        return False
+    return bool(
+        response.failed_acceptance_criteria
+        or response.quality_gates_failed
+        or response.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR
+    )
+
+
+def failed_acceptance_reason(response: ModelDelegateSkillResponse) -> str:
+    """Name, in one line, the acceptance a declared-failed answer did not meet."""
+    parts: list[str] = [*response.failed_acceptance_criteria]
+    parts.extend(gate for gate in response.quality_gates_failed if gate not in parts)
+    if parts:
+        return "; ".join(parts)
+    return "answer scored below the required quality bar"
 
 
 def delegate_skill_succeeded(response: ModelDelegateSkillResponse) -> bool:
@@ -1606,6 +1737,11 @@ def delegate_skill_succeeded(response: ModelDelegateSkillResponse) -> bool:
     ):
         return False
     if response.terminal_failure_cause is not None:
+        return False
+    # OMN-21607: an answer the terminal itself records as failing acceptance is
+    # not a success, whatever status the port reported and whether or not it
+    # reported a ladder.
+    if declares_failed_acceptance(response):
         return False
     attempt_verdict = _authoritative_attempt_ladder_verdict(response)
     if attempt_verdict is False:
@@ -1701,14 +1837,30 @@ def delegate_skill_terminal_from_response(
             data["failed_acceptance_criteria"] = (
                 "composite delegate-skill terminal verdict failed",
             )
+        failed_acceptance = declares_failed_acceptance(response)
+        if (
+            failed_acceptance
+            and data.get("terminal_failure_cause") is None
+            and response.attempts_count > 0
+        ):
+            # OMN-21607: the run was decided by the acceptance check, so the
+            # failed terminal names that cause, not an empty one.
+            data["terminal_failure_cause"] = (
+                EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            )
         if not data.get("error_message"):
             cause = response.terminal_failure_cause
             data["error_message"] = (
                 f"delegation terminalized as failed: {cause.value}"
                 if cause is not None
                 else (
-                    "delegation terminalized as failed: no attempt in the "
-                    "escalation ladder passed the quality gate"
+                    "delegation failed its acceptance check: "
+                    f"{failed_acceptance_reason(response)}"
+                    if failed_acceptance
+                    else (
+                        "delegation terminalized as failed: no attempt in the "
+                        "escalation ladder passed the quality gate"
+                    )
                 )
             )
     return ModelDelegateSkillFailed.model_validate(data)
@@ -1716,6 +1868,7 @@ def delegate_skill_terminal_from_response(
 
 __all__ = [
     "CALLER_LANE_WIRE_KEY",
+    "ESCALATION_LIMIT_PORT_REASON",
     "SESSION_ID_WIRE_KEY",
     "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",
@@ -1723,7 +1876,10 @@ __all__ = [
     "ModelDelegateSkillFailed",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "declares_failed_acceptance",
     "delegate_skill_succeeded",
     "delegate_skill_terminal_from_response",
+    "failed_acceptance_reason",
+    "resolve_end_of_ladder_reason",
     "resolve_terminal_failure_cause",
 ]

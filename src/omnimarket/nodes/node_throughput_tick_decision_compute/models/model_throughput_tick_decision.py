@@ -12,6 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
+from omnimarket.models.seam_reading import (
+    ModelSeamReadingsFacts,
+    ModelSeamReadingsVerdict,
+)
 
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
@@ -50,6 +54,10 @@ class ModelLabReceipt(BaseModel):
     readings: list[str] = Field(default_factory=list)
     lane: str | None = Field(
         default=None, description="The lane the receipt dispatched (OMN-20840)."
+    )
+    ticket: str | None = Field(
+        default=None,
+        description="The dispatched ticket; a later running or done receipt of the same ticket supersedes a failed one.",
     )
     run_id: str | None = None
     brief: str | None = Field(
@@ -115,6 +123,13 @@ class ModelLabAdmission(BaseModel):
     probe_error: str | None = Field(
         default=None,
         description="Why the live probe could not read the host; the host's capacity is then unread.",
+    )
+    probe_owner: str | None = Field(
+        default=None,
+        description=(
+            "The owner action the probe receipt's `LAUNCHER-GAP:<CAUSE> ...; owner: <action>` tag names for an "
+            "unreadable host (the whole tag or the bare action); None when the receipt names none."
+        ),
     )
     claude_slots: int = Field(
         ge=0, description="`slots` when a Claude lane is admitted, else 0."
@@ -495,6 +510,13 @@ class ModelThroughputTickRequest(BaseModel):
             "`checked` entry)."
         ),
     )
+    seam_readings: ModelSeamReadingsFacts | None = Field(
+        default=None,
+        description=(
+            "The seam readings of a finalized publish window (VS-17), fed by node_seam_conservation_compute's "
+            "caller; None skips the check (and its `checked` entry)."
+        ),
+    )
 
 
 class ModelThroughputTickResult(BaseModel):
@@ -543,5 +565,13 @@ class ModelThroughputTickResult(BaseModel):
         description=(
             "One status-check verdict per repository with open PRs and no merge in the window (OMN-19998); "
             "absent from the dump when empty."
+        ),
+    )
+    seam_readings: ModelSeamReadingsVerdict | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The reading ids consumed and the seams raised MISSING or UNKNOWN for the window (VS-17); "
+            "absent from the dump without seam readings."
         ),
     )

@@ -28,6 +28,22 @@ class ModelProtectedProject(BaseModel):
     )
 
 
+class ModelComposeDryRunPolicy(BaseModel):
+    """Which compose subcommands, called with the dry-run switch, change nothing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    flag: str = Field(min_length=1, description="The dry-run switch, as typed.")
+    verbs: tuple[str, ...] = Field(
+        min_length=1,
+        description="Compose subcommands that the switch turns into a no-op.",
+    )
+    true_values: tuple[str, ...] = Field(
+        min_length=1,
+        description="The values of flag=<value> that switch it on; a bare flag is on.",
+    )
+
+
 class ModelDevRuntimeGrantPolicy(BaseModel):
     """What a live grant row on the rolling work ledger looks like."""
 
@@ -50,6 +66,7 @@ class ModelDevRuntimeGuardPolicy(BaseModel):
     protected_projects: tuple[ModelProtectedProject, ...] = Field(min_length=1)
     compose_mutating_verbs: tuple[str, ...] = Field(min_length=1)
     docker_mutating_verbs: tuple[str, ...] = Field(min_length=1)
+    compose_dry_run: ModelComposeDryRunPolicy
     grant: ModelDevRuntimeGrantPolicy
     deployment_route: str = Field(min_length=1)
 

@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Action and hold classification of a continuation after compaction (OMN-21971).
+# Grades each open-loop item (OPEN_CLAIM, OPEN_ASK, PROMISE_SENT, DRAFT_UNSENT, UNACKED_MSG)
+# over the first N assistant turns of a recorded continuation as ACTED, CHECKED, PROMPTED, IDLE or
+# NOT_DUE, from the ordered stream of tool calls, ledger rows and operator prompts, and lists the
+# calls that act on held scope. The call classes per kind are caller data; the node performs no I/O
+# and declares no topic.
+name: node_compaction_action_score_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: Grade each open-loop item of a continuation after compaction by action within N turns and list hold violations.
+input_model:
+  name: ModelActionScoreRequest
+  module: omnimarket.nodes.node_compaction_action_score_compute.models.model_action_score
+output_model:
+  name: ModelActionScoreResult
+  module: omnimarket.nodes.node_compaction_action_score_compute.models.model_action_score
+handler:
+  module: omnimarket.nodes.node_compaction_action_score_compute.handlers.handler_action_score
+  class: HandlerCompactionActionScore
+  input_model: omnimarket.nodes.node_compaction_action_score_compute.models.model_action_score.ModelActionScoreRequest
+  output_model: omnimarket.nodes.node_compaction_action_score_compute.models.model_action_score.ModelActionScoreResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCompactionActionScore
+        module: omnimarket.nodes.node_compaction_action_score_compute.handlers.handler_action_score
+      event_model:
+        name: ModelActionScoreRequest
+        module: omnimarket.nodes.node_compaction_action_score_compute.models.model_action_score
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with a recorded continuation, its open-loop items and the call-class policy.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local

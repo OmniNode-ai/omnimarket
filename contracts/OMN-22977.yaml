@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-22977
+title: "Piece 15's generated golden and error chain event tests and one whole-flow run of the delegation path exist, and a named mutation turns each red"
+summary: "Piece 15 (delegation) read WORKING only from delegation terminal rows; the path as one flow was unread and no synthetic delegated task ran. This adds node_delegation_synthetic_probe_compute, which judges one synthetic delegated task from its terminal (result, cost, bound) and renders the ledger row the piece 15 reading selects, and tests/chains tests that re-drive the golden and error chains generated from the delegation orchestrator contract on the in-memory bus and on a real broker, run the whole flow once, and turn each chain red with a named mutation."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22977-piece15-chain
+  statement: "Piece 15 has golden and error chain event tests generated from the delegation contracts that pass on the in-memory bus and on a real broker and go red under a named mutation, and an hourly synthetic delegated task whose dropped result flips the reading."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: golden and error chain event tests generated from the delegation contracts run on the in-memory bus and on the real broker -- falsifier: uv run pytest tests/chain/test_piece15_chain.py -q'
+  - id: AC2
+    statement: 'AC2: a synthetic delegated task per hour returns a result and cost and dropping its result in a test route flips the reading within one tick of its bound -- falsifier: uv run pytest tests/chain/test_piece15_synthetic.py -q -k drop_result_flips'
+  - id: AC3
+    statement: 'AC3: a named mutation turns each chain test red -- falsifier: uv run pytest tests/chain/test_piece15_chain.py -q -k mutation'
+evidence_requirements:
+- kind: tests
+  description: "Piece 15 chain tests (in memory) and synthetic task tests"
+  command: uv run --frozen pytest tests/chains/test_piece15_chain.py tests/chains/test_piece15_synthetic.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22977-chain
+  description: "Golden and error chains of the delegation orchestrator contract hold on the in-memory bus (the tests are written under tests/chains beside the generated chains and collected under tests/chain at the path the ticket names)."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_piece15_chain.py -q --no-cov
+    cwd: .
+- id: dod-omn22977-synthetic
+  description: "The synthetic delegated task returns a result and a cost, and dropping its result flips the piece 15 reading in the next closed window."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_piece15_synthetic.py -q --no-cov -k drop_result_flips
+    cwd: .
+- id: dod-omn22977-mutation
+  description: "The named mutations drop_success_emit and swallow_failure turn every golden and every error chain red."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_piece15_chain.py -q --no-cov -k mutation
+    cwd: .
+- id: dod-omn22977-integration-proof
+  description: Run this pull request's own piece 15 tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22977 --kind test -- env PYTHONDONTWRITEBYTECODE=1 PIECE15_REQUIRE_BROKER=1 uv run --frozen pytest tests/chains/test_piece15_chain.py tests/chains/test_piece15_synthetic.py tests/nodes/node_delegation_synthetic_probe_compute -q --no-cov
+    cwd: .

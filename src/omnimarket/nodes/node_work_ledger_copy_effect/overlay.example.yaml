@@ -1,0 +1,42 @@
+# Synthetic values only. The real overlay is deployment data kept outside this repository and found
+# under ONEX_SKILL_OVERLAY_ROOTS (or at the file ONEX_LEDGER_COPY_OVERLAY names).
+source:
+  host: db.example.invalid
+  port: 5432
+  database: example_database
+  user: example_user
+  password_env: EXAMPLE_DATABASE_PASSWORD
+  env_file: ~/.example/.env
+  pg_bin_dir: /usr/lib/postgresql/16/bin
+  schema_name: example_schema
+  rows_table: work_ledger_rows
+  state_table: work_ledger_state
+  ledger_id: rolling-work-ledger
+file:
+  path_env: ONEX_LEDGER_PATH
+  archive_dirname: archive
+target:
+  ssh_target: copy-host.example.invalid
+  directory: /srv/ledger-copy
+  keep: 3
+  min_free_bytes: 21474836480
+  drill:
+    image: postgres:16-alpine
+    memory_limit: 4g
+    timeout_seconds: 300
+    scratch_database: ledger_copy_drill
+report:
+  append_argv: [onex-ledger, /srv/ledger/ROLLING_WORK_LEDGER.md, --append]
+  lane: ledger-copy
+  actor: node:node_work_ledger_copy_effect
+launchd:
+  interpreter: /usr/local/bin/python3.13
+  working_directory: /srv/registry
+  log_directory: /srv/registry/.state/ledger-copy
+  environment:
+    HOME: /home/example
+    PATH: /usr/local/bin:/usr/bin:/bin
+    ONEX_LEDGER_PATH: /srv/ledger/ROLLING_WORK_LEDGER.md
+    ONEX_SKILL_OVERLAY_ROOTS: /srv/overlays
+  max_runtime_seconds: 900
+timeout_seconds: 600

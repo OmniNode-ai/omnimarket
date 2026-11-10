@@ -10,6 +10,8 @@ from .handler_lab_fill_fanout_readback import HandlerLabFillFanoutReadback
 from .handler_lab_fill_fire_plan import HandlerLabFillFirePlan
 from .handler_lab_fill_headroom_plan import HandlerLabFillHeadroomPlan
 from .handler_lab_fill_lane_render import HandlerLabFillLaneRender
+from .handler_lab_fill_lane_states import HandlerLabFillLaneStates
+from .handler_lab_fill_machinery_candidates import HandlerLabFillMachineryCandidates
 from .handler_lab_fill_ownership import HandlerLabFillOwnership
 from .handler_lab_fill_placement import HandlerLabFillPlacement
 from .handler_lab_fill_scheduled_fire import HandlerLabFillScheduledFire
@@ -26,6 +28,8 @@ __all__ = [
     "HandlerLabFillFirePlan",
     "HandlerLabFillHeadroomPlan",
     "HandlerLabFillLaneRender",
+    "HandlerLabFillLaneStates",
+    "HandlerLabFillMachineryCandidates",
     "HandlerLabFillOwnership",
     "HandlerLabFillPlacement",
     "HandlerLabFillScheduledFire",

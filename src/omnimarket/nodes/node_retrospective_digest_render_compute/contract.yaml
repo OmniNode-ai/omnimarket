@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - node_retrospective_digest_render_compute
+#
+# Scaffolded from the weekly_retrospective design by node_contract_seams_orchestrator and
+# finished into the canonical node shape. The handler is a typed pass-through: it holds no
+# domain logic until its wave fills it.
+name: node_retrospective_digest_render_compute
+contract_name: node_retrospective_digest_render_compute
+node_name: node_retrospective_digest_render_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+lifecycle: experimental
+description: 'Render the digest with its verdicts and candidate cards from the projected run. Scaffold
+  from the weekly_retrospective design: a typed pass-through, no logic.'
+handler:
+  module: omnimarket.nodes.node_retrospective_digest_render_compute.handlers.handler_retrospective_digest_render_compute
+  class: HandlerRetrospectiveDigestRenderCompute
+  input_model: omnimarket.nodes.node_retrospective_digest_render_compute.models.model_retrospective_digest_render_compute_request.ModelRetrospectiveDigestRenderComputeRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: render
+    topic: onex.evt.omnimarket.retrospective-run-projected.v1
+    handler:
+      name: HandlerRetrospectiveDigestRenderCompute
+      module: omnimarket.nodes.node_retrospective_digest_render_compute.handlers.handler_retrospective_digest_render_compute
+    input_model: omnimarket.nodes.node_retrospective_digest_render_compute.models.model_retrospective_digest_render_compute_request.ModelRetrospectiveDigestRenderComputeRequest
+    output_model: omnimarket.nodes.node_retrospective_digest_render_compute.models.model_retrospective_digest_render_compute_result.ModelRetrospectiveDigestRenderComputeResult
+input_model:
+  name: ModelRetrospectiveDigestRenderComputeRequest
+  module: omnimarket.nodes.node_retrospective_digest_render_compute.models.model_retrospective_digest_render_compute_request
+  description: The key fields of the crossing this node consumes.
+output_model:
+  name: ModelRetrospectiveDigestRenderComputeResult
+  module: omnimarket.nodes.node_retrospective_digest_render_compute.models.model_retrospective_digest_render_compute_result
+  description: The key fields of the crossing this node publishes; a field this node does not hold yet
+    is unset.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.retrospective-digest-rendered.v1
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.retrospective-run-projected.v1
+  terminal_events:
+    success: onex.evt.omnimarket.retrospective-digest-rendered.v1
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.retrospective-run-projected.v1
+  publish_topics:
+  - onex.evt.omnimarket.retrospective-digest-rendered.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.retrospective-digest-rendered.v1
+seams:
+- id: retrospective.run_projected
+  seam: retrospective.run_projected
+  role: consumer
+  topic: onex.evt.omnimarket.retrospective-run-projected.v1
+  envelope_model: ModelRetrospectiveRunProjected
+  envelope_version: v1
+  key_fields:
+  - name: run_id
+    field_type: str
+  - name: correlation_id
+    field_type: str
+  - name: revision
+    field_type: int
+  delivery_semantics: at_least_once
+metadata:
+  design_id: weekly_retrospective
+  generated_by: node_contract_seams_orchestrator
+  transport_type: kafka

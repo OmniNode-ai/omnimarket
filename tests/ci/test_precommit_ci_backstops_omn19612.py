@@ -45,6 +45,14 @@ TOPIC_CLOSURE_WORKFLOW = (
 # that job's run: commands). The fragment proves the whole-tree run is still
 # wired to the SAME underlying check, not just present under the same name.
 BACKSTOPS: dict[str, tuple[Path, str, tuple[str, ...]]] = {
+    # OMN-21940: the hook is omnibase_core's check-release-identity, handed the staged
+    # paths; the whole-tree counterpart is the release-identity-gate job, which runs
+    # the same core runtime against the pull request base.
+    "check-release-identity": (
+        CI_WORKFLOW,
+        "release-identity-gate",
+        ("runtime_release_identity_check",),
+    ),
     "handler-event-type-source": (
         TOPIC_CLOSURE_WORKFLOW,
         "handler-event-type-source",
@@ -247,7 +255,10 @@ def test_backstop_job_is_required(
             "Layer-4 EXPECTED_EXTERNAL_CONTEXTS"
         )
     else:
-        assert job_id in STRICT_GATE_JOBS, (
+        # CI Summary matches a job by its display name; a job whose id differs
+        # from its name (OMN-21940: release-identity-gate / "Release Identity
+        # Gate") is registered under the name.
+        assert job_id in STRICT_GATE_JOBS or job_name in STRICT_GATE_JOBS, (
             f"{hook_id}'s backstop job {job_id!r} is not in STRICT_GATE_JOBS"
         )
         assert job_id not in SOFT_ALLOWLIST

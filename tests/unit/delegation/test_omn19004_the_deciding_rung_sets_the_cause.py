@@ -58,6 +58,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
     resolve_terminal_failure_cause,
 )
+from omnimarket.models.routing.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -82,9 +85,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
@@ -231,13 +231,13 @@ def test_the_handler_replay_names_the_gate(fixture: str, emitted_cause: str) -> 
     )
 
     assert isinstance(terminal, ModelDelegateSkillFailed)
-    # OMN-21264: no rung was accepted, so the run goes back to its caller; the
-    # gate that decided it stays readable as the reason.
+    # OMN-21264: no rung was accepted, so the run goes back to its caller.
+    # OMN-23165: the gate decided it, so the closed-list reason is quality_veto.
     assert (
         terminal.terminal_failure_cause
         is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
     )
-    assert terminal.terminal_failure_reason == _GATE.value
+    assert terminal.terminal_failure_reason == "quality_veto"
     assert terminal.quality_gate_passed is False
 
 

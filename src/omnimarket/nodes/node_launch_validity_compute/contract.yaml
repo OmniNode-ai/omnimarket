@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeLaunchValidityCompute
+#
+# One decision at the moment a lane is launched: is the lane's target still worth a slot.
+# The caller reads the live state (the PR watcher, one PR read per named PR, the ledger's
+# live CLAIMs) and passes each read in; a read that failed, is missing or is older than the
+# limit refuses and names the read. The mode and every limit are config.launch_validity
+# below; the launch_validity overlay (overlay.py) overrides the mode, the transport and
+# the limits for a deployment. The handler holds no literal of either.
+#
+#   handle(ModelLaunchValidityRequest) -> ModelLaunchValidityResult
+#
+# Holds no lease, has no second writer and emits no terminal of its own: one decision per
+# request, published on the decided topic by the bus binding.
+name: "node_launch_validity_compute"
+contract_name: "node_launch_validity_compute"
+node_name: "node_launch_validity_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Refuse a lane launch whose named PR is not open at the expected head or is queued or
+  merged, whose ticket or plan task a merged PR already did, or whose target another
+  lane's live CLAIM holds. A failed, missing or stale read refuses and names the read.
+  In report_only mode a refusal is recorded as one would-refuse record and never blocks.
+input_model:
+  name: "ModelLaunchValidityRequest"
+  module: "omnimarket.nodes.node_launch_validity_compute.models.model_launch_validity"
+  description: "The launch target, the live reads the caller made and the policy."
+output_model:
+  name: "ModelLaunchValidityResult"
+  module: "omnimarket.nodes.node_launch_validity_compute.models.model_launch_validity"
+  description: "The refusals, whether they block, and the would-refuse record in report_only mode."
+handler:
+  module: "omnimarket.nodes.node_launch_validity_compute.handlers.handler_launch_validity"
+  class: "HandlerLaunchValidity"
+  input_model: "omnimarket.nodes.node_launch_validity_compute.models.model_launch_validity.ModelLaunchValidityRequest"
+  output_model: "omnimarket.nodes.node_launch_validity_compute.models.model_launch_validity.ModelLaunchValidityResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_launch_validity_compute.handlers.handler_launch_validity:HandlerLaunchValidity"
+  handlers:
+    - operation: "handle"
+      handler:
+        name: "HandlerLaunchValidity"
+        module: "omnimarket.nodes.node_launch_validity_compute.handlers.handler_launch_validity"
+      topic: "onex.cmd.omnimarket.launch-validity-requested.v1"
+    - operation: "replay"
+      input_model: "omnimarket.nodes.node_launch_validity_compute.models.model_launch_validity.ModelLaunchValidityReplayRequest"
+      handler:
+        name: "HandlerLaunchValidityReplay"
+        module: "omnimarket.nodes.node_launch_validity_compute.handlers.handler_launch_validity_replay"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.launch-validity-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.launch-validity-decided.v1"
+    - "onex.evt.omnimarket.launch-validity-would-refuse.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.launch-validity-requested.v1"
+terminal_event: "onex.evt.omnimarket.launch-validity-decided.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.launch-validity-decided.v1"
+  - "onex.evt.omnimarket.launch-validity-would-refuse.v1"
+entrypoint:
+  name: "NodeLaunchValidityCompute"
+  module: "omnimarket.nodes.node_launch_validity_compute"
+execution:
+  deterministic: true
+  side_effects: false
+  caller: "remote-lane runner execute, before placement, provisioning and CLAIM, at the call site of the brief shape refusals"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+runtime_profiles: [main]
+replay:
+  deterministic: true
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+metadata:
+  transport_type: inmemory
+  description: "Decides at launch whether a lane's target is still valid."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-02"
+  tags: [compute, remote-lane, launch-validity]
+config:
+  launch_validity:
+    mode: report_only
+    transport: in_memory
+    max_read_age_seconds: 480
+    min_head_chars: 7
+    pr_open_state: OPEN
+    pr_state_codes:
+      MERGED: pr-merged
+      CLOSED: pr-closed
+    pr_class_codes:
+      queued: pr-queued
+      merged: pr-merged
+    done_states: [Done, Canceled, Duplicate]
+    reads:
+      - {read: pr, target_field: pr}
+      - {read: ticket, target_field: ticket}
+      - {read: plan_task, target_field: plan_task}
+      - {read: owner, target_field: lane}
+    replay_window_days: 4

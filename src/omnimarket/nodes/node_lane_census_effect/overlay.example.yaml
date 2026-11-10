@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_lane_census_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. All values here are synthetic; supply your deployment's facts. The file holds two
+# independent keys, and neither has a default.
+
+# hosts: which hosts INSTALL the census schedule. Each host carries a Docker Engine of its own;
+# a host whose Docker is a Desktop VM does not belong here.
+hosts:
+  - name: host-a
+    scheduler: systemd-user
+    docker: engine
+
+# registry: which hosts EXIST for the census and what they may host. `schedule install`
+# renders the absolute path of this file into the unit as LANE_CENSUS_REGISTRY, and the collector
+# reads this key from that file. A host in `registry` need not be in `hosts` (a Docker Desktop
+# host belongs only here).
+#   name     the host id the census plan, findings and snapshot carry as `host`
+#   aliases  hostname or daemon names the host reports, matched by lowercased first DNS label;
+#            each alias belongs to exactly one host and `docker-desktop` is refused
+#   lanes    manifest lane names the host may host; a lane running on a host that does not list
+#            it is lane_on_undeclared_host
+registry:
+  - name: host-a
+    aliases: [node-a]
+    lanes: [lane-one, lane-two]
+  - name: host-b
+    aliases: [node-b]
+    lanes: [lane-two]
+  - name: host-c
+    aliases: [node-c]
+    lanes: []

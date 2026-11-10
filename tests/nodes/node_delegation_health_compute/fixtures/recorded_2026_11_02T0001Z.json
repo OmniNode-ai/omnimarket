@@ -1,0 +1,42 @@
+{
+  "source": {
+    "read_at": "2026-11-02T00:01Z",
+    "recorded": [
+      "172 real delegations in the 120 minute window",
+      "132 of them 'not routed (timeout)'",
+      "expected rung local-coder: 0 attempts in the window, none since 2026-11-01T17:19Z",
+      "local-heavy-reasoning serves the same Qwen3.8-27B and kept the model count alive",
+      "the check printed VERDICT: OK"
+    ],
+    "derived": [
+      "the 1h and 24h columns, the accepted counts, total_rows and lanes_running",
+      "the split of the 40 non-timeout runs over the models (36 Qwen3.8-27B, 2 glm-5.3-flash, 2 delegate-skill)",
+      "local-heavy-reasoning: 3 attempts in the window"
+    ],
+    "origin": "recorded counts are from the commit message of the delegation-health timeout fix (OMN-19998); derived values follow that fix's test helpers, whose tests do not record per-backend counts"
+  },
+  "request": {
+    "correlation_id": "recorded-2026-11-02T0001Z",
+    "quiet_minutes": 120,
+    "total_rows": 1495,
+    "lanes_running": 2,
+    "models": [
+      {"model": "Qwen3.8-27B", "counts": {"h1": 5, "window": 36, "h24": 156}, "last": "2026-11-02T00:00:00Z"},
+      {"model": "glm-5.3-flash", "counts": {"h1": 0, "window": 2, "h24": 12}, "last": "2026-11-01T23:10:00Z"},
+      {"model": "delegate-skill", "counts": {"h1": 2, "window": 2, "h24": 7}, "last": "2026-11-01T23:50:00Z"}
+    ],
+    "backends": [
+      {"backend_id": "local-coder", "counts": {"h1": 0, "window": 0, "h24": 40}, "accepted": 31, "last": "2026-11-01T17:19:00Z", "last_accept": "2026-11-01T17:19:00Z"},
+      {"backend_id": "local-heavy-reasoning", "counts": {"h1": 1, "window": 3, "h24": 44}, "accepted": 39, "last": "2026-11-02T00:00:00Z", "last_accept": "2026-11-02T00:00:00Z"}
+    ],
+    "expected_rungs": [
+      {"tier": "local", "backend_id": "local-coder", "provider": "local", "model": "Qwen3.8-27B"}
+    ],
+    "outcomes": {
+      "runs": {"h1": 76, "window": 172, "h24": 1495},
+      "causes": [
+        {"cause": "timeout", "counts": {"h1": 69, "window": 132, "h24": 1320}}
+      ]
+    }
+  }
+}

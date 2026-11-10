@@ -3,8 +3,8 @@
 name: node_dod_closeout_sweep_compute
 node_type: compute
 runtime_profiles: [main]
-contract_version: {major: 1, minor: 1, patch: 0}
-node_version: "1.1.0"
+contract_version: {major: 1, minor: 3, patch: 0}
+node_version: "1.3.0"
 description: >-
   Definition-B deterministic decisions of the DoD closeout sweep (OMN-20675), the decisions the
   dod-closeout-sweep workflow left to agents. precheck says whether a date's sweep is already
@@ -19,7 +19,10 @@ description: >-
   (a source grep, a file-exists probe or a pull request read is refused), check_identities says
   whether two lanes are one actor, select_candidates picks the tickets a bounded run examines,
   least recently examined first, holds those awaiting a text amendment and cuts the rest into
-  chunks, decide_ticket says whether one adjudicated ticket is Done or stays open and renders the
+  chunks, pr_rows reports each ticket's merged PRs (read on each overlay repository's own default branch,
+  the repositories its overlay lists) and open PRs (OMN-20655), scope_bundle ranks the whole enumerated scope by the overlay's ordered rules (waiting on a
+  post-merge condition, then a contract on a default branch, then merged In Review) and returns the
+  bounded bundle the sweep selects from (OMN-20655), decide_ticket says whether one adjudicated ticket is Done or stays open and renders the
   comment an open ticket receives. completion reads the closer's completed-run receipts from the
   ledger rows given (a run key counts once), counts the zero-flip streak and the top deferral
   reason, and renders the rows that complete the run: a FRICTION row and a zero-flip alert event
@@ -53,7 +56,7 @@ descriptor:
   idempotent: true
   timeout_ms: 1000
 inputs:
-  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope, flip_decision, report, refuse_binding, check_identities, select_candidates, decide_ticket, completion, ground_state]}
+  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope, flip_decision, report, refuse_binding, check_identities, select_candidates, scope_bundle, decide_ticket, completion, ground_state, pr_rows]}
   date: {type: str, required: true, description: "YYYY-MM-DD the sweep is for."}
   force: {type: bool, required: false, description: "precheck: bypass the idempotency guard."}
   clock_utc: {type: str, required: false, description: "precheck: one live clock reading, %Y-%m-%dT%H:%M:%SZ; completion: the stamp of the rows it renders."}
@@ -78,6 +81,7 @@ inputs:
   outcome_changed_since_reversal: {type: bool, required: false}
   all_prs_merged: {type: bool, required: false}
   released: {type: str, required: false, enum: [released, merged-unreleased, indeterminate, not-applicable]}
+  runtime_proof: {type: object, required: false, description: "flip_decision: the merged change, the runtime receipts read for it and, for a docs or plan ticket, the proof its definition of done names; absent holds the ticket as merged, not yet proven running."}
   project_name: {type: str, required: false, description: "report: the sprint name and window."}
   scope_counts: {type: object, required: false, description: "report: the counts plan_scope returned."}
   chunk_results: {type: list, required: false, description: "report: every chunk with its verify results, audit and reverts."}
@@ -104,6 +108,18 @@ inputs:
   max_candidates: {type: int, required: false}
   run_summary: {type: object, required: false, description: "completion: the closer's run summary, verbatim; fields it does not count are ignored."}
   report_ref: {type: str, required: false, description: "completion: the report path the TERMINAL cites; empty when no report was written."}
+  scope_candidates: {type: list, required: false, description: "scope_bundle: every enumerated candidate row ({id, state, sources, last_closeout_comment_at, ...}); rows pass through to the bundle unchanged (OMN-20655)."}
+  scope_pr_state: {type: list, required: false, description: "scope_bundle: the PR state row of each candidate ({id, merged, open, error})."}
+  scope_text_state: {type: list, required: false, description: "scope_bundle: the text-state row of each candidate ({id, last_closeout_comment_at, text_sha, held_text_sha, waiting_on})."}
+  scope_contract_state: {type: list, required: false, description: "scope_bundle: {id, has_contract} per candidate; absent ranks every ticket as having a contract, so the script's own ranking holds."}
+  scope_overlay: {type: object, required: false, description: "scope_bundle, pr_rows, refuse_binding: the overlay (rank rules, no-contract reserve, caps, eligible states, the PR repositories with their default branches); absent loads this node's overlay.yaml."}
+  scope_examined: {type: object, required: false, description: "scope_bundle: what was recorded of each ticket's last selection ({id: {examined_at, key, streak}}); the ranking uses the time, and a ticket whose recorded key reads unchanged for the overlay's number of selections is held (OMN-23282)."}
+  scope_now: {type: str, required: false, description: "scope_bundle: the instant of this selection; given, the result returns scope_examined_next, the memory after it (OMN-23282)."}
+  pr_tickets: {type: list, required: false, description: "pr_rows: the ticket ids to report on."}
+  pr_subjects: {type: object, required: false, description: "pr_rows: repository name -> the squash-merge subjects on its own default branch (the overlay's pr_repositories); a repository the caller could not read is absent, and is named in unread_repositories."}
+  pr_watcher_state: {type: object, required: false, description: "pr_rows: the PR watcher's state, read fresh; absent means it was not read and every row carries pr_watcher_error."}
+  pr_watcher_error: {type: str, required: false, description: "pr_rows: why the watcher state was not read."}
+  verify_detail: {type: str, required: false, description: "decide_ticket: the detail the verify command printed with outcome could_not_run; a detail starting with the overlay's no_contract_detail_prefix reads 'no contract'."}
   zero_flip_threshold_runs: {type: int, required: false, default: 3, description: "completion, ground_state: N consecutive zero-flip runs that raise the FRICTION row, RED health and, while tickets are deferred, the zero-flip alert event (OMN-21146)."}
 outputs:
   kind: {type: str}
@@ -145,6 +161,10 @@ outputs:
   selected: {type: list}
   deferred: {type: list}
   held: {type: list}
+  scope_bundle: {type: object, description: "scope_bundle: the bounded scope: the top tickets' rows, held, waiting, the selected tickets with no contract, and the totals."}
+  scope_examined_next: {type: object, description: "scope_bundle: the memory after this selection, for the tickets in scope only; absent when scope_now was not given (OMN-23282)."}
+  pr_rows: {type: list, description: "pr_rows: one {id, merged, open, error} per ticket, input order."}
+  unread_repositories: {type: list, description: "pr_rows: overlay repositories whose merge subjects were not given."}
   decision: {type: str, enum: [done, open]}
   ticket_unmet: {type: list}
   needs_amendment: {type: bool}
@@ -154,6 +174,7 @@ outputs:
   box_ticks: {type: list}
   tick_comment: {type: str}
   completion_rows: {type: list}
+  zero_flip_reading: {type: object, description: "completion: the typed reading of a run that closed zero tickets (OMN-20718) - exit_code 0, the candidates and the held reasons counted. A zero-flip run is a working closer, not a failed one; the staleness alarm reports a closer that stopped running."}
   zero_flip_streak: {type: int}
   zero_flip_alert: {type: object, description: "completion: the zero-flip alert event, carried on terminal_event (OMN-21146); absent below the threshold or with no deferred ticket."}
   top_deferral_reason: {type: str}

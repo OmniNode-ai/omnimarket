@@ -15,6 +15,8 @@ read and comment on tickets.
   judges the exact update payload first (same refusal and no-guard behaviour as
   a create), and the write goes through the adapter's ``update_issue``, whose
   own Done-write gate still applies.
+* ``clear_project`` and ``repair_project`` clear a project Linear copied from a parent (OMN-21723);
+  see ``handler_ticket_project``. Every create sends an explicit null project, reads the new ticket back and clears a project still set.
 * ``read`` and ``comment`` go through the omnibase_infra Linear project-tracker
   adapter (``AdapterLinearGraphQLProjectTracker``), constructed with the
   contract-declared key, so a missing key fails loud instead of reaching a stub.
@@ -56,7 +58,6 @@ from omnimarket.handlers.handler_lane_intake import (
     ModelLaneIntakePolicy,
     declared_lane,
     lane_caller,
-    read_lane_intake_policy,
     resolve_label_id,
     stamp_description,
 )
@@ -64,13 +65,26 @@ from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_linear_principal_is_actor,
 )
+from omnimarket.handlers.ticket_guard_locator import (
+    TicketGuardUnavailableError,
+    locate_ticket_guard,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
 )
+from omnimarket.models.secret_store.model_secret_resolution_error import (
+    SecretResolutionError,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project import (
+    HandlerTicketProject,
+    LinearTicketProjectGateway,
+    TicketProjectGatewayProtocol,
+    clear_inherited_project,
+)
 
 # Seam signal keyword sets
 _SEAM_TOPICS = {"kafka", "topic", "consumer", "producer", "event bus", "redpanda"}
@@ -154,7 +168,8 @@ mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $
     parentId: $parentId,
     stateId: $stateId,
     assigneeId: $assigneeId,
-    labelIds: $labelIds
+    labelIds: $labelIds,
+    projectId: null
   }) {
     issue { identifier url }
   }
@@ -247,14 +262,7 @@ def _refuse_lane_assignment(
 # The installed omniclaude ticket-creation guard (OMN-17942), as a subprocess
 # ---------------------------------------------------------------------------
 
-_GUARD_PATH_ENV = "ONEX_TICKET_GUARD_PATH"
-_GUARD_RELPATH = Path("hooks/lib/ticket_creation_guard.py")
-_ONEX_PLUGIN_PREFIX = "onex@"
 _GUARD_TIMEOUT_S = 60
-
-
-class TicketGuardUnavailableError(RuntimeError):
-    """No installed ticket-creation guard was found, so no create may run."""
 
 
 class TicketGuardRefusedError(RuntimeError):
@@ -297,68 +305,6 @@ class TicketGuardProtocol(Protocol):
     """Decides whether a Linear create payload may be filed."""
 
     def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision: ...
-
-
-def _claude_config_dir() -> Path:
-    override = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
-    return Path(override) if override else Path.home() / ".claude"
-
-
-def _read_json(path: Path) -> Any:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
-def locate_ticket_guard() -> Path:
-    """The installed omniclaude plugin's ticket-creation guard, or raise.
-
-    ``ONEX_TICKET_GUARD_PATH`` names it explicitly (a lab lane takes it from the
-    onex plugin directory its runner shipped). Otherwise the one enabled
-    ``onex@<marketplace>`` plugin in Claude's installed-plugin registry. Nothing
-    found, an explicit path that does not exist, or two enabled onex plugins
-    each raise :class:`TicketGuardUnavailableError`; there is no default.
-    """
-    explicit = os.environ.get(_GUARD_PATH_ENV, "").strip()
-    if explicit:
-        path = Path(explicit)
-        if not path.is_file():
-            raise TicketGuardUnavailableError(
-                f"{_GUARD_PATH_ENV}={explicit} is not a file; refusing to create "
-                "a ticket without the ticket-creation guard (OMN-17942)"
-            )
-        return path
-
-    config = _claude_config_dir()
-    settings = _read_json(config / "settings.json")
-    enabled = settings.get("enabledPlugins") if isinstance(settings, dict) else None
-    registry = _read_json(config / "plugins" / "installed_plugins.json")
-    plugins = registry.get("plugins") if isinstance(registry, dict) else None
-    candidates: list[Path] = []
-    if isinstance(enabled, dict) and isinstance(plugins, dict):
-        for key, entries in plugins.items():
-            if not key.startswith(_ONEX_PLUGIN_PREFIX) or enabled.get(key) is not True:
-                continue
-            for entry in entries if isinstance(entries, list) else []:
-                install = entry.get("installPath") if isinstance(entry, dict) else None
-                if (
-                    isinstance(install, str)
-                    and (Path(install) / _GUARD_RELPATH).is_file()
-                ):
-                    candidates.append(Path(install) / _GUARD_RELPATH)
-    if len(candidates) > 1:
-        raise TicketGuardUnavailableError(
-            "more than one enabled onex plugin carries a ticket-creation guard "
-            f"({', '.join(map(str, candidates))}); set {_GUARD_PATH_ENV} to the one to use"
-        )
-    if not candidates:
-        raise TicketGuardUnavailableError(
-            "no installed ticket-creation guard: set "
-            f"{_GUARD_PATH_ENV} to <onex plugin dir>/{_GUARD_RELPATH}, or enable the "
-            f"onex plugin under {config}; refusing to create a ticket without it (OMN-17942)"
-        )
-    return candidates[0]
 
 
 class InstalledPluginTicketGuard:
@@ -576,7 +522,7 @@ class LinearTicketHttpGateway:
 
         # Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
         # created in the Backlog with NO project. The state is set explicitly
-        # rather than trusting the team default, and no projectId is ever sent.
+        # rather than trusting the team default, and the mutation sends an explicit null projectId.
         state_data = self._post(_BACKLOG_STATE_QUERY, {"teamId": team_id})
         state_nodes = (
             state_data.get("data", {}).get("workflowStates", {}).get("nodes", [])
@@ -616,7 +562,17 @@ class LinearTicketHttpGateway:
         issue = result.get("data", {}).get("issueCreate", {}).get("issue", {})
         identifier = str(issue.get("identifier", ""))
         url = str(issue.get("url", ""))
+        if identifier:
+            # Every create is read back by an independent query and cleared when a project is
+            # still set: Linear copies a parent's project onto a sub-issue even beside an explicit
+            # null, and a create may also be filed without a parent. Success is reported only
+            # when the readback shows an explicit null project.
+            clear_inherited_project(self.project_gateway(), identifier)
         return identifier, url
+
+    def project_gateway(self) -> LinearTicketProjectGateway:
+        """The project gateway over this client's own GraphQL transport."""
+        return LinearTicketProjectGateway(self._post)
 
     def resolve_state_id(self, ticket_id: str, state: str) -> str:
         """Return the id of workflow state ``state`` on ``ticket_id``'s own team."""
@@ -630,6 +586,25 @@ class LinearTicketHttpGateway:
                 f"Linear ticket {ticket_id!r} has no workflow state named {state!r}"
             )
         return str(nodes[0]["id"])
+
+
+def linear_api_key() -> str:
+    """The Linear API key, resolved from the contract-declared ref; unresolved raises."""
+    # Ref-name sourced from contract (not a bare literal).
+    linear_ref = contract_secret_ref(_CONTRACT_PATH, "LINEAR_API_KEY")
+    secret = resolve_api_key_loop_safe(linear_ref)
+    if secret is None:
+        raise SecretResolutionError(
+            f"api_key_ref {linear_ref!r} resolved to None — "
+            "ensure LINEAR_API_KEY is set in the secret store "
+            "(~/.omnibase/.env)."
+        )
+    return secret.get_secret_value()
+
+
+def build_project_gateway() -> LinearTicketProjectGateway:
+    """The live project gateway over the contract-declared Linear key (OMN-21723)."""
+    return LinearTicketHttpGateway(linear_api_key()).project_gateway()
 
 
 class HandlerCreateTicket:
@@ -655,6 +630,7 @@ class HandlerCreateTicket:
         tracker: TicketTrackerProtocol | None = None,
         ticket_guard: TicketGuardProtocol | None = None,
         state_resolver: TicketStateResolverProtocol | None = None,
+        project_gateway: TicketProjectGatewayProtocol | None = None,
         lane_intake_policy: ModelLaneIntakePolicy | None = None,
         principal_resolver: Callable[[], str] | None = None,
         *,
@@ -670,18 +646,10 @@ class HandlerCreateTicket:
         self._injectable_tracker = tracker
         self._injectable_guard = ticket_guard
         self._injectable_state_resolver = state_resolver
+        self._injectable_project_gateway = project_gateway
 
     def _linear_api_key(self) -> str:
-        # Ref-name sourced from contract (not a bare literal).
-        linear_ref = contract_secret_ref(_CONTRACT_PATH, "LINEAR_API_KEY")
-        secret = resolve_api_key_loop_safe(linear_ref)
-        if secret is None:
-            raise RuntimeError(
-                f"api_key_ref {linear_ref!r} resolved to None — "
-                "ensure LINEAR_API_KEY is set in the secret store "
-                "(~/.omnibase/.env)."
-            )
-        return secret.get_secret_value()
+        return linear_api_key()
 
     def _get_client(self) -> LinearTicketClientProtocol:
         if self._injectable_client is not None:
@@ -698,15 +666,34 @@ class HandlerCreateTicket:
             return self._injectable_state_resolver
         return LinearTicketHttpGateway(self._linear_api_key())
 
+    def _get_project_handler(
+        self, request: ModelCreateTicketRequest
+    ) -> HandlerTicketProject:
+        repair = request.operation is EnumTicketOperation.REPAIR_PROJECT
+        return HandlerTicketProject(
+            self._injectable_project_gateway,
+            self._get_lane_intake_policy().label if repair else "",
+        )
+
     def _get_guard(self, lane: str = "") -> TicketGuardProtocol:
         if self._injectable_guard is not None:
             return self._injectable_guard
-        return InstalledPluginTicketGuard(locate_ticket_guard(), lane)
+        # The gate is the omnibase_core validator, run in process (OMN-22850); it needs no
+        # installed plugin. ``lane`` is the filing lane's identity ("" declares none).
+        from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+            CoreTicketGuard,
+        )
+
+        return CoreTicketGuard(lane)
 
     def _get_lane_intake_policy(self) -> ModelLaneIntakePolicy:
         if self._injectable_lane_intake_policy is not None:
             return self._injectable_lane_intake_policy
-        return read_lane_intake_policy(locate_ticket_guard())
+        from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+            core_lane_intake_policy,
+        )
+
+        return core_lane_intake_policy()
 
     def _assert_lane_actor(self, surface: str) -> None:
         """Refuse a write whose credential is not the declared lane actor (OMN-20355).
@@ -731,7 +718,20 @@ class HandlerCreateTicket:
             return self._comment(request)
         if request.operation is EnumTicketOperation.TRANSITION:
             return self._transition(request)
+        if request.operation in (
+            EnumTicketOperation.CLEAR_PROJECT,
+            EnumTicketOperation.REPAIR_PROJECT,
+        ):
+            return self._project_operation(request)
         return self._create(request)
+
+    def _project_operation(
+        self, request: ModelCreateTicketRequest
+    ) -> ModelCreateTicketResult:
+        # The dry-run check lives in HandlerTicketProject, which the contract also routes to.
+        if not request.dry_run:
+            self._assert_lane_actor(request.operation.value)
+        return self._get_project_handler(request).handle(request)
 
     def _transition(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
         ticket_id = str(request.ticket_id)
@@ -987,8 +987,11 @@ __all__: list[str] = [
     "TicketGuardProtocol",
     "TicketGuardRefusedError",
     "TicketGuardUnavailableError",
+    "TicketProjectGatewayProtocol",
     "TicketStateResolverProtocol",
     "TicketTrackerProtocol",
+    "build_project_gateway",
     "guard_finding_codes",
+    "linear_api_key",
     "locate_ticket_guard",
 ]

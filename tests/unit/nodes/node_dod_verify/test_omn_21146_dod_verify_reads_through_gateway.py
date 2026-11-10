@@ -173,7 +173,7 @@ def test_unreadable_check_runs_refuse_through_the_gateway(
     state, _gateway = _verify(world, monkeypatch, ticket)
 
     assert world.gh_calls() == []
-    assert any(m.startswith("REPO_CONTRACT_UNRESOLVED") for m in _messages(state))
+    assert any(m.startswith("CHECK_RUN_READ_FAILED") for m in _messages(state))
 
 
 def test_client_reads_in_process_when_the_gateway_token_resolves(

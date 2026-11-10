@@ -21,6 +21,9 @@ from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaun
 from omnimarket.models.model_internal_release_path_guard import (
     ModelInternalReleasePathGuardRequest,
 )
+from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
+    priority_class_args,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
 )
@@ -29,6 +32,10 @@ from ..models import (
     ModelLabFillLaunchRequest,
     ModelLabFillLaunchResult,
 )
+from ..models.model_lab_fill_send_gate import (
+    EnumLabFillSendVerdict,
+    ModelLabFillSendGateRequest,
+)
 from ..protocols import (
     LabFillPortError,
     ProtocolLabFillApprovedWork,
@@ -36,7 +43,9 @@ from ..protocols import (
     ProtocolLabFillClock,
     ProtocolLabFillLaneLauncher,
     ProtocolLabFillLiveChecks,
+    ProtocolLabFillMergedWork,
 )
+from .handler_lab_fill_send_gate import HandlerLabFillSendGate
 from .helpers_lab_fill_effect import default_clock, iso_utc
 
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
@@ -49,12 +58,16 @@ _BRIEF_CHECK = re.compile(r"REMOTE-LANE-(?:MINT|TIMEOUT)-REFUSED\b.*")
 _TIMED_OUT = 124
 
 
-def runner_args(launch: ModelLabFillLaunch, brief_path: str) -> list[str]:
+def runner_args(
+    launch: ModelLabFillLaunch, brief_path: str, ticket_text: str = ""
+) -> list[str]:
     """The arguments after the runner script, in the order the workflow built them.
 
     ``--host`` only for pinned work; ``--ref`` only with a repo. ``--placement auto``
     (OMN-21881) carries no ``--host``: a pinned host refuses a cloud session, so the
     runner picks the lab host and takes a cloud session only when none admits the lane.
+    ``--priority-class`` is the class the ticket's ``Class:`` line names in ``ticket_text``, else absent
+    (OMN-22122).
     """
     args = [
         "run",
@@ -80,6 +93,10 @@ def runner_args(launch: ModelLabFillLaunch, brief_path: str) -> list[str]:
             args += ["--ref", launch.ref]
     if launch.pr:
         args += ["--pr", launch.pr]
+    if launch.priority_class:
+        args += ["--priority-class", launch.priority_class]
+    else:
+        args += priority_class_args(ticket_text)
     args.append("--detach")
     return args
 
@@ -137,13 +154,17 @@ class HandlerLabFillLaunch:
         blocks: ProtocolLabFillBriefBlocks | None = None,
         runner: ProtocolLabFillLaneLauncher | None = None,
         clock: ProtocolLabFillClock | None = None,
+        merged: ProtocolLabFillMergedWork | None = None,
     ) -> None:
         from ..protocols.local_lab_fill_adapters import (
             LocalApprovedWork,
             LocalBriefBlocks,
             LocalLaneLauncher,
             LocalLiveChecks,
+            LocalMergedWork,
         )
+
+        self._merged = merged if merged is not None else LocalMergedWork()
 
         self._checks = checks if checks is not None else LocalLiveChecks()
         self._approved = approved if approved is not None else LocalApprovedWork()
@@ -163,6 +184,8 @@ class HandlerLabFillLaunch:
             brief_has_delegation: bool = False,
             detail: str = "",
             elapsed_s: int | None = None,
+            routed_to: str = "",
+            merged_prs: tuple[str, ...] = (),
         ) -> ModelLabFillLaunchResult:
             return ModelLabFillLaunchResult(
                 lane=launch.lane,
@@ -176,6 +199,8 @@ class HandlerLabFillLaunch:
                     if elapsed_s is not None
                     else int(self._clock.now_epoch_s() - started)
                 ),
+                routed_to=routed_to,
+                merged_prs=merged_prs,
             )
 
         if refusal := lane_model_refusal(launch.engine):
@@ -218,6 +243,42 @@ class HandlerLabFillLaunch:
                     skipped="approved-row-unresolved",
                     detail=str(exc)[:300],
                 )
+        try:
+            merged_prs = tuple(
+                self._merged.merged_prs(launch.ticket, request.watcher_state_path)
+            )
+            built = tuple(
+                self._merged.built_reports(launch.ticket, request.ledger_path)
+            )
+        except LabFillPortError as exc:
+            # An unread merge state is not a clear one: a lane sent blind may redo merged work.
+            return result(
+                detached=False, skipped="merged-state-unreadable", detail=str(exc)[:300]
+            )
+        gate = HandlerLabFillSendGate().handle(
+            ModelLabFillSendGateRequest(
+                ticket=launch.ticket,
+                kind=request.kind,
+                brief=brief,
+                host=launch.host,
+                merged_prs=merged_prs,
+                built=built,
+                exempt_kinds=request.closer_exempt_kinds,
+                fact_hosts=request.fact_hosts,
+                needs_hosts=request.needs_hosts,
+                host_reach=request.host_reach,
+            )
+        )
+        if gate.verdict is not EnumLabFillSendVerdict.SEND:
+            return result(
+                detached=False,
+                skipped=gate.verdict.value,
+                detail=gate.detail[:300],
+                routed_to=gate.routed_to,
+                merged_prs=gate.merged_prs,
+            )
+        if gate.host and gate.host != launch.host:
+            launch = launch.model_copy(update={"host": gate.host, "placement": None})
         guard = HandlerInternalReleasePathGuard().handle(
             ModelInternalReleasePathGuardRequest(
                 proposed_actions=brief,
@@ -252,7 +313,7 @@ class HandlerLabFillLaunch:
             )
         try:
             outcome = self._runner.run(
-                runner_args(launch, brief_path),
+                runner_args(launch, brief_path, full),
                 env={"ONEX_LEDGER_PATH": request.ledger_path},
                 timeout_s=left,
             )

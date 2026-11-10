@@ -12,6 +12,7 @@ from omnimarket.models.process_health import (
     ModelProcessHealthRequest,
     ModelProcessHealthResult,
     ModelSourceReport,
+    ModelTimeSpan,
     ModelWindowMetrics,
 )
 from omnimarket.nodes.node_process_health_compute.handlers.calc_landing import (
@@ -29,6 +30,9 @@ from omnimarket.nodes.node_process_health_compute.handlers.context import (
 )
 from omnimarket.nodes.node_process_health_compute.handlers.metric_builder import (
     round_value,
+)
+from omnimarket.nodes.node_process_health_compute.handlers.range_overlay import (
+    build_range_overlay,
 )
 from omnimarket.nodes.node_process_health_compute.handlers.summary import (
     WindowCalculator,
@@ -96,6 +100,7 @@ def _source_reports(
                 covered_to=source.covered_to,
                 gap_hours=round_value(gap),
                 records=counts[name],
+                gaps=source.gaps,
             )
         )
     return tuple(reports)
@@ -131,4 +136,15 @@ class HandlerProcessHealth:
             sources=_source_reports(request),
             days=tuple(days),
             summary=build_summary(ctx, calculator),
+            selected_summary=build_summary(
+                ctx,
+                calculator,
+                request.selected_range
+                or (
+                    ModelTimeSpan(start=config.reset_at, end=request.generated_at)
+                    if request.generated_at > config.reset_at
+                    else None
+                ),
+            ),
+            range_overlay=build_range_overlay(ctx),
         )

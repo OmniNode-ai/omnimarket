@@ -1,6 +1,6 @@
 name: node_consumer_group_guard_effect
 version: 1.0.0
-description: Counts a bus's consumer groups by state, fails when the Empty groups pass the threshold this contract declares, and deletes long-Empty per-call groups under the limits this contract declares.
+description: Counts and reaps long-Empty consumer groups under contract limits, renders the node-owned timer, and validates supplied cutover readbacks with schedule verify-cutover.
 omnibase_core_compat: '>=0.47.44,<1.0.0'
 entry_points:
   onex.nodes:

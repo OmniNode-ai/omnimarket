@@ -23,6 +23,7 @@ Each acceptance criterion of OMN-19888 has its falsifier here, selected by
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -35,6 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.ci.pr_stale_red_heal import (  # noqa: E402
+    _READ_ATTEMPTS,
     CI_SUMMARY_CHECK,
     MAX_HEAL_RUN_ATTEMPT,
     MAX_RERUN_PRS_PER_PASS,
@@ -807,6 +809,114 @@ def test_vendor_parity_landing_time_is_the_merge_not_the_queued_commit_date() ->
 def test_release_window_update_refuses_without_an_app_token() -> None:
     with pytest.raises(RuntimeError, match="GH_UPDATE_TOKEN"):
         GhCli().update_branch(repo=MARKET, pr_number=1, expected_head_sha=HEAD)
+
+
+# ---------------------------------------------------------------------------
+# OMN-19998: a transient GitHub gateway error on a read is retried, a real
+# error and a write are not
+# ---------------------------------------------------------------------------
+
+_GATEWAY_504 = "HTTP 504: 504 Gateway Timeout (https://api.github.com/graphql)"
+
+
+def _scripted_run(results: list[tuple[int, str, str]], calls: list[list[str]]) -> GhCli:
+    class Scripted(GhCli):
+        def _run(
+            self, args: list[str], *, token: str | None = None
+        ) -> subprocess.CompletedProcess[str]:
+            calls.append(args)
+            code, out, err = results.pop(0)
+            return subprocess.CompletedProcess(["gh", *args], code, out, err)
+
+    return Scripted()
+
+
+@pytest.fixture
+def slept(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    delays: list[float] = []
+    monkeypatch.setattr("scripts.ci.pr_stale_red_heal._sleep", delays.append)
+    return delays
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)",
+        "HTTP 503: 503 Service Unavailable (https://api.github.com/graphql)",
+        _GATEWAY_504,
+    ],
+)
+def test_a_read_retries_a_gateway_error_then_succeeds(
+    error: str, slept: list[float]
+) -> None:
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", error), (1, "", error), (0, "[]", "")], calls)
+    assert client.open_pull_requests(repo=MARKET) == ()
+    assert len(calls) == 3
+    assert len(slept) == 2
+
+
+def test_a_read_retries_a_truncated_response_body_then_succeeds(
+    slept: list[float],
+) -> None:
+    # Recorded 2026-11-07T18:46Z: gh exited 1 with this stderr and no HTTP
+    # status, so the 502/503/504 pattern alone never retried it.
+    truncated = "unexpected end of JSON input"
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", truncated), (0, "[]", "")], calls)
+    assert client.open_pull_requests(repo=MARKET) == ()
+    assert len(calls) == 2
+    assert len(slept) == 1
+
+
+def test_a_write_is_not_retried_on_a_truncated_response_body(
+    slept: list[float],
+) -> None:
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", "unexpected end of JSON input")] * 5, calls)
+    with pytest.raises(RuntimeError, match="unexpected end of JSON input"):
+        client.rerun_run(repo=MARKET, run_id=7)
+    assert len(calls) == 1
+    assert slept == []
+
+
+def test_a_read_gives_up_after_the_bounded_attempts_and_names_the_error(
+    slept: list[float],
+) -> None:
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", _GATEWAY_504)] * 10, calls)
+    with pytest.raises(RuntimeError, match="504 Gateway Timeout"):
+        client.open_pull_requests(repo=MARKET)
+    assert len(calls) == _READ_ATTEMPTS
+    assert len(slept) == _READ_ATTEMPTS - 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "HTTP 404: Not Found (https://api.github.com/repos/x/y)",
+        "HTTP 403: API rate limit exceeded",
+        "gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN",
+    ],
+)
+def test_a_read_does_not_retry_an_error_that_is_not_a_gateway_error(
+    error: str, slept: list[float]
+) -> None:
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", error)] * 5, calls)
+    with pytest.raises(RuntimeError, match="exited 1"):
+        client.open_pull_requests(repo=MARKET)
+    assert len(calls) == 1
+    assert slept == []
+
+
+def test_a_write_is_not_retried_on_a_gateway_error(slept: list[float]) -> None:
+    calls: list[list[str]] = []
+    client = _scripted_run([(1, "", _GATEWAY_504)] * 5, calls)
+    with pytest.raises(RuntimeError, match="504"):
+        client.rerun_run(repo=MARKET, run_id=7)
+    assert len(calls) == 1
+    assert slept == []
 
 
 # ---------------------------------------------------------------------------

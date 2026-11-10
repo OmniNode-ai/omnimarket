@@ -30,6 +30,11 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_credential_route_write import (
     HandlerCredentialRouteWrite,
     HandlerCredentialRowWrite,
@@ -38,15 +43,15 @@ from omnimarket.projection.protocol_database import (
     ProtocolProjectionAttestedWrite,
     ProtocolProjectionDatabaseSync,
 )
+from omnimarket.protocols.protocol_credential_last_used_write import (
+    ProtocolCredentialLastUsedWrite,
+    credential_used_at_instant,
+)
 from omnimarket.protocols.protocol_credential_route_write import (
     ProtocolCredentialRouteWrite,
 )
 from omnimarket.protocols.protocol_credential_row_write import (
     ProtocolCredentialRowWrite,
-)
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
 )
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 
@@ -276,7 +281,16 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
                 ),
                 sql_expression_columns={"created_at": _NOW, "revoked_at": _NOW},
             )
-    for route in db.query(OVERLAY_TABLE, {"tenant_id": tenant, "secret_ref": ref}):
+    # OMN-21819: a route may be stamped with the tenant's name or its registry
+    # UUID; blank the revoked key's route in whichever form holds it.
+    routes = [
+        route
+        for tenant_form in sync_tenant_identity_forms(db, tenant)
+        for route in db.query(
+            OVERLAY_TABLE, {"tenant_id": tenant_form, "secret_ref": ref}
+        )
+    ]
+    for route in routes:
         # Schema versions are integers; generic projection rows erase that type.
         if isinstance(db, ProtocolCredentialRouteWrite):
             # The read can precede another registration. CAS must occur at the
@@ -326,7 +340,9 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
             OVERLAY_TABLE,
             "tenant_id,task_type",
             {**kept, "secret_ref": None},
-            tenant=tenant,
+            # The route's own stored form, which can differ from the event's
+            # (OMN-21819); the tenant GUC must match the row it rewrites.
+            tenant=str(route["tenant_id"]),
             # The row exists, so only the DO UPDATE arm runs; created_at is
             # named for the INSERT arm's NOT NULL check and is never rewritten.
             insert_only_columns=frozenset({"created_at"}),
@@ -335,10 +351,39 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
     return True
 
 
+def apply_credential_last_used(
+    api_key_ref: str | None,
+    used_at: str,
+    db: object,
+    *,
+    tenant_id: str | None = None,
+) -> bool:
+    """Record that a run used the key, moving ``last_used_at`` forward only.
+
+    OMN-19996. ``api_key_ref`` is the run's ``secret_ref``; a run that resolved
+    no credential names none and records nothing. A ``tenant_id`` limits the
+    write to that tenant's row; ``None`` adds no tenant predicate, for one
+    install's own local store, whose keys carry the tenant given to
+    ``onex secret`` rather than the install's identity. A ref with no row (a house key) creates no row, and an
+    earlier instant never lowers a later one. The time is normalised to UTC
+    before it reaches the store; a time with no offset raises ``ValueError``.
+    Returns whether a row changed, and ``False`` for a store without that write.
+    """
+    if not api_key_ref:
+        return False
+    utc_used_at = credential_used_at_instant(used_at).isoformat()
+    if not isinstance(db, ProtocolCredentialLastUsedWrite):
+        return False
+    return db.record_credential_last_used(
+        str(api_key_ref), utc_used_at, tenant_id=tenant_id
+    )
+
+
 __all__ = [
     "CREDENTIALS_TABLE",
     "OVERLAY_TABLE",
     "ProtocolCredentialStore",
+    "apply_credential_last_used",
     "apply_credential_registered",
     "apply_credential_revoked",
 ]

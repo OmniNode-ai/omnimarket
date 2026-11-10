@@ -25,8 +25,8 @@ import yaml
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_backend_placements,
 )
+from omnimarket.handlers.routing.backend_placement import apply_backend_placements
 from omnimarket.models.delegation.wire import parse_delegation_config_yaml
-from omnimarket.routing.backend_placement import apply_backend_placements
 from tests.placed_routing_config import placed_routing_config
 
 pytestmark = pytest.mark.unit

@@ -1,0 +1,79 @@
+# overlay.yaml: the closeout sweep's scope ranking (OMN-20655). Every value the ranking and the
+# bundle read is here, never in the handler. The rank rules run in the order listed; a rule that
+# does not apply to a ticket ranks it last for that rule. Ties fall to the least recently examined
+# ticket (OMN-23282), then the ticket id.
+version: 1
+# A ticket in any other state is never examined.
+eligible_states:
+  - in progress
+  - in review
+  - backlog
+# waiting_on: a ticket whose closeout comment records a post-merge condition is re-checked first.
+# has_contract: a ticket with contracts/<id>.yaml on a product default branch can reach a
+#   verdict from dod_verify; one without cannot, so the verifiable tickets go first (the
+#   2026-11-08 sweep spent 9 of 12 slots on tickets with no contract and flipped none).
+# merged_in_review: an In Review ticket with a merged PR.
+rank_rules:
+  - waiting_on
+  - has_contract
+  - merged_in_review
+# Of the selected slots, this many are kept for the oldest tickets with no contract, so the
+# binder can still author a contract for them and they are not starved by the rule above.
+no_contract_reserve: 2
+# A ticket with no contract cannot reach a verdict from dod_verify (VERIFY_COULD_NOT_RUN), so it is
+# not taken into a slot the ranking leaves free: the 2026-11-08 sweeps put 9 of 12 slots on such
+# tickets, flipped none and picked the same ones again each run. With this true they take only the
+# reserved slots above; a ticket that records a post-merge condition is still re-checked first.
+no_contract_only_by_reserve: true
+# The bundle is returned inline by an agent, so it stays small whatever the scope.
+bundle_max_bytes: 16384
+held_cap: 200
+waiting_cap: 40
+# OMN-23282: the closer ranks the tickets it may examine by when each was last examined (a ticket
+# never examined first), and holds a ticket whose rejection is unchanged. An unchanged rejection
+# posts no new closer comment, so the oldest-comment order kept picking the same unflippable
+# tickets each fire. The selection records each ticket it picks in the memory file below (a path
+# under the registry root); a ticket whose description, newest closer comment and contract state
+# read the same as at its last selection, for this many selections in a row, is held until one of
+# them changes. A ticket waiting on a post-merge condition is never held.
+hold_after_unchanged_selections: 1
+examined_memory_path: .onex_state/closeout_examined.json
+# Where a contract is looked for: every git clone directly under the registry root (and the
+# root itself) plus any extra clone root the caller names. A non-empty list restricts the
+# search to the clones whose directory names it lists.
+contract_repos: []
+default_refs:
+  - origin/dev
+  - origin/main
+# A verify run that printed this detail found no contract; the ticket reads "no contract".
+no_contract_detail_prefix: "contract unresolved"
+# The PR reader (OMN-20655): the repositories whose squash merges name a ticket's work, each with
+# the branch its merges land on. A merge on that branch is read, a merge on another branch is not,
+# and a binding check's merged ref must name that branch. This packaged document lists only the
+# repositories this repository may name; the deployed document, in the deployment overlays
+# repository at overlays/node_dod_closeout_sweep_compute/overlay.yaml and found through
+# ONEX_SKILL_OVERLAY_ROOTS (or the file OMNIMARKET_CLOSEOUT_SCOPE_OVERLAY names), lists every
+# repository the closer reads, the private ones included, with each default branch.
+# location: registry_root = the registry root is the clone, under_registry = <root>/<name>,
+# beside_registry = <root>/../<name>.
+pr_repositories:
+  - {name: omnibase_core, default_branch: dev, location: under_registry}
+  - {name: omnibase_infra, default_branch: dev, location: under_registry}
+  - {name: omnibase_spi, default_branch: dev, location: under_registry}
+  - {name: omnibase_compat, default_branch: dev, location: under_registry}
+  - {name: omnimarket, default_branch: dev, location: under_registry}
+  - {name: omniclaude, default_branch: dev, location: under_registry}
+  - {name: omnidash, default_branch: dev, location: under_registry}
+  - {name: omniintelligence, default_branch: dev, location: under_registry}
+  - {name: omnimemory, default_branch: dev, location: under_registry}
+# The branch a merged-commit ref must name for a repository the list above does not carry.
+binding_default_branch: dev
+# The closer's own bindings PRs are titled evidence(<id>): ... and are never the ticket's work.
+evidence_repository: onex_change_control
+evidence_subject_prefix: "evidence("
+# The watcher state is read only when it is this schema, lists repos and prs, and both stamps are
+# fresh: last_tick within one watcher interval plus margin, last_full_resync within the resync.
+watcher_state_schema: 1
+watcher_tick_max_age_seconds: 480
+watcher_resync_max_age_seconds: 5400
+watcher_wait_seconds: 60

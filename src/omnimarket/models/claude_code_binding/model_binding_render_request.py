@@ -9,8 +9,14 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.claude_code_binding.enum_client_max_mode import (
     EnumClientMaxMode,
 )
+from omnimarket.models.claude_code_binding.model_additive_client_binding import (
+    ModelAdditiveClientBinding,
+)
 from omnimarket.models.claude_code_binding.model_client_binding import (
     ModelClientBinding,
+)
+from omnimarket.models.claude_code_binding.model_compaction_client_binding import (
+    ModelCompactionClientBinding,
 )
 
 
@@ -19,5 +25,8 @@ class ModelBindingRenderRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    bindings: tuple[ModelClientBinding, ...]
+    bindings: tuple[
+        ModelAdditiveClientBinding | ModelCompactionClientBinding | ModelClientBinding,
+        ...,
+    ]
     max_mode: EnumClientMaxMode

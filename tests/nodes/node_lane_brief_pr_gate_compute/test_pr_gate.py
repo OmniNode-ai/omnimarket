@@ -306,8 +306,13 @@ def test_ac5_the_fill_and_the_gate_enforce_together_when_enforce_ruling_is_set(
         write_overlay(root, "wip_admission", admission)
         env = write_overlay(root, "wip_limits", limits)
         watcher = admission_watcher(*(admission_pr(REPO_A, i) for i in range(1, 12)))
+        # The admission counts work sent to lanes (live CLAIMs), never open pull requests.
+        claimed = {f"OMN-{i}" for i in range(1, 12)}
         refusal, _ = fill_wip_gate(
-            ledger_tickets=None, watcher_state=watcher, now=NOW, environ=env
+            ledger_tickets=lambda: (claimed, {}),
+            watcher_state=watcher,
+            now=NOW,
+            environ=env,
         )
         fill_refused = refusal({"kind": "ticket", "repo": REPO_A, "key": "k"})
         gate = HandlerLaneBriefPrGate(

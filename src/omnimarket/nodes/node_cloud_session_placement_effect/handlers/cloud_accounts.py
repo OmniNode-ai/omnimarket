@@ -7,15 +7,24 @@ from __future__ import annotations
 import fcntl
 import json
 import re
-from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.models.cloud_session_placement import (
+    ModelCloudAccount,
+    ModelCloudTransport,
+)
 
-CLOUD_STATE_FILE = "cloud-accounts.json"
+from . import cloud_registry as reg
+
+CLOUD_STATE_FILE = "cloud-accounts-v2.json"
+CLOUD_LEGACY_STATE_FILE = "cloud-accounts.json"
+CLOUD_LEGACY_IMPORTED = "cloud-accounts.json.imported"
 
 
 # Account writes use their own lock so pool reads cannot delay them.
@@ -30,9 +39,8 @@ CLOUD_REFUSAL_HOLD = timedelta(hours=1)
 CLOUD_ACTIVE_TTL = timedelta(hours=4)
 
 
-# Promotional credit is separate from the subscription limits shared with local work.
-CLOUD_PROMOTIONAL = "ccr_promotional"
-CLOUD_RATE_OK = frozenset({"allowed", "allowed_warning"})
+# A hold is stamped with where it came from; only a deliberate or measured hold gates placement.
+CLOUD_HOLD_STAMP = "recorded"
 CLOUD_LOGIN_OK, CLOUD_LOGIN_NONE, CLOUD_LOGIN_UNREADABLE = (
     "ok",
     "no-claude-ai-login",
@@ -42,41 +50,6 @@ CLOUD_CREDIT_UNREADABLE = (
     "unreadable: Anthropic documents no programmatic read of an account's cloud credit "
     "(the balance is on claude.ai/settings/usage); record a reading with cloud-credit"
 )
-
-CLAUDE_ENGINES = ("claude_sonnet", "claude_opus")
-
-
-# Consent is declared by the caller, never discovered by probing a login.
-CLOUD_CONSENT_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
-CLOUD_NO_PUSH = (
-    "push: false in its lab host table row: a cloud session pushes and opens pull requests through the "
-    "login's own GitHub connection, never the lab bot"
-)
-CLOUD_NO_CONSENT = "its lab host table row names no cloud consent row (cloud_consent)"
-CLOUD_CONTRIBUTOR = (
-    "a contributor's own machine, whose logins are that person's: never a cloud account unless its lab "
-    "host table row names a consent row (cloud_consent)"
-)
-
-
-def cloud_consent_refusal(host: Any) -> str | None:
-    """Why the host's login is not a cloud account, or None when its table row names a consent row's stamp."""
-    if getattr(host, "push", True) is False:
-        return CLOUD_NO_PUSH
-    consent = str(getattr(host, "cloud_consent", None) or "")
-    if CLOUD_CONSENT_RE.fullmatch(consent):
-        return None
-    if getattr(host, "contributor", False):
-        return CLOUD_CONTRIBUTOR
-    if consent:
-        return f"its cloud_consent {consent!r} is not a ledger row stamp"
-    return CLOUD_NO_CONSENT
-
-
-def consented_accounts(hosts: Sequence[Any]) -> frozenset[str]:
-    """The pool hosts whose table rows consent to their logins starting cloud sessions."""
-    return frozenset(h.name for h in hosts if cloud_consent_refusal(h) is None)
-
 
 CLOUD_SESSION_RE = re.compile(r"\b((?:session|cse)_[A-Za-z0-9]{8,})\b")
 CLOUD_URL_RE = re.compile(
@@ -132,23 +105,52 @@ def parse_cloud_start(stdout: str, session_url_base: str) -> dict[str, str] | No
 
 
 @contextmanager
-def _cloud_state(pdir: Path) -> Iterator[dict[str, Any]]:
-    """The accounts file, read and written under its own lock (never the placement lock)."""
+def _cloud_state(
+    pdir: Path,
+    accounts: Sequence[ModelCloudAccount] | None = None,
+    now: datetime | None = None,
+) -> Iterator[dict[str, Any]]:
+    """The accounts file, read and written under its own lock (never the placement lock). The first call that has the
+    registry (``accounts`` not None) imports the old host-keyed file once and renames it; before that import a call
+    without the registry is refused, so no write can strand the old file."""
     pdir.mkdir(parents=True, exist_ok=True)
     path = pdir / CLOUD_STATE_FILE
+    legacy = pdir / CLOUD_LEGACY_STATE_FILE
     with (pdir / CLOUD_LOCK_FILE).open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            state = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        imported = False
+        if path.exists():
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                state = {}
+        elif legacy.exists():
+            if accounts is None:
+                raise ValueError(
+                    f"{CLOUD_LEGACY_STATE_FILE} awaits its one-time import: call with the registry (accounts)"
+                )
+            old = json.loads(legacy.read_text(encoding="utf-8"))
+            state = reg.import_legacy(
+                old if isinstance(old, dict) else {},
+                accounts,
+                now or datetime.now(UTC),
+                ttl=CLOUD_ACTIVE_TTL,
+                runs_kept=CLOUD_RUNS_KEPT,
+                hold_stamp=CLOUD_HOLD_STAMP,
+            )
+            imported = True
+        else:
             state = {}
         if not isinstance(state, dict):
             state = {}
-        state.setdefault("accounts", {})
+        for key, empty in reg.new_state().items():
+            state.setdefault(key, empty)
         yield state
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(path)
+        if imported:
+            legacy.replace(pdir / CLOUD_LEGACY_IMPORTED)
 
 
 def _since(entries: Any, now: datetime, span: timedelta) -> dict[str, str]:
@@ -178,76 +180,27 @@ def cloud_account_free(account: Mapping[str, Any], now: datetime) -> int:
     return max(0, cloud_account_cap(account) - cloud_account_running(account, now))
 
 
-def _positive_cloud_credit(account: Mapping[str, Any]) -> bool:
-    credit = account.get("credit") or {}
-    remaining = credit.get("remaining")
-    return isinstance(remaining, (int, float)) and remaining > 0
-
-
-def _spent_cloud_credit(account: Mapping[str, Any]) -> bool:
-    """An observed promotional fallback is newer than the last positive balance reading."""
-    fallback = str(account.get("promotional_fallback_at") or "")
-    credit = account.get("credit") or {}
-    return bool(fallback) and (
-        not _positive_cloud_credit(account)
-        or str(credit.get("read_at") or "") <= fallback
-    )
-
-
-def _credit_releases_warning(account: Mapping[str, Any]) -> bool:
-    """Credit may release a warning or disproven fallback, never an operator or refusal hold."""
-    rate = account.get("rate") or {}
-    kind = rate.get("type")
-    return (
-        _positive_cloud_credit(account)
-        and not _spent_cloud_credit(account)
-        and bool(kind)
-        and kind != CLOUD_PROMOTIONAL
-        and rate.get("status") in CLOUD_RATE_OK
-        and account.get("limited_why")
-        in {
-            f"draws on its {kind} subscription limit at a warning, not the cloud credit",
-            f"promotional cloud credit switched to its {kind} subscription limit",
-        }
-    )
-
-
 def cloud_account_skip(account: Mapping[str, Any], now: datetime) -> str | None:
-    """Why an account starts no cloud session now, or None."""
-    if account.get("exhausted_at"):
+    """Why an account starts no session: credit, a recorded refusal/hold or concurrency."""
+    credit = account.get("credit")
+    credit = credit if isinstance(credit, Mapping) else {}
+    remaining = credit.get("remaining")
+    if isinstance(remaining, (int, float)):
+        if remaining <= 0:
+            return f"credit read zero at {credit.get('read_at') or account.get('exhausted_at') or 'recorded reading'}"
+    elif account.get("exhausted_at"):
         return f"credit read zero at {account['exhausted_at']}"
-    refused = str(account.get("rate_refused_until") or "")
-    if refused and refused > f"{now:%Y-%m-%dT%H:%M:%SZ}":
-        return f"limited until {refused} ({account.get('rate_refused_why') or 'rate refused'})"
     until = str(account.get("limited_until") or "")
     if (
         until
         and until > f"{now:%Y-%m-%dT%H:%M:%SZ}"
-        and not _credit_releases_warning(account)
+        and reg.recorded_hold(account, CLOUD_HOLD_STAMP)
     ):
         why = account.get("limited_why")
         return f"limited until {until}" + (f" ({why})" if why else "")
     if cloud_account_free(account, now) < 1:
         return f"at its cap: {cloud_account_running(account, now)} running (cap {cloud_account_cap(account)})"
     return None
-
-
-def cloud_slots(
-    pdir: Path, now: datetime | None = None, *, consented: Collection[str]
-) -> dict[str, int]:
-    """{account: sessions it may start now} over the ``consented`` accounts (``consented_accounts``) whose login last
-    reached cloud sessions; an account never probed is not counted (a cloud lane's pick probes every account in turn),
-    and one without consent is not counted whatever the accounts file says of it."""
-    now = now or datetime.now(UTC)
-    with _cloud_state(pdir) as state:
-        accounts = dict(state["accounts"])
-    return {
-        name: (0 if cloud_account_skip(a, now) else cloud_account_free(a, now))
-        for name, a in sorted(accounts.items())
-        if name in consented
-        and isinstance(a, dict)
-        and a.get("login") == CLOUD_LOGIN_OK
-    }
 
 
 def release_cloud_slot(pdir: Path, account: str, run_id: str) -> None:
@@ -280,6 +233,21 @@ def note_cloud_start(pdir: Path, account: str, *, now: datetime | None = None) -
         return cap
 
 
+# A refusal that names a subscription or usage limit holds the account; a concurrency refusal only lowers its cap.
+CLOUD_SUBSCRIPTION_REFUSAL_RE = re.compile(
+    r"usage limit|rate.?limit|limit reached|weekly limit|quota|\b429\b|subscription",
+    re.IGNORECASE,
+)
+CLOUD_RESET_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+
+
+def _refusal_reset(why: str, now: datetime) -> str:
+    """The reset a refusal names (a later stamp in its text), else ``now`` plus CLOUD_REFUSAL_HOLD."""
+    stamp = f"{now:%Y-%m-%dT%H:%M:%SZ}"
+    named = [m for m in CLOUD_RESET_RE.findall(why) if m > stamp]
+    return max(named) if named else f"{now + CLOUD_REFUSAL_HOLD:%Y-%m-%dT%H:%M:%SZ}"
+
+
 def note_cloud_refusal(
     pdir: Path, account: str, run_id: str, why: str, *, now: datetime | None = None
 ) -> int:
@@ -294,6 +262,14 @@ def note_cloud_refusal(
         entry["cap"] = max(1, min(cloud_account_cap(entry), len(active)))
         entry["refused_at"] = f"{now:%Y-%m-%dT%H:%M:%SZ}"
         entry["refused_why"] = why[-300:]
+        if CLOUD_SUBSCRIPTION_REFUSAL_RE.search(why):
+            until = _refusal_reset(why, now)
+            if not reg.recorded_hold(entry, CLOUD_HOLD_STAMP) or until > str(
+                entry.get("limited_until") or ""
+            ):
+                entry["limited_until"] = until
+                entry["limited_why"] = why[-300:]
+                entry["limited_source"] = CLOUD_HOLD_STAMP
         return int(entry["cap"])
 
 
@@ -315,13 +291,10 @@ def record_cloud_rate(
     *,
     now: datetime | None = None,
 ) -> str | None:
-    """Record the rate-limit reading a session of the account carried (``rateLimitType``, ``status``,
-    ``resetsAt``). Positive recorded credit permits subscription warnings unless a later promotional fallback
-    established it was spent. Refused readings always hold until reset. Returns why it is held, or None."""
+    """Persist rate telemetry without inferring an account hold."""
     if not isinstance(rate, Mapping):
         return None
     now = now or datetime.now(UTC)
-    kind, status = str(rate.get("rateLimitType") or ""), str(rate.get("status") or "")
     resets = rate.get("resetsAt")
     until = (
         f"{datetime.fromtimestamp(float(resets), UTC):%Y-%m-%dT%H:%M:%SZ}"
@@ -330,130 +303,345 @@ def record_cloud_rate(
     )
     with _cloud_state(pdir) as state:
         entry = state["accounts"].setdefault(account, {})
-        previous = entry.get("rate") or {}
-        stamp = f"{now:%Y-%m-%dT%H:%M:%SZ}"
-        if (
-            kind
-            and kind != CLOUD_PROMOTIONAL
-            and previous.get("type") == CLOUD_PROMOTIONAL
-        ):
-            entry["promotional_fallback_at"] = stamp
-        # Release the legacy warning before replacing its rate, so a different subscription type cannot hide it.
-        if _credit_releases_warning(entry):
-            entry.pop("limited_until", None)
-            entry.pop("limited_why", None)
-        why = None
-        if status and status not in CLOUD_RATE_OK:
-            why = f"{kind or 'rate'} limit {status}"
-            # Keep a refusal even if later warning/fallback readings replace the account's latest rate.
-            entry["rate_refused_until"], entry["rate_refused_why"] = until, why
-        elif kind and kind != CLOUD_PROMOTIONAL:
-            if _spent_cloud_credit(entry):
-                why = f"promotional cloud credit switched to its {kind} subscription limit"
-            elif status == "allowed_warning" and not _positive_cloud_credit(entry):
-                why = f"draws on its {kind} subscription limit at a warning, not the cloud credit"
         entry["rate"] = {
-            "type": kind,
-            "status": status,
+            "type": str(rate.get("rateLimitType") or ""),
+            "status": str(rate.get("status") or ""),
             "resets_at": until,
-            "read_at": stamp,
+            "read_at": f"{now:%Y-%m-%dT%H:%M:%SZ}",
         }
-        if why:
-            entry["limited_until"], entry["limited_why"] = until, why
-    return why
+    return None
 
 
-# Reuse fresh verdicts: network probes can delay a pick until its ordering is stale.
-CLOUD_LOGIN_FRESH = timedelta(minutes=30)
+@dataclass(frozen=True)
+class AccountView:
+    """One registered account judged at ``now``: ``gate`` is why it is not counted at all (consent, credit date, no
+    usable login), ``skip`` any reason it starts nothing now (the gate, else a zero credit, a hold or a full cap)."""
+
+    account: ModelCloudAccount
+    gate: str | None
+    skip: str | None
+    free: int
+    running: int
+    cap: int
+    transports: tuple[str, ...]
+    stale_hosts: tuple[str, ...]
+    last_seen: str
+
+    @property
+    def label(self) -> str:
+        return self.account.label
 
 
-def _login_fresh(entry: Mapping[str, Any], now: datetime) -> bool:
-    at = str(entry.get("probed_at") or "")
-    return bool(at) and at > f"{now - CLOUD_LOGIN_FRESH:%Y-%m-%dT%H:%M:%SZ}"
+def _login_reason(
+    account: ModelCloudAccount,
+    held: Mapping[str, Any],
+    order: Sequence[str],
+    now: datetime,
+    fresh_s: int,
+) -> tuple[tuple[str, ...], tuple[str, ...], str | None]:
+    """(hosts whose login is fresh and passed the cloud probe in preference order, hosts whose login is stale, why
+    there is none)."""
+    floor = reg.stamp_of(now - timedelta(seconds=fresh_s))
+    usable = [h for h in order if h in held and h not in account.transport_exclude]
+    if not usable:
+        if held:
+            return (
+                (),
+                (),
+                (
+                    "its logins are on hosts that start no cloud session ("
+                    + ", ".join(sorted(held))
+                    + ")"
+                ),
+            )
+        return (), (), "no host logged into it has been seen"
+    seen = {h: str(held[h].get("seen_at") or "") for h in usable}
+    fresh = [h for h in usable if seen[h] > floor]
+    stale = tuple(h for h in usable if seen[h] <= floor)
+    ok = tuple(h for h in fresh if held[h].get("cloud_ok"))
+    if ok:
+        return ok, stale, None
+    if fresh:
+        return (
+            (),
+            stale,
+            f"its login on {fresh[0]} failed the cloud probe at {seen[fresh[0]]}",
+        )
+    newest = max(usable, key=lambda h: seen[h])
+    return (
+        (),
+        stale,
+        (
+            f"its login was last seen {seen[newest]} on {newest}, older than {fresh_s} seconds"
+        ),
+    )
+
+
+def evaluate_accounts(
+    state: Mapping[str, Any],
+    accounts: Sequence[ModelCloudAccount],
+    transports: Sequence[ModelCloudTransport] | None,
+    now: datetime,
+    fresh_s: int,
+) -> list[AccountView]:
+    """Every account in registry order, judged. A host's lab availability is not an input anywhere here."""
+    order = [t.name for t in transports] if transports is not None else None
+    views: list[AccountView] = []
+    for a in accounts:
+        entry = (
+            (state["accounts"].get(a.label) or {})
+            if isinstance(state["accounts"], dict)
+            else {}
+        )
+        held = state["logins"].get(a.label) or {}
+        hosts = order if order is not None else sorted(held)
+        fresh, stale, login_why = _login_reason(a, held, hosts, now, fresh_s)
+        gate = reg.consent_reason(a, now) or reg.credit_date_reason(a, now) or login_why
+        running, cap = cloud_account_running(entry, now), cloud_account_cap(entry)
+        free = cloud_account_free(entry, now)
+        skip = gate
+        if skip is None:
+            skip = _state_skip(entry, now)
+        seen = [
+            str(v.get("seen_at") or "") for v in held.values() if isinstance(v, dict)
+        ]
+        views.append(
+            AccountView(
+                a, gate, skip, free, running, cap, fresh, stale, max(seen, default="")
+            )
+        )
+    return views
+
+
+def _state_skip(entry: Mapping[str, Any], now: datetime) -> str | None:
+    """The usage state's reason an account starts nothing, with its date: a zero credit, a recorded hold, a full cap."""
+    held = cloud_account_skip(entry, now)
+    if held and held.startswith(("limited until", "credit read zero")):
+        return held
+    if cloud_account_free(entry, now) < 1:
+        active = _since(entry.get("active"), now, CLOUD_ACTIVE_TTL)
+        frees = reg.parse_moment(min(active.values())) if active else None
+        when = (
+            f"; a slot frees by {reg.stamp_of(frees + CLOUD_ACTIVE_TTL)}"
+            if frees
+            else ""
+        )
+        return f"at its cap: {cloud_account_running(entry, now)} running (cap {cloud_account_cap(entry)}){when}"
+    return None
+
+
+def _flags(views: Sequence[AccountView], state: Mapping[str, Any]) -> list[str]:
+    return [
+        f"CLOUD-ACCOUNT {v.label} flag: no credit reading is recorded (record one with cloud-credit)"
+        for v in views
+        if v.gate is None
+        and not isinstance((state["accounts"].get(v.label) or {}).get("credit"), dict)
+    ]
+
+
+def _sentences(views: Sequence[AccountView]) -> list[str]:
+    return [f"CLOUD-ACCOUNT {v.label} skipped: {v.skip}" for v in views if v.skip]
+
+
+def cloud_slots(
+    pdir: Path,
+    accounts: Sequence[ModelCloudAccount],
+    transports: Sequence[ModelCloudTransport] | None,
+    *,
+    fresh_s: int,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """{accounts: {label: sessions it may start now}, caps, sentences, flags, unconsented} over the accounts that are
+    consented, inside their credit date and have a fresh login (an account the registry does not name is not
+    counted whatever the accounts file says of it)."""
+    now = now or datetime.now(UTC)
+    with _cloud_state(pdir, accounts, now) as state:
+        views = evaluate_accounts(state, accounts, transports, now, fresh_s)
+        counted = [v for v in views if v.gate is None]
+        entries = {v.label: state["accounts"].get(v.label) or {} for v in views}
+        sentences = _sentences(views) or ([] if accounts else [reg.REGISTRY_EMPTY])
+        sentences += [
+            f"CLOUD-ACCOUNT {v.label} startable: {v.free} free (cap {v.cap}) via {v.transports[0]}"
+            for v in counted
+            if v.skip is None
+        ]
+        return {
+            "accounts": {v.label: (0 if v.skip else v.free) for v in counted},
+            "caps": {
+                v.label: {
+                    "running": v.running,
+                    "cap": v.cap,
+                    "held": cloud_account_skip(entries[v.label], now)
+                    if v.free > 0
+                    else None,
+                }
+                for v in counted
+            },
+            "sentences": sentences,
+            "flags": _flags(views, state),
+            "unconsented": reg.unconsented_list(state),
+        }
 
 
 def cloud_pick(
     pdir: Path,
-    hosts: Sequence[Any],
-    probe: Callable[[Any], str],
+    accounts: Sequence[ModelCloudAccount],
+    transports: Sequence[ModelCloudTransport],
     *,
+    fresh_s: int,
     now: datetime | None = None,
     run_id: str = "",
-    claude_engines: Collection[str] = CLAUDE_ENGINES,
-) -> tuple[Any, list[dict[str, str]]]:
-    """(the host whose Claude login starts this session, or None; every account tried). Accounts are the pool hosts'
-    own logins whose lab host table rows name a consent row (``cloud_consent_refusal``; any other host is skipped
-    before its probe): the one with the most free slots first, round-robin after the account the last cloud run used among
-    equals. An account whose credit read zero or that is limited or at its cap is skipped; one whose login was read
-    inside CLOUD_LOGIN_FRESH is taken at that verdict (no probe), and any other is probed, recorded, and passed over
-    when it cannot reach cloud sessions. The account picked holds one slot for ``run_id`` from here, taken under the
-    accounts lock so two runners at once cannot both take its last one; a runner that finds the slot taken meanwhile
-    goes on to the next account."""
+) -> dict[str, Any]:
+    """Pick by account, then transport. The account with the most free slots among those that start now wins,
+    round-robin after the last one picked among equals; its transport is the first host in ``transports`` order whose
+    login is fresh and passed the cloud probe. The pick holds one slot for ``run_id`` from here, taken under the
+    accounts lock so two runners at once cannot both take the last one. No probe happens here: the logins were
+    observed (``observe_logins``), and a stale login asks the caller to observe again (``needs_probe``)."""
     now = now or datetime.now(UTC)
-    stamp = f"{now:%Y-%m-%dT%H:%M:%SZ}"
-    claude_hosts = sorted(
-        (
-            h
-            for h in hosts
-            if getattr(h, "engines_live", False)
-            or set(getattr(h, "engines", ())) & set(claude_engines)
-        ),
-        key=lambda h: h.name,
-    )
-    with _cloud_state(pdir) as state:
-        last, accounts = str(state.get("last") or ""), dict(state["accounts"])
-    names = [h.name for h in claude_hosts]
-    start = names.index(last) + 1 if last in names else 0
-    order = claude_hosts[start:] + claude_hosts[:start]
-    tried: list[dict[str, str]] = []
-    candidates = []
-    for host in order:
-        entry = accounts.get(host.name) or {}
-        skip = cloud_consent_refusal(host) or cloud_account_skip(entry, now)
-        if skip:
-            tried.append({"account": host.name, "skipped": skip})
-        elif _login_fresh(entry, now) and entry.get("login") != CLOUD_LOGIN_OK:
-            tried.append(
-                {
-                    "account": host.name,
-                    "login": str(entry.get("login")),
-                    "read_at": str(entry["probed_at"]),
-                }
-            )
-        else:
-            candidates.append(host)
-    rank = {h.name: i for i, h in enumerate(order)}
-    candidates.sort(
-        key=lambda h: (
-            -cloud_account_free(accounts.get(h.name) or {}, now),
-            rank[h.name],
+    stamp = reg.stamp_of(now)
+    with _cloud_state(pdir, accounts, now) as state:
+        views = evaluate_accounts(state, accounts, transports, now, fresh_s)
+        names = [a.label for a in accounts]
+        last = str(state.get("last") or "")
+        begin = names.index(last) + 1 if last in names else 0
+        rank = {n: (i - begin) % max(1, len(names)) for i, n in enumerate(names)}
+        ready = sorted(
+            (v for v in views if v.skip is None), key=lambda v: (-v.free, rank[v.label])
         )
-    )
-    pick = None
-    for host in candidates:
-        entry = accounts.get(host.name) or {}
-        probed = not (_login_fresh(entry, now) and entry.get("login") == CLOUD_LOGIN_OK)
-        verdict = probe(host) if probed else CLOUD_LOGIN_OK
-        tried.append({"account": host.name, "login": verdict})
-        with _cloud_state(pdir) as state:
-            entry = state["accounts"].setdefault(host.name, {})
-            if probed:
-                entry.update(login=verdict, probed_at=stamp)
-            if verdict != CLOUD_LOGIN_OK:
-                continue
-            late = cloud_account_skip(entry, now)
-            if late:
-                tried.append({"account": host.name, "skipped": late})
-                continue
-            state["last"] = host.name
+        sentences = _sentences(views) or ([] if accounts else [reg.REGISTRY_EMPTY])
+        tried = [{"account": v.label, "skipped": v.skip or ""} for v in views if v.skip]
+        picked = ready[0] if ready else None
+        by_name = {t.name: t for t in transports}
+        chosen: list[dict[str, Any]] = []
+        if picked is not None:
+            chosen = [by_name[h].model_dump() for h in picked.transports]
+            tried.append({"account": picked.label, "transport": picked.transports[0]})
+            state["last"] = picked.label
             if run_id:
+                entry = state["accounts"].setdefault(picked.label, {})
                 entry["active"] = {
                     **_since(entry.get("active"), now, CLOUD_ACTIVE_TTL),
                     run_id: stamp,
                 }
-            pick = host
-        break
-    return pick, tried
+        stale = sorted(
+            {h for v in views if v.gate and v.stale_hosts for h in v.stale_hosts}
+        )
+        return {
+            "account": picked.label if picked else None,
+            "transport": picked.transports[0] if picked else None,
+            "transports": chosen,
+            "tried": tried,
+            "sentences": sentences,
+            "flags": _flags(views, state),
+            "unconsented": reg.unconsented_list(state),
+            "stale_hosts": [] if picked else stale,
+            "needs_probe": None if picked or not stale else ",".join(stale),
+        }
+
+
+def cloud_observe_logins(
+    pdir: Path,
+    accounts: Sequence[ModelCloudAccount],
+    observations: Sequence[Any],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Record the login map from the raw texts of one tick, each observation replacing its host's entry."""
+    now = now or datetime.now(UTC)
+    with _cloud_state(pdir, accounts, now) as state:
+        sentences = reg.observe_logins(
+            state, accounts, observations, now, cloud_login, CLOUD_LOGIN_OK
+        )
+        return {
+            "logins": {k: dict(v) for k, v in state["logins"].items() if v},
+            "unconsented": reg.unconsented_list(state),
+            "unreachable": sorted(state["unreachable"]),
+            "sentences": sentences,
+        }
+
+
+def cloud_start_outcome(
+    pdir: Path,
+    account: str,
+    run_id: str,
+    transport: str,
+    began: bool,
+    text: str,
+    untried: Sequence[str],
+    session_url_base: str,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """What one start attempt means. ``began`` false: the call never started (ssh could not connect), so the next
+    transport is tried and the account stays unheld. ``began`` true: a session in the answer is a start, a refusal
+    holds or lowers the account, and anything else is ``start-unknown``: no second transport is tried and the slot is
+    kept until its TTL, because the session may exist."""
+    if not began:
+        if untried:
+            return {
+                "verdict": "try-next",
+                "next_transport": untried[0],
+                "sentence": f"CLOUD-START {run_id} could not reach {transport}: trying {untried[0]}",
+            }
+        release_cloud_slot(pdir, account, run_id)
+        return {
+            "verdict": "failed",
+            "sentence": f"CLOUD-START {run_id} could not reach {transport} and has no transport left",
+        }
+    session = parse_cloud_start(text, session_url_base)
+    if session:
+        return {
+            "verdict": "started",
+            "parsed": session,
+            "cap": note_cloud_start(pdir, account, now=now),
+        }
+    if cloud_start_refused(text):
+        return {
+            "verdict": "refused",
+            "cap": note_cloud_refusal(pdir, account, run_id, text, now=now),
+            "sentence": f"CLOUD-START {run_id} refused by {account}: {text.strip()[-120:]}",
+        }
+    return {
+        "verdict": "start-unknown",
+        "sentence": f"start-unknown {run_id} unresolved",
+    }
+
+
+def run_start(
+    pdir: Path,
+    account: str,
+    run_id: str,
+    order: Sequence[str],
+    ssh: Callable[[str], tuple[bool, str]],
+    session_url_base: str,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Make the start call over the injected ``ssh`` seam (transport name -> (call began, raw answer)), one transport
+    at a time in ``order``; only a failure before the call began passes to the next."""
+    remaining = list(order)
+    out: dict[str, Any] = {
+        "verdict": "failed",
+        "sentence": f"CLOUD-START {run_id} has no transport",
+    }
+    while remaining:
+        transport = remaining.pop(0)
+        began, text = ssh(transport)
+        out = cloud_start_outcome(
+            pdir,
+            account,
+            run_id,
+            transport,
+            began,
+            text,
+            tuple(remaining),
+            session_url_base,
+            now=now,
+        )
+        out["transport"] = transport
+        if out["verdict"] != "try-next":
+            return out
+    return out
 
 
 def record_cloud_credit(
@@ -520,29 +708,8 @@ def mark_cloud_limited(pdir: Path, account: str, until: str, why: str = "") -> N
     with _cloud_state(pdir) as state:
         entry = state["accounts"].setdefault(account, {})
         entry["limited_until"] = until
+        entry["limited_source"] = CLOUD_HOLD_STAMP
         if why:
             entry["limited_why"] = why
         else:
             entry.pop("limited_why", None)
-
-
-def cloud_caps(
-    pdir: Path, now: datetime | None = None, *, consented: Collection[str]
-) -> dict[str, dict[str, Any]]:
-    """{account: {running, cap, held}} over the ``consented`` accounts whose login last reached cloud sessions."""
-    now = now or datetime.now(UTC)
-    with _cloud_state(pdir) as state:
-        accounts = dict(state["accounts"])
-    return {
-        name: {
-            "running": cloud_account_running(a, now),
-            "cap": cloud_account_cap(a),
-            "held": cloud_account_skip(a, now)
-            if cloud_account_free(a, now) > 0
-            else None,
-        }
-        for name, a in sorted(accounts.items())
-        if name in consented
-        and isinstance(a, dict)
-        and a.get("login") == CLOUD_LOGIN_OK
-    }

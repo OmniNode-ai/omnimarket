@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_stop_effect
+version: "0.1.0"
+description: "Effect: stop a remote lane, wait for exit, release exact lane/run/session PR claims when the caller supplies its registry, and close its ledger record. Final receipts allow claim cleanup without signalling. Hosted on the dispatching host."
+pack: operator_tooling
+node_role: effect
+display_name: "Remote Lane Stop Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_remote_lane_stop_effect: "omnimarket.nodes.node_remote_lane_stop_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- PyYAML>=6.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lab", "remote-lane"]

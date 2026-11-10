@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_transcript_manifest_effect
+version: 1.0.0
+description: Validate frozen transcript snapshots and write a reproducible case bundle locally.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Transcript Manifest Effect
+entry_points:
+  onex.nodes:
+    node_transcript_manifest_effect: omnimarket.nodes.node_transcript_manifest_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: [omnibase_core>=0.39.0]
+license: MIT
+tags: [effect, context, compaction, replay]

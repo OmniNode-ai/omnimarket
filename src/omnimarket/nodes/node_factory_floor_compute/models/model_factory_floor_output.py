@@ -10,11 +10,24 @@ from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
+    ModelFloorSourceHealth,
+)
+from omnimarket.models.model_floor_line_select import HealthState, LineClass
+from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
 )
 
-StatusPill = Literal["stopped", "done", "building", "queued"]
+Condition = Literal["queued", "building", "stopped", "complete", "needs_review"]
+ProgressState = Literal["known", "unknown", "no_tasks"]
+GateOutcome = Literal["passed", "failed", "waiting"]
+# What backs a done task: a merged pull request, a done lane TERMINAL, a closed Linear issue, or only a recorded state.
+# None of these is deployment proof; "" is a task with no done evidence.
+EvidenceKind = Literal["merged", "terminal", "linear_done", "recorded", ""]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
-LineSource = Literal["manifest", "plan-task-table", "undrawn"]
+LineSource = Literal[
+    "manifest", "plan-task-table", "undrawn", "goal", "ruling", "ticket", "process"
+]
 
 
 class ModelFloorItem(BaseModel):
@@ -29,10 +42,12 @@ class ModelFloorItem(BaseModel):
     note: str
     tickets: tuple[str, ...]
     prs: tuple[str, ...]
+    # What backs the item's state, so a reader can say what a "done" rests on without implying it is deployed.
+    evidence_kind: EvidenceKind = ""
 
 
 class ModelFloorStation(BaseModel):
-    """One station: a wave or stage of a plan."""
+    """One station: a task of a plan (or, under wave grouping, a wave of tasks)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -41,6 +56,12 @@ class ModelFloorStation(BaseModel):
     state: ItemState
     items: tuple[ModelFloorItem, ...]
     feeders: tuple[str, ...]
+    # The wave label of the station's task ("" when the plan declares none): the band a renderer groups stations by.
+    group: str = ""
+    # The tickets of the station's own parts.
+    tickets: tuple[str, ...] = ()
+    # The pull requests of the station's own parts.
+    prs: tuple[str, ...] = ()
 
 
 class ModelFloorAndon(BaseModel):
@@ -51,6 +72,9 @@ class ModelFloorAndon(BaseModel):
     flag: bool
     reason: str
     causes: tuple[str, ...]
+    # True when a hold, a failed gate or a plan with no tasks stops the line whatever runs on it. False when every cause
+    # is a red pull request or a stop the ledger recorded, which a running lane on the line is already working through.
+    hard: bool = False
 
 
 class ModelFloorLaneContainers(BaseModel):
@@ -64,6 +88,10 @@ class ModelFloorLaneContainers(BaseModel):
     observed: int | None
     budget: int | None
     alarm_key: str
+    # Where the lane is going (the declared target); None when the deployment declares none.
+    target: int | None = None
+    # The read's own sentence: the count against the budget, or why the host could not be read (UNKNOWN).
+    detail: str = ""
 
 
 class ModelFloorApplicationContainers(BaseModel):
@@ -73,6 +101,68 @@ class ModelFloorApplicationContainers(BaseModel):
 
     state: Literal["read", "unread"]
     lanes: tuple[ModelFloorLaneContainers, ...]
+
+
+class ModelFloorBlocker(BaseModel):
+    """Why a line is not moving: the first cause as a sentence and the refs that show it (task ids, PR keys, ledger rows)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reason: str
+    evidence: tuple[str, ...]
+
+
+class ModelFloorProgress(BaseModel):
+    """Work tasks complete over valid work tasks. Gates are never in it; unknown is never 0."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ProgressState
+    completed: int | None
+    total: int | None
+    # completed / total x 100, rounded half-up to one decimal; None unless state is known.
+    percent: float | None
+    note: str
+
+
+class ModelFloorGateRef(BaseModel):
+    """One gate of the line and where it stands."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    state: GateOutcome
+
+
+class ModelFloorGates(BaseModel):
+    """The line's gates, counted apart from its work tasks."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    passed: int
+    failed: int
+    waiting: int
+    items: tuple[ModelFloorGateRef, ...]
+
+
+class ModelFloorLineEvidence(BaseModel):
+    """Counts over the work tasks, one per kind of evidence; None means that source was not read, never 0."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    merged: int
+    running_on_dev: int | None
+    verified: int | None
+    of: int
+
+
+class ModelFloorDataAge(BaseModel):
+    """The oldest source read the line depends on, and its age against the record's own time."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    read_at: str
+    age_min: int | None
 
 
 class ModelFloorLine(BaseModel):
@@ -88,12 +178,41 @@ class ModelFloorLine(BaseModel):
     name: str
     plan_path: str
     source: LineSource
-    status_pill: StatusPill
-    percent_built: int
+    # The one condition of the line, read by every surface. A blocker never recolours or erases earned progress.
+    condition: Condition
+    blocker: ModelFloorBlocker | None
+    progress: ModelFloorProgress
+    gates: ModelFloorGates
+    line_evidence: ModelFloorLineEvidence
+    data_age: ModelFloorDataAge
     stations: tuple[ModelFloorStation, ...]
+    # The stop facts behind the blocker; it no longer drives the condition.
     andon: ModelFloorAndon
     # Set on the line the selection names for the container read; every other line carries None.
     application_containers: ModelFloorApplicationContainers | None = None
+    # Which of the six classes selected the line (the lowest class that does); a record written before the classes
+    # existed drew declared lines only.
+    line_class: LineClass = "declared"
+    # The ids (``ruling:<id>`` is a line; this lists the ruling rows) of the rulings that map to this line.
+    ruled_by: tuple[str, ...] = ()
+
+
+class ModelFloorCoverage(BaseModel):
+    """How complete one class's selection is, from the health of the sources it was chosen from.
+
+    ``lines`` is None when a source is unread: an unread selection never prints a count that looks complete.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    line_class: LineClass
+    state: HealthState
+    # The oldest read among the class's sources; empty when none was ever read.
+    read_at: str
+    lines: int | None
+    # The header sentence for a stale or unread class; empty when the class is read.
+    note: str
+    sources: tuple[str, ...]
 
 
 class ModelFloorBay(BaseModel):
@@ -130,12 +249,15 @@ class ModelFloorStoppageOut(BaseModel):
     recurring: bool
     tickets: tuple[str, ...]
     last_seen: str
+    resolved_at: str = ""
 
 
 MachineState = Literal["read", "unread", "repair", "out"]
 SourceState = Literal["read", "unread"]
 LaneTitleSource = Literal["linear", "claim", "unread"]
 LanePlacement = Literal["machine", "cloud", "unplaced"]
+# Why a lane the floor cannot place is unplaced: no row names a host, or the host named is not a drawn machine.
+PlacementCause = Literal["", "no-host-cell", "host-not-drawn"]
 
 
 class ModelFloorRunnersOut(BaseModel):
@@ -149,6 +271,18 @@ class ModelFloorRunnersOut(BaseModel):
     busy: int | None
     observed_at: str
     note: str
+
+
+AdmissionState = Literal["open", "refused", "unread"]
+
+
+class ModelFloorAdmission(BaseModel):
+    """Whether the tick's admission takes new work on a machine, and the reading's own words when it does not."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: AdmissionState
+    reason: str
 
 
 class ModelFloorMachine(BaseModel):
@@ -172,6 +306,8 @@ class ModelFloorMachine(BaseModel):
     swap_used_pct: float | None
     cap: int | None
     refusal: str
+    free_slots: int
+    admission: ModelFloorAdmission
     lanes_placed: int
     lanes: tuple[str, ...]
     units_placed: int | None
@@ -202,6 +338,9 @@ class ModelFloorLane(BaseModel):
     engine: str
     placement: LanePlacement
     host: str
+    # Set only on an unplaced lane: the reason it names no drawn machine, and the host as written when it named one.
+    placement_cause: PlacementCause = ""
+    named_host: str = ""
     cloud_account: str
     started_at: str
     run_minutes: int
@@ -219,6 +358,12 @@ class ModelFloorLane(BaseModel):
     pr_ci_note: str
     station: ModelFloorStationRef | None
     claim_full: str
+    liveness: Literal["alive", "unread", "dead", "finished"] = "unread"
+    liveness_detail: str = "no process reading was supplied"
+    # The floor holdup ids the lane says it owns: ``owns=floor:<holdup id>`` cells on its CLAIM and later STATUS rows.
+    owns: tuple[str, ...] = ()
+    # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell), "" when the CLAIM names none.
+    parent_ticket: str = ""
 
 
 class ModelFloorLamp(BaseModel):
@@ -233,7 +378,7 @@ class ModelFloorLamp(BaseModel):
 
 
 class ModelFloorCloudAccountOut(BaseModel):
-    """One cloud account: whether it is signed in, its session cap and how many sessions are open."""
+    """One cloud account: whether it is signed in, its session cap and how many of its listed sessions are open (None when the receipts could not be read)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -241,7 +386,8 @@ class ModelFloorCloudAccountOut(BaseModel):
     ready: bool
     login: str
     cap: int | None
-    open_sessions: int
+    open_sessions: int | None
+    record_note: str
     credit_remaining: float | None
     credit_read_at: str
     rate_status: str
@@ -275,6 +421,122 @@ class ModelFloorCloud(BaseModel):
     lamps: tuple[ModelFloorLamp, ...]
 
 
+ReadingState = Literal["read", "stale", "unread"]
+HostCondition = Literal["out", "unread", "stale", "refusing", "read"]
+
+
+class ModelHostNumber(BaseModel):
+    """One number of a host's status with the source that gave it, its read time and its age.
+
+    ``state`` is ``read`` only for a value inside its freshness bound; a value older than the bound keeps its number and
+    is ``stale``; a value with no source, or whose source could not be read, has no number and ``reason`` says why.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ReadingState
+    value: float | None
+    unit: str
+    source: str
+    read_at: str
+    age_min: int | None
+    reason: str
+
+
+class ModelHostFlag(BaseModel):
+    """One yes-or-no fact of a host's status, with the same state, source and reason as a number."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ReadingState
+    value: bool | None
+    source: str
+    read_at: str
+    age_min: int | None
+    reason: str
+
+
+class ModelHostLaneUse(BaseModel):
+    """One worker occupying a slot of a host: its name, ticket, kind and how long it has run."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    ticket: str
+    kind: str
+    engine: str
+    started_at: str
+    run_minutes: int
+    stalled: bool
+
+
+class ModelFloorHostStatus(BaseModel):
+    """One host of the host table: availability, slots, occupants and health, each value from its own source."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    label: str
+    condition: HostCondition
+    # Availability as the host table states it; ``state`` is unread when the table was not read or holds no row.
+    available: ModelHostFlag
+    unavailable_reason: str
+    cap: ModelHostNumber
+    # Placed units (every slot marker: remote lanes, landing-worker leases and lab-run jobs) against the cap.
+    slots_used: ModelHostNumber
+    slots_free: ModelHostNumber
+    admission_refusal: str
+    lanes: tuple[ModelHostLaneUse, ...]
+    landing_workers: tuple[ModelHostLaneUse, ...]
+    # Placed units that are not remote lanes: lab-run jobs and the landing workers' own leases (a marker does not say which).
+    other_units: ModelHostNumber
+    load_per_core: ModelHostNumber
+    mem_free_gb: ModelHostNumber
+    mem_pressure: ModelHostNumber
+    swap_used_pct: ModelHostNumber
+    disk_free_gb: ModelHostNumber
+    disk_used_pct: ModelHostNumber
+    heartbeat_age_min: ModelHostNumber
+    drift_open: ModelHostNumber
+    docker: ModelHostFlag
+    reading_age: ModelHostNumber
+
+
+class ModelFloorStoppedLane(BaseModel):
+    """A lane that ended short with work left (OMN-22934): what it named, its last rows and where its report is."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    # The ticket the lane worked on: the first of its tickets that is not an umbrella, else its first ticket.
+    ticket: str
+    # The lane's tickets that are not umbrellas: what ties a live lane to the same work.
+    tickets: tuple[str, ...] = ()
+    outcome: str
+    ended_at: str
+    age_minutes: int
+    # What the ending row names: any of "branch", "ask", "next-step", "needs".
+    names: tuple[str, ...]
+    # The ending row's needs= cell as written (``<action>:<target>`` or ``unparsed``); empty when the row has none (OMN-23417).
+    needs: str = ""
+    branch: str = ""
+    head: str = ""
+    prs: tuple[str, ...] = ()
+    # The lane's last rows, newest last, each cut; the continuation lane's brief carries them.
+    rows: tuple[str, ...]
+    report_path: str
+
+
+class ModelFloorStoppedSkip(BaseModel):
+    """A lane whose newest TERMINAL ended short but is not listed, with the cause."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    outcome: str
+    cause: str
+
+
 class ModelFloorSection(BaseModel):
     """The floor around the lines."""
 
@@ -283,12 +545,24 @@ class ModelFloorSection(BaseModel):
     machines: tuple[ModelFloorMachine, ...]
     cloud: ModelFloorCloud
     lanes: tuple[ModelFloorLane, ...]
+    inactive_lanes: tuple[ModelFloorLane, ...] = ()
     stall_minutes: int
     lane_window_minutes: int
     bays: tuple[ModelFloorBay, ...]
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    phoenix_traces: ModelFloorPhoenixTraces
+    # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
+    merged_running: ModelMergedRunningCountResult | None = None
+    # One status per host of the host table (the Machines tab); empty only in a record written before it existed.
+    host_status: tuple[ModelFloorHostStatus, ...] = ()
+    # Lanes that ended partial, blocked or failed with a branch, an ask or a next step named and no lane on them since.
+    stopped: tuple[ModelFloorStoppedLane, ...] = ()
+    # Lanes inside the window that ended short and are not listed, each with its cause.
+    stopped_skipped: tuple[ModelFloorStoppedSkip, ...] = ()
+    # Why no stopped lane could be listed (an unread goal scope); empty when the source was read.
+    stopped_cause: str = ""
 
 
 class ModelFloorSources(BaseModel):
@@ -306,8 +580,60 @@ class ModelFloorSources(BaseModel):
     host_table_read: bool
     placement_markers_read: bool
     receipts_read: bool
+    lane_processes_read: bool = False
     cloud_accounts_read: bool
     runner_fleet_read: bool
+    # False when no reader supplied the running-on-dev records, so no merge could be shown running.
+    running_evidence_read: bool = False
+    # Why the runner fleet is unread, in the reader's words; empty when it was read.
+    runner_fleet_cause: str = ""
+    # Why the merged-and-running count is unread, in the reader's words; empty when it was read.
+    merged_running_cause: str = ""
+    # How each source the line board depends on was read (copied from the request unchanged).
+    health: tuple[ModelFloorSourceHealth, ...] = ()
+
+
+LimitKind = Literal[
+    "claude_subscription",
+    "cloud_credit",
+    "api_credit",
+    "codex",
+    "glm",
+    "lab_model_rung",
+    "host_account_pool",
+]
+
+
+class ModelFloorLimitRow(BaseModel):
+    """One limit: its measured values, where they came from and when. UNKNOWN carries no value at all (OMN-22010)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    row_id: str
+    kind: LimitKind
+    name: str
+    state: Literal["read", "UNKNOWN"]
+    source: str
+    # When the source was read, "" when it never was.
+    read_at: str
+    # Set only on an UNKNOWN row: why no number is drawn.
+    unknown_reason: str = ""
+    # On a read row, the values the source did not give (drawn UNKNOWN, never zero).
+    unknown_fields: tuple[str, ...] = ()
+    values: dict[str, float | int | str | bool]
+
+
+class ModelFloorLimits(BaseModel):
+    """The Limits panel: one row per account, key, engine, rung and host token pool."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    publish_cycle_minutes: int
+    rows: tuple[ModelFloorLimitRow, ...]
+    # The sources that could not be read at all, so a missing row is not mistaken for a missing limit.
+    unread_sources: tuple[str, ...]
+    idle_slot_hours: float | None
+    idle_slot_hours_read_at: str
 
 
 class ModelFactoryFloorResult(BaseModel):
@@ -320,3 +646,6 @@ class ModelFactoryFloorResult(BaseModel):
     lines: tuple[ModelFloorLine, ...]
     floor: ModelFloorSection
     sources: ModelFloorSources
+    limits: ModelFloorLimits
+    # One entry per drawn line class, in class order: how complete each class's selection is, from the source health.
+    coverage: tuple[ModelFloorCoverage, ...] = ()

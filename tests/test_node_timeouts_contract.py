@@ -42,6 +42,11 @@ from omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canon
 from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
     TIMEOUT_SECONDS as SECRET_STORE_TIMEOUT,
 )
+from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_dev_merge_redeploy_git import (
+    CLASSIFIER_TIMEOUT_SECONDS,
+    GIT_TIMEOUT_SECONDS,
+    LANE_PROBE_TIMEOUT_SECONDS,
+)
 
 # node -> {declared name: the value the node's code held as a literal before it moved}
 DECLARED: dict[str, dict[str, float]] = {
@@ -85,7 +90,15 @@ DECLARED: dict[str, dict[str, float]] = {
         "readback_poll_interval_seconds": 5,
         "readback_deadline_seconds": 60,
     },
-    "node_canonical_clone_refresh_effect": {"sync_timeout_seconds": 300},
+    "node_canonical_clone_refresh_effect": {
+        "sync_timeout_seconds": 300,
+        "declared_clone_timeout_seconds": 120,
+    },
+    "node_dev_merge_redeploy_trigger_effect": {
+        "git_timeout_seconds": 120,
+        "classifier_timeout_seconds": 120,
+        "lane_probe_timeout_seconds": 60,
+    },
     "node_captured_secret_store_effect": {
         "store_call_timeout_seconds": 5.0,
         "credential_close_timeout_seconds": 30.0,
@@ -146,6 +159,9 @@ def test_module_constants_come_from_the_contract() -> None:
     assert OBSERVER_KAFKA_TIMEOUT == 15.0
     assert SYSTEM_HEALTH_TIMEOUT == 3.0
     assert SYNC_TIMEOUT_SECONDS == 300
+    assert GIT_TIMEOUT_SECONDS == 120
+    assert CLASSIFIER_TIMEOUT_SECONDS == 120
+    assert LANE_PROBE_TIMEOUT_SECONDS == 60
     assert SECRET_STORE_TIMEOUT == 5.0
 
 

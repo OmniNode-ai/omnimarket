@@ -310,7 +310,9 @@ def test_a_house_overlay_decision_is_not_labelled_customer_byok() -> None:
     cost surface, which is a reporting defect rather than a routing one, and is
     exactly the kind of thing that is invisible until someone reads a bill.
     """
-    from omnimarket.routing.tenant_overlay_resolver import HOUSE_OVERLAY_COST_TIER
+    from omnimarket.routing.tenant_overlay_resolver import (
+        HOUSE_OVERLAY_COST_TIER,
+    )
 
     db = InmemoryDatabaseAdapter()
     _seed_overlay_row(db, tenant_id=HOUSE_TENANT_SLUG, backend_id="lab-omnipc2")
@@ -351,7 +353,7 @@ def test_a_keyless_house_row_is_a_route_but_a_keyless_customer_row_is_not() -> N
     the same fact it was -- no active credential for the routed provider -- and
     is still refused on the cloud surface.
     """
-    from omnimarket.routing.customer_key_terminus import (
+    from omnimarket.handlers.routing.customer_key_terminus import (
         CustomerKeyRefusedError,
         EnumDelegationSurface,
     )

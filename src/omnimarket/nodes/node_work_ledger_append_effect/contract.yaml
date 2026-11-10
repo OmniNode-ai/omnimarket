@@ -29,17 +29,18 @@ name: "node_work_ledger_append_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
-contract_version: {major: 0, minor: 4, patch: 0}
-node_version: "0.4.0"
+contract_version: {major: 0, minor: 5, patch: 0}
+node_version: "0.5.0"
 description: >
   Attributes rows to the broker principal of the producing connection, attested
   by per-principal topic WRITE ACLs declared in omnibase_infra
   deploy/lab/developer-principal-grants.yaml, with no per-row signing. Appends
-  on the ledger host, deduplicating by request id and returning line numbers.
+  on the ledger host, deduplicating by request id and returning line numbers;
+  append_if_absent appends a row only when no ledger row carries its row id.
 input_model:
   name: "ModelWorkLedgerAppendRequest"
   module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
-  description: "Request id, rows, ledger id, lane, host and time; writer identity comes from the broker."
+  description: "Request id, rows, ledger id, lane, host and time, plus an optional row id for append_if_absent; writer identity comes from the broker."
 output_model:
   name: "ModelWorkLedgerAppendReceipt"
   module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
@@ -56,6 +57,10 @@ handler_routing:
       handler:
         name: "HandlerWorkLedgerAppendEffect"
         module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
+    - operation: "join_j5_work_ledger_append"
+      handler:
+        name: "HandlerWorkLedgerJoinJ5"
+        module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_join_j5"
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -95,6 +100,40 @@ consume_watch:
   backoff_initial_seconds: 15
   backoff_factor: 2
   backoff_cap_seconds: 300
+# OMN-22185: append_if_absent is an additive field of the one append request
+# (`append_if_absent_row_id`), not a second operation: the serve process, its writer
+# topics and the receipt stay as they are. The row is appended only when no ledger row
+# already carries the cell `<row_id_cell>=<row id>`; the check and the append run under
+# one flock on `<ledger><lock_suffix>`, waited for at most `lock_wait_seconds`, so two
+# concurrent calls of one row id leave one row. An absent key refuses the request.
+append_if_absent:
+  row_id_cell: "id"
+  lock_suffix: ".work-ledger-append.lock"
+  lock_wait_seconds: 60
+# OMN-22914, rebuild plan 4.1 join J5 (piece 5 to piece 6): an append under an identity the secret store resolves lands
+# as a durable row and a projected row. The handler answers piece 5's chain on the floor's emission contract under the
+# same correlation id: a typed failure with no start when the store gives no identity (the code keeps the floor's
+# `upstream_` prefix), and a start then a success or a typed failure otherwise. Nothing of this is spelled in code.
+join_j5:
+  join_id: "J5"
+  from_piece: 5
+  to_piece: 6
+  emission_node: "node_work_ledger_append_effect"
+  identity_unresolved_failure_code: "upstream_identity_unresolved"
+  append_not_accepted_failure_code: "ledger_append_not_accepted"
+  projected_row_missing_failure_code: "projected_row_missing"
+# OMN-23086: the J5 runner is bound here so the contract owns it; it runs through runtime_join_j5 (the publish cycle's
+# join_j5 step), not handler_routing, because its collaborators are chosen by the overlay.
+cli_handlers:
+  - operation: join_j5_run
+    handler:
+      name: HandlerWorkLedgerJoinJ5Run
+      module: omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_join_j5_run
+relay_requires:
+  resource: omnimarket.nodes.node_onex_ledger_admission_compute/relay_requires.yaml
+  evaluator: omnimarket.protocols.protocol_relay_admission.ProtocolRelayAdmission
+  validator_owner: omnibase_core
+  enforcement: before calling the append runner, using the same rule as wrapper admission
 runtime_dispatch:
   # UNATTRIBUTED legacy topic: serve answers parsed requests with a refusal.
   command_topic: "onex.cmd.omnimarket.work-ledger-append-requested.v1"

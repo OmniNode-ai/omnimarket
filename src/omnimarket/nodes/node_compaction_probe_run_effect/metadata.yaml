@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_compaction_probe_run_effect
+version: 1.0.0
+description: Records the answering model's and a different judge model's calls under the plan's key, replays them with no model call, and reports the judge's calibration on the oracle, empty and inverted controls.
+pack: core
+node_role: effect
+display_name: Compaction Probe Run Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_compaction_probe_run_effect: omnimarket.nodes.node_compaction_probe_run_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.11.0
+license: MIT
+tags: [effect, compaction, measurement]

@@ -27,7 +27,8 @@ description: Refuse a Bash command that would recreate, remove, stop or restart 
   container of a protected dev runtime compose project (named by -p,
   COMPOSE_PROJECT_NAME, its compose file, its project label or a container name,
   locally or over ssh) unless a live grant row on the rolling work ledger names the
-  project. Read-only docker calls and other projects pass. Reads the contract, the
+  project. Read-only docker calls (ps, logs, inspect, events, compose config,
+  compose up with --dry-run) and other projects pass. Reads the contract, the
   overlay and the tail of the ledger; writes nothing.
 input_model:
   name: ModelDevRuntimeMutationRequest
@@ -118,6 +119,15 @@ guard_policy:
         - omnimarket-projection-live-events-writer
   # docker compose subcommands that create, replace, stop or remove containers.
   compose_mutating_verbs: [up, down, rm, restart, stop, kill, start, create, pause, unpause, scale]
+  # A compose subcommand from this list that carries the switch below changes
+  # nothing, so it is not a mutation. The switch counts only as a bare flag or with
+  # one of true_values, inside the compose call itself (never an argument of another
+  # command on the line); any other value, and every subcommand not listed, stays
+  # a mutation. An overlay cannot change this block.
+  compose_dry_run:
+    flag: --dry-run
+    verbs: [up]
+    true_values: ["true"]
   # docker (and docker container) subcommands that act on a named container.
   docker_mutating_verbs: [rm, restart, stop, kill, start, pause, unpause, rename, update]
   # A live grant: a ledger row of one of these kinds whose grant cell names

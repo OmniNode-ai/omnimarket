@@ -12,6 +12,7 @@ import pytest
 from omnimarket.models.model_factory_floor_input import (
     ModelFloorCloudAccount,
     ModelFloorHostRow,
+    ModelFloorLaneProcess,
     ModelFloorLinearIssue,
     ModelFloorMachineDecl,
     ModelFloorPlacedHost,
@@ -26,6 +27,7 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from tests.nodes.node_factory_floor_compute.support import (
     NOW,
     ago,
+    config,
     pr,
     request,
     row,
@@ -302,6 +304,102 @@ def test_a_lane_that_claimed_again_after_its_terminal_is_live() -> None:
     assert [lane.lane for lane in floor(ledger=ledger).lanes] == ["again"]
 
 
+@pytest.mark.parametrize(
+    "cells",
+    [
+        {"final": True, "status": "landing-failed", "ended_at": ago(5)},
+        {"status": "landing-failed"},
+        {"ended_at": ago(5)},
+    ],
+)
+def test_finished_receipt_closes_cx_worker_without_a_terminal(
+    cells: dict[str, Any],
+) -> None:
+    result = floor(
+        ledger=lane_rows("cx-5614-0410", host="h051"),
+        receipts=(receipt("cx-5614-0410", **cells),),
+        pool=(reading("h051"),),
+    )
+    assert result.lanes == ()
+    assert result.machines[0].lanes_placed == 0
+    assert result.bays[0].running == 0
+    assert result.inactive_lanes[0].liveness == "finished"
+
+
+def test_a_finished_receipt_from_an_older_run_does_not_close_a_reclaimed_lane() -> None:
+    result = floor(
+        ledger=lane_rows("cx-5614-0410", claim_ago=10, host="h051"),
+        receipts=(receipt("cx-5614-0410", final=True, ended_at=ago(20)),),
+    )
+    assert [lane.lane for lane in result.lanes] == ["cx-5614-0410"]
+
+
+@pytest.mark.parametrize(
+    "lane", ["landing-L25183", "landing-L25192", "landing-L25196", "pfix-2062-r-1744"]
+)
+def test_a_dead_runner_with_a_running_receipt_occupies_no_slot(lane: str) -> None:
+    result = floor(
+        ledger=lane_rows(lane, host="h051"),
+        receipts=(receipt(lane, runner_alive=False),),
+        pool=(reading("h051"),),
+    )
+    assert result.lanes == ()
+    assert result.machines[0].lanes_placed == result.bays[0].running == 0
+    assert [(item.lane, item.liveness) for item in result.inactive_lanes] == [
+        (lane, "dead")
+    ]
+
+
+@pytest.mark.parametrize("alive", [True, None])
+def test_a_live_or_unread_runner_stays_quiet(alive: bool | None) -> None:
+    result = floor(
+        ledger=lane_rows("quiet-live", host="h051"),
+        receipts=(receipt("quiet-live", runner_alive=alive),),
+    )
+    assert result.lanes[0].stalled is True
+    assert result.lanes[0].liveness == ("alive" if alive else "unread")
+    assert result.inactive_lanes == ()
+    assert result.machines[0].lanes_placed == 1
+
+
+@pytest.mark.parametrize("lane", ["landing-cause-L25919", "landing-cause-L26040"])
+def test_a_hostless_cause_claim_with_no_process_is_dead(lane: str) -> None:
+    result = floor(
+        ledger=lane_rows(lane, claim_ago=148),
+        lane_processes=(
+            ModelFloorLaneProcess(
+                lane=lane,
+                started_at=ago(148),
+                observed_at=NOW,
+                alive=False,
+                detail="controller worker group and tag are absent",
+            ),
+        ),
+    )
+    assert result.lanes == ()
+    assert result.inactive_lanes[0].liveness == "dead"
+
+
+def test_stale_process_evidence_and_a_receipt_for_another_run_cannot_close_a_claim() -> (
+    None
+):
+    result = floor(
+        ledger=lane_rows("again", run_id="current"),
+        receipts=(receipt("again", run_id="old", runner_alive=False, final=True),),
+        lane_processes=(
+            ModelFloorLaneProcess(
+                lane="again",
+                started_at=ago(60),
+                observed_at=ago(90),
+                alive=False,
+                detail="old process read",
+            ),
+        ),
+    )
+    assert [item.lane for item in result.lanes] == ["again"]
+    assert result.lanes[0].liveness == "unread"
+
+
 def test_kind_comes_from_the_declared_rules_in_order() -> None:
     def kind_of(text: str, actor: str = "x") -> str:
         rows = (row("CLAIM", 10, "k", tickets=("OMN-5",), actor=actor, text=text),)
@@ -332,7 +430,8 @@ def test_a_lane_links_to_the_station_that_holds_its_ticket() -> None:
         request(plans=(plan,), machines=MACHINES, ledger=lane_rows("lane-a"))
     ).floor.lanes[0]
     assert lane.station is not None
-    assert (lane.station.station_id, lane.station.item_id) == ("0", "W0.2")
+    # Every task is its own station, so the lane links to the task's station.
+    assert (lane.station.station_id, lane.station.item_id) == ("W0.2", "W0.2")
     assert floor(ledger=lane_rows("lane-a")).lanes[0].station is None
 
 
@@ -470,3 +569,226 @@ def test_a_host_the_table_takes_out_of_selection_for_another_reason_is_out_not_i
     )
     bay = result.machines[0]
     assert (bay.state, bay.note) == ("out", "placement paused for an install")
+
+
+def test_an_account_draws_the_open_sessions_of_its_own_list_not_the_entries_of_the_accounts_file() -> (
+    None
+):
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(
+                name="h200",
+                login="ok",
+                cap=17,
+                active=tuple(f"stale-{n}" for n in range(7)),
+            ),
+        ),
+        receipts=(
+            cloud_receipt("live-a", 10, run_id="r-a"),
+            cloud_receipt("live-b", 20, run_id="r-b"),
+            cloud_receipt("live-c", 30, run_id="r-c"),
+            cloud_receipt("done", 90, run_id="r-d", final=True, status="done"),
+        ),
+    ).cloud
+    (account,) = result.accounts
+    assert account.open_sessions == 3
+    assert account.open_sessions == sum(
+        1 for s in result.sessions if s.account == "h200" and s.open
+    )
+    assert "7" in account.record_note
+    assert "3" in account.record_note
+
+
+def test_an_account_whose_file_entries_agree_with_its_list_carries_no_stale_note() -> (
+    None
+):
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(name="h200", login="ok", active=("r-a",)),
+        ),
+        receipts=(cloud_receipt("live-a", 10, run_id="r-a"),),
+    ).cloud
+    assert (result.accounts[0].open_sessions, result.accounts[0].record_note) == (
+        1,
+        "",
+    )
+
+
+def test_the_open_count_covers_an_open_session_the_capped_list_would_cut() -> None:
+    limit = config().cloud_sessions_limit
+    finished = tuple(
+        cloud_receipt(f"done-{n}", 10 + n, run_id=f"d{n}", final=True, status="done")
+        for n in range(limit + 2)
+    )
+    result = floor(
+        cloud_accounts=(ModelFloorCloudAccount(name="h200", login="ok"),),
+        receipts=(*finished, cloud_receipt("old-live", 600, run_id="old")),
+    ).cloud
+    assert result.accounts[0].open_sessions == 1
+    assert [s.lane for s in result.sessions if s.open] == ["old-live"]
+    assert len(result.sessions) <= limit
+
+
+def test_every_ready_account_is_drawn_and_an_unread_cap_or_count_stays_unread() -> None:
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(name="h200", login="ok", cap=17),
+            ModelFloorCloudAccount(name="h101", login="ok"),
+        ),
+        receipts=(cloud_receipt("live-a", 10, run_id="r-a"),),
+    ).cloud
+    assert [(a.name, a.cap, a.open_sessions) for a in result.accounts] == [
+        ("h101", None, 0),
+        ("h200", 17, 1),
+    ]
+    unread = floor(
+        cloud_accounts=(ModelFloorCloudAccount(name="h200", login="ok", cap=17),),
+    ).cloud
+    assert unread.accounts[0].open_sessions is None
+
+
+def test_a_signed_in_account_the_overlay_does_not_declare_is_counted_in_the_note_with_its_cause() -> (
+    None
+):
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(name="h200", login="ok", cap=14),
+            ModelFloorCloudAccount(name="h203", login="ok", cap=10),
+            ModelFloorCloudAccount(name="h101", login="no-claude-ai-login"),
+        ),
+    ).cloud
+    assert [a.name for a in result.accounts] == ["h200"]
+    assert "1 signed-in account" in result.note
+    assert "not on the declared machine list" in result.note
+    assert "1 listed machines hold no cloud login" in result.note
+
+
+def test_the_bays_match_the_runner_units_count_and_a_refused_host_is_no_room() -> None:
+    """OMN-22686: the 2026-11-06T14:27Z record drew 9 of 64 slots in use while the runner had no free slot.
+
+    h053 had 14 placed units of which 9 were ledger lanes, at cap 16 and 2 free lane slots by the pool reading; h101 was
+    refused by the reading and had a cap of 12; h201 had 1 free lane slot. The bays must add up to what the runner can place.
+    """
+    machines = (
+        ModelFloorMachineDecl(host="h053", label="h053"),
+        ModelFloorMachineDecl(host="h101", label="h101"),
+        ModelFloorMachineDecl(host="h201", label="h201"),
+    )
+    ledger = tuple(
+        r for n in range(9) for r in lane_rows(f"lane-{n}", host="h053")
+    ) + lane_rows("lane-x", host="h201")
+    result = compute_factory_floor(
+        request(
+            machines=machines,
+            ledger=ledger,
+            pool=(
+                reading("h053", cap=16, lane_slots=2),
+                reading(
+                    "h101",
+                    cap=12,
+                    lane_slots=3,
+                    refusal="PARITY-FAILED: bus-host: BUS-HOST-UNRESOLVED",
+                ),
+                reading("h201", cap=3, lane_slots=1),
+            ),
+            host_table=(
+                ModelFloorHostRow(host="h053", cap=16),
+                ModelFloorHostRow(host="h101", cap=12),
+                ModelFloorHostRow(host="h201", cap=3),
+            ),
+            placed=(
+                ModelFloorPlacedHost(host="h053", units=14, lanes=9),
+                ModelFloorPlacedHost(host="h101", units=0, lanes=0),
+                ModelFloorPlacedHost(host="h201", units=2, lanes=1),
+            ),
+        )
+    ).floor
+    bays = {b.host: (b.slots, b.running, b.free, b.stale) for b in result.bays}
+    assert bays == {
+        "h053": (16, 14, 2, False),
+        "h101": (0, 0, 0, False),
+        "h201": (3, 2, 1, False),
+    }
+    # The sum the headline draws is the sum of the runner's free lane slots (2 + 0 + 1), not the caps less the ledger lanes.
+    assert sum(b.free for b in result.bays) == 3
+
+
+# OMN-23081: the floor marked gitmut-0815, zeroflip-port-0830 and piece-readings-0815 alive but stalled while each
+# lane's runner output file was written 09:16 to 09:17Z with tool calls in progress. Remote lanes write no ledger
+# row between CLAIM and TERMINAL, so the stall reading saw only the CLAIM. Minutes below are the lanes' recorded
+# ages read at 09:17:30Z: CLAIM 08:15 (62 min), 08:30 (47 min), 08:15 (62 min); output last written 09:17, 09:16, 09:16.
+THREE_LANES = (
+    ("gitmut-0815", 62, 0.5),
+    ("zeroflip-port-0830", 47, 1.5),
+    ("piece-readings-0815", 62, 1.5),
+)
+
+
+def three_lane_floor(*, with_output: bool, runner_alive: bool | None = True) -> Any:
+    ledger: tuple[Any, ...] = ()
+    receipts: tuple[Any, ...] = ()
+    for lane, claim_ago, output_ago in THREE_LANES:
+        ledger += lane_rows(lane, claim_ago=claim_ago, host="h051")
+        receipts += (
+            receipt(
+                lane,
+                started_at=ago(claim_ago),
+                runner_alive=runner_alive,
+                output_at=ago(output_ago) if with_output else None,
+            ),
+        )
+    return floor(ledger=ledger, receipts=receipts)
+
+
+def test_lanes_whose_runner_output_is_fresh_are_not_stalled() -> None:
+    result = three_lane_floor(with_output=True)
+    assert {lane.lane: lane.stalled for lane in result.lanes} == {
+        "gitmut-0815": False,
+        "zeroflip-port-0830": False,
+        "piece-readings-0815": False,
+    }
+    assert {lane.lane: lane.silent_minutes for lane in result.lanes} == {
+        "gitmut-0815": 0,
+        "zeroflip-port-0830": 1,
+        "piece-readings-0815": 1,
+    }
+
+
+def test_the_same_lanes_without_runner_output_are_still_stalled() -> None:
+    # The failing control: the ledger alone, as the floor read it at 09:10:51Z, stalls all three.
+    result = three_lane_floor(with_output=False)
+    assert all(lane.stalled for lane in result.lanes)
+    assert len(result.lanes) == 3
+
+
+def test_runner_output_older_than_the_stall_bound_does_not_save_a_lane() -> None:
+    result = floor(
+        ledger=lane_rows("quiet-out", claim_ago=120, host="h051"),
+        receipts=(receipt("quiet-out", started_at=ago(120), output_at=ago(45)),),
+    )
+    assert result.lanes[0].stalled is True
+    assert result.lanes[0].silent_minutes == 45
+
+
+def test_runner_output_of_a_finished_run_is_not_progress() -> None:
+    result = floor(
+        ledger=lane_rows("ended-out", claim_ago=120, host="h051"),
+        receipts=(
+            receipt(
+                "ended-out",
+                started_at=ago(120),
+                output_at=ago(1),
+                final=True,
+                status="done",
+            ),
+        ),
+    )
+    assert result.lanes == ()
+
+
+def test_runner_output_from_a_previous_run_is_not_progress_of_this_claim() -> None:
+    result = floor(
+        ledger=lane_rows("rerun", claim_ago=60, host="h051"),
+        receipts=(receipt("rerun", started_at=ago(200), output_at=ago(1)),),
+    )
+    assert result.lanes[0].stalled is True

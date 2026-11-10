@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Compaction cost accounting (OMN-21966).
+# Four lines per arm, each measured, estimated or unavailable: compaction tokens, the context
+# size after, the tokens spent on recovery calls in the N turns after, and the net saved
+# context; then cost(mod) / cost(stock), flagged ESTIMATED with the 50 percent perturbation
+# bound when any line is estimated. The caller reads the transcript, receipts and hook events
+# and passes usage records and tool calls in with their provenance; the node performs no I/O
+# and writes nothing, to the savings table or anywhere else.
+name: node_compaction_cost_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: Account a compaction's cost per arm with measured and estimated provenance and compare the arms.
+input_model:
+  name: ModelCompactionCostRequest
+  module: omnimarket.nodes.node_compaction_cost_compute.models.model_compaction_cost
+output_model:
+  name: ModelCompactionCostResult
+  module: omnimarket.nodes.node_compaction_cost_compute.models.model_compaction_cost
+handler:
+  module: omnimarket.nodes.node_compaction_cost_compute.handlers.handler_compaction_cost
+  class: HandlerCompactionCost
+  input_model: omnimarket.nodes.node_compaction_cost_compute.models.model_compaction_cost.ModelCompactionCostRequest
+  output_model: omnimarket.nodes.node_compaction_cost_compute.models.model_compaction_cost.ModelCompactionCostResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCompactionCost
+        module: omnimarket.nodes.node_compaction_cost_compute.handlers.handler_compaction_cost
+      event_model:
+        name: ModelCompactionCostRequest
+        module: omnimarket.nodes.node_compaction_cost_compute.models.model_compaction_cost
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+  timeout_ms: 5000
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with usage records and tool calls read by the caller.
+replay:
+  deterministic: true
+metadata:
+  transport_type: local

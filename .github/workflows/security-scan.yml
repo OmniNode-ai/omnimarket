@@ -32,6 +32,13 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # The TruffleHog scanner the secret scan runs, by immutable digest. Resolved
+  # from ghcr.io/trufflesecurity/trufflehog:latest on 2026-11-07, when :latest
+  # and :3.99.8 both pointed at this digest. trufflehog-digest-drift.yml reads
+  # this line and reports when :latest moves; bump it in a reviewed PR.
+  TRUFFLEHOG_IMAGE: ghcr.io/trufflesecurity/trufflehog@sha256:674b2f187620a19df77f44cf9a7d77efcc581a5662accef2f2739cbb46ba4a3a
+
 jobs:
   dependency-scan:
     name: Dependency Security Scan
@@ -57,14 +64,29 @@ jobs:
 
       - name: Run Safety Check
         run: |
-          pip install safety
+          # OMN-17427: pinned. An unpinned scanner resolves at runtime and can
+          # change behaviour overnight with no commit.
+          pip install safety==3.8.1
           # JSON capture is diagnostic-only (feeds the uploaded artifact below);
           # `|| true` here only prevents a non-zero exit from skipping the
-          # artifact write. The PLAIN invocation below is the enforcing gate —
-          # no `|| true`: `|| true` on an enforcing step is not a valid
-          # exemption form (doctrine). A real finding now fails this job.
+          # artifact write. The enforcing gate is the retry loop below.
           safety check --file requirements.txt --output json > safety-report.json || true
-          safety check --file requirements.txt
+          # ENFORCING GATE: no `|| true`: `|| true` on an enforcing step is not
+          # a valid exemption form (doctrine). A real finding (safety exits 64)
+          # fails immediately. safety 3.8.1 intermittently crashes with
+          # `Unhandled exception happened: 'multidict'` (exit 1) when the free
+          # vulnerability database's index and full files disagree about a
+          # package (KeyError in safety.get_vulnerabilities); that crash judged
+          # nothing, so only an exit-1 crash is retried, up to 3 attempts, and
+          # a crash on every attempt still fails the job.
+          for attempt in 1 2 3; do
+            rc=0
+            safety check --file requirements.txt || rc=$?
+            if [ "$rc" -ne 1 ]; then exit "$rc"; fi
+            echo "::warning::safety crashed (exit 1) on attempt $attempt of 3"
+            sleep 20
+          done
+          exit 1
 
       - name: Upload Safety report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
@@ -82,23 +104,60 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The TruffleHog action is only a wrapper around a `docker run` of
+      # ghcr.io/trufflesecurity/trufflehog:latest, so pinning the action pinned
+      # nothing that scans. These steps run the image by digest
+      # (env.TRUFFLEHOG_IMAGE) and rebuild the arguments the action at
+      # 586f66d7886cd0b037c7c245d4a6e34ef357ab10 built, so the scope, flags and
+      # pass/fail behaviour are unchanged.
+      # --exclude-detectors=lob (OMN-16045): Lob detector regex (v3.95.9+) mass-verifies test_-prefixed pytest identifiers as live keys; zero Lob usage in this repo. Dropping it is its own reviewed change, not part of a digest bump.
       - name: TruffleHog Secret Scanning (push diff)
         if: github.event_name == 'push'
-        uses: trufflesecurity/trufflehog@586f66d7886cd0b037c7c245d4a6e34ef357ab10
-        with:
-          path: ./
-          base: ${{ github.event.before }}
-          head: ${{ github.event.after }}
-          # --exclude-detectors=lob (OMN-16045): Lob detector regex (v3.95.9+) mass-verifies test_-prefixed pytest identifiers as live keys; zero Lob usage in this repo. Remove when a released trufflehog tag carries upstream PR 5188.
-          extra_args: --only-verified --exclude-detectors=lob
+        env:
+          BASE: ${{ github.event.before }}
+          HEAD: ${{ github.event.after }}
+        run: |
+          # The action's explicit base/head path: resolve both, refuse an empty range.
+          git status >/dev/null
+          base_commit=$(git rev-parse "$BASE" 2>/dev/null) || true
+          head_commit=$(git rev-parse "$HEAD" 2>/dev/null) || true
+          if [ "$base_commit" == "$head_commit" ]; then
+            echo "::error::BASE and HEAD commits are the same. TruffleHog won't scan anything."
+            exit 1
+          fi
+          docker run --rm -v .:/tmp -w /tmp "$TRUFFLEHOG_IMAGE" \
+            git file:///tmp/ \
+            --since-commit "$BASE" \
+            --branch "$HEAD" \
+            --fail \
+            --no-update \
+            --github-actions \
+            --only-verified --exclude-detectors=lob
 
       - name: TruffleHog Secret Scanning (full scan)
         if: github.event_name != 'push'
-        uses: trufflesecurity/trufflehog@586f66d7886cd0b037c7c245d4a6e34ef357ab10
-        with:
-          path: ./
-          # --exclude-detectors=lob (OMN-16045): Lob detector regex (v3.95.9+) mass-verifies test_-prefixed pytest identifiers as live keys; zero Lob usage in this repo. Remove when a released trufflehog tag carries upstream PR 5188.
-          extra_args: --only-verified --exclude-detectors=lob
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # The action's event path: a pull request scans base..head, a schedule
+          # or manual run scans the whole history.
+          git status >/dev/null
+          BASE=""
+          HEAD=""
+          if [ "$EVENT_NAME" == "pull_request" ]; then
+            BASE="$PR_BASE_SHA"
+            HEAD="$PR_HEAD_SHA"
+          fi
+          docker run --rm -v .:/tmp -w /tmp "$TRUFFLEHOG_IMAGE" \
+            git file:///tmp/ \
+            --since-commit "$BASE" \
+            --branch "$HEAD" \
+            --fail \
+            --no-update \
+            --github-actions \
+            --only-verified --exclude-detectors=lob
 
   codeql:
     name: CodeQL Security Analysis

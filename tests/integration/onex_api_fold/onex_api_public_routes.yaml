@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# One-runtime plan T18c (OMN-23217, parent OMN-22030): the 14 onex-api route
+# identities that the T18a inventory (OMN-22144) bins as public, by method and
+# mounted path. The hosted-architecture routes are not listed here: no public
+# artifact names them (T18d, OMN-22160).
+# `state` is what the runtime does today: `served` when a node contract declares
+# an http_mount prefix that covers the path, `pending` when none does,
+# `runtime_health` for the runtime's own /health (plan T18c group 2: status only,
+# the body differs by design) and `retired` for GET / (retired by the plan's
+# decision, no runtime counterpart).
+# When a port lands the entry moves from pending to served in the same pull
+# request, and the strict control in the test file turns green.
+identities:
+  - {method: POST, path: /v1/github/webhook, state: served, named_in: src/omnimarket/nodes/node_github_webhook_ingress_effect/contract.yaml}
+  - {method: GET, path: /v1/envelopes/example, state: served, named_in: src/omnimarket/nodes/node_envelope_example_get_effect/contract.yaml}
+  - {method: GET, path: /v1/projections/hook-events/by-correlation, state: served, named_in: src/omnimarket/nodes/node_hook_events_by_correlation_read_effect/contract.yaml}
+  - {method: GET, path: /health, state: runtime_health, named_in: plan T18c group 2}
+  - {method: GET, path: /, state: retired, named_in: plan T18c group 2}
+  - {method: GET, path: /v1/plans, state: served, named_in: src/omnimarket/nodes/node_plan_list/contract.yaml}
+  - {method: GET, path: /v1/usage/privileges, state: served, named_in: src/omnimarket/nodes/node_usage_privileges/contract.yaml}
+  - {method: POST, path: /envelopes/example, state: served, named_in: src/omnimarket/nodes/node_envelope_example_post_effect/contract.yaml}
+  - {method: GET, path: /v1/workflows/contracts, state: pending, named_in: src/omnimarket/cloud/transport_cloud_delegation.py}
+  - {method: GET, path: /v1/tenants/me/savings, state: served, named_in: src/omnimarket/nodes/node_tenant_savings_read_effect/contract.yaml}
+  - {method: GET, path: /v1/tenants/me/delegations, state: served, named_in: src/omnimarket/nodes/node_tenant_delegations_read_effect/contract.yaml}
+  - {method: POST, path: /v1/tenants/me/inference-credentials, state: served, named_in: src/omnimarket/nodes/node_inference_credentials/contract.yaml}
+  - {method: GET, path: /v1/tenants/me/inference-credentials, state: served, named_in: src/omnimarket/nodes/node_inference_credentials/contract.yaml}
+  - {method: DELETE, path: "/v1/tenants/me/inference-credentials/{api_key_ref}", state: served, named_in: src/omnimarket/nodes/node_inference_credentials/contract.yaml}

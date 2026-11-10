@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from ..models.model_ruling_recovery import ModelRulingRecoveryResult
+from .ruling_artifacts import local_artifacts
 from .ruling_live_checks import Finding, evaluate_check, packaged_checks, read_check
+from .ruling_owed import owed_findings
 from .ruling_recovery import detect_relaunches, parse_rows
 
 
@@ -45,36 +47,6 @@ def _briefs(rows: list[dict[str, str]], roots: list[Path]) -> dict[str, str]:
             except (OSError, UnicodeError):
                 continue
     return result
-
-
-def _local_artifacts(rows: list[dict[str, str]], run_root: Path) -> None:
-    """Retain actual staged patch locations when the blocked run is on this host.
-
-    Remote run ids and their host remain in the brief when their files cannot be
-    read here. A path is filled only from an existing run, never invented.
-    """
-    for row in rows:
-        run = row.get("run", "")
-        if row["action"] != "CLAIM" or not run or "/" in run or run in {".", ".."}:
-            continue
-        directory = run_root / run
-        if not directory.is_dir():
-            continue
-        row.setdefault("run-directory", str(directory))
-        context = run_root / f"{run}.ctx"
-        try:
-            repository = (context / "repository").read_text(encoding="utf-8").strip()
-            if repository and all(c.isalnum() or c in "_/.-" for c in repository):
-                row.setdefault("repo", repository.split("/")[-1])
-        except (OSError, UnicodeError):
-            pass
-        patches = [
-            context / "landing-artifact/change.patch",
-            *sorted((context / "scratch").glob("*staged*.patch")),
-        ]
-        existing = [str(p) for p in patches if p.is_file()]
-        if existing:
-            row.setdefault("patch-path", ", ".join(existing))
 
 
 def _record_exceptions(
@@ -213,7 +185,7 @@ class HandlerRulingRecovery:
         if registry:
             roots.append(Path(registry) / ".claude_scratch/lanes")
         briefs = _briefs(rows, roots)
-        _local_artifacts(
+        local_artifacts(
             rows,
             Path(
                 environ.get("ONEX_REMOTE_LANE_RUN_ROOT") or Path.home() / "lab-run/runs"
@@ -243,6 +215,7 @@ class HandlerRulingRecovery:
                         "restore the original brief or run receipt so the existing repository scope gate can judge it",
                     )
                 )
+        found.extend(owed_findings(rows, now))
         for row in exceptions:
             found.append(
                 (

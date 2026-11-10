@@ -29,6 +29,10 @@ from pydantic import SecretStr
 from omnimarket.enums.enum_delegation_failure_class import (
     EnumDelegationFailureClass,
 )
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ModelByokProviderBackend,
+    resolve_byok_backend_by_id,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -42,11 +46,8 @@ from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secr
 from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_request import (
     ModelLocalSecretRequest,
 )
-from omnimarket.routing.byok_provider_backends import (
-    ModelByokProviderBackend,
-    resolve_byok_backend_by_id,
-)
 from tests.chains.local.harness import use_local_store
+from tests.helpers.tenant_registry import mirror_tenant_in_store
 
 pytestmark = pytest.mark.unit
 
@@ -137,6 +138,7 @@ def two_keys(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 def _dispatch(
     tmp_path: Path, providers: _Providers, *, task_type: str = "document"
 ) -> dict[str, object]:
+    mirror_tenant_in_store(tmp_path / "evidence.sqlite", "acme")
     port = LocalDelegationDispatchPort(
         effect_handler=providers,
         evidence_db_path=tmp_path / "evidence.sqlite",

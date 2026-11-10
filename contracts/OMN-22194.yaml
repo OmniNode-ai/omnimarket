@@ -1,0 +1,140 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22194"
+title: "The consumer-group guard node owns its schedule in omnimarket and runs from h053 on the same 300 s cadence, with the Mac unit unloaded first"
+summary: "node_consumer_group_guard_effect gains a schedule block in its contract, schedule verbs (check, install, status, run-now, uninstall) and a node-owned systemd user timer renderer, dispatched from __main__ only when the first argument is schedule. The run path, handlers and models are not edited."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22194-guard-schedule"
+    statement: "The guard runs from h053 as a systemd user timer the node itself renders, with the same values as the Mac unit, and the Mac unit is unloaded before the lab timer is installed."
+    acceptance:
+      - id: "AC1"
+        statement: "render parity: schedule install --host h053 --dry-run prints a service whose ExecStart is the dispatch venv interpreter running the guard module with --state-dir and no --omni-home, with the bus lane and workspace config root of the host row and no start timeout, and a timer of a first pass then 300 s; a host with no row and a duplicate row are refused."
+      - id: "AC2"
+        statement: "the run path is unchanged: nothing under handlers/ or models/ and not runtime_consumer_group_guard.py changes, contract.yaml gains lines only inside the schedule block, the entry point still delegates unchanged, the --help output is byte-equal, and the implementation digest is equal on the Mac clone, h053's dispatch venv copy and h053's clone."
+      - id: "AC3"
+        statement: "status: schedule status --host h053 prints LOADED or NOT LOADED with a non-zero exit, reads census.json and not last-run.json, and reports not healthy when the file is absent, stale, not OK, or its reap_detail is a skipped or stopped kind."
+      - id: "AC4"
+        statement: "never at once: the Mac unload is recorded with its time before the lab install, the first lab observed_at is later, and the Mac label stays absent after the next host-reconcile run and another unit's installer run."
+      - id: "AC5"
+        statement: "the values are read, not coded: changing the row's workspace_config_root or bus_lane changes the rendered value and removing the row refuses the install."
+      - id: "AC6"
+        statement: "uninstall: with a scripted runner schedule uninstall issues systemctl --user disable --now on the timer, removes both unit files, reloads the daemon and issues no stop of the service."
+      - id: "AC7"
+        statement: "parity proof in the 60 minutes after the install: two completed timer-started runs from two invocations at least 600 s apart, one reaping N of N with N at least 1, broker and bus lane equal to the Mac baseline."
+      - id: "AC8"
+        statement: "rollback is rehearsed as a read: uninstall, stop and reset-failed of the lab service, then is-active prints inactive before the Mac unit is reinstalled."
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused node tests for the schedule verbs and the unchanged entry point."
+    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22194-render"
+    description: "The render tests: service ExecStart, Environment and no start timeout, the timer cadence, an unlisted host and a duplicate row refused."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py -q --no-cov -k guard_schedule_render"
+        cwd: "."
+  - id: "dod-omn22194-unlisted"
+    description: "A host with no overlay row, and a duplicate row, are refused naming the host."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py -q --no-cov -k guard_schedule_unlisted_host"
+        cwd: "."
+  - id: "dod-omn22194-main-delegates"
+    description: "With the guard main replaced by a recorder, every argument list not starting with schedule reaches it once and unchanged and its return value is the exit code; a schedule list never reaches it."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py -q --no-cov -k guard_main_delegates_unchanged"
+        cwd: "."
+  - id: "dod-omn22194-status"
+    description: "The status matrix: LOADED and NOT LOADED, census.json read and last-run.json not, and the reap_detail kinds healthy or not."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py -q --no-cov -k guard_schedule_status"
+        cwd: "."
+  - id: "dod-omn22194-values"
+    description: "Changing the row's workspace_config_root or bus_lane changes the rendered value and removing the row refuses."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py -q --no-cov -k guard_schedule_values_from_overlay"
+        cwd: "."
+  - id: "dod-omn22194-uninstall"
+    description: "A scripted runner sees disable --now on the timer, both unit files removed, a daemon reload and no stop of the service."
+    source: "manual"
+    binds_ac: ["AC6", "AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py -q --no-cov -k guard_schedule_uninstall"
+        cwd: "."
+  - id: "dod-omn22194-run-path-diff"
+    description: "The pull request changes no file under handlers/ or models/ of the node and not runtime_consumer_group_guard.py. This unbound local check supplements the hosted unchanged-delegation tests; a base diff cannot fail at the base itself."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'test -z "$(git diff --name-only origin/dev...HEAD -- src/omnimarket/nodes/node_consumer_group_guard_effect/handlers src/omnimarket/nodes/node_consumer_group_guard_effect/models src/omnimarket/nodes/node_consumer_group_guard_effect/runtime_consumer_group_guard.py)"'
+        cwd: "."
+  - id: "dod-omn22194-cutover"
+    description: "Pending live evidence: capture Mac unload and absence after reconcile and another installer, implementation digests, two timer runs from journal/census/LastTriggerUSec and ordered rollback reads into GUARD_CUTOVER_READBACK. This unbound local check validates those supplied readbacks. Hosted tests exercise the same validator with synthetic data; they do not claim a live cutover."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run python -m omnimarket.nodes.node_consumer_group_guard_effect schedule verify-cutover --host h053 --evidence "${GUARD_CUTOVER_READBACK:?capture the live cutover readbacks first}"'
+        cwd: "."
+  - id: "dod-omn22194-integration-proof"
+    description: "Run the node's focused tests on a lab host at the exact head. The live install, the two timer-started runs and the rollback read are recorded by the cutover and not run by the hosted verifier."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-omn22194 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_cutover.py -q --no-cov'
+        cwd: "."
+  - id: "dod-omn22194-cutover-order"
+    description: "Hosted synthetic readbacks exercise the product validator: Mac unload and absent label precede lab install; absence is read again after host reconcile and another unit installer. Missing, failed, reordered or present-label readbacks are refused. The live cutover remains pending."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_cutover.py -q --no-cov -k "complete_readbacks or never_at_once or missing_readbacks or naive_time"'
+        cwd: "."
+  - id: "dod-omn22194-cutover-parity"
+    description: "Hosted synthetic readbacks require equal implementation digests, distinct timer invocations at least 600 s apart within 60 minutes of install, matching timer/journal/census times, Mac broker and lane parity, and a completed positive reap. They do not claim live runs."
+    source: "manual"
+    binds_ac: ["AC2", "AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_cutover.py -q --no-cov -k "complete_readbacks or parity or missing_readbacks"'
+        cwd: "."
+  - id: "dod-omn22194-cutover-rollback"
+    description: "Hosted synthetic readbacks require lab uninstall, stop, reset-failed and is-active inactive before Mac reinstall. Missing, failed or reordered reads are refused. Live rollback remains pending."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_cutover.py -q --no-cov -k "complete_readbacks or rollback_order or missing_readbacks"'
+        cwd: "."
+  - id: "dod-omn22194-deploy-probe"
+    description: "Hosted deployment probe renders service and timer from the checked-out schedule contract and overlay, checking interpreter, environment and cadence. It also dispatches verify-cutover without an installed overlay and refuses incomplete readbacks. No live unit is installed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_schedule.py src/omnimarket/nodes/node_consumer_group_guard_effect/tests/test_guard_cutover.py -q --no-cov -k "guard_schedule_render or guard_cutover_cli"'
+        cwd: "."

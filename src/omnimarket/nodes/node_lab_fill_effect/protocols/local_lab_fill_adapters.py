@@ -5,13 +5,14 @@
 They reach what the lab-fill workflow reached, the same way: the remote-lane
 runner's pool read and launcher (loaded from the installed omni plugin's skills
 directory, ``ONEX_OMNI_SKILLS_DIR`` or the newest installed copy), the rolling
-ledger file, the approved-work list, Linear (``LINEAR_API_KEY``), the PR watcher's
+ledger file, the approved-work list, Linear (through node_ticket_query, the key from the secret store), the PR watcher's
 state file and ``onex-triage-fences``. Each failure is a ``LabFillPortError`` that
 names what failed; a reading that cannot be made is never an empty answer.
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import os
@@ -19,24 +20,48 @@ import re
 import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
-from collections.abc import Mapping, Sequence
+import threading
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 
-from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.handlers.rules_lab_fill_closer import built_reports_from_ledger
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
+from omnimarket.models.ticket_query.model_ticket_credential_refusal import (
+    TicketQueryCredentialRefusedError,
+)
+from omnimarket.models.ticket_query.model_ticket_facts import (
+    ModelTicketFactsInput,
+    ModelTicketFactsOutput,
+)
 from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
 )
+from omnimarket.models.work_state_projection import (
+    EnumWorkItemKind,
+    ModelWorkStateResult,
+)
+from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
+    HandlerSecretStore,
+)
+from omnimarket.nodes.node_ticket_query.handlers.handler_ticket_facts import (
+    HandlerTicketFacts,
+)
+from omnimarket.nodes.node_ticket_query.handlers.store_resolved_tracker import (
+    ProtocolGraphQLPoster,
+    ProtocolSecretResolve,
+    resolve_linear_tracker,
+)
 
+from .local_lab_fill_merged_history import LocalMergedHistory
 from .protocol_lab_fill_effect import (
     LabFillClaimFacts,
     LabFillCommandOutcome,
     LabFillPortError,
     ProtocolLabFillStatusAppender,
+    ProtocolLabFillTicketFacts,
 )
 
 SKILLS_ENV = "ONEX_OMNI_SKILLS_DIR"
@@ -276,28 +301,65 @@ class LocalApprovedWork:
         return matches[0]
 
 
-def _graphql(query: str, timeout_s: float = 20.0) -> dict[str, object]:
-    key = os.environ.get("LINEAR_API_KEY", "")
-    if not key:
-        raise LabFillPortError("LINEAR_API_KEY is missing")
-    req = urllib.request.Request(
-        LINEAR_GRAPHQL_URL,
-        data=json.dumps({"query": query}).encode(),
-        headers={"Authorization": key, "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(  # no-contract-check: Linear port boundary
-            req, timeout=timeout_s
-        ) as response:
-            result = json.load(response)
-    except (OSError, ValueError, urllib.error.URLError) as exc:
-        raise LabFillPortError(f"Linear unreadable: {type(exc).__name__}") from exc
-    if result.get("errors"):
-        raise LabFillPortError("Linear GraphQL errors")
-    data = result.get("data")
-    if not isinstance(data, dict):
-        raise LabFillPortError("Linear returned no data")
-    return data
+class NodeTicketFactsReader:
+    """Reads a ticket's state type and assignee id through node_ticket_query.
+
+    The tracker key is resolved in process from the secret store by
+    node_secret_store_effect (OMN-22418); the process environment is never read
+    for it. A refusal of the store, or a read that cannot be made, is a
+    ``LabFillPortError`` that names what failed.
+    """
+
+    def __init__(
+        self,
+        secret_node: ProtocolSecretResolve | None = None,
+        tracker_factory: Callable[[str], ProtocolGraphQLPoster] | None = None,
+    ) -> None:
+        self._secret_node = secret_node
+        self._tracker_factory = tracker_factory
+
+    def _handler(self) -> HandlerTicketFacts:
+        secret_node = self._secret_node or HandlerSecretStore()
+        factory = self._tracker_factory
+
+        async def provider() -> ProtocolGraphQLPoster:
+            if factory is None:
+                return await resolve_linear_tracker(secret_node)
+            return await resolve_linear_tracker(secret_node, factory)
+
+        return HandlerTicketFacts(tracker_provider=provider)
+
+    def read(self, ticket: str) -> ModelTicketFactsOutput:
+        handler = self._handler()
+        request = ModelTicketFactsInput(identifier=ticket)
+        box: list[ModelTicketFactsOutput | BaseException] = []
+
+        def run() -> None:
+            try:
+                box.append(asyncio.run(handler.handle(request)))
+            except BaseException as exc:
+                box.append(exc)
+
+        worker = threading.Thread(target=run, name="lab-fill-ticket-facts")
+        worker.start()
+        worker.join()
+        outcome = box[0]
+        if isinstance(outcome, TicketQueryCredentialRefusedError):
+            raise LabFillPortError(str(outcome)) from outcome
+        if isinstance(outcome, LookupError):
+            raise LabFillPortError(f"{ticket} not found in Linear") from outcome
+        if isinstance(outcome, BaseException):
+            raise LabFillPortError(
+                f"Linear unreadable: {type(outcome).__name__}"
+            ) from outcome
+        return outcome
+
+
+def _work_state_path() -> Path:
+    declared = os.environ.get("ONEX_WORK_STATE_PATH")
+    if declared:
+        return Path(declared)
+    return Path(os.environ["OMNI_HOME"]) / ".onex_state/work-state/work-state.json"
 
 
 def _watcher_path() -> Path:
@@ -310,28 +372,17 @@ def _watcher_path() -> Path:
 class LocalLiveChecks:
     """Assignment, fences, PR hold labels and completion for one lane, read right before launch."""
 
+    def __init__(self, facts: ProtocolLabFillTicketFacts | None = None) -> None:
+        self._facts = facts if facts is not None else NodeTicketFactsReader()
+
     def skip_reason(
         self, *, ticket: str, kind: str, pr: str, operator_id: str, ledger_path: str
     ) -> tuple[str, str]:
-        number = int(ticket.split("-", 1)[1])
-        data = _graphql(
-            '{issues(filter:{team:{key:{eq:"OMN"}},number:{eq:'
-            + str(number)
-            + "}}){nodes{identifier state{type} assignee{id}}}}"
-        )
-        issues = data.get("issues")
-        nodes = issues.get("nodes", []) if isinstance(issues, dict) else []
-        if not nodes:
-            raise LabFillPortError(f"{ticket} not found in Linear")
-        node = nodes[0]
-        assignee = (node.get("assignee") or {}).get("id", "")
-        if assignee and assignee != operator_id:
-            return "assigned-other", f"assignee {assignee}"
-        if kind in APPROVED_KINDS and node["state"]["type"] in (
-            "completed",
-            "canceled",
-        ):
-            return "done", f"state {node['state']['type']}"
+        facts = self._facts.read(ticket)
+        if facts.assignee_id and facts.assignee_id != operator_id:
+            return "assigned-other", f"assignee {facts.assignee_id}"
+        if kind in APPROVED_KINDS and facts.state_type in ("completed", "canceled"):
+            return "done", f"state {facts.state_type}"
         try:
             fenced = self._fences(ledger_path)
         except LabFillPortError as exc:
@@ -383,6 +434,55 @@ class LocalLiveChecks:
         return "pr-state-unreadable", f"{pr} not in the watcher state"
 
 
+class LocalMergedWork:
+    """Merged pull requests per ticket from the PR watcher's snapshot and the canonical clones, and a ticket's already-built reports (OMN-23277, OMN-23376)."""
+
+    def __init__(
+        self,
+        reader: LocalOwnerReader | None = None,
+        history: LocalMergedHistory | None = None,
+    ) -> None:
+        self._reader = reader if reader is not None else LocalOwnerReader()
+        self._history = history
+
+    def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]:
+        watcher_error: LabFillPortError | None = None
+        try:
+            watcher = tuple(self._reader.watcher_merged(state_path).get(ticket, ()))
+        except LabFillPortError as exc:
+            watcher, watcher_error = (), exc
+        history_error: LabFillPortError | None = None
+        history: tuple[str, ...] = ()
+        try:
+            if self._history is None:
+                self._history = LocalMergedHistory()
+            history = self._history.merged(ticket)
+        except LabFillPortError as exc:
+            history_error = exc
+        merged = tuple(sorted(set(watcher) | set(history)))
+        if merged:
+            return merged
+        # A merge is evidence whichever source holds it; nothing found is clear only when both sources were read.
+        if watcher_error is not None:
+            raise watcher_error
+        if history_error is not None:
+            raise history_error
+        return ()
+
+    def built_reports(
+        self, ticket: str, ledger_path: str
+    ) -> Sequence[ModelLabFillBuiltReport]:
+        path = Path(os.path.expandvars(ledger_path))
+        try:
+            with path.open(encoding="utf-8") as handle:
+                lines = [
+                    line for line in handle if ticket in line and "TERMINAL" in line
+                ]
+        except OSError as exc:
+            raise LabFillPortError(f"ledger unreadable: {exc}") from exc
+        return built_reports_from_ledger(lines)
+
+
 class LocalBriefBlocks:
     """The committed standing rules, then lane-brief's delegation and lab blocks."""
 
@@ -395,15 +495,26 @@ class LocalBriefBlocks:
         skills = self._skills if self._skills is not None else resolve_skills_dir()
         rules_script = skills.parent / "scripts" / "lane_rules_block.py"
         try:
-            rules = subprocess.run(
+            ran = subprocess.run(
                 [sys.executable, str(rules_script)],
                 capture_output=True,
                 text=True,
                 timeout=60,
-                check=True,
-            ).stdout
+                check=False,
+            )
         except (OSError, subprocess.SubprocessError) as exc:
-            raise LabFillPortError(f"lane_rules_block: {type(exc).__name__}") from exc
+            raise LabFillPortError(
+                f"lane_rules_block.py {rules_script}: {type(exc).__name__}: {exc}"
+            ) from exc
+        if ran.returncode != 0:
+            # OMN-23025: the reader's own stderr names the rules file it could not read and why
+            # (the resolved rules checkout, a missing block, an unreadable file); the
+            # exception class alone left 22 skipped lanes with no cause to read.
+            said = " / ".join(ran.stderr.strip().splitlines()[-3:]) or "no stderr"
+            raise LabFillPortError(
+                f"lane_rules_block.py exit {ran.returncode} ({rules_script}): {said}"
+            )
+        rules = ran.stdout
         sys.path.insert(0, str(skills / "lane-brief/scripts"))
         try:
             lb = _load(skills, "lane_brief", "lane-brief/scripts/lane_brief.py")
@@ -706,3 +817,30 @@ class LocalOwnerReader:
                     f"{repo}#{facts.get('number', '')}"
                 )
         return {t: sorted(names) for t, names in merged.items()}
+
+    def work_state_owners(
+        self, state_path: str, max_age_s: float
+    ) -> Mapping[str, Sequence[str]] | None:
+        path = Path(state_path) if state_path else _work_state_path()
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise LabFillPortError(f"work-state {type(exc).__name__}") from exc
+        try:
+            projection = ModelWorkStateResult.model_validate_json(raw)
+        except ValueError as exc:
+            raise LabFillPortError("work-state projection is not readable") from exc
+        age_s = (datetime.now(UTC) - projection.as_of).total_seconds()
+        if not 0 <= age_s <= max_age_s:
+            raise LabFillPortError("work-state projection is stale")
+        owners: dict[str, list[str]] = {}
+        for item in projection.items:
+            if (
+                item.ticket
+                and item.live_lane
+                and item.kind is not EnumWorkItemKind.LANE
+            ):
+                owners.setdefault(item.ticket, []).append(item.live_lane)
+        return {t: sorted(set(lanes)) for t, lanes in owners.items()}

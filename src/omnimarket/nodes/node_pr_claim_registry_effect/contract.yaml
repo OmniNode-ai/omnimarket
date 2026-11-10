@@ -13,7 +13,7 @@ node_version:
   patch: 0
 description: The cross-run mutual-exclusion lock for PR mutations. One claim
   file per PR in the caller's claims directory; acquire, release, heartbeat,
-  cleanup and the reads over it. The caller names the directory, the time and
+  cleanup, exact ended-engine release and the reads over it. The caller names the directory, the time and
   the instance id file; the handler reads no clock or environment.
 input_model: omnimarket.nodes.node_pr_claim_registry_effect.models.ModelPrClaimRegistryRequest
 output_model: omnimarket.nodes.node_pr_claim_registry_effect.models.ModelPrClaimRegistryResult
@@ -53,7 +53,7 @@ inputs:
   operation:
     type: string
     required: true
-    description: acquire, release, heartbeat, cleanup_stale_own_claims, list_active, has_active or get_claim.
+    description: acquire, release, heartbeat, cleanup_stale_own_claims, release_ended_own_claims, list_active, has_active or get_claim. Ended release requires exact lane, run and session identity after observed engine exit; live and stale matching claims are released with replacement revalidation.
   claims_dir:
     type: string
     required: true
@@ -103,10 +103,10 @@ outputs:
     description: Lines the registry reported, in order.
   pr_keys:
     type: array
-    description: cleanup_stale_own_claims, the keys deleted or that would be.
+    description: Cleanup or ended release, the keys deleted or that would be in a dry run.
   claims:
     type: array
-    description: list_active, every active claim.
+    description: list_active, every active claim; release_ended_own_claims, exact-owner claims remaining on readback (including replacements), never deleted by readback.
   claim:
     type: object
     description: get_claim, the claim file when readable.

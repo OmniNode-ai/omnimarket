@@ -57,6 +57,7 @@ from omnimarket.models.delegation.quality_bar_evidence import (
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
+    declares_failed_acceptance,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -190,6 +191,8 @@ AGGREGATE_READ_RELATIONS: frozenset[str] = frozenset(
         "projection_delegation_model_routing",
         "projection_delegation_quality_gate",
         "projection_delegation_token_usage",
+        # OMN-21970: the per-day view, read and republished the same way.
+        "projection_delegation_daily",
     }
 )
 
@@ -1057,6 +1060,9 @@ class HandlerProjectionDelegation:
             attempts=event.attempts,
             # OMN-19448: the terminal's own cause wins over the ladder's guess.
             declared_failure_cause=event.terminal_failure_cause,
+            # OMN-21607: a terminal that records its own failed acceptance
+            # projects as failed, whatever status it carries.
+            declared_failed_acceptance=declares_failed_acceptance(event),
         )
         row["terminal_ok"] = reduction.terminal_ok
         row["terminal_failure_cause"] = (

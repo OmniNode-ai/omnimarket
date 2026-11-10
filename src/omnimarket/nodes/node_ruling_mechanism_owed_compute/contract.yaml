@@ -15,14 +15,14 @@ description: >-
   ignores rows later than the tick, so a replay is identical.
 input_model:
   name: ModelRulingMechanismOwedRequest
-  module: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed
+  module: omnimarket.models.model_ruling_mechanism_owed_request
 output_model:
   name: ModelRulingMechanismOwedResult
   module: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed
 handler:
   module: omnimarket.nodes.node_ruling_mechanism_owed_compute.handlers.handler_ruling_mechanism_owed
   class: HandlerRulingMechanismOwed
-  input_model: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed.ModelRulingMechanismOwedRequest
+  input_model: omnimarket.models.model_ruling_mechanism_owed_request.ModelRulingMechanismOwedRequest
   output_model: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed.ModelRulingMechanismOwedResult
 handler_routing:
   routing_strategy: operation_match

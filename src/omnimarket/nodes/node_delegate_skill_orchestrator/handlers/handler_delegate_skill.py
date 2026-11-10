@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import math
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -45,9 +46,13 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
+from omnimarket.enums.enum_delegation_end_of_ladder_reason import (
+    EnumDelegationEndOfLadderReason,
+)
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.handlers.execution_budget_overlay import execution_budget_source
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
 )
@@ -88,6 +93,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
+    resolve_end_of_ladder_reason,
     resolve_terminal_failure_cause,
 )
 from omnimarket.models.delegation.wire.model_delegation_output_files import (
@@ -96,6 +102,8 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
+from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
+from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -142,6 +150,7 @@ from omnimarket.pricing import (
     estimate_frontier_costs_usd,
     resolve_baseline_model,
 )
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
@@ -226,6 +235,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
+        probe_ladder: ModelProbeLadder | ModelProbeFaults | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -247,6 +257,27 @@ def _no_escalation_dispatch_kwargs(
 ) -> _NoEscalationDispatchKwargs:
     if request.no_escalation:
         return {"no_escalation": True}
+    return {}
+
+
+class _ProbeLadderDispatchKwargs(TypedDict, total=False):
+    """A synthetic probe's ladder, passed only when the request carries one (OMN-23162).
+
+    An ordinary request calls the port exactly as before. A request that carries
+    a ladder is never run without it: a port that does not declare
+    ``probe_ladder`` (omnibase_infra's runtime dispatch port) raises
+    ``TypeError`` on the keyword, which fails the probe loudly instead of
+    running it as an ordinary delegation.
+    """
+
+    probe_ladder: ModelProbeLadder | ModelProbeFaults
+
+
+def _probe_ladder_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _ProbeLadderDispatchKwargs:
+    if request.probe_ladder is not None:
+        return {"probe_ladder": request.probe_ladder}
     return {}
 
 
@@ -705,6 +736,20 @@ def _provider_facts(raw: dict[str, object]) -> dict[str, Any]:
     }
 
 
+def _attempt_key(raw: dict[str, object]) -> dict[str, Any]:
+    """OMN-22474: the minted tenant key this rung ran on, or none.
+
+    A house-key name or any other ref without the minted tenant-key shape is
+    never carried, so only a customer key's last_used_at can move.
+    """
+    ref = raw.get("secret_ref")
+    return {
+        "secret_ref": ref
+        if isinstance(ref, str) and is_tenant_credential_ref(ref)
+        else None
+    }
+
+
 def _lineage_fields(raw: dict[str, object]) -> dict[str, Any]:
     """The OMN-20168 lineage and placement fields, typed or dropped."""
     fields: dict[str, Any] = {}
@@ -849,6 +894,7 @@ def _attempt_records(
                     finish_reason=_as_finish_reason(raw.get("finish_reason")),
                     **truncated_fields,
                     **_provider_facts(raw),
+                    **_attempt_key(raw),
                     **_lineage_fields(raw),
                     rubric_verdict=rubric_verdict,
                 )
@@ -881,6 +927,7 @@ def _attempt_records(
                 ),
                 error_message=str(raw.get("error_message", "")),
                 **_provider_facts(raw),
+                **_attempt_key(raw),
                 **_lineage_fields(raw),
                 # OMN-19436: declared on the record by OMN-18889 and recorded by
                 # the port on every judged rung, but never copied here, so the
@@ -1000,6 +1047,25 @@ def _queue_wait_ms(
     return max(0, int(delta_ms))
 
 
+QUEUE_BUDGET_EXHAUSTED = "queue_budget_exhausted"
+"""Leading token of the terminal for a run whose queue wait spent its budget."""
+
+
+def _remaining_execution_ms(
+    execution_timeout_seconds: int, queue_wait_ms: int | None
+) -> int:
+    """Return the execution window left once queue wait is deducted (OMN-22223).
+
+    The caller times ``execution + margin`` from PUBLISH
+    (omnibase_infra ``_terminal_wait_seconds``), so the runtime must time the
+    same sum from publish: milliseconds spent in the queue are milliseconds
+    the run no longer has. ``None`` (an unstamped request) deducts nothing --
+    an unmeasured wait is not a zero wait. Zero or less means the queue spent
+    the whole execution window.
+    """
+    return execution_timeout_seconds * 1000 - (queue_wait_ms or 0)
+
+
 def _request_ticket_id(request: ModelDelegateSkillRequest) -> str | None:
     """The ticket the caller named in the request metadata, or None.
 
@@ -1062,6 +1128,7 @@ def _response_from_result(
     queue_wait_ms: int | None,
     execution_duration_ms: int,
     budget_evidence: ModelDelegationBudgetEvidence | None,
+    budget_source: str | None = None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -1148,26 +1215,44 @@ def _response_from_result(
     # was accepted, so the run goes back to its caller. Each attempt's own
     # cause stays on its attempt record; the run's cause names the hand-back,
     # and the message tells the caller plainly that the session does the task.
-    returned_to_caller = (
+    #
+    # OMN-23165: a run that made no provider call because no rung could be
+    # called ends the same way. The port states that fact on
+    # ``terminal_failure_reason``; a zero-attempt refusal at the ingress
+    # boundary (``pre_dispatch_refusal``) stays ``refused_before_dispatch``.
+    zero_attempt_no_rung_reachable = (
+        status_value == "failed"
+        and not attempts
+        and not pre_dispatch_refusal
+        and result.get("attempts_count") == 0
+        and result.get("terminal_failure_reason")
+        == EnumDelegationEndOfLadderReason.NO_RUNG_REACHABLE.value
+        and terminal_failure_cause not in _NOT_AN_EXHAUSTED_LADDER
+    )
+    returned_to_caller = zero_attempt_no_rung_reachable or (
         status_value == "failed"
         and bool(attempts)
         and not any(attempt.quality_gate_passed for attempt in attempts)
         and terminal_failure_cause not in _NOT_AN_EXHAUSTED_LADDER
     )
-    # The cause that decided the last rung stays readable as the reason, so a
-    # gate veto, a quota refusal and a rejected key are still told apart.
+    # OMN-23165: the reason is one word from a closed list, read from the whole
+    # ladder record. The last rung's own cause stays on its attempt record, so a
+    # quota refusal or a rejected key is still told apart there.
     returned_reason: str | None = None
     if returned_to_caller:
-        if terminal_failure_cause is not None:
-            returned_reason = terminal_failure_cause.value
+        returned_reason = resolve_end_of_ladder_reason(
+            attempts,
+            port_stop_reason=str(result.get("terminal_failure_reason") or "") or None,
+        ).value
         terminal_failure_cause = EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
         last_error = error_message or next(
             (a.error_message for a in reversed(attempts) if a.error_message), ""
         )
         error_message = (
-            f"{RETURNED_TO_CALLER_MESSAGE} (last error: {last_error})"
+            f"{RETURNED_TO_CALLER_MESSAGE} (reason: {returned_reason}; "
+            f"last error: {last_error})"
             if last_error
-            else RETURNED_TO_CALLER_MESSAGE
+            else f"{RETURNED_TO_CALLER_MESSAGE} (reason: {returned_reason})"
         )
     score_vs_required_bar = _as_quality_score_comparison(
         result.get("score_vs_required_bar")
@@ -1324,6 +1409,7 @@ def _response_from_result(
         terminal_failure_reason=returned_reason,
         response_contract_evidence=result.get("response_contract_evidence"),
         budget_evidence=budget_evidence,
+        budget_source=budget_source,
         preamble_chars=result.get("preamble_chars"),
         output_refusal=result.get("output_refusal"),
         quality_gates_failed=quality_failures,
@@ -1560,6 +1646,9 @@ class HandlerDelegateSkill:
         picked_up_monotonic = time.monotonic()
         queue_wait_ms = _queue_wait_ms(request, datetime.now(UTC))
         execution_budget = resolve_task_class_execution_budget(request.task_type)
+        # OMN-21344 AC2: the terminal names the contract entry or overlay
+        # file this budget came from, and the receipt copies it.
+        budget_source = execution_budget_source(request.task_type)
         requested_timeout_seconds = request.requested_timeout_seconds
         timeout_ceiling_seconds = execution_budget.task_class_timeout_ceiling_seconds
         if (
@@ -1580,6 +1669,7 @@ class HandlerDelegateSkill:
                     requested_timeout_seconds=requested_timeout_seconds,
                     task_class_timeout_ceiling_seconds=timeout_ceiling_seconds,
                 ),
+                budget_source=budget_source,
                 error_message=(
                     "timeout_exceeds_task_class_ceiling: "
                     f"requested_timeout_seconds={requested_timeout_seconds}; "
@@ -1642,6 +1732,43 @@ class HandlerDelegateSkill:
             and requested_grace_seconds is not None
             else execution_budget.terminal_delivery_margin_seconds
         )
+        # OMN-22223 AC2: the caller waits execution + the declared margin. A
+        # grace larger than that margin would let this handler wait past the
+        # caller and record a terminal nobody reads, so it is clamped to it.
+        wait_allowance_seconds = min(
+            wait_allowance_seconds, execution_budget.terminal_delivery_margin_seconds
+        )
+        # OMN-22223 AC1: the budget is measured from publish, like the caller's.
+        remaining_execution_ms = _remaining_execution_ms(
+            execution_timeout_seconds, queue_wait_ms
+        )
+        if remaining_execution_ms <= 0:
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                error_message=(
+                    f"{QUEUE_BUDGET_EXHAUSTED}: "
+                    f"queue_wait_ms={queue_wait_ms}; "
+                    f"execution_timeout_seconds={execution_timeout_seconds}; "
+                    f"task_type={request.task_type}; the request spent its "
+                    "execution window waiting to be picked up, so no rung was "
+                    "run; send it again (OMN-22223)"
+                ),
+                # Nothing was dispatched, which is what this cause (and a zero
+                # attempt count) already say; the leading token names why.
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
+                attempts_count=0,
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=0,
+                budget_evidence=budget_evidence,
+                budget_source=budget_source,
+            )
+        dispatch_execution_timeout_seconds = math.ceil(remaining_execution_ms / 1000)
         # OMN-20557 / OMN-21752: the session model rides a context variable,
         # not a dispatch() keyword -- see session_model.py.
         session_token = bind_session_model(request, self._dispatch_port)
@@ -1668,7 +1795,7 @@ class HandlerDelegateSkill:
                     source_session_id=request.session_id
                     or request.metadata.get("session_id"),
                     wait=request.wait,
-                    execution_timeout_seconds=execution_timeout_seconds,
+                    execution_timeout_seconds=dispatch_execution_timeout_seconds,
                     terminal_delivery_margin_seconds=(
                         execution_budget.terminal_delivery_margin_seconds
                     ),
@@ -1705,6 +1832,8 @@ class HandlerDelegateSkill:
                     **_no_escalation_dispatch_kwargs(request),
                     # OMN-20606: only when named -- see _AttributionDispatchKwargs.
                     **_attribution_dispatch_kwargs(request),
+                    # OMN-23162: only when carried -- see _ProbeLadderDispatchKwargs.
+                    **_probe_ladder_dispatch_kwargs(request),
                     # OMN-21077: only when named -- see _NamedTestsDispatchKwargs.
                     **_named_tests_dispatch_kwargs(
                         request, self._dispatch_port.dispatch
@@ -1714,7 +1843,7 @@ class HandlerDelegateSkill:
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
                 ),
-                timeout=float(execution_timeout_seconds + wait_allowance_seconds),
+                timeout=remaining_execution_ms / 1000.0 + wait_allowance_seconds,
             )
         except asyncio.CancelledError:
             progress.finalize_run_steps(
@@ -1751,6 +1880,7 @@ class HandlerDelegateSkill:
                 queue_wait_ms=queue_wait_ms,
                 execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                 budget_evidence=budget_evidence,
+                budget_source=budget_source,
             )
         except TimeoutError:
             # OMN-15504/OMN-19619: the handler's own budget expired. This is not
@@ -1768,7 +1898,7 @@ class HandlerDelegateSkill:
                 if queue_wait_ms is None
                 else (
                     f"; measured queue wait before pickup: {queue_wait_ms} ms "
-                    "(the budget is measured from pickup, not from publish)"
+                    "(deducted from the budget, which is measured from publish)"
                 )
             )
             # OMN-17427: the terminal is built from what the dispatch already
@@ -1801,6 +1931,7 @@ class HandlerDelegateSkill:
                     queue_wait_ms=queue_wait_ms,
                     execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                     budget_evidence=budget_evidence,
+                    budget_source=budget_source,
                 )
             )
         except Exception as exc:
@@ -1825,6 +1956,7 @@ class HandlerDelegateSkill:
                 # terminal by map-miss fallback.
                 terminal_failure_cause=failure_cause,
                 budget_evidence=budget_evidence,
+                budget_source=budget_source,
             )
 
         finally:
@@ -1843,6 +1975,7 @@ class HandlerDelegateSkill:
                 queue_wait_ms=queue_wait_ms,
                 execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                 budget_evidence=budget_evidence,
+                budget_source=budget_source,
             )
         )
 

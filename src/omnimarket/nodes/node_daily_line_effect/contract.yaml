@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Daily Line Effect (OMN-22925, rebuild plan section 11)
+#
+# One scheduled run of the daily line: reads the floor record (piece 1's reading and the J1 join row) and the rolling
+# ledger (claims with no TERMINAL), has node_daily_line_compute render the sentence, publishes it as daily-line.json
+# beside the floor record and appends one ledger STATUS row. A source that cannot be read renders UNKNOWN for its part.
+name: node_daily_line_effect
+contract_name: node_daily_line_effect
+node_name: node_daily_line_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs the daily line once: reads the floor record and the ledger, computes the line with node_daily_line_compute,
+  writes daily-line.json beside the floor record and appends one STATUS row. The node's own systemd user timer
+  (`schedule install`) runs it at 05:30 America/New_York.
+
+handler:
+  module: omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run
+  class: HandlerDailyLineRun
+  input_model: omnimarket.models.model_daily_line.ModelDailyLineRunCommand
+
+# Not a runtime-dispatched handler: HandlerDailyLineRun takes its contract runtime block, paths, ledger appender and
+# clock as constructor parameters, so the node runs through its own CLI and schedule, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [file-write, ledger-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelDailyLineRunCommand
+  module: omnimarket.models.model_daily_line
+  description: One run of the daily line; it carries no value, the sources are read from the registry home.
+output_model:
+  name: ModelDailyLinePublication
+  module: omnimarket.models.model_daily_line
+  description: The published line, its parts and the parts that rendered UNKNOWN.
+
+terminal_event: onex.evt.omnimarket.daily-line-published.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.daily-line-published.v1
+
+# Where the scheduled run reads and writes, relative to the registry home. The floor record is the one the floor
+# publishes every 5 minutes (stale after 30); the line is written beside it as daily-line.json.
+runtime:
+  home_env: OMNI_HOME
+  # The ledger is on the bus: the open claims are one point query and the STATUS row is one bus append. Each command is
+  # named by a variable the deployment sets; nothing here reads or names the ledger file.
+  ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+  ledger_read_timeout_seconds: 60
+  ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  ledger_append_timeout_seconds: 60
+  host_env: ONEX_HOST_NAME
+  floor_record_relpath: .claude_scratch/factory-floor/floor-simple.json
+  floor_record_max_age_seconds: 1800
+  published_relpath: .claude_scratch/factory-floor/daily-line.json
+  piece: 1
+  ticket: OMN-22925
+  lane: node_daily_line_effect
+
+# 05:30 on the Eastern clock, as a systemd user timer: the calendar spec names its time zone, so the timer follows
+# daylight saving. `schedule install` writes the units, `schedule uninstall` removes them.
+schedule:
+  unit_name: onex-daily-line
+  state_directory: .onex_state/daily-line
+  timeout_seconds: 300
+  # Copied into the installed unit from the installing environment when set, so the unit reaches the bus routes.
+  unit_environment: [ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME]
+  cadence:
+    on_calendar: "*-*-* 05:30:00"
+    time_zone: America/New_York
+    randomized_delay: 0s
+    persistent: true
+    description: the daily line of plan section 11, 05:30 Eastern
+
+metadata:
+  ticket: OMN-22925
+  transport_type: inmemory

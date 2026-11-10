@@ -1,0 +1,151 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22036"
+title: "Compaction arm producer with forked, isolated runs"
+summary: >-
+  Adds node_compaction_arm_run_effect (plan task CM.10). Every arm of a compaction replay case is a
+  fork of one frozen prefix in its own directory with its own configuration directory; the prefix,
+  ledger, state and compaction-input hashes are checked equal across the arms and a case that fails
+  the check is removed from every arm. The contract's arm_adapters roster names the stock, mod and
+  control adapters. A stock_rerun fork that shows custom-boundary evidence is INVALID and never
+  scorable. When the headless compaction premises are not established, stock_rerun is REFUSED in the
+  result and its refusal statement, and stock_recorded is the stock arm (RECORDED_STOCK). The live
+  headless-session and pinned-pack-build adapters are injected seams; without them the node refuses
+  with a typed reason.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-compaction-arm-run-node"
+    statement: |-
+      Arms are isolated forks of one prefix, a custom-boundary stock fork is invalid, and a failed headless premise is a stated refusal.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the arms differ only at the compaction -- falsifier: unequal prefix or ledger hashes across arms of a case
+      - id: "AC2"
+        statement: |-
+          AC2: a `stock_rerun` that shows any custom-boundary evidence is `INVALID` -- falsifier: such a fork scored
+      - id: "AC3"
+        statement: |-
+          AC3: if the headless compaction premise fails, the stage records `REFUSED` for `stock_rerun` and uses `stock_recorded` -- falsifier: a report that hides the refusal
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the node suite."
+    command: "uv run pytest tests/nodes/node_compaction_arm_run_effect -q -p no:randomly --no-cov -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22036-ac1"
+    description: "AC1: prefix, ledger, state and compaction-input hashes are equal across the arms of a case; a corrupted fork copy or a rewritten prefix removes the case from every arm."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_arm_run_effect/test_arm_run.py -k 'arms_differ_only_at_compaction or corrupt_mod_copy or prefix_mutated' -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn22036-ac2"
+    description: "AC2: a stock_rerun fork with a custom boundary or custom-boundary evidence is INVALID and not scorable; a native fork is recorded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_arm_run_effect/test_arm_run.py -k custom_boundary -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC2"]
+  - id: "dod-omn22036-ac3"
+    description: "AC3: an unestablished headless premise gives a REFUSED stock_rerun with a refusal statement, the RECORDED_STOCK label and stock_recorded as the stock arm."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_arm_run_effect/test_arm_run.py -k refus -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC3"]
+  - id: "dod-omn22036-deploy-contract"
+    description: "Hosted-runner deploy smoke dispatches the installed node through the local ONEX runtime with an in-memory bus. It reads all six arms, isolated fork files and persisted records, and asserts explicit stock/mod refusals without live adapters. No headless session, model endpoint or broker is required or claimed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+          uv run --frozen python -c '
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1]).resolve()
+          replay = root / "replay"
+          replay.mkdir()
+          (replay / "prefix.jsonl").write_text("{\"text\":\"frozen prefix\"}\n")
+          (replay / "ledger.jsonl").write_text("{\"ruling\":\"ship\"}\n")
+          request = {
+              "correlation_id": "deploy-compaction-arm-run",
+              "replay_root": str(replay), "run_root": str(root / "run"),
+              "arms": ["stock_rerun", "mod", "stock_recorded", "oracle", "empty", "inverted"],
+              "cases": [{"case_id": "deploy-case", "prefix_path": str(replay / "prefix.jsonl"),
+                         "ledger_path": str(replay / "ledger.jsonl"),
+                         "recorded_summary": "Recorded native summary.",
+                         "oracle_context": "Oracle context.", "inverted_context": "Inverted context."}],
+          }
+          (root / "request.json").write_text(json.dumps(request))
+          ' "$probe_dir";
+          onex node node_compaction_arm_run_effect --input "$probe_dir/request.json" \
+            --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 \
+            --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --frozen python -c '
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1]).resolve()
+          receipt = json.loads((root / "receipt.json").read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"] == "omnimarket.nodes.node_compaction_arm_run_effect.models.model_arm_run.ModelArmRunResult", receipt
+          result = receipt["result"]
+          assert result["correlation_id"] == "deploy-compaction-arm-run", result
+          assert result["stock_rerun_refused"] is True, result
+          assert "PREMISE_NOT_ESTABLISHED" in result["refusal_statement"], result
+          assert result["stock_branch"] == result["report_label"] == "RECORDED_STOCK", result
+          assert result["planted_stratum_safeguard"] == "NOT_ESTABLISHED", result
+          assert result["removed_cases"] == [], result
+          rows = {row["arm"]: row for row in result["records"]}
+          assert len(rows) == len(result["records"]) == 6, result
+          assert set(rows) == {"stock_rerun", "mod", "stock_recorded", "oracle", "empty", "inverted"}, result
+          assert rows["stock_rerun"]["status"] == rows["mod"]["status"] == "REFUSED", result
+          assert rows["mod"]["reason"] == "MOD_ADAPTER_UNAVAILABLE", result
+          contexts = {"stock_recorded": "Recorded native summary.", "oracle": "Oracle context.", "empty": "", "inverted": "Inverted context."}
+          assert len({row["fork_root"] for row in rows.values()}) == 6, result
+          for field in ("prefix_sha256", "ledger_sha256", "initial_state_hash", "compaction_input_hash"):
+              assert len({row[field] for row in rows.values()}) == 1, result
+          for arm, row in rows.items():
+              fork = Path(row["fork_root"])
+              assert fork.is_relative_to(root / "run" / "forks"), row
+              assert (fork / "config").is_dir(), row
+              for part in ("prefix", "ledger"):
+                  source = (root / "replay" / (part + ".jsonl")).read_bytes()
+                  assert (fork / part / (part + ".jsonl")).read_bytes() == source, row
+                  assert row[part + "_sha256"] == hashlib.sha256(source).hexdigest(), row
+              record_dir = root / "run" / "records" / "deploy-case" / arm / "r0"
+              assert json.loads((record_dir / "attempt-1.json").read_text()) == row, row
+              if arm in contexts:
+                  assert row["status"] == "RECORDED", row
+                  assert (record_dir / "attempt-1.txt").read_text() == contexts[arm], row
+                  assert row["compacted_context_sha256"] == hashlib.sha256(contexts[arm].encode()).hexdigest(), row
+              else:
+                  assert row["compacted_context_sha256"] is None, row
+                  assert not (record_dir / "attempt-1.txt").exists(), row
+          print(json.dumps(receipt, sort_keys=True))
+          ' "$probe_dir"
+        cwd: "."
+  - id: "dod-omn22036-integration-proof"
+    description: "The pushed head ran the node suite on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22036 -- uv run --frozen pytest tests/nodes/node_compaction_arm_run_effect -q -p no:randomly --no-cov -m 'not kafka'"
+        cwd: "."

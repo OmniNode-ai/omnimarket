@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_compaction_live_signal_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: Count already-ruled question-guard refusals and operator restatements per compaction boundary window, per hour.
+input_model:
+  name: ModelLiveSignalRequest
+  module: omnimarket.nodes.node_compaction_live_signal_compute.models.model_live_signal
+output_model:
+  name: ModelLiveSignalResult
+  module: omnimarket.nodes.node_compaction_live_signal_compute.models.model_live_signal
+handler:
+  module: omnimarket.nodes.node_compaction_live_signal_compute.handlers.handler_live_signal
+  class: HandlerCompactionLiveSignal
+  input_model: omnimarket.nodes.node_compaction_live_signal_compute.models.model_live_signal.ModelLiveSignalRequest
+  output_model: omnimarket.nodes.node_compaction_live_signal_compute.models.model_live_signal.ModelLiveSignalResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCompactionLiveSignal
+        module: omnimarket.nodes.node_compaction_live_signal_compute.handlers.handler_live_signal
+      event_model:
+        name: ModelLiveSignalRequest
+        module: omnimarket.nodes.node_compaction_live_signal_compute.models.model_live_signal
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with typed boundary windows, question-guard FRICTION rows, operator prompts and RULING rows.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local

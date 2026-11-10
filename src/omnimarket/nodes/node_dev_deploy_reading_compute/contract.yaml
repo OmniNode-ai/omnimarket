@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Deploy Reading Compute (OMN-22958, rebuild piece 11)
+#
+# Pure compute: handle(ModelDevDeployReadingRequest) -> ModelDevDeployReading. The caller supplies the
+# runtime-affecting merges, the lab pass receipts, the functional probes and the time. The deadline
+# and the probe age travel on the request, from the piece's overlay; this contract holds none.
+name: node_dev_deploy_reading_compute
+contract_name: node_dev_deploy_reading_compute
+node_name: node_dev_deploy_reading_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Piece 11's reading at a read time. WORKING while every runtime-affecting merge past its receipt
+  deadline has a PASS lab pass receipt for its exact sha, finished inside the deadline, and the
+  newest functional probe of the running runtime is inside its max age, passed, and observed the
+  sha it was asked for. NOT WORKING when a PASS receipt is missing or late for a merge past its
+  deadline, or the probe is missing, stale, future-dated, failing or observed another sha. UNKNOWN
+  when a source could not be read and nothing readable already fails. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dev_deploy_reading
+      handler:
+        name: HandlerDevDeployReading
+        module: omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_reading
+
+handler:
+  module: omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_reading
+  class: HandlerDevDeployReading
+  input_model: omnimarket.models.model_dev_deploy_reading.ModelDevDeployReadingRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelDevDeployReadingRequest
+  module: omnimarket.models.model_dev_deploy_reading
+  description: The runtime-affecting merges, the lab pass receipts, the probes and the time to read at.
+output_model:
+  name: ModelDevDeployReading
+  module: omnimarket.models.model_dev_deploy_reading
+  description: The verdict at that time, its reasons and the merges still inside their deadline.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.dev-deploy-read-requested.v1"
+    operation: "dev_deploy_reading"
+
+terminal_event: onex.evt.omnimarket.dev-deploy-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-deploy-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dev-deploy-read.v1
+
+# The reading writer's piece 11 source sends the request and reads the result; neither is a node contract.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.dev-deploy-read-requested.v1
+    producer: "the reading writer's piece 11 source, which gathers merges, receipts and probes; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-deploy-read.v1
+
+# Rebuild plan 4.1 join J10 (piece 10 to piece 11), OMN-22957: a runtime-affecting merge yields a PASS lab receipt keyed by
+# its sha, and the running runtime reads back that exact sha and answers one correlated functional request. The join
+# handler answers piece 11's chain on the floor's emission contract: a start then a success, a start then a typed failure
+# past the deadline, nothing while the deadline has not passed. The deadline travels on the request from the piece's overlay.
+join_j10:
+  join_id: "J10"
+  from_piece: 10
+  to_piece: 11
+  emission_node: "node_dev_deploy_reading_compute"
+  receipt_missing_code: "dev_deploy_receipt_missing"
+  receipt_late_code: "dev_deploy_receipt_late"
+  receipt_failed_code: "dev_deploy_receipt_failed"
+  receipts_unreadable_code: "dev_deploy_receipts_unreadable"
+  runtime_stale_code: "dev_deploy_runtime_stale"
+  runtime_broken_code: "dev_deploy_runtime_broken"
+  runtime_uncorrelated_code: "dev_deploy_runtime_uncorrelated"
+# The in-process join handler, bound here and not in handler_routing: it takes a receipt reader, a runtime probe, an
+# emission sink and a policy through its constructor, which the auto-wiring cannot supply.
+in_process_handlers:
+  join_j10:
+    handler:
+      module: "omnimarket.nodes.node_dev_deploy_reading_compute.handlers.handler_dev_deploy_join_j10"
+      class: "HandlerDevDeployJoinJ10"
+overlay:
+  id: node_dev_deploy_reading_compute
+  file_env: ONEX_DEV_DEPLOY_JOIN_OVERLAY
+  model: omnimarket.nodes.node_dev_deploy_reading_compute.models.model_join_j10.ModelDevDeployJoinOverlay
+  trust_boundary: Server-owned addresses and key names for the receipts projection and the runtime read; a bus request carries only the merge, its time and the deadline.
+
+metadata:
+  description: "Piece 11 reading: lab pass receipt per runtime-affecting sha and a 24-hour exact-sha probe"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-07"
+  tags: [compute, dev-deploy, reading, pure]
+  related_tickets: ["OMN-22478", "OMN-22958", "OMN-22957"]

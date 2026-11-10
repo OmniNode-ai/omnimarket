@@ -1,0 +1,211 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 129 and seed 2901779460196777266 with 6 workers on 80 cores with 7282MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file LedgerReducerJudge.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module LedgerReducerJudge
+Starting... (2026-11-02 03:51:31)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 03:51:32.
+Error: Invariant PrincipalInterleavingSerial is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ proj = {}
+/\ events = <<>>
+/\ txn = ( p1 :> [led |-> <<>>, log |-> {}, out |-> <<>>] @@
+  p2 :> [led |-> <<>>, log |-> {}, out |-> <<>>] )
+/\ offset = (p1 :> 0 @@ p2 :> 0)
+/\ replays = (<<p1, 1>> :> 0 @@ <<p2, 1>> :> 0)
+/\ wseq = (p1 :> 0 @@ p2 :> 0)
+/\ counter = 0
+/\ pc = (p1 :> "idle" @@ p2 :> "idle")
+/\ pj = 0
+/\ dec = (p1 :> "none" @@ p2 :> "none")
+/\ rcrashes = 0
+/\ gview = (p1 :> {} @@ p2 :> {})
+/\ outbox = <<>>
+/\ rpend = 0
+/\ marked = {}
+/\ holder = "none"
+/\ cmd = (p1 :> "none" @@ p2 :> "none")
+/\ rcvd = {}
+/\ bus = (p1 :> <<>> @@ p2 :> <<>>)
+/\ sent = {}
+/\ crashes = 0
+/\ reqlog = {}
+/\ ledger = <<>>
+/\ receipts = {}
+
+State 2: <Publish line 124, col 3 to line 129, col 48 of module LedgerReducerJudge>
+/\ proj = {}
+/\ events = <<>>
+/\ txn = ( p1 :> [led |-> <<>>, log |-> {}, out |-> <<>>] @@
+  p2 :> [led |-> <<>>, log |-> {}, out |-> <<>>] )
+/\ offset = (p1 :> 0 @@ p2 :> 0)
+/\ replays = (<<p1, 1>> :> 0 @@ <<p2, 1>> :> 0)
+/\ wseq = (p1 :> 0 @@ p2 :> 0)
+/\ counter = 0
+/\ pc = (p1 :> "idle" @@ p2 :> "idle")
+/\ pj = 0
+/\ dec = (p1 :> "none" @@ p2 :> "none")
+/\ rcrashes = 0
+/\ gview = (p1 :> {} @@ p2 :> {})
+/\ outbox = <<>>
+/\ rpend = 0
+/\ marked = {}
+/\ holder = "none"
+/\ cmd = (p1 :> "none" @@ p2 :> "none")
+/\ rcvd = {}
+/\ bus = (p1 :> <<>> @@ p2 :> <<<<p2, 1>>>>)
+/\ sent = {<<p2, 1>>}
+/\ crashes = 0
+/\ reqlog = {}
+/\ ledger = <<>>
+/\ receipts = {}
+
+State 3: <Publish line 124, col 3 to line 129, col 48 of module LedgerReducerJudge>
+/\ proj = {}
+/\ events = <<>>
+/\ txn = ( p1 :> [led |-> <<>>, log |-> {}, out |-> <<>>] @@
+  p2 :> [led |-> <<>>, log |-> {}, out |-> <<>>] )
+/\ offset = (p1 :> 0 @@ p2 :> 0)
+/\ replays = (<<p1, 1>> :> 0 @@ <<p2, 1>> :> 0)
+/\ wseq = (p1 :> 0 @@ p2 :> 0)
+/\ counter = 0
+/\ pc = (p1 :> "idle" @@ p2 :> "idle")
+/\ pj = 0
+/\ dec = (p1 :> "none" @@ p2 :> "none")
+/\ rcrashes = 0
+/\ gview = (p1 :> {} @@ p2 :> {})
+/\ outbox = <<>>
+/\ rpend = 0
+/\ marked = {}
+/\ holder = "none"
+/\ cmd = (p1 :> "none" @@ p2 :> "none")
+/\ rcvd = {}
+/\ bus = (p1 :> <<<<p1, 1>>>> @@ p2 :> <<<<p2, 1>>>>)
+/\ sent = {<<p1, 1>>, <<p2, 1>>}
+/\ crashes = 0
+/\ reqlog = {}
+/\ ledger = <<>>
+/\ receipts = {}
+
+State 4: <Fetch line 151, col 3 to line 158, col 24 of module LedgerReducerJudge>
+/\ proj = {}
+/\ events = <<>>
+/\ txn = ( p1 :> [led |-> <<>>, log |-> {}, out |-> <<>>] @@
+  p2 :> [led |-> <<>>, log |-> {}, out |-> <<>>] )
+/\ offset = (p1 :> 0 @@ p2 :> 0)
+/\ replays = (<<p1, 1>> :> 0 @@ <<p2, 1>> :> 0)
+/\ wseq = (p1 :> 0 @@ p2 :> 0)
+/\ counter = 0
+/\ pc = (p1 :> "fetched" @@ p2 :> "idle")
+/\ pj = 0
+/\ dec = (p1 :> "none" @@ p2 :> "none")
+/\ rcrashes = 0
+/\ gview = (p1 :> {} @@ p2 :> {})
+/\ outbox = <<>>
+/\ rpend = 0
+/\ marked = {}
+/\ holder = "none"
+/\ cmd = (p1 :> <<p1, 1>> @@ p2 :> "none")
+/\ rcvd = {}
+/\ bus = (p1 :> <<<<p1, 1>>>> @@ p2 :> <<<<p2, 1>>>>)
+/\ sent = {<<p1, 1>>, <<p2, 1>>}
+/\ crashes = 0
+/\ reqlog = {}
+/\ ledger = <<>>
+/\ receipts = {}
+
+State 5: <Lock line 161, col 3 to line 168, col 24 of module LedgerReducerJudge>
+/\ proj = {}
+/\ events = <<>>
+/\ txn = ( p1 :> [led |-> <<>>, log |-> {}, out |-> <<>>] @@
+  p2 :> [led |-> <<>>, log |-> {}, out |-> <<>>] )
+/\ offset = (p1 :> 0 @@ p2 :> 0)
+/\ replays = (<<p1, 1>> :> 0 @@ <<p2, 1>> :> 0)
+/\ wseq = (p1 :> 0 @@ p2 :> 0)
+/\ counter = 0
+/\ pc = (p1 :> "locked" @@ p2 :> "idle")
+/\ pj = 0
+/\ dec = (p1 :> "none" @@ p2 :> "none")
+/\ rcrashes = 0
+/\ gview = (p1 :> {} @@ p2 :> {})
+/\ outbox = <<>>
+/\ rpend = 0
+/\ marked = {}
+/\ holder = "none"
+/\ cmd = (p1 :> <<p1, 1>> @@ p2 :> "none")
+/\ rcvd = {}
+/\ bus = (p1 :> <<<<p1, 1>>>> @@ p2 :> <<<<p2, 1>>>>)
+/\ sent = {<<p1, 1>>, <<p2, 1>>}
+/\ crashes = 0
+/\ reqlog = {}
+/\ ledger = <<>>
+/\ receipts = {}
+
+State 6: <Fetch line 151, col 3 to line 158, col 24 of module LedgerReducerJudge>
+/\ proj = {}
+/\ events = <<>>
+/\ txn = ( p1 :> [led |-> <<>>, log |-> {}, out |-> <<>>] @@
+  p2 :> [led |-> <<>>, log |-> {}, out |-> <<>>] )
+/\ offset = (p1 :> 0 @@ p2 :> 0)
+/\ replays = (<<p1, 1>> :> 0 @@ <<p2, 1>> :> 0)
+/\ wseq = (p1 :> 0 @@ p2 :> 0)
+/\ counter = 0
+/\ pc = (p1 :> "locked" @@ p2 :> "fetched")
+/\ pj = 0
+/\ dec = (p1 :> "none" @@ p2 :> "none")
+/\ rcrashes = 0
+/\ gview = (p1 :> {} @@ p2 :> {})
+/\ outbox = <<>>
+/\ rpend = 0
+/\ marked = {}
+/\ holder = "none"
+/\ cmd = (p1 :> <<p1, 1>> @@ p2 :> <<p2, 1>>)
+/\ rcvd = {}
+/\ bus = (p1 :> <<<<p1, 1>>>> @@ p2 :> <<<<p2, 1>>>>)
+/\ sent = {<<p1, 1>>, <<p2, 1>>}
+/\ crashes = 0
+/\ reqlog = {}
+/\ ledger = <<>>
+/\ receipts = {}
+
+State 7: <Lock line 161, col 3 to line 168, col 24 of module LedgerReducerJudge>
+/\ proj = {}
+/\ events = <<>>
+/\ txn = ( p1 :> [led |-> <<>>, log |-> {}, out |-> <<>>] @@
+  p2 :> [led |-> <<>>, log |-> {}, out |-> <<>>] )
+/\ offset = (p1 :> 0 @@ p2 :> 0)
+/\ replays = (<<p1, 1>> :> 0 @@ <<p2, 1>> :> 0)
+/\ wseq = (p1 :> 0 @@ p2 :> 0)
+/\ counter = 0
+/\ pc = (p1 :> "locked" @@ p2 :> "locked")
+/\ pj = 0
+/\ dec = (p1 :> "none" @@ p2 :> "none")
+/\ rcrashes = 0
+/\ gview = (p1 :> {} @@ p2 :> {})
+/\ outbox = <<>>
+/\ rpend = 0
+/\ marked = {}
+/\ holder = "none"
+/\ cmd = (p1 :> <<p1, 1>> @@ p2 :> <<p2, 1>>)
+/\ rcvd = {}
+/\ bus = (p1 :> <<<<p1, 1>>>> @@ p2 :> <<<<p2, 1>>>>)
+/\ sent = {<<p1, 1>>, <<p2, 1>>}
+/\ crashes = 0
+/\ reqlog = {}
+/\ ledger = <<>>
+/\ receipts = {}
+
+316 states generated, 157 distinct states found, 68 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 2 (minimum is 1, the maximum 4 and the 95th percentile is 3).
+Finished in 00s at (2026-11-02 03:51:32)
+exit=12

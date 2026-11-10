@@ -14,6 +14,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
+from omnimarket.models.ticket_query.model_ticket_facts import ModelTicketFactsOutput
 from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
@@ -82,13 +84,25 @@ class LabFillClaimFacts:
 
 
 class ProtocolLabFillOwnerReader(Protocol):
-    """The ownership sources: the claim store, the PR claim registry and the PR watcher."""
+    """The ownership sources: the claim store, the PR claim registry, the PR watcher and the work-state projection."""
 
     def claims(self, ledger_path: str, tickets: Sequence[str]) -> LabFillClaimFacts: ...
 
     def pr_claims(self, cli_path: str) -> Mapping[str, str]: ...
 
     def watcher_merged(self, state_path: str) -> Mapping[str, Sequence[str]]: ...
+
+    def work_state_owners(
+        self, state_path: str, max_age_s: float
+    ) -> Mapping[str, Sequence[str]] | None:
+        """Ticket -> the live lanes the work-state projection attributes to it, or None when none is published."""
+        ...
+
+
+class ProtocolLabFillTicketFacts(Protocol):
+    """A ticket's workflow state type and assignee id, read through node_ticket_query."""
+
+    def read(self, ticket: str) -> ModelTicketFactsOutput: ...
 
 
 class ProtocolLabFillLiveChecks(Protocol):
@@ -103,6 +117,18 @@ class ProtocolLabFillLiveChecks(Protocol):
         operator_id: str,
         ledger_path: str,
     ) -> tuple[str, str]: ...
+
+
+class ProtocolLabFillMergedWork(Protocol):
+    """The merged pull requests that name a ticket (``repo#number``), read from the PR watcher's state and the canonical clones (OMN-23277, OMN-23376)."""
+
+    def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]: ...
+
+    def built_reports(
+        self, ticket: str, ledger_path: str
+    ) -> Sequence[ModelLabFillBuiltReport]:
+        """The ticket's already-built TERMINALs in the ledger (OMN-23376)."""
+        ...
 
 
 class ProtocolLabFillBriefBlocks(Protocol):

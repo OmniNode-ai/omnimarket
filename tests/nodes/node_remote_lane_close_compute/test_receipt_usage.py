@@ -10,11 +10,11 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.remote_lane_close import (
+    ModelRemoteLaneResultRequest,
+)
 from omnimarket.nodes.node_remote_lane_close_compute.handlers import (
     HandlerRemoteLaneResult,
-)
-from omnimarket.nodes.node_remote_lane_close_compute.models import (
-    ModelRemoteLaneResultRequest,
 )
 
 pytestmark = pytest.mark.unit
@@ -122,13 +122,12 @@ def test_missing_usage_unknown(engine: str) -> None:
 def test_contract_id_in_receipt() -> None:
     result = close(brief="Contract: contract-42\nAttempt: attempt-2\n")
     assert result["usage"]["contract_id"] == "contract-42"
-    assert result["ledger_cells"] == {
-        "contract_id": "contract-42",
-        "attempt_id": "attempt-2",
-    }
+    # OMN-23417: the closing row also carries the lane's report text; the identity cells are what this test pins.
+    identity = {k: v for k, v in result["ledger_cells"].items() if k != "report"}
+    assert identity == {"contract_id": "contract-42", "attempt_id": "attempt-2"}
     without_identity = close()
     assert "contract_id" not in without_identity["usage"]
-    assert without_identity["ledger_cells"] == {}
+    assert set(without_identity["ledger_cells"]) <= {"report"}
 
 
 def test_attempt_id_in_receipt() -> None:
@@ -149,7 +148,7 @@ def test_ambiguous_brief_refused(brief: str) -> None:
 
 def test_metadata_in_fences_is_not_a_contract() -> None:
     result = close(brief="```\nContract: example\nAttempt: example\n```")
-    assert result["ledger_cells"] == {}
+    assert set(result["ledger_cells"]) <= {"report"}
 
 
 @pytest.mark.parametrize("engine", ["claude", "codex"])

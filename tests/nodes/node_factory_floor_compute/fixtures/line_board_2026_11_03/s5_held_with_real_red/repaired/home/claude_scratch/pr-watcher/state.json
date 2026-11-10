@@ -1,0 +1,2043 @@
+{
+ "last_tick": "2026-11-03T13:21:43Z",
+ "merges": {},
+ "prs": {
+  "omnibase_infra#5610": {
+   "ci": {
+    "last_red_completed_at": "2026-11-03T13:13:09Z",
+    "read_at": "2026-11-03T13:21:43Z",
+    "red": [
+     "Hostile Review Gate",
+     "Hostile Reviewer (adversarial gate)"
+    ],
+    "red_facts": [
+     [
+      "Hostile Review Gate",
+      "failure",
+      "41642180940",
+      "2026-11-03T13:13:09Z"
+     ],
+     [
+      "Hostile Reviewer (adversarial gate)",
+      "failure",
+      "41642180940",
+      "2026-11-03T13:13:03Z"
+     ]
+    ],
+    "runs": [
+     [
+      "AI-Slop Pattern Check (strict, PR diff)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:51Z"
+     ],
+     [
+      "Analyze (actions)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:41Z"
+     ],
+     [
+      "Analyze (javascript-typescript)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:48Z"
+     ],
+     [
+      "Analyze (python)",
+      "completed",
+      "success",
+      "2026-11-03T13:14:10Z"
+     ],
+     [
+      "Application Database Domain Enforcement (OMN-15361)",
+      "completed",
+      "success",
+      "2026-11-03T13:16:40Z"
+     ],
+     [
+      "Arch Invariants (OMN-3343)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:45Z"
+     ],
+     [
+      "Attest Source Hash (OMN-9139) / Verify source hash attestation",
+      "completed",
+      "success",
+      "2026-11-03T13:16:05Z"
+     ],
+     [
+      "Build Runtime Image",
+      "completed",
+      "success",
+      "2026-11-03T13:15:53Z"
+     ],
+     [
+      "Build Summary",
+      "completed",
+      "success",
+      "2026-11-03T13:16:12Z"
+     ],
+     [
+      "Bus ACL Boundary (OMN-19928)",
+      "completed",
+      "success",
+      "2026-11-03T13:13:12Z"
+     ],
+     [
+      "CI Evidence Policy (OMN-18247)",
+      "completed",
+      "success",
+      "2026-11-03T13:13:00Z"
+     ],
+     [
+      "CI Live Contact (OMN-18648)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:22Z"
+     ],
+     [
+      "CI Naming Convention",
+      "completed",
+      "success",
+      "2026-11-03T13:12:04Z"
+     ],
+     [
+      "Canonical File Shape (OMN-20304)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:34Z"
+     ],
+     [
+      "Canonical Handler-Shape Gate (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:22Z"
+     ],
+     [
+      "Canonical Inference Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:35Z"
+     ],
+     [
+      "Check architecture handshake",
+      "completed",
+      "success",
+      "2026-11-03T13:12:12Z"
+     ],
+     [
+      "CodeQL",
+      "completed",
+      "success",
+      "2026-11-03T13:12:34Z"
+     ],
+     [
+      "Compose Required-Env Coverage (OMN-5439)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:41Z"
+     ],
+     [
+      "Contract Compliance",
+      "completed",
+      "success",
+      "2026-11-03T13:12:16Z"
+     ],
+     [
+      "Contract Path Pre-Flight",
+      "completed",
+      "success",
+      "2026-11-03T13:12:04Z"
+     ],
+     [
+      "Contract Sync Gate (Wave C) [OMN-8915]",
+      "completed",
+      "success",
+      "2026-11-03T13:12:05Z"
+     ],
+     [
+      "Core Validators (OMN-21538)",
+      "completed",
+      "success",
+      "2026-11-03T13:13:19Z"
+     ],
+     [
+      "Cross-Repo Migration Conflicts",
+      "completed",
+      "success",
+      "2026-11-03T13:12:45Z"
+     ],
+     [
+      "Customer Path Boundary (OMN-18012)",
+      "completed",
+      "success",
+      "2026-11-03T13:13:20Z"
+     ],
+     [
+      "Demo Loop Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:29Z"
+     ],
+     [
+      "Dep Provenance Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:06Z"
+     ],
+     [
+      "Dep Provenance Lineage Gate (OMN-15604)",
+      "completed",
+      "success",
+      "2026-11-03T13:13:14Z"
+     ],
+     [
+      "Deploy Agent Tests (OMN-15378) / deploy-agent-tests",
+      "completed",
+      "success",
+      "2026-11-03T13:16:31Z"
+     ],
+     [
+      "Direct Model Call Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:18:53Z"
+     ],
+     [
+      "Docker Integration Tests",
+      "completed",
+      "skipped",
+      "2026-11-03T13:15:53Z"
+     ],
+     [
+      "Docs-Only Marker (OMN-16661)",
+      "completed",
+      "skipped",
+      "2026-11-03T13:12:08Z"
+     ],
+     [
+      "Duplication Sweep",
+      "completed",
+      "success",
+      "2026-11-03T13:12:08Z"
+     ],
+     [
+      "Effect-Assertion Gate (RT-5)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:30Z"
+     ],
+     [
+      "Enforce validator-requirements.yaml (OMN-13291)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:15Z"
+     ],
+     [
+      "Event Chain Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:22Z"
+     ],
+     [
+      "Exposed Identifier Gate (OMN-17320)",
+      "completed",
+      "success",
+      "2026-11-03T13:14:02Z"
+     ],
+     [
+      "Fingerprint Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:12Z"
+     ],
+     [
+      "Git env scrub gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:26Z"
+     ],
+     [
+      "Governed helper primitive gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:07Z"
+     ],
+     [
+      "Handler Contract Compliance",
+      "completed",
+      "success",
+      "2026-11-03T13:12:12Z"
+     ],
+     [
+      "Hostile Review Gate",
+      "completed",
+      "failure",
+      "2026-11-03T13:13:09Z"
+     ],
+     [
+      "Hostile Review Thread Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:13:21Z"
+     ],
+     [
+      "Hostile Reviewer (adversarial gate)",
+      "completed",
+      "failure",
+      "2026-11-03T13:13:03Z"
+     ],
+     [
+      "Image Size Analysis",
+      "completed",
+      "skipped",
+      "2026-11-03T13:15:53Z"
+     ],
+     [
+      "Infra Node Handler Ownership",
+      "completed",
+      "success",
+      "2026-11-03T13:12:04Z"
+     ],
+     [
+      "Integration Silent-Skip Guard (OMN-14172)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:55Z"
+     ],
+     [
+      "Integration Test Coverage",
+      "completed",
+      "success",
+      "2026-11-03T13:12:06Z"
+     ],
+     [
+      "Integration Test Removal Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:08Z"
+     ],
+     [
+      "Kafka Boundary Compat (OMN-3256)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:46Z"
+     ],
+     [
+      "Kafka Schema Handshake (OMN-3411)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:47Z"
+     ],
+     [
+      "Lab Probe Windows (OMN-19412)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:21Z"
+     ],
+     [
+      "Lab-overlay parity tests (OMN-20934)",
+      "completed",
+      "success",
+      "2026-11-03T13:15:03Z"
+     ],
+     [
+      "Laptop profile paths changed (OMN-19498)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:08Z"
+     ],
+     [
+      "Lockfile CVE Scan (OMN-16228)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:23Z"
+     ],
+     [
+      "Lockfile Registry Allowlist (OMN-16516)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:12Z"
+     ],
+     [
+      "Migration Freeze Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:17Z"
+     ],
+     [
+      "Migration Integration Test",
+      "completed",
+      "success",
+      "2026-11-03T13:19:37Z"
+     ],
+     [
+      "No Plugin Daemon Classes Gate (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:51Z"
+     ],
+     [
+      "No bare compose teardown",
+      "completed",
+      "success",
+      "2026-11-03T13:12:17Z"
+     ],
+     [
+      "Node Boundary Imports (OMN-20703)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:43Z"
+     ],
+     [
+      "Node Migration Declaration Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:29Z"
+     ],
+     [
+      "Noncanonical Class Allowlist One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T13:12:11Z"
+     ],
+     [
+      "ONEX Validators",
+      "completed",
+      "success",
+      "2026-11-03T13:15:03Z"
+     ],
+     [
+      "Omni Standards Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:13:44Z"
+     ],
+     [
+      "PEP 604 Type Union Check (UP007)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:15Z"
+     ],
+     [
+      "Pin Reachability (OMN-15538)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:25Z"
+     ],
+     [
+      "Plugin ENV->Service Completeness (OMN-4313)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:16Z"
+     ],
+     [
+      "Precommit Parity Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:13:04Z"
+     ],
+     [
+      "Projection Domain Adapter Proof (OMN-15421)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:49Z"
+     ],
+     [
+      "Public Runner Placement (OMN-19998)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:26Z"
+     ],
+     [
+      "Publish PR Webhook Event",
+      "completed",
+      "success",
+      "2026-11-03T13:11:58Z"
+     ],
+     [
+      "Reconcilers prove movement by readback (OMN-17307)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:07Z"
+     ],
+     [
+      "Runner Disk Preflight",
+      "completed",
+      "success",
+      "2026-11-03T13:12:04Z"
+     ],
+     [
+      "Runner Route (OMN-18031) / route",
+      "completed",
+      "success",
+      "2026-11-03T13:12:21Z"
+     ],
+     [
+      "Runtime Boot Laptop Profile (catalog local) / runtime-boot (mode=${{ inputs.mode }})",
+      "completed",
+      "skipped",
+      "2026-11-03T13:12:09Z"
+     ],
+     [
+      "Runtime Profiles / validate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:20Z"
+     ],
+     [
+      "Sanitized Legacy RDS Fixture Proof / PostgreSQL 16 Fresh + Legacy Fixture",
+      "completed",
+      "success",
+      "2026-11-03T13:13:40Z"
+     ],
+     [
+      "Security Scan (Trivy)",
+      "completed",
+      "skipped",
+      "2026-11-03T13:15:53Z"
+     ],
+     [
+      "Seed Provenance Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:28Z"
+     ],
+     [
+      "Service-Backed Integration Suites (OMN-18781)",
+      "completed",
+      "success",
+      "2026-11-03T13:20:34Z"
+     ],
+     [
+      "Shape-Gate Independence (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:18Z"
+     ],
+     [
+      "Sibling Compat Check (OMN-4315)",
+      "completed",
+      "success",
+      "2026-11-03T13:11:57Z"
+     ],
+     [
+      "Skip Count Baseline One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T13:12:11Z"
+     ],
+     [
+      "Stack Shape (OMN-21891)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:35Z"
+     ],
+     [
+      "Stale TODO Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:04Z"
+     ],
+     [
+      "Subscribe Wiring Health",
+      "completed",
+      "success",
+      "2026-11-03T13:12:36Z"
+     ],
+     [
+      "Topic Drift Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:30Z"
+     ],
+     [
+      "Topic Enum Drift Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:20Z"
+     ],
+     [
+      "Topic Naming Baseline One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T13:12:13Z"
+     ],
+     [
+      "Topic Naming Lint",
+      "completed",
+      "success",
+      "2026-11-03T13:12:59Z"
+     ],
+     [
+      "Trivyignore Expiry Check (OMN-16229)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:06Z"
+     ],
+     [
+      "Type Safety Validation",
+      "completed",
+      "success",
+      "2026-11-03T13:13:38Z"
+     ],
+     [
+      "URL Authority Gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:33Z"
+     ],
+     [
+      "Validate Dockerfile Plugin Pins",
+      "completed",
+      "success",
+      "2026-11-03T13:12:05Z"
+     ],
+     [
+      "Validator Requirements Baseline One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T13:12:08Z"
+     ],
+     [
+      "Version Pin Compliance",
+      "completed",
+      "success",
+      "2026-11-03T13:12:12Z"
+     ],
+     [
+      "Writer-Migration Coupling Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:15Z"
+     ],
+     [
+      "advisory-job-gate / advisory-job-gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:10Z"
+     ],
+     [
+      "call / validate-docs",
+      "completed",
+      "success",
+      "2026-11-03T13:12:14Z"
+     ],
+     [
+      "call-reject-skip-token / scan / reject-skip-gate-token",
+      "completed",
+      "success",
+      "2026-11-03T13:12:01Z"
+     ],
+     [
+      "check-env-reads-gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:07Z"
+     ],
+     [
+      "[scrubbed]-overlay-binding",
+      "completed",
+      "success",
+      "2026-11-03T13:12:30Z"
+     ],
+     [
+      "consumer-kwarg-parity",
+      "completed",
+      "success",
+      "2026-11-03T13:12:23Z"
+     ],
+     [
+      "context-field-presence",
+      "completed",
+      "success",
+      "2026-11-03T13:12:07Z"
+     ],
+     [
+      "contract-validation",
+      "completed",
+      "success",
+      "2026-11-03T13:12:08Z"
+     ],
+     [
+      "delegation-health-check / Delegation Health Check",
+      "completed",
+      "success",
+      "2026-11-03T13:12:28Z"
+     ],
+     [
+      "delegation-seam-gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:34Z"
+     ],
+     [
+      "deploy-gate / deploy-gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:13Z"
+     ],
+     [
+      "dispatch-parity-gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:39Z"
+     ],
+     [
+      "dispatcher-route-coverage",
+      "completed",
+      "success",
+      "2026-11-03T13:12:18Z"
+     ],
+     [
+      "exposure-reader-coverage",
+      "completed",
+      "success",
+      "2026-11-03T13:12:21Z"
+     ],
+     [
+      "hook-push-rehearsal / rehearse",
+      "completed",
+      "success",
+      "2026-11-03T13:15:38Z"
+     ],
+     [
+      "imperative-contract-guard / Imperative Contract Guard",
+      "completed",
+      "success",
+      "2026-11-03T13:12:36Z"
+     ],
+     [
+      "kb-doc-gate / kb-doc-gate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:09Z"
+     ],
+     [
+      "lint (shadow)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:16Z"
+     ],
+     [
+      "main-target-guard",
+      "completed",
+      "success",
+      "2026-11-03T13:11:59Z"
+     ],
+     [
+      "merge-hold-gate / evaluate",
+      "completed",
+      "success",
+      "2026-11-03T13:12:17Z"
+     ],
+     [
+      "no-noncanonical-lifecycle-classes",
+      "completed",
+      "success",
+      "2026-11-03T13:12:19Z"
+     ],
+     [
+      "node-migration-sync / deployed-migration-tree-sync-logic",
+      "completed",
+      "success",
+      "2026-11-03T13:12:41Z"
+     ],
+     [
+      "node-migration-sync / node-migration-sync",
+      "completed",
+      "success",
+      "2026-11-03T13:12:12Z"
+     ],
+     [
+      "non-dev-base-guard",
+      "completed",
+      "success",
+      "2026-11-03T13:11:55Z"
+     ],
+     [
+      "pinned-wheel-skew",
+      "completed",
+      "success",
+      "2026-11-03T13:12:04Z"
+     ],
+     [
+      "pr-title / check-title",
+      "completed",
+      "success",
+      "2026-11-03T13:12:05Z"
+     ],
+     [
+      "public-repo-hygiene / deployment-config",
+      "completed",
+      "success",
+      "2026-11-03T13:12:10Z"
+     ],
+     [
+      "public-repo-hygiene / public-repo-hygiene",
+      "completed",
+      "success",
+      "2026-11-03T13:12:54Z"
+     ],
+     [
+      "pypi-pin-resolvability",
+      "completed",
+      "success",
+      "2026-11-03T13:12:18Z"
+     ],
+     [
+      "reason-graph",
+      "completed",
+      "success",
+      "2026-11-03T13:14:03Z"
+     ],
+     [
+      "receipt-honesty",
+      "completed",
+      "success",
+      "2026-11-03T13:12:23Z"
+     ],
+     [
+      "release-identity",
+      "completed",
+      "success",
+      "2026-11-03T13:12:19Z"
+     ],
+     [
+      "repo-evidence / dod-verify",
+      "completed",
+      "success",
+      "2026-11-03T13:13:29Z"
+     ],
+     [
+      "repo-evidence / verify",
+      "completed",
+      "success",
+      "2026-11-03T13:11:56Z"
+     ],
+     [
+      "required-check-skip-guard / check-skip-vectors",
+      "completed",
+      "success",
+      "2026-11-03T13:12:12Z"
+     ],
+     [
+      "runner-image-build-smoke",
+      "completed",
+      "success",
+      "2026-11-03T13:14:49Z"
+     ],
+     [
+      "runner-label-exists / runner-label-exists",
+      "completed",
+      "success",
+      "2026-11-03T13:12:26Z"
+     ],
+     [
+      "runner-routing-audit / Runner Routing Audit",
+      "completed",
+      "success",
+      "2026-11-03T13:13:08Z"
+     ],
+     [
+      "shell-hygiene",
+      "completed",
+      "success",
+      "2026-11-03T13:12:26Z"
+     ],
+     [
+      "sibling-lock-pins",
+      "completed",
+      "success",
+      "2026-11-03T13:12:25Z"
+     ],
+     [
+      "skill-node-mapping-sync",
+      "completed",
+      "success",
+      "2026-11-03T13:12:24Z"
+     ],
+     [
+      "terminal-cost-completeness",
+      "completed",
+      "success",
+      "2026-11-03T13:12:04Z"
+     ],
+     [
+      "tests+coverage (shadow)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:16Z"
+     ],
+     [
+      "typecheck (shadow)",
+      "completed",
+      "success",
+      "2026-11-03T13:13:55Z"
+     ],
+     [
+      "verify",
+      "completed",
+      "skipped",
+      "2026-11-03T13:11:51Z"
+     ],
+     [
+      "wheel-content-parity",
+      "completed",
+      "success",
+      "2026-11-03T13:12:11Z"
+     ],
+     [
+      "zone-filter / Zone Filter (docs-only check)",
+      "completed",
+      "success",
+      "2026-11-03T13:12:08Z"
+     ]
+    ],
+    "sha": "caec581dc7e4fc6c5a68c2ca935db7307a556253",
+    "total": 174,
+    "verdict": "RED"
+   },
+   "cls": "red",
+   "facts": {
+    "base": "dev",
+    "created_at": "2026-11-02T23:22:32Z",
+    "draft": false,
+    "head_ref": "omn-21923-census-land-1102",
+    "head_sha": "caec581dc7e4fc6c5a68c2ca935db7307a556253",
+    "merged_at": "",
+    "number": 5610,
+    "repo": "omnibase_infra",
+    "state": "OPEN",
+    "title": "feat(OMN-21923): record runtime commands and foreign entry points"
+   },
+   "first_seen": "2026-11-02T23:22:32Z"
+  },
+  "omnibase_infra#5623": {
+   "ci": {
+    "last_red_completed_at": "2026-11-03T12:09:22Z",
+    "read_at": "2026-11-03T13:21:43Z",
+    "red": [
+     "Hostile Review Gate",
+     "Hostile Reviewer (adversarial gate)"
+    ],
+    "red_facts": [
+     [
+      "Hostile Review Gate",
+      "failure",
+      "41594132672",
+      "2026-11-03T12:09:22Z"
+     ],
+     [
+      "Hostile Reviewer (adversarial gate)",
+      "failure",
+      "41594132672",
+      "2026-11-03T12:09:16Z"
+     ]
+    ],
+    "runs": [
+     [
+      "AI-Slop Pattern Check (strict, PR diff)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:11Z"
+     ],
+     [
+      "Analyze (actions)",
+      "completed",
+      "success",
+      "2026-11-03T07:07:31Z"
+     ],
+     [
+      "Analyze (javascript-typescript)",
+      "completed",
+      "success",
+      "2026-11-03T07:07:31Z"
+     ],
+     [
+      "Analyze (python)",
+      "completed",
+      "success",
+      "2026-11-03T07:08:51Z"
+     ],
+     [
+      "Application Database Domain Enforcement (OMN-15361)",
+      "completed",
+      "success",
+      "2026-11-03T11:37:38Z"
+     ],
+     [
+      "Arch Invariants (OMN-3343)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:39Z"
+     ],
+     [
+      "Attest Source Hash (OMN-9139) / Verify source hash attestation",
+      "completed",
+      "success",
+      "2026-11-03T07:10:44Z"
+     ],
+     [
+      "Build Runtime Image",
+      "completed",
+      "success",
+      "2026-11-03T07:10:27Z"
+     ],
+     [
+      "Build Summary",
+      "completed",
+      "success",
+      "2026-11-03T07:10:49Z"
+     ],
+     [
+      "Bus ACL Boundary (OMN-19928)",
+      "completed",
+      "success",
+      "2026-11-03T11:34:19Z"
+     ],
+     [
+      "CI Evidence Policy (OMN-18247)",
+      "completed",
+      "success",
+      "2026-11-03T11:34:01Z"
+     ],
+     [
+      "CI Live Contact (OMN-18648)",
+      "completed",
+      "success",
+      "2026-11-03T07:07:11Z"
+     ],
+     [
+      "CI Naming Convention",
+      "completed",
+      "success",
+      "2026-11-03T07:06:51Z"
+     ],
+     [
+      "CI Summary",
+      "completed",
+      "failure",
+      "2026-11-03T11:54:06Z"
+     ],
+     [
+      "CI Tests Gate",
+      "completed",
+      "success",
+      "2026-11-03T11:47:32Z"
+     ],
+     [
+      "CI cascade reason-graph (report-only)",
+      "completed",
+      "success",
+      "2026-11-03T11:54:19Z"
+     ],
+     [
+      "Canonical File Shape (OMN-20304)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:36Z"
+     ],
+     [
+      "Canonical Handler-Shape Gate (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:28Z"
+     ],
+     [
+      "Canonical Inference Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:07:34Z"
+     ],
+     [
+      "Check architecture handshake",
+      "completed",
+      "success",
+      "2026-11-03T07:06:54Z"
+     ],
+     [
+      "CodeQL",
+      "completed",
+      "neutral",
+      "2026-11-03T07:07:24Z"
+     ],
+     [
+      "Compose Required-Env Coverage (OMN-5439)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:48Z"
+     ],
+     [
+      "Contract Compliance",
+      "completed",
+      "success",
+      "2026-11-03T11:33:22Z"
+     ],
+     [
+      "Contract Path Pre-Flight",
+      "completed",
+      "success",
+      "2026-11-03T11:33:08Z"
+     ],
+     [
+      "Contract Sync Gate (Wave C) [OMN-8915]",
+      "completed",
+      "success",
+      "2026-11-03T11:33:07Z"
+     ],
+     [
+      "Core Validators (OMN-21538)",
+      "completed",
+      "success",
+      "2026-11-03T11:34:13Z"
+     ],
+     [
+      "Cross-Repo Migration Conflicts",
+      "completed",
+      "success",
+      "2026-11-03T11:33:22Z"
+     ],
+     [
+      "Customer Path Boundary (OMN-18012)",
+      "completed",
+      "success",
+      "2026-11-03T11:34:22Z"
+     ],
+     [
+      "Demo Loop Gate",
+      "completed",
+      "success",
+      "2026-11-03T11:33:31Z"
+     ],
+     [
+      "Dep Provenance Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:06:56Z"
+     ],
+     [
+      "Dep Provenance Lineage Gate (OMN-15604)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:46Z"
+     ],
+     [
+      "Deploy Agent Tests (OMN-15378) / deploy-agent-tests",
+      "completed",
+      "success",
+      "2026-11-03T11:39:18Z"
+     ],
+     [
+      "Detect Changes",
+      "completed",
+      "success",
+      "2026-11-03T11:41:18Z"
+     ],
+     [
+      "Direct Model Call Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:13:35Z"
+     ],
+     [
+      "Docker Integration Tests",
+      "completed",
+      "skipped",
+      "2026-11-03T07:10:27Z"
+     ],
+     [
+      "Docs-Only Marker (OMN-16661)",
+      "completed",
+      "skipped",
+      "2026-11-03T11:33:12Z"
+     ],
+     [
+      "Duplication Sweep",
+      "completed",
+      "success",
+      "2026-11-03T07:06:57Z"
+     ],
+     [
+      "Effect-Assertion Gate (RT-5)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:30Z"
+     ],
+     [
+      "Enable Auto-Merge",
+      "completed",
+      "success",
+      "2026-11-03T07:06:56Z"
+     ],
+     [
+      "Enforce validator-requirements.yaml (OMN-13291)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:19Z"
+     ],
+     [
+      "Event Chain Gate",
+      "completed",
+      "success",
+      "2026-11-03T11:33:25Z"
+     ],
+     [
+      "Exposed Identifier Gate (OMN-17320)",
+      "completed",
+      "success",
+      "2026-11-03T11:34:31Z"
+     ],
+     [
+      "Fingerprint Check",
+      "completed",
+      "success",
+      "2026-11-03T11:33:20Z"
+     ],
+     [
+      "Git env scrub gate",
+      "completed",
+      "success",
+      "2026-11-03T07:07:04Z"
+     ],
+     [
+      "Governed helper primitive gate",
+      "completed",
+      "success",
+      "2026-11-03T07:06:52Z"
+     ],
+     [
+      "Handler Contract Compliance",
+      "completed",
+      "success",
+      "2026-11-03T07:07:06Z"
+     ],
+     [
+      "Hostile Review Gate",
+      "completed",
+      "failure",
+      "2026-11-03T12:09:22Z"
+     ],
+     [
+      "Hostile Review Thread Gate",
+      "completed",
+      "success",
+      "2026-11-03T12:09:34Z"
+     ],
+     [
+      "Hostile Reviewer (adversarial gate)",
+      "completed",
+      "failure",
+      "2026-11-03T12:09:16Z"
+     ],
+     [
+      "Image Size Analysis",
+      "completed",
+      "skipped",
+      "2026-11-03T07:10:27Z"
+     ],
+     [
+      "Infra Node Handler Ownership",
+      "completed",
+      "success",
+      "2026-11-03T11:33:09Z"
+     ],
+     [
+      "Integration Silent-Skip Guard (OMN-14172)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:57Z"
+     ],
+     [
+      "Integration Test Coverage",
+      "completed",
+      "success",
+      "2026-11-03T07:06:52Z"
+     ],
+     [
+      "Integration Test Removal Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:06:53Z"
+     ],
+     [
+      "Kafka Boundary Compat (OMN-3256)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:50Z"
+     ],
+     [
+      "Kafka Schema Handshake (OMN-3411)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:49Z"
+     ],
+     [
+      "Lab Probe Windows (OMN-19412)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:28Z"
+     ],
+     [
+      "Lab-overlay parity tests (OMN-20934)",
+      "completed",
+      "success",
+      "2026-11-03T07:09:42Z"
+     ],
+     [
+      "Lane Census Staleness + E-5 Env Drift (OMN-13034)",
+      "completed",
+      "success",
+      "2026-11-03T07:07:05Z"
+     ],
+     [
+      "Laptop profile paths changed (OMN-19498)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:11Z"
+     ],
+     [
+      "Lint",
+      "completed",
+      "success",
+      "2026-11-03T11:40:23Z"
+     ],
+     [
+      "Lockfile CVE Scan (OMN-16228)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:22Z"
+     ],
+     [
+      "Lockfile Registry Allowlist (OMN-16516)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:15Z"
+     ],
+     [
+      "Migration Freeze Check",
+      "completed",
+      "success",
+      "2026-11-03T11:33:15Z"
+     ],
+     [
+      "Migration Integration Test",
+      "completed",
+      "success",
+      "2026-11-03T11:40:50Z"
+     ],
+     [
+      "No Plugin Daemon Classes Gate (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:43Z"
+     ],
+     [
+      "No bare compose teardown",
+      "completed",
+      "success",
+      "2026-11-03T07:07:05Z"
+     ],
+     [
+      "Node Boundary Imports (OMN-20703)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:48Z"
+     ],
+     [
+      "Node Migration Declaration Check",
+      "completed",
+      "success",
+      "2026-11-03T11:33:28Z"
+     ],
+     [
+      "Noncanonical Class Allowlist One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T11:33:17Z"
+     ],
+     [
+      "ONEX Validators",
+      "completed",
+      "success",
+      "2026-11-03T11:36:09Z"
+     ],
+     [
+      "Omni Standards Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:08:45Z"
+     ],
+     [
+      "PEP 604 Type Union Check (UP007)",
+      "completed",
+      "success",
+      "2026-11-03T07:06:59Z"
+     ],
+     [
+      "Pin Reachability (OMN-15538)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:32Z"
+     ],
+     [
+      "Plugin ENV->Service Completeness (OMN-4313)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:21Z"
+     ],
+     [
+      "Precommit Parity Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:07:39Z"
+     ],
+     [
+      "Projection Domain Adapter Proof (OMN-15421)",
+      "completed",
+      "success",
+      "2026-11-03T07:07:38Z"
+     ],
+     [
+      "Public Runner Placement (OMN-19998)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:26Z"
+     ],
+     [
+      "Publish PR Webhook Event",
+      "completed",
+      "success",
+      "2026-11-03T07:06:44Z"
+     ],
+     [
+      "Reconcilers prove movement by readback (OMN-17307)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:08Z"
+     ],
+     [
+      "Runner Disk Preflight",
+      "completed",
+      "success",
+      "2026-11-03T07:06:49Z"
+     ],
+     [
+      "Runner Route (OMN-18031) / route",
+      "completed",
+      "success",
+      "2026-11-03T11:33:27Z"
+     ],
+     [
+      "Runtime Boot Laptop Profile (catalog local)",
+      "completed",
+      "skipped",
+      "2026-11-03T11:33:11Z"
+     ],
+     [
+      "Runtime Boot Smoke (compose)",
+      "completed",
+      "skipped",
+      "2026-11-03T11:47:32Z"
+     ],
+     [
+      "Runtime Profiles / validate",
+      "completed",
+      "success",
+      "2026-11-03T11:33:23Z"
+     ],
+     [
+      "Sanitized Legacy RDS Fixture Proof / PostgreSQL 16 Fresh + Legacy Fixture",
+      "completed",
+      "success",
+      "2026-11-03T11:34:39Z"
+     ],
+     [
+      "Security Scan (Trivy)",
+      "completed",
+      "skipped",
+      "2026-11-03T07:10:27Z"
+     ],
+     [
+      "Seed Provenance Check",
+      "completed",
+      "success",
+      "2026-11-03T07:07:21Z"
+     ],
+     [
+      "Service-Backed Integration Suites (OMN-18781)",
+      "completed",
+      "success",
+      "2026-11-03T11:41:26Z"
+     ],
+     [
+      "Shape-Gate Independence (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:19Z"
+     ],
+     [
+      "Skip Count Baseline One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T11:33:16Z"
+     ],
+     [
+      "Skip Count Ratchet (OMN-18776)",
+      "completed",
+      "success",
+      "2026-11-03T11:47:57Z"
+     ],
+     [
+      "Stack Shape (OMN-21891)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:40Z"
+     ],
+     [
+      "Stale TODO Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:06:50Z"
+     ],
+     [
+      "Subscribe Wiring Health",
+      "completed",
+      "success",
+      "2026-11-03T11:33:38Z"
+     ],
+     [
+      "Test-Failure Ratchet Gate",
+      "completed",
+      "success",
+      "2026-11-03T11:47:45Z"
+     ],
+     [
+      "Tests (Split 1/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:45:10Z"
+     ],
+     [
+      "Tests (Split 2/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:47:15Z"
+     ],
+     [
+      "Tests (Split 3/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:44:28Z"
+     ],
+     [
+      "Tests (Split 4/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:45:12Z"
+     ],
+     [
+      "Tests (Split 5/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:44:55Z"
+     ],
+     [
+      "Tests (Split 6/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:46:28Z"
+     ],
+     [
+      "Tests (Split 7/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:47:26Z"
+     ],
+     [
+      "Tests (Split 8/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:47:18Z"
+     ],
+     [
+      "Tests (Split 9/9)",
+      "completed",
+      "success",
+      "2026-11-03T11:44:41Z"
+     ],
+     [
+      "Topic Drift Check",
+      "completed",
+      "success",
+      "2026-11-03T11:33:28Z"
+     ],
+     [
+      "Topic Enum Drift Check",
+      "completed",
+      "success",
+      "2026-11-03T11:33:21Z"
+     ],
+     [
+      "Topic Naming Baseline One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T11:33:14Z"
+     ],
+     [
+      "Topic Naming Lint",
+      "completed",
+      "success",
+      "2026-11-03T11:34:07Z"
+     ],
+     [
+      "Trivyignore Expiry Check (OMN-16229)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:10Z"
+     ],
+     [
+      "Type Safety Validation",
+      "completed",
+      "success",
+      "2026-11-03T07:08:38Z"
+     ],
+     [
+      "URL Authority Gate",
+      "completed",
+      "success",
+      "2026-11-03T07:07:11Z"
+     ],
+     [
+      "Validate Dockerfile Plugin Pins",
+      "completed",
+      "success",
+      "2026-11-03T07:06:53Z"
+     ],
+     [
+      "Validator Requirements Baseline One-way (OMN-19677) / anti-growth-baseline",
+      "completed",
+      "success",
+      "2026-11-03T11:33:13Z"
+     ],
+     [
+      "Version Pin Compliance",
+      "completed",
+      "success",
+      "2026-11-03T11:33:16Z"
+     ],
+     [
+      "Writer-Migration Coupling Check",
+      "completed",
+      "success",
+      "2026-11-03T11:33:22Z"
+     ],
+     [
+      "advisory-job-gate / advisory-job-gate",
+      "completed",
+      "success",
+      "2026-11-03T07:06:57Z"
+     ],
+     [
+      "call / validate-docs",
+      "completed",
+      "success",
+      "2026-11-03T07:07:02Z"
+     ],
+     [
+      "call-reject-skip-token / scan / reject-skip-gate-token",
+      "completed",
+      "success",
+      "2026-11-03T07:06:45Z"
+     ],
+     [
+      "check-env-reads-gate",
+      "completed",
+      "success",
+      "2026-11-03T07:07:00Z"
+     ],
+     [
+      "[scrubbed]-overlay-binding",
+      "completed",
+      "success",
+      "2026-11-03T07:07:13Z"
+     ],
+     [
+      "compose-config-lint",
+      "completed",
+      "success",
+      "2026-11-03T07:07:13Z"
+     ],
+     [
+      "consumer-kwarg-parity",
+      "completed",
+      "success",
+      "2026-11-03T07:07:13Z"
+     ],
+     [
+      "context-field-presence",
+      "completed",
+      "success",
+      "2026-11-03T07:06:55Z"
+     ],
+     [
+      "contract-validation",
+      "completed",
+      "success",
+      "2026-11-03T07:07:02Z"
+     ],
+     [
+      "delegation-health-check / Delegation Health Check",
+      "completed",
+      "success",
+      "2026-11-03T07:07:19Z"
+     ],
+     [
+      "delegation-seam-gate",
+      "completed",
+      "success",
+      "2026-11-03T11:33:33Z"
+     ],
+     [
+      "deploy-gate / deploy-gate",
+      "completed",
+      "success",
+      "2026-11-03T07:07:04Z"
+     ],
+     [
+      "dispatcher-route-coverage",
+      "completed",
+      "success",
+      "2026-11-03T07:07:01Z"
+     ],
+     [
+      "exposure-reader-coverage",
+      "completed",
+      "success",
+      "2026-11-03T07:07:12Z"
+     ],
+     [
+      "hook-push-rehearsal / rehearse",
+      "completed",
+      "success",
+      "2026-11-03T07:07:07Z"
+     ],
+     [
+      "imperative-contract-guard / Imperative Contract Guard",
+      "completed",
+      "success",
+      "2026-11-03T07:07:17Z"
+     ],
+     [
+      "kb-doc-gate / kb-doc-gate",
+      "completed",
+      "success",
+      "2026-11-03T07:06:58Z"
+     ],
+     [
+      "lint (shadow)",
+      "completed",
+      "success",
+      "2026-11-03T07:07:04Z"
+     ],
+     [
+      "main-target-guard",
+      "completed",
+      "success",
+      "2026-11-03T07:06:46Z"
+     ],
+     [
+      "merge-hold-gate / evaluate",
+      "completed",
+      "success",
+      "2026-11-03T11:33:22Z"
+     ],
+     [
+      "no-noncanonical-lifecycle-classes",
+      "completed",
+      "success",
+      "2026-11-03T11:33:26Z"
+     ],
+     [
+      "node-migration-sync / deployed-migration-tree-sync-logic",
+      "completed",
+      "success",
+      "2026-11-03T11:33:39Z"
+     ],
+     [
+      "node-migration-sync / node-migration-sync",
+      "completed",
+      "success",
+      "2026-11-03T11:33:15Z"
+     ],
+     [
+      "non-dev-base-guard",
+      "completed",
+      "success",
+      "2026-11-03T07:06:44Z"
+     ],
+     [
+      "pinned-wheel-skew",
+      "in_progress",
+      "success",
+      "2026-11-03T07:06:51Z"
+     ],
+     [
+      "pr-title / check-title",
+      "completed",
+      "success",
+      "2026-11-03T07:06:49Z"
+     ],
+     [
+      "public-repo-hygiene / deployment-config",
+      "completed",
+      "success",
+      "2026-11-03T07:06:54Z"
+     ],
+     [
+      "public-repo-hygiene / public-repo-hygiene",
+      "completed",
+      "success",
+      "2026-11-03T07:08:17Z"
+     ],
+     [
+      "pypi-pin-resolvability",
+      "completed",
+      "success",
+      "2026-11-03T07:06:49Z"
+     ],
+     [
+      "reason-graph",
+      "completed",
+      "success",
+      "2026-11-03T07:08:34Z"
+     ],
+     [
+      "receipt-honesty",
+      "completed",
+      "success",
+      "2026-11-03T07:07:09Z"
+     ],
+     [
+      "release-identity",
+      "completed",
+      "success",
+      "2026-11-03T07:07:06Z"
+     ],
+     [
+      "repo-evidence / dod-verify",
+      "completed",
+      "success",
+      "2026-11-03T07:08:27Z"
+     ],
+     [
+      "repo-evidence / verify",
+      "completed",
+      "success",
+      "2026-11-03T07:06:47Z"
+     ],
+     [
+      "required-check-skip-guard / check-skip-vectors",
+      "completed",
+      "success",
+      "2026-11-03T07:06:57Z"
+     ],
+     [
+      "runner-label-exists / runner-label-exists",
+      "completed",
+      "success",
+      "2026-11-03T07:07:10Z"
+     ],
+     [
+      "runner-routing-audit / Runner Routing Audit",
+      "completed",
+      "success",
+      "2026-11-03T11:34:05Z"
+     ],
+     [
+      "shell-hygiene",
+      "completed",
+      "success",
+      "2026-11-03T07:07:20Z"
+     ],
+     [
+      "sibling-lock-pins",
+      "completed",
+      "success",
+      "2026-11-03T07:07:05Z"
+     ],
+     [
+      "skill-node-mapping-sync",
+      "completed",
+      "success",
+      "2026-11-03T07:07:13Z"
+     ],
+     [
+      "terminal-cost-completeness",
+      "completed",
+      "success",
+      "2026-11-03T07:06:51Z"
+     ],
+     [
+      "tests+coverage (shadow)",
+      "completed",
+      "success",
+      "2026-11-03T07:07:01Z"
+     ],
+     [
+      "typecheck (shadow)",
+      "completed",
+      "success",
+      "2026-11-03T07:08:24Z"
+     ],
+     [
+      "verify",
+      "completed",
+      "skipped",
+      "2026-11-03T07:06:38Z"
+     ],
+     [
+      "wheel-content-parity",
+      "completed",
+      "success",
+      "2026-11-03T07:06:57Z"
+     ],
+     [
+      "zone-filter / Zone Filter (docs-only check)",
+      "completed",
+      "success",
+      "2026-11-03T11:33:12Z"
+     ]
+    ],
+    "sha": "a9213ca51ede8815094e2ad06cca1e55f1809c33",
+    "total": 164,
+    "verdict": "RED"
+   },
+   "cls": "red",
+   "facts": {
+    "base": "dev",
+    "created_at": "2026-11-03T07:06:35Z",
+    "draft": false,
+    "head_ref": "omn-22162-estimator-report-host-compose",
+    "head_sha": "a9213ca51ede8815094e2ad06cca1e55f1809c33",
+    "merged_at": "",
+    "number": 5623,
+    "repo": "omnibase_infra",
+    "state": "OPEN",
+    "title": "feat(OMN-22162): declare the cost estimator page for the report host and keep it out of the lane stack check"
+   },
+   "first_seen": "2026-11-03T07:06:35Z"
+  },
+  "private-repo-3#1478": {
+   "ci": {
+    "last_red_completed_at": "2026-11-03T01:57:50Z",
+    "read_at": "2026-11-03T13:21:43Z",
+    "red": [
+     "Canonical File Shape (OMN-20304)"
+    ],
+    "red_facts": [
+     [
+      "Canonical File Shape (OMN-20304)",
+      "failure",
+      "41562476278",
+      "2026-11-03T01:57:50Z"
+     ]
+    ],
+    "runs": [
+     [
+      "Canonical File Shape (OMN-20304)",
+      "completed",
+      "failure",
+      "2026-11-03T01:57:50Z"
+     ],
+     [
+      "Change class (OMN-21270)",
+      "completed",
+      "success",
+      "2026-11-03T01:54:41Z"
+     ],
+     [
+      "Direct Model Call Gate",
+      "completed",
+      "success",
+      "2026-11-03T02:05:02Z"
+     ],
+     [
+      "Secret scan and hygiene gate on what the change adds (OMN-21270)",
+      "completed",
+      "success",
+      "2026-11-03T02:03:50Z"
+     ],
+     [
+      "Shape-Gate Independence (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T01:53:34Z"
+     ],
+     [
+      "hook-push-rehearsal / rehearse",
+      "completed",
+      "success",
+      "2026-11-03T01:54:06Z"
+     ],
+     [
+      "private-repo-runner-placement / private-repo-runner-placement",
+      "completed",
+      "success",
+      "2026-11-03T01:54:08Z"
+     ],
+     [
+      "validate-plugin",
+      "completed",
+      "success",
+      "2026-11-03T02:43:50Z"
+     ],
+     [
+      "validator-tests (1/4)",
+      "completed",
+      "success",
+      "2026-11-03T02:21:28Z"
+     ],
+     [
+      "validator-tests (2/4)",
+      "completed",
+      "success",
+      "2026-11-03T02:14:25Z"
+     ],
+     [
+      "validator-tests (3/4)",
+      "completed",
+      "success",
+      "2026-11-03T02:14:35Z"
+     ],
+     [
+      "validator-tests (4/4)",
+      "completed",
+      "success",
+      "2026-11-03T02:12:04Z"
+     ]
+    ],
+    "sha": "20ac7032481ef114b39ac52b5706675041a1f60e",
+    "total": 12,
+    "verdict": "RED"
+   },
+   "cls": "red",
+   "facts": {
+    "base": "main",
+    "created_at": "2026-11-03T01:30:13Z",
+    "draft": false,
+    "head_ref": "[scrubbed]/omn-17427-install-proof-local-read",
+    "head_sha": "20ac7032481ef114b39ac52b5706675041a1f60e",
+    "merged_at": "",
+    "number": 1478,
+    "repo": "private-repo-3",
+    "state": "OPEN",
+    "title": "fix(OMN-17427): pr-handoff reads the head it has, and never hands off a stale one"
+   },
+   "first_seen": "2026-11-03T01:30:13Z"
+  }
+ },
+ "schema": 1
+}

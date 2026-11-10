@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.bus_binding import EnumBusBinding, EnumBusBindingState
 
@@ -14,6 +14,8 @@ class ModelBusBindingRequest(BaseModel):
 
     prior_state: EnumBusBindingState
     durable_healthy: bool
+    pending_outbox: int = Field(default=0, ge=0)
+    missing_topics: tuple[str, ...] = ()
 
 
 class ModelBusBindingResult(BaseModel):

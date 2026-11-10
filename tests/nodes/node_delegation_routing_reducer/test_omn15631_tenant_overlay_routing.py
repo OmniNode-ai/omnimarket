@@ -34,6 +34,10 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.customer_key_terminus import (
+    CustomerKeyRefusedError,
+    EnumDelegationSurface,
+)
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_tenant_scoped_api_key_async,
@@ -53,10 +57,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.customer_key_terminus import (
-    CustomerKeyRefusedError,
-    EnumDelegationSurface,
-)
 from omnimarket.routing.tenant_overlay_resolver import (
     TENANT_OVERLAY_TABLE,
     ModelTenantRoutingOverlayBackend,
@@ -112,6 +112,24 @@ _BIFROST_ONE_TIER = textwrap.dedent(
 )
 
 
+def _reset_routing_caches() -> None:
+    """Forget every process-global the routing handler fills from the environment.
+
+    ``delta`` binds ``_config`` (the tier ladder, with the placements this
+    file's one-tier contract produced) and caches the task-class contract. Left
+    set, the next test file in the same pytest process routes on this file's
+    ladder: ``test_cloud_escalation_omn13140`` read ``cheap_cloud`` where it
+    expected ``cheap_frontier`` when the CI shard planner dealt the two files
+    to one shard in this order (Tests (Split 8/20) on omnimarket#4526). The
+    same leak, from another file, is OMN-21433.
+    """
+    routing._load_bifrost_endpoints.cache_clear()
+    routing._get_task_class_contract.cache_clear()
+    routing._config = None
+    routing._config_spread_peers = None
+    routing._config_spread_weights = None
+
+
 @pytest.fixture
 def platform_default_routable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -121,11 +139,11 @@ def platform_default_routable(
     contract_path.write_text(_BIFROST_ONE_TIER)
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
-    routing._load_bifrost_endpoints.cache_clear()
+    _reset_routing_caches()
     try:
         yield
     finally:
-        routing._load_bifrost_endpoints.cache_clear()
+        _reset_routing_caches()
 
 
 def _request(
@@ -474,6 +492,7 @@ def test_ac6_overlay_row_to_routing_decision_field_seam() -> None:
         backend_id="acme-research-backend",
         endpoint_url="https://research.acme.example.com/v1/chat/completions",
         model_name="acme-research-model",
+        models=("acme-research-model",),
         provider="fixture-provider",
         secret_ref="tenant.acme-corp.research.api_key",
         timeout_ms=45000,

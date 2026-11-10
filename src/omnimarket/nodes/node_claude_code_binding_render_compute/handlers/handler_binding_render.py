@@ -24,6 +24,9 @@ from omnimarket.models.claude_code_binding import (
     ModelBindingRenderResult,
     ModelClientBinding,
 )
+from omnimarket.models.claude_code_binding.model_compaction_client_binding import (
+    compaction_arm,
+)
 from omnimarket.nodes.node_claude_code_binding_render_compute.handlers import (
     template_claude_code_binding as tpl,
 )
@@ -32,6 +35,7 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error 
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
     RESERVED_SOURCES,
+    is_awaited_event_source,
 )
 
 ADAPTER_COMMAND = "onex-claude-code-hook"
@@ -66,8 +70,10 @@ def validate_binding(binding: ModelClientBinding) -> None:
             f"binding name {binding.name!r} is not a lower-case identifier"
         )
     for argument in binding.arguments:
-        if argument.source not in RESERVED_SOURCES and not _HOOK_INPUT_PATH.match(
-            argument.source
+        if (
+            argument.source not in RESERVED_SOURCES
+            and not is_awaited_event_source(argument.source)
+            and not _HOOK_INPUT_PATH.match(argument.source)
         ):
             raise BindingRenderError(
                 f"binding {binding.name!r} argument {argument.name!r} source "
@@ -151,6 +157,14 @@ class HandlerClaudeCodeBindingRender:
             )
         ]
         for binding in replacing:
+            if binding.hook_event == COMPACT_EVENT:
+                parts.append(
+                    _fill(
+                        tpl.COMPACTION_ARM_CONSTANT,
+                        name=binding.name,
+                        arm=_literal(compaction_arm(binding)),
+                    )
+                )
             argv = f"['{adapter_command}', '--binding', '{binding.name}']"
             parts.append(
                 _fill(
@@ -171,7 +185,10 @@ class HandlerClaudeCodeBindingRender:
             )
             parts.append(
                 _fill(
-                    tpl.BINDING_HOOK,
+                    tpl.NATIVE_COMPACTION_HOOK
+                    if binding.hook_event == COMPACT_EVENT
+                    and compaction_arm(binding) == "off"
+                    else tpl.BINDING_HOOK,
                     name=binding.name,
                     event=_literal(binding.hook_event),
                     matcher=matcher,

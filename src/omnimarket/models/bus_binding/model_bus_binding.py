@@ -61,3 +61,40 @@ class ModelBusBindingDecision(BaseModel):
     def status_cell(self) -> str:
         """The cell a STATUS row carries so the fallback is visible on the ledger."""
         return f"bus_binding={self.binding.value} bus_state={self.state.value}"
+
+
+class ModelBusBindingTickEvidence(BaseModel):
+    """What a recorded tick line and its broker error say about one binding (the evidence side of the decision)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    binding: EnumBusBinding
+    state: EnumBusBindingState
+    pending_outbox: int = Field(ge=0)
+    missing_topics: tuple[str, ...] = ()
+
+
+class ModelBusBindingResolution(BaseModel):
+    """What the exception actor did with one case: resolved in code, or emitted to the exception queue."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cls: str
+    resolved: bool
+    how: str
+    emitted: str
+
+
+class ModelBusBindingSettlementPolicy(BaseModel):
+    """How the bus binding settles its exception rows, as node_bus_binding_reducer/contract.yaml declares it.
+
+    ``alarm_scope`` ``episode``: a degraded command emits one row per outage episode, and no other while that
+    episode is open, whoever closed the row. ``settle_on_healthy_read``: the classes whose open rows the
+    exception actor settles on a healthy durable command with an empty outbox (OMN-21959).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    alarm_scope: str = Field(pattern="^(episode|command)$")
+    settle_on_healthy_read: tuple[str, ...] = ()

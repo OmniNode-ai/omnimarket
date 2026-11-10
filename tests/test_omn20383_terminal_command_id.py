@@ -19,6 +19,7 @@ import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envelope
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -44,7 +45,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
     LocalDelegationDispatchPort,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.unit
 

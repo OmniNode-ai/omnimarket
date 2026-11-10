@@ -318,3 +318,27 @@ def test_r4_unread_annotations_keep_check_level_clusters_and_key() -> None:
         "cause:OmniNode-ai/omniclaude:" + hashlib.sha256(b"check").hexdigest()[:12]
     )
     assert result.reason.endswith("(annotations unread)")
+
+
+THREAD_GATE = "Hostile Review Thread Gate"
+
+
+@pytest.mark.parametrize("annotations_read", [True, False])
+def test_thread_gate_red_is_per_pr_even_with_armed_peers_carrying_it(
+    annotations_read: bool,
+) -> None:
+    """The thread gate fails on this PR's own unanswered threads: it never forms a shared cause."""
+    checks = ("CI Summary", THREAD_GATE)
+    text = "unanswered review thread on this pull request"
+    facts = ModelCiRedFacts(
+        event=event(checks, peers(4, checks)),
+        annotations={THREAD_GATE: text},
+        peer_annotations={n: {THREAD_GATE: text} for n in (2, 3, 4)},
+        annotations_read=annotations_read,
+    )
+    result = classify_ci_red(facts)
+    assert result.red_class == EnumCiRedClass.PR_OWN
+    assert result.check == THREAD_GATE
+    assert result.members == (1,)
+    assert result.cause_key is None
+    assert result.owner_key == f"OmniNode-ai/omniclaude#1@head:{THREAD_GATE}"

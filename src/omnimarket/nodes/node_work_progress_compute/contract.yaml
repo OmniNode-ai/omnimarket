@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_progress_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Pure work progress compute over caller-supplied time, phase entries, budgets and
+  notes. Subjects strictly over their phase budget produce ordered findings with
+  stable keys for each phase entry. Budgets come from the overlay
+  <root>/node_work_progress_compute/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS;
+  none is packaged. The handler reads no clock, file, environment or envelope.
+input_model:
+  name: ModelWorkProgressRequest
+  module: omnimarket.models.model_work_progress
+output_model:
+  name: ModelWorkProgressResult
+  module: omnimarket.models.model_work_progress
+handler:
+  module: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_progress
+  class: HandlerWorkProgress
+  input_model: omnimarket.models.model_work_progress.ModelWorkProgressRequest
+  output_model: omnimarket.models.model_work_progress.ModelWorkProgressResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_progress:HandlerWorkProgress
+  handlers:
+    - operation: judge_work_progress
+      topic: onex.cmd.omnimarket.work-progress-compute-requested.v1
+      handler:
+        name: HandlerWorkProgress
+        module: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_progress
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+inputs:
+  now: {type: datetime, required: true, description: "Timezone-aware evaluation time supplied by the caller."}
+  budgets: {type: object, required: true, description: "Positive seconds per phase, supplied from the overlay."}
+  phase_notes: {type: object, required: false, description: "Optional explanation per phase."}
+  subjects: {type: list, required: true, description: "Phase entries in the order to judge."}
+outputs:
+  findings: {type: list, description: "One finding per subject strictly over its budget, in input order."}
+config:
+  work_progress:
+    phases:
+      - name: placed
+      - name: claimed
+        note: "no PR is recorded in the ledger"
+      - name: pr_open
+terminal_event: onex.evt.omnimarket.work-progress-computed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-progress-compute-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.work-progress-compute-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.work-progress-computed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-progress-computed.v1
+published_events:
+  - event_type: WorkProgressComputed
+    topic: onex.evt.omnimarket.work-progress-computed.v1
+    description: Ordered findings for phase entries strictly over their supplied budgets.
+dod_evidence:
+  - test: tests/nodes/node_work_progress_compute/test_work_progress.py
+    description: "Strict boundaries, stable entry keys, exact text, required overlay budgets and handler purity."
+  - test: tests/nodes/node_work_progress_compute/test_work_progress_profiles.py
+    description: "Overlay budget changes alter matching in-process and bus findings on in-memory and Redpanda profiles."
+metadata:
+  transport_type: inmemory
+  description: Pure work progress findings from supplied phase entries and budgets
+  author: OmniNode Team
+  created: "2026-11-02"

@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-22613
+title: Lab lanes push with a per-repository App installation token issued by a GitHub credential node
+summary: node_github_git_credential_effect mints the writer App's installation token narrowed to one repository and one permission set, sealed to the requester's one-request X25519 key; onex scm git-credential is the git credential helper that asks it.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- topics
+- events
+requirements:
+- id: req-omn22613-sealed-narrowed-credential
+  statement: A git credential request is answered by a token narrowed to one repository and sealed to the requester, or by a typed refusal, and the helper speaks git's credential protocol without writing to disk.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: golden chain test: a request on the node''s command topic, through the runtime''s discovery and dispatch, publishes one issued event whose sealed token opens only with the requester''s private key and whose mint named exactly one repository -- falsifier: uv run pytest tests/nodes/node_github_git_credential_effect/test_golden_chain_github_git_credential.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: error chain test: an owner not allowed, a malformed recipient key, a missing App credential and a GitHub refusal each publish one failed event with a typed reason, and none reaches the minter or publishes an issued event -- falsifier: uv run pytest tests/nodes/node_github_git_credential_effect/test_error_chain_github_git_credential.py -q --no-cov'
+  - id: AC3
+    statement: 'AC3: helper test: `get` for github.com with a path prints username and password, another host prints nothing, `store` and `erase` print nothing, and no file is written under the home directory -- falsifier: uv run pytest tests/nodes/node_github_git_credential_effect/test_git_credential_helper.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: Git credential node golden chain, error chain and helper tests
+  command: uv run --frozen --python=3.12 pytest tests/nodes/node_github_git_credential_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22613-golden-chain
+  description: The issued event's sealed token opens only with the requester's key, the mint is narrowed to the one repository, and no record holds the token in clear.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_github_git_credential_effect/test_golden_chain_github_git_credential.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22613-error-chain
+  description: Each refusal is one failed event with a typed reason and no issued event; request-shape refusals never reach the minter.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_github_git_credential_effect/test_error_chain_github_git_credential.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22613-helper
+  description: The helper's git protocol, the no-disk check and a sealed round trip through the real handler.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_github_git_credential_effect/test_git_credential_helper.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22613-broker-refusal-exit
+  description: A broker that refuses the helper's read of the result topic ends the helper with exit 69 and a bus unavailable line on stderr, with no traceback.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_github_git_credential_effect/test_git_credential_helper.py -q --no-cov -n 0 -p no:randomly -k broker_refusal
+    cwd: .
+- id: dod-omn22613-integration-proof
+  description: A lab host pushes through the helper with no stored login reachable. GH_CONFIG_DIR points at a directory with no login and git's own helpers are cleared, so only the node's sealed, repository-narrowed token can authenticate the push. Hosted CI holds no broker login, so only the local Done gate runs this check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22613 --kind test -- env GH_CONFIG_DIR=/nonexistent GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c 'credential.https://github.com.helper=!onex scm git-credential' -c credential.https://github.com.useHttpPath=true push --dry-run https://github.com/OmniNode-ai/omnimarket.git HEAD:refs/heads/dod-omn22613-integration-proof
+    cwd: .

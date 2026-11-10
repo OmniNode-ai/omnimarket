@@ -21,6 +21,9 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.models.delegation.wire import model_delegate_skill_response
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
@@ -44,9 +47,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.quality_gate_record_recor
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 from tests.bus_lane_guard import resolve_test_bus_broker
 

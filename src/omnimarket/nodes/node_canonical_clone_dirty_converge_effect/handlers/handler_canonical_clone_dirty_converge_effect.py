@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,7 @@ from omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_ca
 
 NODE = "node_canonical_clone_dirty_converge_effect"
 AGE_ENV = "ONEX_CLONE_DIRTY_CONVERGE_AFTER_S"
+DETACHED_AGE_ENV = "ONEX_CLONE_DETACHED_REATTACH_AFTER_S"
 ENGINE_BOUND_ENV = "ONEX_CLONE_REFUSAL_BOUND_S"
 _TIMEOUTS = load_node_timeouts(NODE)
 _BREACH = re.compile(
@@ -85,6 +88,17 @@ def declared_age_seconds(env: Mapping[str, str]) -> float:
     return override if override > 0 else _TIMEOUTS.get("dirty_converge_after_seconds")
 
 
+def declared_detached_age_seconds(env: Mapping[str, str]) -> float:
+    """The contract's detached-HEAD age, replaced by the host overlay variable when it is positive."""
+    try:
+        override = float(env.get(DETACHED_AGE_ENV, ""))
+    except ValueError:
+        override = 0.0
+    return (
+        override if override > 0 else _TIMEOUTS.get("detached_reattach_after_seconds")
+    )
+
+
 class HandlerCanonicalCloneDirtyConvergeEffect:
     """One tick: run the engine, then save and converge every clone it reports refused too long."""
 
@@ -102,6 +116,7 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         self.declaration = declaration or load_declaration()
         self._run = run
         self.age = declared_age_seconds(env)
+        self.detached_age = declared_detached_age_seconds(env)
         self._engine_argv = list(
             engine_argv
             or [
@@ -181,6 +196,51 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         return paths
 
     # -- live use -----------------------------------------------------------------------------
+    def _live_build_lock(self) -> str:
+        """The first declared build lock that is held and younger than the declared age, else ''.
+
+        The deploy agent takes these mkdir locks from staging through its last image build; its holder
+        record's time (the directory's, without one) is the age, the reclaim rule the agent applies. A
+        holder on this host whose process is gone is reclaimable at once, as the agent reclaims it.
+        """
+        now = time.time()
+        for relative in self.declaration.build_lock_dirs:
+            lock = self.registry_root / relative
+            if not lock.is_dir():
+                continue
+            holder = lock / "holder"
+            try:
+                age = now - (holder if holder.is_file() else lock).stat().st_mtime
+            except OSError:
+                continue  # an unreadable age is not evidence of a live build
+            if age > self.declaration.build_lock_max_age_seconds:
+                continue
+            if self._holder_is_gone(holder):
+                continue
+            return lock.name
+        return ""
+
+    @staticmethod
+    def _holder_is_gone(holder: Path) -> bool:
+        """True only when the record names this host and a process that is not running."""
+        try:
+            fields = dict(
+                line.partition("=")[::2]
+                for line in holder.read_text(encoding="utf-8").splitlines()
+            )
+            pid = int(fields.get("pid", ""))
+        except (OSError, UnicodeError, ValueError):
+            return False  # no readable record proves nothing about the build
+        if fields.get("host") != socket.gethostname():
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except (OSError, OverflowError):
+            return False  # PermissionError means alive; other errors prove nothing
+        return False
+
     def _open_claim_naming(self, clone: Path) -> str:
         """The lane of an open CLAIM that names the clone's path, else an empty string."""
         ledger = self._env.get("ONEX_LEDGER_PATH", "")
@@ -268,11 +328,25 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
 
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
+        building = self._live_build_lock()
+        if building:
+            return outcome(
+                skipped, f"an image build holds {building}: converged after it ends"
+            )
         branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
+        if not branch:
+            return self._reattach_detached(clone, refused_for, outcome)
         if branch not in self.declaration.tracking_branches:
+            # A canonical clone parked on a lane branch serves that branch to every reader and the
+            # engine refuses it on every run, so it is returned to its remote default branch the
+            # same way a detached HEAD is reattached (OMN-23032).
+            return self._reattach_detached(
+                clone, refused_for, outcome, parked_on=branch
+            )
+        if refused_for < self.age:
             return outcome(
                 skipped,
-                f"checked out on {branch or 'a detached HEAD'}, not a tracking branch",
+                f"refused for {refused_for}s, below the declared {int(self.age)}s",
             )
         remote = self._out(clone, "config", "--get", f"branch.{branch}.remote")
         merge_ref = self._out(clone, "config", "--get", f"branch.{branch}.merge")
@@ -296,8 +370,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             ).splitlines()
             if c
         ]
-        if not dirty:
-            return outcome(skipped, "no tracked changes: the refusal has another cause")
+        if not dirty and not commits:
+            return outcome(
+                skipped,
+                "no tracked changes or local commits: the refusal has another cause",
+            )
         lane = self._open_claim_naming(clone)
         if lane:
             return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
@@ -311,9 +388,10 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             more = f" and {len(items) - listed} more" if len(items) > listed else ""
             return ", ".join(items[:listed]) + more
 
-        dropped = f"{len(dirty)} tracked path(s) ({named(dirty)})"
+        parts = [f"{len(dirty)} tracked path(s) ({named(dirty)})"] if dirty else []
         if commits:
-            dropped += f" and {len(commits)} local commit(s) ({named(commits)})"
+            parts.append(f"{len(commits)} local commit(s) ({named(commits)})")
+        dropped = " and ".join(parts)
         note = f"dropped, not saved: {dropped}; converged to {target[:12]}"
         script = self.registry_root / self.declaration.converge_script
         try:
@@ -354,18 +432,121 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             converged_to=target,
         )
 
+    # -- a detached HEAD ----------------------------------------------------------------------
+    def _reattach_detached(
+        self,
+        clone: Path,
+        refused_for: int,
+        outcome: Callable[..., ModelDirtyConvergeOutcome],
+        *,
+        parked_on: str = "",
+    ) -> ModelDirtyConvergeOutcome:
+        """Reattach a clone left on a detached HEAD to its tracking branch (OMN-20344).
+
+        Landing text and onex delegate refuse on the host while the shared clone stays detached. The
+        converge script derives the branch (the HEAD reflog, then the remote's default branch) and
+        saves commits reachable only from the detached HEAD as patches first. A clone it cannot
+        reattach is FAILED, never skipped: the command exits non-zero and the run is loud.
+        """
+        skipped = EnumDirtyConvergeStatus.SKIPPED
+        failed = EnumDirtyConvergeStatus.FAILED
+        where = f"on {parked_on}" if parked_on else "detached"
+        if refused_for < self.detached_age:
+            return outcome(
+                skipped,
+                f"{where} for {refused_for}s, below the declared {int(self.detached_age)}s",
+            )
+        # A raw ref can name a missing object. Require the commit before allowing
+        # the converge script to move HEAD and potentially lose its only reference.
+        before = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+        if not before:
+            return outcome(failed, "HEAD does not resolve to a commit")
+        git_dir_text = self._out(clone, "rev-parse", "--absolute-git-dir")
+        if not git_dir_text:
+            return outcome(failed, "git directory does not resolve")
+        if any((Path(git_dir_text) / marker).exists() for marker in _IN_PROGRESS):
+            return outcome(skipped, "a git operation is in progress in the clone")
+        lane = self._open_claim_naming(clone)
+        if lane:
+            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        inside = self._process_inside(clone)
+        if inside:
+            return outcome(skipped, f"a process is using the clone ({inside})")
+
+        listed = self.declaration.max_listed
+        only_here = [
+            c
+            for c in self._out(
+                clone, "log", "--format=%h", "HEAD", "--not", "--remotes"
+            ).splitlines()
+            if c
+        ]
+        kept = ""
+        if only_here:
+            more = (
+                f" and {len(only_here) - listed} more"
+                if len(only_here) > listed
+                else ""
+            )
+            kept = (
+                f"; {len(only_here)} commit(s) reachable only from it "
+                f"({', '.join(only_here[:listed])}{more}) saved as patches by the script"
+            )
+        origin = f"the lane branch {parked_on}" if parked_on else "a detached HEAD"
+        note = f"reattached from {origin} at {before[:12]}{kept}"
+        script = self.registry_root / self.declaration.converge_script
+        try:
+            done = self._run(
+                [
+                    "/bin/bash",
+                    str(script),
+                    str(clone),
+                    "--execute",
+                    "--ticket",
+                    self.declaration.ticket,
+                    "--lane",
+                    self.declaration.lane,
+                    "--note",
+                    note,
+                ],
+                capture_output=True,
+                text=True,
+                env={k: v for k, v in self._env.items() if k not in _GIT_LOCATION_ENV},
+                timeout=_TIMEOUTS.get("dirty_converge_script_seconds"),
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return outcome(
+                failed, f"reattach could not run: {type(exc).__name__}: {exc}"
+            )
+        branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
+        head = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
+        if done.returncode or branch not in self.declaration.tracking_branches:
+            tail = " ".join((done.stderr or done.stdout or "").split())[-300:]
+            return outcome(
+                failed,
+                f"clone still detached or off a tracking branch ({branch or 'detached'}); "
+                f"converge-canonical-clone.sh exit {done.returncode}: {tail}",
+            )
+        return outcome(
+            EnumDirtyConvergeStatus.CONVERGED,
+            f"{note}; now on {branch} at {head[:12]}",
+            converged_to=head,
+        )
+
     # -- the tick -----------------------------------------------------------------------------
     def handle(
         self, request: ModelDirtyConvergeTickRequest
     ) -> ModelDirtyConvergeTickReceipt:
         """One tick for the registry root the handler was composed with."""
         return ModelDirtyConvergeTickReceipt(
-            after_seconds=int(self.age), outcomes=tuple(self.tick())
+            after_seconds=int(min(self.age, self.detached_age)),
+            outcomes=tuple(self.tick()),
         )
 
     def tick(self) -> list[ModelDirtyConvergeOutcome]:
         env = {k: v for k, v in self._env.items() if k not in _GIT_LOCATION_ENV}
-        env[ENGINE_BOUND_ENV] = str(int(self.age))
+        env[ENGINE_BOUND_ENV] = str(int(min(self.age, self.detached_age)))
         env["OMNI_HOME"] = str(self.registry_root)
         try:
             done = self._run(

@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-21978
+title: the shared red Tests (Split 7/20) on armed omnimarket PRs is found and fixed
+summary: Tests (Split 7/20) fails at the dev head on tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion, because two contracts name a test directory instead of a test file in a test_passes check that binds an acceptance criterion. The two contracts now name test files or tests directories the gate accepts.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-split-7-green
+    statement: Every repo contract binds each acceptance criterion to uv run pytest evidence that names an existing repo test file, and Split 7 of 20 passes at the fix head.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the failing test names of Split 7/20 are listed from the CI logs of two of the affected PRs, omnimarket#4614 and omnimarket#4831.'
+      - id: AC2
+        statement: 'AC2: the split-7-of-20 pytest invocation from ci.yml exits 0 at the fix head and exited non-zero at the pre-fix head, on a lab host.'
+      - id: AC3
+        statement: 'AC3: the fix touches no skip marker, no deselect option and no continue-on-error line in ci.yml.'
+evidence_requirements:
+  - kind: tests
+    description: Every repo contract binds every criterion to pytest evidence naming an existing repo test file.
+    command: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21978-ac1
+    description: The contract gate that Split 7/20 runs is the test that names the two contracts, and it passes at the fix head.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -p no:randomly --no-cov
+    binds_ac:
+      - AC1
+  - id: dod-omn21978-ac2
+    description: The contract gate passes at the fix head; the lab run of the whole split is quoted in a PR comment.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -p no:randomly --no-cov
+    binds_ac:
+      - AC2
+  - id: dod-omn21978-ac3
+    description: The gate that guards the contracts passes with no skip, deselect or advisory line added.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -p no:randomly --no-cov
+    binds_ac:
+      - AC3

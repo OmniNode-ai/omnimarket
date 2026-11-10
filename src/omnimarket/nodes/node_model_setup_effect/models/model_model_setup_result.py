@@ -54,10 +54,29 @@ class ModelModelStatus(BaseModel):
     first_model: str | None = None
 
 
+#: How a model is billed: ``free`` (local, a free tier, an OpenRouter ``:free`` id
+#: or a catalogue price of zero), ``paid`` (a catalogue price above zero), or
+#: ``unknown`` (no price in the catalogue: never read as free).
+ModelCostClass = Literal["free", "paid", "unknown"]
+
+
+class ModelModelLadderEntry(BaseModel):
+    """One rung of the order delegation tries this machine's models in (OMN-23167)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: 1 is tried first.
+    position: int
+    provider: ModelProvider
+    model: str
+    cost_class: ModelCostClass
+
+
 class ModelModelSetupResult(BaseModel):
     """``tests`` for a ``test`` request, ``providers`` for ``status``, and the
     key's ordered ``models`` after an ``add_models``, ``reorder`` or
-    ``remove_model``; a ``default_model`` carries the one overlay-declared model."""
+    ``remove_model``; a ``default_model`` carries the one overlay-declared model;
+    a ``ladder`` carries every routable model in the order it is tried."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -75,13 +94,22 @@ class ModelModelSetupResult(BaseModel):
         "clear_first",
         "set_only",
         "clear_only",
+        "ladder",
     ]
     tests: tuple[ModelModelTestResult, ...] = ()
     providers: tuple[ModelModelStatus, ...] = ()
     models: tuple[str, ...] = ()
+    #: OMN-23167: the order models are tried in, with each one's cost class.
+    ladder: tuple[ModelModelLadderEntry, ...] = ()
     #: OMN-21267: the local-only or free-only rule in force, on a ``status`` or
     #: ``set_only``; ``None`` when delegation may use any model set up.
     only: Literal["local", "free"] | None = None
 
 
-__all__ = ["ModelModelSetupResult", "ModelModelStatus", "ModelModelTestResult"]
+__all__ = [
+    "ModelCostClass",
+    "ModelModelLadderEntry",
+    "ModelModelSetupResult",
+    "ModelModelStatus",
+    "ModelModelTestResult",
+]

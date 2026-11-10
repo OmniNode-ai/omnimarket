@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_fill_candidates_compute
+version: 0.1.0
+description: Name, per factory-floor line, the ready tasks a lane may be started for,
+  from the published floor record, whatever the line's pill says.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_floor_fill_candidates_compute: omnimarket.nodes.node_floor_fill_candidates_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- floor
+- fill
+- in_process
+pack: operator_tooling
+display_name: Floor Fill Candidates Compute
+node_role: compute

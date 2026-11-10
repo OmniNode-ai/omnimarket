@@ -43,7 +43,14 @@ def test_version_is_ahead_of_every_reachable_release() -> None:
     """Strict mode (no --base) always enforces the version-ahead invariant."""
     env = {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_ENV_VARS}
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "check_release_identity.py")],
+        [
+            sys.executable,
+            "-m",
+            "omnibase_core.nodes.node_release_identity_check_compute"
+            ".runtime_release_identity_check",
+            "--root",
+            str(ROOT),
+        ],
         cwd=ROOT,
         env=env,
         capture_output=True,

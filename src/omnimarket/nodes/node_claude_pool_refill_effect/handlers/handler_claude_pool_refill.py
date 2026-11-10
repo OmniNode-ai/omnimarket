@@ -38,6 +38,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.delegation.model_claude_credential_probe import (
     ModelClaudeCredentialProbeReceipt,
     ModelClaudeCredentialProbeRequest,
@@ -128,13 +129,18 @@ def load_overlay(path: Path) -> Overlay:
         raise ClaudePoolRefillRefusedError(f"{path} has no mapping at its root")
     where = str(path)
     store = _need(raw, "store", where)
-    table_rel = _need(raw, "hosts_table", where)
-    table_path = (
-        (config_root(path) / table_rel)
-        if not Path(table_rel).is_absolute()
-        else Path(table_rel)
-    )
-    table_path = Path(os.environ.get("ONEX_LAB_RUN_HOSTS") or table_path)
+    # The lab host table is the file ONEX_LAB_RUN_HOSTS names, else the lab_hosts overlay of the overlay roots; the
+    # overlay's own hosts_table (relative to the workspace config root) is read only when neither supplies one.
+    shared = os.environ.get("ONEX_LAB_RUN_HOSTS") or find_node_overlay("lab_hosts")
+    if shared:
+        table_path = Path(shared)
+    else:
+        table_rel = _need(raw, "hosts_table", where)
+        table_path = (
+            (config_root(path) / table_rel)
+            if not Path(table_rel).is_absolute()
+            else Path(table_rel)
+        )
     if not table_path.is_file():
         raise ClaudePoolRefillRefusedError(
             f"the hosts table {table_path} named by {where} does not exist"
@@ -353,6 +359,47 @@ def install(ov: Overlay, host: Host, token: Token, *, force: bool) -> str:
     )
 
 
+def _lane_overlay_yaml() -> str:
+    """The lane overlay the credential probe binds on the host: the host's own environment, documents from files.
+
+    ``runtime_claude_probe`` refuses to run without ``--overlay`` since OMN-21595. The probe reads no document, so
+    the document binding names no file; the environment binding is the host's, which carries the drawn credential.
+    """
+    from omnibase_core.models.nodes.handler_dependencies.model_dependency_binding import (
+        ModelDependencyBinding,
+    )
+    from omnibase_core.models.nodes.handler_dependencies.model_overlay_bindings import (
+        ModelOverlayBindings,
+    )
+
+    from omnimarket.handlers.container.container_overlay_dependencies import (
+        OVERLAY_DOCUMENT_PROTOCOL,
+        PROCESS_ENVIRONMENT_PROTOCOL,
+    )
+
+    bindings = ModelOverlayBindings(
+        dependencies=(
+            ModelDependencyBinding(
+                protocol=PROCESS_ENVIRONMENT_PROTOCOL,
+                implementation="host_process_environment",
+            ),
+            ModelDependencyBinding(
+                protocol=OVERLAY_DOCUMENT_PROTOCOL,
+                implementation="file_overlay_documents",
+            ),
+        ),
+        announcer_bus=ModelDependencyBinding(
+            protocol="announcer_bus", implementation="unbuilt_announcer_bus"
+        ),
+        catalog_store=ModelDependencyBinding(
+            protocol="catalog_store", implementation="unbuilt_catalog_store"
+        ),
+        lazy_start_budget_seconds=30.0,
+        reaper_flag_to_delete_days=None,
+    )
+    return yaml.safe_dump(bindings.model_dump(mode="json"), sort_keys=True)
+
+
 def probe(ov: Overlay, host: Host) -> tuple[str | None, str, str]:
     """(label the runner would draw, verdict, redacted excerpt), probing that label once.
 
@@ -363,13 +410,14 @@ def probe(ov: Overlay, host: Host) -> tuple[str | None, str, str]:
         prompt=ov.prompt, model=ov.model, timeout_seconds=ov.timeout_s
     )
     script = _prelude(ov) + (
-        'cd "$HOME"; K=$(mktemp); unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN\n'
+        'cd "$HOME"; K=$(mktemp); O=$(mktemp); unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN\n'
+        f"cat > \"$O\" <<'LANE_OVERLAY_EOF'\n{_lane_overlay_yaml()}LANE_OVERLAY_EOF\n"
         f'CP=$("$P" -m {POOL_MODULE} resolve 2>"$K"); rc=$?\n'
         'L=$(sed -n "s/.* label=\\([a-z0-9-]*\\).*/\\1/p" "$K" | tail -1); rm -f "$K"\n'
         'if [ $rc -ne 0 ] || [ -z "$CP" ]; then echo "LABEL=none"; echo "RESOLVE rc=$rc"; exit 0; fi\n'
         'echo "LABEL=$L"\n'
         f"printf '%s\\n' {shlex.quote(request.model_dump_json())} | "
-        f'CLAUDE_CODE_OAUTH_TOKEN="$CP" "$P" -m {PROBE_MODULE} 2>&1 | head -c 4000; unset CP\n'
+        f'CLAUDE_CODE_OAUTH_TOKEN="$CP" "$P" -m {PROBE_MODULE} --overlay "$O" 2>&1 | head -c 4000; unset CP; rm -f "$O"\n'
     )
     done = _run(host, script, timeout=ov.timeout_s + 60)
     out = _REDACT.sub("<redacted>", done.stdout)

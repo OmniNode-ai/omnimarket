@@ -156,6 +156,7 @@ def test_contract_loads_and_declares_its_topics() -> None:
         "classify_repeat",
         "build_replay_manifest",
         "verify_replay_bundle",
+        "build_transcript_manifest",
     ]
 
 
@@ -167,6 +168,7 @@ def test_contract_loads_and_declares_its_topics() -> None:
         ("classify_repeat", "HandlerRepeatClassifier"),
         ("build_replay_manifest", "HandlerReplayManifestBuilder"),
         ("verify_replay_bundle", "HandlerReplayBundleVerifier"),
+        ("build_transcript_manifest", "HandlerTranscriptManifest"),
     ],
 )
 def test_contract_handlers_and_models_resolve(

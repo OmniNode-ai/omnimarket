@@ -20,12 +20,12 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
     load_bifrost_delegation_config_payload,
 )
-from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
-    handler_delegation_routing as routing,
-)
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.routing.delegation_backend_resolution import (
     BIFROST_OVERLAY_STORE_KEY,
     load_bifrost_backends,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+    handler_delegation_routing as routing,
 )
 from tests.unit.routing.test_bifrost_overlay_added_backend_validation_omn17099 import (
     _BIFROST_CONFIG_PATH,

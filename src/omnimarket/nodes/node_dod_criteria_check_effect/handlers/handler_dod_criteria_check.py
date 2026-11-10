@@ -40,6 +40,9 @@ from urllib.parse import quote
 
 import yaml
 
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.github_landing.github_landing_requests import (
     pull_request_request,
     split_repository,
@@ -88,6 +91,9 @@ _GITHUB_SECRET = "GITHUB_TOKEN"
 # The hosted gate takes its tickets from the title with the same pattern.
 _TICKET = re.compile(r"OMN-[0-9]+")
 _NOT_FOUND = 404
+# The verifier's own cause for a ticket it could not read; an unreadable ticket at the trusted
+# point carries the same key, so delegating the comparison never renames the refusal.
+_TICKET_UNAVAILABLE = EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE.value
 _OK = 200
 
 TrackerFactory = Callable[[], Awaitable[ProtocolCriteriaTracker]]
@@ -196,7 +202,8 @@ class HandlerDodCriteriaCheck:
                             ticket_id,
                             path,
                             EnumDodCriteriaVerdict.UNREADABLE,
-                            f"the live ticket could not be read ({check.unavailable_reason})",
+                            f"{_TICKET_UNAVAILABLE}: the live ticket could not be read "
+                            f"({check.unavailable_reason})",
                         )
                     )
                 elif check.refused:
@@ -234,7 +241,8 @@ class HandlerDodCriteriaCheck:
             return await self._tracker_factory()
         except Exception as error:
             raise _UnreadableError(
-                f"no ticket tracker could be built ({type(error).__name__}); "
+                f"{_TICKET_UNAVAILABLE}: no ticket tracker could be built "
+                f"({type(error).__name__}); "
                 "is LINEAR_API_KEY in the lab key store?"
             ) from error
 

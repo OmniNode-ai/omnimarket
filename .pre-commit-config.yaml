@@ -11,17 +11,55 @@
 # Usage:
 #   pre-commit install
 #   pre-commit run --all-files
+#   pre-commit run --all-files --hook-stage manual   # the CI-backed whole-repo hooks
+#
+# COMMIT BUDGET (OMN-22364): a commit touching a few files finishes pre-commit in
+# under two minutes. A whole-repo scan or suite that already runs as a required
+# CI job (CI Summary) has `stages: [manual]`: it never runs at commit and is
+# never auto-installed, and CI is the enforcement. Each such hook is registered
+# with its CI job in tests/ci/test_precommit_commit_budget.py, which fails when a
+# manual hook has no registered job, when the job is gone or not gated by CI
+# Summary, or when the job no longer runs the hook's command.
 
 repos:
   - repo: local
     hooks:
+      - id: github-webhook-http
+        name: GitHub webhook runtime HTTP boundary
+        entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: catalog-http-mounts
+        name: Catalog runtime HTTP mounts (plans, usage privileges)
+        entry: uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/models/model_catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: envelope-example-route-nodes
+        name: Example-envelope route nodes (runtime HTTP mount)
+        entry: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_envelope_example_.*|src/omnimarket/handlers/envelope_example/.*|src/omnimarket/models/model_(envelope_example|onex_envelope)\.py|tests/nodes/(envelope_example_.*|node_envelope_example_.*))$
+        pass_filenames: false
+        stages: [pre-commit]
+      # OMN-22156: the same guard runs in the required CI lint job, on every PR.
+      - id: morning-phase-tools-guard
+        name: Morning phase tools guard and wiring
+        entry: env -u PYTHONPATH uv run --frozen pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [manual]
       - id: retired-model-references
         name: Retired model references (including dated history)
         entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
         language: system
         always_run: true
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
       - id: history-archive-safety
         name: History removal requires verified archives
         entry: env -u PYTHONPATH uv run --frozen pytest tests/nodes/test_file_retention_archive_safety.py -q -n 0 -p no:randomly --no-cov
@@ -50,6 +88,80 @@ repos:
         require_serial: true
       - id: commit-hygiene-message
         stages: [commit-msg]
+        require_serial: true
+  # OMN-21940: five validators this repository used to run from its own script
+  # copies. The rule code is omnibase_core's, at this rev; only the inputs stay here.
+  # The rev is the first dev-merge tag whose check-release-identity runtime installs
+  # in a hook environment (it declares its `packaging` import; the rev of the first
+  # core block above does not). Each CI twin runs the same core runtime at this same
+  # tag (ci.yml, delegation-regression-nightly.yml, precommit-fail-loud-gate.yml,
+  # reject-leaked-literals.yml): keep those tags equal to this rev.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261101023710-a66b5ff79cc0
+    hooks:
+      # OMN-22848 (stopped-line fill plan T15, Step 1 item 0): omnibase_core validators of the plan's
+      # G-NODE point 2 that this config did not run, scoped by directory glob to the stopped-line fill
+      # plan's nodes so each is judged by them from its first commit, with no baseline entry. Wired here:
+      # the handler-shape ratchet and binding conformance. Not yet wired, because the remote lane start
+      # nodes fail them today: handler-di-gate, check-no-io-outside-effects and the contracts-and-DI
+      # validator (validator_contracts_and_di, which core publishes no hook for).
+      - id: canonical-handler-shape-ratchet
+        files: ^src/omnimarket/nodes/(node_floor_fill_[^/]+|node_floor_task_ticket_[^/]+|node_lane_process_effect|node_remote_lane_start_[^/]+)/.*\.py$
+        require_serial: true
+      - id: check-binding-conformance
+        files: ^src/omnimarket/nodes/(node_floor_fill_[^/]+|node_floor_task_ticket_[^/]+|node_lane_process_effect|node_remote_lane_start_[^/]+)/(handlers/[^/]+|handler_[^/]+)\.py$
+        require_serial: true
+      # OMN-14172 integration silent-skip guard: the --selftest drives the decision
+      # over synthetic reports and validates scripts/ci/integration_skip_guard.yaml
+      # (this repo's config, read from the default path). No DB needed locally; the
+      # CI job 'integration-guard' is the full runtime gate. SYNC with ci.yml job
+      # 'integration-guard'.
+      - id: integration-skip-guard
+        require_serial: true
+        files: >-
+          ^(scripts/ci/integration_skip_guard\.yaml|
+          \.github/workflows/ci\.yml|
+          tests/test_delegation_savings_tenant_id_column_omn14058\.py|
+          tests/test_projection_delegation_tier_distribution_omn13662\.py)$
+      # OMN-17219 interpreter-resolution ratchet: fails closed when a hook `entry:`
+      # -- or a shell script it calls -- shells out to a bare `python`. Sanctioned
+      # form is `uv run python <script>`. always_run keeps the local hook's rule that
+      # it checks every commit. CI twin: precommit-fail-loud-gate.yml.
+      - id: precommit-interpreter-resolution
+        require_serial: true
+        always_run: true
+      # OMN-16344 release-identity gate: no packaged-source change on a published
+      # version without a bump. pass_filenames hands the hook the staged paths that
+      # match its files filter, which is what the local hook's --staged did; CI keeps
+      # the PR-base comparison (ci.yml job 'release-identity-gate').
+      - id: check-release-identity
+        require_serial: true
+        pass_filenames: true
+      # OMN-18790 skip-count ratchet selftest. The data file is this repo's
+      # config/skip_count_baseline.yaml; the CI job 'skip-count-ratchet' reads it
+      # with --baseline. The files filter keeps the local hook's triggers except the
+      # deleted script. SYNC with ci.yml job 'skip-count-ratchet'.
+      - id: skip-count-ratchet
+        require_serial: true
+        files: >-
+          ^(config/skip_count_baseline\.yaml|tests/ci/test_skip_count_ratchet_omn18790\.py|\.github/workflows/ci\.yml)$
+      # OMN-17320 exposed-identifier gate: a salted-SHA256 denylist of customer
+      # identifiers that must never re-enter this PUBLIC repository. The denylist is
+      # this repo's file and holds digests, never plaintext. The only escape hatch is
+      # a per-line annotation of the exposed-identifier class (ticket + reason
+      # required; see the header of .github/workflows/reject-leaked-literals.yml).
+      # CI twin: the 'Leaked Literals Gate' job (reject-leaked-literals.yml), full tree.
+      - id: exposed-identifier-gate
+        require_serial: true
+        args: [--mode, blocking, --denylist, scripts/validation/exposed_identifiers_denylist.json]
+  # OMN-19998: a public workflow selects no lab runner. No baseline: a job still on the
+  # lab has a typed route packaged with this core, and the routes only shrink. CI twin:
+  # the last steps of job public-runner-placement in .github/workflows/ci.yml read this rev.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261105190003-87a6f5ddcbcc
+    hooks:
+      - id: check-public-lab-selection
+        args: [--repo, omnimarket, --visibility, public]
         require_serial: true
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
@@ -91,6 +203,7 @@ repos:
     hooks:
       - id: check-fsm-handler-drift
         require_serial: true
+        stages: [manual]
 
   # Contract walker, REPORT-ONLY (OMN-19554; walker in omnibase_core, OMN-19553).
   # Golden-chain validation layer plan r4 Phase 3: prints golden paths, error
@@ -106,6 +219,7 @@ repos:
       - id: report-contract-walk
         require_serial: true
         args: [src]
+        stages: [manual]
 
   # Canonical Inference Gate (OMN-13249, fleet rollout of OMN-13219).
   # Rejects NEW non-canonical model-inference surfaces: shelled model CLIs
@@ -122,6 +236,7 @@ repos:
         require_serial: true
         args: [--repo, omnimarket, --repo-root, .]
         exclude: ^(tests/|archived/|archive/).*\.py$
+        stages: [manual]
   # URL Authority Gate (OMN-13298, child of OMN-12803).
   # OMN-20177: this pin carries the AST env-read matcher (*_DSN, os.getenv,
   # from-os imports, a key held in a constant); keep it equal to the pin in
@@ -136,6 +251,7 @@ repos:
         require_serial: true
         args: [--repo, omnimarket, --repo-root, .]
         exclude: ^(tests/|archived/|archive/).*\.py$
+        stages: [manual]
   # OMN-13284: canonical Plugin* lifecycle guard. omnimarket owns ONEX node packages
   # and could reintroduce a Plugin* daemon/worker/consumer lifecycle owner; consume
   # the canonical omnibase_core remote hook. Rev pins the core commit carrying the
@@ -172,6 +288,7 @@ repos:
       - id: canonical-file-shape
         args: [--rules, file-shape]
         require_serial: true
+        stages: [manual]
   - repo: https://github.com/OmniNode-ai/omnibase_core
     rev: 031148215620031436cba30619bbae67c0bb38ad # pragma: allowlist secret
     hooks:
@@ -185,6 +302,7 @@ repos:
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
         files: ^src/omnimarket/.*\.py$
+        stages: [manual]
       # OMN-20295: direct-model-call gate, BLOCKING. A model call must sit in a
       # sanctioned delegation node package named in omnibase_core's policy.yaml.
       # Shrink-only baseline, declared here so the shape ratchet accepts it.
@@ -221,6 +339,7 @@ repos:
         pass_filenames: false
         always_run: true
         files: ^(src/omnimarket/nodes/|scripts/ci/check_unimported_handlers\.py|scripts/validation/unimported_handler_baseline\.txt|tests/ci/|\.pre-commit-config\.yaml)
+        stages: [manual]
       - id: node-purity
         require_serial: true
         files: ^src/omnimarket/nodes/node_[^/]*_(compute|reducer)/
@@ -261,6 +380,7 @@ repos:
           - architecture-handshakes/validator-requirements.yaml
           - --baseline
           - architecture-handshakes/validator-requirements-baseline.yaml
+        stages: [manual]
 
   # OMN-13663 (T4, epic OMN-13659): projection exposure⇄column drift gate.
   # Reconciles every projection node contract.yaml's projection_api.exposures
@@ -286,6 +406,7 @@ repos:
           - --fail-on-omission
           - --allowlist
           - .projection-exposure-allowlist.yaml
+        stages: [manual]
 
   # OMN-14435 (fan-out from OMN-14401): reject config/registry YAML files
   # declaring duplicate ids over a non-unique key. Checked registries are
@@ -522,7 +643,7 @@ repos:
         entry: bash scripts/ci/check_subscriber_dispatcher_resolution.sh
         files: ^(src/omnimarket/.*\.(py|yaml)|scripts/ci/check_subscriber_dispatcher_resolution\.sh)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-19684: the full-suite shards run only the test files
       # scripts/ci/merge_test_durations.py plans for them from the committed
@@ -543,7 +664,7 @@ repos:
         name: Queue full-suite admission policy (OMN-19998)
         language: system
         entry: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
-        files: ^(\.github/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|detect_test_paths\.py|test_selection_adjacency\.yaml)|tests/ci/test_queue_run_once_omn19998\.py|\.pre-commit-config\.yaml)$
+        files: ^(\.github/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_rules\.json|detect_test_paths\.py|test_selection_adjacency\.yaml)|tests/ci/test_queue_run_once_omn19998\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -569,7 +690,7 @@ repos:
         entry: bash scripts/ci/check_mixed_category_routing.sh
         files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/mixed_category_routing_omnimarket_baseline\.yaml|scripts/ci/check_mixed_category_routing\.sh)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-17888: a route can RESOLVE and still hand the handler a model it cannot
       # accept. node_redeploy_deploy_effect declared ModelDeployPublishCommand -- the
@@ -587,7 +708,7 @@ repos:
         entry: uv run python -m omnimarket.validators.routing_input_model_fit src/omnimarket
         files: ^(src/omnimarket/.*\.(py|yaml))$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-17888: the runtime keys one local-ingress alias per handler_routing entry on
       # its `operation` and REFUSES a second registration of the same alias unless the two
@@ -605,7 +726,7 @@ repos:
         entry: uv run python -m omnimarket.validators.local_ingress_alias_collision
         files: ^(src/omnimarket/.*\.(py|yaml))$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-18013: the event type a handler matches is DERIVED from a topic its contract
       # declares, never typed into the handler. The consume boundary stamps the alias
@@ -659,7 +780,7 @@ repos:
         entry: uv run python -m omnimarket.validators.key_grain_declared
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/projection/(discovery|models)\.py|src/omnimarket/validators/key_grain_declared\.py|tests/validators/test_key_grain_declared_omn18908\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-19833: the runtime counts a projection write only under `rows_upserted`
       # and reads any other key as zero rows, so a writer reporting `rows_written`
@@ -878,6 +999,23 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      # Same falsifiers as the required lint job in ci.yml.
+      - id: view-seam-graph-declared
+        name: All view seam sides have a declared emitter
+        language: system
+        entry: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_graph_declared.py -q --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/seam_reading/|nodes/node_(seam_|view_|factory_floor_|slack_publish_))|tests/nodes/node_view_seam_|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)
+        stages: [pre-commit]
+
+      - id: view-seam-three-part-proof
+        name: View seam graph and window fault controls
+        language: system
+        entry: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/seam_reading/|nodes/node_(seam_|view_|factory_floor_|slack_publish_))|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)
+        stages: [pre-commit]
+
       - id: routing-tier-backend-bindability
         name: Routing tiers reference only backends a lane can bind
         language: system
@@ -906,6 +1044,17 @@ repos:
         files: ^(src/omnimarket/configs/(routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/nodes/node_lab_first_routing_check_compute/.*|src/omnimarket/models/delegation/model_lab_rubric\.py|tests/unit/delegation/test_lab_first_routing_omn17427\.py)$
         stages: [pre-commit]
 
+      # OMN-22976 (rebuild piece 15): every delegation task class holds a bar in the
+      # routing overlay, frozen under a sha256 hash; a changed bar without a new hash
+      # is refused. SYNC with ci.yml step "Routing overlay bars gate (OMN-22976)".
+      - id: delegation-routing-overlay-bars
+        name: Routing overlay task-class bars (OMN-22976)
+        language: system
+        entry: uv run pytest src/omnimarket/nodes/node_delegation_routing_overlay_check_compute -q -n 0 -p no:randomly --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(task_class_bars|task_class_contracts)\.v1\.yaml|src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/.*)$
+        stages: [pre-commit]
+
       # OMN-18311 (release criterion C12, third clause). A customer catalogue
       # row that resolves to a HOUSE credential renders identically to a
       # bring-your-own-key row and bills to us. Same entry point as the
@@ -925,7 +1074,7 @@ repos:
         language: system
         entry: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q -p no:randomly
         pass_filenames: false
-        files: ^(src/omnimarket/(handlers/handler_internal_release_path_guard|models/model_internal_release_path_guard)\.py|src/omnimarket/nodes/(node_internal_release_path_guard_compute|node_lab_fill_effect|node_pr_landing_decision_compute)/.*|tests/nodes/node_internal_release_path_guard_compute/.*|tests/test_golden_chain_internal_release_path_guard_compute\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/ci/ci_summary_gate\.py)$
+        files: ^(src/omnimarket/(handlers/handler_internal_release_path_guard|models/model_internal_release_path_guard)\.py|src/omnimarket/nodes/(node_internal_release_path_guard_compute|node_lab_fill_effect|node_pr_landing_decision_compute)/.*|tests/nodes/node_internal_release_path_guard_compute/.*|tests/test_golden_chain_internal_release_path_guard_compute\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/ci/ci_summary_(gate\.py|rules\.json))$
         stages: [pre-commit]
 
       # OMN-20844: bring-your-own-key customers choose their OpenRouter model;
@@ -951,7 +1100,7 @@ repos:
         entry: uv run python -m omnimarket.nodes.node_deployment_fact_gate_effect
         pass_filenames: false
         files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/.*\.py)$
-        stages: [pre-commit]
+        stages: [manual]
 
       # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
       # OCC retirement S8). Runs omnibase_core's own todo-format node runtime, which owns this
@@ -972,6 +1121,16 @@ repos:
         entry: uv run python -m omnimarket.validators.no_coding_plan_endpoint
         pass_filenames: false
         files: '(?i)(\.(yaml|yml|json|toml|env|template)$|(^|/)\.env($|\.)|\.env\.|(^|/)(docker[-.]compose|compose)([^/]*$)|^src/omnimarket/validators/no_coding_plan_endpoint\.py$)'
+        stages: [manual]
+
+      # OMN-22917: the no-file census ratchet (plan 4.3, reading 2). Executable readers and writers of the
+      # ledger file's name or path variable may not grow past src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml.
+      - id: ledger-file-census
+        name: Ledger file census ratchet
+        language: system
+        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        pass_filenames: false
+        files: '\.(py|sh|bash|zsh|ya?ml|json|toml|plist|service|timer|cfg|ini|js|ts|mjs|cjs|tmpl|j2)$'
         stages: [pre-commit]
 
       - id: event-registry-drift
@@ -999,7 +1158,7 @@ repos:
         entry: env PYTHONPATH=src uv run python -m omnimarket.validators.handler_dispatch_entrypoint src/omnimarket
         pass_filenames: false
         files: ^(src/omnimarket/.*\.(py|yaml)|validation/handler_dispatch_entrypoint_baseline\.yaml)$
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-8611: entry-point format check (fast, triggers on pyproject.toml changes)
       # Validates that all [project.entry-points."onex.nodes"] entries are valid
@@ -1034,7 +1193,7 @@ repos:
         entry: uv run python scripts/validate_node_drift.py --check-all --check-orphan-nodes --strict
         files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|pyproject\.toml)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-13781: contract-state-coverage gate. Diffs each touched node's
       # declared state set (contract.yaml) against states asserted by its
@@ -1060,7 +1219,7 @@ repos:
         entry: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule cursor
         files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|scripts/validation/projection_cursor_baseline\.txt)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-21289: SYNC with the ci.yml step 'Harness invocation gate'.
       - id: harness-invocation-check
@@ -1069,7 +1228,7 @@ repos:
         entry: uv run python -m omnimarket.nodes.node_harness_invocation_check_effect
         files: \.(py|sh)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-18774: a relation whose owning contract declares it
       # omninode_internal or platform_catalog is written through an operation
@@ -1087,7 +1246,7 @@ repos:
         entry: uv run python scripts/validation/check_internal_relation_tenant_posture.py
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|migrations/.*\.sql)|src/omnimarket/projection/relation_domains\.py|scripts/validation/check_internal_relation_tenant_posture\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-17446: a relation another node's identity-conversion migration or a
       # shared write path resolves identity against must not be fed only by a
@@ -1101,7 +1260,7 @@ repos:
         entry: uv run python scripts/ci/check_registry_projection_reconcile.py
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|migrations/.*\.sql)|src/omnimarket/projection/.*\.py|scripts/ci/(check_registry_projection_reconcile\.py|registry_projection_reconcile_allowlist\.yaml))$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       - id: state-coverage-gate
         name: Contract-state-coverage gate
@@ -1109,7 +1268,7 @@ repos:
         entry: uv run python scripts/validate_state_coverage.py --check-changed HEAD --strict --check-stale
         files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_.*/.*\.py|tests/.*\.py|scripts/validate_state_coverage\.py|scripts/validation/state_coverage_baseline\.txt)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-14542 (class fix, parent OMN-14531): node_contract_sweep's
       # ContractSweepRequest.repos previously defaulted to an empty list, which the
@@ -1126,7 +1285,7 @@ repos:
         entry: uv run python scripts/ci/run_contract_sweep_gate.py --strict
         files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_contract_sweep/.*\.py|scripts/ci/run_contract_sweep_gate\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-13965: skill-mapping input-coverage gate. Every skill_mapping.yaml
       # arg carrying a `default` is force-injected into the node-input payload
@@ -1141,7 +1300,7 @@ repos:
         entry: uv run python scripts/validate_skill_mapping_input_coverage.py
         files: ^(src/omnimarket/nodes/node_.*/(handlers|models)/.*\.py|src/omnimarket/nodes/node_.*/contract\.yaml|scripts/validate_skill_mapping_input_coverage\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-12957: runtime_profiles contract validator (omnibase_core).
       # Enforces runtime_profiles_missing (OMN-9886) + runtime_profile_unregistered
@@ -1207,6 +1366,20 @@ repos:
         language: system
         entry: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule access
         files: ^src/omnimarket/nodes/.*/(contract\.yaml|.*\.py)$
+        pass_filenames: false
+        stages: [manual]
+
+      # OMN-18883 (trap one): a routed entry of a contract that writes a db_io
+      # table reaches BaseProjectionRunner but overrides handle with a typed
+      # request whose result reports no rows_upserted; the runtime wires a typed
+      # handle on the typed arm and the write path is never called. Pre-fix
+      # instance: node_projection_lab_lane_health (OMN-18769 C2). SYNC with
+      # ci.yml `lint` step "Projection typed-entry gate".
+      - id: projection-typed-entry
+        name: Projection typed-entry gate (OMN-18883)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule typed-entry
+        files: ^src/omnimarket/(nodes/.*/(contract\.yaml|.*\.py)|models/contract_projection_check/.*\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1281,7 +1454,7 @@ repos:
         entry: uv run python scripts/ci/check_backend_secret_discipline.py
         files: ^(src/omnimarket/.*\.py|src/omnimarket/configs/.*\.yaml|scripts/ci/check_backend_secret_discipline\.py)
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-13295 (W6a): delegation env-read scanner. Detects direct os.environ/
       # os.getenv reads in delegation-owned modules and enforces the provenance
@@ -1478,7 +1651,7 @@ repos:
         entry: uv run python scripts/ci/check_rls_read_tenant_seam.py
         files: ^src/omnimarket/.*\.(py|sql)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-12959: FSM terminal-state invariant — watchdog topic literals may
       # only live in the canonical omnimarket.events.topics registry (the source
@@ -1507,7 +1680,7 @@ repos:
         entry: uv run python scripts/ci/check_contract_publish_parity.py
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|.*\.py)|scripts/ci/(check_contract_publish_parity|contract_publish_parity_baseline)\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
   # Ruff — standalone check-only pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
@@ -1536,7 +1709,18 @@ repos:
         name: CI Summary external producer trigger parity (OMN-18963)
         language: system
         entry: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
-        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_rules\.json|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+      # OMN-23079: CI Summary's rules are overlay data; a change to the gate or
+      # its overlay must replay the recorded heads to the same verdicts. The
+      # same test file runs in ci.yml's unit test suite.
+      - id: ci-summary-rules-replay
+        name: CI Summary rules overlay replay (OMN-23079)
+        language: system
+        entry: uv run pytest tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py -q -n 0 -p no:randomly --no-cov
+        files: ^(scripts/ci/ci_summary_[a-z_]+\.(py|json)|tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079\.py|tests/fixtures/ci_summary/replay_heads_omn23079\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         require_serial: true
         stages: [pre-commit]
@@ -1590,6 +1774,15 @@ repos:
       # overlay. Refuses any vars.*MODEL* reference and any model id literal in
       # a reviewer workflow. SYNC with the ci.yml lint step "Review voter model
       # comes from the overlay (OMN-20910)".
+      # OMN-19998: same focused proof as the required CI lint job.
+      - id: public-review-receipt
+        name: Public review receipt and runtime dispatch
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/(node_agent_review_dispatch_orchestrator|node_agent_review_gate_accept_effect)/.*|tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt\.py|\.github/workflows/hostile-reviewer\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: review-voter-model-from-overlay
         name: Review voter model comes from the overlay (OMN-20910)
         language: system
@@ -1778,7 +1971,7 @@ repos:
         name: Event registry drift reads the pinned omniclaude (OMN-20001)
         language: system
         entry: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
-        files: ^(src/omnimarket/validators/event_registry_drift\.py|tests/validators/test_event_registry_drift\.py|tests/ci/test_omniclaude_pin_drift_omn20001\.py|\.github/workflows/ci\.yml|scripts/ci/ci_summary_gate\.py)$
+        files: ^(src/omnimarket/validators/event_registry_drift\.py|tests/validators/test_event_registry_drift\.py|tests/ci/test_omniclaude_pin_drift_omn20001\.py|\.github/workflows/ci\.yml|scripts/ci/ci_summary_(gate\.py|rules\.json))$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1833,6 +2026,14 @@ repos:
       # model, configs and outputs, and VERDICT.txt approves the model's digest.
       # Check-only. SYNC with the ci.yml lint step "Compaction lifecycle model and
       # verdict (OMN-21104)".
+      - id: compaction-continuation-replay
+        name: Compaction continuation replay (OMN-21993)
+        language: system
+        entry: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -q --no-cov
+        files: ^(src/omnimarket/(nodes/node_compaction_continuation_replay_effect/|models/compaction_measurement/)|tests/nodes/node_compaction_continuation_replay_effect/|contracts/OMN-21993.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: compaction-lifecycle-model
         name: Compaction lifecycle model and verdict (OMN-21104)
         language: system
@@ -1867,6 +2068,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-21949: the ledger reducer judge model (formal/ledger_reducer_judge) passes
+      # both adopted configs, each control is rejected on its named invariant, and the
+      # TLC results match the committed model, configs and outputs. The reviewer
+      # verdict is the review lane's and is not read. Check-only. SYNC with the ci.yml
+      # lint step "Ledger reducer judge model (OMN-21949)".
+      - id: ledger-reducer-judge-model
+        name: Ledger reducer judge model (OMN-21949)
+        language: system
+        entry: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/ledger_reducer_judge/|tests/formal/(test_ledger_reducer_judge_model|ledger_reducer_judge_tlc)\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20601: routing decisions come from overlays, never from omnimarket code.
       # Check-only. SYNC with the ci.yml lint step "Routing sources, overlay
       # precedence and routing-in-code ratchet (OMN-20601)".
@@ -1876,7 +2090,16 @@ repos:
         entry: uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov
         files: ^(src/omnimarket/.*\.py|src/omnimarket/(configs/.*|model_policy\.yaml|data/model_registry/.*)|tests/test_routing_sources_omn20601\.py|tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601\.py|tests/fixtures/routing_sources/.*)$
         pass_filenames: false
+        stages: [manual]
+
+      - id: pr-handoff-dod-receipt-regression
+        name: PR handoff requires a passing DoD receipt at the head (OMN-21285)
+        language: system
+        entry: uv run pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m "not kafka" --no-cov -p no:randomly -n 0
+        files: ^(src/omnimarket/nodes/node_pr_handoff_dod_receipt_effect/.*|tests/test_golden_chain_pr_handoff_dod_receipt_effect\.py|tests/fixtures/pr_handoff_dod_receipt/.*|contracts/OMN-21285\.yaml|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|pyproject\.toml)$
+        pass_filenames: false
         stages: [pre-commit]
+
 
       - id: ticket-contract-prerequisite
         name: Ticket contract at pushed head (OMN-20864)
@@ -2066,6 +2289,14 @@ repos:
         entry: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
         files: ^(src/omnimarket/.*\.py|tests/test_omni_home_no_silent_default_omn16856\.py)$
         pass_filenames: false
+        stages: [manual]
+
+      - id: retired-repository-reconcile
+        name: Retired repository bundles and registry targets (OMN-21284)
+        language: system
+        entry: uv run --frozen pytest tests/test_retired_repository_reconcile.py -q -p no:randomly --no-cov -m 'not kafka'
+        files: ^(src/omnimarket/.*|scripts/.*|config/.*|[^/]+\.(yaml|yml|json)|tests/test_retired_repository_reconcile\.py|\.github/workflows/ci\.yml)$
+        pass_filenames: false
         stages: [pre-commit]
 
       - id: class3-installed-copy-drift
@@ -2087,16 +2318,23 @@ repos:
         entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_(walkable_state_machines|no_untyped_fsm_dialect)\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
       # OMN-17427: SYNC with the ci.yml lint-job step of the same name and the
       # pre-build step in release.yml and release-cut.yml.
+      - id: host-declaration-regressions
+        name: Host declaration regressions (OMN-21908)
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_host_profile_compute tests/unit/nodes/node_host_drift_check_effect tests/unit/nodes/node_host_gap_unit_effect -q --no-cov -n 0 -p no:randomly -m "not kafka"
+        files: ^(src/omnimarket/(nodes/node_host_(state_effect|profile_compute|drift_check_effect|gap_unit_effect)/.*|handlers/handler_host_.*|models/model_host_profile\.py|protocols/protocol_host_ports\.py)|tests/unit/nodes/node_host_(state_effect|profile_compute|drift_check_effect|gap_unit_effect)/.*|tests/integration/node_host_declaration/.*|contracts/OMN-21908\.yaml|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: node-auto-wiring-in-process
         name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
         language: system
         entry: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427\.py|uv\.lock)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       - id: patch-apply-dispatch
         name: Patch apply dispatch node (OMN-17427)
@@ -2203,7 +2441,7 @@ repos:
         entry: bash -c 'env -u PYTHONPATH CONTRACT_GRAPH_CHECKOUT_ROOT="${OMNI_HOME:?set OMNI_HOME to the omni_home path}" uv run python -m omnimarket.validators.contract_topic_graph --scope omnimarket'
         files: ^src/omnimarket/(nodes/.*/contract\.yaml|validators/contract_topic_graph\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-13624 (WS-C SEA Phase 7.1): generated-node golden-chain gate.
       # Executes the two canonical self-extension loop proofs when generation
@@ -2229,30 +2467,6 @@ repos:
         language: system
         pass_filenames: false
 
-      # OMN-14172: integration silent-skip false-green gate. An
-      # @pytest.mark.integration real-service test that self-skips because a
-      # PROVISIONED service (Postgres) is absent is a false-green — the required
-      # Tests job goes green while the real-DB assertion never ran (the exact gap
-      # that let the OMN-14058 missing-tenant_id-column defect reach dev).
-      # The --selftest runs the gate's own logic against synthetic pass/fail
-      # JUnit reports (case (a) provisioned -> PASS, case (b) reintroduced
-      # missing-service silent skip -> RED) so the gate cannot silently regress,
-      # and validates the shipped integration_skip_guard.yaml parses. No DB
-      # needed locally — the CI job 'integration-guard' is the full runtime gate.
-      # SYNC with ci.yml job 'integration-guard' (Operating Rule #5).
-      - id: integration-skip-guard
-        name: Integration silent-skip guard selftest (OMN-14172)
-        language: system
-        entry: uv run python scripts/ci/check_integration_skips.py --selftest
-        files: >-
-          ^(scripts/ci/check_integration_skips\.py|
-          scripts/ci/integration_skip_guard\.yaml|
-          tests/ci/test_check_integration_skips\.py|
-          \.github/workflows/ci\.yml|
-          tests/test_delegation_savings_tenant_id_column_omn14058\.py|
-          tests/test_projection_delegation_tier_distribution_omn13662\.py)$
-        pass_filenames: false
-        stages: [pre-commit]
 
       # OMN-11040: Dependency health gate — blocks new CRITICAL/MAJOR dependency
       # health findings from being committed. Baseline-first: set
@@ -2270,7 +2484,7 @@ repos:
         language: system
         entry: bash scripts/validation/run_dep_health_gate.sh
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-10738: Blocks silent localhost/hardcoded-endpoint fallbacks in env reads
       - id: validate-no-env-fallbacks
@@ -2357,7 +2571,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [pre-commit]
+        stages: [manual]
 
       - id: arch-unimported-handler-check
         name: "Arch: unimported-handler check (SYNC ci.yml lint step, OMN-10821)"
@@ -2365,7 +2579,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-14666 (D5, §3d.7): fail-loud meta-gate over this very file.
       # Hard-rejects the exit-0-on-missing-path / WARN-SKIP-degrade class (a
@@ -2384,23 +2598,6 @@ repos:
         stages: [pre-commit]
         files: ^(\.pre-commit-config\.yaml|scripts/.*\.(sh|py)|\.pre-commit-hooks/.*\.sh)$
 
-      # OMN-17219 (sibling of OMN-16958): interpreter-resolution ratchet. Fails
-      # closed the moment a hook `entry:` -- or a shell script it calls -- shells
-      # out to a bare `python`. macOS ships no bare `python` outside an activated
-      # venv, so such a hook refuses every `git commit` for anyone not inside one
-      # (reported by an external collaborator on omnimarket's one-occ-producer
-      # hook; identical class to omnimemory's validate-spdx-headers, OMN-16958).
-      # Sanctioned form is `uv run python <script>`. Wired as BOTH this hook and
-      # a CI step in .github/workflows/precommit-fail-loud-gate.yml (Operating
-      # Rule 5: enforcement, not detection).
-      - id: precommit-interpreter-resolution
-        name: Pre-commit interpreter-resolution gate (OMN-17219)
-        entry: uv run python scripts/validation/validate_precommit_interpreter.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
-        files: ^(\.pre-commit-config\.yaml|scripts/.*\.(sh|py)|\.pre-commit-hooks/.*\.sh)$
 
       # OMN-14666 (D5, §3d.8): pin-parity ratchet. Fails closed the moment the
       # pre-commit `rev:` pin for a shared omnibase_core validator diverges from
@@ -2433,23 +2630,6 @@ repos:
           ^(src/omnimarket/merge_control/reason_code_classifier\.py|scripts/ci/check_merge_reason_codes\.py|tests/merge_control/fixtures/reason_codes/.*\.json)$
         stages: [pre-commit]
 
-      # OMN-16344: release-identity gate. Blocks committing a packaged-source
-      # change onto an already-published version string, which is what keeps
-      # dev's project.version permanently ahead of the last released tag the
-      # way omnibase_core (OMN-13411) and omnibase_infra (OMN-13412) already
-      # are. Without it omnimarket's dev sat at 0.4.8 — the same version as the
-      # published v0.4.8 wheel — while carrying seven commits of src/ changes,
-      # so "omnimarket 0.4.8" named two different code states. Local commits
-      # inspect the staged index; CI keeps the PR-base comparison. The script
-      # owns the Git diff/tag resolution, so pass_filenames remains false. SYNC
-      # with ci.yml job `release-identity-gate`.
-      - id: check-release-identity
-        name: No code merged onto a published version without a bump (OMN-16344)
-        entry: uv run python scripts/check_release_identity.py --staged
-        language: system
-        files: ^(src/.*\.py|pyproject\.toml)$
-        pass_filenames: false
-        stages: [pre-commit]
 
   # ---------------------------------------------------------------------------
   # RETIRED (OMN-18162, 2026-09-10): the pre-push TEST leg.
@@ -2531,20 +2711,6 @@ repos:
       # The wrapper executes the SAME validator the CI reusable workflow executes
       # (canonical copy in omniclaude, resolved via $OMNI_HOME), so local and CI
       # verdicts cannot diverge on validator logic.
-      # OMN-18790: the skip-count ratchet's own logic, driven over synthetic
-      # reports locally. The case that matters is the RED one: a reintroduced
-      # environmentally-skipped test must turn the gate red. The shipped
-      # baseline's provenance is validated in the same pass, because a baseline
-      # number with no recorded measurement is a claim, not a measurement.
-      # SYNC with ci.yml job 'skip-count-ratchet' (Operating Rule #5).
-      - id: skip-count-ratchet
-        name: Skip-count baseline ratchet selftest (OMN-18790)
-        language: system
-        entry: uv run --no-project --with pyyaml python scripts/ci/skip_count_ratchet.py --selftest
-        files: >-
-          ^(scripts/ci/skip_count_ratchet\.py|config/skip_count_baseline\.yaml|tests/ci/test_skip_count_ratchet_omn18790\.py|\.github/workflows/ci\.yml)$
-        pass_filenames: false
-        stages: [pre-commit]
       - id: reject-required-check-skip-vector
         name: Reject skip vectors on required-check workflows (OMN-15241)
         entry: .pre-commit-hooks/reject-required-check-skip-vector.sh
@@ -2649,6 +2815,43 @@ repos:
         always_run: true
         verbose: true
         stages: [pre-push]
+
+  - repo: local
+    hooks:
+      - id: prompt-cost-import-schema
+        name: Prompt cost import schema and uncertainty contract
+        entry: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_prompt_cost_estimate_compute/|tests/nodes/node_prompt_cost_estimate_compute/|\.pre-commit-config\.yaml$)
+        stages: [pre-commit]
+      - id: compaction-arm-assignment
+        name: Compaction arm assignment and native-binding controls
+        entry: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_compaction_arm_assignment_compute/|src/omnimarket/models/claude_code_binding/|src/omnimarket/nodes/node_claude_code_binding_render_compute/|src/omnimarket/nodes/node_claude_code_binding_install_effect/|src/omnimarket/nodes/node_claude_code_hook_adapter_effect/|tests/nodes/node_compaction_arm_assignment_compute/|contracts/OMN-22043\.yaml)
+        stages: [pre-commit]
+
+  - repo: local
+    hooks:
+      - id: code-edit-scope-node
+        name: Code edit scope rules and runtime wiring
+        entry: uv run --frozen pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_code_edit_scope_compute/|tests/nodes/test_code_edit_scope_node\.py$)
+        stages: [pre-commit]
+
+  - repo: local
+    hooks:
+      - id: lane-census-alias-parity
+        name: Lane census alias parity
+        entry: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_lane_census_alias_parity_compute/|tests/nodes/node_lane_census_alias_parity_compute/)
+        stages: [pre-commit]
 
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]

@@ -15,6 +15,7 @@ omnimarket is public, so:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -132,8 +133,16 @@ def test_ci_job_and_hook_run_the_same_core_release() -> None:
     assert _hook_rev() == CORE_RELEASE_SHA
 
 
+def _rule_names(table: str) -> tuple[str, ...]:
+    """Read one CI Summary rules table from its overlay (OMN-23079)."""
+    doc = json.loads(
+        CI_SUMMARY_GATE.with_name("ci_summary_rules.json").read_text(encoding="utf-8")
+    )
+    return tuple(entry["name"] for entry in doc["rules"][table]["entries"])
+
+
 def test_ci_summary_registers_the_job() -> None:
-    assert f'"{JOB_NAME}",' in CI_SUMMARY_GATE.read_text(encoding="utf-8")
+    assert JOB_NAME in _rule_names("STRICT_GATE_JOBS")
 
 
 def test_precommit_hook_names_this_public_repository() -> None:
@@ -148,3 +157,31 @@ def test_precommit_hook_names_this_public_repository() -> None:
     ]
     assert hooks
     assert hooks[0]["args"] == ["--repo", "omnimarket", "--visibility", "public"]
+
+
+def test_the_hostile_review_gate_job_is_github_hosted() -> None:
+    """The gate reads the result of the review job, so it takes no lab runner."""
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "hostile-reviewer.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    gate = workflow["jobs"]["hostile-review-gate"]
+    assert gate["name"] == "Hostile Review Gate"
+    assert gate["runs-on"] == "ubuntu-latest"
+    assert gate["needs"] == ["hostile-review"]
+    assert gate["if"] == "always()"
+
+
+def test_the_lab_selection_refusal_is_in_the_required_job() -> None:
+    """The refusal runs in the job CI Summary sweeps, with its failing control first."""
+    steps = _ci_job()["steps"]
+    assert isinstance(steps, list)
+    runs = [str(step.get("run", "")) for step in steps]
+    control = next(i for i, run in enumerate(runs) if "FAILING CONTROL FAILED" in run)
+    refusal = next(
+        i
+        for i, run in enumerate(runs)
+        if "validator_public_lab_selection" in run and "--variables-json" in run
+    )
+    assert control < refusal

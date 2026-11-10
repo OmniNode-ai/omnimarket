@@ -32,7 +32,13 @@ pytestmark = pytest.mark.unit
         (
             "node_standup_retrospective_compute",
             {"until": "2026-10-01T17:50:00Z"},
-            {"retrospective": {}, "ticket_drafts": [], "errors": [], "notes": []},
+            {
+                "retrospective": {},
+                "ticket_drafts": [],
+                "section_lines": [],
+                "errors": [],
+                "notes": [],
+            },
         ),
         (
             "node_lane_host_discovery_compute",
@@ -66,13 +72,28 @@ def test_g2_local_invocation(
     package_dir = Path(package.__file__).parent
     contract = yaml.safe_load((package_dir / "contract.yaml").read_text())
     metadata = yaml.safe_load((package_dir / "metadata.yaml").read_text())
-    assert contract["metadata"]["transport_type"] == "local"
-    assert contract["runtime_profiles"] == []
-    assert contract["descriptor"]["runtime_profiles"] == []
-    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    # the retrospective is bound to its command and built topics (OMN-21286); the others stay local
+    bus_bound = node == "node_standup_retrospective_compute"
+    assert contract["metadata"]["transport_type"] == (
+        "inmemory" if bus_bound else "local"
+    )
+    assert contract["runtime_profiles"] == (["main"] if bus_bound else [])
+    assert contract["descriptor"]["runtime_profiles"] == (["main"] if bus_bound else [])
+    assert contract["event_bus"] == (
+        {
+            "subscribe_topics": [
+                "onex.cmd.omnimarket.standup-retrospective-requested.v1"
+            ],
+            "publish_topics": ["onex.evt.omnimarket.standup-retrospective-built.v1"],
+        }
+        if bus_bound
+        else {"subscribe_topics": [], "publish_topics": []}
+    )
     assert contract["runtime_dispatch"]["external_trigger"].strip()
     assert metadata["capabilities"]["full_runtime"] is False
-    assert metadata["dependencies"] == []
+    assert metadata["dependencies"] == (
+        ["omnibase_infra", "pydantic>=2.0.0", "pyyaml>=6.0"] if bus_bound else []
+    )
     effect = node.endswith("_effect")
     assert contract["node_type"] == ("EFFECT_GENERIC" if effect else "COMPUTE_GENERIC")
     assert contract["descriptor"]["node_archetype"] == (

@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -41,7 +42,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.unit
 

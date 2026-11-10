@@ -28,8 +28,9 @@ command text instead. An invocation is a mutation of a protected project when:
   project's compose label (``com.docker.compose.project=<project>``), as
   ``docker rm $(docker ps -q --filter label=...)`` does.
 
-Read-only calls (ps, logs, inspect, events, compose config or ps) and every
-project the policy does not protect are allowed: the stability lane, the
+Read-only calls (ps, logs, inspect, events, compose config or ps, and a compose
+subcommand that ``compose_dry_run`` lists when it carries the dry-run switch) and
+every project the policy does not protect are allowed: the stability lane, the
 collaborators' stacks, the per-host dev lanes, the pre-PR slots and the CI bus.
 
 The grant. A mutation passes when the rolling work ledger holds a live grant row
@@ -64,6 +65,7 @@ from omnimarket.nodes.node_dev_runtime_mutation_guard_effect.handlers.handler_le
     LedgerGrantSource,
 )
 from omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models import (
+    ModelComposeDryRunPolicy,
     ModelDevRuntimeGuardPolicy,
     ModelDevRuntimeMutationDecision,
     ModelDevRuntimeMutationRequest,
@@ -109,6 +111,20 @@ _COMPOSE_VALUE_OPTIONS = frozenset(
         "--parallel",
     }
 )
+#: ``compose up`` options that take a value as the next word.
+_UP_VALUE_OPTIONS = frozenset(
+    {
+        "--scale",
+        "-t",
+        "--timeout",
+        "--attach",
+        "--no-attach",
+        "--exit-code-from",
+        "--wait-timeout",
+        "--pull",
+    }
+)
+_VALUE_OPTIONS = _COMPOSE_VALUE_OPTIONS | _UP_VALUE_OPTIONS
 _PROJECT_OPTIONS = frozenset({"-p", "--project-name"})
 #: Programs whose arguments are text, never a command run: a docker word there is
 #: prose (a commit message, an echo, a search pattern), not an invocation.
@@ -161,6 +177,41 @@ def _is_text_segment(words: list[str]) -> bool:
     return _program(first) in _TEXT_PROGRAMS
 
 
+def _scoped_words(segment: str) -> list[tuple[str, int]]:
+    """The segment's words, each with the quoted span it sits in (0 outside any).
+
+    The words are the ones ``_QUOTING.sub(" ", segment).split()`` yields. The span
+    tells a word run inside ``ssh host 'docker compose up'`` from one that follows
+    the closing quote, which that command's own program receives, not docker.
+    """
+    out: list[tuple[str, int]] = []
+    chars: list[str] = []
+    scope = 0
+    opened = 0
+    quote = ""
+
+    def flush() -> None:
+        if chars:
+            out.append(("".join(chars), scope))
+            chars.clear()
+
+    for ch in segment:
+        if ch in "\"'\\":
+            flush()
+            if ch == quote:
+                quote = ""
+                scope = 0
+            elif ch != "\\" and not quote:
+                opened += 1
+                quote, scope = ch, opened
+        elif ch.isspace():
+            flush()
+        else:
+            chars.append(ch)
+    flush()
+    return out
+
+
 def _words(segment: str) -> list[str]:
     return _QUOTING.sub(" ", segment).split()
 
@@ -191,6 +242,33 @@ def _compose_call(words: list[str]) -> tuple[str, str | None, list[str]]:
             project = word[2:]
         i += 1
     return "", project, files
+
+
+def _is_dry_run(
+    after: list[tuple[str, int]], scope: int, policy: ModelComposeDryRunPolicy
+) -> bool:
+    """True when the compose call's own words switch the dry-run flag on.
+
+    ``after`` is the call's words after ``compose`` (or after ``docker-compose``),
+    ``scope`` the quoted span of the program word. The last occurrence of the flag
+    decides, as it does for compose. A flag in another quoted span (``ssh host
+    'docker compose up' --dry-run``), after ``--``, or taken as the value of an
+    option does not switch the call to a dry run.
+    """
+    dry = False
+    skip = False
+    for word, word_scope in after:
+        if skip:
+            skip = False
+            continue
+        if word == "--":
+            break
+        name, eq, value = word.partition("=")
+        if name == policy.flag:
+            dry = word_scope == scope and (not eq or value in policy.true_values)
+        elif not eq and name in _VALUE_OPTIONS:
+            skip = True
+    return dry
 
 
 def _docker_call(words: list[str]) -> tuple[str, list[str]]:
@@ -229,6 +307,7 @@ class HandlerDevRuntimeMutationGuard:
         labelled = [p for p in _LABEL.findall(command) if policy.project(p) is not None]
         compose_verbs = set(policy.compose_mutating_verbs)
         docker_verbs = set(policy.docker_mutating_verbs)
+        dry_run_verbs = set(policy.compose_dry_run.verbs)
         by_file = {
             f: p.project for p in policy.protected_projects for f in p.compose_files
         }
@@ -236,7 +315,8 @@ class HandlerDevRuntimeMutationGuard:
             c: p.project for p in policy.protected_projects for c in p.containers
         }
         for segment in _SEGMENT_SPLIT.split(_strip_heredocs(command)):
-            words = _words(segment)
+            scoped = _scoped_words(segment)
+            words = [w for w, _ in scoped]
             if _is_text_segment(words):
                 continue
             for index, word in enumerate(words):
@@ -244,10 +324,12 @@ class HandlerDevRuntimeMutationGuard:
                 rest = words[index + 1 :]
                 if program == "docker-compose":
                     verb, project, files = _compose_call(rest)
+                    compose_args = scoped[index + 1 :]
                 elif program == "docker":
                     sub, after = _docker_call(rest)
                     if sub == "compose":
                         verb, project, files = _compose_call(after)
+                        compose_args = scoped[len(words) - len(after) :]
                     else:
                         if sub == "container" and after:
                             sub, after = after[0], after[1:]
@@ -270,6 +352,10 @@ class HandlerDevRuntimeMutationGuard:
                 else:
                     continue
                 if verb not in compose_verbs:
+                    continue
+                if verb in dry_run_verbs and _is_dry_run(
+                    compose_args, scoped[index][1], policy.compose_dry_run
+                ):
                     continue
                 target = project or env_project
                 if target is None:
@@ -322,7 +408,7 @@ class HandlerDevRuntimeMutationGuard:
             f"grant: a {' or '.join(grant.row_kinds)} row on the rolling work ledger carrying "
             f"{grant.target_cell}={grant.target_prefix}{project} and {grant.until_cell}=<ISO-8601 time, "
             f"at most {grant.max_grant_hours:g}h after the row>. No live grant names it in "
-            f"{self._grants.describe(grant)}. Read-only docker calls (ps, logs, inspect, events) are not refused."
+            f"{self._grants.describe(grant)}. Read-only docker calls (ps, logs, inspect, events, compose config, compose up --dry-run) are not refused."
         )
         return ModelDevRuntimeMutationDecision(
             verdict=EnumDevRuntimeMutationVerdict.REFUSE,

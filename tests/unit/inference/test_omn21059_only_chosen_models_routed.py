@@ -25,6 +25,15 @@ from pydantic import SecretStr
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.routing import byok_model_discovery
+from omnimarket.handlers.routing.byok_provider_backends import (
+    catalogue_prefers_model,
+    resolve_byok_backend_by_id,
+)
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.local_byok_route import next_chosen_model_byok_route
 from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
@@ -39,15 +48,6 @@ from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secr
 from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_request import (
     ModelLocalSecretRequest,
 )
-from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.byok_provider_backends import (
-    catalogue_prefers_model,
-    resolve_byok_backend_by_id,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import next_chosen_model_byok_route
 from tests.chains.local.harness import store_model_credential, use_local_store
 
 pytestmark = pytest.mark.unit

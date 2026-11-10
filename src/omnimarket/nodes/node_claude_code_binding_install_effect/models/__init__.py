@@ -9,4 +9,12 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models.model_bindi
     ModelBindingInstallResult,
 )
 
-__all__ = ["ModelBindingInstallRequest", "ModelBindingInstallResult"]
+from .model_compaction_binding_install_request import (
+    ModelCompactionBindingInstallRequest,
+)
+
+__all__ = [
+    "ModelBindingInstallRequest",
+    "ModelBindingInstallResult",
+    "ModelCompactionBindingInstallRequest",
+]

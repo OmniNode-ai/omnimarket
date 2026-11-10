@@ -49,6 +49,36 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_dod_criteria_check_effect/test_omn_21676_criteria_check.py tests/unit/nodes/node_dod_verify/test_omn_21676_criteria_delegation.py -k 'unreadable_ticket or no_linear_credential' -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21676-falsifier-hosted-delegated"
+    description: "Supplemental AC1 regression coverage: the ticket selector selects a test, and the hosted run verifies with no credential and names the criteria check as delegated. This behavior already exists at the merge base and remains bound by dod-omn21676-hosted-delegation; this item does not claim a new product change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify -q --no-cov -k hosted_criteria_delegated_without_credential"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21676-falsifier-drift-refuses"
+    description: "Supplemental AC2 regression coverage: the ticket selector selects a test, the trusted check refuses an edited criterion with CRITERIA_DRIFT naming it, reads the ticket itself and takes no hosted verdict as input. This behavior already exists at the merge base and remains bound by dod-omn21676-trusted-check; this item does not claim a new product change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify -q --no-cov -k delegated_criteria_drift_still_refuses"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21676-falsifier-ticket-unavailable-refuses"
+    description: "The AC3 falsifier selector as the ticket states it selects tests: an unreadable ticket, or a key store with no Linear credential, blocks the trusted check and the reason names ticket_unavailable."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21676_delegation_falsifiers.py -q --no-cov -k delegated_ticket_unavailable_still_refuses"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21676-integration-proof-trusted-check-node"
+    description: "The trusted criteria check runs as the node itself through the ONEX CLI on the Done-gate host and fails closed: a request for a pull request head that is not an open head it can verify comes back merge_blocked with a CRITERIA_UNREADABLE reason, never a pass. This is supplemental local runtime coverage, with no hosted acceptance binding: it exercises an unreadable PR head, not an unreadable ticket. The new ticket_unavailable behavior is bound by dod-omn21676-falsifier-ticket-unavailable-refuses above."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "onex node node_dod_criteria_check_effect --input tests/unit/nodes/node_dod_criteria_check_effect/fixtures/refused_request_omn_21676.json --state-root .onex_state/omn21676_probe --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path . | python3 -c \"import json,sys; r=json.load(sys.stdin); assert r['status']=='success' and r['result']['merge_blocked'] is True and r['result']['reason'].startswith('CRITERIA_UNREADABLE'), r\""
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21676-deploy-published-source-readback"
     description: |-
       Hosted-runner source-artifact readback: fetch the published verifier and trusted-check sources at the

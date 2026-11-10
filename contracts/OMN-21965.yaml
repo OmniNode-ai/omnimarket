@@ -1,0 +1,102 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21965"
+title: "Per-session counters: red CI introduced, reverts, corrections, retracted claims (plan task CM.5)"
+summary: >-
+  node_session_defect_count_compute is a pure compute node. From typed slices of the local pull request watcher snapshot (check-run history per head), reverts and ledger CORRECTION rows it counts defects per session and per equal, non-overlapping window around each boundary, per merged pull request. Known ci-watch non-defect classes are removed first, one pull request's failure signalled several ways is one defect, and a session with no merged pull request reports no denominator.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21965-defect-counters"
+    statement: "The node counts red CI introduced, reverts within 7 days, CORRECTION rows and retracted claims per merged pull request, per session and per window."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: each known non-defect class in the `ci-watch` list is excluded by a named test -- falsifier: uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k nondefect_classes"
+      - id: "AC2"
+        statement: "AC2: the count is per merged pull request and a session with none reports \"no denominator\", not zero -- falsifier: uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k 'rate_is_per_merged or no_denominator'"
+      - id: "AC3"
+        statement: "AC3: the data source for check-run history per head is named in the PR with a readback -- falsifier: uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k check_run_history_source"
+      - id: "AC4"
+        statement: "AC4: two overlapping boundary windows, and one pull request's failure signalled as a red check, a revert and a CORRECTION, each yield one defect owned by one window -- falsifier: uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k 'window_ownership or cross_signal_dedup'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Defect counter tests for OMN-21965."
+    command: "uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21965-ac1"
+    description: "Each of the nine ci-watch non-defect classes is excluded by its own named test, and a real red still counts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k nondefect_classes"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn21965-ac2"
+    description: "The rate divides by merged pull requests; a session or window with none reports no denominator and no rate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k 'rate_is_per_merged or no_denominator'"
+        cwd: "."
+    binds_ac: ["AC2"]
+  - id: "dod-omn21965-ac3"
+    description: "The check-run source (watcher snapshot prs[...].ci) is a named constant in the model; the readback is in the PR body Lab line."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k check_run_history_source"
+        cwd: "."
+    binds_ac: ["AC3"]
+  - id: "dod-omn21965-ac4"
+    description: "Overlapping windows own each event once and a three-signal failure collapses to one defect in one window."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov -k 'window_ownership or cross_signal_dedup'"
+        cwd: "."
+    binds_ac: ["AC4"]
+  - id: "dod-omn21965-integration-proof"
+    description: "The pushed head ran the defect counter tests on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane defect-count-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_session_defect_count_compute/test_defect_count.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21965-deploy-packaged-runtime"
+    description: "Hosted-runner smoke invokes the packaged pure compute node through onex node with its discovered contract and in-memory backend. A red check, revert and correction for one merged pull request must collapse to one defect owned by the after window, while an empty session reports no denominator. It requires no lane services or credentials and fails when the node or these behaviours are absent."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe="$(mktemp -d)"
+          trap 'rm -rf "$probe"' EXIT
+          cat > "$probe/input.json" <<'JSON'
+          {"as_of":"2026-11-01T00:00:00Z","window_seconds":3600,"sessions":[{"session_id":"smoke","lane_family":"smoke","starts_at":"2026-10-01T00:00:00Z","ends_at":"2026-10-01T04:00:00Z","boundaries":["2026-10-01T02:00:00Z"]},{"session_id":"empty","lane_family":"empty","starts_at":"2026-10-01T00:00:00Z","ends_at":"2026-10-01T04:00:00Z"}],"pull_requests":[{"ref":"omnimarket#1","session_id":"smoke","state":"merged","opened_at":"2026-10-01T00:00:00Z","merged_at":"2026-10-01T02:30:00Z","required_checks":["Tests Gate"],"heads":[{"sha":"smoke-head","checks":[{"name":"Tests Gate","conclusion":"failure","completed_at":"2026-10-01T02:15:00Z"}]}]}],"reverts":[{"reverting_pr":"omnimarket#2","reverted_pr":"omnimarket#1","merged_at":"2026-10-01T02:45:00Z"}],"ledger_rows":[{"stamp":"2026-10-01T02:20:00Z","row_type":"CORRECTION","lane":"smoke","pr_ref":"omnimarket#1"}]}
+          JSON
+          export PATH="$(uv run --frozen python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH";
+          onex node node_session_defect_count_compute --input "$probe/input.json" --state-root "$probe/state" --backend event_bus=inmemory --timeout 15 --output receipt --emit-socket "$probe/no-daemon.sock" --omnibase-path "$PWD" > "$probe/output.json";
+          uv run --frozen python - "$probe/output.json" <<'PYTHON'
+          import json
+          import sys
+          receipt = json.load(open(sys.argv[1]))
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          sessions = {s["session_id"]: s for s in receipt["result"]["sessions"]}
+          s = sessions["smoke"]
+          assert (s["merged_prs"], s["defect_count"], s["rate"]) == (1, 1, 1.0), s
+          assert len(s["defects"]) == 1 and len(s["defects"][0]["signals"]) == 3, s
+          assert s["defects"][0]["window_id"] == "b0:after", s
+          assert [(w["defects"], w["merged_prs"]) for w in s["windows"]] == [(0, 0), (1, 1)], s
+          empty = sessions["empty"]
+          assert (empty["merged_prs"], empty["rate"], empty["rate_status"]) == (0, None, "no denominator"), empty
+          print("packaged defect counter: 3 signals, 1 defect, 1 owning window; empty session: no denominator")
+          PYTHON
+        cwd: "."

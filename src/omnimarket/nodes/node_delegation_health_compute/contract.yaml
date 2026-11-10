@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_health_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The delegation-health verdict as a pure compute. Takes the counts a caller read (per model and
+  per backend over 1h, the quiet window and 24h with attempts and accepted answers, the expected
+  and pin-only rungs, the outcome counts by terminal_failure_cause, and whether lanes were
+  running) and returns OK, DEGRADED with a reason and one FIX per finding, UNREADABLE or
+  UNTRUSTED. The timeout share, the minimum run count and the expected-rung rule are the
+  verdict_rules below. No I/O other than loading this contract, no clock and no randomness.
+input_model:
+  name: ModelDelegationHealthRequest
+  module: omnimarket.nodes.node_delegation_health_compute.models.model_delegation_health
+output_model:
+  name: ModelDelegationHealthVerdict
+  module: omnimarket.nodes.node_delegation_health_compute.models.model_delegation_health
+handler:
+  module: omnimarket.nodes.node_delegation_health_compute.handlers.handler_delegation_health
+  class: HandlerDelegationHealth
+  input_model: omnimarket.nodes.node_delegation_health_compute.models.model_delegation_health.ModelDelegationHealthRequest
+  output_model: omnimarket.nodes.node_delegation_health_compute.models.model_delegation_health.ModelDelegationHealthVerdict
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_delegation_health_compute.handlers.handler_delegation_health:HandlerDelegationHealth
+  handlers:
+    - operation: compute_delegation_health
+      handler:
+        name: HandlerDelegationHealth
+        module: omnimarket.nodes.node_delegation_health_compute.handlers.handler_delegation_health
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  correlation_id: {type: str, required: true, description: Correlation identifier for this check.}
+  quiet_minutes: {type: int, required: true, description: Length of the quiet window the counts were read over, in minutes.}
+  total_rows: {type: int, required: true, description: Rows the table read in total; zero is UNTRUSTED.}
+  read_failure: {type: str, required: false, description: Non-empty when the caller could not read; the verdict is UNREADABLE with this reason.}
+  models: {type: list, required: false, description: Per-model events over 1h, the window and 24h.}
+  backends: {type: list, required: false, description: Per-backend attempts and accepted answers over 1h, the window and 24h.}
+  expected_rungs: {type: list, required: false, description: The first ordinary rung of each expected tier.}
+  pin_only_rungs: {type: list, required: false, description: Rungs the routing marks explicit pin only.}
+  unresolved_tiers: {type: list, required: false, description: Expected tiers with no model on a live endpoint.}
+  outcomes: {type: object, required: false, description: Real runs and the failed ones by terminal_failure_cause; absent when the table has no such column, which is not judged.}
+  lanes_running: {type: int, required: false, description: Lanes with an open CLAIM that wrote a row inside the window.}
+outputs:
+  correlation_id: {type: str}
+  verdict: {type: str, enum: [OK, DEGRADED, UNREADABLE, UNTRUSTED]}
+  exit_code: {type: int}
+  findings: {type: list, description: One reason and one FIX per DEGRADED finding.}
+  not_judged: {type: list, description: What the counts could not judge, said in the verdict.}
+  evidence: {type: list}
+  summary: {type: str}
+terminal_event: onex.evt.omnimarket.delegation-health-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-health-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-health-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-health-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-health-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Delegation-health verdict compute
+  author: OmniNode Team
+  created: "2026-11-02"
+  related_tickets: [OMN-21927]
+# The rules the handler reads. Change a value here and the verdict changes with no code change.
+verdict_rules:
+  # A run that timed out before any try is answered by no model; this is its terminal_failure_cause.
+  timeout_failure_cause: timeout
+  # DEGRADED when the timeouts are at least this percent of the window's real runs ...
+  timeout_share_percent: 50
+  # ... and there are at least this many real runs in the window.
+  timeout_min_events: 20
+  # backend_row_then_model: an expected rung whose own backend row was read is judged by that row,
+  # not by the model count (two backends can serve one model). model_count: the model count alone.
+  expected_rung_rule: backend_row_then_model
+  exit_codes: {OK: 0, DEGRADED: 1, UNREADABLE: 2, UNTRUSTED: 3}
+  smoke_command: >-
+    "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "Reply with exactly the word: pong"
+    --task-type document --bus kafka --lane dev --locus deployed-lane
+    --state-root "$OMNI_HOME/.onex_state" --caller-lane delegation-health
+  fixes:
+    expected_tier_unresolved: >-
+      read the lab's rendered delegation contract: a tier that routes nowhere is a routing defect
+    pin_only_rung: >-
+      smoke the rung pinned: {smoke} --backend-id {backend_id}; a pinned run that answers pong clears this
+    harness_rung: >-
+      smoke the rung through harness-delegate: run --harness {harness} --model {model} --task-class document
+      --prompt-file <file with: Reply with exactly the word: pong> --check 'test -s "$HARNESS_ANSWER_FILE"';
+      read receipt.json error and check
+    timeouts_dominate: >-
+      smoke the route: {smoke}; a timeout means no consumer that can route the request answered it: compare the
+      members of the delegation-request consumer group on the dev broker with the dev runtime's own container;
+      read the dead-letter topic for failure_class=no_dispatcher
+    expected_rung_silent: >-
+      smoke the rung: {smoke}{pin}; then brief text steps through onex delegate (lane-brief 3a.9)

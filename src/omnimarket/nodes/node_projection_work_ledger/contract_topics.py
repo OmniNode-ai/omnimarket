@@ -34,15 +34,21 @@ if len(TYPED_SUBSCRIBE_TOPICS) != 11 or len(ALL_SUBSCRIBE_TOPICS) != 22:
     raise ValueError("work-ledger requires the exact eleven v1 and eleven v2 routes")
 
 _PUBLISH = contract_publish_topics(CONTRACT_PATH)
-if len(_PUBLISH) != 1:
-    raise ValueError(f"expected one applied topic, found {len(_PUBLISH)}: {_PUBLISH}")
+_APPLIED = tuple(t for t in _PUBLISH if "projection-work-ledger-applied" in t)
+_ACCEPTED_ROW = tuple(t for t in _PUBLISH if "work-ledger-row-accepted" in t)
+if len(_APPLIED) != 1 or len(_ACCEPTED_ROW) != 1 or len(_PUBLISH) != 2:
+    raise ValueError(
+        f"expected the applied topic and the accepted-row topic, found {_PUBLISH}"
+    )
 
-TOPIC_PROJECTION_APPLIED = _PUBLISH[0]
+TOPIC_PROJECTION_APPLIED = _APPLIED[0]
+TOPIC_ACCEPTED_ROW = _ACCEPTED_ROW[0]
 
 __all__: list[str] = [
     "ALL_SUBSCRIBE_TOPICS",
     "CONTRACT_PATH",
     "SUBSCRIBE_TOPICS",
+    "TOPIC_ACCEPTED_ROW",
     "TOPIC_PROJECTION_APPLIED",
     "TYPED_SUBSCRIBE_TOPICS",
 ]

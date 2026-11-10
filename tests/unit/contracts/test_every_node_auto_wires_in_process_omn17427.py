@@ -5,7 +5,7 @@
 On 2026-10-09 omnimarket 0.4.308 shipped two nodes,
 ``node_delegation_acceptance_judged_replay_compute`` and
 ``node_delegation_acceptance_judged_publish_effect``, whose auto-wired route
-ids were longer than ``ModelDispatchRoute.route_id`` allows. The .201 dev lane
+ids were longer than ``ModelDispatchRoute.route_id`` allows. The dev lane
 runs ``ONEX_WIRING_STRICT_MODE=1``, so the ``ValidationError`` killed boot and
 both runtimes crash-looped. Nothing on the omnimarket side had ever put its
 contracts through the infra runtime's auto-wiring: the CI runtime boots ran
@@ -95,6 +95,66 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
         "omnimemory HandlerFileSystemAdapter requires a config constructor argument"
     ),
 }
+
+
+@pytest.fixture
+def topic_scans(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """Count the contract topic scans the wiring pass asks for, and run each distinct one once.
+
+    Auto-wiring builds one ``TopicProvisioner`` for each handler that takes the topic
+    migration executor's collaborators (11 of them at dev ``3e37ae668``), and the
+    provisioner's constructor scans every contract on the path and in every installed
+    package for topics through ``ContractTopicExtractor.extract_all``. Each scan parses
+    all contracts again with the pure-Python YAML loader: on 2026-11-06 a profile of this
+    test on a lab host spent 317 of 540 s in 11 such scans, the same scan answering the
+    same question each time. The scan is read-only, so the result of the first call is
+    returned to the later calls with the same arguments; the extractor still runs for
+    real once, against the same contracts, and the test asserts the same wiring outcome.
+    """
+    from omnibase_infra.tools.contract_topic_extractor import ContractTopicExtractor
+
+    real = ContractTopicExtractor.extract_all
+    memo: dict[tuple[Any, ...], list[Any]] = {}
+    scans = {"asked": 0, "run": 0}
+
+    def extract_all_once(
+        self: ContractTopicExtractor,
+        contracts_root: Path,
+        supplementary_sources: list[Path] | None = None,
+        skill_manifests_root: Path | None = None,
+        skill_manifests_roots: list[Path] | None = None,
+    ) -> list[Any]:
+        scans["asked"] += 1
+        key = (
+            self._include_installed_packages,
+            contracts_root,
+            tuple(supplementary_sources or ()),
+            skill_manifests_root,
+            tuple(skill_manifests_roots or ()),
+        )
+        if key not in memo:
+            scans["run"] += 1
+            memo[key] = real(
+                self,
+                contracts_root,
+                supplementary_sources,
+                skill_manifests_root,
+                skill_manifests_roots,
+            )
+        return list(memo[key])
+
+    monkeypatch.setattr(ContractTopicExtractor, "extract_all", extract_all_once)
+    return scans
+
+
+# Contracts per wiring batch; each batch stays under the per-test runtime budget.
+_WIRING_BATCH_SIZE = 32
+# The harness schedule node reads its overlay on its first tick, so it wires without one (OMN-22608).
+_HARNESS_SCHEDULE_NODE = "node_lab_test_harness_schedule_compute"
+# The nodes that wire the relay admission and S8 stop authorization (OMN-22505).
+_RELAY_NODES = frozenset(
+    {"node_stop_only_on_withdrawal_compute", "node_stop_only_on_withdrawal_effect"}
+)
 
 # The ModelDispatchRoute field each derived identifier is stored in.
 _DERIVED_FIELDS = ("route_id", "handler_id", "topic_pattern")
@@ -231,9 +291,67 @@ def test_every_derived_dispatch_identifier_fits_the_runtime_limits() -> None:
     )
 
 
-async def test_every_node_auto_wires_in_process(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _batch_wired_something(report: Any) -> bool:
+    """Whether a batch wiring nothing is a smoke failure (OMN-17427).
+
+    It is one only when something in the batch had a subscription to wire. The
+    catalogue is sliced into fixed-size batches, so the tail batch can hold
+    only publish-only nodes: a node the runtime never dispatches declares an
+    empty ``event_bus.subscribe_topics`` with ``runtime_dispatch.external_trigger``,
+    and infra reports it ``SKIPPED``. On 2026-11-06 the tail batch was exactly
+    one such contract, ``worktree_reconcile_effect``, an externally triggered
+    ingress root, and the bare ``total_wired > 0`` reddened every open pull
+    request of this repository while dev stayed green, because the sharded test
+    matrix runs on ``pull_request`` only. A ``FAILED`` or unresolvably
+    quarantined contract is unaffected: ``_shrink_only`` still catches it.
+    """
+    return report.total_wired > 0 or all(
+        result.outcome == EnumWiringOutcome.SKIPPED for result in report.results
+    )
+
+
+def _batch_wired_nothing_detail(report: Any) -> str:
+    outcomes = ", ".join(
+        f"{result.contract_name}={result.outcome.value}" for result in report.results
+    )
+    return f"batch wired nothing and not every contract in it was skipped: {outcomes}"
+
+
+# Each batch parses its contracts under the shard's coverage tracing; the shard-wide
+# 300 s bound stays for every other test, and this one keeps its own budget (OMN-19998).
+def _wiring_batches() -> list[ModelAutoWiringManifest]:
+    """Keep every discovered contract under the per-test runtime budget.
+
+    Wiring the growing catalogue in one pytest item exceeds CI's 300-second
+    timeout before its assertions run. Each batch uses the same real runtime,
+    topology, container and bus; no contract or refusal is exempted.
+    """
+    contracts = _manifest().contracts
+    names = {contract.name for contract in contracts}
+    assert len(names) == len(contracts), "duplicate canonical contract names"
+    removed = set(_CANNOT_WIRE_IN_PROCESS) - names
+    assert not removed, f"listed contracts no longer discovered; remove them: {removed}"
+    return [
+        ModelAutoWiringManifest(contracts=contracts[start : start + _WIRING_BATCH_SIZE])
+        for start in range(0, len(contracts), _WIRING_BATCH_SIZE)
+    ]
+
+
+def test_every_discovered_contract_is_wired_in_exactly_one_bounded_batch() -> None:
+    """AC14: the batches cover the catalogue once each, relay nodes included."""
+    batches = _wiring_batches()
+    batched = [contract.name for batch in batches for contract in batch.contracts]
+    discovered = [contract.name for contract in _manifest().contracts]
+    assert sorted(batched) == sorted(discovered)
+    assert len(set(batched)) == len(batched), "a contract is wired in two batches"
+    assert all(len(batch.contracts) <= _WIRING_BATCH_SIZE for batch in batches)
+    missing = _RELAY_NODES - set(batched)
+    assert not missing, f"relay nodes are not in any wiring batch: {sorted(missing)}"
+
+
+async def _wire_and_collect_failures(
+    monkeypatch: pytest.MonkeyPatch, manifest: ModelAutoWiringManifest
+) -> tuple[Any, dict[str, str]]:
     topology = load_topology_profile(_TOPOLOGY_PROFILE)
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", _UNREACHABLE_BROKER)
@@ -252,7 +370,7 @@ async def test_every_node_auto_wires_in_process(
     await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
     try:
         report = await wire_from_manifest(
-            _manifest(),
+            manifest,
             MessageDispatchEngine(),
             event_bus=bus,
             environment=_TOPOLOGY_PROFILE,
@@ -272,10 +390,80 @@ async def test_every_node_auto_wires_in_process(
                 quarantined.contract_name,
                 f"{quarantined.handler_name}: {quarantined.detail[:400]}",
             )
-    assert report.total_wired > 0
+    return report, failing
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    _wiring_batches(),
+    ids=lambda manifest: manifest.contracts[0].name,
+)
+@pytest.mark.timeout(900, method="thread")
+async def test_every_node_auto_wires_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    manifest: ModelAutoWiringManifest,
+    topic_scans: dict[str, int],
+) -> None:
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    report, failing = await _wire_and_collect_failures(monkeypatch, manifest)
+    assert _batch_wired_something(report), _batch_wired_nothing_detail(report)
+    # Each distinct scan runs once however many handlers ask for it.
+    assert topic_scans["run"] <= 1
     _shrink_only(
         failing,
-        _CANNOT_WIRE_IN_PROCESS,
+        {
+            name: reason
+            for name, reason in _CANNOT_WIRE_IN_PROCESS.items()
+            if name in {contract.name for contract in manifest.contracts}
+        },
         "contracts that fail infra auto-wiring in-process (a crash loop under "
         "ONEX_WIRING_STRICT_MODE=1, the dev lane's setting)",
     )
+
+
+@pytest.mark.timeout(900, method="thread")
+async def test_a_publish_only_tail_batch_is_not_a_smoke_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A batch of only externally triggered nodes wires nothing and still passes.
+
+    Red-first control, measured 2026-11-06 against the real runtime on the one
+    contract the tail batch then held: outcomes
+    ``[('worktree_reconcile_effect', 'skipped', 'No event_bus.subscribe_topics
+    declared in contract')]`` and ``total_wired == 0``, so the bare
+    ``total_wired > 0`` this replaced failed while nothing was wrong.
+    """
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    publish_only = [
+        contract
+        for contract in _manifest().contracts
+        if not getattr(contract.event_bus, "subscribe_topics", None)
+    ]
+    assert publish_only, "no publish-only contract is discovered any more"
+    report, _ = await _wire_and_collect_failures(
+        monkeypatch, ModelAutoWiringManifest(contracts=(publish_only[0],))
+    )
+    assert report.total_wired == 0, "the contract chosen does subscribe after all"
+    assert _batch_wired_something(report), _batch_wired_nothing_detail(report)
+
+
+async def test_the_harness_schedule_node_wires_without_its_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A runtime with no harness overlay must boot: the node wires, and refuses on its tick.
+
+    The composed-runtime-boot job loads every node with no harness overlay; a node that
+    refused to construct without it crash-looped the whole runtime.
+    """
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    schedule = [
+        contract
+        for contract in _manifest().contracts
+        if contract.name == _HARNESS_SCHEDULE_NODE
+    ]
+    assert schedule, f"{_HARNESS_SCHEDULE_NODE} is not discovered"
+    _, failing = await _wire_and_collect_failures(
+        monkeypatch, ModelAutoWiringManifest(contracts=tuple(schedule))
+    )
+    assert _HARNESS_SCHEDULE_NODE not in failing, failing

@@ -24,6 +24,30 @@ import shlex
 import subprocess
 from typing import Any
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+
+
+def ssh_destination(runtime_host: str) -> str:
+    """Build ``<ssh_user>@<runtime_host>`` from the lab host table row for ``runtime_host``.
+
+    The row is the one whose ``target`` or ``name`` is ``runtime_host``. The login is the row's
+    ``ssh_user``; no login is carried in source. Raises :class:`NodeOverlayError` when the
+    table has no such row or the row declares no ``ssh_user``.
+    """
+    for row in resolve_lab_hosts_table().hosts:
+        if runtime_host in (row.target, row.name):
+            if row.ssh_user is None:
+                raise NodeOverlayError(
+                    f"lab_hosts.hosts: the row for {runtime_host} declares no ssh_user; "
+                    "set ssh_user on that row of the lab_hosts overlay"
+                )
+            return f"{row.ssh_user}@{runtime_host}"
+    raise NodeOverlayError(
+        f"lab_hosts.hosts: no row has target or name {runtime_host}; "
+        "add the host with its ssh_user to the lab_hosts overlay"
+    )
+
 
 def probe_runtime_health(url: str) -> dict[str, Any]:
     """HTTP GET the runtime /health endpoint on the stability-test lane.
@@ -83,7 +107,7 @@ def probe_container_health(runtime_host: str) -> dict[str, Any]:
         result = subprocess.run(
             [
                 "ssh",
-                f"jonah@{runtime_host}",
+                ssh_destination(runtime_host),
                 remote_command,
             ],
             capture_output=True,
@@ -221,7 +245,7 @@ def _ssh_docker_exec(
     """
     remote_command = "docker exec " + container + " " + shlex.join(inner_argv)
     result = subprocess.run(
-        ["ssh", f"jonah@{runtime_host}", remote_command],
+        ["ssh", ssh_destination(runtime_host), remote_command],
         capture_output=True,
         text=True,
         timeout=timeout,

@@ -18,6 +18,9 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 OPEN_ROLE_KEY = "open"
+# The scope kinds a dispatcher asks about; a stop's own kind is the registry's ``scope_key_kind``.
+ENGINE_SCOPE_KIND = "engine"
+REPOSITORY_SCOPE_KIND = "repository"
 CLASS_ID_PATTERN = r"[a-z0-9][a-z0-9-]{1,59}"
 
 
@@ -59,6 +62,15 @@ class EnumStopGateReason(StrEnum):
     OBSERVED = "observed"
     SWARM_LANE = "swarm_lane"
     MODE_MISSING = "mode_missing"
+    EXEMPT = "exempt"
+
+
+class EnumStopExemptionKind(StrEnum):
+    """Work a stop never refuses (it refuses new dispatch only): fixing or landing an open PR, a read-only lane, an armed merge."""
+
+    PR_FIX = "pr_fix"
+    READ_ONLY = "read_only"
+    ARMED_MERGE = "armed_merge"
 
 
 class EnumReadingVerdict(StrEnum):
@@ -72,6 +84,27 @@ class EnumReadingOrigin(StrEnum):
     EXECUTED = "executed"
     CACHED = "cached"
     INFERRED = "inferred"
+
+
+class EnumFloorVerdict(StrEnum):
+    """What the floor's own reading of a piece or scope says; only ``WORKING`` can release a stop."""
+
+    WORKING = "WORKING"
+    BROKEN = "BROKEN"
+    UNKNOWN = "UNKNOWN"
+
+
+class EnumReleaseReason(StrEnum):
+    """Why the release predicate holds a stop open ('met' when it does not)."""
+
+    MET = "met"
+    GO_AND_SEE_MISSING = "go_and_see_missing"
+    GO_AND_SEE_EMPTY = "go_and_see_empty"
+    GO_AND_SEE_BEFORE_STOP = "go_and_see_before_stop"
+    WORKING_READING_MISSING = "working_reading_missing"
+    WORKING_READING_NOT_WORKING = "working_reading_not_working"
+    WORKING_READING_BEFORE_STOP = "working_reading_before_stop"
+    WORKING_READING_BEFORE_LEASE = "working_reading_before_lease"
 
 
 class EnumFoldStatus(StrEnum):
@@ -155,6 +188,25 @@ class ModelStopRecord(_Frozen):
     fixed_at: datetime | None = None
     fixed_readings_seen: int = 0
     cleared_at: datetime | None = None
+    last_lease_at: datetime | None = (
+        None  # when the newest lease (a grant or a replacement) began
+    )
+
+
+class ModelWorkingReading(_Frozen):
+    """The floor's reading of the stopped scope that came with a readback: its verdict and when it was probed."""
+
+    verdict: EnumFloorVerdict
+    read_at: datetime
+
+
+class ModelGoAndSeeRow(_Frozen):
+    """The row a lane writes after it went and looked at the stopped scope itself: what it saw, where and when."""
+
+    row_id: str = Field(min_length=1)
+    lane_id: str = Field(min_length=1)
+    seen_at: datetime
+    observed: str
 
 
 class ModelStopReading(_Frozen):
@@ -164,6 +216,7 @@ class ModelStopReading(_Frozen):
     proof_eligible: bool = False
     origin: EnumReadingOrigin = EnumReadingOrigin.INFERRED
     covers_scope: bool = False
+    working: ModelWorkingReading | None = None
 
 
 class ModelHandFixEvidence(_Frozen):
@@ -185,6 +238,25 @@ class ModelStopEvent(_Frozen):
     reading: ModelStopReading | None = None
     hand_fix: ModelHandFixEvidence | None = None
     extension: int = 0
+    go_and_see: ModelGoAndSeeRow | None = None
+
+
+class ModelStopReleaseVerdict(_Frozen):
+    """The release predicate's answer for one readback: met or not, and the one reason it is not."""
+
+    met: bool
+    reason: EnumReleaseReason
+
+
+class ModelStopReleaseRecord(_Frozen):
+    """The typed record of a release: the go-and-see row and the WORKING reading a stop was cleared on."""
+
+    stop_id: str
+    go_and_see_row_id: str
+    go_and_see_lane_id: str
+    go_and_see_seen_at: datetime
+    working_read_at: datetime
+    released_at: datetime
 
 
 class ModelStopFoldResult(_Frozen):
@@ -197,6 +269,8 @@ class ModelStopFoldResult(_Frozen):
     transition: str = ""
     actions: tuple[str, ...] = ()
     line: str = ""
+    release: ModelStopReleaseRecord | None = None
+    release_reason: EnumReleaseReason | None = None
 
 
 class ModelStopFoldRequest(_Frozen):
@@ -213,6 +287,25 @@ class ModelStopPolicy(_Frozen):
     enforce_citations: dict[str, str] = Field(default_factory=dict)
 
 
+class ModelStopExemptionClaim(_Frozen):
+    """What a dispatch says it is: ``ref`` is the PR it fixes or lands, or the lane id of a read-only lane.
+
+    A claim alone admits nothing; ``stop_gate`` honours it only against a ``ModelStopBinding`` the
+    dispatcher or the PR watcher wrote.
+    """
+
+    kind: EnumStopExemptionKind
+    ref: str = Field(min_length=1)
+
+
+class ModelStopBinding(_Frozen):
+    """One exemption the dispatcher bound: an open or armed PR read from the PR watcher state, or a read-only lane it started."""
+
+    kind: EnumStopExemptionKind
+    ref: str = Field(min_length=1)
+    expires_at: datetime | None = None
+
+
 class ModelStopGateRequest(_Frozen):
     """Facts for ``stop_gate``: the dispatch's scope, the open stops, the overlay policy and now."""
 
@@ -221,6 +314,21 @@ class ModelStopGateRequest(_Frozen):
     policy: ModelStopPolicy
     now: datetime
     lane_id: str = ""
+    exemption: ModelStopExemptionClaim | None = None
+    bindings: tuple[ModelStopBinding, ...] = ()
+
+
+class ModelStopGateFacts(_Frozen):
+    """What a dispatching node is handed to ask ``stop_gate``: the open stops (read by the caller from the
+    exception queue), the ``andon_stop`` overlay policy (loaded by the caller), now, and the dispatch's lane and
+    exemption. A node given none of this gates nothing, as before the gate was installed."""
+
+    stops: tuple[ModelStopRecord, ...] = ()
+    policy: ModelStopPolicy
+    now: datetime
+    lane_id: str = ""
+    exemption: ModelStopExemptionClaim | None = None
+    bindings: tuple[ModelStopBinding, ...] = ()
 
 
 class ModelStopGateResult(_Frozen):
@@ -230,4 +338,5 @@ class ModelStopGateResult(_Frozen):
     swarm_lane: str | None = None
     stop_class: str | None = None
     mode: EnumStopMode | None = None
+    exemption: EnumStopExemptionKind | None = None
     line: str

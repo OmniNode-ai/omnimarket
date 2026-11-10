@@ -1,0 +1,112 @@
+name: node_broker_acl_reconcile_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Aggregates declared broker ACL grants and reconciles them with the broker through SSH, listing live rows before changes and reading them back after apply.
+# The omnimarket driver is the default; an explicit request command uses the legacy path.
+broker_acl_reconcile:
+  reconcile_command_env: ONEX_ACL_RECONCILE_COMMAND
+  ssh_target_env: ONEX_LAB_BROKER_SSH_TARGET
+  timeout_seconds: 300
+# The rows. DELETE on GROUP resources only, one PREFIXED row per reapable family of the
+# consumer-group guard contract (node_consumer_group_guard_effect, reap.reapable_patterns).
+# Four of the ten rows are also declared in the lab broker's own declaration and are
+# already live; declaring them here keeps the coverage test self-contained, and the
+# reconcile command creates only what is missing. The connection fields are the
+# declaration format's required cells; the broker address comes from the ssh target
+# environment variable above. `${NAME}` cells (the guard login, the host drift fleet's
+# package) are filled from the environment at run time and refused when unset, so the
+# public file names no identity.
+broker_acl_declaration:
+  lane: dev
+  host: dev-lane-broker
+  compose_project: omnibase-infra
+  broker_container: omnibase-infra-redpanda
+  superuser_source_container: omnibase-infra-redpanda-sasl-enable
+  principals:
+    - principal: "${ONEX_ACL_GUARD_PRINCIPAL}"
+      grants:
+        - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.work_ledger_append_client.consume.v1., operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.scm_command_client.consume.v1., operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: local.omnibase_core.runtime_local_terminal_run_, operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: local.omnibase_core.handlerdevheadmonitor_run_, operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: local.omnibase_core.runtime_local_terminal_t, operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.lab_work_client.consume.v1., operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: receipt-mode-client, operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: gateway-canary-probe-, operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: "local.${ONEX_ACL_FLEET_PACKAGE}.host_drift_fleet.h", operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: onex.gateway-session., operation: DELETE}  # consumer-group name prefix, not a topic
+broker_topics:
+  - name: onex.cmd.omnimarket.host-layer-requested.v1
+    cleanup_policy: delete
+    retention_ms: 604800000
+    partitions: 1
+  - name: onex.evt.omnimarket.host-layer-decided.v1
+    cleanup_policy: compact
+    partitions: 1
+  - name: onex.evt.omnimarket.host-desired-state.v1
+    cleanup_policy: compact
+    partitions: 1
+  - name: onex.evt.omnimarket.host-observed-state.v1
+    cleanup_policy: compact
+    partitions: 1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DESIRED_PUBLISHER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: DESCRIBE}
+      - {resource_type: TRANSACTIONAL_ID, pattern: LITERAL, name: host-desired-state-publisher, operation: WRITE}
+      - {resource_type: TRANSACTIONAL_ID, pattern: LITERAL, name: host-desired-state-publisher, operation: DESCRIBE}
+      - {resource_type: CLUSTER, pattern: LITERAL, name: kafka-cluster, operation: IDEMPOTENT_WRITE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: host-desired-state-publisher., operation: READ}
+  - principal: "${ONEX_ACL_LAYER_REQUEST_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: DESCRIBE}
+input_model:
+  name: ModelBrokerAclReconcileRequest
+  module: omnimarket.models.broker_acl_reconcile
+output_model:
+  name: ModelBrokerAclReconcileResult
+  module: omnimarket.models.broker_acl_reconcile
+handler:
+  module: omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_acl_reconcile
+  class: HandlerBrokerAclReconcile
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: broker_acl_reconcile_effect
+      handler:
+        name: HandlerBrokerAclReconcile
+        module: omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_acl_reconcile
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.broker-acl-reconcile-effect-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.broker-acl-reconcile-effect-completed.v1
+terminal_event: onex.evt.omnimarket.broker-acl-reconcile-effect-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.broker-acl-reconcile-effect-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.broker-acl-reconcile-effect-completed.v1

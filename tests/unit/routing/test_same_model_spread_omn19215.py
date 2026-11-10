@@ -33,6 +33,7 @@ from uuid import NAMESPACE_DNS, UUID, uuid5
 import pytest
 
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
+from omnimarket.handlers.routing.backend_placement import spread_groups, spread_index
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelDelegationBackendPlacement,
     ModelPlacedDelegationBackend,
@@ -43,7 +44,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
-from omnimarket.routing.backend_placement import spread_groups, spread_index
 
 pytestmark = pytest.mark.unit
 
@@ -312,8 +312,16 @@ def test_a_retry_that_excludes_the_member_tried_first_lands_on_the_other() -> No
 
 
 @pytest.mark.usefixtures("_spread")
-def test_a_prompt_larger_than_the_peer_window_stays_on_the_rung() -> None:
+def test_a_prompt_larger_than_the_peer_window_stays_on_the_rung(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # ~40k tokens: inside local-coder's 65536, outside the peer's 32768.
+    # This test is about the peer's window only, so local-coder's measured
+    # correct ceiling (OMN-22220, which moves this prompt off the rung) is off
+    # here; test_local_coder_code_generation_ceiling.py covers the ceiling.
+    monkeypatch.setattr(
+        routing, "exceeds_measured_correct_ceiling", lambda *_args: False
+    )
     big = "word " * 40_000
     refs = {
         routing.delta(_request(key, "code_generation", big)).selected_backend_ref

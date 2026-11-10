@@ -1,0 +1,116 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21989
+title: Dev runtime mutation guard refuses read-only docker calls (compose up --dry-run, docker events)
+summary: The dev runtime mutation guard refused two kinds of read-only call. A compose up carrying --dry-run was classified as the mutating verb up, because the guard policy listed no dry-run rule. A docker events call was reported could-not-judge (exit 1) because the omniclaude hook ran the node with an interpreter that cannot import omnimarket, which fails every call that names docker and a lifecycle word. The node contract's guard_policy now declares compose_dry_run (flag, verbs, true values), and the handler treats a listed verb as a no-op only when the flag is a bare flag or carries a true value inside the compose call itself; every mutating verb stays refused without a grant. The hook change is a separate omniclaude pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21989-readonly-docker-calls
+  statement: Read-only docker calls and a compose up with --dry-run are classified non-mutating, a mutating verb stays refused without a grant, and a --dry-run text that is not the compose call's own switch smuggles nothing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: docker events, ps, inspect, logs, and docker compose config or up with --dry-run, aimed at the omnibase-infra project locally or over ssh, are classified non-mutating and never refused or reported could-not-judge -- falsifier: uv run pytest tests/unit/nodes/node_dev_runtime_mutation_guard_effect -k readonly_allow in omnimarket, failing on origin/dev before the fix'
+  - id: AC2
+    statement: 'AC2: every mutating verb (up without --dry-run, down, rm, restart, stop, kill, start, create) aimed at omnibase-infra stays refused without a grant -- falsifier: uv run pytest tests/unit/nodes/node_dev_runtime_mutation_guard_effect -k refuse'
+  - id: AC3
+    statement: 'AC3: a regression test built from the recorded refused calls (fixture path in the PR) fails on the unfixed guard and passes on the fix, and the hook-level test covers the same calls -- falsifier: uv run pytest tests/hooks/test_dev_runtime_mutation_guard_hook.py in omniclaude'
+evidence_requirements:
+- kind: tests
+  description: The node's unit suite, run at the pushed head.
+  command: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21989-ac1-readonly-allow
+  description: AC1 runs the read-only calls (events, ps, inspect, logs, compose config, compose up with the dry-run switch before and after the verb, by project flag, environment, compose file and over ssh) through the handler, and the recorded calls through the process entrypoint, which must exit 0. On origin/dev the up --dry-run cases fail with a REFUSE verdict; they pass on the branch.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k readonly_allow -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21989-ac2-refuse
+  description: AC2 runs every compose and docker mutating verb locally, over ssh, by environment and by compose file with no grant (refused) and with a live grant (admitted), and the shapes that put --dry-run in a text that is not the compose call's switch (=false, another command after && or in a pipeline, after the closing quote of an ssh command, after --, as an option value, on another verb).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k refuse -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21989-ac3-recorded-calls
+  description: AC3 builds the allow tests from the fixture tests/nodes/node_dev_runtime_mutation_guard_effect/fixtures/recorded_refused_calls.json, the read-only calls the check refused or could not judge on 2026-11-02, run through the handler and the process entrypoint. The omniclaude hook test covers the same calls in that repository's own pull request.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k recorded_refused_calls -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21989-integration-proof
+  description: The pushed head ran the node's suite, including the recorded read-only calls and the smuggle shapes through the process entrypoint, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21989 -- uv run --frozen pytest tests/nodes/node_dev_runtime_mutation_guard_effect -q --no-cov
+    cwd: .
+- id: dod-omn21989-deploy-local-runtime
+  description: Hosted-runner deploy smoke dispatches the packaged guard through the ONEX local runtime with an in-memory backend. A compose dry run and docker events must be allowed; a real up, a disabled dry-run flag and a flag in another command must be refused without a grant. The dry-run assertion fails on the pre-fix guard. Commands are input text only; no Docker command is executed and no production rollout is claimed.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k readonly_allow -q --no-cov --tb=line
+    cwd: .
+  - check_type: command
+    check_value: |
+      set -eu
+      export PYTHONDONTWRITEBYTECODE=1
+      export ONEX_LEDGER_PATH=/dev/null
+      export ONEX_SKILL_OVERLAY_ROOTS=
+      probe_dir="$(mktemp -d)"
+      trap 'rm -rf "$probe_dir"' EXIT
+      export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+      python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      commands = {
+          "dry-run": "docker compose -p omnibase-infra up --dry-run",
+          "events": "docker events --filter event=stop",
+          "mutation": "docker compose -p omnibase-infra up -d",
+          "disabled": "docker compose -p omnibase-infra up --dry-run=false",
+          "smuggled": "docker compose -p omnibase-infra up -d && echo --dry-run",
+      }
+      for name, command in commands.items():
+          (root / (name + ".json")).write_text(json.dumps({"tool_name": "Bash", "command": command, "mode": "full"}))
+      ' "$probe_dir"
+      for probe in dry-run events mutation disabled smuggled; do
+        onex node node_dev_runtime_mutation_guard_effect --input "$probe_dir/$probe.json" --state-root "$probe_dir/$probe.state" --backend event_bus=inmemory --timeout 10 --output receipt --omnibase-path "$PWD" > "$probe_dir/$probe.receipt.json"
+        python -c '
+      import json
+      import sys
+      from pathlib import Path
+      name, path = sys.argv[1:]
+      receipt = json.loads(Path(path).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      assert receipt["node_name"] == "node_dev_runtime_mutation_guard_effect", receipt
+      assert receipt["result_model"] == "omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models.model_dev_runtime_mutation_decision.ModelDevRuntimeMutationDecision", receipt
+      result = receipt["result"]
+      expected = "ALLOW" if name in {"dry-run", "events"} else "REFUSE"
+      assert result["verdict"] == expected, (name, expected, result)
+      assert result["granted"] is False, result
+      if expected == "REFUSE":
+          assert result["project"] == "omnibase-infra", result
+          assert "BLOCKED (OMN-21795)" in result["reason"], result
+      print(json.dumps({"probe": name, "run_id": receipt["run_id"], "runtime_identity": receipt["runtime_identity"], "result": result}, sort_keys=True))
+      ' "$probe" "$probe_dir/$probe.receipt.json"
+      done
+    cwd: .

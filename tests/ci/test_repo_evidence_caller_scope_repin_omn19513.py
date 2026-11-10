@@ -56,6 +56,10 @@ def test_the_scope_repin_keeps_the_job_id_and_inputs() -> None:
     with_inputs = dict(raw_inputs)
     verifier_tag = with_inputs.pop("verifier-tag")
     assert re.fullmatch(_DEV_MERGE_TAG, verifier_tag)
+    # OMN-21977 added the per-check budget; its range is asserted in
+    # tests/ci/test_repo_evidence_caller_workflow.py, so this repin test only
+    # records that the input is the caller's and is not part of the repin.
+    with_inputs.pop("check-timeout-seconds")
     assert with_inputs == {
         "evidence-source": "caller",
         "compare-with-occ": "false",

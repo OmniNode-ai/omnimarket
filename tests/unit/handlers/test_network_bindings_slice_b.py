@@ -9,22 +9,20 @@ from pathlib import Path
 import pytest
 from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
 
-from omnimarket.nodes.node_captured_secret_store_effect.handlers import (
-    handler_captured_secret_store,
-)
+from omnimarket.handlers.routing import customer_key_terminus
+from omnimarket.models.secret_store.plain_http_rule import plain_http_allowed
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     model_local_dashboard,
 )
 from omnimarket.nodes.node_ticket_text_effect.handlers.handler_ticket_text import (
     linear_url_ok,
 )
-from omnimarket.routing import customer_key_terminus
 
 SLICE = (
     "nodes/node_captured_secret_store_effect/handlers/handler_captured_secret_store.py",
     "nodes/node_local_dashboard_serve_effect/models/model_local_dashboard.py",
     "nodes/node_ticket_text_effect/handlers/handler_ticket_text.py",
-    "routing/customer_key_terminus.py",
+    "handlers/routing/customer_key_terminus.py",
 )
 
 
@@ -59,10 +57,10 @@ def test_loopback_name_checks_are_unchanged() -> None:
     assert linear_url_ok("http://localhost:8080/graphql")
     assert linear_url_ok("https://api.linear.app/graphql")
     assert not linear_url_ok("http://example.com/graphql")
-    assert handler_captured_secret_store._plain_http_allowed("localhost")
-    assert handler_captured_secret_store._plain_http_allowed("127.0.0.1")
-    assert not handler_captured_secret_store._plain_http_allowed("example.com")
-    assert not handler_captured_secret_store._plain_http_allowed(None)
+    assert plain_http_allowed("localhost")
+    assert plain_http_allowed("127.0.0.1")
+    assert not plain_http_allowed("example.com")
+    assert not plain_http_allowed(None)
     assert customer_key_terminus.is_non_public_host("localhost")
     assert customer_key_terminus.is_non_public_host("printer.local")
     assert not customer_key_terminus.is_non_public_host("example.com")
