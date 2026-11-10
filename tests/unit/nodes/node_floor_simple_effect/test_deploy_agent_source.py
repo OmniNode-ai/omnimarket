@@ -325,6 +325,41 @@ def test_a_legacy_record_full_of_superseded_jobs_does_not_lose_a_failure_to_the_
     assert not read.subjects[0].ok
 
 
+def test_ac2_replay_success_four_superseded_success_reads_zero_failed_in_a_row(
+    tmp_path: Path,
+) -> None:
+    """OMN-22737 AC2 names this sequence exactly (success, four superseded, success); the golden replay above uses another."""
+    path = tmp_path / "deploy-agent.json"
+    agent = _Agent()
+    agent.finished("good-0", "success", NOW - timedelta(minutes=40))
+    _cycle(path, agent, NOW - timedelta(minutes=39))
+    for n in range(4):
+        agent.finished(f"superseded-{n}", "superseded", NOW - timedelta(minutes=20))
+        _cycle(path, agent, NOW - timedelta(minutes=19 - n))
+    agent.finished("good-1", "success", NOW - timedelta(minutes=5))
+    _cycle(path, agent, NOW - timedelta(minutes=4))
+    read = read_deploy_agent(path, OVERLAY, NOW)
+    assert read.subjects[0].ok
+    assert read.subjects[0].value == 0.0
+    assert read.summary == "0 failed in a row, 0 of 2 recorded results failed"
+
+
+def test_the_note_does_not_claim_no_success_when_only_a_bounded_history_is_kept(
+    tmp_path: Path,
+) -> None:
+    """OMN-22737 review finding: a success older than the kept history is not in the record, so the note must say so."""
+    path = tmp_path / "deploy-agent.json"
+    agent = _Agent()
+    agent.finished("good", "success", NOW - timedelta(minutes=60))
+    _cycle(path, agent, NOW - timedelta(minutes=59))
+    for n in range(OVERLAY.deploy_agent_history):
+        agent.finished(f"bad-{n}", "failed", NOW - timedelta(minutes=30 - n), ESTIMATOR)
+        _cycle(path, agent, NOW - timedelta(minutes=29 - n))
+    note = read_deploy_agent(path, OVERLAY, NOW).subjects[0].note
+    assert "no success among the newest" in note
+    assert f"keeps only the newest {OVERLAY.deploy_agent_history}" in note
+
+
 def test_a_merge_read_as_not_running_names_the_unread_running_build() -> None:
     """OMN-23031: the row read 'merged, not running' while the count's own record said it could not read the running build."""
     record = {

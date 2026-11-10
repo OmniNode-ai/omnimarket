@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23123
+title: The floor's deploy agent row note no longer claims no success when only a bounded history is kept, with a replay test of the exact superseded sequence
+summary: The floor's deploy agent row note said "no success among the N results this floor has recorded" although the record keeps only the newest H results, so an older success is not shown. The note now says no success among the newest N results and names the kept history bound. A second test replays the exact sequence of omnimarket#5221 acceptance criterion 2 (success, four superseded, success). This re-applies the follow-up commit ff54ad042 of the merged omnimarket#5221 on current dev.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23123-history-note
+  statement: The deploy agent row's note says no success among the newest N results and names the kept history bound when no success is in the record, and the exact superseded replay reads zero failed in a row.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a pull request with contracts for this ticket carries the fix and merges, and the focused test file passes on its head -- falsifier: uv run pytest on the test file the fix touches in omnimarket, 12 tests pass'
+  - id: AC2
+    statement: 'AC2: the same test file fails on dev without the fix (failing control recorded in the pull request body) -- falsifier: git stash the fix, run the same test file, 1 failure'
+evidence_requirements:
+- kind: tests
+  description: The focused test file passes on the pull request head and fails once (the note test) on dev source
+  command: uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23123-note-and-replay
+  description: The focused test file for the deploy agent source passes on the head with the fix.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q --no-cov
+    cwd: .
+- id: dod-omn23123-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23123 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect -q --no-cov
+    cwd: .

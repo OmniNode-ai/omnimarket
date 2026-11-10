@@ -1,0 +1,93 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Page API (OMN-23072, slice 1)
+#
+# Read-only route node: the runtime serves the floor's JSON from the floor projection on its own HTTP port, the way the
+# projection API was folded in (node_projection_query_api_effect). Slice 1 serves floor-simple.json; the compare,
+# delegation-tracker and tab documents and the pages are later slices, each one more entry in floor_routes.
+name: node_floor_page_api_effect
+contract_name: node_floor_page_api_effect
+node_name: node_floor_page_api_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Answers GET requests for the floor's documents from the newest document the floor projection holds. Before any
+  document is projected a route refuses with a named 503 and never answers a zero floor.
+
+handler:
+  module: omnimarket.nodes.node_floor_page_api_effect.handlers.handler_floor_page
+  class: HandlerFloorPage
+  input_model: omnimarket.nodes.node_floor_page_api_effect.models.model_floor_page_request.ModelFloorPageRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: floor_page.answer
+      message_category: command
+      handler:
+        name: HandlerFloorPage
+        module: omnimarket.nodes.node_floor_page_api_effect.handlers.handler_floor_page
+      event_model:
+        name: ModelFloorPageRequest
+        module: omnimarket.nodes.node_floor_page_api_effect.models.model_floor_page_request
+      event_type: omnimarket.floor-page
+      description: Answer one declared floor route.
+
+input_model:
+  name: ModelFloorPageRequest
+  module: omnimarket.nodes.node_floor_page_api_effect.models.model_floor_page_request
+output_model:
+  name: ModelFloorPageResponse
+  module: omnimarket.nodes.node_floor_page_api_effect.models.model_floor_page_request
+
+# The ASGI app the runtime serves on its HTTP port. A mount is never the root of the port, so every route below is served
+# under this prefix; the mounted app sees the request path unchanged.
+http_mount:
+  factory: "omnimarket.nodes.node_floor_page_api_effect.handlers.http_app:create_app"
+  path_prefix: "/floor"
+
+# The documents the mount serves, in serving order. The path is relative to the mount prefix.
+floor_routes:
+  - {id: floor_simple_json, path: "/floor-simple.json", document: floor_simple}
+
+# What a route answers while no document is projected.
+refusals:
+  not_projected: {status: 503, code: "floor.document.not_projected", detail: "no floor document has been projected yet"}
+  unknown_document: {status: 404, code: "floor.document.unknown", detail: "the contract declares no such floor document"}
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-page.v1
+  terminal_events:
+    success: onex.evt.omnimarket.floor-page-answered.v1
+
+terminal_event: onex.evt.omnimarket.floor-page-answered.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.floor-page.v1
+  publish_topics:
+    - onex.evt.omnimarket.floor-page-answered.v1
+
+published_events:
+  - event_type: FloorPageAnswered
+    topic: onex.evt.omnimarket.floor-page-answered.v1
+    description: The answer of one floor route, or its named refusal.
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-page-answered.v1
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles:
+    - effects
+
+metadata:
+  ticket: OMN-23072
+  transport_type: http
