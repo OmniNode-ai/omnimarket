@@ -30,7 +30,9 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     order, then every other token in its present order (a draw order differs per host so no two hosts
     draw the same first token). ``status``: read the pool. ``record_use``: a lane on this host
     started under ``label``; count the use and when it was seen, so the spread rule can tell a
-    login that has been in use from one no lanes have used yet.
+    login that has been in use from one no lanes have used yet. ``resolve`` counts the use of the token
+    it hands out. ``pin``: keep ``label`` first in this host's draw, through every ``reorder``, until
+    ``release``; ``pinned_by`` says whether an operator's assign or the spread rule set it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -44,8 +46,12 @@ class ModelClaudeTokenPoolRequest(BaseModel):
         "sync_marks",
         "status",
         "record_use",
+        "pin",
+        "release",
     ]
     label: str | None = None
+    #: ``pin``: who sets the pin. An operator's ``assign`` pin is never replaced by the spread rule.
+    pinned_by: Literal["assign", "spread"] = "assign"
     marks: tuple[ModelRotationMark, ...] = ()
     labels: tuple[str, ...] = ()
     #: ``sync_marks``: when the source wrote ``marks``. A local limit or revocation observed after this
@@ -88,10 +94,15 @@ class ModelClaudeTokenPoolResult(BaseModel):
         "sync_marks",
         "status",
         "record_use",
+        "pin",
+        "release",
     ]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()
     chosen: str | None = None
+    #: The label held first in the draw until released, and who pinned it (``assign`` or ``spread``).
+    pinned: str | None = None
+    pinned_by: Literal["assign", "spread"] | None = None
     token: SecretStr | None = Field(default=None, exclude=True, repr=False)
     limited: int = 0
     revoked: tuple[str, ...] = ()

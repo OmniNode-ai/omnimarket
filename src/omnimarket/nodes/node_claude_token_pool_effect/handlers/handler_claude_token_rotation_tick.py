@@ -23,6 +23,11 @@ and under which the host's lanes have already started is spread to a token no ho
 used yet, so one account's limit stops benching one host's lanes alone. The assign handler installs
 the pool token an operator names on the host's login, with the same journal discipline.
 
+A lane does not read the login file: the pool's ``resolve`` hands it the first usable token in the
+pool's draw order, and this tick resets that order every few minutes. So the spread and the assign
+each pin their token first in the draw (a pool ``pin``, kept through every reorder until ``release``),
+beside writing the login the runner falls back on. An operator's assign pin is never spread away.
+
 No result, event, line or file this writes carries a token: labels and states only.
 """
 
@@ -154,8 +159,9 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         if rank is None:
             raise ValueError(f"{request.host} is not a host of the overlay")
         sync, effective = self._sync_marks(request)
-        entries = (effective or self._status(dry_run=request.dry_run)).tokens
-        order = self._order(entries, rank)
+        pooled = effective or self._status(dry_run=request.dry_run)
+        entries = pooled.tokens
+        order = self._order(entries, rank, pooled.pinned)
         if not request.dry_run and order:
             self._pool.handle(
                 ModelClaudeTokenPoolRequest(operation="reorder", labels=order)
@@ -187,6 +193,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                 if held is not None
                 and self._overlay.spread is not None
                 and self._overlay.spread.enabled
+                and pooled.pinned_by != "assign"
                 else None
             )
             if spread is not None:
@@ -336,6 +343,13 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                 self._record_failed(event)
                 raise
             self._keep_login_managed(label)
+            # The draw order is what a new lane reads (the pool's resolve), and the tick resets it every
+            # few minutes: pin the spread token first so it survives the reset, as the login file alone would not.
+            self._pool.handle(
+                ModelClaudeTokenPoolRequest(
+                    operation="pin", label=label, pinned_by="spread"
+                )
+            )
             return ModelClaudeTokenRotationResult(
                 **base,
                 outcome="spread",
@@ -349,13 +363,19 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
 
     @staticmethod
     def _order(
-        entries: tuple[ModelClaudeTokenPoolEntry, ...], rank: int
+        entries: tuple[ModelClaudeTokenPoolEntry, ...],
+        rank: int,
+        pinned: str | None = None,
     ) -> tuple[str, ...]:
+        """The sorted labels rotated by the host's rank, with a pinned label (when the pool holds it) first."""
         labels = sorted(e.label for e in entries)
         if not labels:
             return ()
         shift = rank % len(labels)
-        return tuple(labels[shift:] + labels[:shift])
+        rotated = labels[shift:] + labels[:shift]
+        if pinned in rotated:
+            return (pinned, *(label for label in rotated if label != pinned))
+        return tuple(rotated)
 
     def _sync_marks(
         self, request: ModelClaudeTokenRotationRequest
@@ -451,12 +471,18 @@ class HandlerClaudeTokenAssign(HandlerClaudeTokenRotationBase):
                 ),
             )
         if self._login.fingerprint() == entry.fingerprint:
+            # The login already is the label; the draw still has to hold it first until released.
+            self._pin(request)
             return ModelClaudeTokenAssignResult(
                 host=self._host,
                 label=request.label,
                 outcome="unchanged",
                 from_label=request.label,
-                lines=(f"{self._host}: the login is already {request.label}",),
+                pinned=not request.dry_run,
+                lines=(
+                    f"{self._host}: the login is already {request.label}; "
+                    f"{'would pin' if request.dry_run else 'pinned'} first in the draw",
+                ),
             )
         from_label = next(
             (e.label for e in entries if e.fingerprint == self._login.fingerprint()),
@@ -468,7 +494,9 @@ class HandlerClaudeTokenAssign(HandlerClaudeTokenRotationBase):
                 label=request.label,
                 outcome="assigned",
                 from_label=from_label,
-                lines=(f"{self._host}: would assign {request.label}",),
+                lines=(
+                    f"{self._host}: would assign {request.label} and pin it first in the draw",
+                ),
             )
         secret = self._pool.secret(request.label)
         if secret is None:
@@ -499,12 +527,26 @@ class HandlerClaudeTokenAssign(HandlerClaudeTokenRotationBase):
             self._record_failed(event)
             raise
         self._keep_login_managed(request.label)
+        self._pin(request)
         return ModelClaudeTokenAssignResult(
             host=self._host,
             label=request.label,
             outcome="assigned",
             from_label=from_label,
-            lines=(f"{self._host}: assigned {request.label}",),
+            pinned=True,
+            lines=(
+                f"{self._host}: assigned {request.label}; pinned first in the draw until released",
+            ),
+        )
+
+    def _pin(self, request: ModelClaudeTokenAssignRequest) -> None:
+        """Hold the assigned label first in the host's draw: the login file alone is not what a new lane reads."""
+        if request.dry_run:
+            return
+        self._pool.handle(
+            ModelClaudeTokenPoolRequest(
+                operation="pin", label=request.label, pinned_by="assign"
+            )
         )
 
 

@@ -22,10 +22,13 @@ Usage, on the lab host whose pool it is:
         line per result, labels only. Exit 0 on kept, swapped or spread, 4 when nothing usable is
         left, 3 when the overlay, the source or the pool cannot be read.
     python -m omnimarket.nodes.node_claude_token_pool_effect assign --host <name> --label <label> [--dry-run]
-        installs the pool token named --label on this host's login; refuses one that is not in the
-        pool, limited or revoked. Prints one line naming the outcome and any refusal, labels only.
+        installs the pool token named --label on this host's login and pins it first in the pool's
+        draw order (what ``resolve`` reads, and the rotation tick's reset keeps) until ``release``;
+        refuses one that is not in the pool, limited or revoked. Prints one line naming the outcome and any refusal, labels only.
         Exit 0 on assigned or unchanged, 2 on a refusal, 3 when the overlay or the pool cannot be
         read.
+    python -m omnimarket.nodes.node_claude_token_pool_effect release
+        drops the pin an assign or the spread rule set, so the tick's draw order stands again.
     python -m omnimarket.nodes.node_claude_token_pool_effect login --host <name> [--record]
         prints the pool token whose fingerprint equals this host's login (or none); with --record
         it also counts the use of that token in the pool, so the spread rule can tell a login in
@@ -116,6 +119,10 @@ def _parser() -> argparse.ArgumentParser:
         "reorder", help="draw --labels first, in order, then every other token"
     )
     order.add_argument("--labels", required=True, help="comma-separated labels")
+    verbs.add_parser(
+        "release",
+        help="drop the pin an assign or the spread rule set, so the tick's draw order stands",
+    )
     tick = verbs.add_parser(
         "tick",
         help="re-sync marks, spread the draw order, swap a limited or revoked login",

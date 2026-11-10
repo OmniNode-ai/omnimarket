@@ -150,6 +150,11 @@ class HandlerClaudeTokenPool:
                 self._reorder(pool, request)
             elif request.operation == "record_use":
                 self._record_use(pool, request)
+            elif request.operation == "pin":
+                self._pin(pool, request)
+            elif request.operation == "release":
+                pool.pop("pinned", None)
+                pool.pop("pinned_by", None)
             synced: tuple[str, ...] = ()
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
@@ -261,8 +266,37 @@ class HandlerClaudeTokenPool:
         entry = next((t for t in pool["tokens"] if t["label"] == label), None)
         if entry is None:
             raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        self._count_use(entry)
+
+    def _count_use(self, entry: dict[str, Any]) -> None:
         entry["uses"] = entry.get("uses", 0) + 1
         entry["last_used_at"] = _stamp(self._now())
+
+    def _pin(self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest) -> None:
+        """Hold ``label`` first in the draw until released: ``resolve`` and every later ``reorder`` keep it first."""
+        label = self._label(request)
+        entry = next((t for t in pool["tokens"] if t["label"] == label), None)
+        if entry is None:
+            raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        if entry.get("revoked_at"):
+            raise ClaudeTokenPoolRefusedError(
+                f"{label} is revoked; re-add it with --force"
+            )
+        if (entry.get("until") or "") > _stamp(self._now()):
+            raise ClaudeTokenPoolRefusedError(
+                f"{label} is limited until {entry['until']}"
+            )
+        pool["pinned"] = label
+        pool["pinned_by"] = request.pinned_by
+        self._pinned_first(pool)
+
+    @staticmethod
+    def _pinned_first(pool: dict[str, Any]) -> None:
+        """Move the pinned token, when the pool still holds it, to the head of the draw order."""
+        head = pool.get("pinned")
+        held = [t for t in pool["tokens"] if t["label"] == head]
+        if held:
+            pool["tokens"] = held + [t for t in pool["tokens"] if t["label"] != head]
 
     def _reorder(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -278,6 +312,8 @@ class HandlerClaudeTokenPool:
             )
         rest = [t for t in pool["tokens"] if t["label"] not in set(wanted)]
         pool["tokens"] = [by_label[label] for label in wanted] + rest
+        # a pin outlives every reorder: the rotation tick resets the order every few minutes
+        self._pinned_first(pool)
 
     def _sync_marks(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -356,6 +392,8 @@ class HandlerClaudeTokenPool:
             )
             if value:
                 pool["current"] = entry["label"]
+                # every draw is a lane about to start under the token: count it, so "unused" means undrawn
+                self._count_use(entry)
                 return entry["label"], SecretStr(value)
         return None, None
 
@@ -388,6 +426,8 @@ class HandlerClaudeTokenPool:
             host=self._host,
             tokens=entries,
             chosen=chosen,
+            pinned=pool.get("pinned"),
+            pinned_by=pool.get("pinned_by"),
             token=token,
             revoked=revoked,
             synced=synced,

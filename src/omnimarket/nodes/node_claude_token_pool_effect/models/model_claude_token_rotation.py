@@ -199,6 +199,8 @@ class ModelClaudeTokenAssignResult(BaseModel):
     outcome: Literal["assigned", "unchanged", "refused"]
     refusal: Literal["limited", "revoked", "unknown_label", "none"] = "none"
     from_label: str | None = None
+    #: The label is held first in the host's draw until released, so the pool's resolve hands it to new lanes.
+    pinned: bool = False
     lines: tuple[str, ...] = ()
 
 
