@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-23551
+title: Prepush login rows give paths relative to the login's home
+summary: A per-login prepush row (label, login, uv path, run folder) may give the uv path and run folder relative to the login's home. The guard script reads the home from the host's account database and hands it to node_pytest_full_suite_host_guard as login_home; the node resolves relative paths under it, so no overlay names a home directory path. Absolute rows keep working; a relative row for a login with no home, a tilde path and a parent segment refuse.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23551-login-relative-paths
+  statement: A per-login host row resolves uv and run folder relative to the login's home read from the account database at run time; absolute rows are unchanged; a relative row with no home, a tilde path and a parent segment raise.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a prepush login row may give uv and run folder relative to the login''s home, resolved from the account database at run time, absolute rows keep working, and an unknown account or a path with .. is refused -- falsifier: pytest tests/nodes/node_pytest_full_suite_host_guard/test_login_relative_paths.py -q fails at the merge base'
+evidence_requirements:
+- kind: tests
+  description: Golden and error chain tests of the node, the script level test and the size test of the guard script
+  command: uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard tests/scripts/test_prepush_per_login_rows.py tests/scripts/test_prepush_guard_script_shrunk.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23551-node-tests
+  description: Runs the node's golden and error chain tests for relative rows, the script level test that reads the home through the reader, and the seam test that pins the request fields. The injected break replaces the path resolution with the identity and the golden reading turns red. The new test file is absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard/test_login_relative_paths.py tests/scripts/test_prepush_per_login_rows.py tests/scripts/test_prepush_guard_script_shrunk.py -q --no-cov -p no:randomly
+    cwd: .

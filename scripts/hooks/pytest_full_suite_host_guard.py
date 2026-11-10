@@ -111,6 +111,7 @@ def _decide(
     private_rel: str = PRIVATE_TABLE_REL,
 ) -> Any:
     """The node's answer for a host and login over the table as read (OMN-23367)."""
+    who = resolve_local_login() if login is None else login
     return (
         _node()
         .HandlerPytestFullSuiteHostGuard()
@@ -120,7 +121,8 @@ def _decide(
                 login_overlay_text=_io().login_overlay_text(
                     env, LOGIN_OVERLAY_NAME, OVERLAY_ROOTS_ENV
                 ),
-                login=resolve_local_login() if login is None else login,
+                login=who,
+                login_home=_io().login_home(who),
                 host=host,
                 env_overrides={
                     k: v for k, v in env.items() if k.startswith("PREPUSH_")
