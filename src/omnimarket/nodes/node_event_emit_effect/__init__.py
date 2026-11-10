@@ -14,6 +14,9 @@ from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect 
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
     ModelEmitRequest,
 )
+from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
+    ModelEmitResult,
+)
 from omnimarket.nodes.node_event_emit_effect.spool.spool_outbox import (
     SpoolFile,
     SpoolOutbox,
@@ -33,6 +36,7 @@ __all__ = [
     "HandlerEventEmitEffect",
     "KafkaEventPublisher",
     "ModelEmitRequest",
+    "ModelEmitResult",
     "ProtocolPublishAdapter",
     "SpoolFile",
     "SpoolOutbox",

@@ -14,6 +14,9 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
+    HandlerDailyLine,
+)
 from omnimarket.nodes.node_daily_line_effect.handlers import schedule
 from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run import (
     HandlerDailyLineRun,
@@ -32,7 +35,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.verb == "daily":
-        runner: HandlerDailyLineRun = build_runner()
+        runner: HandlerDailyLineRun = build_runner(HandlerDailyLine())
         publication = runner.run()
         sys.stdout.write(dump(publication) + "\n")
         return 0
