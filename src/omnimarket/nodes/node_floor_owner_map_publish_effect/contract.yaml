@@ -23,16 +23,6 @@ handler:
   class: HandlerFloorOwnerMapPublish
   input_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishRequest
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: publish_floor_owner_map
-      handler:
-        name: HandlerFloorOwnerMapPublish
-        module: omnimarket.nodes.node_floor_owner_map_publish_effect.handlers.handler_floor_owner_map_publish
-      input_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishRequest
-      output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
-
 descriptor:
   node_archetype: effect
   purity: effectful

@@ -24,16 +24,6 @@ handler:
   class: HandlerFloorProjectionRead
   input_model: omnimarket.models.floor_projection.ModelFloorProjectionTickRequest
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: read_floor_projections
-      handler:
-        name: HandlerFloorProjectionRead
-        module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read
-      input_model: omnimarket.models.floor_projection.ModelFloorProjectionTickRequest
-      output_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
-
 descriptor:
   node_archetype: effect
   purity: effectful
