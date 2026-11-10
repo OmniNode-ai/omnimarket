@@ -1,0 +1,49 @@
+# Synthetic values: the in-memory overlay of the J7 runner (OMN-23420), read by
+# python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 (the floor publish cycle's join_j7 step). The deployment's
+# overlay lives at <root>/node_lab_check_run_join_j7/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+# J7 joins piece 7 (process spine) to piece 8 (central test harness): each run takes piece 7's golden stop drill readings that piece 8
+# has not answered and, for each, opens a stop on a test piece in an in-memory twin, sends the stop's cause lane and another lane, and
+# writes piece 8's chain under piece 7's correlation id. emission_node must equal the downstream_node of join J7 in the join refusal
+# overlay: the run's chains and the refusal's failure chains are one node's on the floor.
+join_id: J7
+emission_node: "node_lab_check_run_effect:join_j7"
+stopped_piece: j7_run_piece_stopped
+other_piece: j7_run_piece_other
+piece_limit: 3
+reservation_ttl_seconds: 60
+max_chains_per_run: 5
+# Piece 8's own error chain (a late post of a superseded attempt) is written when the journal holds none in this many hours.
+drill_window_hours: 6
+repository: "example-org/example-private-repo"
+base_branch: dev
+head_sha: "7265930bafc673e66ced5bb67b9464bc460f1d77"
+old_head_sha: "f7402aa63d1b74b082b174badbe07ac91dcddf36"
+current_attempt_id: "dispatch-41:order-7:overlay-a1"
+old_attempt_id: "dispatch-40:order-7:overlay-a1"
+stop_id: j7-run-stop
+stop_class: engine-policy-breach
+stop_age_minutes: 30
+lease_after_minutes: 1
+# The twin's check-run settings: the in-memory source, so the run never posts on a real head.
+check_run:
+  settings:
+    check_name: "lab-tests / run"
+    wait_bound_seconds: 900
+    lab_repositories: ["example-org/example-private-repo"]
+    superseded_conclusion: cancelled
+    passing_conclusions: [success, neutral, skipped]
+    title_pending: "Lab job running for attempt {attempt}"
+    title_success: "Lab job passed for attempt {attempt}"
+    title_failure: "Lab job failed for attempt {attempt}"
+    title_superseded: "Superseded: attempt {attempt} is no longer the current attempt"
+  source:
+    backend: inmemory
+    fixture: []
+  emission:
+    node: node_lab_check_run_effect
+    piece: 8
+    backend: inmemory
+# An injected break would write its chain to the floor's journal, where it reads as a real broken chain. The lab runs the break from an
+# overlay of its own that allows it; the deployed one does not.
+allow_injected_break: false
+injected_fault: Swap the check-run API for one that accepts an invalidation and applies nothing
