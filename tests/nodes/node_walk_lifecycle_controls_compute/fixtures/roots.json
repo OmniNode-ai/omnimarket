@@ -1,0 +1,22 @@
+{
+ "graded": {
+  "root_pid": 1886,
+  "root_pidversion": 4697,
+  "exec_path": "/private/tmp/control_tree"
+ },
+ "onex": {
+  "root_pid": 1893,
+  "root_pidversion": 4711,
+  "exec_path": "/opt/guest-home/.local/share/uv/python/cpython-3.12.16-macos-aarch64-none/bin/python3.12"
+ },
+ "ctl-exec-sh": {
+  "root_pid": 1894,
+  "root_pidversion": 4713,
+  "exec_path": "/private/tmp/control_tree"
+ },
+ "ctl-reexec": {
+  "root_pid": 1896,
+  "root_pidversion": 4719,
+  "exec_path": "/private/tmp/control_tree"
+ }
+}

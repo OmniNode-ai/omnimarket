@@ -190,6 +190,8 @@ AGGREGATE_READ_RELATIONS: frozenset[str] = frozenset(
         "projection_delegation_model_routing",
         "projection_delegation_quality_gate",
         "projection_delegation_token_usage",
+        # OMN-21970: the per-day view, read and republished the same way.
+        "projection_delegation_daily",
     }
 )
 

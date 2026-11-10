@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Declared spill policy of the pool hosts that run the RAM-filesystem upkeep (OMN-23384). Read by
+# `node_lab_run_spill_effect`; nothing in the node names a host, a directory name or a number.
+#
+# state_suffix: a run's idle state is the directory `<id>` + this suffix beside the run's checkout.
+# skip_names / skip_patterns: directory or file names inside a run's state that are never copied to disk. The names
+#   are the build output the upkeep always skipped; the patterns are pytest's temp roots (`pytest-of-<user>`,
+#   `pytest-tmp*`), which on h053 held 176 GB in one finished lane's spill on 2026-11-09 (OMN-23384).
+# spill_byte_cap_mib: the most the host's spill root may hold, counted in allocated bytes (a hole counts nothing). A
+#   spill that would pass it stops and reports `capped`. 51200 MiB = 50 GiB, under a tenth of the 546 GB root volume
+#   of h053 that filled on 2026-11-09.
+state_suffix: .ctx
+hosts:
+  - name: h051
+    spill_byte_cap_mib: 51200
+    skip_names: [ledger, .venv, .mypy_cache, .pytest_cache, .ruff_cache, node_modules, __pycache__]
+    skip_patterns: ['pytest-of-*', 'pytest-tmp*']
+  - name: h053
+    spill_byte_cap_mib: 51200
+    skip_names: [ledger, .venv, .mypy_cache, .pytest_cache, .ruff_cache, node_modules, __pycache__]
+    skip_patterns: ['pytest-of-*', 'pytest-tmp*']

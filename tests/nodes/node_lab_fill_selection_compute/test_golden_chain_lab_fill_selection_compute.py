@@ -32,6 +32,7 @@ def test_golden_chain_lab_fill_selection_compute() -> None:
     assert {entry["operation"] for entry in routing["handlers"]} == {
         "select_lab_fill_work",
         "mark_approved_work_done",
+        "read_lane_resends",
     }
     deployment = ModelLabFillDeployment.from_overlay(
         {
@@ -63,6 +64,16 @@ def test_golden_chain_lab_fill_selection_compute() -> None:
             result = handler_type().handle(request)
             assert result.decisions[0].reason is None
             assert result.decisions[0].repo == "repo_a"
+        elif entry["operation"] == "read_lane_resends":
+            request = request_type(
+                now="2026-10-07T12:00:00Z",
+                ledger_lines=(
+                    "2026-10-07T09:00:00Z | TERMINAL | lane=lane-a | ticket=OMN-5 | outcome=partial",
+                ),
+                parent_ticket="OMN-1",
+            )
+            result = handler_type().handle(request)
+            assert [c.ticket for c in result.candidates] == ["OMN-5"]
         else:
             request = request_type(
                 rows=({"id": "row", "ticket": "OMN-1"},),
