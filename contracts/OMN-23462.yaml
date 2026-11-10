@@ -15,6 +15,8 @@ requirements:
     statement: 'AC2: each new step answers a typed error and runs no host command when the registry root is not resolved, and names the runner''s kept line for a git dir inside the run directory -- falsifier: the same file, red when the registry-root guard is removed.'
   - id: AC3
     statement: 'AC3: integrated: the three steps run once against a real lab host in a test lane directory and the printed lines are read back -- falsifier: the host readings in the pull request comment.'
+  - id: AC4
+    statement: 'AC4: the ssh transport implements drain_guard_spool and stop_lane_guard and sends the host the runner''s recorded lane_guard reap and drain scripts, and runs no host command when the guard host program was not given -- falsifier: uv run pytest test_remote_lane_start_guard_parity.py, red when the transport''s guard command word (spool-drain, reap --unit) or the recorded text changes.'
 evidence_requirements:
 - kind: tests
   description: The provisioning parity and ops tests of the ssh transport against the recorded runner lines.
@@ -41,6 +43,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py -q --no-cov --tb=line -k 'without_a_resolved_registry_root or runner_kept_line'
+    cwd: .
+- id: dod-OMN-23462-ac4
+  description: The two guard steps send the recorded runner scripts and read back the printed guard lines.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_guard_parity.py -q --no-cov --tb=line
     cwd: .
 - id: dod-OMN-23462-integration-proof
   description: The three steps ran once against a real lab host in a test lane directory and the printed lines read back from the work ledger STATUS row that carries them.

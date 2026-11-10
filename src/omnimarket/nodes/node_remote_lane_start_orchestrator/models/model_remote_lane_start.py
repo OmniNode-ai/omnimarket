@@ -128,6 +128,27 @@ class ModelRemoteLaneStartSettings(BaseModel):
             raise ValueError(f"remote_lane_start: {exc}") from exc
 
 
+class ModelRemoteLaneStartFloorFill(BaseModel):
+    """The ``floor_fill`` section: what the stopped-line fill runs to start a lane."""
+
+    model_config = _FROZEN
+
+    runner_command: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelRemoteLaneStartOverlay(BaseModel):
+    """The whole overlay document (``overlays/node_remote_lane_start_orchestrator/overlay.yaml``).
+
+    The overlays repository loads the document through this model, the way the node reads it: both sections
+    are required, and the settings keep their per-key refusal (``from_overlay`` names a missing key).
+    """
+
+    model_config = _FROZEN
+
+    remote_lane_start: ModelRemoteLaneStartSettings
+    floor_fill: ModelRemoteLaneStartFloorFill
+
+
 class ModelRemoteLaneStartRequest(BaseModel):
     """One lane to start: its name, the fill's key, its ticket, engine, placement and ledger."""
 
@@ -195,6 +216,8 @@ class ModelRemoteLaneStartResult(BaseModel):
 __all__ = [
     "EXIT_CODES",
     "EnumRemoteLaneStartOutcome",
+    "ModelRemoteLaneStartFloorFill",
+    "ModelRemoteLaneStartOverlay",
     "ModelRemoteLaneStartReceipt",
     "ModelRemoteLaneStartRequest",
     "ModelRemoteLaneStartResult",

@@ -133,3 +133,26 @@ RECORDED_HOLD_GUARD_SCRIPT = "\n".join(
 
 
 RECORDED_LEDGER_OUTBOX_SCRIPT = 'cat "$HOME/lab-run/runs/rlane-example-000001.ctx/ledger-outbox.rows" 2>/dev/null; true'
+
+
+# The runner's lane_guard.reap_script / drain_script and unit_name (the close path, onex_remote_lane.py), recorded on
+# 2026-11-10 with the guard's host program replaced by RECORDED_GUARD_SOURCE (the real program is 740 lines; the
+# scripts' shape is what is recorded). The unit is for lane "lane-example", run "rlane-example-000001".
+RECORDED_GUARD_SOURCE = "print('guard host program')\n"
+RECORDED_GUARD_UNIT = "onexlane-lane-example-000001"
+RECORDED_GUARD_UNIT_FOR_UNSAFE_NAMES = ("a b/c", "x y-z", "onexlane-a-b-c-z")
+_GUARD_PATH_LINE = (
+    'export PATH="${ONEX_LANE_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omni/lane-bin}'
+    ':$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
+)
+_GUARD_SOURCE_LINE = """G_SRC='print('"'"'guard host program'"'"')\n'"""
+RECORDED_REAP_SCRIPT = "\n".join(
+    [
+        _GUARD_PATH_LINE,
+        _GUARD_SOURCE_LINE,
+        'python3 -c "$G_SRC" reap --unit onexlane-lane-example-000001',
+    ]
+)
+RECORDED_DRAIN_SCRIPT = "\n".join(
+    [_GUARD_PATH_LINE, _GUARD_SOURCE_LINE, 'python3 -c "$G_SRC" spool-drain']
+)

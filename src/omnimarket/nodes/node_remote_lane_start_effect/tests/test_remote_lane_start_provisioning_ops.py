@@ -56,6 +56,8 @@ MOVED_OPS = frozenset(
         "read_ledger_outbox",
         "read_lane_changes",
         "hold_run_dir_guard",
+        "drain_guard_spool",
+        "stop_lane_guard",
     }
 )
 PROVISIONING_OPS = tuple(

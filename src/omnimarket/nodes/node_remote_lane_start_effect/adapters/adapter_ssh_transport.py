@@ -154,6 +154,41 @@ OUTBOX_FILE = "ledger-outbox.rows"
 
 #: The line the runner's guarded cleanup header ends with when no lane tree keeps a git dir inside the run directory.
 RETENTION_SAFE_LINE = "LANE-RETENTION-SAFE"
+# The runner's lane_guard (omni plugin scripts/lane_guard.py): the host program rides in a shell variable, the
+# command after it reaps a unit or drains the host reaper's queued records. Prefix, variable and printed lines
+# are the runner's; the program itself is injected (``guard_host_source``), never read from a path here.
+GUARD_PATH_LINE = (
+    'export PATH="${ONEX_LANE_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omni/lane-bin}'
+    ':$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
+)
+GUARD_SOURCE_VARIABLE = "G_SRC"
+GUARD_UNIT_PREFIX = "onexlane-"
+GUARD_STOP_PREFIX = "LANE-GUARD-STOP "
+GUARD_SPOOL_PREFIX = "LANE-GUARD-SPOOL "
+GUARD_SOURCE_MISSING = (
+    "{op}: no guard host program was given to the ssh transport (guard_host_source)"
+)
+
+
+def _guard_sanitize(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "-", text)
+
+
+def guard_unit_name(lane: str, run_id: str) -> str:
+    """The runner's ``lane_guard.unit_name``: ``onexlane-<lane>-<tail of the run id>``."""
+    tail = _guard_sanitize(run_id).rsplit("-", 1)[-1][-12:].strip("-.") or "run"
+    return f"{GUARD_UNIT_PREFIX}{_guard_sanitize(lane)[:60].strip('-.')}-{tail}"
+
+
+def guard_script(source: str, command: str) -> str:
+    """The runner's ``reap_script`` / ``drain_script`` text: path line, program in a variable, one guard command."""
+    return "\n".join(
+        [
+            GUARD_PATH_LINE,
+            f"{GUARD_SOURCE_VARIABLE}={shlex.quote(source)}",
+            f'python3 -c "${GUARD_SOURCE_VARIABLE}" {command}',
+        ]
+    )
 
 
 class SshLaneHostTransport:
@@ -172,6 +207,7 @@ class SshLaneHostTransport:
         login_pool: ModelEngineLoginPool | None = None,
         registry_root_candidates: Sequence[str] = (),
         registry_marker: str = "",
+        guard_host_source: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
         if not _PATH_PREFIX.fullmatch(path_prefix):
@@ -203,6 +239,7 @@ class SshLaneHostTransport:
             )
         self._candidates = tuple(registry_root_candidates)
         self._marker = registry_marker
+        self._guard_source = guard_host_source
         self._runner = runner or SubprocessHostCommandExecutor()
 
     def run_dir(self, run_id: str) -> str:
@@ -487,8 +524,29 @@ class SshLaneHostTransport:
     def drain_guard_spool(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
+        """The runner's ``lane_guard.drain_script``: print and remove the host reaper's queued records.
+
+        Each printed ``LANE-GUARD-SPOOL <json>`` line comes back as a ``spool`` cell, in the order printed;
+        the caller turns them into FRICTION rows as the runner does.
+        """
+        if not self._guard_source:
+            return ModelLaneHostStepResult(
+                ok=False, error=GUARD_SOURCE_MISSING.format(op="drain_guard_spool")
+            )
+        result = self._sh(
+            request.host,
+            guard_script(self._guard_source, "spool-drain"),
+            request.timeout_seconds,
+        )
+        if result.exit_code != 0:
+            return ModelLaneHostStepResult(ok=False, error=self._failure(result))
         return ModelLaneHostStepResult(
-            ok=False, error=self._not_run("drain_guard_spool")
+            ok=True,
+            cells=tuple(
+                ("spool", line.strip()[len(GUARD_SPOOL_PREFIX) :])
+                for line in (result.stdout + result.stderr).splitlines()
+                if line.strip().startswith(GUARD_SPOOL_PREFIX)
+            ),
         )
 
     def relay_reports(
@@ -581,7 +639,32 @@ class SshLaneHostTransport:
     def stop_lane_guard(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
-        return ModelLaneHostStepResult(ok=False, error=self._not_run("stop_lane_guard"))
+        """The runner's ``lane_guard.reap_script`` for the lane's unit: stop it and kill what carries its tag.
+
+        Succeeds when the host printed the ``LANE-GUARD-STOP <json>`` line, which is returned as the ``stop`` cell;
+        the runner reads the same line for its receipt.
+        """
+        if not self._guard_source:
+            return ModelLaneHostStepResult(
+                ok=False, error=GUARD_SOURCE_MISSING.format(op="stop_lane_guard")
+            )
+        unit = guard_unit_name(request.lane, request.run_id)
+        result = self._sh(
+            request.host,
+            guard_script(self._guard_source, f"reap --unit {shlex.quote(unit)}"),
+            request.timeout_seconds,
+        )
+        stop = next(
+            (
+                line.strip()[len(GUARD_STOP_PREFIX) :]
+                for line in (result.stdout + result.stderr).splitlines()
+                if line.strip().startswith(GUARD_STOP_PREFIX)
+            ),
+            None,
+        )
+        if result.exit_code == 0 and stop is not None:
+            return ModelLaneHostStepResult(ok=True, cells=(("stop", stop),))
+        return ModelLaneHostStepResult(ok=False, error=self._failure(result))
 
 
 __all__ = [
