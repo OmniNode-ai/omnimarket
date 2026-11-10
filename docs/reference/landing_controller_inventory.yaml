@@ -1,0 +1,1544 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+title: Landing controller inventory (OMN-23393, rebuild piece 9)
+source: the landing controller script (private), the tick and its sibling calls
+source_lines: 6041
+functions: 218
+counted_as: every top-level function and every method of a top-level class, read with the Python ast module
+classes:
+  exists: an existing node (omnimarket, or a private node that moves to omnimarket) or the node runtime does it
+  to_build: a named node or handler to build in omnimarket
+  dead: no production caller
+counts:
+  exists: 136
+  exists_omnimarket: 105
+  exists_runtime: 12
+  exists_private_to_move: 19
+  to_build: 76
+  dead: 6
+workflow_contract: src/omnimarket/contracts/landing_workflow/landing_workflow.v1.yaml
+rows:
+- function: _shared_reader
+  lines: 195-206
+  class: exists
+  where: runtime
+  maps_to: contract handler_routing (the runtime loads handlers by contract; no sibling-module loader)
+  nodes: []
+- function: _load_sibling
+  lines: 258-266
+  class: exists
+  where: runtime
+  maps_to: contract handler_routing (the runtime loads handlers by contract; no sibling-module loader)
+  nodes: []
+- function: _placement
+  lines: 272-277
+  class: exists
+  where: runtime
+  maps_to: contract handler_routing (the runtime loads handlers by contract; no sibling-module loader)
+  nodes: []
+- function: bus_claims_target
+  lines: 284-302
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_claim_registry_effect
+  nodes:
+  - node_pr_claim_registry_effect
+- function: read_bus_claims
+  lines: 305-373
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_claim_registry_effect
+  nodes:
+  - node_pr_claim_registry_effect
+- function: _stamp
+  lines: 376-377
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: _sha256
+  lines: 380-381
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: _default_state_dir
+  lines: 384-388
+  class: exists
+  where: omnimarket
+  maps_to: 'node_pr_landing_tick_orchestrator overlay (ModelTickOrchestratorOverlay: every setting in the overlay)'
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: gh_call_log_path
+  lines: 391-396
+  class: exists
+  where: omnimarket
+  maps_to: 'node_pr_landing_tick_orchestrator overlay (ModelTickOrchestratorOverlay: every setting in the overlay)'
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: _read_json
+  lines: 404-408
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_reducer (next state) + omnimarket.handlers.emission_sink (JsonlEmissionSink / InMemoryEmissionSink)
+  nodes:
+  - node_pr_landing_tick_reducer
+- function: _atomic_json
+  lines: 411-417
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_reducer (next state) + omnimarket.handlers.emission_sink (JsonlEmissionSink / InMemoryEmissionSink)
+  nodes:
+  - node_pr_landing_tick_reducer
+- function: delegation_record
+  lines: 420-457
+  class: exists
+  where: omnimarket
+  maps_to: node_merge_attribution_compute
+  nodes:
+  - node_merge_attribution_compute
+- function: _append_jsonl
+  lines: 460-462
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_reducer (next state) + omnimarket.handlers.emission_sink (JsonlEmissionSink / InMemoryEmissionSink)
+  nodes:
+  - node_pr_landing_tick_reducer
+- function: _crash_point
+  lines: 465-468
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: _receipt
+  lines: 474-476
+  class: exists
+  where: omnimarket
+  maps_to: node_throughput_tick_decision_compute
+  nodes:
+  - node_throughput_tick_decision_compute
+- function: mark_receipt_live
+  lines: 483-493
+  class: exists
+  where: omnimarket
+  maps_to: node_throughput_tick_decision_compute
+  nodes:
+  - node_throughput_tick_decision_compute
+- function: ReceiptLiveness.__init__
+  lines: 499-504
+  class: exists
+  where: omnimarket
+  maps_to: node_throughput_tick_decision_compute
+  nodes:
+  - node_throughput_tick_decision_compute
+- function: ReceiptLiveness.start
+  lines: 506-507
+  class: exists
+  where: omnimarket
+  maps_to: node_throughput_tick_decision_compute
+  nodes:
+  - node_throughput_tick_decision_compute
+- function: ReceiptLiveness.stop
+  lines: 509-511
+  class: exists
+  where: omnimarket
+  maps_to: node_throughput_tick_decision_compute
+  nodes:
+  - node_throughput_tick_decision_compute
+- function: ReceiptLiveness._run
+  lines: 513-519
+  class: exists
+  where: omnimarket
+  maps_to: node_throughput_tick_decision_compute
+  nodes:
+  - node_throughput_tick_decision_compute
+- function: worker_eligible
+  lines: 522-529
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_compute
+  nodes:
+  - node_pr_landing_tick_compute
+- function: release_red_of
+  lines: 532-535
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_stall_expectation_compute
+  nodes:
+  - node_landing_stall_expectation_compute
+- function: _refuse
+  lines: 538-546
+  class: exists
+  where: omnimarket
+  maps_to: node_exception_queue_effect
+  nodes:
+  - node_exception_queue_effect
+- function: _tick_budget_s
+  lines: 549-550
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tick_bounds_compute
+  nodes:
+  - node_landing_tick_bounds_compute
+- function: _tick_deadline_s
+  lines: 553-558
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tick_bounds_compute
+  nodes:
+  - node_landing_tick_bounds_compute
+- function: arm_tick_deadline
+  lines: 561-581
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tick_bounds_compute
+  nodes:
+  - node_landing_tick_bounds_compute
+- function: disarm_tick_deadline
+  lines: 584-586
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tick_bounds_compute
+  nodes:
+  - node_landing_tick_bounds_compute
+- function: _wall_s
+  lines: 589-590
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: chain_wait_s
+  lines: 593-600
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tick_bounds_compute
+  nodes:
+  - node_landing_tick_bounds_compute
+- function: _runtime
+  lines: 606-622
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tlc_receipt_effect
+  nodes:
+  - node_landing_tlc_receipt_effect
+- function: _check_manifest
+  lines: 625-633
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tlc_receipt_effect
+  nodes:
+  - node_landing_tlc_receipt_effect
+- function: check_act_gate
+  lines: 636-653
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tlc_receipt_effect
+  nodes:
+  - node_landing_tlc_receipt_effect
+- function: decide
+  lines: 659-672
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_decision_compute (decide_landing, S1 to S20)
+  nodes:
+  - node_pr_landing_decision_compute
+- function: rules_client
+  lines: 678-686
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_decision_compute (decide_landing, S1 to S20)
+  nodes:
+  - node_pr_landing_decision_compute
+- function: node_capabilities
+  lines: 689-703
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_decision_compute (decide_landing, S1 to S20)
+  nodes:
+  - node_pr_landing_decision_compute
+- function: floor_breached_repos
+  lines: 706-719
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_stall_expectation_compute
+  nodes:
+  - node_landing_stall_expectation_compute
+- function: count_interactive_claude
+  lines: 722-729
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_worker_engine_compute
+  nodes:
+  - node_landing_worker_engine_compute
+- function: interactive_claude
+  lines: 732-764
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_worker_engine_compute
+  nodes:
+  - node_landing_worker_engine_compute
+- function: engines_available
+  lines: 767-778
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_worker_engine_compute
+  nodes:
+  - node_landing_worker_engine_compute
+- function: _load1
+  lines: 781-785
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: read_m4_carriers
+  lines: 798-838
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: m4_order
+  lines: 841-860
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: rank_order
+  lines: 863-879
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: load_watcher
+  lines: 882-894
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_state_read_effect (pr_state projection)
+  nodes:
+  - node_pr_state_read_effect
+- function: Snapshot.__init__
+  lines: 900-1061
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._spent
+  lines: 1063-1064
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.read
+  lines: 1067-1072
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.read_shared_base
+  lines: 1074-1075
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._load_policy
+  lines: 1077-1086
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._apply_repo_scope
+  lines: 1088-1094
+  class: exists
+  where: private
+  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (move into the omnimarket node of the same name, which lacks them)
+  nodes:
+  - node_idle_slot_fill_effect
+- function: Snapshot._apply_goal_scope
+  lines: 1096-1098
+  class: exists
+  where: private
+  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (move into the omnimarket node of the same name, which lacks them)
+  nodes:
+  - node_idle_slot_fill_effect
+- function: Snapshot.node_fixer_hold
+  lines: 1100-1105
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_ledger_facts_compute
+  nodes:
+  - node_pr_landing_ledger_facts_compute
+- function: Snapshot._read_file
+  lines: 1107-1182
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._read_live
+  lines: 1184-1263
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._read_bus
+  lines: 1265-1293
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._companion_waits
+  lines: 1295-1314
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.annotations_of
+  lines: 1316-1318
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._read_annotations
+  lines: 1320-1357
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._cause_member_gate
+  lines: 1359-1372
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._read_generic_bases
+  lines: 1374-1400
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._window_reads
+  lines: 1402-1409
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._green_clean
+  lines: 1411-1412
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._classify_runtime
+  lines: 1414-1443
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.enrich
+  lines: 1445-1462
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.parents_of
+  lines: 1465-1483
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.lease_window_max
+  lines: 1486-1487
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.pr_facts
+  lines: 1489-1500
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._green_held
+  lines: 1502-1520
+  class: exists
+  where: private
+  maps_to: node_landing_green_requeue_compute (private node, moves to omnimarket)
+  nodes:
+  - node_landing_green_requeue_compute
+- function: Snapshot._handover
+  lines: 1522-1540
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.queue_base
+  lines: 1542-1552
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._pr_facts
+  lines: 1554-1756
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._hostile_spent
+  lines: 1758-1791
+  class: exists
+  where: private
+  maps_to: node_landing_hostile_review_compute / _verdict_effect / _report_effect (private nodes, move to omnimarket)
+  nodes:
+  - node_landing_hostile_review_compute
+- function: Snapshot._class_gates
+  lines: 1793-1822
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._gated
+  lines: 1825-1828
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.source_runs_of
+  lines: 1830-1842
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.required_of
+  lines: 1844-1883
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.refresh_required
+  lines: 1885-1931
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._required_read_now
+  lines: 1933-1938
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.release_ready
+  lines: 1940-2034
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._premise_age
+  lines: 2036-2041
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._premise_cache
+  lines: 2043-2045
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._premise_attempts
+  lines: 2047-2053
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._fresh_premise
+  lines: 2055-2060
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot.release_turn
+  lines: 2062-2079
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: Snapshot._lab_state_passed
+  lines: 2081-2092
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_ledger_facts_compute
+  nodes:
+  - node_pr_landing_ledger_facts_compute
+- function: Snapshot.lab_ready
+  lines: 2094-2111
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_ledger_facts_compute
+  nodes:
+  - node_pr_landing_ledger_facts_compute
+- function: Snapshot.companions
+  lines: 2113-2123
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: _reviewer_slot_eligible
+  lines: 2129-2133
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_compute
+  nodes:
+  - node_pr_landing_tick_compute
+- function: build_facts
+  lines: 2136-2189
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_snapshot_effect: one consistent tick snapshot (watcher state, one batched live read, process table, worker result files) into ModelLandingFacts'
+  nodes:
+  - node_pr_landing_snapshot_effect
+- function: _policy
+  lines: 2192-2202
+  class: exists
+  where: omnimarket
+  maps_to: 'node_pr_landing_tick_orchestrator overlay (ModelTickOrchestratorOverlay: every setting in the overlay)'
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: pool_receipt
+  lines: 2205-2212
+  class: exists
+  where: private
+  maps_to: node_landing_pool_capacity_compute (private node, moves to omnimarket)
+  nodes:
+  - node_landing_pool_capacity_compute
+- function: _subjects
+  lines: 2215-2225
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: settle
+  lines: 2228-2244
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: Producer.__init__
+  lines: 2253-2258
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: Producer.deliver
+  lines: 2260-2272
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: Producer.reads
+  lines: 2274-2285
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: _state_id
+  lines: 2288-2289
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_reducer (next state) + omnimarket.handlers.emission_sink (JsonlEmissionSink / InMemoryEmissionSink)
+  nodes:
+  - node_pr_landing_tick_reducer
+- function: open_check_fixes
+  lines: 2292-2310
+  class: exists
+  where: omnimarket
+  maps_to: node_fixer_dispatcher -> node_pr_lifecycle_fix_effect
+  nodes:
+  - node_fixer_dispatcher
+  - node_pr_lifecycle_fix_effect
+- function: preflight_resume
+  lines: 2323-2331
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: spawn_worker
+  lines: 2334-2368
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: _spawn_lease
+  lines: 2371-2374
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: _cell
+  lines: 2384-2385
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: ledger_append
+  lines: 2388-2397
+  class: exists
+  where: omnimarket
+  maps_to: node_work_ledger_landing_mirror + node_pr_handoff_ledger_effect (bus ledger append)
+  nodes:
+  - node_pr_handoff_ledger_effect
+  - node_work_ledger_landing_mirror
+- function: _clone_of
+  lines: 2404-2408
+  class: exists
+  where: private
+  maps_to: node_landing_hostile_review_compute / _verdict_effect / _report_effect (private nodes, move to omnimarket)
+  nodes:
+  - node_landing_hostile_review_compute
+- function: judge_touches_read
+  lines: 2411-2453
+  class: exists
+  where: private
+  maps_to: node_landing_hostile_review_compute / _verdict_effect / _report_effect (private nodes, move to omnimarket)
+  nodes:
+  - node_landing_hostile_review_compute
+- function: judge_touch_notes
+  lines: 2456-2474
+  class: exists
+  where: private
+  maps_to: node_landing_hostile_review_compute / _verdict_effect / _report_effect (private nodes, move to omnimarket)
+  nodes:
+  - node_landing_hostile_review_compute
+- function: retire_judge_reviews
+  lines: 2477-2489
+  class: exists
+  where: private
+  maps_to: node_landing_hostile_review_compute / _verdict_effect / _report_effect (private nodes, move to omnimarket)
+  nodes:
+  - node_landing_hostile_review_compute
+- function: revoke_out_of_scope
+  lines: 2492-2507
+  class: exists
+  where: private
+  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (move into the omnimarket node of the same name, which lacks them)
+  nodes:
+  - node_idle_slot_fill_effect
+- function: _raw_result
+  lines: 2510-2515
+  class: exists
+  where: private
+  maps_to: node_cause_result_read_effect (private node, moves to omnimarket)
+  nodes:
+  - node_cause_result_read_effect
+- function: _triage_raw
+  lines: 2518-2527
+  class: exists
+  where: private
+  maps_to: node_cause_result_read_effect (private node, moves to omnimarket)
+  nodes:
+  - node_cause_result_read_effect
+- function: release_misparked_causes
+  lines: 2537-2561
+  class: exists
+  where: private
+  maps_to: node_cause_result_read_effect (private node, moves to omnimarket)
+  nodes:
+  - node_cause_result_read_effect
+- function: read_cause_result
+  lines: 2564-2567
+  class: exists
+  where: private
+  maps_to: node_cause_result_read_effect (private node, moves to omnimarket)
+  nodes:
+  - node_cause_result_read_effect
+- function: cause_base_tip
+  lines: 2570-2585
+  class: dead
+  where: '-'
+  maps_to: no caller in the controller or its sibling scripts (callers counted by name over the merge-drain scripts)
+  nodes: []
+- function: relay_cause_claim
+  lines: 2588-2613
+  class: dead
+  where: '-'
+  maps_to: called only by tests; no production caller
+  nodes: []
+- function: relay_cause_terminal
+  lines: 2616-2635
+  class: exists
+  where: private
+  maps_to: node_cause_result_read_effect (private node, moves to omnimarket)
+  nodes:
+  - node_cause_result_read_effect
+- function: _when
+  lines: 2644-2649
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: _save_escalations
+  lines: 2652-2655
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_reducer (next state) + omnimarket.handlers.emission_sink (JsonlEmissionSink / InMemoryEmissionSink)
+  nodes:
+  - node_pr_landing_tick_reducer
+- function: _park_parts
+  lines: 2658-2672
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: park_verdict
+  lines: 2675-2680
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: _evidence_verdicts
+  lines: 2683-2685
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: _write_evidence
+  lines: 2688-2692
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: deliver_park
+  lines: 2695-2703
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: escalate_operator
+  lines: 2706-2720
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: reconcile_evidence
+  lines: 2723-2772
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: cost_row
+  lines: 2775-2816
+  class: exists
+  where: omnimarket
+  maps_to: node_merge_attribution_compute
+  nodes:
+  - node_merge_attribution_compute
+- function: cause_brief_file
+  lines: 2819-2850
+  class: exists
+  where: private
+  maps_to: node_cause_result_read_effect (private node, moves to omnimarket)
+  nodes:
+  - node_cause_result_read_effect
+- function: release_worktree
+  lines: 2853-2871
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: worker_engine
+  lines: 2874-2879
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_worker_engine_compute
+  nodes:
+  - node_landing_worker_engine_compute
+- function: _engine_ended_without_result
+  lines: 2882-2896
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: limit_exit
+  lines: 2899-2912
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: codex_exit
+  lines: 2915-2932
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: revoke_limit_exits
+  lines: 2935-2953
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: _sidecar_merge
+  lines: 2956-2958
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: _dead_unrecorded
+  lines: 2961-2965
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: _deadline_passed
+  lines: 2968-2977
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: record_worker_no_results
+  lines: 2980-3023
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: recover_no_result_inputs
+  lines: 3026-3043
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: host_tools_refused
+  lines: 3062-3065
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: no_attempt_kind
+  lines: 3068-3087
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: revoke_no_attempt_results
+  lines: 3090-3137
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: revoke_no_result_exits
+  lines: 3140-3161
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: live_head_of
+  lines: 3164-3167
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: exact_head
+  lines: 3170-3180
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: moved_head
+  lines: 3183-3187
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: revoke_moved_head_timeouts
+  lines: 3190-3214
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_worker_lease_effect: spawn, probe, kill and revoke detached fix workers under leases keyed repo#pr'
+  nodes:
+  - node_pr_landing_worker_lease_effect
+- function: revoke_push_failures
+  lines: 3217-3281
+  class: exists
+  where: private
+  maps_to: node_landing_push_refusal_effect / node_landing_worker_publish_effect (private nodes, move to omnimarket)
+  nodes:
+  - node_landing_push_refusal_effect
+  - node_landing_worker_publish_effect
+- function: note_engine_limit
+  lines: 3284-3323
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_worker_engine_compute
+  nodes:
+  - node_landing_worker_engine_compute
+- function: close_hold
+  lines: 3326-3335
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: close_superseded
+  lines: 3338-3372
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: retry_parks
+  lines: 3375-3487
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: tick
+  lines: 3490-4253
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: lab_step
+  lines: 4256-4272
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_ledger_facts_compute
+  nodes:
+  - node_pr_landing_ledger_facts_compute
+- function: cascade_reruns
+  lines: 4275-4291
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: class_plan
+  lines: 4304-4355
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_class_plan_compute
+  nodes:
+  - node_pr_landing_class_plan_compute
+- function: class_actions
+  lines: 4358-4397
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_class_plan_compute
+  nodes:
+  - node_pr_landing_class_plan_compute
+- function: prior_results
+  lines: 4488-4491
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: _prior_text
+  lines: 4494-4496
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: escalation_slot
+  lines: 4499-4524
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: degraded_prs
+  lines: 4527-4535
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: escalation_plan
+  lines: 4538-4729
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: superseded_close
+  lines: 4732-4753
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_github_effect
+  nodes:
+  - node_pr_landing_github_effect
+- function: orchestrator_lane
+  lines: 4756-4769
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: escalation_actions
+  lines: 4775-4820
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_escalation_plan_compute: escalation and park plan (decision outputs exist; the plan and its delivery do not)'
+  nodes:
+  - node_pr_landing_escalation_plan_compute
+- function: _heal_budget_s
+  lines: 4826-4834
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tick_bounds_compute
+  nodes:
+  - node_landing_tick_bounds_compute
+- function: _env_int
+  lines: 4842-4846
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: heal_backoff_ticks
+  lines: 4849-4854
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_heal_effect: window, merge-conflict and change-control autobind re-drives, composed over node_rebase_effect and node_ticket_contract_merge_compute'
+  nodes:
+  - node_pr_landing_heal_effect
+  - node_rebase_effect
+  - node_ticket_contract_merge_compute
+- function: _heal_entry
+  lines: 4857-4863
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_heal_effect: window, merge-conflict and change-control autobind re-drives, composed over node_rebase_effect and node_ticket_contract_merge_compute'
+  nodes:
+  - node_pr_landing_heal_effect
+  - node_rebase_effect
+  - node_ticket_contract_merge_compute
+- function: gh_login_token
+  lines: 4880-4887
+  class: exists
+  where: omnimarket
+  maps_to: node_lane_github_budget_effect
+  nodes:
+  - node_lane_github_budget_effect
+- function: _sweep_failure
+  lines: 4890-4904
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: _sweep_budget
+  lines: 4907-4915
+  class: exists
+  where: omnimarket
+  maps_to: node_landing_tick_bounds_compute
+  nodes:
+  - node_landing_tick_bounds_compute
+- function: _sweep_one
+  lines: 4918-4941
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: sweep_heads
+  lines: 4944-4950
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: superseded_run_sweeps
+  lines: 4953-5066
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: _spawn_detached
+  lines: 5069-5074
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: _sweep_alive
+  lines: 5077-5079
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: _pid_runs
+  lines: 5082-5090
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: superseded_sweep_tick
+  lines: 5093-5122
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: superseded_sweep_main
+  lines: 5125-5142
+  class: exists
+  where: omnimarket
+  maps_to: node_superseded_run_cancel_effect
+  nodes:
+  - node_superseded_run_cancel_effect
+- function: window_heals
+  lines: 5145-5187
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_heal_effect: window, merge-conflict and change-control autobind re-drives, composed over node_rebase_effect and node_ticket_contract_merge_compute'
+  nodes:
+  - node_pr_landing_heal_effect
+  - node_rebase_effect
+  - node_ticket_contract_merge_compute
+- function: _heal_targets
+  lines: 5190-5224
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_heal_effect: window, merge-conflict and change-control autobind re-drives, composed over node_rebase_effect and node_ticket_contract_merge_compute'
+  nodes:
+  - node_pr_landing_heal_effect
+  - node_rebase_effect
+  - node_ticket_contract_merge_compute
+- function: contract_heals
+  lines: 5239-5241
+  class: exists
+  where: private
+  maps_to: node_landing_contract_heal_effect (private node, moves to omnimarket)
+  nodes:
+  - node_landing_contract_heal_effect
+- function: merge_conflict_heals
+  lines: 5247-5250
+  class: exists
+  where: omnimarket
+  maps_to: node_rebase_effect
+  nodes:
+  - node_rebase_effect
+- function: autobind_read
+  lines: 5253-5290
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_heal_effect: window, merge-conflict and change-control autobind re-drives, composed over node_rebase_effect and node_ticket_contract_merge_compute'
+  nodes:
+  - node_pr_landing_heal_effect
+  - node_rebase_effect
+  - node_ticket_contract_merge_compute
+- function: autobind_redrives
+  lines: 5293-5328
+  class: to_build
+  where: omnimarket
+  maps_to: 'BUILD node_pr_landing_heal_effect: window, merge-conflict and change-control autobind re-drives, composed over node_rebase_effect and node_ticket_contract_merge_compute'
+  nodes:
+  - node_pr_landing_heal_effect
+  - node_rebase_effect
+  - node_ticket_contract_merge_compute
+- function: _base_key
+  lines: 5331-5334
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: _rollup
+  lines: 5337-5338
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: strict_bases
+  lines: 5341-5364
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: strict_of
+  lines: 5367-5390
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: declared_fixes
+  lines: 5393-5399
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: cause_fix_queue_jumps
+  lines: 5406-5444
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: _title
+  lines: 5453-5454
+  class: exists
+  where: runtime
+  maps_to: omnibase_core / stdlib utility inside the handler
+  nodes: []
+- function: merge_rank
+  lines: 5457-5461
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: merge_rank_key
+  lines: 5464-5467
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: lifts_node_priority
+  lines: 5470-5474
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: red_base_gates
+  lines: 5477-5479
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: red_base_dequeues
+  lines: 5482-5525
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: merge_priority_summary
+  lines: 5528-5536
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: merge_priority_line
+  lines: 5539-5549
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: strict_plan
+  lines: 5552-5671
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: release_deferred_updates
+  lines: 5674-5682
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_strict_plan_compute
+  nodes:
+  - node_pr_landing_strict_plan_compute
+- function: _handed_over
+  lines: 5685-5689
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: release_hold
+  lines: 5692-5712
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: handover_hold
+  lines: 5715-5727
+  class: dead
+  where: '-'
+  maps_to: no caller in the controller or its sibling scripts (callers counted by name over the merge-drain scripts)
+  nodes: []
+- function: handover_cells
+  lines: 5730-5738
+  class: dead
+  where: '-'
+  maps_to: no caller in the controller or its sibling scripts (callers counted by name over the merge-drain scripts)
+  nodes: []
+- function: green_held_cells
+  lines: 5741-5748
+  class: dead
+  where: '-'
+  maps_to: no caller in the controller or its sibling scripts (callers counted by name over the merge-drain scripts)
+  nodes: []
+- function: handover_summary
+  lines: 5751-5753
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: pipeline_merges
+  lines: 5756-5814
+  class: exists
+  where: private
+  maps_to: node_clean_green_merge_effect (private node, moves to omnimarket)
+  nodes:
+  - node_clean_green_merge_effect
+- function: publish_merge_event
+  lines: 5820-5851
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_state_emit_effect
+  nodes:
+  - node_pr_state_emit_effect
+- function: shared_base_actions
+  lines: 5854-5856
+  class: dead
+  where: '-'
+  maps_to: no caller in the controller or its sibling scripts (callers counted by name over the merge-drain scripts)
+  nodes: []
+- function: perform
+  lines: 5859-5864
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator act-mode writer GithubEffectTickWriter (handlers/tick_github_writer.py) onto node_pr_landing_github_effect; merge is arm or enqueue pinned to the head
+  nodes:
+  - node_pr_landing_github_effect
+  - node_pr_landing_tick_orchestrator
+- function: status
+  lines: 5870-5878
+  class: exists
+  where: omnimarket
+  maps_to: node_throughput_tick_decision_compute
+  nodes:
+  - node_throughput_tick_decision_compute
+- function: install_refusal_friction
+  lines: 5885-5901
+  class: exists
+  where: omnimarket
+  maps_to: node_install_canary_effect
+  nodes:
+  - node_install_canary_effect
+- function: _refresh_alive
+  lines: 5914-5922
+  class: exists
+  where: omnimarket
+  maps_to: node_install_canary_effect
+  nodes:
+  - node_install_canary_effect
+- function: refresh_install_tick
+  lines: 5925-5943
+  class: exists
+  where: omnimarket
+  maps_to: node_install_canary_effect
+  nodes:
+  - node_install_canary_effect
+- function: refresh_install_main
+  lines: 5946-5965
+  class: exists
+  where: omnimarket
+  maps_to: node_install_canary_effect
+  nodes:
+  - node_install_canary_effect
+- function: install_pending
+  lines: 5968-5974
+  class: exists
+  where: omnimarket
+  maps_to: node_install_canary_effect
+  nodes:
+  - node_install_canary_effect
+- function: build_parser
+  lines: 5977-5985
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator
+- function: main
+  lines: 5988-6037
+  class: exists
+  where: omnimarket
+  maps_to: node_pr_landing_tick_orchestrator
+  nodes:
+  - node_pr_landing_tick_orchestrator

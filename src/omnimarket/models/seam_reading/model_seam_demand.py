@@ -33,6 +33,7 @@ class ModelSeamDemand(BaseModel):
     payload: dict[str, str | int | bool]
     error_keys: tuple[str, ...] = Field(min_length=1)
     deadline_seconds: float = Field(ge=0)
+    late_listen_seconds: float = Field(default=0.0, ge=0)
 
 
 __all__ = ["EnumSeamCrossing", "ModelSeamDemand"]

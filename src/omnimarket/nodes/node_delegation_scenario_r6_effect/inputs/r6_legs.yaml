@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scenario R6 inputs (readiness plan 2.2, OMN-23174). One summarization request, one probe ladder with a single stub rung that
+# answers after `rung.delay_ms` (300 s) under its own deadline `rung.timeout_ms` (450 s), asked for with a 500 s timeout.
+# Leg one runs under a site overlay that sets the class ceiling to `overlay_ceiling_seconds`; leg two is the same request
+# without the overlay and must be refused before dispatch because 500 s is above the contract's own ceiling.
+task_type: summarization
+contract_ceiling_seconds: 240
+overlay_ceiling_seconds: 600
+requested_timeout_seconds: 500
+answer_marker: R6-FIXED-ANSWER-4c1e
+answer: >-
+  ### ANSWER
+
+  A long task needs a ceiling above the default one because it takes longer than the default allows. The site overlay sets
+  that ceiling once, so the run is held to it and completes instead of being cut off. The fixed marker of this answer is
+  R6-FIXED-ANSWER-4c1e.
+prompt: Summarize in at most three sentences why a long task needs a ceiling above the default one.
+refusal_reason: timeout_exceeds_task_class_ceiling
+refusal_cause: refused_before_dispatch
+rung:
+  backend_id: r6-long
+  model_id: stub-long
+  behaviour: slow
+  delay_ms: 300000
+  timeout_ms: 450000
