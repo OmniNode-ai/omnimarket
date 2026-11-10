@@ -85,6 +85,7 @@
   "tests/ci/test_coverage_artifact_metadata_roundtrip.py": 0.04,
   "tests/ci/test_coverage_census_cutover_wiring.py": 1.6,
   "tests/ci/test_coverage_missing_source_ignore.py": 0.31,
+  "tests/ci/test_coverage_sweep_gate_cause_uv_install_fallback.py": 0.1,
   "tests/ci/test_cross_repo_contract_deps.py": 0.07,
   "tests/ci/test_delegation_answer_gate_wiring_omn20780.py": 0.91,
   "tests/ci/test_delegation_health_check_caller_omn19451.py": 3.83,
