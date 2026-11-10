@@ -266,8 +266,7 @@ class RedpandaDecisionBus(DecisionBus):
 
         async def on_facts(message: Any) -> None:
             if json.loads(message.value).get("run_id") == self.run_id:
-                reply = self.serve(message.value)
-                await self._send(self.reply_topic(reply), reply)
+                await self._send(self.topic_decision, self.serve(message.value))
 
         async def on_decision(message: Any) -> None:
             if json.loads(message.value).get("run_id") == self.run_id:
@@ -278,12 +277,13 @@ class RedpandaDecisionBus(DecisionBus):
             on_message=on_facts,
             group_id=f"landing-chain-node-{self.run_id}",
         )
-        for terminal in (self.topic_decision, self.topic_failure):
-            await self.kafka.subscribe(
-                terminal,
-                on_message=on_decision,
-                group_id=f"landing-chain-controller-{self.run_id}",
-            )
+        # The dev principal's grants name the success terminal only (OMN-23395), so the
+        # broker-backed bus carries every reply there and never touches the failure topic.
+        await self.kafka.subscribe(
+            self.topic_decision,
+            on_message=on_decision,
+            group_id=f"landing-chain-controller-{self.run_id}",
+        )
         await self.kafka.start_consuming()
         await asyncio.sleep(self.overlay.consumer_join_s)
 
