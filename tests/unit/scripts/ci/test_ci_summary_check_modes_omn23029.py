@@ -8,7 +8,8 @@ fails; an undeclared check is still denied by default. The declaration is data, 
 contract ``ci_summary_external_check_modes.contract.json`` plus the overlay
 ``ci_summary_external_check_modes.json``, so adding an advisory reviewer is one overlay
 line and no code change. This replaces the named, expiring code exception that admitted
-``Tessl Reviewer`` alone.
+``Tessl Reviewer`` alone. The node ``node_ci_summary_registry_compute`` resolves the
+declaration and the gate reads the resolved registry.
 
 Each control below fails without the change it names: the shipped overlay is what turns
 the ``Tessl Reviewer`` neutral green, and an unreadable overlay is what turns it red.
@@ -26,6 +27,7 @@ import pytest
 
 from scripts.ci import ci_summary_gate as gate
 from scripts.ci.ci_summary_gate import EXIT_FAILURE, EXIT_SUCCESS
+from tests.unit.scripts.ci.registry_support import shipped_request, write_resolved
 
 pytestmark = pytest.mark.unit
 
@@ -54,10 +56,12 @@ def _declare(
     overlay: object,
     contract: object = CONTRACT,
 ) -> None:
-    contract_file, overlay_file = tmp_path / "c.json", tmp_path / "o.json"
-    contract_file.write_text(json.dumps(contract), encoding="utf-8")
-    overlay_file.write_text(json.dumps(overlay), encoding="utf-8")
-    monkeypatch.setattr(gate, "CHECK_MODES_FILES", [contract_file, overlay_file])
+    request = shipped_request(
+        check_modes_contract=contract, check_modes_overlay=overlay
+    )
+    monkeypatch.setattr(
+        gate, "REGISTRY_FILE", write_resolved(tmp_path / "resolved.json", request)
+    )
 
 
 def _entry(mode: str) -> dict[str, str]:
@@ -67,10 +71,10 @@ def _entry(mode: str) -> dict[str, str]:
 def test_shipped_overlay_declares_the_reviewer_advisory_and_the_sweep_passes_it() -> (
     None
 ):
-    admitted, refusals = gate.load_check_modes(*gate.CHECK_MODES_FILES)
+    exclusions, check_modes, refusals = gate.load_resolved_registry(gate.REGISTRY_FILE)
     assert refusals == []
-    assert admitted[TESSL] == frozenset({"neutral"})
-    assert TESSL not in gate.EXTERNAL_SWEEP_EXCLUSIONS
+    assert check_modes[TESSL] == frozenset({"neutral"})
+    assert TESSL not in exclusions
     assert TESSL not in gate.EXPECTED_EXTERNAL_CONTEXTS
     rows = [_run(TESSL, "neutral"), _run("Some Other Gate", "success")]
     code, report = gate.evaluate_external_sweep(rows, now=NOW)
@@ -168,34 +172,38 @@ def test_control_a_malformed_overlay_entry_fails_closed(
         [_run("Some Other Gate", "success")], now=NOW
     )
     assert code == EXIT_FAILURE, report
-    assert "check-mode registry " in report
+    assert "CI Summary registry check-modes: " in report
     assert needle in report
 
 
 def test_control_a_missing_overlay_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _declare(tmp_path, monkeypatch, {})
+    request = shipped_request(
+        check_modes_overlay=None, check_modes_error="o.json: missing"
+    )
     monkeypatch.setattr(
-        gate, "CHECK_MODES_FILES", [tmp_path / "c.json", tmp_path / "absent.json"]
+        gate, "REGISTRY_FILE", write_resolved(tmp_path / "resolved.json", request)
     )
     code, report = gate.evaluate_external_sweep(
         [_run("Some Other Gate", "success")], now=NOW
     )
     assert code == EXIT_FAILURE, report
-    assert "check-mode registry " in report
+    assert "CI Summary registry check-modes: " in report
 
 
 def test_control_a_missing_contract_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _declare(tmp_path, monkeypatch, {})
+    request = shipped_request(
+        check_modes_contract=None, check_modes_error="c.json: missing"
+    )
     monkeypatch.setattr(
-        gate, "CHECK_MODES_FILES", [tmp_path / "absent.json", tmp_path / "o.json"]
+        gate, "REGISTRY_FILE", write_resolved(tmp_path / "resolved.json", request)
     )
     code, report = gate.evaluate_external_sweep([], now=NOW)
     assert code == EXIT_FAILURE, report
-    assert "check-mode registry " in report
+    assert "CI Summary registry check-modes: " in report
 
 
 @pytest.mark.parametrize(
@@ -214,18 +222,23 @@ def test_control_a_malformed_contract_fails_closed(
     _declare(tmp_path, monkeypatch, {}, contract=contract)
     code, report = gate.evaluate_external_sweep([], now=NOW)
     assert code == EXIT_FAILURE, report
-    assert "check-mode registry " in report
+    assert "CI Summary registry check-modes: " in report
 
 
 @pytest.mark.parametrize("raw", ["{not json", "[]", "null"])
 def test_control_an_unparsable_overlay_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw: str
 ) -> None:
-    _declare(tmp_path, monkeypatch, {})
-    (tmp_path / "o.json").write_text(raw, encoding="utf-8")
+    if raw == "{not json":
+        request = shipped_request(check_modes_error="o.json: not json")
+    else:
+        request = shipped_request(check_modes_overlay=json.loads(raw))
+    monkeypatch.setattr(
+        gate, "REGISTRY_FILE", write_resolved(tmp_path / "resolved.json", request)
+    )
     code, report = gate.evaluate_external_sweep([], now=NOW)
     assert code == EXIT_FAILURE, report
-    assert "check-mode registry " in report
+    assert "CI Summary registry check-modes: " in report
 
 
 def test_control_the_reviewer_neutral_fails_when_the_overlay_does_not_declare_it(

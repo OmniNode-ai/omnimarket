@@ -2013,15 +2013,14 @@ class TestExternalSweepExclusions:
         )
 
     def test_registry_has_exactly_measured_valid_entries(self) -> None:
-        assert set(gate.EXTERNAL_SWEEP_EXCLUSIONS) == {
+        shipped = gate.load_resolved_registry(gate.REGISTRY_FILE)[0]
+        assert set(shipped) == {
             "AC1 exact revision row on PostgreSQL 16",
             "auto-tag",
         }
-        assert gate.validate_sweep_exclusions(gate.EXTERNAL_SWEEP_EXCLUSIONS) == []
-        active, expired = gate.active_sweep_exclusions(
-            gate.EXTERNAL_SWEEP_EXCLUSIONS, now=self.NOW
-        )
-        assert active == frozenset(gate.EXTERNAL_SWEEP_EXCLUSIONS)
+        assert gate.validate_sweep_exclusions(shipped) == []
+        active, expired = gate.active_sweep_exclusions(shipped, now=self.NOW)
+        assert active == frozenset(shipped)
         assert expired == ()
         assert not active.intersection(EXPECTED_EXTERNAL_CONTEXTS)
         # OMN-23029: the shape of every entry is pinned, not the literal values of
@@ -2030,7 +2029,7 @@ class TestExternalSweepExclusions:
         # could not be added without editing an assertion that was never about it.
         # What must hold of EVERY entry is that it is reasoned, carries a real
         # ticket, is dated, and expires after it was added.
-        for name, entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.items():
+        for name, entry in shipped.items():
             assert entry.reason.strip(), name
             assert gate._SWEEP_TICKET_RE.match(entry.ticket), (name, entry.ticket)
             assert gate._SWEEP_DATE_RE.match(entry.added), (name, entry.added)
@@ -2391,12 +2390,25 @@ class TestSweepIsWiredIntoProductionPoller:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        monkeypatch.setattr(
-            gate, "EXTERNAL_SWEEP_EXCLUSIONS", {"X": {"reason": "untyped"}}
+        malformed = tmp_path / "malformed_registry.json"
+        malformed.write_text(
+            json.dumps(
+                {
+                    "exclusions": {"X": {"reason": "untyped"}},
+                    "check_modes": {},
+                    "refusals": [],
+                }
+            ),
+            encoding="utf-8",
         )
+        good = gate.REGISTRY_FILE
+        monkeypatch.setattr(gate, "REGISTRY_FILE", malformed)
         assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_FAILURE
-        assert "external sweep exclusion registry REFUSED" in capsys.readouterr().out
-        monkeypatch.setattr(gate, "EXTERNAL_SWEEP_EXCLUSIONS", {})
+        assert "CI Summary registry unreadable or malformed" in capsys.readouterr().out
+        monkeypatch.setattr(gate, "REGISTRY_FILE", tmp_path / "absent_registry.json")
+        assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_FAILURE
+        assert "CI Summary registry unreadable or malformed" in capsys.readouterr().out
+        monkeypatch.setattr(gate, "REGISTRY_FILE", good)
         assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_SUCCESS
 
     def test_main_keeps_unavailable_checks_pending(

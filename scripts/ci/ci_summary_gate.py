@@ -121,7 +121,7 @@ Every head check-run not owned by this run, the event's asserted contexts,
 :data:`SOFT_ALLOWLIST`, or CI Summary is judged with a success-only bar.
 Running rows and due replacements hold PENDING. Only known non-PR workflow
 run events exempt a row; unresolved provenance is swept. Dated, validated
-:data:`EXTERNAL_SWEEP_EXCLUSIONS` stop excluding on their expiry date.
+the resolved sweep exclusions stop excluding on their expiry date.
 
 Jobs produced by other workflow files that are NOT in
 :data:`EXPECTED_EXTERNAL_CONTEXTS` also carry an explicit, reasoned
@@ -150,6 +150,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections.abc import Mapping
@@ -617,54 +618,28 @@ class SweepExclusion:
 
 SWEEP_EXCLUSION_MAX_DAYS: int = 90
 
-# The registry is data, in ci_summary_sweep_exclusions.json beside this file
-# (stdlib json: the poller runs with no third-party packages). Each entry names
-# its reason, ticket, added date and expiry. The first two were measured over 43
-# merged PR heads on 2026-10-17 (OMN-17427): the only external pull_request rows
-# that skip by design. Expiry re-arms the sweep.
-SWEEP_EXCLUSIONS_FILE = Path(__file__).with_name("ci_summary_sweep_exclusions.json")
-
-
-def load_sweep_exclusions(path: Path) -> dict[str, SweepExclusion]:
-    """Read the exclusion registry; a malformed file raises and fails the gate."""
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return {name: SweepExclusion(**fields) for name, fields in raw.items()}
-
-
-EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = load_sweep_exclusions(
-    SWEEP_EXCLUSIONS_FILE
+# Both registries (the sweep exclusions and each check's advisory or blocking mode,
+# ruling 2026-11-08) are resolved by node_ci_summary_registry_compute (OMN-23505): the
+# workflow step feeds the files through the node's runtime module and writes its answer
+# beside this file. The gate holds no loader of the files; it reads the answer, and an
+# absent, unparsable or malformed answer, or any refusal the node reported, fails closed.
+# A neutral passes only for a declared-advisory check; undeclared stays denied.
+REGISTRY_FILE = Path(
+    os.environ.get("CI_SUMMARY_REGISTRY")
+    or Path(__file__).with_name("ci_summary_registry.resolved.json")
 )
 
-# Per-check advisory or blocking mode is data (ruling 2026-11-08): the contract names
-# each mode and the conclusions it adds to success, the overlay declares each check's
-# mode. A neutral passes only for a declared-advisory check; undeclared stays denied.
-# A missing, unparsable or malformed file refuses the gate and admits nothing.
-CHECK_MODES_FILES = [
-    Path(__file__).with_name(f"ci_summary_external_check_modes{part}.json")
-    for part in (".contract", "")
-]
 
-
-def load_check_modes(contract: Path, overlay: Path) -> tuple[dict, list[str]]:
-    # Returns (conclusions each declared check adds to success, refusals).
+def load_resolved_registry(path: Path) -> tuple[dict, dict, list[str]]:
     try:
-        spec = json.loads(contract.read_text(encoding="utf-8"))
-        decls = json.loads(overlay.read_text(encoding="utf-8"))
-        modes = {m: frozenset(c) for m, c in spec["modes"].items()}
-        need = sorted({"mode", *spec["entry_fields"]})
-        bad = {
-            n
-            for n, e in decls.items()
-            if not isinstance(e, dict)
-            or not all(isinstance(e.get(f), str) and e[f].strip() for f in need)
-            or e["mode"] not in modes
-        }
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            {n: SweepExclusion(**e) for n, e in raw["exclusions"].items()},
+            {n: frozenset(c) for n, c in raw["check_modes"].items()},
+            list(raw["refusals"]),
+        )
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-        return {}, [f"unreadable or malformed: {exc!r}"]
-    return {n: modes[e["mode"]] for n, e in decls.items() if n not in bad}, [
-        f"{n}: needs non-empty text {', '.join(need)} and a declared mode"
-        for n in sorted(bad)
-    ]
+        return {}, {}, [f"unreadable or malformed: {exc!r}"]
 
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
@@ -1729,7 +1704,7 @@ def _parse_exclusion_date(raw: object) -> date | None:
 def validate_sweep_exclusions(
     exclusions: Mapping[str, object],
 ) -> list[str]:
-    """Refusal reasons for malformed :data:`EXTERNAL_SWEEP_EXCLUSIONS` entries.
+    """Refusal reasons for malformed the resolved sweep exclusions entries.
 
     A non-empty return FAILS the gate. That is the point: an exclusion nobody
     could have reviewed is worse than no exclusion, because it reads as a
@@ -1889,11 +1864,11 @@ def evaluate_external_sweep(
             EXIT_SUCCESS,
             "External default-deny sweep: not applicable to this event.",
         )
+    loaded, check_modes, mode_refusals = load_resolved_registry(REGISTRY_FILE)
     if sweep_exclusions is None:
-        sweep_exclusions = EXTERNAL_SWEEP_EXCLUSIONS
+        sweep_exclusions = loaded
     findings = validate_sweep_exclusions(sweep_exclusions)
     active, expired = active_sweep_exclusions(sweep_exclusions, now=now)
-    check_modes, mode_refusals = load_check_modes(*CHECK_MODES_FILES)
     accounted = frozenset(expected) | in_run_names | SOFT_ALLOWLIST | {self_name}
     events = check_run_event_index(workflow_runs)
     # OMN-17427: scope before collapsing so a newer non-PR success cannot
@@ -1907,7 +1882,7 @@ def evaluate_external_sweep(
     ]
     # A row a declared-advisory check's mode admits lands in ``excluded`` as
     # "name (conclusion, declared advisory)"; an unreadable registry is a failure.
-    failures = [f"check-mode registry {r}" for r in mode_refusals]
+    failures = [f"CI Summary registry {r}" for r in mode_refusals]
     running: list[str] = []
     swept: list[str] = []
     excluded: list[str] = []
