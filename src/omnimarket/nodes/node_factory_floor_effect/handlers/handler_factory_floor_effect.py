@@ -25,6 +25,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorLedgerRow,
     ModelFloorLimitsFacts,
     ModelFloorSelection,
+    ModelFloorSourceHealth,
     ModelFloorSourceReads,
     ModelGoalTicketRoots,
 )
@@ -66,7 +67,6 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_lane_processes,
     load_linear,
     load_placed,
-    load_placement,
     load_plans,
     load_pool,
     load_receipts,
@@ -79,6 +79,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     newest_dated_file,
     newest_linear_snapshot,
     read_ledger_rows,
+    read_placement,
     read_unresolved_rows,
     resolve_dir,
     resolve_home,
@@ -169,6 +170,15 @@ def _file_time(path: Path) -> datetime | None:
         return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     except OSError:
         return None
+
+
+def _degraded_reading(
+    health: ModelFloorSourceHealth, cause: str
+) -> ModelFloorSourceHealth:
+    """A source that was read but left something out keeps its state and names what it left out."""
+    if health.state != "read" or not cause:
+        return health
+    return health.model_copy(update={"cause": cause})
 
 
 class HandlerFactoryFloorEffect:
@@ -394,6 +404,9 @@ class HandlerFactoryFloorEffect:
             else now
         )
         bars = rt.source_max_age_min
+        placement_path = home / src.placement_relpath
+        placement = read_placement(placement_path)
+        placement_read_at = _file_time(placement_path)
         health = (
             source_health(
                 source="plans",
@@ -461,6 +474,17 @@ class HandlerFactoryFloorEffect:
                 count=len(goal_rows) if goal_rows is not None else None,
                 cause=goal_cause,
             ),
+            # A field this revision does not know, or a row it cannot read, degrades this reading; it never refuses the run.
+            _degraded_reading(
+                source_health(
+                    source="placement",
+                    now=now,
+                    max_age_min=bars.placement,
+                    read_at=placement_read_at,
+                    count=len(placement.hosts) if placement_read_at else None,
+                ),
+                placement.cause,
+            ),
         )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
@@ -508,7 +532,7 @@ class HandlerFactoryFloorEffect:
                 else None,
                 running_evidence=now if running_evidence is not None else None,
             ),
-            placement=load_placement(home / src.placement_relpath),
+            placement=placement.hosts,
             stoppages=load_stoppages(home / src.friction_report_relpath),
             machines=machines,
             pool=load_pool(lane_dir / ls.pool_receipt),

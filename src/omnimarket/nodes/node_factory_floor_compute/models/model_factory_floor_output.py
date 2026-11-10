@@ -515,8 +515,10 @@ class ModelFloorStoppedLane(BaseModel):
     outcome: str
     ended_at: str
     age_minutes: int
-    # What the ending row names: any of "branch", "ask", "next-step".
+    # What the ending row names: any of "branch", "ask", "next-step", "needs".
     names: tuple[str, ...]
+    # The ending row's needs= cell as written (``<action>:<target>`` or ``unparsed``); empty when the row has none (OMN-23417).
+    needs: str = ""
     branch: str = ""
     head: str = ""
     prs: tuple[str, ...] = ()

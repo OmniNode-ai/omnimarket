@@ -132,6 +132,14 @@ class ModelLandingPrRecord(BaseModel):
         ge=0,
         description="Update-branch refreshes sent for stale cancelled copies (bounded).",
     )
+    cross_repo_owner: str | None = Field(
+        default=None,
+        pattern=PR_KEY_PATTERN,
+        description=(
+            "The change in another repository this PR's red waits on, while the "
+            "controller sends it no worker (OMN-23345)."
+        ),
+    )
 
 
 class ModelLandingRebuildRecord(BaseModel):

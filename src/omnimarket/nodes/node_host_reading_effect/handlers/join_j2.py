@@ -12,6 +12,10 @@ floor's emission contract, so the receipt fold reads the join the way the floor 
   canary failed the seam never starts: it holds one typed ``upstream_`` refusal, and no command
   is published.
 
+Every chain that starts ends: on each path out of a host's run (a typed outcome, an exception, a cancel, the run's
+deadline) the chains still open get a typed failure under the correlation id, so a run that cannot finish leaves no
+start with no terminal for the floor to read as ``start_without_terminal``.
+
 Nothing here reads a missing or late answer as success. The result counts only when its receipt is
 for the unit that was sent, was answered by the host addressed, completed with exit 0 and carries
 the nonce this canary printed. A timeout, a refusal, a receipt for another unit and a command that
@@ -51,6 +55,13 @@ FAIL_PLACEMENT = "seam_placement_refused"
 FAIL_NO_RESULT = "seam_no_result"
 FAIL_UNCORRELATED = "seam_result_uncorrelated"
 FAIL_COMMAND = "seam_command_failed"
+FAIL_CANARY_RAISED = "canary_raised"
+CANARY_PREFIX = "canary_"
+SEAM_PREFIX = "seam_"
+SUFFIX_INTERRUPTED = "interrupted"
+SUFFIX_DEADLINE = "deadline_exceeded"
+#: The message a deadline cancels a host's task with: the host's run reads it to name the failure it closes its chains with.
+DEADLINE_CANCEL_MESSAGE = "j2-run-deadline"
 
 
 class ProtocolJoinJ2Placement(Protocol):
@@ -105,35 +116,111 @@ class JoinJ2:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def run_hosts(
-        self, hosts: Sequence[str]
+        self, hosts: Sequence[str], *, deadline_seconds: float | None = None
     ) -> tuple[ModelJoinJ2HostResult, ...]:
-        """One J2 run per host, concurrently; the results come back in the order given."""
-        gathered = await asyncio.gather(
-            *(self.run_host(host) for host in hosts), return_exceptions=True
-        )
+        """One J2 run per host, concurrently; the results come back in the order given.
+
+        With a ``deadline_seconds``, a host still running when it passes is cancelled and its open chains end in a typed
+        failure (``seam_deadline_exceeded``), so the run ends inside the bound the caller was given.
+        """
+        if not hosts:
+            return ()
+        cids = [uuid.uuid4().hex for _ in hosts]
+        tasks = [
+            asyncio.ensure_future(self.run_host(host, correlation_id=cid))
+            for host, cid in zip(hosts, cids, strict=True)
+        ]
+        try:
+            await asyncio.wait(tasks, timeout=deadline_seconds)
+        except BaseException:
+            # The whole run was cancelled: every host closes its open chains before the cancel goes on.
+            await self._cancel(tasks, None)
+            raise
+        late = [task for task in tasks if not task.done()]
+        await self._cancel(late, DEADLINE_CANCEL_MESSAGE)
+        late_ids = {id(task) for task in late}
         return tuple(
-            self._host_raised(host, outcome)
-            if isinstance(outcome, BaseException)
-            else outcome
-            for host, outcome in zip(hosts, gathered, strict=True)
+            self._host_deadline(host, cid, deadline_seconds)
+            if id(task) in late_ids
+            else self._host_raised(host, cid, task.exception())
+            if task.cancelled() or task.exception() is not None
+            else task.result()
+            for host, cid, task in zip(hosts, cids, tasks, strict=True)
         )
 
     @staticmethod
-    def _host_raised(host: str, exc: BaseException) -> ModelJoinJ2HostResult:
+    async def _cancel(
+        tasks: Sequence[asyncio.Future[ModelJoinJ2HostResult]], message: str | None
+    ) -> None:
+        for task in tasks:
+            task.cancel(message)
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    @staticmethod
+    def _host_raised(
+        host: str, cid: str, exc: BaseException | None
+    ) -> ModelJoinJ2HostResult:
         """One host's run raised: that host reads a typed failure and the other hosts' results still come back."""
         return ModelJoinJ2HostResult(
             host=host,
-            correlation_id=uuid.uuid4().hex,
+            correlation_id=cid,
             outcome=EnumJoinJ2Outcome.NO_RESULT,
             failure_code=FAIL_NO_RESULT,
             detail=f"{type(exc).__name__}: {exc}"[:300],
         )
 
-    async def run_host(self, host: str) -> ModelJoinJ2HostResult:
+    @staticmethod
+    def _host_deadline(
+        host: str, cid: str, deadline_seconds: float | None
+    ) -> ModelJoinJ2HostResult:
+        return ModelJoinJ2HostResult(
+            host=host,
+            correlation_id=cid,
+            outcome=EnumJoinJ2Outcome.NO_RESULT,
+            failure_code=SEAM_PREFIX + SUFFIX_DEADLINE,
+            detail=f"the J2 run for {host} was still open at its {deadline_seconds} s bound; its open chains were closed typed",
+        )
+
+    async def run_host(
+        self, host: str, *, correlation_id: str | None = None
+    ) -> ModelJoinJ2HostResult:
         s = self._settings
-        cid = uuid.uuid4().hex
+        cid = correlation_id or uuid.uuid4().hex
         canary = self._chain(s.canary_node, s.canary_piece, cid)
+        seam = self._chain(s.seam_node, s.seam_piece, cid)
         canary.start()
+        try:
+            return await self._run_chains(canary, seam, host, cid)
+        except Exception as exc:
+            # A chain has started: whatever raised, the chains still open end with a typed failure.
+            return self._close_open(
+                canary,
+                seam,
+                host,
+                cid,
+                outcome=EnumJoinJ2Outcome.NO_RESULT,
+                suffix=None,
+                detail=f"{type(exc).__name__}: {exc}"[:300],
+            )
+        except BaseException as exc:
+            # A cancel (the run's deadline, a terminate) leaves no start with no terminal either; the cancel goes on.
+            deadline = DEADLINE_CANCEL_MESSAGE in exc.args
+            self._close_open(
+                canary,
+                seam,
+                host,
+                cid,
+                outcome=EnumJoinJ2Outcome.NO_RESULT,
+                suffix=SUFFIX_DEADLINE if deadline else SUFFIX_INTERRUPTED,
+                detail=f"{type(exc).__name__}: the run ended before its chains did"
+                + (" (deadline)" if deadline else ""),
+            )
+            raise
+
+    async def _run_chains(
+        self, canary: ChainEmitter, seam: ChainEmitter, host: str, cid: str
+    ) -> ModelJoinJ2HostResult:
+        s = self._settings
         age = self._advert_age(host)
         if age is None:
             return self._upstream_refused(
@@ -155,21 +242,34 @@ class JoinJ2:
                 age,
             )
         canary.success({"advert_age_s": age})
-        seam = self._chain(s.seam_node, s.seam_piece, cid)
         seam.start()
-        try:
-            return await self._run_seam(seam, host, cid, age)
-        except Exception as exc:
-            # The seam chain has started: whatever raised, it ends with a typed failure.
-            return self._seam_failed(
-                seam,
-                host,
-                cid,
-                EnumJoinJ2Outcome.NO_RESULT,
-                FAIL_NO_RESULT,
-                f"{type(exc).__name__}: {exc}"[:300],
-                age,
-            )
+        return await self._run_seam(seam, host, cid, age)
+
+    def _close_open(
+        self,
+        canary: ChainEmitter,
+        seam: ChainEmitter,
+        host: str,
+        cid: str,
+        *,
+        outcome: EnumJoinJ2Outcome,
+        suffix: str | None,
+        detail: str,
+    ) -> ModelJoinJ2HostResult:
+        """End whichever chain is still open with a typed failure; the seam, never started, holds the upstream refusal."""
+        if seam.open:
+            code = SEAM_PREFIX + suffix if suffix else FAIL_NO_RESULT
+            return self._seam_failed(seam, host, cid, outcome, code, detail, None)
+        if canary.open:
+            code = CANARY_PREFIX + suffix if suffix else FAIL_CANARY_RAISED
+            return self._upstream_refused(canary, host, cid, outcome, code, detail)
+        return ModelJoinJ2HostResult(
+            host=host,
+            correlation_id=cid,
+            outcome=outcome,
+            failure_code=FAIL_NO_RESULT,
+            detail=detail,
+        )
 
     async def _run_seam(
         self, seam: ChainEmitter, host: str, cid: str, age: int
@@ -327,7 +427,7 @@ class JoinJ2:
         outcome: EnumJoinJ2Outcome,
         code: str,
         detail: str,
-        age: int,
+        age: int | None,
         *,
         work_unit_id: str = "",
         receipt_host: str = "",
@@ -346,6 +446,8 @@ class JoinJ2:
 
 
 __all__ = [
+    "DEADLINE_CANCEL_MESSAGE",
+    "FAIL_CANARY_RAISED",
     "FAIL_COMMAND",
     "FAIL_NO_ADVERT",
     "FAIL_NO_RESULT",

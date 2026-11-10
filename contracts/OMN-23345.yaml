@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-23345
+title: A change spread across two repositories lands in its declared order, so one repository's half cannot stall the other's whole queue
+summary: >-
+  This pull request's share of the ticket: the mechanisms its second and third criteria name. A new pure node,
+  node_cross_repo_order_gate_compute, holds a pull request whose declared predecessor in another repository has not merged (a
+  Lands-After line in its body, or a sibling's Lands-Before line). The landing decision node records a pull request red only on checks
+  already named as another repository's open change as blocked on that change, names the owner, and sends it no worker. The five-whys
+  report (the first criterion) is written to the lane report and posted on the ticket, not in this repository.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23345-order
+  statement: A change whose other half in another repository is not merged is held, and a pull request red on that half gets the owning change named and no worker.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a mechanism refuses or orders a change whose other half in another repository is not merged (for example the landing controller holds the consumer half until the producer half merges, or a pre-merge check reads the sibling''s state), with a failing control replaying the the manifest repository change #1531 and omnibase_infra#5810 order -- falsifier: the mechanism''s test under pytest replaying that order'
+  - id: AC3
+    statement: 'AC3: the controller stops dispatching workers to a pull request whose red is a cross-repository cause it has already named, and names the owning change instead -- falsifier: the controller decision test under pytest with a recorded nothing_to_fix sequence'
+evidence_requirements:
+- kind: tests
+  description: The order gate tests replay the 1531 and 5810 order; the decision tests replay a recorded nothing_to_fix sequence with and without the named cause.
+  command: uv run --frozen pytest tests/nodes/node_cross_repo_order_gate_compute tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_cross_repo_cause.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23345-ac2-order-gate
+  description: >-
+    The test sends the gate the manifest repository change #1531 declaring Lands-After omnibase_infra#5810 while #5810 reads OPEN and gets hold with
+    #5810 named; the control with the declaration removed (the order of 2026-11-09) gets allow, and the same request with #5810 MERGED
+    gets allow. The named break is the declaration removed from the body: the held assertion fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_cross_repo_order_gate_compute/test_golden_chain_cross_repo_order_gate_compute.py -q --no-cov
+    cwd: .
+- id: dod-omn23345-ac3-no-worker
+  description: >-
+    The test replays four ticks of a worker returning blocked on a PR red on the parity check. With no cause named the controller sends a
+    second worker; with the check named as owned by an open change in another repository it sends none in six ticks, records
+    blocked_on with the owner once, and resumes the worker path when the owner leaves the open set. The named break is cross_repo_causes
+    left empty: the control sends a second worker.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_cross_repo_cause.py -q --no-cov
+    cwd: .
+- id: dod-omn23345-integration-proof
+  description: The order gate tests and the decision cross-repository tests run on a lab host at the pushed head through the lab-work node.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23345 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_cross_repo_order_gate_compute tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_cross_repo_cause.py -q --no-cov
+    cwd: .
