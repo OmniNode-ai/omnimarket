@@ -268,6 +268,18 @@ runtime:
     timeout_seconds: 90
     module: omnimarket.nodes.node_gate_store_effect.runtime_join_j6
     args: ["run"]
+  # OMN-23420: the J7 run, the join's caller. Join J7 joins piece 7 (process spine) to piece 8 (central test harness): each run
+  # answers piece 7's golden stop drill readings with a send past a stop whose lab check posts on a test head, in an in-memory
+  # twin, and writes piece 8's chain under the reading's id; once per window it writes piece 8's own error chain (a superseded
+  # attempt posts nothing). Concurrent beside join_j6, so the longest path stays the slowest member (90 s). Not required: when it
+  # fails the floor still reads and J7 stays unpassed.
+  - name: join_j7
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7
+    args: ["run"]
   # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
   # stays inside the 240 s cycle bound (it adds nothing past the slowest member, 90 s). It is listed after the copy, which
   # writes the same file in milliseconds; a failed rollup leaves the copy's file.
