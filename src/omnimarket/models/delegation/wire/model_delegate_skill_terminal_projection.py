@@ -31,6 +31,8 @@ from pydantic import (
 
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
+    declares_failed_acceptance,
+    failed_acceptance_reason,
 )
 
 logger = logging.getLogger(__name__)
@@ -340,7 +342,17 @@ class ModelDelegationEventProjectionRow(BaseModel):
         metrics = event.metrics
         delegated_to = event.model_name or event.provider or "delegate-skill"
         tokens_to_compliance = metrics.tokens_to_compliance or metrics.total_tokens
-        quality_detail = event.error_message or event.status
+        # OMN-21607: a row that failed its acceptance check says which
+        # criterion it failed, not just the status the port reported.
+        quality_detail = (
+            event.error_message
+            or (
+                failed_acceptance_reason(event)
+                if declares_failed_acceptance(event)
+                else ""
+            )
+            or event.status
+        )
         return cls(
             correlation_id=event.correlation_id,
             session_id=event.session_id,

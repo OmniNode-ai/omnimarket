@@ -17,6 +17,13 @@ requirements:
         statement: 'AC1: a field absent from exactly the declared copy reads WORKING and is listed as declared, and the same difference without its declaration reads NOT WORKING -- falsifier: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov -k "declared or declaration"'
       - id: AC2
         statement: 'AC2: a declaration naming the wrong copy, a value that differs among the other copies, another field of the host, or a difference that no longer exists stays drift or reads stale, and an overlay that declares an unknown copy, every copy, the same difference twice or no intentional_differences key is refused -- falsifier: uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov -k "declaration or intentional"'
+  - id: req-omn22878-fleet-record-resumes
+    statement: The overlay store reader's fleet record reaches every host's newest reading however many readings the topic holds, so the floor row reads the hosts' real age.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: ticks that each reach part of the reading topic end on every host newest reading, and a fresh consumer group per tick, the reader as it was, stays on the first window -- falsifier: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_fleet_resume_overlay_store.py -q --no-cov -k "newest or fresh_group"'
+      - id: AC4
+        statement: 'AC4: a broker that cannot be reached keeps the held record and this host own reading, and a held record that cannot be parsed is replaced by what the bus holds -- falsifier: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_fleet_resume_overlay_store.py -q --no-cov -k "cannot"'
 evidence_requirements:
   - kind: tests
     description: The node's focused tests, golden and error chain event tests, and the named breaks.
@@ -42,4 +49,13 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22878 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_table_copies_drift_compute -q --no-cov'
+        cwd: .
+  - id: dod-omn22878-fleet-resume-tests
+    description: The fleet record tests pass with the change and the named break (a fresh consumer group each tick) stays on the first window.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC3, AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store -q --no-cov
         cwd: .
