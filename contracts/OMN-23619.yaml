@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23619
+title: 'Pilot measurement: compare each pilot''s measured result with its frozen bar and write the piece 16 reading row'
+summary: 'A new node reads each pilot''s declared bar (overlay values) and its measured result, runs the existing pilot manifest check, appends one piece 16 source row (lane, src, drill, verdict) and emits piece 16''s golden or typed-failure chain, so the reading writer''s piece 16 source and join J16 have a producer.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23619-pilot-measurement
+  statement: 'The node reads the declared bar and the measured result of every declared pilot, and its row reads WORKING only when every pilot is measured and none is refused.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a pilot measurement node reads each pilot''s declared bar and its measured result, runs the bar check and appends one piece 16 source row whose verdict is WORKING only when every declared pilot is measured and none is refused -- falsifier: `uv run --frozen pytest tests/nodes/node_pilot_measurement_effect/test_pilot_measurement_reading.py -q --no-cov -p no:randomly`, red at the merge base'
+  - id: AC2
+    statement: 'AC2: a pilot with no frozen bar or a wrong bar hash, an unreadable result and a failed append each end in the typed failure event with the row''s verdict NOT_WORKING or UNKNOWN, never WORKING -- falsifier: `uv run --frozen pytest tests/nodes/node_pilot_measurement_effect/test_pilot_measurement_chain_events.py -q --no-cov -p no:randomly`'
+  - id: AC3
+    statement: 'AC3: the row the node writes is read by the reading writer''s piece 16 source rule and by the floor''s reading reader as the piece''s newest reading -- falsifier: `uv run --frozen pytest tests/nodes/node_pilot_measurement_effect/test_pilot_measurement_reading_seam.py -q --no-cov -p no:randomly`'
+  - id: AC4
+    statement: 'AC4: integrated: the node runs on a lab host from its branch, the row lands in the shared work log and the served board''s piece 16 line after the next publish reads from that row -- falsifier: the lane STATUS row naming host, revision and row, and the piece 16 entry of the served floor-simple.json'
+evidence_requirements:
+- kind: tests
+  description: 'The node''s tests pass at the pushed head; at the merge base the node does not exist and they fail.'
+  command: uv run --frozen pytest tests/nodes/node_pilot_measurement_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23619-node-tests
+  description: 'The reading, chain event, overlay, file source and seam tests pass.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_pilot_measurement_effect -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23619-integration-proof-lab
+  description: 'Runs the node tests at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner, so only the local Done gate runs this check.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23619 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pilot_measurement_effect -q --no-cov -p no:randomly'
+    cwd: .
