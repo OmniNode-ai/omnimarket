@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The registry's canonical repository names and the other spellings of each (OMN-23134). Read by node_floor_compare_effect:
+# ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY names a copy, else the host's own copy under .onex_state/floor-compare/repository-names.yaml
+# is read when it exists, else this file. A repository read under two spellings is one row on the compare page, under the
+# canonical name.
+#
+# Two sources of spellings:
+#   registry_relpath  the registry's clone list, relative to the registry home (a host sets it in its own copy). Each entry's name
+#                     is canonical; when the last segment of its repo differs from the name (an underscore and a hyphen
+#                     spelling), that segment is an alias. Nothing to maintain.
+#   repositories      renames the clone list does not carry: one entry per repository, its canonical name, every other spelling
+#                     and the evidence they read the same repository.
+# This shipped file names no repository: the names of a private repository stay in the host's own copy.
+repository_names:
+  families:
+    - {prefix: "git_merges:", total_key: git_merges_total}
+  repositories: []
