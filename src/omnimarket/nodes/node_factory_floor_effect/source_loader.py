@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.model_factory_floor_input import (
@@ -55,6 +56,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelLimitToken,
     ModelLimitTokenPool,
 )
+from omnimarket.models.model_floor_placement_reading import ModelFloorPlacementReading
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -543,15 +545,45 @@ def newest_dated_file(directory: Path, filename: str) -> Path | None:
         return newest / filename if newest is not None else None
 
 
-def load_placement(path: Path) -> tuple[ModelHostCapacityAdvertisement, ...]:
+def read_placement(path: Path) -> ModelFloorPlacementReading:
+    """The host advertisements, read tolerantly: a field the model does not declare is ignored and named, a row that
+    still fails validation is skipped and named. The file being unreadable or not a list still refuses (OMN-23435)."""
     with _source(path):
         if not path.exists():
-            return ()
+            return ModelFloorPlacementReading()
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise ValueError("expected a JSON list of host advertisements")
-        hosts = (ModelHostCapacityAdvertisement.model_validate(value) for value in data)
-        return tuple(sorted(hosts, key=lambda host: host.host_name))
+        declared = set(ModelHostCapacityAdvertisement.model_fields)
+        hosts: list[ModelHostCapacityAdvertisement] = []
+        unknown: list[str] = []
+        unreadable: list[str] = []
+        for index, value in enumerate(data):
+            if not isinstance(value, dict):
+                unreadable.append(f"row {index}: not a JSON object")
+                continue
+            name = str(value.get("host_name") or f"row {index}")
+            unknown.extend(f"{name}.{key}" for key in sorted(set(value) - declared))
+            try:
+                hosts.append(
+                    ModelHostCapacityAdvertisement.model_validate(
+                        {key: val for key, val in value.items() if key in declared}
+                    )
+                )
+            except ValidationError as exc:
+                first = exc.errors()[0]
+                unreadable.append(
+                    f"{name}: {'.'.join(str(part) for part in first['loc'])} {first['msg']}"
+                )
+        return ModelFloorPlacementReading(
+            hosts=tuple(sorted(hosts, key=lambda host: host.host_name)),
+            unknown_fields=tuple(unknown),
+            unreadable_rows=tuple(unreadable),
+        )
+
+
+def load_placement(path: Path) -> tuple[ModelHostCapacityAdvertisement, ...]:
+    return read_placement(path).hosts
 
 
 def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:

@@ -41,6 +41,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_
     ModelFloorFillLiveSettings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.adapters import (
+    DirectoryFloorBriefs,
     LedgerRowsFloorLedger,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import (
@@ -115,6 +116,9 @@ def build_live_handler_factory(
             ),
             pool=pool if pool is not None else UnboundFloorPool(),
             ledger=LedgerRowsFloorLedger(FileWorkLedgerStore(settings.ledger_path)),
+            briefs=DirectoryFloorBriefs(
+                config.stopped_reports_root, config.stopped_brief_directory
+            ),
             tickets=tickets if tickets is not None else UnboundFloorTickets(),
             runner=process,
             clock=SystemFloorClock(),
