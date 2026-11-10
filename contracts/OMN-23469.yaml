@@ -31,13 +31,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/test_ci_duration_record_supplement.py -k omn23469 -q
 - id: dod-omn23469-ac2
-  description: The freshness test passes on the branch and its file is unchanged against dev.
+  description: The test that none of the 38 files is unrecorded and that the freshness test's limit is still 50 passes on the branch; at the merge base the 38 files are unrecorded, so it fails there. The freshness test itself passes at both, so it cannot be the control.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q
+    check_value: uv run pytest tests/unit/test_ci_duration_record_supplement.py -k omn23469_pinned_files_are_recorded -q
 - id: dod-omn23469-integration-proof
   description: Run the duration record tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
