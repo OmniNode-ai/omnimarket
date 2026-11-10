@@ -16,14 +16,14 @@ from typing import Literal
 
 from omnibase_spi.protocols.lane import ProtocolLaneHostPool
 
+from omnimarket.events.engine_login import (
+    ModelEngineLoginPool,
+)
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
     SshLaneHostTransport,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
-)
-from omnimarket.nodes.node_remote_lane_start_effect.models.model_engine_login import (
-    ModelEngineLoginPool,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     ModelRemoteLaneStartRequest,

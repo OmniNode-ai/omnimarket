@@ -25,7 +25,7 @@ evidence_requirements:
   command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator src/omnimarket/nodes/node_remote_lane_start_effect -q --no-cov --tb=line -k 'an_unfillable_placeholder or ssh_transport_path_prefix or fill_seam or the_claim_carries_the_worktree_cell or the_claim_of_a_repo_lane'
 - kind: tests
   description: The pool login tests, run against the real pool node under a real shell.
-  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
+  command: uv run pytest tests/nodes/node_remote_lane_start_orchestrator/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
 - kind: tests
   description: The provisioning parity tests of the two moved steps against the recorded runner lines.
   command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_parity.py src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_provisioning_ops.py -q --no-cov --tb=line
@@ -68,7 +68,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_remote_lane_start_orchestrator/test_remote_lane_start_pool_login.py -q --no-cov --tb=line
     cwd: .
 - id: dod-OMN-23425-ac5
   description: The registry root and run directory steps of the ssh transport match the recorded runner script lines.

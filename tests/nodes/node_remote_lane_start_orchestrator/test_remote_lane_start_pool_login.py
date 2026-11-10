@@ -27,6 +27,9 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import SecretStr
 
+from omnimarket.events.engine_login import (
+    ModelEngineLoginPool,
+)
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
     HandlerClaudeTokenPool,
@@ -41,9 +44,6 @@ from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transpo
     ModelHostCommandResult,
     SshLaneHostTransport,
     SubprocessHostCommandExecutor,
-)
-from omnimarket.nodes.node_remote_lane_start_effect.models.model_engine_login import (
-    ModelEngineLoginPool,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     ModelRemoteLaneStartSettings,

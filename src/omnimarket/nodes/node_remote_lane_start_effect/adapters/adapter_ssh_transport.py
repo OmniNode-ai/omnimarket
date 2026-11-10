@@ -49,7 +49,7 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_remote_lane_start_effect.models.model_engine_login import (
+from omnimarket.events.engine_login import (
     LABEL_PATTERN,
     ModelEngineLoginDraw,
     ModelEngineLoginPool,
