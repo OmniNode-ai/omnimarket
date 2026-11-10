@@ -54,6 +54,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.local_identity_mirror import write_mirror_row
+from omnimarket.models.model_local_identity_fold import apply_local_identity_minted
+from omnimarket.models.model_local_identity_minted import ModelLocalIdentityMinted
 from omnimarket.projection.sqlite_database import (
     SqliteDatabaseAdapter,
     default_evidence_db_path,
@@ -121,7 +124,6 @@ CREATE TABLE IF NOT EXISTS {TENANT_REGISTRY_MIRROR_TABLE} (
 #: What the mint records as the local registry row's provenance. A local install
 #: is its own registrar; naming that is honest, where borrowing the tenant
 #: projection node's name would claim an event stream that never ran.
-_LOCAL_MINT_SOURCE: Final[str] = "omn18699:local-install-mint"
 
 
 @unique
@@ -482,7 +484,7 @@ def ensure_install_identity_mirrored(db: object) -> None:
     )
     if existing:
         return
-    _write_mirror_row(
+    write_mirror_row(
         db,
         tenant_uuid=identity.tenant_uuid,
         tenant_slug=identity.tenant_slug,
@@ -490,26 +492,10 @@ def ensure_install_identity_mirrored(db: object) -> None:
     )
 
 
-def _write_mirror_row(
-    adapter: SqliteDatabaseAdapter,
-    *,
-    tenant_uuid: UUID,
-    tenant_slug: str,
-    now: datetime,
-) -> None:
-    adapter.upsert(
-        TENANT_REGISTRY_MIRROR_TABLE,
-        "tenant_slug",
-        {
-            "tenant_slug": tenant_slug,
-            "tenant_uuid": str(tenant_uuid),
-            "display_name": "local install",
-            "status": "active",
-            "registry_created_at": now.isoformat(),
-            "observed_at": now.isoformat(),
-            "source_event_id": _LOCAL_MINT_SOURCE,
-        },
-    )
+def _fold_identity(db_path: Path, tenant_uuid: UUID, minted_at: datetime) -> None:
+    """Fold the identity's local-identity-minted row; a replay writes nothing (OMN-19986)."""
+    event = ModelLocalIdentityMinted(tenant_id=tenant_uuid, minted_at=minted_at)
+    apply_local_identity_minted(event, _adapter(db_path))
 
 
 def mint_local_tenant_identity(
@@ -546,6 +532,7 @@ def mint_local_tenant_identity(
                     ),
                 )
             )
+        _fold_identity(resolved, existing.tenant_uuid, existing.recorded_at)
         return existing
 
     minted_uuid = tenant_uuid if tenant_uuid is not None else uuid4()
@@ -557,9 +544,7 @@ def mint_local_tenant_identity(
     # identity recorded without one would pass this module's own read and then
     # be refused by the shared registry resolver at the first write -- an
     # install that looks initialised and cannot record anything.
-    _write_mirror_row(
-        adapter, tenant_uuid=minted_uuid, tenant_slug=minted_slug, now=now
-    )
+    write_mirror_row(adapter, tenant_uuid=minted_uuid, tenant_slug=minted_slug, now=now)
     adapter.upsert(
         LOCAL_DEPLOYMENT_IDENTITY_TABLE,
         "key",
@@ -569,6 +554,7 @@ def mint_local_tenant_identity(
             "recorded_at": now.isoformat(),
         },
     )
+    _fold_identity(resolved, minted_uuid, now)
     reset_local_tenant_identity_cache()
 
     return ModelLocalTenantIdentity(

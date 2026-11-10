@@ -24,12 +24,19 @@ from uuid import uuid4
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+from omnimarket.handlers.work_ledger_judge_acceptance import (
+    InMemoryJudgeAcceptanceStore,
+)
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioConclusion,
     EnumScenarioTrigger,
     ModelScenarioResult,
 )
 from omnimarket.models.model_point_query import ModelPointQuery
+from omnimarket.models.work_ledger_append.model_work_ledger_judge_acceptance import (
+    ModelWorkLedgerJudgeAcceptance,
+)
 from omnimarket.models.work_ledger_query import ModelWorkLedgerQueryRequest
 from omnimarket.nodes.node_event_emit_effect.handlers.inmemory_bus_emitter import (
     InMemoryBusEmitter,
@@ -171,9 +178,17 @@ async def test_golden_seam_on_the_in_memory_bus_a_row_written_by_the_emit_node_r
     reader = InMemoryWorkLedgerQueryReader(now=lambda: READ_AT)
     await reader.attach(bus)
     lane, row, _ = run_r2(tmp_path)
+    store = InMemoryJudgeAcceptanceStore()
+    store.record(
+        ModelWorkLedgerJudgeAcceptance(
+            row_id=work_ledger_row_id(row), ledger_seq=1, request_id=uuid4()
+        )
+    )
     emitted = await asyncio.to_thread(
-        HandlerWorkLedgerEmit(emitter=InMemoryBusEmitter(bus)).handle,
-        ModelWorkLedgerEmitRequest(row=row),
+        HandlerWorkLedgerEmit(
+            emitter=InMemoryBusEmitter(bus), acceptance_reader=store
+        ).handle,
+        ModelWorkLedgerEmitRequest(row=row, ledger_seq=1),
     )
     assert emitted.accepted
     assert emitted.published

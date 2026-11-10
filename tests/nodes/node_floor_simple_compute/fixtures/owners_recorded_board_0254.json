@@ -15,6 +15,30 @@
     "chains:broken": [
       "OMN-22864"
     ],
+    "join:J0": [
+      "OMN-23022"
+    ],
+    "join:J1": [
+      "OMN-23082"
+    ],
+    "join:J16": [
+      "OMN-23122"
+    ],
+    "join:J2": [
+      "OMN-23083"
+    ],
+    "join:J3": [
+      "OMN-23084"
+    ],
+    "join:J4": [
+      "OMN-23085"
+    ],
+    "join:J5": [
+      "OMN-23086"
+    ],
+    "join:J8": [
+      "OMN-23087"
+    ],
     "lab:broker_lag": [
       "OMN-22870"
     ],

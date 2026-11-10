@@ -26,12 +26,17 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillSchedule,
     ModelFloorFillScheduleResult,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    LIVE_OVERLAY_SECTION,
+    ModelFloorFillLiveSettings,
+)
 
 NODE_NAME = "node_floor_fill_orchestrator"
 NODE_MODULE = (
     "omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator"
 )
 OVERLAY_SECTION = "floor_fill"
+PROFILES: tuple[str, ...] = ("inmemory", "live")
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
@@ -72,23 +77,28 @@ def _quote(value: str) -> str:
 
 
 def overlay_json(
-    config: ModelFloorFillConfig, hosts: Iterable[tuple[str, bool]]
+    config: ModelFloorFillConfig,
+    hosts: Iterable[tuple[str, bool]],
+    live: ModelFloorFillLiveSettings | None = None,
 ) -> str:
     """``J``: the overlay's ``floor_fill`` section, validated, as one compact JSON line.
 
     The entry re-checks ``floor_fill.host_id`` against the ``lab_hosts`` rows it is handed beside the overlay, so ``J``
     carries the fill host's own row as read at install time (a host that is not an available row never reaches here).
+    With the live settings beside the section, ``J`` also carries the ``floor_fill_live`` section.
     """
     rows = [
         {"name": name, "available": available}
         for name, available in hosts
         if name == config.host_id
     ]
-    return json.dumps(
-        {OVERLAY_SECTION: config.model_dump(mode="json"), "lab_hosts": rows},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    document: dict[str, object] = {
+        OVERLAY_SECTION: config.model_dump(mode="json"),
+        "lab_hosts": rows,
+    }
+    if live is not None:
+        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json")
+    return json.dumps(document, sort_keys=True, separators=(",", ":"))
 
 
 def dispatch_python(schedule: ModelFloorFillSchedule, omni_root: Path) -> Path:
@@ -101,12 +111,17 @@ def exec_start(
     config: ModelFloorFillConfig,
     omni_root: Path,
     hosts: Iterable[tuple[str, bool]],
+    live: ModelFloorFillLiveSettings | None = None,
 ) -> str:
-    """The unit's command line: the runtime module, the overlay as JSON, this host, and ``tick``."""
+    """The unit's command line: the runtime module, the overlay as JSON, this host, and ``tick``.
+
+    With the live settings, the profile word sits between this host and ``tick``.
+    """
     python = _safe(dispatch_python(schedule, omni_root), "dispatch venv interpreter")
+    profile = " --profile live" if live is not None else ""
     return (
-        f"{_quote(python)} -m {NODE_MODULE} --overlay-json {_quote(overlay_json(config, hosts))} "
-        f"--this-host {_quote(config.host_id)} tick"
+        f"{_quote(python)} -m {NODE_MODULE} --overlay-json {_quote(overlay_json(config, hosts, live))} "
+        f"--this-host {_quote(config.host_id)}{profile} tick"
     )
 
 
@@ -117,6 +132,7 @@ def render_systemd(
     omni_root: Path,
     home: Path,
     hosts: Iterable[tuple[str, bool]],
+    live: ModelFloorFillLiveSettings | None = None,
 ) -> tuple[str, str]:
     """The systemd user service and timer text."""
     root = _safe(omni_root, "registry root")
@@ -136,7 +152,7 @@ def render_systemd(
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
-        f"ExecStart={exec_start(schedule, config, omni_root, hosts)}\n"
+        f"ExecStart={exec_start(schedule, config, omni_root, hosts, live)}\n"
         f"SyslogIdentifier={schedule.unit_name}\n"
     )
     timer = (
@@ -160,12 +176,14 @@ class FloorFillScheduler:
         hosts: Iterable[tuple[str, bool]],
         home: Path,
         run: Runner = run_command,
+        live: ModelFloorFillLiveSettings | None = None,
     ) -> None:
         self.schedule = schedule
         self.config = config
         self.hosts = tuple(hosts)
         self.home = home
         self.run = run
+        self.live = live
         self.service_name = f"{schedule.unit_name}.service"
         self.timer_name = f"{schedule.unit_name}.timer"
         self.unit_dir = home / ".config/systemd/user"
@@ -211,6 +229,7 @@ class FloorFillScheduler:
                 omni_root=omni_root,
                 home=self.home,
                 hosts=self.hosts,
+                live=self.live,
             )
             refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:
@@ -318,6 +337,7 @@ class FloorFillScheduler:
 __all__: list[str] = [
     "NODE_MODULE",
     "NODE_NAME",
+    "PROFILES",
     "FloorFillScheduler",
     "exec_start",
     "overlay_json",

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# File profile of node_pr_landing_watcher_facts_effect (OMN-23507), the shape of the deployed copy
+# in the overlays repository (node_pr_landing_watcher_facts_effect/overlay.yaml) on the host that
+# holds the PR watcher's state. The snapshot step's overlay for a switched-over repository names
+# this facts_path as its own facts_path.
+backend: file
+repositories:
+  - omnimemory
+owner: OmniNode-ai
+# the watcher's state carries no red classification; every red head is given this class
+unclassified_red_class: product
+written_topic: onex.evt.omnimarket.pr-landing-watcher-facts-written.v1
+failed_topic: onex.evt.omnimarket.pr-landing-watcher-facts-failed.v1
+floor_piece: 9
+watcher_max_age_seconds: 900
+watcher_state_path: $OMNIBASE_PATH/.claude_scratch/pr-watcher/state.json
+facts_path: $OMNIBASE_PATH/.onex_state/landing-watcher-facts/last-facts.json
+emission_journal: $OMNIBASE_PATH/.onex_state/floor-simple/emissions.jsonl
