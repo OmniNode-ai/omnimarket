@@ -1,0 +1,14 @@
+# Test fixture of the overlay of node_delegation_events_defect_scan_compute (OMN-23331). The deployed overlay is
+# overlays/node_delegation_events_defect_scan_compute/overlay.yaml in the overlays repository; the schema is omnimarket's
+# ModelDefectScanOverlay and no key has a default.
+window_seconds: 86400
+terminal_grace_seconds: 3600
+real_data_source: real
+publish_max_age_seconds: 172800
+row_lane: delegation-defect-scan
+row_src: delegation-defect-scan
+bounds:
+  min_rows_scanned: 50
+  max_missing_terminal: 0
+  max_cost_unread_as_zero: 0
+  max_unattributed: 0
