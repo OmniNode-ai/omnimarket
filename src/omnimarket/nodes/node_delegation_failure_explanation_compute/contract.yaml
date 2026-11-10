@@ -48,6 +48,9 @@ outputs:
 terminal_event: onex.evt.omnimarket.delegation-failure-explained.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegation-failure-explanation-requested.v1
+  # The command dispatcher awaits this result; no node contract subscribes to it (see AC3).
+  terminal_events:
+    success: onex.evt.omnimarket.delegation-failure-explained.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.delegation-failure-explanation-requested.v1

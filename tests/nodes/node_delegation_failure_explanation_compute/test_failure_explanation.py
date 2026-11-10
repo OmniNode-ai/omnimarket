@@ -119,20 +119,24 @@ def test_ac2_failing_control_an_output_cannot_be_built_without_or_with_another_m
     None
 ):
     with pytest.raises(ValidationError):
-        ModelFailureAccountGroup(
-            commentary_marker="probe_result",  # type: ignore[arg-type]
-            group_key="timeout",
-            cause_recorded=True,
-            count=1,
-            correlation_ids=("r",),
-            account="x",
+        ModelFailureAccountGroup.model_validate(
+            {
+                "commentary_marker": "probe_result",
+                "group_key": "timeout",
+                "cause_recorded": True,
+                "count": 1,
+                "correlation_ids": ("r",),
+                "account": "x",
+            }
         )
     with pytest.raises(ValidationError):
-        ModelDelegationFailureExplanation(
-            is_evidence=True,  # type: ignore[arg-type]
-            correlation_id="c",
-            total_failures=0,
-            summary="s",
+        ModelDelegationFailureExplanation.model_validate(
+            {
+                "is_evidence": True,
+                "correlation_id": "c",
+                "total_failures": 0,
+                "summary": "s",
+            }
         )
 
 
