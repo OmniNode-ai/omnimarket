@@ -18,6 +18,13 @@ from .model_lab_fill_effect import (
     ModelLabFillStatusWriteRequest,
     ModelLabFillStatusWriteResult,
 )
+from .model_lab_fill_sources import (
+    ModelLabFillSourceCandidate,
+    ModelLabFillSourceDrop,
+    ModelLabFillSourceRead,
+    ModelLabFillSourcesRequest,
+    ModelLabFillSourcesResult,
+)
 from .model_lab_fill_tick import (
     ModelLabFillTickAlarm,
     ModelLabFillTickCloud,
@@ -43,6 +50,11 @@ __all__ = [
     "ModelLabFillReceiptLane",
     "ModelLabFillReceiptsRequest",
     "ModelLabFillReceiptsResult",
+    "ModelLabFillSourceCandidate",
+    "ModelLabFillSourceDrop",
+    "ModelLabFillSourceRead",
+    "ModelLabFillSourcesRequest",
+    "ModelLabFillSourcesResult",
     "ModelLabFillStatusWriteRequest",
     "ModelLabFillStatusWriteResult",
     "ModelLabFillTickAlarm",

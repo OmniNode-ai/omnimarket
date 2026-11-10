@@ -6,9 +6,12 @@
 # dispatch plan, ownership verdicts, lane briefs, placement, fallbacks, STATUS
 # cells) are node_lab_fill_plan_compute's; this node reads and acts, one operation
 # per step of the cycle: probe the pool, read the owners, launch a lane, read the
-# receipts, pick a fallback host, write the STATUS row. Enumerating candidates is
-# not an operation here yet: it needs the ledger claim store and triage readers
-# promoted from omnibase_internal first.
+# receipts, pick a fallback host, write the STATUS row. Enumerating the list sources
+# is the enumerate_lab_fill_sources operation (OMN-23250): the list sources
+# plan-stalled, ruling-pending and lane-resend and the source-tickets stage, each under
+# its own budget floor. The sprint-ticket and approved-work reads of the old enumerate
+# are not operations here yet: they need the ledger claim store and triage readers
+# promoted from the frozen repository first.
 #
 # WHO HOSTS THIS NODE. A serve process on the host that holds the rolling ledger
 # copy, the PR watcher's state, the remote-lane runner and its receipts (the host the
@@ -72,6 +75,22 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_launch"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillLaunchRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillLaunchResult"
+    # OMN-23277: the send step moved out of the internal repository's lab-fill.js (laneTask, dispatchCommand, the send job):
+    # render the brief, pass the send gate (a merged ticket is skipped to the closer; an h200-bound brief goes only to a
+    # host that reaches h200), the runner's brief check, and launch.
+    - operation: "send_lab_fill_lane"
+      handler:
+        name: "HandlerLabFillSend"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_send"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send.ModelLabFillSendRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillLaunchResult"
+    # The send gate on its own: the same decision the launch handler takes, answered from supplied facts.
+    - operation: "gate_lab_fill_send"
+      handler:
+        name: "HandlerLabFillSendGate"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_send_gate"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send_gate.ModelLabFillSendGateRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send_gate.ModelLabFillSendGateResult"
     - operation: "read_lab_fill_receipts"
       handler:
         name: "HandlerLabFillReceipts"
@@ -90,6 +109,14 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_status"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteResult"
+    # OMN-23250: the enumerate read of the list sources, one budget floor per stage, a cut
+    # stage marks only itself stale, plans-today served from a young copy.
+    - operation: "enumerate_lab_fill_sources"
+      handler:
+        name: "HandlerLabFillSources"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_sources"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_sources.ModelLabFillSourcesRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_sources.ModelLabFillSourcesResult"
     # OMN-17427: the whole fill as one operation with no model in the loop. Headroom
     # slots and the approved-work list in; ownership read once, each lane launched
     # through launch_lab_fill_lane's handler (which re-reads the Linear assignee and
@@ -104,6 +131,10 @@ handler_routing:
 # --placement auto for a row whose lane_kind is one of the overlay's cloud.lane_kinds,
 # when this node's route action does not refuse it, and reads the cloud credit left
 # through its credit action. The lane kinds come from the overlay, never this node.
+# Hosts whose facts a brief may cite and that only some lab hosts reach (read by the send gate).
+send_gate:
+  fact_hosts: [h200]
+
 dependencies:
   - name: omnimarket.nodes.node_cloud_session_placement_effect
     dependency_type: internal
@@ -142,3 +173,4 @@ metadata:
   related_tickets:
     - "OMN-20668"
     - "OMN-17427"
+    - "OMN-23250"

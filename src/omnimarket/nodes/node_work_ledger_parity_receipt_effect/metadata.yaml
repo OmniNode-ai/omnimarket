@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_parity_receipt_effect
+version: "1.0.0"
+description: The daily work-ledger parity receipt - runs the parity check for the previous UTC day and appends its receipt row, again while the day's newest receipt shows missing or unexplained above 0
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_parity_receipt_effect: omnimarket.nodes.node_work_ledger_parity_receipt_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0.2
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, ledger, parity, scheduled]
+node_role: effect
+pack: "routing"
+display_name: "Work Ledger Parity Receipt Effect"
