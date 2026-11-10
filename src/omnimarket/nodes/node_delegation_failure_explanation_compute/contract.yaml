@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_failure_explanation_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  A readable account of delegation failures the system already recorded, grouped by the recorded
+  cause. COMMENTARY, NEVER EVIDENCE: every output carries the commentary marker below, no gate,
+  closer or receipt path consumes it, and a failure with no recorded cause is grouped and worded as
+  unknown rather than given an invented cause. The group key is read from recorded metadata only;
+  no text this node (or a narrator) generates feeds the grouping. Pure compute: it reads no surface
+  of its own, only the records the caller passes from the held surfaces named below.
+input_model:
+  name: ModelDelegationFailureExplanationRequest
+  module: omnimarket.nodes.node_delegation_failure_explanation_compute.models.model_delegation_failure_explanation
+output_model:
+  name: ModelDelegationFailureExplanation
+  module: omnimarket.nodes.node_delegation_failure_explanation_compute.models.model_delegation_failure_explanation
+handler:
+  module: omnimarket.nodes.node_delegation_failure_explanation_compute.handlers.handler_delegation_failure_explanation
+  class: HandlerDelegationFailureExplanation
+  input_model: omnimarket.nodes.node_delegation_failure_explanation_compute.models.model_delegation_failure_explanation.ModelDelegationFailureExplanationRequest
+  output_model: omnimarket.nodes.node_delegation_failure_explanation_compute.models.model_delegation_failure_explanation.ModelDelegationFailureExplanation
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_delegation_failure_explanation_compute.handlers.handler_delegation_failure_explanation:HandlerDelegationFailureExplanation
+  handlers:
+    - operation: explain_delegation_failures
+      handler:
+        name: HandlerDelegationFailureExplanation
+        module: omnimarket.nodes.node_delegation_failure_explanation_compute.handlers.handler_delegation_failure_explanation
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  correlation_id: {type: str, required: true, description: Correlation identifier for this explanation request.}
+  failures: {type: list, required: true, description: Recorded failures, each a row read from a held surface named in explanation_rules.held_surfaces.}
+outputs:
+  correlation_id: {type: str}
+  commentary_marker: {type: str, description: Constant marker; every output carries it.}
+  groups: {type: list, description: One account per recorded cause, plus one unknown group.}
+  total_failures: {type: int}
+  summary: {type: str}
+terminal_event: onex.evt.omnimarket.delegation-failure-explained.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-failure-explanation-requested.v1
+  # The command dispatcher awaits this result; no node contract subscribes to it (see AC3).
+  terminal_events:
+    success: onex.evt.omnimarket.delegation-failure-explained.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-failure-explanation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-failure-explained.v1
+# Commentary is read by people. It is listed here as consumed by no node: a test fails if any other
+# contract subscribes to the topic below or any gate, closer or receipt module imports the output model.
+externally_consumed_topics: []
+metadata:
+  transport_type: inmemory
+  description: Delegation failure explanation compute (commentary, not evidence)
+  author: OmniNode Team
+  created: "2026-11-09"
+  related_tickets: [OMN-18538]
+# The rules the handler reads. Change a value here and the account changes with no code change.
+explanation_rules:
+  commentary_marker: commentary_not_evidence_v1
+  # The only surfaces this node reads. Each input field names the column or model field it comes from.
+  held_surfaces:
+    correlation_id: delegation_client_verdict.correlation_id
+    terminal_status: delegation_client_verdict.terminal_status
+    terminal_failure_cause: delegation_client_verdict.terminal_failure_cause
+    step_kind: run_trace.step_kind
+    failure_cause: run_trace.failure_cause
+    backend_id: run_trace.backend_id
+    reason: run_trace.reason
+  # The group key is the first non-blank of these recorded fields; none non-blank is the unknown group.
+  group_key_fields: [terminal_failure_cause, failure_cause]
+  unknown_group_key: unknown
+  max_listed_correlation_ids: 5
+  templates:
+    known: >-
+      {count} failure(s) recorded with cause {cause}; terminal status {statuses}; backend(s) {backends}; failing step(s) {steps}. Listed ids: {ids}.
+    unknown: >-
+      {count} failure(s) recorded with no cause: neither terminal_failure_cause nor failure_cause carries one, so no cause is given. Backend(s) {backends}; failing step(s) {steps}. Listed ids: {ids}.
+    none_listed: none
+    summary: >-
+      {total} recorded failure(s) in {groups} group(s), {unknown} with no recorded cause. Commentary, not evidence.
