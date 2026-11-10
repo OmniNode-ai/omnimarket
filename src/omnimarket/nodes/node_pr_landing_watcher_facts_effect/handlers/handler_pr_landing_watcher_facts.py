@@ -18,6 +18,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from pathlib import Path
+
+import yaml
 
 from omnimarket.models.landing_decision import (
     SHA_PATTERN,
@@ -47,7 +50,6 @@ from omnimarket.nodes.node_pr_landing_watcher_facts_effect.models.model_watcher_
     ModelWatcherFactsWritten,
 )
 from omnimarket.nodes.node_pr_landing_watcher_facts_effect.models.model_watcher_facts_overlay import (
-    EnumWatcherFactsBackend,
     ModelWatcherFactsOverlay,
 )
 from omnimarket.nodes.node_pr_landing_watcher_facts_effect.protocols.protocol_watcher_facts import (
@@ -144,16 +146,15 @@ def map_watcher_state(
     )
 
 
-def _inmemory_overlay() -> ModelWatcherFactsOverlay:
-    return ModelWatcherFactsOverlay(
-        backend=EnumWatcherFactsBackend.INMEMORY,
-        repositories=("omnimemory",),
-        owner="OmniNode-ai",
-        unclassified_red_class="product",
-        written_topic="onex.evt.omnimarket.pr-landing-watcher-facts-written.v1",
-        failed_topic="onex.evt.omnimarket.pr-landing-watcher-facts-failed.v1",
-        floor_piece=9,
-        watcher_max_age_seconds=900,
+_OVERLAY_PATH = (
+    Path(__file__).resolve().parents[1] / "watcher_facts.overlay.example.yaml"
+)
+
+
+def default_overlay() -> ModelWatcherFactsOverlay:
+    """The node's shipped example overlay: the in-memory default when none is injected."""
+    return ModelWatcherFactsOverlay.model_validate(
+        yaml.safe_load(_OVERLAY_PATH.read_text(encoding="utf-8"))
     )
 
 
@@ -168,7 +169,7 @@ class HandlerPrLandingWatcherFacts:
         publisher: ProtocolWatcherFactsPublisher | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
-        self._overlay = overlay or _inmemory_overlay()
+        self._overlay = default_overlay() if overlay is None else overlay
         self._source = state_source or InMemoryWatcherStateSource({})
         self._sink = sink or InMemoryLandingFactsSink()
         self._publisher = publisher or InMemoryWatcherFactsPublisher()
@@ -234,4 +235,8 @@ class HandlerPrLandingWatcherFacts:
         )
 
 
-__all__: list[str] = ["HandlerPrLandingWatcherFacts", "map_watcher_state"]
+__all__: list[str] = [
+    "HandlerPrLandingWatcherFacts",
+    "default_overlay",
+    "map_watcher_state",
+]
