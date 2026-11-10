@@ -44,14 +44,14 @@ dod_evidence:
     cwd: .
 - id: dod-omn23346-ac2-contract
   description: >-
-    The exclusion list in the tree this contract ships with no longer names the merge sweep compute entry point, so the check fails at the
+    The exclusion list in the tree this contract ships with no longer names the merge sweep compute entry point, so the guard test fails at the
     merge base, where the entry is still present, and passes at the head. The contract itself is loaded by the ticket-contract schema test below.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: '! grep -q "node_merge_sweep_compute/__main__.py" scripts/ci/check_unimported_handlers.py'
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_dynamic_import_gate.py -q -n 0 --no-cov -p no:randomly -k transport_import_static_excludes_each_still_violate
     cwd: .
 - id: dod-omn23346-contract-loads
   description: The ticket-contract schema test loads every contract, this one included. A regression check, so it binds no criterion.

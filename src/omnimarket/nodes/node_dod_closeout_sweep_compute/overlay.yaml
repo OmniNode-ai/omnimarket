@@ -20,6 +20,11 @@ rank_rules:
 # Of the selected slots, this many are kept for the oldest tickets with no contract, so the
 # binder can still author a contract for them and they are not starved by the rule above.
 no_contract_reserve: 2
+# A ticket with no contract cannot reach a verdict from dod_verify (VERIFY_COULD_NOT_RUN), so it is
+# not taken into a slot the ranking leaves free: the 2026-11-08 sweeps put 9 of 12 slots on such
+# tickets, flipped none and picked the same ones again each run. With this true they take only the
+# reserved slots above; a ticket that records a post-merge condition is still re-checked first.
+no_contract_only_by_reserve: true
 # The bundle is returned inline by an agent, so it stays small whatever the scope.
 bundle_max_bytes: 16384
 held_cap: 200
