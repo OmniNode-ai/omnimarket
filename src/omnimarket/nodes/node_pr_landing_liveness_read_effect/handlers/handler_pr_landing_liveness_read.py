@@ -31,6 +31,7 @@ from omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness
     ModelLivenessReadResult,
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.overlay import (
+    EnumLivenessReaderBackend,
     ModelLivenessReadOverlay,
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.protocols.protocol_liveness_read import (
@@ -104,7 +105,7 @@ def build_reader(
     overlay: ModelLivenessReadOverlay, environ: Mapping[str, str]
 ) -> ProtocolLivenessReader:
     """The reader the overlay selects."""
-    if overlay.reader.backend == "command":
+    if overlay.reader.backend is EnumLivenessReaderBackend.COMMAND:
         return CommandLivenessReader(overlay, environ)
     return InMemoryLivenessReader({})
 

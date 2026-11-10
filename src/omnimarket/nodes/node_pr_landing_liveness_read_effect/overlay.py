@@ -10,7 +10,7 @@ refusal names the key.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,12 +19,17 @@ from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 NODE_NAME = "node_pr_landing_liveness_read_effect"
 
 
+class EnumLivenessReaderBackend(StrEnum):
+    INMEMORY = "inmemory"
+    COMMAND = "command"
+
+
 class ModelLivenessReader(BaseModel):
     """Which reader runs: the register completeness command, or a read recorded in memory."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: Literal["inmemory", "command"]
+    backend: EnumLivenessReaderBackend
     argv: tuple[str, ...] = Field(min_length=1)
 
 
@@ -71,6 +76,7 @@ def load_overlay(
 
 __all__ = [
     "NODE_NAME",
+    "EnumLivenessReaderBackend",
     "ModelLivenessCheckout",
     "ModelLivenessReadOverlay",
     "ModelLivenessReader",

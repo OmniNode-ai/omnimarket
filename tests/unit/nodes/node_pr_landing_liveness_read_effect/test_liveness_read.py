@@ -147,6 +147,17 @@ def test_the_example_overlay_loads_with_every_key() -> None:
     assert overlay.topics.completed != overlay.topics.failed
 
 
+def test_the_example_overlay_publishes_on_the_topics_the_contract_declares() -> None:
+    overlay = load_overlay(explicit=_document())
+    contract = yaml.safe_load((EXAMPLE.parent / "contract.yaml").read_text())
+    completed = "onex.evt.omnimarket.pr-landing-liveness-read-completed.v1"
+    failed = "onex.evt.omnimarket.pr-landing-liveness-read-failed.v1"
+    assert overlay.topics.completed == completed
+    assert overlay.topics.failed == failed
+    assert contract["event_bus"]["publish_topics"] == [completed, failed]
+    assert contract["terminal_event"] == completed
+
+
 @pytest.mark.parametrize(("section", "key"), LEAF_KEYS)
 def test_an_overlay_missing_one_key_is_refused_with_the_key_named(
     section: str, key: str
