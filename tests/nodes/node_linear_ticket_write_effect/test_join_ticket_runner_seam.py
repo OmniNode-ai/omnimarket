@@ -379,11 +379,14 @@ def _renamed_output(old: str, new: str) -> AbstractContextManager[None]:
         data = result.model_dump(mode="json")
         if old not in data:
             return result
-        fields = {k: (Any, v) for k, v in _rename(data, old, new).items()}
-        return create_model(
+        fields: dict[str, Any] = {
+            k: (Any, v) for k, v in _rename(data, old, new).items()
+        }
+        make: Any = create_model
+        return make(
             type(result).__name__,
             __config__=ConfigDict(extra="forbid"),
-            **fields,  # type: ignore[call-overload]
+            **fields,
         )()
 
     return mock.patch.object(HandlerLinearTicketWriteEffect, "handle", handle)
