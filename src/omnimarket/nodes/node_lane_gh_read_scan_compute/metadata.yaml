@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_gh_read_scan_compute
+version: 1.0.0
+description: Name every line of a lane-facing text (a brief, a skill, a script, a prompt
+  template) that tells a lane to run a GitHub read or a gh pr create through gh, with
+  the onex scm verb or local reader that answers it. Called by the dispatch brief-shape
+  refusal before placement and by each repository's whole-tree check of its skills.
+pack: distributed_validation
+node_role: compute
+display_name: Lane Gh Read Scan Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_gh_read_scan_compute: omnimarket.nodes.node_lane_gh_read_scan_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- remote-lane
+- lane-github-read

@@ -27,7 +27,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.handler_lane_intake import (
     ModelLaneIntakePolicy,
-    read_lane_intake_policy,
 )
 from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
@@ -216,11 +215,11 @@ class HandlerTicketProject:
         policy = self._injectable_policy
         if policy is None:
             # Local import: handler_create_ticket imports this module.
-            from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
-                locate_ticket_guard,
+            from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+                core_lane_intake_policy,
             )
 
-            policy = read_lane_intake_policy(locate_ticket_guard())
+            policy = core_lane_intake_policy()
         if not policy.label:
             raise RuntimeError("repair_project needs the lane-intake label")
         return policy.label

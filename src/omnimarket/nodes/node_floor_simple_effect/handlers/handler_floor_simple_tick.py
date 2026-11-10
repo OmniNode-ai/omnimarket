@@ -30,6 +30,7 @@ from omnimarket.handlers.emission_sink import (
 )
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    find_node_overlay,
     load_structured_overlay,
 )
 from omnimarket.models.floor_17a import (
@@ -86,16 +87,22 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
 from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_sources import (
     CommandMvpRunSource,
     ProtocolMvpRunSource,
+    RecordMvpRunSource,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.owner_source import (
+    check_owner_source,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     FloorSourceError,
     WatcherReading,
+    disk_expected_hosts,
     load_record,
     merge_lanes,
     overlay_store_events,
     parse_time,
     read_admissions,
     read_broker_lag,
+    read_delegation_tickets,
     read_deploy_lag,
     read_disk,
     read_hosts,
@@ -159,12 +166,26 @@ OWN_CONTRACT = NODE_DIR / "contract.yaml"
 T = TypeVar("T")
 
 
-class ModelServeOverlay(BaseModel):
-    """The one fact this node reads from the publish node's overlay: where the page answers."""
+class ModelServeTarget(BaseModel):
+    """Another serving host of the publish node's overlay: where it answers (OMN-23081)."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     serve_url: str
+
+
+class ModelServeOverlay(BaseModel):
+    """The facts this node reads from the publish node's overlay: where the page answers, on every serving host."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    serve_url: str
+    extra_targets: tuple[ModelServeTarget, ...] = ()
+
+    @property
+    def serve_urls(self) -> tuple[str, ...]:
+        """Every serving host's address, the overlay's first host first: the served page is read from the first that answers."""
+        return (self.serve_url, *(t.serve_url for t in self.extra_targets))
 
 
 class ModelSourcePaths(BaseModel):
@@ -219,6 +240,15 @@ class ModelStatePaths(BaseModel):
     canary_clone: str
 
 
+class ModelAbandonedPieceChains(BaseModel):
+    """The chains of one other piece whose starts this node closes when no process can still close them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    piece: int = Field(ge=1, le=18)
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelMvpLaunchRuntime(BaseModel):
     """The MVP launch block (OMN-23205): its overlay and the command route its run histories are read through."""
 
@@ -227,6 +257,14 @@ class ModelMvpLaunchRuntime(BaseModel):
     overlay: ModelOverlayRef
     command_env: str = Field(min_length=1)
     timeout_seconds: int = Field(gt=0)
+    # The scheduled read the command route answers from (a step of the floor publish) and the launch candidate manifest file.
+    onex_relpath: str = Field(min_length=1)
+    reads_relpath: str = Field(min_length=1)
+    candidate_relpath: str = Field(min_length=1)
+    read_timeout_seconds: int = Field(gt=0)
+    stage_deadline_seconds: int = Field(gt=0)
+    refresh_seconds: int = Field(gt=0)
+    reads_max_age_seconds: int = Field(gt=0)
 
 
 class ModelFloorSimpleRuntime(BaseModel):
@@ -247,6 +285,8 @@ class ModelFloorSimpleRuntime(BaseModel):
     # A start older than this with no terminal is closed by the next cycle with a typed failure (OMN-22864).
     abandon_after_seconds: int = Field(gt=0)
     abandon_chains: tuple[str, ...] = ()
+    # Starts of nodes of other pieces that a publish step runs and a kill can strand (OMN-23230), closed the same way.
+    abandon_other_pieces: tuple[ModelAbandonedPieceChains, ...] = ()
     # The chains of this node that a join reads (the cycle and its steps); the chains it emits per lab source row are not
     # among them, because no downstream piece can answer a row that reads a bad value.
     pipeline_chains: tuple[str, ...] = Field(min_length=1)
@@ -534,6 +574,10 @@ class HandlerFloorSimpleTick:
             env,
             file_env=rt.lab_overlay.file_env,
         )
+        if lab_ov.owner_source is not None:
+            floor_path = self._floor_overlay_path(rt, env)
+            if floor_path is not None:
+                check_owner_source(floor_path, lab_ov.owner_source)
         goal_scope = self._load_goal_scope(rt, env)
         try:
             doc, canary = self._cycle(
@@ -590,6 +634,18 @@ class HandlerFloorSimpleTick:
             canary=canary,
         )
 
+    @staticmethod
+    def _floor_overlay_path(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> Path | None:
+        """The file the floor overlay was loaded from, found the way ``load_structured_overlay`` finds it."""
+        pinned = env.get(rt.floor_overlay.file_env, "").strip()
+        return (
+            Path(pinned)
+            if pinned
+            else find_node_overlay(rt.floor_overlay.overlay_id, env)
+        )
+
     def _close_abandoned(
         self,
         rt: ModelFloorSimpleRuntime,
@@ -599,13 +655,26 @@ class HandlerFloorSimpleTick:
         """Close each start of this node's pipeline chains that no process can still close; the count of closures."""
         now = self._clock()
         journal = sink.read(now - timedelta(hours=rt.state.emission_window_hours))
-        closing = abandoned_starts(
-            journal,
-            now=now,
-            abandon_after_s=rt.abandon_after_seconds,
-            piece=floor_ov.rebuild.lab_state_piece,
-            nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
-        )
+        closing = [
+            *abandoned_starts(
+                journal,
+                now=now,
+                abandon_after_s=rt.abandon_after_seconds,
+                piece=floor_ov.rebuild.lab_state_piece,
+                nodes=frozenset((*rt.pipeline_chains, *rt.abandon_chains)),
+            ),
+            *(
+                event
+                for other in rt.abandon_other_pieces
+                for event in abandoned_starts(
+                    journal,
+                    now=now,
+                    abandon_after_s=rt.abandon_after_seconds,
+                    piece=other.piece,
+                    nodes=frozenset(other.nodes),
+                )
+            ),
+        ]
         for event in closing:
             sink.emit(event)
         return len(closing)
@@ -692,8 +761,9 @@ class HandlerFloorSimpleTick:
         piece = floor_ov.rebuild.lab_state_piece
         ledger = self._read_ledger(rt, floor_ov, env, now)
         go = ledger.facts.go_given_through if ledger.facts is not None else None
+        go_pieces = ledger.facts.go_pieces if ledger.facts is not None else ()
         ledger_events = ledger.facts.events if ledger.facts is not None else ()
-        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events)
+        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events, go_pieces)
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -701,7 +771,9 @@ class HandlerFloorSimpleTick:
             or (row.error_age_s > floor_ov.error_drill_after_s)
         ):
             self._drill(step)
-            pre = self._receipts(sink, floor_ov, self._clock(), rt, go, ledger_events)
+            pre = self._receipts(
+                sink, floor_ov, self._clock(), rt, go, ledger_events, go_pieces
+            )
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
@@ -745,7 +817,12 @@ class HandlerFloorSimpleTick:
                 read_runner_groups(
                     home / rt.sources.runner_fleet_relpath, lab_ov, record
                 ),
-                read_disk(lane_dir / rt.sources.pool_receipt, lab_ov),
+                read_disk(
+                    lane_dir / rt.sources.pool_receipt,
+                    lab_ov,
+                    now,
+                    disk_expected_hosts(record, lab_ov),
+                ),
                 read_queue_age(watcher, lab_ov),
                 read_deploy_lag(record, now, lab_ov),
                 read_broker_lag(
@@ -836,7 +913,9 @@ class HandlerFloorSimpleTick:
         )
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
-            lambda: self._receipts(sink, floor_ov, now, rt, go, ledger_events),
+            lambda: self._receipts(
+                sink, floor_ov, now, rt, go, ledger_events, go_pieces
+            ),
             lambda out: {
                 "chains": len(out.chains),
                 "findings": len(out.findings),
@@ -858,6 +937,12 @@ class HandlerFloorSimpleTick:
             excluded_classes=floor_ov.numbers.excluded_pr_classes,
             conflict_states=lab_ov.conflict_merge_states,
             now=now,
+        )
+        delegation_spec = floor_ov.causes.delegation_idle
+        delegation_tickets = (
+            read_delegation_tickets(work_state, delegation_spec)
+            if delegation_spec is not None
+            else None
         )
         floor_input = ModelFloorSimpleInput(
             now=now,
@@ -895,6 +980,7 @@ class HandlerFloorSimpleTick:
             shadows=ledger.facts.shadows if ledger.facts is not None else (),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
+            go_pieces=go_pieces,
             sources_read={
                 "floor_record": record is not None,
                 "work_state_projection": work_state is not None,
@@ -906,8 +992,14 @@ class HandlerFloorSimpleTick:
                     if floor_ov.worklist is not None
                     else {}
                 ),
+                **(
+                    {"delegation_tickets": delegation_tickets is not None}
+                    if delegation_spec is not None
+                    else {}
+                ),
             },
             worklist=worklist,
+            delegation_tickets=delegation_tickets,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
         )
@@ -920,7 +1012,7 @@ class HandlerFloorSimpleTick:
             },
         )
         doc = self._with_health(rt, env, doc, floor_ov, step)
-        doc = self._with_mvp_launch(rt, env, doc, floor_ov, step)
+        doc = self._with_mvp_launch(rt, env, home, doc, floor_ov, step)
         payload = {
             "lab_reads": [r.model_dump(mode="json") for r in reads],
             "floor_input": floor_input.model_dump(mode="json"),
@@ -1002,6 +1094,7 @@ class HandlerFloorSimpleTick:
         self,
         rt: ModelFloorSimpleRuntime,
         env: Mapping[str, str],
+        home: Path,
         doc: ModelFloorSimple,
         floor_ov: ModelFloorSimpleOverlay,
         step: Callable[..., Any],
@@ -1029,8 +1122,16 @@ class HandlerFloorSimpleTick:
                     )
                 }
             )
-        source = self._mvp_source or CommandMvpRunSource(
-            env.get(rt.mvp_launch.command_env, ""), rt.mvp_launch.timeout_seconds
+        command = env.get(rt.mvp_launch.command_env, "").strip()
+        source = self._mvp_source or (
+            CommandMvpRunSource(command, rt.mvp_launch.timeout_seconds)
+            if command
+            else RecordMvpRunSource(
+                home / rt.mvp_launch.reads_relpath,
+                home / rt.mvp_launch.candidate_relpath,
+                rt.mvp_launch.reads_max_age_seconds,
+                doc.generated_at,
+            )
         )
 
         def decide() -> ModelMvpLaunchBlock:
@@ -1107,6 +1208,7 @@ class HandlerFloorSimpleTick:
         rt: ModelFloorSimpleRuntime,
         go: int | None,
         ledger_events: tuple[ModelNodeEmission, ...],
+        go_pieces: tuple[int, ...] = (),
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
         # A chain is read whole: the closing failure of an abandoned start is stamped the bound after the start, so
@@ -1127,6 +1229,7 @@ class HandlerFloorSimpleTick:
                     p.piece
                     for p in ov.pieces
                     if (go is not None and p.piece <= go)
+                    or p.piece in go_pieces
                     or p.piece in ov.rebuild.step0_pieces
                 }
                 | {e.piece for e in emissions}
@@ -1158,15 +1261,19 @@ class HandlerFloorSimpleTick:
             return self._served
 
         def read() -> set[str] | None:
-            url = self._served_url(rt, env)
-            if url is None:
-                return None
-            return fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+            for url in self._served_urls(rt, env):
+                ids = fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
+                if ids is not None:
+                    return ids
+            return None
 
         return read
 
     @staticmethod
-    def _served_url(rt: ModelFloorSimpleRuntime, env: Mapping[str, str]) -> str | None:
+    def _served_urls(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> tuple[str, ...]:
+        """The served record's address on each serving host, in the overlay's order; empty when the overlay is unread."""
         try:
             serve = load_structured_overlay(
                 rt.serve_overlay.overlay_id,
@@ -1175,8 +1282,10 @@ class HandlerFloorSimpleTick:
                 file_env=rt.serve_overlay.file_env,
             )
         except NodeOverlayError:
-            return None
-        return serve.serve_url.rstrip("/") + "/" + rt.served_record_name
+            return ()
+        return tuple(
+            url.rstrip("/") + "/" + rt.served_record_name for url in serve.serve_urls
+        )
 
     @staticmethod
     def _planted_offline(
@@ -1246,12 +1355,16 @@ class HandlerFloorSimpleTick:
             return "skipped_drill"
         read = self._served_times
         if read is None:
-            url = self._served_url(rt, env)
-            if url is None:
+            urls = self._served_urls(rt, env)
+            if not urls:
                 return "unpublished_no_serve_address"
 
             def read_served() -> tuple[datetime | None, datetime | None] | None:
-                return fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                for url in urls:
+                    times = fetch_served_times(url, rt.served_fetch_timeout_seconds)
+                    if times is not None:
+                        return times
+                return None
 
             read = read_served
         times = read()

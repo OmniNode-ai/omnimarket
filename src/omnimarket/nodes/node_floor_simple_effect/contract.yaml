@@ -87,12 +87,23 @@ runtime:
   # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
   # The customer health line (OMN-22923, 17b): the pieces of the customer path, the line's title and its own bound.
   health_overlay: {overlay_id: node_product_floor_verdict_compute, file_env: ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY}
-  # The MVP launch block (OMN-23205): its own overlay (17 readings, their cron, grace and Mac legs) and the command route the
-  # producers' scheduled runs and the launch candidate manifest are read through (the command is named by the variable).
+  # The MVP launch block (OMN-23205): its own overlay (17 readings, their cron, grace and Mac legs). The producers' scheduled runs are read
+  # from a record that the publish's mvp_launch_reads step keeps (--mvp-reads): each producer workflow's scheduled runs through the
+  # source-control node (onex scm run-list), one at a time, the least recently read first, stopping at the stage deadline. A read older
+  # than reads_max_age_seconds is drawn stale. The launch candidate manifest is the release train's receipt (plan task M13), a JSON file
+  # with a `versions` mapping from package name to version; until it exists the block says so. A command named by command_env, when
+  # set, replaces the record as the source (it reads one JSON request on stdin and answers one JSON document).
   mvp_launch:
     overlay: {overlay_id: node_product_floor_verdict_compute_mvp_launch, file_env: ONEX_MVP_LAUNCH_OVERLAY}
     command_env: ONEX_MVP_LAUNCH_READ_COMMAND
     timeout_seconds: 60
+    onex_relpath: omnibase_infra/scripts/onex
+    reads_relpath: .onex_state/mvp-launch/mvp-launch-reads.json
+    candidate_relpath: .onex_state/mvp-launch/candidate-manifest.json
+    read_timeout_seconds: 25
+    stage_deadline_seconds: 80
+    refresh_seconds: 240
+    reads_max_age_seconds: 1800
   goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
   # Read only to find where the floor answers, for the alarm's delivery read-back.
   serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
@@ -110,6 +121,12 @@ runtime:
   # limit; a kill it could not answer leaves its start for this cycle to close.
   abandon_chains:
     - node_floor_compare_effect:run_floor_compare_cycle
+  # The J2 join's chains (OMN-23230): the join-j2 publish step is killed at its 90 s limit if it hangs, and a kill cannot close
+  # the starts it made. The join now bounds its own run and closes its chains on every path it can; this closes what a hard kill
+  # still strands, and the start already open in the journal. Piece 2 is the host canary, piece 3 the placement seam.
+  abandon_other_pieces:
+    - {piece: 2, nodes: ["node_host_reading_effect:join_j2"]}
+    - {piece: 3, nodes: ["node_lab_placement_compute:join_j2"]}
   # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
   # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
   # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
