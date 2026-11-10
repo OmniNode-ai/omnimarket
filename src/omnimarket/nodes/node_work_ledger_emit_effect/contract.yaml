@@ -34,6 +34,13 @@ output_model:
   module: omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_result
   description: "Whether the typed event is durable, its topic, or the typed refusal."
 
+# OMN-23152, rebuild plan 4.3 step 1: a row reaches the bus only after the judge (the work-ledger append
+# effect) accepted it and gave it a ledger_seq. The emit refuses a row that states no sequence, or
+# whose sequence the judge's acceptance record does not hold, with a typed refusal and nothing spooled.
+judge_gate:
+  require_acceptance: true
+  refusal_prefix: "unjudged-row-refused"
+
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -91,3 +98,82 @@ externally_consumed_topics:
 
 metadata:
   transport_type: kafka
+
+# OMN-19998: typed scenarios the golden and error chain tests are generated from. The node
+# reports a row it did not take in-band, as accepted=false on its completed event; nothing
+# in the node publishes the declared emit-failed topic.
+chain_scenarios:
+  schema_version: 1
+  success_topic: onex.evt.omnimarket.work-ledger-emit-completed.v1
+  failures:
+    - name: row_not_accepted
+      topic: onex.evt.omnimarket.work-ledger-emit-completed.v1
+      discriminators:
+        accepted: false
+  bindings:
+    - name: emitter
+      target: CONSTRUCTOR_KWARG
+      attribute: emitter
+      in_memory_factory: omnimarket.handlers.chain_scenarios.doubles:spool_emitter
+      fault_factories:
+        DEPENDENCY_DOWN: omnimarket.handlers.chain_scenarios.doubles:unavailable_emitter
+  cases:
+    - case_name: golden_claim_row_is_taken_in
+      kind: GOLDEN
+      input:
+        topic: onex.cmd.omnimarket.work-ledger-emit.v1
+        payload:
+          row: "2026-09-28T10:00:00Z | CLAIM | lane=alpha | ticket=OMN-1 | est ~1 lane-hours; displaces x; (OMN-1) | work"
+      expected_events:
+        - topic: onex.evt.omnimarket.work-ledger-emit-completed.v1
+          fields:
+            accepted: true
+            published: true
+            row_type: CLAIM
+            topic: onex.evt.omnimarket.work-ledger-claim.v1
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: A well formed CLAIM row is typed as a claim, handed to the spool once and reported accepted and published on the claim topic.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID]
+    - case_name: error_row_with_no_stamp_is_refused
+      kind: ERROR
+      input:
+        topic: onex.cmd.omnimarket.work-ledger-emit.v1
+        payload:
+          row: "not a ledger row"
+      fault:
+        kind: BAD_PAYLOAD
+      expected_events:
+        - topic: onex.evt.omnimarket.work-ledger-emit-completed.v1
+          fields: {accepted: false, published: false}
+      failure: row_not_accepted
+      ledger_failure_row:
+        row_type: FRICTION
+        subject: work_ledger_emit_effect
+      reading: NOT_WORKING
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: A row with no timestamp cannot be typed, so it is refused and nothing is spooled.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID]
+    - case_name: error_spool_is_down
+      kind: ERROR
+      input:
+        topic: onex.cmd.omnimarket.work-ledger-emit.v1
+        payload:
+          row: "2026-09-28T10:00:00Z | CLAIM | lane=alpha | ticket=OMN-1 | est ~1 lane-hours; displaces x; (OMN-1) | work"
+      fault:
+        kind: DEPENDENCY_DOWN
+        boundary: emitter
+        max_dependency_calls: 1
+      expected_events:
+        - topic: onex.evt.omnimarket.work-ledger-emit-completed.v1
+          fields: {accepted: false, row_type: CLAIM}
+      failure: row_not_accepted
+      ledger_failure_row:
+        row_type: FRICTION
+        subject: work_ledger_emit_effect
+      reading: NOT_WORKING
+      oracle:
+        basis: STATED_BY_PERSON
+        statement: When the spool is down the typed row is not durable, so the result is not accepted, and the emit is attempted once, not retried in silence.
+      breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID]

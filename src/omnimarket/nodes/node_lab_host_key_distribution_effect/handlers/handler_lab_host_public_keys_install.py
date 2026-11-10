@@ -15,13 +15,9 @@ from omnimarket.handlers.node_overlay_reader import (
     not_configured_message,
 )
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState, public_key_parts
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 
-from ..models.model_lab_host_key_distribution import (
-    EnumKeyFile,
-    EnumLineState,
-    public_key_parts,
-)
 from ..models.model_lab_host_public_keys_install import (
     PUBLIC_KEYS_OVERLAY_ID,
     EnumHostInstallStatus,

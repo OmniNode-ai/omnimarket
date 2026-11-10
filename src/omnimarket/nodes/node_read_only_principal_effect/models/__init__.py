@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Models of the read-only principal node."""
+
+from .model_read_only_principal import (
+    EnumAttemptOutcome,
+    EnumChannel,
+    EnumCredentialStore,
+    EnumGateDecision,
+    EnumGateReason,
+    EnumKeyInstallStatus,
+    ModelAllowedCommand,
+    ModelChannelProbe,
+    ModelChannelReceipt,
+    ModelCredentialRef,
+    ModelGateDecideRequest,
+    ModelGateDecision,
+    ModelKeyInstallHost,
+    ModelKeyInstallRequest,
+    ModelKeyInstallResult,
+    ModelProbeAttempt,
+    ModelProbeEmission,
+    ModelProbeRequest,
+    ModelProbeResult,
+    ModelReadOnlyPrincipalOverlay,
+    ModelSshGate,
+)
+
+__all__ = [
+    "EnumAttemptOutcome",
+    "EnumChannel",
+    "EnumCredentialStore",
+    "EnumGateDecision",
+    "EnumGateReason",
+    "EnumKeyInstallStatus",
+    "ModelAllowedCommand",
+    "ModelChannelProbe",
+    "ModelChannelReceipt",
+    "ModelCredentialRef",
+    "ModelGateDecideRequest",
+    "ModelGateDecision",
+    "ModelKeyInstallHost",
+    "ModelKeyInstallRequest",
+    "ModelKeyInstallResult",
+    "ModelProbeAttempt",
+    "ModelProbeEmission",
+    "ModelProbeRequest",
+    "ModelProbeResult",
+    "ModelReadOnlyPrincipalOverlay",
+    "ModelSshGate",
+]

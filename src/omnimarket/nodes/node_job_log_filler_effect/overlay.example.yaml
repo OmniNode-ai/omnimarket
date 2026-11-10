@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_job_log_filler_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_JOB_LOG_FILLER_OVERLAY names.
+# No key has a default. The job-log cache root is the gateway's own (github_job_logs overlay).
+github_owner: example-owner
+watcher_state_env: EXAMPLE_PR_WATCHER_STATE
+pr_classes: [red, pending]
+always_job_names: [CI Summary]
+max_reads_per_pass: 20
+reader_concurrency: 2
+reply_tail_bytes: 4096
+reply_timeout_seconds: 60
+reprobe_seconds: 1800
+# Seconds after which a pass starts no more reads. Budget + reply_timeout_seconds stays under the unit's run_timeout_s.
+pass_budget_seconds: 240
+default_profile: inmemory
+profiles:
+  inmemory:
+    kind: inmemory
+  redpanda:
+    kind: kafka
+    lane: example-lane

@@ -16,3 +16,7 @@ class ModelTicketContractPrerequisiteRequest(BaseModel):
         description="Base commit or ref; an absent configured remote branch is fetched.",
     )
     title: str | None = None
+    body: str | None = Field(
+        default=None,
+        description="The pull request body, where an umbrella evidence line may sit.",
+    )

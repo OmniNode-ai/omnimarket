@@ -23,26 +23,39 @@ from omnimarket.models.work_ledger_query import (
     ModelWorkLedgerParity,
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerQueryResult,
+    ModelWorkLedgerRowRecord,
     ModelWorkLedgerStateQuery,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_work_ledger_query_effect.handlers import (
     work_ledger_query_replay as replay,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_answer_bound import (
+    bound_answer,
+    load_work_ledger_answer_bound,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history import (
     history_answer,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
+    ProtocolWorkLedgerFilteredRowReader,
     ProtocolWorkLedgerQueryReader,
     ProtocolWorkLedgerStateReader,
     WorkLedgerReadError,
     load_work_ledger_query_source,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_page import (
+    rows_page,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_state_answer import (
     decode_cursor,
     encode_cursor,
+    hold_lines,
+    inbox_answer,
+    load_hold_stale_after,
     parse_claims_since,
+    partition_stale_holds,
     state_answer,
 )
 
@@ -64,6 +77,8 @@ class HandlerWorkLedgerQuery:
     ) -> None:
         self._contract_path = contract_path or _CONTRACT_PATH
         self.terminal_event = contract_publish_topics(self._contract_path)[0]
+        self._answer_bound = load_work_ledger_answer_bound(self._contract_path)
+        self._hold_stale_after = load_hold_stale_after(self._contract_path)
         self._now = now if now is not None else lambda: datetime.now(UTC)
         self._reader = (
             reader
@@ -76,8 +91,14 @@ class HandlerWorkLedgerQuery:
     def handle(
         self, request: ModelWorkLedgerQueryRequest
     ) -> ModelWorkLedgerQueryResult:
+        """Answer the request, or refuse it when its answer would not fit the bound."""
         if not isinstance(request, ModelWorkLedgerQueryRequest):
             raise TypeError("work ledger query handler requires its contract payload")
+        return bound_answer(request, self._answer_request(request), self._answer_bound)
+
+    def _answer_request(
+        self, request: ModelWorkLedgerQueryRequest
+    ) -> ModelWorkLedgerQueryResult:
         now = request.now or self._now()
         until = request.until or now
         base = ModelWorkLedgerQueryResult(
@@ -110,7 +131,7 @@ class HandlerWorkLedgerQuery:
                     base, "open-rulings needs a reader backed by work_ledger_state"
                 )
         try:
-            records = self._reader.read_rows(since=request.since, until=until)
+            records = self._read_rows(request, until)
             newest_ts, newest_projected = self._reader.freshness(until=until)
             first = request.since or (min((r.row_ts for r in records), default=until))
             days = replay.utc_days(first, until)
@@ -134,7 +155,34 @@ class HandlerWorkLedgerQuery:
         parsed = replay.parse_rows(records)
         if request.principal is not None:
             parsed = [r for r in parsed if r.token("principal") == request.principal]
-        answer = self._answer(request, parsed, now)
+        if (
+            request.query is EnumWorkLedgerQueryKind.ROWS
+            and request.page_size is not None
+        ):
+            try:
+                total, page, next_cursor = rows_page(
+                    parsed,
+                    lanes=request.lanes or ((request.lane,) if request.lane else ()),
+                    page_size=request.page_size,
+                    cursor=request.cursor,
+                    kinds=request.kinds,
+                    since=request.since,
+                    ticket=request.ticket,
+                    pr=request.pr,
+                    row_ref=request.row_ref,
+                    term=request.term,
+                )
+            except WorkLedgerReadError as exc:
+                return self._fail(base, str(exc), page_size=request.page_size)
+            answer = {
+                "matched": total,
+                "rows": tuple(page),
+                "lines": tuple(r.text for r in page),
+                "page_size": request.page_size,
+                "next_cursor": next_cursor,
+            }
+        else:
+            answer = self._answer(request, parsed, now, self._hold_stale_after)
         return base.model_copy(
             update={
                 **answer,
@@ -146,6 +194,36 @@ class HandlerWorkLedgerQuery:
                 "parity": parity,
             }
         )
+
+    def _read_rows(
+        self, request: ModelWorkLedgerQueryRequest, until: datetime
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """The window's rows; a rows read with a start is narrowed in the store when it can be (OMN-19609).
+
+        Only the rows and rulings answers are narrowed, and only when the request names a start, so the
+        parity days (taken from the first row read when no start is named) and every other answer read
+        the window whole. The narrowing is a superset of what select_rows keeps, so the answer is the same.
+        """
+        reader = self._reader
+        if (
+            request.since is not None
+            and request.query
+            in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}
+            and isinstance(reader, ProtocolWorkLedgerFilteredRowReader)
+        ):
+            kinds = tuple(request.kinds) or (
+                tuple(replay.RULING_TYPES)
+                if request.query is EnumWorkLedgerQueryKind.RULINGS
+                else ()
+            )
+            if kinds or request.lane:
+                return reader.read_rows_matching(
+                    since=request.since,
+                    until=until,
+                    kinds=tuple(k.upper() for k in kinds),
+                    contains=request.lane or None,
+                )
+        return reader.read_rows(since=request.since, until=until)
 
     @staticmethod
     def _message(exc: Exception) -> str:
@@ -196,7 +274,7 @@ class HandlerWorkLedgerQuery:
                 else None,
             )
             page = reader.read_state_page(query=query)
-            answer = state_answer(request, page, now)
+            answer = state_answer(request, page, now, self._hold_stale_after)
         except Exception as exc:  # the reader already redacts connection details
             with contextlib.suppress(Exception):
                 close = getattr(reader, "close", None)
@@ -219,6 +297,7 @@ class HandlerWorkLedgerQuery:
         request: ModelWorkLedgerQueryRequest,
         rows: list[replay.LedgerRow],
         now: datetime,
+        stale_after: timedelta,
     ) -> dict[str, object]:
         kind = request.query
         if kind in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}:
@@ -245,18 +324,24 @@ class HandlerWorkLedgerQuery:
                 surface=request.surface,
                 to=request.to,
             )
-            return {"matched": len(holds), "holds": tuple(holds), "hold_counts": counts}
+            live, stale = partition_stale_holds(holds, now, stale_after)
+            return {
+                "matched": len(live),
+                "holds": tuple(live),
+                "hold_counts": counts,
+                "lines": hold_lines(live, stale, counts, now, stale_after),
+            }
         if kind is EnumWorkLedgerQueryKind.INBOX:
             lanes = request.lanes or ((request.lane,) if request.lane else ())
-            boxes = tuple(replay.inbox(rows, lane) for lane in lanes)
-            return {"matched": sum(len(b.entries) for b in boxes), "inbox": boxes}
+            return inbox_answer(rows, lanes, now, stale_after)
         if kind is EnumWorkLedgerQueryKind.OPEN_CLAIMS:
             claims = replay.open_claims(
                 rows, lane=request.lane, claims_since=request.claims_since
             )
             return {"matched": len(claims), "open_claims": tuple(claims)}
         newest = replay.newest_per_lane(rows, kinds=request.kinds)
-        return {"matched": len(newest), "rows": tuple(r.record for r in newest)}
+        shown = newest[-request.limit :] if request.limit else newest
+        return {"matched": len(newest), "rows": tuple(r.record for r in shown)}
 
 
 __all__ = ["HandlerWorkLedgerQuery"]

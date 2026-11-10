@@ -1,0 +1,48 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23122"
+title: "The floor record publishes the J16 join (context, memory and evals) the way it publishes J2"
+summary: "Join J16 (piece 16 to piece 17) has a test and no run: the served floor reads J16 not_run. node_join_j16_effect reads the newest eval reading of piece 16 on the ledger and the floor record, and writes piece 16's chain and piece 17's chain under one correlation id to the emission journal; the publish contract runs it as the step join_j16 before the simple floor reads its receipts. A missing, UNKNOWN or stale eval result is piece 16's typed failure and piece 17's typed upstream refusal, never a success."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-join-j16-publish"
+    statement: "The publish cycle runs the J16 join and writes its golden or error chains to the emission journal the floor reads."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the node's overlay model loads an overlay that declares join J16 from piece 16 to piece 17, and the node's tests pin the declaration -- falsifier: uv run pytest tests/unit/nodes/node_join_j16_effect -q --no-cov -p no:randomly"
+      - id: "AC2"
+        statement: "AC2: a publish step writes the J16 run result (golden or error) to the floor record the way the J2 step does -- falsifier: uv run pytest tests/unit/nodes/node_join_j16_effect tests/nodes/node_factory_floor_publish_effect/test_join_j16_step.py -q --no-cov -p no:randomly"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC2: the J16 node's golden and error chain tests, its failing controls and the publish step tests."
+    command: "uv run pytest tests/unit/nodes/node_join_j16_effect tests/nodes/node_factory_floor_publish_effect/test_join_j16_step.py -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23122-ac1-overlay"
+    description: "AC1: the node's tests load the example overlay declaring J16 (piece 16 to piece 17) and pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_join_j16_effect -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn23122-ac2-publish-step"
+    description: "AC2: the J16 node's golden and error chain tests, its failing controls and the publish step tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_join_j16_effect tests/nodes/node_factory_floor_publish_effect/test_join_j16_step.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: dod-omn23122-j16-integration-proof
+    description: The pushed head ran the J16 node's tests and the publish step tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23122 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_join_j16_effect tests/nodes/node_factory_floor_publish_effect/test_join_j16_step.py -q --no-cov'
+        cwd: .

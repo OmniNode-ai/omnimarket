@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dispatch_repo_grant_compute
+node_type: COMPUTE_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+version: {major: 1, minor: 0, patch: 0}
+description: >
+  Name every repository a lane brief changes (a repo= or fix-repo= cell, a --repo or --fix-repo
+  flag, an omni_worktrees/<ticket>/<repo> path, a Repo line, a pr-create target, a pr= cell or a
+  checkout line), so the dispatch grants the lane the union of its own repository and those at
+  send, instead of a lane granted git in one repository whose fix belongs in another.
+  Placeholders, quoted ticket text and bare mentions grant nothing.
+input_model:
+  name: ModelDispatchRepoGrantRequest
+  module: omnimarket.nodes.node_dispatch_repo_grant_compute.models.model_dispatch_repo_grant
+output_model:
+  name: ModelDispatchRepoGrantResult
+  module: omnimarket.nodes.node_dispatch_repo_grant_compute.models.model_dispatch_repo_grant
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dispatch_repo_grant_compute.handlers.handler_dispatch_repo_grant:HandlerDispatchRepoGrant
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerDispatchRepoGrant
+      module: omnimarket.nodes.node_dispatch_repo_grant_compute.handlers.handler_dispatch_repo_grant
+    topic: onex.cmd.omnimarket.dispatch-repo-grant-requested.v1
+entrypoint:
+  name: NodeDispatchRepoGrantCompute
+  module: omnimarket.nodes.node_dispatch_repo_grant_compute
+handler:
+  module: omnimarket.nodes.node_dispatch_repo_grant_compute.handlers.handler_dispatch_repo_grant
+  class: HandlerDispatchRepoGrant
+  input_model: omnimarket.nodes.node_dispatch_repo_grant_compute.models.model_dispatch_repo_grant.ModelDispatchRepoGrantRequest
+  output_model: omnimarket.nodes.node_dispatch_repo_grant_compute.models.model_dispatch_repo_grant.ModelDispatchRepoGrantResult
+execution:
+  deterministic: true
+  side_effects: false
+  caller: lane dispatch, before send, so the session is granted every repository the brief changes
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.dispatch-repo-grant-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.dispatch-repo-grant-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dispatch-repo-grant-requested.v1
+terminal_event: onex.evt.omnimarket.dispatch-repo-grant-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.dispatch-repo-grant-completed.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory
+runtime_profiles: [main]

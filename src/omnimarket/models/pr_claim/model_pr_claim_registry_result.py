@@ -20,10 +20,12 @@ class ModelPrClaimRegistryResult(BaseModel):
         default=(), description="Lines the registry reported, in order."
     )
     pr_keys: tuple[str, ...] = Field(
-        default=(), description="cleanup: keys deleted, or that would be."
+        default=(),
+        description="Cleanup or ended release: keys deleted, or that would be.",
     )
     claims: tuple[ModelPrClaim, ...] = Field(
-        default=(), description="list_active: every active claim."
+        default=(),
+        description="list_active: active claims; ended release: exact-owner readback, including replacements.",
     )
     claim: ModelPrClaim | None = Field(
         default=None, description="get_claim: the claim file, when readable."

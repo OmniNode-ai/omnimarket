@@ -4,7 +4,9 @@
 
 An episode opens on a failed exit (``threshold`` nonzero runs in a row) or on a missed interval
 (the run counter has not grown for ``missed_factor`` intervals, the interval read from launchd or
-given for a calendar job in ``intervals``). One episode is open per job at a time, so a failing
+given for a calendar job in ``intervals``). A failed exit whose code ``finding_exits`` declares as the
+job's own finding opens a ``finding-exit`` episode instead: the job is working and reporting what
+it watches, so its cells and alert name the finding rather than a crash (OMN-19998). One episode is open per job at a time, so a failing
 job dispatches one lane, not one per tick. A job and cause that opened an episode inside
 ``cooldown_minutes`` waits, and at most ``max_opened`` episodes open in one tick; the rest open on
 a later tick, in label order.
@@ -106,7 +108,11 @@ class HandlerJobExitAlarm:
             cause: JobExitCause | None = None
             interval = _missed(request, reading, current)
             if current.streak >= request.threshold:
-                cause = "failed-exit"
+                cause = (
+                    "finding-exit"
+                    if current.last_exit in request.finding_exits.get(label, ())
+                    else "failed-exit"
+                )
             elif interval is not None:
                 cause = "missed-interval"
             if cause is not None and current.episode is None:
@@ -121,7 +127,9 @@ class HandlerJobExitAlarm:
                     cause = None
             if cause is not None and current.episode is None:
                 short = label.removeprefix("ai.omninode.")
-                suffix = "-missed" if cause == "missed-interval" else ""
+                suffix = {"missed-interval": "-missed", "finding-exit": "-finding"}.get(
+                    cause, ""
+                )
                 episode_id = f"ep-{now:%Y%m%dT%H%MZ}-{short}{suffix}"
                 current = current.model_copy(
                     update={
@@ -145,6 +153,11 @@ class HandlerJobExitAlarm:
                         stderr_path=reading.stderr_path,
                     )
                 )
+                sent = (
+                    f"lane {kind} dispatched for episode {episode_id}"
+                    if request.dispatch_configured
+                    else f"no lane sent for episode {episode_id}: dispatch unconfigured"
+                )
                 head = (
                     "FRICTION | lane=silent-failure-alarm | ticket=OMN-19998 | "
                     "actor=launchd:silent-failure-alarm | class=job-exit | "
@@ -156,8 +169,16 @@ class HandlerJobExitAlarm:
                         f"cost=est ~{request.threshold * 10} minutes "
                         "of a job exiting nonzero unseen | "
                         f"{label} exited nonzero on {current.streak} runs in a row "
-                        f"(last exit {current.last_exit}); lane {kind} dispatched "
-                        f"for episode {episode_id}"
+                        f"(last exit {current.last_exit}); {sent}"
+                    )
+                elif cause == "finding-exit":
+                    cells.append(
+                        f"{head}streak={current.streak} | exit={current.last_exit} | "
+                        f"cost=est ~{request.threshold * 10} minutes "
+                        "of a job's own finding unacted on | "
+                        f"{label} reported its finding (exit {current.last_exit}, declared as "
+                        "this job's finding, not a crash); act on what it reports; "
+                        f"{sent}"
                     )
                 else:
                     assert current.last_run_at is not None
@@ -170,7 +191,7 @@ class HandlerJobExitAlarm:
                         f"since={current.last_run_at.astimezone(UTC):%Y-%m-%dT%H:%M:%SZ} | "
                         f"cost=est ~{idle} minutes of a job not running unseen | "
                         f"{label} has not run for {idle} minutes (interval {interval} s); "
-                        f"lane {kind} dispatched for episode {episode_id}"
+                        f"{sent}"
                     )
             if (
                 current.episode is not None
@@ -194,6 +215,9 @@ class HandlerJobExitAlarm:
                     f"has not run since {current.last_run_at.astimezone(UTC):%Y-%m-%dT%H:%M:%SZ}"
                     if current.cause == "missed-interval"
                     and current.last_run_at is not None
+                    else f"reported its finding (exit {current.last_exit}) on "
+                    f"{current.streak} runs in a row"
+                    if current.cause == "finding-exit"
                     else f"exited nonzero on {current.streak} runs in a row "
                     f"(last exit {current.last_exit})"
                 )

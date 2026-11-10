@@ -35,12 +35,7 @@ from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
 from omnibase_core.validation.validator_fsm_analysis import analyze_fsm
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
-    VALID_TRANSITIONS,
-    HandlerFloorFillReducer,
-    lane_name,
-)
-from omnimarket.nodes.node_floor_fill_reducer.models import (
+from omnimarket.models.floor_fill import (
     EnumFloorFillDropReason,
     EnumFloorFillEntryState,
     EnumFloorFillTrigger,
@@ -54,6 +49,11 @@ from omnimarket.nodes.node_floor_fill_reducer.models import (
     ModelFloorFillState,
     ModelFloorFillTicketStored,
     line_and_task,
+)
+from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer import (
+    VALID_TRANSITIONS,
+    HandlerFloorFillReducer,
+    lane_name,
 )
 
 pytestmark = pytest.mark.unit
@@ -798,7 +798,8 @@ _BAD_KEYS = (
     "floor:..:t",
     "floor:L:..",
     "floor:L:t..x",
-    "floor:L:t.x",
+    "floor:L:.t",
+    "floor:L:t.",
     "floor:L:t\u2028",
     "floor:L:t\u00e9",
     "floor:L:t\x00",
@@ -807,7 +808,7 @@ _BAD_KEYS = (
 
 @pytest.mark.parametrize("key", _BAD_KEYS)
 def test_lane_name_floor_key_refuses_separators_and_trailing_newline(key: str) -> None:
-    """One task is one key: a key with a newline, ``|``, ``=``, ``/`` or ``..`` is no key."""
+    """One task is one key: a key with a newline, ``|``, ``=``, ``/`` or a dot run is no key."""
     with pytest.raises(ValidationError):
         ModelFloorFillTicketStored(key=key, ticket=TICKET)
     with pytest.raises(ValueError, match="is not a floor key"):
@@ -825,7 +826,14 @@ def test_lane_name_floor_key_with_trailing_newline_cannot_reserve_twice() -> Non
 
 
 @pytest.mark.parametrize(
-    "key", ["floor:L:t", "floor:line-a:task-1", "floor:a_b:OMN-22200", "floor:A9:9z"]
+    "key",
+    [
+        "floor:L:t",
+        "floor:line-a:task-1",
+        "floor:a_b:OMN-22200",
+        "floor:A9:9z",
+        "floor:2026-10-31-wave-plan:W0.1",
+    ],
 )
 def test_lane_name_minted_only_from_a_closed_charset(key: str) -> None:
     assert re.fullmatch(r"floor-[A-Za-z0-9_-]+-a[1-9][0-9]*", lane_name(key, 1))

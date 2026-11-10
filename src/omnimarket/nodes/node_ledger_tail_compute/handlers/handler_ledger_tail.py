@@ -176,6 +176,16 @@ def claim_names(
     return None
 
 
+def row_type(claim: Mapping[str, object]) -> str | None:
+    """The type of a row offered as an open CLAIM: its ``type`` field, else the type a full row's
+    text spells (``<ts> | MSG | ...``), else None when the caller gave neither."""
+    given = claim.get("type")
+    if given:
+        return str(given).upper()
+    m = ROW_RE.match(str(claim.get("text") or ""))
+    return m.group(2) if m else None
+
+
 def is_live(
     last_row: datetime | None, now: datetime, live_after: timedelta = LIVE_AFTER
 ) -> bool:
@@ -197,7 +207,8 @@ def owner(
 
     ``open_claims`` are the CLAIM rows the caller reads as still open, each a mapping with ``lane``,
     ``at`` (its datetime), ``ts`` (its stamp as written, returned as ``claim_ts``) and ``text``. ``last_row`` maps a lane to its newest row's time (the liveness clock;
-    a lane missing from it is clocked by its CLAIM). ``leases`` are live leases, each with ``pr`` (any
+    a lane missing from it is clocked by its CLAIM). A row whose type is known and is not CLAIM (a ``type``
+    field, or a full row's text such as a handoff ``MSG``) is never an owner, whatever it names. ``leases`` are live leases, each with ``pr`` (any
     key spelling) and ``holder``: a lease is the controller's own record that a worker holds the PR."""
     key = "{}#{}".format(*split_key(pr))
     for lease in leases:
@@ -212,6 +223,8 @@ def owner(
     live: list[dict[str, object]] = []
     stale: list[dict[str, object]] = []
     for c in open_claims:
+        if row_type(c) not in (None, "CLAIM"):
+            continue  # a MSG handing the PR to the controller, or any non-CLAIM row, owns nothing
         why = claim_names(str(c.get("text") or ""), key, head_ref, repo_aliases)
         if why is None:
             continue

@@ -49,6 +49,12 @@ patch or a plan branch, ``required_inputs``) takes only a host whose reading hol
 (``present_inputs``); a reading that did not check them keeps the host off. When a host would take
 the lane but for its inputs and none holding them does, the result is INPUT_ABSENT naming each
 absent input, so the dispatch refuses the send instead of starting a lane that cannot find its input.
+
+Reach (OMN-22887): a brief that reads another host or a port names the route as a ``route:<target>``
+input (``route:h201``, ``route:broker-admin:dev``). A host whose reading lacks that route, or was not
+checked for it, takes no lane, and its verdict reads ``no-route: <target>`` instead of ``input-absent``.
+On 2026-11-07 lanes placed on h106 could not work: it had no ssh key to h201 and no route to the broker
+admin port, and placement ranked it by free capacity alone.
 """
 
 from __future__ import annotations
@@ -75,13 +81,7 @@ from omnimarket.models.model_engine_experiment import (
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
-from omnimarket.models.stop_gate import EnumStopGateOutcome
-from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
-from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
-    lane_model_refusal,
-)
-
-from ..models import (
+from omnimarket.models.remote_lane_placement import (
     CODEX_ENGINE,
     EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
@@ -93,6 +93,11 @@ from ..models import (
     ModelRemoteLaneReconcileIntent,
     ModelRemoteLaneRungVerdict,
     ModelRemoteLaneVenvDrift,
+)
+from omnimarket.models.stop_gate import EnumStopGateOutcome
+from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
 )
 
 _VENV_DRIFT = "venv-drift"
@@ -158,6 +163,11 @@ def contributor_lane_refusal(
     return None
 
 
+# An input named ``route:<target>`` is a route the brief reads over (``route:h201``, ``route:broker-admin:dev``);
+# the host's reading holds it only when the reader proved the host reaches that target (OMN-22887).
+ROUTE_PREFIX = "route:"
+
+
 def input_refusal(
     request: ModelRemoteLanePlacementRequest, reading: ModelRemoteLaneHostReading
 ) -> str | None:
@@ -170,9 +180,47 @@ def input_refusal(
         )
     present = set(reading.present_inputs)
     absent = [item for item in request.required_inputs if item not in present]
-    if absent:
-        return "input-absent: " + ", ".join(absent)
-    return None
+    unreachable = [
+        item[len(ROUTE_PREFIX) :] for item in absent if item.startswith(ROUTE_PREFIX)
+    ]
+    missing = [item for item in absent if not item.startswith(ROUTE_PREFIX)]
+    reasons: list[str] = []
+    if unreachable:
+        reasons.append("no-route: " + ", ".join(unreachable))
+    if missing:
+        reasons.append("input-absent: " + ", ".join(missing))
+    return "; ".join(reasons) or None
+
+
+def repair_pin_line(
+    request: ModelRemoteLanePlacementRequest,
+    pick: ModelRemoteLaneHostReading | None,
+) -> str | None:
+    """The line that says a repair lane pinned to its own target was not kept there (OMN-23389).
+
+    On 2026-11-09 the first cleanup lane for h053 was pinned to h053, which refused admission with a full disk, so
+    the repair never ran. A repair lane is never run on the host it repairs; the pin names the target.
+    """
+    target = request.repair_target
+    if target is None or request.pinned_host != target or pick is None:
+        return None
+    refused = next(
+        (
+            r.lane_admission_refusal
+            for r in request.readings
+            if r.name == target and r.lane_admission_refusal is not None
+        ),
+        None,
+    )
+    why = (
+        f"it refuses admission ({refused})"
+        if refused
+        else "a repair lane never runs on the host it repairs"
+    )
+    return (
+        f"REPAIR-PIN-REFUSED pinned to {target}: {why}; placed on {pick.name}, "
+        f"which reaches {target} over ssh"
+    )
 
 
 def effective_lane_slots(reading: ModelRemoteLaneHostReading) -> int:
@@ -241,8 +289,13 @@ def _select(
     expired = set() if codex else set(request.auth_expired_hosts)
     reasons: dict[str, str] = {}
     admitted: list[ModelRemoteLaneHostReading] = []
+    target = request.repair_target
     for reading in request.readings:
-        if reading.name in limited:
+        if target is not None and reading.name == target:
+            reasons[reading.name] = (
+                "repair-target: a repair lane runs on another host and reaches this one over ssh"
+            )
+        elif reading.name in limited:
             reasons[reading.name] = "usage-limited"
         elif reading.name in expired:
             reasons[reading.name] = "auth-expired"
@@ -254,8 +307,16 @@ def _select(
             reasons[reading.name] = swapping
         elif reading.lane_admission_refusal is not None:
             reasons[reading.name] = f"admission: {reading.lane_admission_refusal}"
-        elif request.pinned_host and reading.name != request.pinned_host:
+        elif (
+            request.pinned_host
+            and request.pinned_host != target
+            and reading.name != request.pinned_host
+        ):
             reasons[reading.name] = "not-pinned"
+        elif target is not None and (
+            reading.ssh_reach is None or target not in reading.ssh_reach
+        ):
+            reasons[reading.name] = f"no-ssh-to-{target}"
         elif check_inputs and (absent := input_refusal(request, reading)) is not None:
             reasons[reading.name] = absent
         else:
@@ -542,4 +603,5 @@ class HandlerRemoteLanePlacement:
             reconcile=reconcile,
             refusal=input_line,
             stop_gate=gate,
+            repair_pin_refused=repair_pin_line(request, pick),
         )

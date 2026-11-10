@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Secret Reading Effect (OMN-22659, piece 5 of the base-first rebuild)
+#
+# Resolves every consumer key the overlay declares through the store, by folder and key name,
+# keeps only the outcome of each resolve, and appends one piece 5 reading row through the
+# configured append command. It writes reading rows and nothing else: a reading is never a gate,
+# a stop or an admission. No value, digest or length of a secret is in a row, event or result.
+name: node_secret_reading_effect
+contract_name: node_secret_reading_effect
+node_name: node_secret_reading_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Per-consumer functional probe of the secret store and an exposure scan. Each declared
+  consumer's key must resolve in its scope; each resolved value is searched for, in process, on
+  the declared ledger and log surfaces, beside a planted dummy the scan must find; exposures
+  awaiting rotation are counted from the overlay. WORKING only when all of that holds; anything
+  else, a store that cannot be reached included, reads NOT_WORKING. The in-memory backend carries
+  scopes, so revoking one consumer's scope is the failing control.
+
+handler:
+  module: omnimarket.nodes.node_secret_reading_effect.handlers.handler_secret_reading
+  class: HandlerSecretReading
+  input_model: omnimarket.models.model_secret_reading.ModelSecretReadingCommand
+
+# HandlerSecretReading takes the overlay, store, appender, clock and host as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+# The J4 join handler is bound here so the contract owns it; it runs through the node CLI
+# (runtime_join_j4), not handler_routing.
+cli_handlers:
+  - operation: secret_join_j4
+    handler:
+      name: HandlerSecretJoinJ4
+      module: omnimarket.nodes.node_secret_reading_effect.handlers.handler_secret_join_j4
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, secret-store-read]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelSecretReadingCommand
+  module: omnimarket.models.model_secret_reading
+  description: Which consumers, and whether to write the row.
+output_model:
+  name: ModelSecretReadingResult
+  module: omnimarket.models.model_secret_reading
+  description: The verdict, each consumer's outcome, the row key and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.secret-reading-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  secret_reading_requested: onex.cmd.omnimarket.secret-reading-requested.v1
+  secret_probe_passed: onex.evt.omnimarket.secret-probe-passed.v1
+  secret_probe_failed: onex.evt.omnimarket.secret-probe-failed.v1
+  secret_reading_run_completed: onex.evt.omnimarket.secret-reading-run-completed.v1
+  secret_reading_run_failed: onex.evt.omnimarket.secret-reading-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.secret-probe-passed.v1
+  - onex.evt.omnimarket.secret-probe-failed.v1
+  - onex.evt.omnimarket.secret-reading-run-completed.v1
+  - onex.evt.omnimarket.secret-reading-run-failed.v1
+
+# The node's own hourly schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on each host the overlay's schedule_hosts names, removed by `schedule uninstall`.
+schedule:
+  unit_name: onex-secret-reading-hourly
+  state_directory: .onex_state/secret-reading
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:05:00"
+    randomized_delay: 60s
+    persistent: true
+    description: hourly at :05, ten minutes before the reading writer's hourly tick reads the row
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+  drill:
+    unit_name: onex-secret-reading-drill-daily
+    cadence:
+      on_calendar: "*-*-* 06:20:00"
+      randomized_delay: 60s
+      persistent: true
+      description: daily at 06:20 UTC, a read with a made-up machine identity, so the error event stays inside a 24-hour window
+  # The J4 join test (OMN-23085): overlays to secrets. One run resolves a key by overlay from the store and scans the node's code,
+  # log and the ledger row it writes; the row it writes is the floor's golden event for J4. Installed only where the overlay root
+  # holds the join overlay (node_secret_reading_join_j4).
+  join_j4:
+    unit_name: onex-secret-join-j4-hourly
+    cadence:
+      on_calendar: "*-*-* *:20:00"
+      randomized_delay: 60s
+      persistent: true
+      description: hourly at :20, after the hourly secret reading and before the reading writer's tick, so the floor holds a J4 golden event inside its window
+
+overlay:
+  node: node_secret_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22659
+  transport_type: inmemory

@@ -4,19 +4,48 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source import (
+    ModelFrictionRollupStepSettings,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
     ModelProcessHealthPayloadPolicy,
 )
 
 
+class ModelPublishTarget(BaseModel):
+    """One serving host: where the files are written over ssh and where that host answers (OMN-23081)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ssh_target: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.@-]*$")
+    remote_dir: str = Field(min_length=1)
+    serve_url: str = Field(min_length=1)
+    history_root: str = Field(min_length=1)
+
+    @field_validator("remote_dir", "history_root")
+    @classmethod
+    def _absolute_posix(cls, value: str) -> str:
+        path = PurePosixPath(value)
+        if not path.is_absolute() or ".." in path.parts or "\n" in value:
+            raise ValueError("a remote path must be an absolute path without '..'")
+        return value
+
+
 class ModelFactoryFloorPublishOverlay(BaseModel):
-    """Deployment facts of the host that serves the page. There is no packaged default for any of them."""
+    """Deployment facts of the hosts that serve the page. There is no packaged default for any of them.
+
+    The top-level ``ssh_target``, ``remote_dir``, ``serve_url`` and ``history_root`` are the first serving host; every
+    host in ``extra_targets`` is served the same files (OMN-23081), so the floor survives one host being down. The URL list
+    a reader may use is ``serve_urls``. ``local_copy_relpath``, relative to the registry home, is where each published
+    file is written on the publishing machine before any host is tried.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -25,6 +54,59 @@ class ModelFactoryFloorPublishOverlay(BaseModel):
     serve_url: str = Field(min_length=1)
     bus_lane: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     history_root: str = Field(min_length=1)
+    extra_targets: tuple[ModelPublishTarget, ...] = ()
+    local_copy_relpath: str | None = Field(default=None, min_length=1)
+
+    @property
+    def primary_target(self) -> ModelPublishTarget:
+        return ModelPublishTarget(
+            ssh_target=self.ssh_target,
+            remote_dir=self.remote_dir,
+            serve_url=self.serve_url,
+            history_root=self.history_root,
+        )
+
+    @property
+    def targets(self) -> tuple[ModelPublishTarget, ...]:
+        """Every serving host, the first one first."""
+        return (self.primary_target, *self.extra_targets)
+
+    @property
+    def serve_urls(self) -> tuple[str, ...]:
+        """The address of every serving host: a reader tries them in order and takes the first that answers."""
+        return tuple(t.serve_url for t in self.targets)
+
+    def for_target(self, target: ModelPublishTarget) -> ModelFactoryFloorPublishOverlay:
+        """This overlay narrowed to the one host ``target``: the copy and gate code that knows one host runs unchanged."""
+        return self.model_copy(
+            update={
+                "ssh_target": target.ssh_target,
+                "remote_dir": target.remote_dir,
+                "serve_url": target.serve_url,
+                "history_root": target.history_root,
+                "extra_targets": (),
+            }
+        )
+
+    @field_validator("local_copy_relpath")
+    @classmethod
+    def _relative_local(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        path = PurePosixPath(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(
+                "local_copy_relpath is relative to the registry home, without '..'"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _distinct_targets(self) -> ModelFactoryFloorPublishOverlay:
+        names = [t.ssh_target for t in self.targets]
+        if len(set(names)) != len(names):
+            raise ValueError("each serving host appears once in the overlay")
+        return self
+
     # The tailnet login that owns the operator's own devices, exactly as ``tailscale status --json`` lists it in its
     # user table. The operator-only reports are served to the devices that login owns and to nobody else; without
     # this key the publish refuses (there is no packaged value and no default).
@@ -68,7 +150,9 @@ class ModelLinesOverlay(BaseModel):
     file_env: str = Field(min_length=1)
 
 
-StepKind = Literal["module", "capture", "copy", "command", "runner_fleet"]
+StepKind = Literal[
+    "module", "capture", "copy", "command", "runner_fleet", "friction_rollup"
+]
 
 
 class ModelPublishStep(BaseModel):
@@ -84,6 +168,8 @@ class ModelPublishStep(BaseModel):
     under the registry home was written less than ``fresh_seconds`` ago, for an output that moves in days.
     ``runner_fleet`` mirrors the deployed projection's saved observation to ``output_relpath``;
     a failed read writes an unread cause so old counts cannot masquerade as a new read.
+    ``friction_rollup`` runs the friction rollup node over the ledger named by ``rollup`` with the overlay home's class
+    rules and writes its report to ``output_relpath``; a missing or invalid overlay fails the step and leaves the old file.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -101,6 +187,7 @@ class ModelPublishStep(BaseModel):
     concurrent: bool = False
     fresh_relpath: str | None = None
     fresh_seconds: int | None = Field(default=None, gt=0)
+    rollup: ModelFrictionRollupStepSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPublishStep:
@@ -114,6 +201,7 @@ class ModelPublishStep(BaseModel):
             "copy": bool(self.source_relpath) and bool(self.output_relpath),
             "command": bool(self.argv),
             "runner_fleet": bool(self.output_relpath),
+            "friction_rollup": self.rollup is not None and bool(self.output_relpath),
         }[self.kind]
         if not need:
             raise ValueError(
@@ -132,6 +220,8 @@ class ModelPublishStepResult(BaseModel):
     status: Literal["ok", "failed"]
     detail: str = ""
     diagnostic: str = ""
+    # The wall-clock seconds the step took, measured by the handler (OMN-22699).
+    seconds: float = Field(default=0.0, ge=0)
 
 
 class ModelPublishNames(BaseModel):
@@ -139,7 +229,16 @@ class ModelPublishNames(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    # The address of the site is the simple floor page (OMN-19998); the page with every line, machine and report is
+    # published beside it under ``page`` and is the one link the simple page carries.
     page: str = Field(min_length=1)
+    simple_page: str = Field(min_length=1)
+    simple_data: str = Field(min_length=1)
+    simple_reads: str = Field(min_length=1)
+    compare_page: str = Field(min_length=1)
+    compare_data: str = Field(min_length=1)
+    delegation_tracker_page: str = Field(min_length=1)
+    delegation_tracker_data: str = Field(min_length=1)
     floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
@@ -148,7 +247,10 @@ class ModelPublishNames(BaseModel):
     # The vendored OmniUI theme files the page links, published beside it under these names.
     theme_css: tuple[str, ...] = Field(min_length=1)
 
-    @field_validator("theme_css")
+    # The site's icons (the SVG, the 32 px PNG, the apple-touch icon), published beside the pages under these names.
+    icons: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("theme_css", "icons")
     @classmethod
     def _theme_css(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for name in value:
@@ -313,6 +415,37 @@ class ModelOperatorReportsRuntime(BaseModel):
         return _checked_remote_name(value)
 
 
+class ModelPublishCycle(BaseModel):
+    """The cycle bound the contract names, and the time each phase after the input steps is allowed (OMN-22699).
+
+    The input steps carry their own ``timeout_seconds``. The delegation read, the copies, the history prune and the
+    final status write are held to the numbers here: the handler clamps every call to what its phase has left, so the
+    longest path the contract allows (``ModelFactoryFloorPublishRuntime.declared_longest_path``) is a real bound.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # The seconds one publish run may take on its longest declared path; the served status names it beside the seconds taken.
+    bound_seconds: int = Field(gt=0)
+    delegation_timeout_seconds: int = Field(gt=0)
+    # All the copies of one run (the snapshot, the pages, the data and the first status) share this; a copy that finds it spent is refused.
+    copy_budget_seconds: int = Field(gt=0)
+    history_prune_budget_seconds: int = Field(gt=0)
+    # The final status write, which carries the whole cycle's seconds.
+    final_status_seconds: int = Field(gt=0)
+
+
+def group_steps(steps: Sequence[ModelPublishStep]) -> list[list[ModelPublishStep]]:
+    """The steps in contract order, consecutive ``concurrent`` ones in one group."""
+    groups: list[list[ModelPublishStep]] = []
+    for step in steps:
+        if step.concurrent and groups and groups[-1][-1].concurrent:
+            groups[-1].append(step)
+        else:
+            groups.append([step])
+    return groups
+
+
 class ModelFactoryFloorPublishRuntime(BaseModel):
     """The ``runtime`` block of contract.yaml."""
 
@@ -322,9 +455,21 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
     page_relpath: str = Field(min_length=1)
+    simple_page_relpath: str = Field(min_length=1)
+    # What node_floor_simple_effect writes (relative to the registry home); both are published when they exist.
+    simple_data_relpath: str = Field(min_length=1)
+    simple_reads_relpath: str = Field(min_length=1)
+    # OMN-23018: the running comparison page and what node_floor_compare_effect writes (relative to the registry home).
+    compare_page_relpath: str = Field(min_length=1)
+    compare_data_relpath: str = Field(min_length=1)
+    # OMN-23081: the delegation tracker page and what node_floor_delegation_effect writes (relative to the registry home).
+    delegation_tracker_page_relpath: str = Field(min_length=1)
+    delegation_tracker_data_relpath: str = Field(min_length=1)
     floor_page_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
     theme_css_relpath: str = Field(min_length=1)
+    # The directory, relative to the node, holding the icon files named by ``names.icons``.
+    icons_relpath: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
@@ -334,11 +479,36 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
     record_step: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
+    # Steps run after the page and the record are served, in order, never concurrently. The canary status is published
+    # here, from the page as served, so its floor age is the age of the page a reader gets. A required step that fails
+    # raises after the page is served: a failed page upload stops the run before these steps, so the canary status
+    # then ages past its bound and reads as silent, and a failed canary publish is a failed run, never a hidden one.
+    after_publish_steps: tuple[ModelPublishStep, ...]
     names: ModelPublishNames
     transport: ModelPublishTransport
+    cycle: ModelPublishCycle
     history: ModelPublishHistory
     reports: ModelReportsRuntime
     operator_reports: ModelOperatorReportsRuntime
+
+    def declared_longest_path(self) -> dict[str, int]:
+        """The seconds each phase may take at most, from the timeouts this contract declares.
+
+        The input steps run in groups: a group of concurrent steps takes its slowest member's timeout, and the groups
+        add up. The after-publish steps add up. The other phases are the cycle block's own numbers, which the handler
+        enforces. Their sum is the longest path a run may take; ``cycle.bound_seconds`` must hold it.
+        """
+        return {
+            "input_steps": sum(
+                max(step.timeout_seconds for step in group)
+                for group in group_steps(self.steps)
+            ),
+            "delegation": self.cycle.delegation_timeout_seconds,
+            "copy": self.cycle.copy_budget_seconds,
+            "history_prune": self.cycle.history_prune_budget_seconds,
+            "after_publish": sum(s.timeout_seconds for s in self.after_publish_steps),
+            "final_status": self.cycle.final_status_seconds,
+        }
 
 
 class ModelFactoryFloorPublishContract(BaseModel):
@@ -372,10 +542,21 @@ class ModelFactoryFloorPublishResult(BaseModel):
     data_sha256: str
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
+    # The steps that ran after the page was served (the canary status), in order.
+    after_publish: tuple[ModelPublishStepResult, ...] = ()
     process_health_published: bool
     delegation_published: bool = False
     history_snapshot: str = ""
     history_pruned: tuple[str, ...] = ()
+    # OMN-23081: every serving host's address (a reader takes the first that answers), the hosts every file reached, the hosts
+    # that missed files with the first reason each gave, and the local copy's directory (empty when the overlay names none).
+    serve_urls: tuple[str, ...] = ()
+    served_to: tuple[str, ...] = ()
+    failed_targets: dict[str, str] = Field(default_factory=dict)
+    local_copy: str = ""
+    # The seconds one run took in all and in each phase (input steps, delegation, copy, history prune, after-publish), OMN-22699.
+    cycle_seconds: float = Field(default=0.0, ge=0)
+    phase_seconds: dict[str, float] = Field(default_factory=dict)
 
 
 class ModelReportsPublishRequest(BaseModel):
@@ -421,3 +602,5 @@ class ModelOperatorAccessResult(BaseModel):
     include_changed: bool
     published: tuple[str, ...]
     unread: tuple[str, ...]
+    # OMN-23081: the serving hosts whose gate was refused (their operator-only files were withdrawn) and why; empty when every host admitted.
+    failed_targets: dict[str, str] = Field(default_factory=dict)

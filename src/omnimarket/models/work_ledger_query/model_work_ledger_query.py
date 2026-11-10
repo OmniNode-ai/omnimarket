@@ -18,6 +18,10 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.work_ledger_query.model_work_ledger_refusal import (
+    ModelWorkLedgerRefusal,
+)
+
 _LANE = r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
 _TICKET = r"^OMN-\d+$"
 _PR = r"^[A-Za-z0-9_.-]+#\d+$"
@@ -135,8 +139,17 @@ class ModelWorkLedgerQueryRequest(BaseModel):
             self.lane or self.lanes
         ):
             raise ValueError("inbox requires a lane or lanes")
-        if self.page_size is not None and self.query not in POINT_QUERY_KINDS:
-            raise ValueError("page_size applies to the point queries only")
+        paged_rows = (
+            self.query is EnumWorkLedgerQueryKind.ROWS and self.page_size is not None
+        )
+        if (
+            self.page_size is not None
+            and self.query not in POINT_QUERY_KINDS
+            and self.query is not EnumWorkLedgerQueryKind.ROWS
+        ):
+            raise ValueError("page_size applies to the point queries and to rows only")
+        if self.page_size is not None and self.history is not None:
+            raise ValueError("history pages by ledger_seq, not page_size")
         if self.history is not None:
             if self.query is not EnumWorkLedgerQueryKind.ROWS:
                 raise ValueError("history requires query=rows")
@@ -148,10 +161,14 @@ class ModelWorkLedgerQueryRequest(BaseModel):
                 raise ValueError("history until must carry a UTC offset")
             if self.since is not None:
                 raise ValueError("history uses sequence bounds, not writer timestamps")
-        elif self.run is not None or (
-            self.cursor is not None and self.query not in POINT_QUERY_KINDS
+        elif self.run is not None:
+            raise ValueError("run requires a history range")
+        elif (
+            self.cursor is not None
+            and self.query not in POINT_QUERY_KINDS
+            and not paged_rows
         ):
-            raise ValueError("run and cursor require a history range")
+            raise ValueError("cursor requires a history range or a paged query")
         return self
 
 
@@ -273,11 +290,15 @@ class ModelWorkLedgerQueryResult(BaseModel):
     error: str | None = None
     completeness: ModelWorkLedgerCompleteness | None = None
     next_cursor: str | None = None
+    # ``refused`` is a well-formed request whose answer would not fit under the
+    # contract's answer bound: ``refusal`` names the bound and the bounded form,
+    # and no section is filled. It is a terminal answer, never a raised error.
+    refusal: ModelWorkLedgerRefusal | None = None
     # A point query (OMN-21948) answers from work_ledger_state: ``status`` is
     # ``error`` exactly when ``error`` is set, ``page_size`` is the page it was
     # cut to, ``watermark`` is the newest ``projected_at`` of the state table
     # the page was read at, and ``lines`` are the onex-ledger verb's own lines.
-    status: Literal["ok", "error"] = "ok"
+    status: Literal["ok", "error", "refused"] = "ok"
     page_size: int | None = None
     watermark: AwareDatetime | None = None
     lines: tuple[str, ...] = ()

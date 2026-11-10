@@ -17,6 +17,11 @@ description: >
   a path that runs (OMN-21887, operator ruling 2026-11-01T14:45:51Z) also needs an
   integration-proof evidence item, checked by HandlerIntegrationProof. The CLI maps
   that result to exit 1; pre-push and CI invoke this same node in-process.
+  A push that adds an entry to an umbrella ticket's contract is refused unless its
+  body or commits carry an umbrella evidence line (OMN-21301): every other open pull
+  request appends to the same place, so each landing conflicts the rest.
+config:
+  umbrella_tickets: [OMN-17427, OMN-19998, OMN-22478]
 descriptor:
   node_archetype: effect
   purity: effectful

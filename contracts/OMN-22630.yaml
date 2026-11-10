@@ -1,0 +1,44 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22630
+title: "The ticket contract prerequisite counts an unreadable diff as a runtime change, and a test fails without it"
+summary: >-
+  When the base or the log cannot be read, the prerequisite handler names the path src/<unreadable diff>, so an unknown
+  change counts as one that runs and needs an integration proof. Replacing that answer with an empty tuple left every
+  test of the node passing; one test file now fails when it is lost.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22630-unreadable-diff-fails-closed
+    statement: A push whose base cannot be read is charged as a runtime change, and a test fails when the handler stops doing that.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a push whose base cannot be read gets the unreadable-diff marker from _changed_paths, and a ticket whose contract needs integration proof for runtime paths is refused for it -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_unreadable_diff_fails_closed_omn22610.py -q --no-cov'
+      - id: AC2
+        statement: 'AC2: the same test fails when the handler returns an empty tuple for an unreadable diff -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_unreadable_diff_fails_closed_omn22610.py -q --no-cov on the handler with that return replaced'
+evidence_requirements:
+  - kind: tests
+    description: The marker for an unreadable base, the real paths for a readable one, the refusal for the marker, and the refusal for the real path as a positive control.
+    command: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_unreadable_diff_fails_closed_omn22610.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22630-unreadable-diff-fails-closed
+    description: An unreadable base is charged as a runtime change and refused without an integration proof, a readable base names the real path, and the test fails when the handler returns an empty tuple for an unreadable diff.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_unreadable_diff_fails_closed_omn22610.py -q --no-cov
+        cwd: .
+  - id: dod-omn22630-unreadable-diff-integration-proof
+    description: The pushed head ran the test on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22630 -- uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_unreadable_diff_fails_closed_omn22610.py -q --no-cov'
+        cwd: .

@@ -1,0 +1,27 @@
+name: node_lab_test_harness_effect
+version: "0.1.0"
+description: "Central test harness: golden and error cases run as lab work units, one current reading — EFFECT"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_test_harness_effect: "omnimarket.nodes.node_lab_test_harness_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_effect
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_infra"
+  - "pydantic>=2.0.0"
+  - "pyyaml>=6.0"
+  - "click>=8.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "lab-test-harness", "OMN-22478"]
+pack: "pipeline"
+display_name: "Lab Test Harness Effect"
+node_role: "effect"

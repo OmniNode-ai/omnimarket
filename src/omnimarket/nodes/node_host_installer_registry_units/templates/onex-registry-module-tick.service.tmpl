@@ -1,0 +1,19 @@
+# Registry module tick for a Linux pool host, rendered by node_host_installer_registry_units from its contract.
+# The project is the canonical registry clone, or the project path override the install named. The frozen flag keeps
+# the run from rewriting the project's lock; a unit declaring tick_no_sync reuses the environment prepared at
+# installation. No PYTHONPATH: the module imports from the project's own environment. A oneshot service started by
+# its timer; TimeoutStartSec ends a run that hangs.
+[Unit]
+Description=__LABEL__: registry module tick __MODULE__
+
+[Service]
+Type=oneshot
+WorkingDirectory=__OMNI_HOME__
+UnsetEnvironment=PYTHONPATH
+Environment="HOME=__HOME__" "USER=__USER__" "LOGNAME=__USER__" "OMNI_HOME=__OMNI_HOME__" "PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin"
+__ENVIRONMENT__
+__ENVIRONMENT_FILE__
+ExecStart="__UV__" "run" "--frozen" __TICK_SYNC_ARGS__ "--python" "__PYTHON__" "--project" "__PROJECT__" "python" "-m" "__MODULE__" "--omni-home" "__OMNI_HOME__" "--state-dir" "__EVIDENCE_DIR__"
+TimeoutStartSec=__RUN_TIMEOUT__
+StandardOutput=append:__STATE_DIR__/__UNIT__.out.log
+StandardError=append:__STATE_DIR__/__UNIT__.err.log

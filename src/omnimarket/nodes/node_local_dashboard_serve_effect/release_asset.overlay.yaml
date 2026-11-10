@@ -1,7 +1,0 @@
-# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
-# SPDX-License-Identifier: MIT
-# Bounded retries for public release GETs; other failures retain their error.
-max_attempts: 3
-retry_statuses: [502, 503, 504]
-backoff_seconds: 1.0
-timeout_seconds: 30.0

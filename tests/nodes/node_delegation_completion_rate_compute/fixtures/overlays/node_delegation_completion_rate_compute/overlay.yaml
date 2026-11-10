@@ -1,0 +1,13 @@
+# Test fixture of the overlay of node_delegation_completion_rate_compute (OMN-23108). The deployed overlay is
+# overlays/node_delegation_completion_rate_compute/overlay.yaml in the overlays repository; the schema is omnimarket's
+# ModelDelegationRateOverlay and no key has a default.
+window_seconds: 3600
+real_data_source: real
+harness_backend_prefix: "harness:"
+publish_max_age_seconds: 7200
+row_lane: delegation-rate
+row_src: delegation-rate
+bounds:
+  min_r_all: 20
+  min_r_dep: 10
+  max_failed_rate: 0.2

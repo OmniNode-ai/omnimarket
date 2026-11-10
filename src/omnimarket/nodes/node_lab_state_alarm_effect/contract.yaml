@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab State Alarm Effect (OMN-19998, 17a; plan figure W23)
+#
+# Two operations:
+#   alarm_lab_state: a lab source that is not WORKING raises one edge-triggered alarm; it goes to the primary channel and
+#                    needs a delivery receipt read back inside the overlay's readback window, or it goes to the second
+#                    channel as well; it clears only when the source reads WORKING; every run stamps a heartbeat.
+#   canary_verdict:  the verdict of the hosted canary that runs outside the lab (floor record age, alarm heartbeat age).
+# Channels are chosen by the overlay (in_memory by default). The slack channel posts to the alert channel the existing
+# alert path uses; the overlay names, by reference, the secrets that hold the bot token and the channel id, and the
+# values are resolved at the effect boundary and appear nowhere. The canary status (floor age and alarm heartbeat, three
+# times and two bounds) is published by the 17a cycle to the branch the overlay names, for the hosted canary to read.
+name: node_lab_state_alarm_effect
+contract_name: node_lab_state_alarm_effect
+node_name: node_lab_state_alarm_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Raises, delivers, reads back and clears the lab-state alarms of the factory floor, and decides the hosted canary's
+  verdict. A send is delivered only when a read-back proves it. Alarm state goes in and comes out; the node holds none.
+
+handler:
+  module: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_floor_canary
+  class: HandlerFloorCanary
+  input_model: omnimarket.models.floor_17a.ModelCanaryInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: alarm_lab_state
+      handler:
+        name: HandlerLabStateAlarm
+        module: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_alarm
+      input_model: omnimarket.models.floor_17a.ModelLabStateAlarmRequest
+      output_model: omnimarket.models.floor_17a.ModelLabStateAlarmResult
+    - operation: canary_verdict
+      handler:
+        name: HandlerFloorCanary
+        module: omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_floor_canary
+      input_model: omnimarket.models.floor_17a.ModelCanaryInput
+      output_model: omnimarket.models.floor_17a.ModelCanaryVerdict
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  side_effects:
+    - posts one message per raised alarm to the Slack alert channel and asks Slack whether the channel has it (chat.postMessage, conversations.history)
+    - pushes the canary status to the repository branch the overlay names (git push, one replaced commit)
+
+input_model:
+  name: ModelLabStateAlarmRequest
+  module: omnimarket.models.floor_17a
+  description: The lab-source verdicts, the alarm state so far and the alarm overlay.
+output_model:
+  name: ModelLabStateAlarmResult
+  module: omnimarket.models.floor_17a
+  description: The new alarm state and what was raised, escalated and cleared.
+
+terminal_event: onex.evt.omnimarket.lab-state-alarmed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-state-alarm-requested.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.lab-state-alarmed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-state-alarmed.v1

@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Parent notice recovery (OMN-23389, R12 of the h053 cascade plan). Read by `node_lane_parent_notice_recovery_effect`.
+#
+# 2026-11-09: the overlay store repair lane failed placement at 20:28Z with status node-unavailable and was read as
+# running for an hour. Only node-unavailable means the lane never ran and so may be started again; no-host is queued
+# by the runner already and is not recovered here.
+parent_lane: orchestrator-31d9
+failure_statuses: [node-unavailable]
+retry_budget: 3
+backoff_seconds: [120, 600]
+state_file: $HOME/.local/state/onex/lane-notice/state.json
+recovery_timeout_seconds: 120
+# The recovery starts through the lane start node, which places in process; the lane that failed was placed through
+# the runner's `onex node` call to the placement node.
+recovery_argv:
+  - onex
+  - run-node
+  - node_remote_lane_start_orchestrator
+  - --
+  - --overlay
+  - $OMNI_HOME/.onex_state/lab-host-repair/lane-start-overlay.yaml
+  - --ledger
+  - "{ledger}"
+  - --pool-snapshot
+  - $OMNI_HOME/.onex_state/lab-host-repair/pool-snapshot.json
+  - --lane
+  - "{lane}"
+  - --ticket
+  - "{ticket}"
+  - --model
+  - "{model}"
+  - --brief
+  - "{brief_file}"
+  - --run-id
+  - "{lane}"
+  - --parent
+  - "{parent}"
+ack_argv:
+  - python3
+  - $OMNI_PLUGIN_ROOT/scripts/onex_ledger.py
+  - row
+  - STATUS
+  - --lane
+  - "{lane}"
+  - --ticket
+  - OMN-23389
+  - --to
+  - orchestrator-31d9
+  - --kv
+  - "acked={notice}"
+  - --kv
+  - "notice-action={action}"
+  - --text
+  - "parent notice acknowledged by node_lane_parent_notice_recovery_effect"
+escalate_argv:
+  - python3
+  - $OMNI_PLUGIN_ROOT/scripts/onex_ledger.py
+  - row
+  - MSG
+  - --lane
+  - noticerecovery
+  - --ticket
+  - OMN-23389
+  - --to
+  - orchestrator-31d9
+  - --text
+  - "{row}"

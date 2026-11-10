@@ -67,7 +67,9 @@ def policy(tmp_path):
     count = tmp_path / "network"
     binary = tmp_path / "real-tool"
     binary.write_text(
-        '#!/bin/sh\nprintf "call\\n" >> "$TEST_NETWORK"\nprintf "answer\\n"\n'
+        # The gateway cache probe (`job-log-cached`) is a miss here and makes no call.
+        '#!/bin/sh\n[ "$2" = job-log-cached ] && exit 1\n'
+        'printf "call\\n" >> "$TEST_NETWORK"\nprintf "answer\\n"\n'
     )
     binary.chmod(0o755)
     config = {
@@ -183,7 +185,11 @@ def test_shared_cache_serializes_lanes_and_failure_is_not_cached(policy):
             call(config, env, "onex", "scm", "job-log", "o/r", "--job-id", "8").code
             == 3
         )
-    assert int(Path(config["spent"]).read_text()) == 2
+    assert int(Path(config["spent"]).read_text()) == 0
+    actions = [
+        row.split("\t")[-1] for row in Path(config["log"]).read_text().splitlines()
+    ]
+    assert actions[-2:] == ["pre-dispatch", "pre-dispatch"]
 
 
 def test_budget_reservation_is_atomic_and_corrupt_state_fails_closed(policy):
@@ -266,7 +272,8 @@ def test_installed_wrapper_enforces_policy_and_preserves_host_tool(tmp_path):
     for name in ("gh", "onex"):
         tool = tools / name
         tool.write_text(
-            '#!/bin/sh\nprintf "call\\n" >> "$TEST_NETWORK"\nprintf "answer\\n"\n'
+            '#!/bin/sh\n[ "$2" = job-log-cached ] && exit 1\n'
+            'printf "call\\n" >> "$TEST_NETWORK"\nprintf "answer\\n"\n'
         )
         tool.chmod(0o755)
     env = {

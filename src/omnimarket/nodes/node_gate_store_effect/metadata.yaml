@@ -1,0 +1,23 @@
+name: node_gate_store_effect
+version: "0.1.0"
+description: "one serializable gate store: reservations, the holder record, step keys, safety state and the order, with an in-memory twin"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_gate_store_effect: "omnimarket.nodes.node_gate_store_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "psycopg2-binary>=2.9"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "gate-store", "holder"]
+pack: "routing"
+display_name: "Gate Store Effect"
+node_role: "effect"

@@ -111,6 +111,14 @@ config:
   reason_cell: reason
   seq_cell: seq
   excerpt_chars: 140
+  # A lane's report or a merge does not close an ask: it reads unverified until a STATUS row on the
+  # check lane cites the ask with the pass verdict (orchestrator 2026-11-06T14:27:51Z, OMN-22478 piece 6).
+  checked_resolutions: [terminal, closes-ask]
+  check_lane: ask-check
+  check_verdict_cell: verdict
+  check_pass_verdict: "TRUE"
+  check_fail_verdict: "FALSE"
+  done_check_cell: done_check
   owned_state: owned
   owner_cell: owner
   done_state: done
