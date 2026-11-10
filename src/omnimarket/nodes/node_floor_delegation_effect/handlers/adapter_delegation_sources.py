@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -298,7 +299,9 @@ def read_scenario(
         "--limit",
         str(rt.scenario_run_limit),
     ]
+    began = time.monotonic()
     code, out, err = run(argv, rt.scenario_read_timeout_seconds)
+    took = round(time.monotonic() - began, 1)
     answer = _json_line(out)
     if answer is None:
         tail = (err or out).strip().splitlines()[-1:] or ["no answer"]
@@ -306,6 +309,7 @@ def read_scenario(
             scenario=decl.id,
             read="unread",
             read_at=at,
+            read_seconds=took,
             reason=f"exit {code}: {tail[0][:240]}",
         )
     result = answer.get("result")
@@ -314,13 +318,18 @@ def read_scenario(
             scenario=decl.id,
             read="unread",
             read_at=at,
+            read_seconds=took,
             reason="the answer has no result",
         )
     if answer.get("outcome") != "completed":
         reason = str(result.get("failure_reason") or answer.get("outcome") or "failed")
         kind: ScenarioReadKind = "no_workflow" if "HTTP 404" in reason else "unread"
         return ModelScenarioRead(
-            scenario=decl.id, read=kind, read_at=at, reason=reason[:240]
+            scenario=decl.id,
+            read=kind,
+            read_at=at,
+            read_seconds=took,
+            reason=reason[:240],
         )
     runs = result.get("runs")
     if not isinstance(runs, list):
@@ -328,6 +337,7 @@ def read_scenario(
             scenario=decl.id,
             read="unread",
             read_at=at,
+            read_seconds=took,
             reason="the answer lists no runs",
         )
     parsed: list[ModelScenarioRun] = []
@@ -346,7 +356,7 @@ def read_scenario(
             )
         )
     return ModelScenarioRead(
-        scenario=decl.id, read="read", read_at=at, runs=tuple(parsed)
+        scenario=decl.id, read="read", read_at=at, read_seconds=took, runs=tuple(parsed)
     )
 
 
@@ -434,6 +444,15 @@ def load_previous_reads(path: Path) -> dict[str, ModelScenarioRead]:
         return {}
 
 
+def _read_age_seconds(read: ModelScenarioRead, now: datetime) -> float:
+    try:
+        return (
+            now - datetime.fromisoformat(read.read_at.replace("Z", "+00:00"))
+        ).total_seconds()
+    except ValueError:
+        return float("inf")
+
+
 def read_scenarios(
     rt: ModelDelegationRuntime,
     home: Path,
@@ -447,8 +466,9 @@ def read_scenarios(
     A scenario whose overlay entry names the ``lab_node`` source is read from ``ledger``, the bus read of its node's STATUS
     rows; with no read route it is unread and the reason names the variable that would carry it.
 
-    A scenario read within ``scenario_refresh_seconds`` is kept as it is; one whose read the deadline left no time for keeps
-    its previous read, which the build then draws unread once it is older than ``scenario_reads_max_age_seconds``.
+    A scenario read within ``scenario_refresh_seconds`` is kept as it is (a "not built" read for ``scenario_missing_refresh_seconds``);
+    one whose read the deadline left no time for, or whose new read failed, keeps its previous read, which the build then draws
+    unread once it is older than ``scenario_reads_max_age_seconds``.
     """
     tick = clock or (lambda: datetime.now(UTC))
     kept = load_previous_reads(home / rt.scenario_reads_relpath)
@@ -461,14 +481,15 @@ def read_scenarios(
     for decl in stale_first:
         previous = kept.get(decl.id)
         if previous is not None:
-            try:
-                age = (
-                    now
-                    - datetime.fromisoformat(previous.read_at.replace("Z", "+00:00"))
-                ).total_seconds()
-            except ValueError:
-                age = float("inf")
-            if age < rt.scenario_refresh_seconds:
+            age = _read_age_seconds(previous, now)
+            refresh = (
+                rt.scenario_missing_refresh_seconds
+                if previous.read == "no_workflow"
+                else rt.scenario_refresh_seconds
+            )
+            # A read that failed is not an answer, so it is not held back like one that worked: it is asked again on the next
+            # run, after every scenario that has waited longer (the order is by read_at, which a failed read also sets).
+            if previous.read != "unread" and age < refresh:
                 continue
         elapsed = (tick() - started).total_seconds()
         if (
@@ -487,8 +508,18 @@ def read_scenarios(
                     reason=f"{rt.ledger_read_command_env} is not set; the lab node's results have no bus read route",
                 )
             )
-        else:
-            result[decl.id] = read_scenario(decl, onex, rt, run, tick())
+            continue
+        fresh = read_scenario(decl, onex, rt, run, tick())
+        if (
+            fresh.read == "unread"
+            and previous is not None
+            and previous.read in ("read", "no_workflow")
+            and _read_age_seconds(previous, now) < rt.scenario_reads_max_age_seconds
+        ):
+            # OMN-23176: a read that failed or timed out is answered from the cached run list while that list is young. The
+            # cached read keeps its own read_at, so it ages out instead of being refreshed by a failure.
+            continue
+        result[decl.id] = fresh
     return ModelScenarioReads(
         updated_at=now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         reads=tuple(result[d.id] for d in rt.scenarios if d.id in result),

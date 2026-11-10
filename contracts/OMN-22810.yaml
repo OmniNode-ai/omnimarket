@@ -48,6 +48,20 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov
+- id: dod-omn22810-ac3-browser-proof-script
+  description: The manual Playwright proof script for the strip piece panel (tests/nodes/node_factory_floor_publish_effect/piece_panel_browser.py) passes ruff lint and carries no suppression comments; the browser run itself is recorded in the pull request body.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv run --frozen ruff check tests/nodes/node_factory_floor_publish_effect/piece_panel_browser.py
+    cwd: .
+  - check_type: command
+    check_value: "! grep -nE 'noqa|type: *ignore' tests/nodes/node_factory_floor_publish_effect/piece_panel_browser.py"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -q --no-cov
 - id: dod-omn22810-integration-proof
   description: The browser run (desktop and phone, dev against the branch) is recorded with its screenshots in the pull request body; the local Done gate re-runs the page and compute tests on a lab host at the pushed head.
   source: manual

@@ -7,9 +7,10 @@ both run it with the dispatch venv's interpreter. ``J`` is the overlay's ``floor
 ``{"floor_fill": {...}}``; an empty or unreadable ``J`` prints ``UNKNOWN fill-state:overlay:unreadable`` and fails.
 
 The entry holds no I/O of its own: the handler it builds takes every seam in its constructor. The
-shipped profile is ``inmemory`` (scripted seams over an in-memory conditional store); the live bindings of
-the facts, pool, ledger, tickets and process seams are bound by the lab step (plan T8) and refuse here, naming
-what is unbound. The entry ends the process itself at ``floor_fill.command_timeout_seconds``, so a stalled
+default profile is ``inmemory`` (scripted seams over an in-memory conditional store). ``--profile live`` binds the
+store, the floor and plan reads, the ledger file, the process runner and the clock from the overlay's
+``floor_fill_live`` section; the pool, tickets, brake and stop-signal seams have no live source yet and fail closed
+naming what is unbound (see ``container/container_live.py``). Any other profile is refused naming it. The entry ends the process itself at ``floor_fill.command_timeout_seconds``, so a stalled
 command leaves no process behind.
 """
 
@@ -34,6 +35,10 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillConfig,
     ModelFloorFillEntryResult,
     load_floor_fill_config,
+)
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    LIVE_OVERLAY_SECTION,
+    load_floor_fill_live_settings,
 )
 
 OVERLAY_SECTION = "floor_fill"
@@ -93,9 +98,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--this-host", required=True)
     parser.add_argument("--profile", default="inmemory")
     known, rest = parser.parse_known_args(arguments)
-    if known.profile != "inmemory":
+    if known.profile not in ("inmemory", "live"):
         sys.stdout.write(
-            f"UNKNOWN fill-state:profile-unbound:{known.profile} (live seams are bound by the lab step)\n"
+            f"UNKNOWN fill-state:profile-unbound:{known.profile} (no binding of that name)\n"
         )
         return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
     try:
@@ -105,16 +110,41 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not isinstance(overlay, dict):
         sys.stdout.write("UNKNOWN fill-state:overlay:unreadable\n")
         return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
-    from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
-        build_inmemory_handler,
-    )
+    build_handler: Callable[[ModelFloorFillConfig], HandlerFloorFillCommand]
+    if known.profile == "live":
+        try:
+            live_settings = load_floor_fill_live_settings(
+                overlay.get(LIVE_OVERLAY_SECTION, {})
+            )
+        except FloorFillConfigError as error:
+            sys.stdout.write(
+                f"UNKNOWN fill-state:overlay:{','.join(error.keys) or error}\n"
+            )
+            return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+        dsn = os.environ.get(live_settings.store_dsn_env, "")
+        if not dsn:
+            sys.stdout.write(
+                f"UNKNOWN fill-state:store-dsn-unset:{live_settings.store_dsn_env}\n"
+            )
+            return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+        from omnimarket.nodes.node_floor_fill_orchestrator.container.container_live import (
+            build_live_handler_factory,
+        )
+
+        build_handler = build_live_handler_factory(live_settings, dsn=dsn)
+    else:
+        from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
+            build_inmemory_handler,
+        )
+
+        build_handler = build_inmemory_handler
 
     result = run_entry(
         rest,
         overlay,
         host_id=known.this_host,
         hosts=lab_host_rows(overlay),
-        build_handler=build_inmemory_handler,
+        build_handler=build_handler,
     )
     sys.stdout.write(result.stdout)
     sys.stdout.flush()
