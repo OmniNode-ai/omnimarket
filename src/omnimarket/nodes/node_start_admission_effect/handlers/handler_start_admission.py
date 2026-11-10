@@ -112,6 +112,7 @@ class HandlerStartAdmission:
                 reason=decision.reason,
                 epoch=decision.epoch,
                 attempts=decision.attempts,
+                drill=request.drill,
             )
         )
         return ModelStartAdmissionResult(
@@ -123,6 +124,7 @@ class HandlerStartAdmission:
             reason=decision.reason,
             epoch=decision.epoch,
             attempts=decision.attempts,
+            drill=request.drill,
         )
 
     def _decide(
