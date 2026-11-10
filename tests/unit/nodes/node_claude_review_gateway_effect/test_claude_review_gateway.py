@@ -1350,7 +1350,9 @@ def test_handler_loads_required_ttl_from_overlay_without_a_default(
         model=_MODEL,
         cloud_refused_repositories=_REFUSED,
     )
-    with pytest.raises(NodeOverlayError, match="key_set_aside_ttl_seconds"):
+    with pytest.raises(
+        NodeOverlayError, match="claude_review_gateway: the overlay file"
+    ):
         handler.gateway(request)
     overlay = tmp_path / "policy.yaml"
     overlay.write_text("key_set_aside_ttl_seconds: 23\n", encoding="utf-8")
