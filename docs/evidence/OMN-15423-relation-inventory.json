@@ -9764,6 +9764,7 @@
       "readers": [
         "node_claude_review_gateway_effect",
         "node_delegation_routing_reducer",
+        "node_inference_credentials",
         "node_key_pool_expiry_alert_compute",
         "node_local_secret_store_effect",
         "node_projection_tenant_credentials"
