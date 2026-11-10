@@ -259,6 +259,24 @@ inputs:
     producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
+  - id: beta_board_reads
+    order: 21
+    class: file
+    where: .onex_state/beta-board/probe-reads.json; .claude_scratch/factory-floor/beta-board.json
+    read_by: [node_beta_board_effect]
+    steps: [beta_board]
+    producer: node_beta_board_effect itself (scm reads kept between cycles)
+    replacement: {node: node_beta_board_effect, topic: onex.snapshot.projection.beta-board-reads.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-beta-board-projection
+  - id: join_j6_gate_store
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_gate_store_effect.runtime_join_j6 run (reads the gate store overlay, overlay_join_j6.yaml)
+    read_by: [node_gate_store_effect]
+    steps: [join_j6]
+    producer: the gate store overlay and the overlay home's gate commits
+    replacement: {node: node_gate_store_effect, topic: onex.snapshot.projection.join-j6.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-join-j6-projection
   - id: network_reads
     order: 21
     class: http
