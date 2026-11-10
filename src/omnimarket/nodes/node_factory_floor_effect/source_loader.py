@@ -551,6 +551,12 @@ def load_linear(path: Path | None) -> tuple[ModelFloorLinearIssue, ...]:
                             "",
                         ),
                         title=" ".join(str(issue.get("title") or "").split()),
+                        children=tuple(
+                            child
+                            for child in (issue.get("children") or ())
+                            if isinstance(child, str)
+                            and TICKET_RE.fullmatch(child) is not None
+                        ),
                     )
                 )
         return tuple(sorted(issues, key=lambda issue: issue.id))
@@ -562,8 +568,14 @@ def merge_linear_titles(
 ) -> tuple[ModelFloorLinearIssue, ...]:
     """The status text file gives each issue its status type; the JSON snapshot gives its title (and any issue only it holds)."""
     titles = {issue.id: issue.title for issue in titled if issue.title}
+    children = {issue.id: issue.children for issue in titled if issue.children}
     merged = {
-        issue.id: issue.model_copy(update={"title": titles.get(issue.id, issue.title)})
+        issue.id: issue.model_copy(
+            update={
+                "title": titles.get(issue.id, issue.title),
+                "children": children.get(issue.id, issue.children),
+            }
+        )
         for issue in issues
     }
     for issue in titled:
@@ -1308,6 +1320,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
             ticket=str(data.get("ticket") or ""),
             placement=str(data.get("placement") or ""),
             account=str(cloud.get("account") or ""),
+            login=str(data.get("login") or ""),
             pr_heads=tuple(
                 str(h) for h in data.get("pr_heads") or () if isinstance(h, str)
             ),
