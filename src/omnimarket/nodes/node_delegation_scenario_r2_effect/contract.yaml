@@ -30,26 +30,6 @@ handler:
 # Not a runtime-dispatched handler: HandlerScenarioR2 takes its contract runtime block, command runner, ledger append
 # route, event sink and clock as constructor parameters, so the node runs through its own CLI and schedule.
 
-# The scheduled tick (runtime_scenario_r2_tick) fills the run's settings through HandlerSecretStoreSettings before it runs
-# HandlerScenarioR2; both handlers are bound here so the contract names every handler the node's modules import.
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: run
-      handler:
-        name: HandlerScenarioR2
-        module: omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2
-      event_model:
-        name: ModelScenarioR2RunCommand
-        module: omnimarket.models.model_delegation_scenario
-    - operation: resolve_settings
-      handler:
-        name: HandlerSecretStoreSettings
-        module: omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2_settings
-      event_model:
-        name: ModelScenarioR2RunCommand
-        module: omnimarket.models.model_delegation_scenario
-
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
