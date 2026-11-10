@@ -211,6 +211,8 @@ class FakeRunner:
         self.read: list[str] = []
 
     def __call__(self, argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
+        if "--workflow" not in argv:
+            return 1, "", "not a scenario read"
         workflow = argv[argv.index("--workflow") + 1]
         self.read.append(workflow)
         return self.answers.get(workflow, (1, "", "no answer planted"))

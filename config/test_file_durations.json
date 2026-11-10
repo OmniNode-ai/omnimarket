@@ -1458,6 +1458,8 @@
   "tests/nodes/node_lane_closeout_effect/test_golden_chain_lane_closeout.py": 1.46,
   "tests/nodes/node_lane_closeout_orchestrator/test_golden_chain_lane_closeout_orchestrator.py": 0.8,
   "tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py": 0.05,
+  "tests/nodes/node_lane_ctx_ledger_dedupe_effect/test_lane_ctx_ledger_dedupe_effect.py": 0.17,
+  "tests/nodes/node_lane_ctx_ledger_dedupe_effect/test_lane_ctx_ledger_dedupe_schedule.py": 0.17,
   "tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py": 0.51,
   "tests/nodes/node_lane_gh_read_scan_compute/test_error_chain_lane_gh_read_scan.py": 0.01,
   "tests/nodes/node_lane_gh_read_scan_compute/test_golden_chain_lane_gh_read_scan.py": 0.03,
