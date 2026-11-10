@@ -54,6 +54,17 @@ class EnumGateStoreOutcome(StrEnum):
     REFUSED_INVALID = "refused_invalid"
 
 
+class ModelGateStorePostgres(BaseModel):
+    """The Postgres settings of the ``gate_store`` overlay; the DSN is named, never held."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dsn_env: str = Field(min_length=1)
+    schema_name: str = Field(min_length=1, pattern=r"^[a-z_][a-z0-9_]*$")
+    connect_timeout_seconds: int = Field(ge=1)
+    lock_timeout_ms: int = Field(ge=1)
+
+
 class ModelGateStorePolicy(BaseModel):
     """The ``gate_store`` overlay: every setting of the store."""
 
@@ -63,6 +74,7 @@ class ModelGateStorePolicy(BaseModel):
     limits: dict[str, int]
     reservation_ttl_seconds: int = Field(ge=1)
     order: tuple[str, ...]
+    postgres: ModelGateStorePostgres | None = None
 
 
 class ModelGateStoreRequest(BaseModel):
