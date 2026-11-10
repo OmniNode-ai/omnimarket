@@ -265,7 +265,7 @@ inputs:
     where: .onex_state/floor-delegation/route-reads.json
     read_by: [node_floor_delegation_effect]
     steps: [delegation_tracker]
-    producer: node_floor_delegation_effect itself (the routes stage reads delegation_events by hour and keeps the counts between cycles)
+    producer: node_floor_delegation_effect itself (the routes stage writes the delegations per hour by route between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-route-reads.v1, status: new}
     ticket: OMN-23381
   - id: beta_board_reads
@@ -289,10 +289,10 @@ inputs:
   - id: join_j7_lab_check_run
     order: 21
     class: command
-    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the lab check run overlay and the ledger route)
+    where: python -m omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7 run (reads the ledger source and the lab check run overlay, overlay_join_j7.yaml)
     read_by: [node_lab_check_run_effect]
     steps: [join_j7]
-    producer: the lab check run overlay and the ledger's piece 7 readings
+    producer: the lab check run overlay and the ledger's golden stop drill readings
     replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
     ticket: OMN-23420
   - id: network_reads
