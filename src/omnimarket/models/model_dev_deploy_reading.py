@@ -4,7 +4,8 @@
 
 The receipt fact is the part of ``ModelLabPassReceipt`` (omnibase_infra, ``scripts/ci/lab_pass_receipt.py``)
 the reading needs: the exact sha, the lane, the result and when it finished. Every sha is 40 lowercase
-hex, because a receipt for a descendant or an abbreviation is not a receipt for the merged sha.
+hex. A receipt for a descendant counts for an earlier merge only through ``ModelLineageFact``: the clone's own
+reading of ancestry between two exact shas, judged under the overlay's ``ModelLineageRule`` (ruling 2026-11-10T16:53:27Z).
 """
 
 from __future__ import annotations
@@ -85,6 +86,57 @@ class ModelRuntimeProbeFact(BaseModel):
         return self
 
 
+class ModelLineageRule(BaseModel):
+    """The overlay's rule and its bounds for a later commit standing in for an earlier one. Nothing has a default."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: A PASS receipt whose sha has a runtime-affecting merge as an ancestor covers that merge.
+    receipt_covers_descendant: bool
+    #: A running sha that descends from the expected one passes when no runtime-affecting commit lies between.
+    probe_accepts_descendant: bool
+    #: The most first-parent commits that may lie between the earlier sha and the later one.
+    max_commits_between: int = Field(gt=0)
+    #: How long after the merge a covering receipt may have finished.
+    receipt_cover_window_seconds: int = Field(gt=0)
+
+
+class ModelLineageFact(BaseModel):
+    """What the clone says of ``base_sha`` and ``head_sha``: ancestor, not an ancestor, or unread (never a pass)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    base_sha: str
+    head_sha: str
+    relation: Literal["ancestor", "not-ancestor", "unread"]
+    #: First-parent commits in ``base..head``; read only when ``relation`` is ancestor.
+    commits_between: int | None = Field(default=None, ge=0)
+    #: Runtime-affecting commits in ``base..head``; read only for a probe's pair, empty otherwise.
+    runtime_affecting_between: tuple[str, ...] = ()
+    unread_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        _exact_sha(self.base_sha)
+        _exact_sha(self.head_sha)
+        for sha in self.runtime_affecting_between:
+            _exact_sha(sha)
+        if self.relation == "ancestor":
+            if self.commits_between is None or self.unread_reason is not None:
+                raise ValueError(
+                    "an ancestor reads its commit count and no unread reason"
+                )
+        elif self.commits_between is not None or self.runtime_affecting_between:
+            raise ValueError(
+                f"a {self.relation} pair carries no commit count or runtime commits"
+            )
+        if self.relation == "unread" and not (self.unread_reason or "").strip():
+            raise ValueError("an unread pair names its reason")
+        if self.relation != "unread" and self.unread_reason is not None:
+            raise ValueError("only an unread pair carries an unread reason")
+        return self
+
+
 class ModelDevDeployReadingRequest(BaseModel):
     """The facts, the thresholds from the piece's overlay and the time to read at. Nothing has a default."""
 
@@ -97,6 +149,8 @@ class ModelDevDeployReadingRequest(BaseModel):
     merges: tuple[ModelRuntimeMerge, ...]
     receipts: tuple[ModelLabPassReceiptFact, ...]
     probes: tuple[ModelRuntimeProbeFact, ...]
+    lineage_rule: ModelLineageRule
+    lineage: tuple[ModelLineageFact, ...]
     receipts_unread_reason: str | None
     probes_unread_reason: str | None
 
@@ -131,6 +185,8 @@ __all__: list[str] = [
     "ModelDevDeployReading",
     "ModelDevDeployReadingRequest",
     "ModelLabPassReceiptFact",
+    "ModelLineageFact",
+    "ModelLineageRule",
     "ModelRuntimeMerge",
     "ModelRuntimeProbeFact",
 ]

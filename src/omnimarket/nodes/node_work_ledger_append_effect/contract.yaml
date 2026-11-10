@@ -122,6 +122,10 @@ join_j5:
   identity_unresolved_failure_code: "upstream_identity_unresolved"
   append_not_accepted_failure_code: "ledger_append_not_accepted"
   projected_row_missing_failure_code: "projected_row_missing"
+  # OMN-23591: every chain this join starts ends. A run that raises after its start closes the chain with the first code; a
+  # run still open at its overlay's run_deadline_seconds closes it with the second, inside the publish step's own bound.
+  interrupted_failure_code: "ledger_join_interrupted"
+  deadline_exceeded_failure_code: "ledger_join_deadline_exceeded"
 # OMN-23086: the J5 runner is bound here so the contract owns it; it runs through runtime_join_j5 (the publish cycle's
 # join_j5 step), not handler_routing, because its collaborators are chosen by the overlay.
 cli_handlers:

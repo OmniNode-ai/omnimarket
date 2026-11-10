@@ -23,6 +23,7 @@ description: >-
   run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job, and ends its run
   on TERM, INT and HUP, so an unload ends it too. A unit that declares tick_lock_file has a tick that holds that file in its evidence directory
   while it runs: an install or uninstall waits for a running tick to end after the unload, then stops it, and refuses the install of one it cannot stop.
+  Before loading a unit the installer runs its module with the arguments of the unit's declared probe_argv (the help request when none is declared) under the rendered environment; a module whose help request would run a real pass declares a probe its main honours without a pass, a bus read or a write, and a probe that is not a non-empty list of words is refused.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
@@ -191,6 +192,44 @@ units:
     # The same volume bars launchd from the working directory: uv ended up in getcwd for good (measured on h101, sample of the
     # stalled process). The job runs from, and passes the tick as its omni home, a directory under the home.
     launchd_root: .local/state/omni/overlay-store-refresh
+  # OMN-23557: one tick refreshes the clone this host's lab_hosts row declares for the knowledge base, which the registry-root
+  # scan cannot list. The overlay of node_canonical_clone_refresh_effect holds every value this unit does not declare.
+  declared-clone-refresh:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.declared-clone-refresh
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 270
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_canonical_clone_refresh_effect.runtime_declared_clone_tick
+    entry_file: src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The third root holds the `repos` overlay whose knowledge_base key names the clone's directory (it has not moved to the overlays repository yet).
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays:{workspace_config_root}/config/onex/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/declared-clone-refresh/last-run.json
+    state_directory: .onex_state/declared-clone-refresh
+    log_directory: .local/state/omni/declared-clone-refresh
+    launchd_root: .local/state/omni/declared-clone-refresh
   # The same reader on a Linux pool host (OMN-22878): a systemd user service and timer, so every lab host keeps the
   # host-list projection the lab tools, serve units and host drift read (RULING 2026-11-07T15:59:02Z).
   overlay-store-refresh-systemd:
@@ -606,6 +645,8 @@ units:
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_pr_landing_snapshot_effect
     entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file
@@ -642,6 +683,8 @@ units:
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_pr_landing_watcher_facts_effect
     entry_file: src/omnimarket/nodes/node_pr_landing_watcher_facts_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file
@@ -677,11 +720,15 @@ units:
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_pr_landing_snapshot_effect
     entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file
+    # The cutover overlay file is overridable like the overlay roots: the overlays clone is not under every registry root.
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_LANDING_SNAPSHOT_OVERLAY_FILE
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
     environment:
       # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
@@ -713,6 +760,8 @@ units:
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_pr_landing_tick_orchestrator
     entry_file: src/omnimarket/nodes/node_pr_landing_tick_orchestrator/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file
