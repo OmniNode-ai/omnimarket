@@ -70,10 +70,8 @@ def mirror_tenant_in_store(db_path: Path, tenant_identity: str) -> str:
     from datetime import UTC, datetime
     from uuid import uuid5
 
-    from omnimarket.local_deployment.tenant_identity import (
-        _ensure_tables_on,
-        _write_mirror_row,
-    )
+    from omnimarket.handlers.local_identity_mirror import write_mirror_row
+    from omnimarket.local_deployment.tenant_identity import _ensure_tables_on
     from omnimarket.projection.tenant_registry_resolution import (
         TenantRegistryResolutionError,
         resolve_registry_tenant_uuid,
@@ -97,7 +95,7 @@ def mirror_tenant_in_store(db_path: Path, tenant_identity: str) -> str:
     except ValueError:
         slug = tenant_identity
         tenant_uuid = uuid5(UUID(int=0), tenant_identity)
-    _write_mirror_row(
+    write_mirror_row(
         adapter, tenant_uuid=tenant_uuid, tenant_slug=slug, now=datetime.now(tz=UTC)
     )
     return tenant_identity
