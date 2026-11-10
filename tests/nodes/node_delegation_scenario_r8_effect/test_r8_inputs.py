@@ -20,11 +20,15 @@ from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.handler_scenar
     load_inputs,
     load_lane_settings,
     load_runtime,
+    load_schedule,
 )
 
 pytestmark = pytest.mark.unit
 
 INPUTS = NODE_DIR / "inputs" / "r8_run.yaml"
+DAYS_CONTRACT = (
+    NODE_DIR.parent / "node_delegation_scenario_days_effect" / "contract.yaml"
+)
 
 
 def test_r8_inputs_parse_into_the_typed_model() -> None:
@@ -75,3 +79,36 @@ def test_r8_the_lane_block_names_every_total_and_every_run_field() -> None:
     assert settings.backend == "http"
     assert set(settings.totals_keys) == set(TOTALS_NAMES)
     assert set(settings.run_keys) == set(RUN_NAMES)
+
+
+def test_r8_lane_and_cadence_are_the_ones_the_green_days_reader_names() -> None:
+    days = yaml.safe_load(DAYS_CONTRACT.read_text(encoding="utf-8"))
+    scenarios = {item["scenario_id"]: item for item in _scenarios(days)}
+    runtime = load_runtime(CONTRACT_PATH)
+    assert scenarios["R8"]["lane"] == runtime.lane == "node_delegation_scenario_r8"
+    assert scenarios["R8"]["cadence"] == runtime.cadence.value
+
+
+def test_r8_schedule_is_the_six_hourly_minute_50_timer_with_the_tenant_key_in_an_environment_file() -> (
+    None
+):
+    schedule = load_schedule(CONTRACT_PATH)
+    assert schedule.cadence.on_calendar == "*-*-* 00,06,12,18:50:00"
+    assert schedule.environment_file == ".config/onex/scenario-r8.env"
+    assert load_lane_settings(CONTRACT_PATH).api_key_env not in str(
+        schedule.unit_environment
+    )
+
+
+def _scenarios(node: object) -> list[dict[str, str]]:
+    """Every mapping in the days contract that carries a scenario id."""
+    found: list[dict[str, str]] = []
+    if isinstance(node, dict):
+        if "scenario_id" in node and "lane" in node:
+            found.append(node)
+        for item in node.values():
+            found.extend(_scenarios(item))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_scenarios(item))
+    return found

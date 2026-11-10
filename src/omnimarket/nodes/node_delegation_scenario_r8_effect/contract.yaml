@@ -72,7 +72,8 @@ runtime:
   scenario_id: R8
   cadence: every_6h
   ticket: OMN-23175
-  lane: node_delegation_scenario_r8_effect
+  # The lane the green-days reader (node_delegation_scenario_days_effect) names for R8.
+  lane: node_delegation_scenario_r8
   actor: script:node_delegation_scenario_r8_effect
   work_relpath: .onex_state/delegation-scenario-r8/work
   # R8 runs no probe ladder: these two keys are the shared runtime block's and are unused here.
@@ -114,6 +115,8 @@ schedule:
   state_directory: .onex_state/delegation-scenario-r8
   timeout_seconds: 900
   unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  # The probe tenant address and key are loaded from this file under the home directory, so their values never sit in the unit.
+  environment_file: .config/onex/scenario-r8.env
   cadence:
     on_calendar: "*-*-* 00,06,12,18:50:00"
     time_zone: UTC
