@@ -9,6 +9,9 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 OVERLAY_ID = "node_pr_landing_snapshot_effect"
+# A second instance of the step (the cutover repositories' unit, OMN-23514) pins its own overlay file here;
+# unset, the overlay is <root>/node_pr_landing_snapshot_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+OVERLAY_FILE_ENV = "ONEX_LANDING_SNAPSHOT_OVERLAY_FILE"
 _REDPANDA_FIELDS = (
     "facts_path",
     "watcher_state_path",
@@ -107,4 +110,9 @@ class ModelSnapshotOverlay(BaseModel):
         return self
 
 
-__all__: list[str] = ["OVERLAY_ID", "EnumSnapshotBackend", "ModelSnapshotOverlay"]
+__all__: list[str] = [
+    "OVERLAY_FILE_ENV",
+    "OVERLAY_ID",
+    "EnumSnapshotBackend",
+    "ModelSnapshotOverlay",
+]

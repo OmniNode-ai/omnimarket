@@ -136,9 +136,23 @@ def test_error_chain_act_for_a_repository_the_old_controller_decides_for_is_refu
     assert sink.events[-1].failure_code == "recorded_decision_missing"
 
 
-def test_control_observe_mode_never_writes_a_record() -> None:
+def test_observe_mode_compares_the_out_of_scope_record_and_performs_nothing() -> None:
+    """Observe mode uses the same no-action record (OMN-23514) and still performs no write."""
+    repository, actions = _cutover()
+    handler, writer, publisher, _ = _handler((repository,), repository)
+    request = _act_without_record().model_copy(update={"mode": EnumTickMode.OBSERVE})
+    result = handler.handle(request)
+    assert result.status is EnumTickStatus.COMPARED, result.failure_detail
+    assert result.recorded_written is True
+    assert result.node_actions == actions
+    assert result.writes_performed == 0
+    assert writer.performed == []
+    assert [topic for topic, _ in publisher.published] == [COMPARED_TOPIC]
+
+
+def test_control_observe_mode_without_a_cutover_repository_still_refuses() -> None:
     repository, _ = _cutover()
-    handler, writer, _, _ = _handler((repository,), repository)
+    handler, writer, _, _ = _handler((repository,), None)
     request = _act_without_record().model_copy(update={"mode": EnumTickMode.OBSERVE})
     result = handler.handle(request)
     assert result.failure_reason is EnumTickFailureReason.RECORDED_DECISION_MISSING
