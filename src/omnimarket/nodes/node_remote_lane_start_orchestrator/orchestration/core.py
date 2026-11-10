@@ -273,6 +273,15 @@ class RemoteLaneStartOrchestrator:
             cells.append(f"escalation_reason={request.escalation_reason}")
         return cells
 
+    def _worktree_path(self, request: ModelRemoteLaneStartRequest) -> str:
+        return f"{self._s.host_run_root.rstrip('/')}/{request.run_id}/{request.repo}"
+
+    def _worktree_cell(self, request: ModelRemoteLaneStartRequest) -> str:
+        """The CLAIM's worktree cell the ledger grammar requires (OMN-20148): the run's checkout, or none."""
+        if request.repo:
+            return f"worktree={self._worktree_path(request)}"
+        return "worktree=none"
+
     @staticmethod
     def _delegation_cell(decided: Any, status: str, engine_rc: int | None) -> str:
         """The TERMINAL's delegation cell, as the script's ``delegation_cells`` writes it.
@@ -465,6 +474,7 @@ class RemoteLaneStartOrchestrator:
             f"est ~{self._est_hours(request)} lane-hours; displaces {self._s.displaces}; ({request.ticket})",
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
+            self._worktree_cell(request),
         ]
         claim_row, appended = self._append(
             request,
@@ -715,6 +725,13 @@ class RemoteLaneStartOrchestrator:
                 "friction=none",
                 f"closes-CLAIM={claim_stamp}",
                 f"outcome={lane_outcome}",
+                *(
+                    [
+                        f"worktree=kept:{self._worktree_path(request)}:left on the host, no closeout step runs yet"
+                    ]
+                    if request.repo
+                    else []
+                ),
                 *head[2:],
                 self._delegation_cell(decided, final_status, engine_rc),
                 *(f"{k}={v}" for k, v in sorted(decided.ledger_cells.items())),

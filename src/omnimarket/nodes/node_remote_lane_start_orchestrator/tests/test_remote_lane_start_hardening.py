@@ -24,6 +24,7 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.tests.lane_start_fixtu
     DONE_MESSAGE,
     T0,
     Rig,
+    cells,
     request,
     settings,
     stream_result,
@@ -166,3 +167,29 @@ def test_an_unfillable_placeholder_stops_the_entry_before_any_claim(
     )  # fmt: skip
     assert code == EXIT_USAGE
     assert ledger.read_text(encoding="utf-8") == ""
+
+
+def test_the_claim_carries_the_worktree_cell_the_ledger_grammar_requires(
+    tmp_path: Path,
+) -> None:
+    """The live ledger refused the first real CLAIM of this entry: no worktree cell (OMN-20148)."""
+    rig = Rig(tmp_path, DONE)
+    rig.orchestrator.run(request())
+    [claim] = rig.attempted_rows("CLAIM")
+    assert cells(claim)["worktree"] == "none"
+    # No TERMINAL for a lane with no checkout names a worktree outcome either.
+    [terminal] = rig.attempted_rows("TERMINAL")
+    assert "worktree" not in cells(terminal)
+
+
+def test_the_claim_of_a_repo_lane_names_its_checkout_and_the_terminal_keeps_it(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(tmp_path, DONE)
+    rig.orchestrator.run(request(repo="omnimarket", sha="a" * 40))
+    [claim] = rig.attempted_rows("CLAIM")
+    path = cells(claim)["worktree"]
+    assert path != "none"
+    assert path.endswith("/omnimarket")
+    [terminal] = rig.attempted_rows("TERMINAL")
+    assert cells(terminal)["worktree"].startswith(f"kept:{path}:")
