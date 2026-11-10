@@ -77,6 +77,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # OMN-23213: the C32 auth-boundary probe is run by a daily host timer unit
+    # through its own tick module; it subscribes to no topic and has no
+    # onex.nodes entry point.
+    "node_c32_auth_boundary_probe_effect",
     # The host-reconcile effect is likewise run from the command line by a host
     # timer; it subscribes to no topic and has no onex.nodes entry point.
     "node_host_reconcile_effect",
