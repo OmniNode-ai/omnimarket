@@ -384,6 +384,15 @@ inputs:
     replacement: {node: node_overlay_store_read_effect, topic: onex.snapshot.projection.overlay-store.v1, status: exists}
     ticket: OMN-22478
     notes: Already on the bus with a stamped local snapshot (RULING 2026-11-06T00:23:28Z); the floor's row for the store's freshness is the overlay_store_fleet row above.
+  - id: repository_names_overlay
+    order: 25
+    class: config
+    where: ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY; .onex_state/floor-compare/repository-names.yaml; node_floor_compare_effect/overlay.repository_names.yaml
+    read_by: [node_floor_compare_effect]
+    steps: [floor_compare]
+    producer: the overlays repository, delivered through node_overlay_store_load_effect and node_projection_overlay_store; a host's own file under the state directory takes precedence when it exists
+    replacement: {node: node_overlay_store_read_effect, topic: onex.snapshot.projection.overlay-store.v1, status: exists}
+    ticket: OMN-23134
   - id: packaged_pages
     order: 26
     class: static_asset
