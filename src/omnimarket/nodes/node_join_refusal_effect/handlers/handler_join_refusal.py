@@ -48,6 +48,38 @@ UPSTREAM_PREFIX = "upstream_"
 _FUTURE_SLACK = timedelta(days=1)
 
 
+def _journal_failures(
+    journal: tuple[ModelNodeEmission, ...], piece: int, nodes: frozenset[str]
+) -> tuple[list[ModelNodeEmission], int]:
+    """The real failure chains the named nodes of ``piece`` wrote to the journal, and how many drill chains were left out.
+
+    A chain is every event of one node under one correlation id. It is a real failure when it holds a typed failure and is
+    not a drill. A chain that only refused (a typed ``upstream_`` failure and no start) is the answer to an earlier failure,
+    never a failure of its own, so it is not answered: the floor reads it the same way.
+    """
+    chains: dict[tuple[str, str], list[ModelNodeEmission]] = {}
+    for event in journal:
+        if event.piece == piece and event.node in nodes:
+            chains.setdefault((event.node, event.correlation_id), []).append(event)
+    real: list[ModelNodeEmission] = []
+    drills = 0
+    for events in chains.values():
+        fails = [e for e in events if e.phase == "failure"]
+        if not fails:
+            continue
+        started = any(e.phase == "start" for e in events)
+        refused = not started and all(
+            (f.failure_code or "").startswith(UPSTREAM_PREFIX) for f in fails
+        )
+        if refused:
+            continue
+        if any(e.drill for e in events):
+            drills += 1
+            continue
+        real.append(min(fails, key=lambda e: e.emitted_at))
+    return real, drills
+
+
 class HandlerJoinRefusal:
     """Answer each real upstream failure of the declared joins with the downstream piece's typed refusal."""
 
@@ -123,6 +155,13 @@ class HandlerJoinRefusal:
             e for e in events if e.phase == "failure" and e.piece == join.from_piece
         ]
         real = [e for e in failures if not e.drill]
+        drills_skipped = len(failures) - len(real)
+        if join.journal_upstream is not None:
+            journal_real, journal_drills = _journal_failures(
+                journal, join.from_piece, frozenset(join.journal_upstream.nodes)
+            )
+            real = [*real, *journal_real]
+            drills_skipped += journal_drills
         answered_ids = {e.correlation_id for e in journal if e.piece == join.to_piece}
         refusals: list[ModelNodeEmission] = []
         answered = 0
@@ -156,7 +195,7 @@ class HandlerJoinRefusal:
             **base,
             status="owed" if refusals else "answered",
             upstream_failures=len(seen),
-            drills_skipped=len(failures) - len(real),
+            drills_skipped=drills_skipped,
             answered=answered,
             owed=len(refusals),
         )
