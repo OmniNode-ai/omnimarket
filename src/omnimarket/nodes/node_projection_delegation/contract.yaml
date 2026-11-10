@@ -1217,6 +1217,12 @@ projection_api:
         - snapshot_grain
         - tenant_id
       tenant_column: tenant_id
+      consumers: none
+      consumers_reason: >-
+        No Omnidash component placed on a shipped dashboard layout and no typed
+        status-page backend reader reads this daily aggregate yet. The change
+        that adds that reader deletes this opt-out and the
+        exposure-reader-coverage gate then checks the reader.
 
 metadata:
   transport_type: kafka

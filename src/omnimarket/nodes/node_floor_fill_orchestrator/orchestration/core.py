@@ -56,9 +56,11 @@ from omnimarket.models.floor_fill import (
     ModelFloorFillStartFailed,
     ModelFloorFillState,
     ModelFloorFillStateEntry,
+    ModelFloorFillStopped,
     ModelFloorFillTicketStored,
     ModelFloorRecordRead,
     ModelFloorTaskPayloadVerdict,
+    ModelStoppedLaneReport,
     line_and_task,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
@@ -83,6 +85,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     FloorFillUnreadableError,
     ModelLaneStartSpec,
     ProtocolFactSource,
+    ProtocolFloorBriefs,
     ProtocolFloorClock,
     ProtocolFloorLedger,
     ProtocolFloorPool,
@@ -97,6 +100,11 @@ from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reduce
 # The class a floor task is sent as: the name the open-count brake and the stop signal answer to.
 FLOOR_TASK_CLASS = "floor-task"
 ANSWER_ROW_SUFFIX = ":answer"
+# The reducer holds only ``floor:<line_id>:<task_id>`` keys, so a stopped candidate the compute keys ``stopped:<lane>``
+# is held in the state row as ``floor:stopped:<lane>`` (line id ``stopped``, task id the stopped lane).
+STOPPED_LINE_ID = "stopped"
+STOPPED_COMPUTE_PREFIX = "stopped:"
+STOPPED_STATE_PREFIX = "floor:stopped:"
 LINE_STALE_STATE = "STALE-STATE"
 SOURCES_UNREAD_ORDER = ("floor", "pool", "brake", "stop-signal", "ledger")
 
@@ -123,6 +131,9 @@ class _Pass:
         self.landing_only = False
         self.stop_cause: str | None = None
         self.cancelled: threading.Event | None = None
+        # The previous reports of the floor record's stopped lanes, and the lanes whose report could not be read.
+        self.reports: tuple[ModelStoppedLaneReport, ...] = ()
+        self.report_unread: dict[str, str] = {}
 
     def check_cancelled(self) -> None:
         """Stop the pass at an effect boundary once the caller has given up on it."""
@@ -136,6 +147,17 @@ def _line_of(key: str) -> str:
 
 def _task_of(key: str) -> str:
     return line_and_task(key)[1]
+
+
+def _state_key_of_stopped(candidate_key: str) -> str:
+    return STOPPED_STATE_PREFIX + candidate_key.removeprefix(STOPPED_COMPUTE_PREFIX)
+
+
+def _compute_key_of(state_key: str) -> str:
+    """The key the candidates compute reads a state entry under (``stopped:<lane>`` for a stopped entry)."""
+    if state_key.startswith(STOPPED_STATE_PREFIX):
+        return STOPPED_COMPUTE_PREFIX + state_key.removeprefix(STOPPED_STATE_PREFIX)
+    return state_key
 
 
 def _fill(argv: tuple[str, ...], values: Mapping[str, str]) -> tuple[str, ...]:
@@ -172,6 +194,7 @@ class FloorFillOrchestrator:
         ledger: ProtocolFloorLedger,
         tickets: ProtocolFloorTickets,
         runner: ProtocolLaneProcessRunner,
+        briefs: ProtocolFloorBriefs,
         clock: ProtocolFloorClock,
         candidates: HandlerFloorFillCandidates,
         reducer: HandlerFloorFillReducer,
@@ -184,6 +207,7 @@ class FloorFillOrchestrator:
         self._ledger = ledger
         self._tickets = tickets
         self._runner = runner
+        self._briefs = briefs
         self._clock = clock
         self._candidates = candidates
         self._reducer = reducer
@@ -238,6 +262,7 @@ class FloorFillOrchestrator:
                 if e.state is EnumFloorFillEntryState.RESERVED
             )
             plan_texts = self._plan_texts(ctx, floor_text)
+            ctx.reports = self._stopped_reports(ctx, floor_text)
             floor_unread = self._floor_unread(ctx, floor_text)
             if floor_unread is not None:
                 ctx.unread.append(f"floor:{floor_unread}")
@@ -331,6 +356,29 @@ class FloorFillOrchestrator:
             except Exception:
                 texts[line.line_id] = None
         return texts
+
+    def _stopped_reports(
+        self, ctx: _Pass, floor_text: str | None
+    ) -> tuple[ModelStoppedLaneReport, ...]:
+        """The previous report text of each stopped lane of the record; one that cannot be read is named, not read as empty."""
+        if floor_text is None:
+            return ()
+        try:
+            record = ModelFloorRecordRead.model_validate_json(floor_text)
+        except (ValidationError, ValueError):
+            return ()
+        reports: list[ModelStoppedLaneReport] = []
+        for entry in record.floor.stopped:
+            if not entry.report_path:
+                continue
+            try:
+                text = self._briefs.report_text(entry.report_path)
+            except Exception as error:
+                ctx.report_unread[entry.lane] = _cause(error)
+                continue
+            if text is not None:
+                reports.append(ModelStoppedLaneReport(lane=entry.lane, text=text))
+        return tuple(reports)
 
     def _floor_unread(self, ctx: _Pass, floor_text: str | None) -> str | None:
         """The cause a floor that was read cannot be trusted (absent, malformed, old), else None."""
@@ -428,7 +476,7 @@ class FloorFillOrchestrator:
     ) -> ModelFloorFillCandidatesRequest:
         entries = tuple(
             ModelFloorFillStateEntry(
-                key=e.key,
+                key=_compute_key_of(e.key),
                 status=e.state.value,
                 at=_entry_moment(e).isoformat(),
                 ended=e.ended,
@@ -446,8 +494,10 @@ class FloorFillOrchestrator:
             stopped_report_chars=self._config.stopped_report_chars,
             stopped_continue_rule=self._config.stopped_continue_rule,
             payload_verdicts=payloads,
+            start_criteria=tuple(self._tickets.start_criteria(floor_text)),
             ticket_verdicts=ticket_verdicts,
             entries=entries,
+            reports=ctx.reports,
         )
 
     def _verdicts(
@@ -481,6 +531,8 @@ class FloorFillOrchestrator:
         if only_key is not None:
             self._send_one(ctx, verdicts, only_key)
             return
+        if self._send_stopped(ctx, verdicts):
+            return
         for line in verdicts.lines:
             if line.verdict not in ("STARTABLE", "NEEDS-TICKET"):
                 continue
@@ -496,9 +548,57 @@ class FloorFillOrchestrator:
                 if outcome == "no-slot":
                     return
 
+    def _send_stopped(
+        self, ctx: _Pass, verdicts: ModelFloorFillCandidatesResult
+    ) -> bool:
+        """Start a continuation lane for each stopped candidate, up to the room left; True when the pool is full."""
+        started = 0
+        for candidate in verdicts.stopped:
+            if started >= verdicts.stopped_capacity_left:
+                return False
+            if ctx.started >= ctx.free_slots:
+                return True
+            if self._start_stopped(ctx, candidate):
+                started += 1
+        return False
+
+    def _start_stopped(self, ctx: _Pass, candidate: ModelFloorFillStopped) -> bool:
+        """One continuation start; True when a lane started."""
+        unread = ctx.report_unread.get(candidate.lane)
+        if unread is not None:
+            self._refuse(ctx, candidate.key, f"report-unreadable:{unread}")
+            return False
+        before = ctx.started
+        self._start_candidate(
+            ctx, candidate.key, "STARTABLE", candidate.ticket, brief=candidate.brief
+        )
+        return ctx.started > before
+
+    def _send_one_stopped(
+        self, ctx: _Pass, verdicts: ModelFloorFillCandidatesResult, key: str
+    ) -> None:
+        for candidate in verdicts.stopped:
+            if candidate.key == key:
+                if ctx.started >= ctx.free_slots:
+                    self._refuse(ctx, key, "no-free-slots")
+                else:
+                    self._start_stopped(ctx, candidate)
+                return
+        lane = key.removeprefix(STOPPED_COMPUTE_PREFIX)
+        cause = next(
+            (n.cause for n in verdicts.stopped_not_ready if n.lane == lane),
+            "stopped-at-capacity"
+            if verdicts.stopped_verdict == "AT-CAPACITY"
+            else "unknown-stopped",
+        )
+        self._refuse(ctx, key, cause)
+
     def _send_one(
         self, ctx: _Pass, verdicts: ModelFloorFillCandidatesResult, key: str
     ) -> None:
+        if key.startswith(STOPPED_COMPUTE_PREFIX):
+            self._send_one_stopped(ctx, verdicts, key)
+            return
         match = None
         for line in verdicts.lines:
             for candidate in line.candidates:
@@ -538,10 +638,36 @@ class FloorFillOrchestrator:
             ModelFloorFillKeyResult(key=key, kind="refused", cause=cause)
         )
 
-    def _start_candidate(self, ctx: _Pass, key: str, verdict: str, ticket: str) -> str:
-        """Mint if needed, reserve (a write), then start. Returns ``ok``, ``line-full``, ``no-slot``."""
+    def _start_candidate(
+        self,
+        ctx: _Pass,
+        key: str,
+        verdict: str,
+        ticket: str,
+        *,
+        brief: str | None = None,
+    ) -> str:
+        """Mint if needed, reserve (a write), then start. Returns ``ok``, ``line-full``, ``no-slot``.
+
+        A ``brief`` makes the start a continuation of a stopped lane: ``key`` is the compute's ``stopped:<lane>``, the
+        entry is held under ``floor:stopped:<lane>``, the brief is saved before the start and its path is handed to the
+        start node's ``--brief`` through ``floor_fill.stopped_runner_command``.
+        """
         ctx.check_cancelled()
-        if verdict == "NEEDS-TICKET":
+        if brief is not None:
+            key = _state_key_of_stopped(key)
+            try:
+                line_and_task(key)
+            except ValueError:
+                self._refuse(ctx, key, "not-a-floor-key")
+                return "ok"
+            stored = self._reduce(
+                ctx.state, ModelFloorFillTicketStored(key=key, ticket=ticket)
+            )
+            if stored.dropped_reason is not None:
+                return "ok"
+            self._write(ctx, stored.state)
+        elif verdict == "NEEDS-TICKET":
             minted = self._tickets.mint(key)
             if minted.state != "ticket" or not minted.ticket:
                 ctx.results.append(
@@ -561,7 +687,11 @@ class FloorFillOrchestrator:
             self._write(ctx, stored.state)
         reserve = ModelFloorFillReserveRequested(
             key=key,
-            max_fill_lanes_per_line=self._config.max_fill_lanes_per_line,
+            max_fill_lanes_per_line=(
+                self._config.max_fill_lanes_per_line
+                if brief is None
+                else self._config.stopped_max_lanes
+            ),
             slot_budget=ctx.free_slots - ctx.started - ctx.outstanding,
             landing_only=False,
             stop_signal=False,
@@ -580,17 +710,32 @@ class FloorFillOrchestrator:
         self._write(ctx, reserved.state)
         (intent,) = reserved.intents
         ctx.check_cancelled()
+        values = {
+            "lane": intent.lane,
+            "key": intent.key,
+            "ticket": intent.ticket,
+            "attempt": str(intent.attempt),
+        }
+        command = self._config.runner_command
+        if brief is not None:
+            try:
+                values["brief"] = self._briefs.save_brief(intent.lane, brief)
+            except Exception as error:
+                self._clear_failed_start(ctx, key, intent.attempt, intent.lane)
+                ctx.results.append(
+                    ModelFloorFillKeyResult(
+                        key=key,
+                        kind="failed",
+                        lane=intent.lane,
+                        ticket=intent.ticket,
+                        cause=f"brief-unwritable:{_cause(error)}",
+                    )
+                )
+                return "start-failed"
+            command = self._config.stopped_runner_command
         outcome = self._runner.start_detached(
             ModelLaneStartSpec(
-                argv=_fill(
-                    self._config.runner_command,
-                    {
-                        "lane": intent.lane,
-                        "key": intent.key,
-                        "ticket": intent.ticket,
-                        "attempt": str(intent.attempt),
-                    },
-                ),
+                argv=_fill(command, values),
                 environment=(
                     *sorted(self._config.process_environment.items()),
                     (ENV_KEY, intent.key),
@@ -609,14 +754,7 @@ class FloorFillOrchestrator:
                 )
             )
             return "ok"
-        failed = self._reduce(
-            ctx.state,
-            ModelFloorFillStartFailed(
-                key=key, attempt=intent.attempt, lane=intent.lane
-            ),
-        )
-        if failed.dropped_reason is None:
-            self._write(ctx, failed.state)
+        self._clear_failed_start(ctx, key, intent.attempt, intent.lane)
         ctx.results.append(
             ModelFloorFillKeyResult(
                 key=key,
@@ -629,6 +767,16 @@ class FloorFillOrchestrator:
         return "start-failed"
 
     # ------------------------------------------------------------------ reads and writes
+
+    def _clear_failed_start(
+        self, ctx: _Pass, key: str, attempt: int, lane: str
+    ) -> None:
+        """A start that did not happen clears its reservation at once; the next tick offers the key again."""
+        failed = self._reduce(
+            ctx.state, ModelFloorFillStartFailed(key=key, attempt=attempt, lane=lane)
+        )
+        if failed.dropped_reason is None:
+            self._write(ctx, failed.state)
 
     def _reduce(
         self, state: ModelFloorFillState, observation: ModelFloorFillObservation
@@ -665,6 +813,7 @@ class FloorFillOrchestrator:
         rendered = self._lines.handle(request).rendered()
         lines = list(rendered)
         status = EnumFloorFillStatus.DEGRADED if ctx.unread else EnumFloorFillStatus.OK
+        lines.extend(self._continuation_lines(ctx))
         for result in ctx.results:
             if command is EnumFloorFillCommand.SEND_KEY:
                 if result.kind == "started":
@@ -687,6 +836,27 @@ class FloorFillOrchestrator:
         if command is EnumFloorFillCommand.TICK:
             return self._publish(ctx, answer)
         return answer
+
+    @staticmethod
+    def _continuation_lines(ctx: _Pass) -> list[str]:
+        """One line per continuation of a stopped lane this pass started, failed to start or could not brief."""
+        out: list[str] = []
+        for result in ctx.results:
+            if result.key.startswith(STOPPED_STATE_PREFIX):
+                stopped = result.key.removeprefix(STOPPED_STATE_PREFIX)
+            elif result.key.startswith(STOPPED_COMPUTE_PREFIX):
+                stopped = result.key.removeprefix(STOPPED_COMPUTE_PREFIX)
+            else:
+                continue
+            if result.kind == "started":
+                out.append(
+                    f"NOTE stopped-continued:{stopped} | lane={result.lane} ticket={result.ticket}"
+                )
+            elif result.kind == "failed" or (result.cause or "").startswith(
+                "report-unreadable"
+            ):
+                out.append(f"MISSING stopped-continue:{stopped} | cause={result.cause}")
+        return out
 
     def _publish(
         self, ctx: _Pass, answer: ModelFloorFillAnswer

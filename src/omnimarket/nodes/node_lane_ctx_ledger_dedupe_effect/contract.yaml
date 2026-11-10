@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Host-timer effect, like node_lab_daemon_sync_effect: no subscription and no onex.nodes
+# entry point, invoked by `python -m` on each lab host by the lane-ctx-ledger-dedupe timer unit. It
+# links files on the host's own filesystem, so a runtime container must never dispatch it.
+name: node_lane_ctx_ledger_dedupe_effect
+lifecycle: experimental
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Keeps one copy of each immutable ledger archive roll per lab host. Every lane context
+  directory (<run>.ctx/ledger/archive/*.md under the overlay's runs_root) has its roll replaced,
+  atomically, by a hard link to the roll in the overlay's store directory after a byte
+  comparison; the first copy seen becomes the store's. A roll whose bytes differ stays the
+  lane's own, and a roll modified within the overlay's settle window is left alone. A roll that
+  cannot be shared publishes a refusal and the run exits 1. Dry run (--check) changes nothing.
+input_model: omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect.models.model_lane_ctx_ledger_dedupe.ModelLaneCtxLedgerDedupeCommand
+output_model: omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect.models.model_lane_ctx_ledger_dedupe.ModelLaneCtxLedgerDedupeResult
+handler:
+  module: omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect.handlers.handler_lane_ctx_ledger_dedupe
+  class: HandlerLaneCtxLedgerDedupe
+  input_model: omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect.models.model_lane_ctx_ledger_dedupe.ModelLaneCtxLedgerDedupeCommand
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 1500000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.lane-ctx-ledger-dedupe-completed.v1
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+  - onex.evt.omnimarket.lane-ctx-ledger-dedupe-refused.v1
+  - onex.evt.omnimarket.lane-ctx-ledger-dedupe-completed.v1
+runtime_dispatch:
+  external_trigger: true
+externally_consumed_topics:
+- onex.evt.omnimarket.lane-ctx-ledger-dedupe-refused.v1
+- onex.evt.omnimarket.lane-ctx-ledger-dedupe-completed.v1
+published_events:
+- event_type: ModelLaneCtxLedgerDedupeEvent
+  topic: onex.evt.omnimarket.lane-ctx-ledger-dedupe-refused.v1
+  description: One roll that could not be shared, with the reason.
+- event_type: ModelLaneCtxLedgerDedupeResult
+  topic: onex.evt.omnimarket.lane-ctx-ledger-dedupe-completed.v1
+  description: "One pass: contexts, rolls seen, stored, already shared, linked, kept own, unsettled, bytes freed, errors."
+metadata:
+  transport_type: kafka
+  execution_locus: host-local
+  ticket: OMN-23297

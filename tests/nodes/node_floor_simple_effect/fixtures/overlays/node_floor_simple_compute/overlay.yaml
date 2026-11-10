@@ -58,6 +58,11 @@ rebuild:
     lookback_days: 60
     question_pattern: '(?i)\bstart rebuild pieces? (?P<first>\d+)(?: to (?P<last>\d+))?'
     affirmative_pattern: '(?i)^\W*(go|you may|yes|start)\b'
+    # A piece opened by name, wherever it sits in the order (OMN-23313): a ruling of the lane, on the ticket above or one of these,
+    # whose question says open (or start) rebuild piece N, pieces N to M, or pieces N and M. The words in brackets are labels.
+    open_tickets: [OMN-17427]
+    open_pattern: '(?i)\b(?:open|start) rebuild pieces?\s+(?P<list>\d+(?:\s*\([^)]*\))?(?:\s*(?:,|and|to)\s*(?:pieces?\s+)?\d+(?:\s*\([^)]*\))?)*)'
+    open_affirmative_pattern: '(?i)^\W*(go|you may|yes|start|ok|okay|agreed|sure)\b'
   # Only the piece shown while the go cannot be read; with the go read, the strip names the first admitted piece not working.
   current_piece: 1
   step0_pieces: [17]
