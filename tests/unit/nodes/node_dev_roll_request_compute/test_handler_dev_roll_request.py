@@ -270,3 +270,21 @@ def test_failing_control_the_per_change_rule_rolls_five_times_where_the_node_rol
     assert d.action is EnumDevRollAction.ROLL_NOW
     assert d.would_request is not None
     assert len(d.rolled_event_ids) == 5, "one request covers all five events"
+
+
+async def test_the_runtime_built_handler_reads_its_policy_from_the_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, policy: ModelDevRollPolicy
+) -> None:
+    """The runtime constructs the handler with no arguments (infra auto-wiring)."""
+    for key, value in write_overlay(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    f = facts((tip(age_seconds=3000),))
+    assert await HandlerDevRollRequest().handle(f) == decide_dev_roll(f, policy)
+
+
+async def test_the_runtime_built_handler_refuses_with_no_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    with pytest.raises(NodeOverlayNotFoundError):
+        await HandlerDevRollRequest().handle(facts((tip(age_seconds=3000),)))
