@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23390
+title: Every lab host runs the disk watermark timer, and h053's overlay store broker has a declared unit through the host installer
+summary: The watermark node refuses an overlay whose page mark is not above the host's admission floor, a host past its page mark advertises it and pool placement refuses new units there, and a new container unit installer node keeps a declared docker container (h053's overlay-store-rp) running through systemd with a restart interval after a stop.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23390-watermark-above-floor
+  statement: The watermark page mark is an overlay value above the admission floor, a page stops new placement on the host, and the timer is installed on each lab host.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every lab host runs a disk watermark timer whose high-water mark is an overlay value above the admission floor; crossing it pages and stops new placement -- falsifier: a lab host with no watermark timer in systemctl list-timers, or a filled test volume that reaches the admission floor without a page'
+- id: req-omn23390-broker-unit
+  statement: overlay-store-rp is declared in a unit installed by the host installer node and comes back on its own after a stop.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: overlay-store-rp is declared in a compose project or unit installed by onex-host-install and comes back on its own after a host or container stop -- falsifier: after docker stop overlay-store-rp the broker is not back on port 59092 within its restart interval'
+evidence_requirements:
+- kind: tests
+  description: The container unit tests and the watermark placement tests
+  command: uv run --frozen pytest tests/nodes/node_host_installer_container_units tests/nodes/node_lab_work_unit_effect/test_disk_watermark_placement_omn23390.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23390-watermark-placement
+  description: Runs the watermark placement tests. A paged host advertises disk-watermark:page and pool placement refuses it; a page mark not above the admission floor is refused by the handler; a corrupt reading file raises. At the merge base the tests are absent, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_work_unit_effect/test_disk_watermark_placement_omn23390.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23390-container-unit
+  description: Runs the container unit installer tests (the rendered unit restarts after any exit, the install enables it and reads the port, a missing container or a silent port fails the install, an undeclared host is refused). Absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_container_units/test_container_units.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23390-integration-proof-lab
+  description: Runs the container unit and watermark placement tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23390 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_container_units tests/nodes/node_lab_work_unit_effect/test_disk_watermark_placement_omn23390.py -q --no-cov -p no:randomly'
+    cwd: .
