@@ -202,6 +202,12 @@ LAB_JOB_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.lab-job-transitioned.v1"  #
 PR_LANDING_GITHUB_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-landing-github-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
 PR_LANDING_GITHUB_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
 PR_LANDING_GITHUB_FAILED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
+# OMN-23532: the dev roll batching (node_dev_roll_request_compute, shadow). The merged-change CI job
+# will publish dev-tip-changed; the node reads one decision tick's facts and answers decided or refused.
+DEV_TIP_CHANGED_TOPIC_V1 = "onex.evt.omnimarket.dev-tip-changed.v1"  # onex-topic-allow: canonical topic registry; consumed_events of node_dev_roll_request_compute contract.yaml (OMN-23532)
+DEV_ROLL_DECISION_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.dev-roll-decision-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_dev_roll_request_compute contract.yaml event_bus (OMN-23532)
+DEV_ROLL_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.dev-roll-decided.v1"  # onex-topic-allow: canonical topic registry; declared in node_dev_roll_request_compute contract.yaml event_bus (OMN-23532)
+DEV_ROLL_REFUSED_TOPIC_V1 = "onex.evt.omnimarket.dev-roll-refused.v1"  # onex-topic-allow: canonical topic registry; declared in node_dev_roll_request_compute contract.yaml event_bus (OMN-23532)
 # OMN-20636: the PR handoff workflow. A lane publishes the request command;
 # node_pr_handoff_orchestrator decides on the PR watcher's observations, has
 # node_pr_handoff_ledger_effect append the handoff rows, and ends each request

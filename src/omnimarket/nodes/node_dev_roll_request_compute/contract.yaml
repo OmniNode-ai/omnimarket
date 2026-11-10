@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeDevRollRequestCompute
+#
+# Five whys plan on the dev runtime dropouts (OMN-23532), root R4: every merged
+# change now requests its own dev roll, so the runtime is recreated every ~20
+# minutes. A tip-change event replaces the per-change request: the merged-change
+# CI job publishes ModelDevTipChanged on onex.evt.omnimarket.dev-tip-changed.v1
+# (repository, sha, merged_at). This node batches pending events and decides
+# roll now at the newest ref, or hold with a typed reason.
+#
+# SHADOW ONLY. It records the roll it WOULD have requested (would_request) and
+# publishes no deploy-agent command. The per-change roll requests and the CI
+# step are unchanged in this build.
+#
+# Every bound is an overlay value (batch_window_seconds,
+# min_start_interval_seconds, healthy_for_seconds, known repositories, the
+# fallback ref). The plan's option (b) numbers are the PROPOSED values in the
+# overlays repository; the operator has not ruled on them (plan Decisions,
+# item 1). Nothing is packaged as a fallback: an absent overlay refuses.
+name: "node_dev_roll_request_compute"
+contract_name: "node_dev_roll_request_compute"
+node_name: "node_dev_roll_request_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure batching decision for the dev roll (shadow only). Reads the pending
+  dev_tip_changed events, the last roll's record and health, and returns
+  roll_now at the newest ref or hold with a typed reason (no pending events,
+  roll in progress, window open, minimum start interval, previous roll not
+  healthy for the bound). An event naming an unknown repository is refused on
+  the decision, never dropped. Facts that contradict themselves are refused as
+  a whole. No clock, no I/O.
+input_model:
+  name: "ModelDevRollFacts"
+  module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts"
+  description: "Pending tip events, the last roll, and the snapshot time."
+output_model:
+  name: "ModelDevRollDecided"
+  module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_decided"
+  description: "Roll now at a ref (would_request) or hold with a reason."
+handler:
+  module: "omnimarket.nodes.node_dev_roll_request_compute.handlers.handler_dev_roll_request"
+  class: "HandlerDevRollRequest"
+  input_model: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts.ModelDevRollFacts"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-roll-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dev-roll-decided.v1
+    - onex.evt.omnimarket.dev-roll-refused.v1
+published_events:
+  - event_type: "DevRollDecided"
+    topic: onex.evt.omnimarket.dev-roll-decided.v1
+    description: "The batching decision: roll now at a ref (shadow: would_request) or hold with a typed reason."
+  - event_type: "DevRollRefused"
+    topic: onex.evt.omnimarket.dev-roll-refused.v1
+    description: "The facts contradicted themselves; no decision was made."
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "dev_roll.decide"
+      message_category: "command"
+      handler:
+        name: "HandlerDevRollRequest"
+        module: "omnimarket.nodes.node_dev_roll_request_compute.handlers.handler_dev_roll_request"
+      event_model:
+        name: "ModelDevRollFacts"
+        module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts"
+      topic: onex.cmd.omnimarket.dev-roll-decision-requested.v1
+      description: "One decision tick: pending tip events and the last roll."
+consumed_events:
+  - event_type: ModelDevRollFacts
+    topic: "onex.cmd.omnimarket.dev-roll-decision-requested.v1"
+    description: "One decision tick's facts; declared so the platform topic provisioner creates the topic."
+  - event_type: ModelDevTipChanged
+    topic: "onex.evt.omnimarket.dev-tip-changed.v1"
+    description: "The dev_tip_changed event the merged-change CI job will publish (not wired in the shadow build); the reader that folds these into the facts is a later piece."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+runtime_profiles:
+  - main
+metadata:
+  description: "Batches dev_tip_changed events into one dev roll decision (shadow only)."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-10"
+  tags:
+    - compute
+    - dev-runtime
+    - roll-batching
+    - shadow

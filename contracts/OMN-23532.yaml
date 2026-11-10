@@ -1,0 +1,87 @@
+schema_version: 1.0.0
+ticket_id: OMN-23532
+title: Batch dev roll requests into one decision per window (shadow only)
+summary: 'Five whys plan root R4: every merged change requests its own dev roll. node_dev_roll_request_compute is a pure compute node that batches dev_tip_changed events and decides roll now at the newest
+  ref or hold with a typed reason; the window, the minimum interval between runtime starts and the healthy-for bound are overlay values (the plan option (b) numbers, proposed, not ruled by the operator).
+  Shadow only: it records the roll it would have requested and sends nothing; the per-change roll requests and the CI step are unchanged.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23532-batch
+  statement: Tip events inside a window produce one roll decision at the newest ref, spaced by the minimum start interval and the healthy-for bound, recorded in shadow.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_dev_roll_request_compute exists in omnimarket with a contract, a typed dev_tip_changed event and a pure batching decision whose window, minimum interval between runtime starts
+      and healthy-for bound are all overlay values -- falsifier: a bound or repository name written in the node''s code, or the node loading with no overlay present'
+  - id: AC2
+    statement: 'AC2: five tip events inside one window produce one roll decision at the newest ref, a request inside the minimum interval or before the previous roll has been healthy for the bound is held
+      with a typed reason, and an event naming an unknown repository is refused on the decision -- falsifier: the same tests run against the old one-request-per-change rule (kept as a failing control) pass'
+  - id: AC3
+    statement: 'AC3: a golden chain test and an error chain test run the node over the real contract on the in-memory bus, and a seam test fails when either the roll request fields or the dev_tip_changed
+      event fields change shape against the deploy agent''s roll request contract spelled in this repository -- falsifier: renaming a field of the request model or the event model leaves those tests green'
+  - id: AC4
+    statement: 'AC4: the node records what it would have rolled and requests no roll; the per-change roll requests are untouched -- falsifier: a published deploy-agent command or a changed roll request
+      step in the same change'
+  - id: AC5
+    statement: 'AC5: integrated: the 2026-11-10 job records read from the running deploy agent on the dev host since 10:00Z are replayed through the node on the lab and the report names the number of rolls
+      it would have made against the five real ones and the longest wait of a merged change -- falsifier: no replay report in the pull request, or counts that do not match a re-run of the same replay'
+evidence_requirements:
+- kind: tests
+  description: The node tests, the golden and error chain tests, the seam tests and the replay of the 2026-11-10 job records at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23532-ac1
+  description: The handler table tests pass, including the missing-overlay refusal and the failing control against the one-request-per-change rule.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_handler_dev_roll_request.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23532-ac2
+  description: The table tests of the window, the minimum interval, the healthy-for bound and the unknown-repository refusal pass; the control shows the old rule yields five requests where the node yields
+    one.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_handler_dev_roll_request.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23532-ac3
+  description: The golden chain, error chain and both seam tests pass on the in-memory bus.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_golden_chain_dev_roll_request.py tests/unit/nodes/node_dev_roll_request_compute/test_error_chain_dev_roll_request.py
+      tests/unit/nodes/node_dev_roll_request_compute/test_seam_deploy_agent_roll_request.py tests/unit/nodes/node_dev_roll_request_compute/test_seam_redeploy_start_command.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23532-ac4
+  description: The contract subscribes only to the decision command and publishes only decided and refused events; no deploy-agent command topic is named in the node.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: '! grep -rn ''rebuild-requested'' src/omnimarket/nodes/node_dev_roll_request_compute'
+    cwd: .
+- id: dod-omn23532-integration-proof-ac5
+  description: The replay of the 2026-11-10 job records ran on the dev host through the lab work runner and printed the REPLAY line. Hosted CI cannot reach the lab, so only the local Done gate runs this
+    unbound check.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23532 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_replay_dev_jobs_2026_11_10.py -q --no-cov -s
+    cwd: .
+  execution_scope: local_done_gate
