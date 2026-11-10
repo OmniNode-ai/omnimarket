@@ -16,6 +16,7 @@ queue-commit context has no producer.
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -30,7 +31,7 @@ SHIM = "merge-group-pr-scoped-contexts.yml"
 pytestmark = pytest.mark.unit
 
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
-import ci_summary_gate as gate  # noqa: E402
+gate = importlib.import_module("ci_summary_gate")
 
 
 def _load(name: str) -> dict[Any, Any]:
