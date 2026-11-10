@@ -43,7 +43,7 @@ from tests.nodes.node_push_validation_effect.test_handler_focused_test_run_effec
     _request,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("host_capacity_overlay")]
 
 TEST_FILE = NODE.split("::", 1)[0]
 
