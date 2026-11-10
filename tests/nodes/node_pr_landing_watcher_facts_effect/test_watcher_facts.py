@@ -14,6 +14,9 @@ cannot run and write empty facts.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -296,3 +299,86 @@ def test_contract_declares_the_overlay_topics() -> None:
         "success": overlay["written_topic"],
         "failure": overlay["failed_topic"],
     }
+
+
+ENTRY = ["-m", "omnimarket.nodes.node_pr_landing_watcher_facts_effect"]
+
+
+def _runtime_pass(
+    tmp_path: Path, last_tick: str
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(_state(last_tick=last_tick)), encoding="utf-8")
+    facts_path = tmp_path / "out" / "last-facts.json"
+    raw = yaml.safe_load(
+        (NODE / "watcher_facts.overlay.file.example.yaml").read_text(encoding="utf-8")
+    )
+    raw.update(
+        watcher_state_path=str(state_path),
+        facts_path=str(facts_path),
+        emission_journal=str(tmp_path / "emissions.jsonl"),
+    )
+    root = tmp_path / "overlay_root" / "node_pr_landing_watcher_facts_effect"
+    root.mkdir(parents=True)
+    (root / "overlay.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, *ENTRY],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env={**os.environ, "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlay_root")},
+    )
+    return result, facts_path
+
+
+def _last_line(result: subprocess.CompletedProcess[str]) -> dict[str, object]:
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def test_runtime_entry_prints_the_written_line_naming_omnimemory(
+    tmp_path: Path,
+) -> None:
+    # the runtime entry reads the real clock, so its state must be fresh against it
+    fresh = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result, facts_path = _runtime_pass(tmp_path, fresh)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    line = _last_line(result)
+    assert line["status"] == "written"
+    assert "omnimemory" in line["repositories"]
+    assert line["prs"] == 3
+    facts = ModelLandingFacts.model_validate_json(
+        facts_path.read_text(encoding="utf-8")
+    )
+    assert len(facts.prs) == 3
+    assert {p.pr.split("#")[0].split("/")[1] for p in facts.prs} == {"omnimemory"}
+
+
+def test_runtime_entry_error_chain_stale_state_exits_one_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    old = (datetime.now(UTC) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result, facts_path = _runtime_pass(tmp_path, old)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    line = _last_line(result)
+    assert line["status"] != "written"
+    assert "failure_reason" in line
+    assert not facts_path.exists()
+
+
+def test_runtime_entry_refuses_without_an_overlay(tmp_path: Path) -> None:
+    empty = tmp_path / "overlay_root"
+    empty.mkdir()
+    result = subprocess.run(
+        [sys.executable, *ENTRY],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env={**os.environ, "ONEX_SKILL_OVERLAY_ROOTS": str(empty)},
+    )
+
+    assert result.returncode == 3
+    assert _last_line(result)["status"] == "overlay_refused"
