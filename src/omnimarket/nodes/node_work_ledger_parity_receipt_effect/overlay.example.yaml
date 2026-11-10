@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Every setting of the daily work-ledger parity receipt writer (OMN-23251, moved from the ledger-publish unit of OMN-20536).
+# The handler reads this file as its in-memory default profile and holds no value of its own; a deployment copies it to
+# <root>/node_work_ledger_parity_receipt_effect/overlay.yaml. No key has a default.
+schema: work-ledger-parity-receipt/v1
+ticket: OMN-23251
+umbrella_ticket: OMN-23119
+# The lane cell of the receipt row the parity check prints and this writer reads back.
+lane: work-ledger-parity
+parity_module: omnimarket.nodes.node_projection_work_ledger.parity
+# The environment variable the DSN rides in, for the parity child only.
+dsn_env_name: WL_DSN
+# No receipt is written for the previous UTC day before this UTC time.
+not_before_hour: 0
+not_before_minute: 15
+parity_timeout_seconds: 900
+# Under the registry root: where the parity check keeps its state.
+state_subdir: ".onex_state"
+# Beside the ledger: the archive rolls the parity check also reads.
+archive_subdir: archive
+# Keys read from the delegation_health overlay (host variable name, database, user) and from the lab env file (password).
+overlay_host_key: ssh_host_env
+overlay_database_key: database
+overlay_user_key: db_user
+env_password_key: POSTGRES_PASSWORD
+# The command that appends one row: it runs `<command> <ledger> --append <row>`.
+appender_command: [onex-ledger]
+appender_timeout_seconds: 120

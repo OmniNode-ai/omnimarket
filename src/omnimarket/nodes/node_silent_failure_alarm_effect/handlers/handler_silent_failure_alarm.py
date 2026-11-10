@@ -111,8 +111,10 @@ _JOB_STDERR = re.compile(r"^\s*stderr path\s*=\s*(\S.*?)\s*$", re.MULTILINE)
 _LOG_TAIL_LINES = 60
 _HOST_CELL = re.compile(r"^h\d+$")
 # A host timer (host-drift) writes drift-pass rows that name its host. It runs no session, so it
-# sends no hook event; its rows are not lanes and prove nothing about capture (OMN-22778).
-_TIMER_ACTOR_PREFIX = "timer:"
+# sends no hook event; its rows are not lanes and prove nothing about capture (OMN-22778). A
+# reading node (``node:``) writes the same kind of row: its ``host=`` cell names the host it probed,
+# and it ran on the host that runs the readings (OMN-23019).
+_NON_LANE_ACTOR_PREFIXES = ("timer:", "node:")
 _RUN_KEY = re.compile(r"^\d{4}-(\d\d)-(\d\d)T(\d\d)(\d\d)Z$")
 _LANE_RUN_KEY = re.compile(r"^lab-fill-.+-(\d{8})$")
 _STATUS = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -281,9 +283,14 @@ class HandlerSilentFailureAlarm:
                 summary="",
                 warnings=(f"silent_failure_alarm: ledger could not be read: {detail}",),
             )
-        runs, refusals, raised, raised_hosts, newest_row_hosts = self._read_ledger(
-            text, now
-        )
+        (
+            runs,
+            refusals,
+            raised,
+            raised_hosts,
+            newest_row_hosts,
+            resolved_episodes,
+        ) = self._read_ledger(text, now)
         pending, delivered_log, opened, delivery_problem = self._read_deliveries()
         host_stamps = self._read_host_lane_stamps(text, now)
         host_claims = self._read_host_lane_stamps(text, now, kinds=("CLAIM",))
@@ -448,10 +455,17 @@ class HandlerSilentFailureAlarm:
                 if not healthy[name]:
                     open_notes.append(f"{name}(open {minutes}m,unread)")
                     continue
+                episode_id = _episode_id(name, current)
+                if episode_id in resolved_episodes:
+                    # The ledger already holds this episode's resolved row: one episode, one row
+                    # (OMN-22868). Only the stale open entry is dropped.
+                    if request.apply:
+                        del opened[name]
+                    continue
                 resolved.append(name)
                 row = (
                     f"{_stamp(now)} | STATUS | lane=silent-failure-alarm | ticket=OMN-19998 | "
-                    f"actor=launchd:silent-failure-alarm | episode={_episode_id(name, current)} | "
+                    f"actor=launchd:silent-failure-alarm | episode={episode_id} | "
                     f"resolved={name} | open_minutes={minutes} | "
                     f"{name} alarm resolved after {minutes} minutes open"
                 )
@@ -1061,10 +1075,15 @@ class HandlerSilentFailureAlarm:
         dict[str, datetime],
         dict[str, set[str]],
         dict[str, set[str]],
+        set[str],
     ]:
         """The lab-fill runs, the lane refusals, the alarms already raised, the hosts the
-        host-keyed alarms inside the dedupe window named, and the hosts each host-keyed alarm's
-        newest row named (whatever its age), as of ``now``."""
+        host-keyed alarms inside the dedupe window named, the hosts each host-keyed alarm's
+        newest row named (whatever its age), and the episodes a resolved row already closed, as of
+        ``now``.
+
+        A raise a later resolved row closed is not a raise: the next shortfall is a new episode
+        with its own row, and is never adopted as the open alarm of the closed one (OMN-22868)."""
         floor = _stamp(now - LOOKBACK)
         ceiling = _stamp(now)
         fill_rows: list[LabFillRunRow] = []
@@ -1073,6 +1092,8 @@ class HandlerSilentFailureAlarm:
         raised: dict[str, datetime] = {}
         raised_hosts: dict[str, set[str]] = {}
         newest_row: dict[str, tuple[datetime, set[str]]] = {}
+        resolved_at: dict[str, datetime] = {}
+        resolved_episodes: set[str] = set()
         for line in text.splitlines():
             head = line[:20]
             if head > ceiling or ("lab-fill" not in line and LANE not in line):
@@ -1102,6 +1123,14 @@ class HandlerSilentFailureAlarm:
                             lanes=parse_lanes(row.value("lanes")),
                         )
                     )
+            elif (
+                row.row_type == "STATUS"
+                and row.token("lane") == LANE
+                and row.token("resolved")
+            ):
+                family = row.token("resolved") or ""
+                resolved_at[family] = max(resolved_at.get(family, stamp), stamp)
+                resolved_episodes.add(row.token("episode") or "")
             elif row.row_type == "CLAIM":
                 lane_name = row.token("lane") or ""
                 if _LANE_RUN_KEY.match(lane_name):
@@ -1137,6 +1166,10 @@ class HandlerSilentFailureAlarm:
                         stamp,
                         {h for h in (row.token("hosts") or "").split(",") if h},
                     )
+        for family, closed_at in resolved_at.items():
+            if family in raised and closed_at >= raised[family]:
+                del raised[family]
+                raised_hosts.pop(family, None)
         # The fill writes its row while its send jobs build: a pending lane is judged by its own CLAIM row.
         send_cap = timedelta(minutes=self._options.lane_send_cap_minutes)
         runs: list[ModelPlacementRun] = []
@@ -1150,6 +1183,7 @@ class HandlerSilentFailureAlarm:
             raised,
             raised_hosts,
             {family: named for family, (_, named) in newest_row.items()},
+            resolved_episodes,
         )
 
     def _drainer_host(self) -> str:
@@ -1205,8 +1239,9 @@ class HandlerSilentFailureAlarm:
     ) -> dict[str, tuple[datetime, ...]]:
         """The stamps of the rows of ``kinds`` naming a pool host, by host id.
 
-        A row written by a host timer (``actor=timer:``) names its host without a lane having run
-        there, so it is not read as one (OMN-22778). Neither is a lane's own row naming a host its
+        A row written by a host timer (``actor=timer:``) or a reading node (``actor=node:``) names
+        its host without a lane having run there, so it is not read as one (OMN-22778, OMN-23019).
+        Neither is a lane's own row naming a host its
         CLAIM never put the lane on: the ``host=`` cell of a STATUS that reports an install on h051,
         written by a lane running on h053, describes h051 and sends no hook event for it (OMN-23023).
         A lane with no CLAIM host in the window is counted as before.
@@ -1226,7 +1261,7 @@ class HandlerSilentFailureAlarm:
                 or stamp is None
                 or host is None
                 or not _HOST_CELL.match(host)
-                or (row.token("actor") or "").startswith(_TIMER_ACTOR_PREFIX)
+                or (row.token("actor") or "").startswith(_NON_LANE_ACTOR_PREFIXES)
             ):
                 continue
             lane = row.token("lane")

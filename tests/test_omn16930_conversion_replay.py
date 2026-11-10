@@ -75,6 +75,8 @@ from uuid import UUID, uuid4
 import asyncpg
 import pytest
 
+from tests.helpers.isolated_schema_sql import for_isolated_schema
+
 pytestmark = pytest.mark.integration
 
 _DELEGATION_MIGRATIONS = (
@@ -115,6 +117,9 @@ _CONVERSION = "0034_delegation_events_uuid_via_registry_role_set_guard.sql"
 # place in a pre-conversion corpus -- on a real lane the conversion runs long
 # before it. Excluded for that reason, not to make a failure go away.
 _POST_CONVERSION_AGGREGATE_VIEWS = "0039_delegation_aggregate_views_per_tenant.sql"
+# OMN-21970: 0067 creates projection_delegation_daily, which groups ON tenant_id,
+# so it depends on the column the conversion alters and is withheld with 0039.
+_POST_CONVERSION_DAILY_VIEW = "0067_delegation_daily_view.sql"
 # OMN-19013: 0045 re-creates three of those per-tenant views, so it depends on
 # 0039 and is withheld from the same pre-conversion arrangement.
 _POST_CONVERSION_METRICS_VIEWS = "0045_terminal_construction_outcome_metrics.sql"
@@ -137,6 +142,13 @@ _POST_CONVERSION_TOKEN_USAGE_VIEW = "0062_delegation_token_usage_unpriced_calls.
 # 0045's operational_outcome column and groups ON tenant_id, so it depends on
 # 0045 and is withheld with it.
 _POST_CONVERSION_QUALITY_GATE_VIEW = "0065_quality_gate_failure_categories_bounded.sql"
+
+# OMN-23169: 0068 re-creates projection_delegation_summary again (without the
+# experiment rows), with the same dependence on 0045 and on tenant_id, so it is
+# withheld with 0050.
+_POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW = (
+    "0068_delegation_summary_excludes_experiment.sql"
+)
 
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
@@ -262,6 +274,8 @@ async def _connect_or_skip() -> asyncpg.Connection:
 def _test_schema_safe_sql(raw_sql: str) -> str:
     """CONCURRENTLY refuses to run inside asyncpg's implicit multi-statement
     transaction. Same helper the 0031 proof uses."""
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 
@@ -287,7 +301,9 @@ def _pre_conversion_migrations() -> list[Path]:
             _POST_CONVERSION_MODEL_ROUTING_VIEW,
             _POST_CONVERSION_TIER_MODELS_VIEW,
             _POST_CONVERSION_TOKEN_USAGE_VIEW,
+            _POST_CONVERSION_DAILY_VIEW,
             _POST_CONVERSION_QUALITY_GATE_VIEW,
+            _POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW,
         }
     ]
 

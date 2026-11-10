@@ -137,10 +137,14 @@ not_routing_resolution_sites:
     reason: finds the overlay file of the host readings to pin its root in the installed unit; the overlay holds probe thresholds and host environments and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/adapters/landing_adapters.py:resolve_setting(PR_STATE_NODE)"
     reason: reads the projection_api_url of the pr_state read node overlay to find the projection address; it is an address and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_dev_deploy_reading_effect/runtime_dev_deploy_reading.py:find_node_overlay(NODE_NAME)"
+    reason: finds the overlay file of the dev deploy reading to pin its root in the installed unit; the overlay holds the receipt lane, merge globs, probe endpoints and schedule and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_power_effect/handlers/ilo_port_runtime.py:find_node_overlay(ILO_NODE)"
     reason: finds the overlay file of the iLO Redfish node to resolve the pinned-certificate directory beside it; the overlay holds host endpoints and credentials and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_pr_landing_decision_compute/overlay.py:find_node_overlay(NODE_NAME)"
     reason: assigns the named human or lane accountable for exhausted landing work; the typed owner contains no backend, model, tier or provider selection
+  - site: "src/omnimarket/nodes/node_remote_lane_close_compute/overlay.py:find_node_overlay(NODE_NAME)"
+    reason: the policy of a remote lane's typed needs cell and report text (the action set, the target pattern, the report length and the outcomes that must carry a cell); it reads a closing message and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
     reason: the developer.principal overlay, read to find which machine principals hold a broker grant role; it decides broker grants and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_dod_closeout_sweep_compute/handlers/closer_scope_overlay.py:resolve_overlay_file(NODE_NAME)"
@@ -185,6 +189,8 @@ not_routing_resolution_sites:
     reason: locates the directory of the iLO host overlay so a pinned certificate file can be read beside it; the overlay holds server management addresses and credential key names and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py:find_node_overlay(NODE_NAME)"
     reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_floor_simple_effect/handlers/handler_floor_simple_tick.py:find_node_overlay(rt.floor_overlay.overlay_id)"
+    reason: finds the file the floor overlay was loaded from so the tick can check the owner source declared beside it; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_floor_fill_orchestrator/runtime_floor_fill_schedule.py:find_node_overlay(NODE_NAME)"
     reason: finds the overlay file of the floor fill to read the tick host and interval for its systemd user timer; the overlay holds the fill's schedule and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_code_graph_effect/runtime_code_graph.py:find_node_overlay(NODE_NAME)"
@@ -195,6 +201,8 @@ not_routing_resolution_sites:
     reason: locates the exposure probe overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the runner group source, the reading schedule and ledger locations and selects no delegation backend, model or tier
   - site: "src/omnimarket/nodes/node_broker_load_reading_effect/runtime_broker_load.py:find_node_overlay(NODE_NAME)"
     reason: locates the broker load overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the broker load schedule and reading locations and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_start_path_drill_effect/runtime_start_path_drill.py:find_node_overlay(NODE_NAME)"
+    reason: locates the start-path drill overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the start-path census, the drill gate and the schedule host and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
     reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(NODE_NAME)"
@@ -229,6 +237,8 @@ not_routing_resolution_sites:
     reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_github_repo_gateway_effect/handlers/handler_github_repo_gateway.py:find_node_overlay(overlay_id)"
     reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_merged_history.py:find_node_overlay(NODE_NAME)"
+    reason: reads the extra_repos of the lab fill overlay, the private clone names the merged-history read also covers; it chooses no backend, model, tier or provider
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
@@ -266,6 +276,8 @@ not_routing_configs:
     reason: model ids that code binds for a fixed purpose, read through model_binding_reader; no choice among routes
   - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
     reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
+  - path: src/omnimarket/configs/release_asset_retry.v1.yaml
+    reason: statuses and waits of the release asset download retry; it selects no route
   - path: src/omnimarket/configs/runtime_paths.yaml
     reason: filesystem locations nodes fall back to when no setting names one; it selects no route
   - path: src/omnimarket/configs/seams.v1.yaml

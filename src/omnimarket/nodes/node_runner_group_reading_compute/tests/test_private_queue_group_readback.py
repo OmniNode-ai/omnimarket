@@ -25,6 +25,7 @@ from omnimarket.nodes.node_runner_group_reading_compute.models import (
 from tests.nodes.node_runner_group_reading_compute.support import (
     QUEUE_GROUP_ID,
     QUEUE_PREFIX,
+    SECOND_QUEUE_PREFIX,
     queue_group,
     queue_request,
     request,
@@ -46,8 +47,11 @@ def test_private_queue_group_readback_prints_private_with_four_online_members() 
 
     subject = _queue(result)
     assert subject.verdict is _W
-    assert subject.count == 4
-    assert "reads private with 4 online hp053-ci-mq-runner runner(s)" in subject.reason
+    assert subject.count == 8
+    assert (
+        "reads private with 8 online queue runner(s) on 2 host(s) (h051, h053)"
+        in subject.reason
+    )
     assert result.verdict is _W
 
 
@@ -136,8 +140,11 @@ def test_private_queue_group_readback_overlay_names_the_group_and_the_runners() 
     queue = settings(queue=True).private_queue
     assert queue is not None
     assert queue.group_name == "omni-private-queue"
-    assert queue.runner_name_prefix == QUEUE_PREFIX
-    assert queue.expected_online_members == 4
+    assert {p.runner_name_prefix for p in queue.pools} == {
+        QUEUE_PREFIX,
+        SECOND_QUEUE_PREFIX,
+    }
+    assert all(p.expected_online_members == 4 for p in queue.pools)
 
 
 class _VisibilityIgnored(HandlerRunnerGroupReading):
