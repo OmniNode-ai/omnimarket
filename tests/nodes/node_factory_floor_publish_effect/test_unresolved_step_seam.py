@@ -11,8 +11,11 @@ and the floor step's limit and the longest declared path against the cycle bound
 from __future__ import annotations
 
 import importlib
+import math
+from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     OWN_CONTRACT_PATH,
@@ -23,6 +26,12 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     group_steps,
+)
+from omnimarket.nodes.node_factory_floor_unresolved_effect import (
+    runtime_factory_floor_unresolved,
+)
+from omnimarket.nodes.node_factory_floor_unresolved_effect.models.model_factory_floor_unresolved import (
+    ModelFactoryFloorUnresolvedOverlay,
 )
 
 pytestmark = pytest.mark.unit
@@ -74,3 +83,28 @@ def test_the_floor_step_has_the_measured_time_plus_headroom_under_the_unchanged_
     assert RT.cycle.bound_seconds == CYCLE_BOUND_SECONDS
     path = RT.declared_longest_path()
     assert sum(path.values()) <= CYCLE_BOUND_SECONDS, path
+
+
+def _reads_bound_seconds(overlay: ModelFactoryFloorUnresolvedOverlay) -> int:
+    """The longest the step's reads may take: each batch of read_workers reads at one read's bound, one batch after the other."""
+    return (
+        math.ceil(len(overlay.reads) / overlay.read_workers)
+        * overlay.read_timeout_seconds
+    )
+
+
+def test_the_example_overlays_reads_end_inside_the_publishers_step_limit() -> None:
+    """Break: the same reads one at a time (read_workers 1) may take four read bounds, past the limit the publisher kills the step at,
+    and a killed step closes no chain. The reads' own bounds must end first, so a hung read is the step's typed failure."""
+    example = ModelFactoryFloorUnresolvedOverlay.model_validate(
+        yaml.safe_load(
+            (
+                Path(runtime_factory_floor_unresolved.__file__).parent
+                / "overlay.example.yaml"
+            ).read_text(encoding="utf-8")
+        )
+    )
+    assert _reads_bound_seconds(example) < STEP.timeout_seconds
+    serial = example.model_copy(update={"read_workers": 1})
+    assert _reads_bound_seconds(serial) > STEP.timeout_seconds
+    assert example.overlap_hours >= FLOOR.unresolved_max_age_hours
