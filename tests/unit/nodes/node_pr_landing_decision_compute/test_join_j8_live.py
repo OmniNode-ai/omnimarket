@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import io
 import json
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -611,3 +611,119 @@ def test_error_the_unit_tick_over_a_stale_state_writes_exit_three_evidence(
     assert code == 3
     assert json.loads((evidence / "last-run.json").read_text())["exit_code"] == 3
     assert not journal.exists()
+
+
+def _home_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path, Path]:
+    """The overlay as the host declares it: every path under ``$OMNI_HOME``. Returns the floor's home, a decoy home that
+    the calling shell exports, and the floor's journal."""
+    floor_home = tmp_path / "floor_home"
+    decoy_home = tmp_path / "shell_home"
+    for home in (floor_home, decoy_home):
+        (home / ".onex_state" / "floor-simple").mkdir(parents=True)
+    now = datetime.now(UTC)
+    (floor_home / "watcher.json").write_text(
+        json.dumps(
+            {
+                "last_tick": now.isoformat(),
+                "prs": {
+                    "omnimarket#11": _good(),
+                    "omnimarket#12": _held_missing(),
+                },
+            }
+        )
+    )
+    root = tmp_path / "overlays" / "node_pr_landing_join_j8"
+    root.mkdir(parents=True)
+    (root / "overlay.yaml").write_text(
+        json.dumps(
+            {
+                "watcher_state_path": "$OMNI_HOME/watcher.json",
+                "watcher_max_age_seconds": 900,
+                "owner": "OmniNode-ai",
+                "lab_check_name": CHECK,
+                "lab_bound_repos": ["omnimarket"],
+                "max_candidates": 20,
+                "poster_node": "node_lab_check_poster",
+                "poster_failure_code": "lab_check_not_passed",
+                "emission_journal": "$OMNI_HOME/.onex_state/floor-simple/emissions.jsonl",
+                "control_journal": "$OMNI_HOME/.onex_state/floor-simple/controls/join-j8-emissions.jsonl",
+                "drill": False,
+                "allow_injected_break": True,
+            }
+        )
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
+    monkeypatch.setenv("OMNI_HOME", str(decoy_home))
+    return (
+        floor_home,
+        decoy_home,
+        floor_home / ".onex_state" / "floor-simple" / "emissions.jsonl",
+    )
+
+
+def _run_main(argv: list[str]) -> tuple[int, str]:
+    out = io.StringIO()
+    err = io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        code = runtime_join_j8.main(argv)
+    return code, out.getvalue() + err.getvalue()
+
+
+def test_relocate_controls_reads_the_journal_under_omni_home_and_not_the_calling_shells(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23087: a hand run from a shell whose OMNI_HOME is another tree found none of the four control chains, because
+    the floor reads the journal under its publisher's home and the verb read the shell's. ``--omni-home`` names the floor's."""
+    floor_home, decoy_home, journal = _home_overlay(tmp_path, monkeypatch)
+    for want in ("golden", "error"):
+        code, _ = _run_main(["run", "--omni-home", str(floor_home), "--want", want])
+        assert code == 0
+    code, text = _run_main(
+        ["run", "--omni-home", str(floor_home), "--inject", "silent-landing"]
+    )
+    assert code == 0
+    cid = str(json.loads(text)["correlation_id"])
+    control = (
+        floor_home
+        / ".onex_state"
+        / "floor-simple"
+        / "controls"
+        / "join-j8-emissions.jsonl"
+    )
+    with journal.open("a", encoding="utf-8") as handle:
+        handle.write(control.read_text())
+    control.unlink()
+    assert not (
+        decoy_home / ".onex_state" / "floor-simple" / "emissions.jsonl"
+    ).exists()
+
+    code, text = _run_main(
+        ["relocate-controls", "--omni-home", str(floor_home), "--cid", cid]
+    )
+    assert code == 0
+    assert json.loads(text) == {"chains": 1, "events": 2}
+    assert cid not in journal.read_text()
+    assert cid in control.read_text()
+    assert not (decoy_home / ".onex_state" / "floor-simple" / "controls").exists()
+
+
+def test_error_relocate_controls_names_the_journal_it_read_when_the_chain_is_not_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23087: "not found" must say which file was read, or a wrong-home read looks like an empty journal."""
+    floor_home, decoy_home, journal = _home_overlay(tmp_path, monkeypatch)
+    code, _ = _run_main(["run", "--omni-home", str(floor_home), "--want", "golden"])
+    assert code == 0
+    before = journal.read_text()
+    code, text = _run_main(["relocate-controls", "--cid", "0" * 32])
+    assert code == 3
+    assert str(decoy_home / ".onex_state" / "floor-simple" / "emissions.jsonl") in text
+    code, text = _run_main(
+        ["relocate-controls", "--omni-home", str(floor_home), "--cid", "0" * 32]
+    )
+    assert code == 3
+    assert str(journal) in text
+    assert "4 lines read" in text
+    assert journal.read_text() == before
