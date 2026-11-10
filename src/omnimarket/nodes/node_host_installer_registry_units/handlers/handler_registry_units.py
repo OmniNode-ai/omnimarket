@@ -371,7 +371,8 @@ class HandlerRegistryUnits:
         ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
         variable of the installing shell, and falls back to the value the unit's last install recorded, so a
         reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
-        never written with a hole in it.
+        never written with a hole in it, except in a top-level key the declaration lists under ``optional_keys``:
+        that key is left out of the document.
         """
         declared = unit.get("config_file")
         if not declared:
@@ -402,7 +403,14 @@ class HandlerRegistryUnits:
                 return {str(key): fill(item) for key, item in node.items()}
             return node
 
-        return json.dumps(fill(declared["document"]), indent=1) + "\n"
+        document = dict(declared["document"])
+        for key in declared.get("optional_keys") or []:
+            if key in document:
+                try:
+                    fill(document[key])
+                except ValueError:
+                    del document[key]
+        return json.dumps(fill(document), indent=1) + "\n"
 
     def config_inputs(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
@@ -483,6 +491,11 @@ class HandlerRegistryUnits:
         uv: str,
         python: str,
     ) -> str:
+        if unit.get("environment_file"):
+            raise ValueError(
+                f"{unit['label']} declares environment_file {unit['environment_file']!r}; "
+                "launchd units do not support an environment file, declare the variables instead"
+            )
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
         process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
         if process_type not in PROCESS_TYPES:
@@ -706,6 +719,31 @@ class HandlerRegistryUnits:
             )
         return value.replace("%", "%%")
 
+    def environment_file(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> str:
+        """The EnvironmentFile line of a systemd unit that declares one, else an empty line.
+
+        The declaration is a path relative to the home, and the line carries a leading dash, so a host that has no
+        such file still runs the unit. A path that is absolute, climbs out of the home, or holds a character an
+        unquoted systemd word cannot carry is refused: the line is never quoted, so whitespace, a quote or a
+        backslash in it would not be the path the contract declared.
+        """
+        declared = str(unit.get("environment_file") or "")
+        if not declared:
+            return ""
+        relative = Path(declared)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(
+                f"{unit['label']} declares environment_file {declared!r}; it must be a path relative to the home"
+            )
+        path = f"{request.home}/{declared}"
+        if any(character.isspace() or character in '"\\' for character in path):
+            raise ValueError(
+                f"{path!r} holds whitespace, a quote or a backslash a systemd EnvironmentFile cannot carry"
+            )
+        return f"EnvironmentFile=-{self.systemd_value(path)}"
+
     def render_systemd(
         self,
         request: ModelRegistryUnitsRequest,
@@ -747,6 +785,9 @@ class HandlerRegistryUnits:
             timer = timer.replace(f"__{key}__", self.systemd_value(value))
         service = service.replace(
             "__ENVIRONMENT__", f"Environment={environment}" if environment else ""
+        )
+        service = service.replace(
+            "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""

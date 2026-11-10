@@ -117,11 +117,20 @@ def _gate(prompt: str, response: str) -> tuple[bool, tuple[str, ...]]:
     return result.passed, result.failure_reasons
 
 
-@pytest.mark.parametrize("task_id", ["R3b-01", "R3b-02", "R3b-03", "R3b-04"])
+@pytest.mark.parametrize("task_id", ["R3b-01", "R3b-02", "R3b-03"])
 def test_a_workflow_selection_prompt_with_no_lines_is_not_asked_to_cite_them(
     task_id: str,
 ) -> None:
     assert _RULE not in _heuristic(_prompt(task_id))
+
+
+def test_a_workflow_selection_prompt_that_carries_a_patch_keeps_the_rule() -> None:
+    """R3b-04 hands the model a patch (a diff hunk), so it has lines to point at and the rule stays.
+
+    The prompt carried no lines until OMN-18339 put the patch to apply in it; the rule is
+    narrowed to its input (see TestInputThatCarriesLinesKeepsTheRule), so it is not waived here.
+    """
+    assert _RULE in _heuristic(_prompt("R3b-04"))
 
 
 @pytest.mark.parametrize("task_id", ["R3-01", "R3-02", "R3-03", "R3-04"])

@@ -252,3 +252,29 @@ def test_schedule_check_refuses_declarations_the_pass_would_refuse(
     overlay.write_text(yaml.safe_dump({"hosts": [row.model_dump(mode="json")]}))
     assert node_main.main(["schedule", "check", "--overlay", str(overlay)]) == 3
     assert "not-a-temp-name" in capsys.readouterr().err
+
+
+def test_schedule_install_refuses_declarations_the_pass_would_refuse(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    row = ModelTempRetentionHost(
+        name="pool-a",
+        scheduler="systemd-user",
+        windows=WINDOWS,
+        temp_roots=(ModelTempRoot(path=str(tmp_path / "runs" / "not-a-temp-name")),),
+    )
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(yaml.safe_dump({"hosts": [row.model_dump(mode="json")]}))
+    argv = [
+        "schedule",
+        "install",
+        "--host",
+        "pool-a",
+        "--source-root",
+        str(tmp_path),
+        "--overlay",
+        str(overlay),
+        "--dry-run",
+    ]
+    assert node_main.main(argv) == 3
+    assert "not-a-temp-name" in capsys.readouterr().err

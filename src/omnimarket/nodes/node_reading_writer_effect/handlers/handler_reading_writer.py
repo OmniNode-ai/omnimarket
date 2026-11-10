@@ -65,6 +65,8 @@ WRITER_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=reading"
 _UNREAD = "unread"
+#: The error a source read answers with once the cycle's failed-read budget is spent and a later read has failed too.
+_BUDGET_SPENT = "read-budget-spent"
 #: The row type and source cell of every reading row; other handlers of this node import them.
 ROW_TYPE = _ROW_TYPE
 ROW_SOURCE_CELL = _ROW_SOURCE_CELL
@@ -180,11 +182,17 @@ class HandlerReadingWriter:
         self._revision = revision or load_revision()
         # Answers read earlier in the cycle being run, by query: see _read. Emptied when a window starts.
         self._cycle_reads: dict[ModelLedgerQuery, ModelLedgerRead] = {}
+        # Seconds this handle() call has spent on source reads that failed; the overlay's read_retry budget bounds it.
+        self._failed_read_seconds: float = 0.0
+        # Set when a read that failed after that budget was spent: every later read of the cycle reads _BUDGET_SPENT.
+        self._reads_stopped: bool = False
 
     # -- the window -------------------------------------------------------------------------
 
     def handle(self, command: ModelReadingWindowCommand) -> ModelReadingWindowResult:
         self._cycle_reads = {}
+        self._failed_read_seconds = 0.0
+        self._reads_stopped = False
         now = self._clock().astimezone(UTC)
         length = self._overlay.window.length_seconds
         delay = self._overlay.window.close_delay_seconds
@@ -287,17 +295,32 @@ class HandlerReadingWriter:
         """Read a source; when the read fails, ask again for the passes the overlay declares (OMN-23119).
 
         The bound of the read is never raised: a slow bus reply is asked for again, and a source that stays dead
-        still reads UNKNOWN after the last pass.
+        still reads UNKNOWN after the last pass. When the overlay sets read_retry budget_seconds (OMN-23519) the
+        seconds one cycle spends on failed reads (the attempts and the pauses between them) are bounded: once
+        spent, a read is tried once and not again, and the first such read that fails stops every later read of
+        the cycle, which reads read-budget-spent at once, so a stalled bus cannot use up the unit's whole time
+        and leave the later pieces without a row. A read that answers after the budget is spent keeps the cycle going.
         """
-        read = self._source.read(query)
         retry = self._overlay.read_retry
-        if retry is None:
-            return read
-        for _ in range(retry.passes):
-            if read.error is None:
-                break
-            self._pause(retry.pause_seconds)
-            read = self._source.read(query)
+        budget = retry.budget_seconds if retry is not None else None
+        if budget is not None and self._reads_stopped:
+            return ModelLedgerRead(error=_BUDGET_SPENT)
+        spent_before = budget is not None and self._failed_read_seconds >= budget
+        started = self._clock()
+        read = self._source.read(query)
+        if retry is not None:
+            for _ in range(retry.passes):
+                if read.error is None:
+                    break
+                elapsed = (self._clock() - started).total_seconds()
+                if budget is not None and self._failed_read_seconds + elapsed >= budget:
+                    break
+                self._pause(retry.pause_seconds)
+                read = self._source.read(query)
+        if read.error is not None:
+            self._failed_read_seconds += (self._clock() - started).total_seconds()
+            if spent_before:
+                self._reads_stopped = True
         return read
 
     def _read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
