@@ -13,7 +13,7 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   Keeps the floor's published numbers as a dated history and writes what is better and worse than 1, 7 and 30 days ago,
