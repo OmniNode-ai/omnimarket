@@ -10,6 +10,7 @@ request watcher, the factory floor record and that state file, and writes delega
 from __future__ import annotations
 
 import os
+import shlex
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +38,12 @@ from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation
     ModelDelegationRuntime,
     ModelFloorDelegationRequest,
     ModelFloorDelegationResult,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
+    CommandPointRead,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
 )
 
 OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -79,10 +86,23 @@ class HandlerFloorDelegation:
         runtime: ModelDelegationRuntime | None = None,
         run: CommandRunner = run_command,
         clock: Callable[[], datetime] | None = None,
+        ledger: ProtocolLedgerPointRead | None = None,
     ) -> None:
         self._rt = runtime or load_runtime()
         self._run = run
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._ledger = ledger
+
+    def _ledger_read(
+        self, rt: ModelDelegationRuntime
+    ) -> ProtocolLedgerPointRead | None:
+        """The injected read, else the bus read command the contract names; none when a lab-node scenario has no route to read."""
+        if self._ledger is not None:
+            return self._ledger
+        argv = shlex.split(
+            os.environ.get(rt.ledger_read_command_env, "")
+        )  # ONEX_FLAG_EXEMPT
+        return CommandPointRead(argv, rt.ledger_read_timeout_seconds) if argv else None
 
     def handle(
         self, request: ModelFloorDelegationRequest
@@ -98,7 +118,9 @@ class HandlerFloorDelegation:
         home = Path(home_text)
         now = self._clock()
         if request.stage in ("scenarios", "run"):
-            reads = read_scenarios(rt, home, now, self._run, self._clock)
+            reads = read_scenarios(
+                rt, home, now, self._run, self._clock, self._ledger_read(rt)
+            )
             target = home / rt.scenario_reads_relpath
             write_atomic(target, reads.model_dump_json(indent=1).encode())
             unread = sum(1 for r in reads.reads if r.read == "unread")
