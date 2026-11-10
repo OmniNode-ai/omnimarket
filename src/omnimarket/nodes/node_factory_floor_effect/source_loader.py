@@ -1272,6 +1272,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
             ticket=str(data.get("ticket") or ""),
             placement=str(data.get("placement") or ""),
             account=str(cloud.get("account") or ""),
+            login=str(data.get("login") or ""),
             pr_heads=tuple(
                 str(h) for h in data.get("pr_heads") or () if isinstance(h, str)
             ),

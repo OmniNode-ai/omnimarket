@@ -324,6 +324,14 @@ def test_added_gates_do_not_displace_release_staleness_checks(
         ),
         encoding="utf-8",
     )
+    for name in (
+        "ci_summary_external_check_modes.contract.json",
+        "ci_summary_external_check_modes.json",
+    ):
+        (tmp_path / name).write_text(
+            CI_SUMMARY_GATE.with_name(name).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
     monkeypatch.setattr(sys.modules[__name__], "CI_SUMMARY_GATE", summary_path)
     test_release_staleness_is_advisory_under_ci_summary()
 

@@ -359,6 +359,8 @@ class ModelFloorReceipt(BaseModel):
     ticket: str = ""
     placement: str = ""
     account: str = ""
+    # The Claude token pool label the lane started under, "" when the receipt names none.
+    login: str = ""
     pr_heads: tuple[str, ...] = ()
     result: str = ""
     session_detail: str = ""

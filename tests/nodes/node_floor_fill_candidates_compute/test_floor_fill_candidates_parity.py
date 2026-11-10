@@ -124,6 +124,33 @@ def criterion_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
     }
 
 
+def integrating_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
+    """A record whose items are integrating (merged, being shown running) reads and does not unread the stopped lane."""
+    document = json.loads(
+        record(
+            [item("T1", "integrating"), item("T2")], generated_at="2026-11-02T10:40:00Z"
+        )
+    )
+    document["floor"]["stopped"] = [
+        {
+            "lane": "lane-a",
+            "ticket": "TCK-9",
+            "outcome": "partial",
+            "branch": "branch-a",
+            "rows": ["TERMINAL outcome=partial"],
+        }
+    ]
+    return {
+        "integrating:item": request(
+            floor_record=json.dumps(document),
+            ticket_verdicts=(usable(LINE, "T2", "TCK-2"),),
+        ),
+        "integrating:unknown-state": request(
+            floor_record=record([item("T1", "unheard-of")])
+        ),
+    }
+
+
 def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
     """The golden scenario (the 10:40Z record) under each ticket input, plus the unread and the held cases."""
     first_line = next(iter(READY_10_40))
@@ -142,6 +169,7 @@ def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
         "stopped:child-ticket-lane": stopped_request(children=True),
         "stopped:no-snapshot-children": stopped_request(children=False),
         **criterion_scenarios(),
+        **integrating_scenarios(),
     }
 
 
@@ -340,6 +368,11 @@ def test_floor_fill_candidates_parity_scenarios_decide_what_the_node_says() -> N
     unmet = decisions["criterion:unmet"]["lines"][0]
     assert unmet["candidates"] == []
     assert unmet["not_ready"][0]["unmet"] == ["piece 2 WORKING (reads NOT WORKING)"]
+    integrating = decisions["integrating:item"]
+    assert integrating["verdict"] == "READ"
+    assert integrating["lines"][0]["not_ready"][0]["cause"] == "integrating"
+    assert [s["lane"] for s in integrating["stopped"]] == ["lane-a"]
+    assert decisions["integrating:unknown-state"]["unread_cause"] == "malformed"
     unparseable = decisions["criterion:unparseable"]["lines"][0]
     assert unparseable["not_ready"][0]["cause"].startswith("start-when-unparseable:")
 
