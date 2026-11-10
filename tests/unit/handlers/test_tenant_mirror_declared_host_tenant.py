@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -65,6 +66,21 @@ _BACKENDS: list[dict[str, object]] = [
 @pytest.fixture(autouse=True)
 def _clear_health_cache() -> None:
     handler_llm_delegation_call._health_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _settings_cache_isolated() -> Iterator[None]:
+    """Drop the cached settings before and after each test.
+
+    The golden test sets ONEX_TENANT_ID and clears the settings cache so the
+    run reads it; monkeypatch restores the environment at teardown but the
+    cache would keep the declared tenant for every later test in the process.
+    """
+    from omnimarket.config.settings import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture
