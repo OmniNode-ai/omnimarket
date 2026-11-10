@@ -223,6 +223,13 @@
     "runner": "none; entered from the file list scripts/ci/merge_test_durations.py file_weights reports as unrecorded; the next CI refresh replaces these entries",
     "base_sha": "0d92c2da3b09eb8140836d586f800759f4c53457"
   },
+  "supplement_omn22848_lab_fill": {
+    "recorded_on": "2026-11-10",
+    "files_added": 55,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "af97344b3d5f6103d62193a16df7e542b17c85a6"
+  },
   "supplement_omn22868_lab_fill": {
     "recorded_on": "2026-11-09",
     "files_added": 58,

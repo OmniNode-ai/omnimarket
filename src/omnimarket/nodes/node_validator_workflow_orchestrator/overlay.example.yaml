@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example overlay for node_validator_workflow_orchestrator (OMN-23078). Synthetic values.
+#
+# Each validator names the omnibase_core node that is the validator and its validation
+# contract; whether it applies to a change is read from that contract's target_patterns and
+# exclude_patterns, and whether it is canonical from the node contract (canonical below).
+validators:
+  # The first canonical validator: Canonical File Shape (the file-shape and file-size check).
+  - validator_id: canonical_file_shape
+    node_package: omnibase_core.nodes.node_canonical_file_shape_check_compute
+    validation_contract_package: omnibase_core.validation.contracts
+    validation_contract_file: canonical_file_shape.validation.yaml
+    input_kind: canonical_file_shape
+canonical:
+  node_type: compute
+  purity: pure
+  tag: validator_node
+# Ratchets read at the head: the value is the count of entry lines in the file.
+ratchet_sources:
+  - key: canonical_file_shape.baseline_entries
+    path: .onex_ratchets/canonical_file_shape_baseline.txt
+    comment_prefix: "#"
+gate:
+  check_name: validators
+# Backends: in_memory is the default; git, file and file are the real ones.
+backends:
+  reader: in_memory
+  emitter: in_memory
+  gate: in_memory
+git:
+  repo_root_env: ONEX_VALIDATOR_WORKFLOW_REPO_ROOT
+  cat_file_timeout_s: 30
+files:
+  trace_path_env: ONEX_VALIDATOR_WORKFLOW_TRACE_PATH
+  gate_path_env: ONEX_VALIDATOR_WORKFLOW_GATE_PATH
