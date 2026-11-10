@@ -8,6 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
     ModelScriptedTransportScript,
@@ -15,11 +16,17 @@ from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_tr
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     EnumRemoteLaneStartOutcome,
 )
+from omnimarket.nodes.node_remote_lane_start_orchestrator.runtime_remote_lane_start import (
+    EXIT_USAGE,
+    main,
+)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.tests.lane_start_fixtures import (
     DONE_MESSAGE,
     T0,
     Rig,
+    cells,
     request,
+    settings,
     stream_result,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_append_command import (
@@ -107,3 +114,82 @@ def test_an_engine_that_survives_the_timeout_stop_leaves_the_claim_open(
     assert result.outcome is EnumRemoteLaneStartOutcome.STOP_REFUSED
     assert rig.ledger_rows("TERMINAL") == []
     assert not result.receipt.final
+
+
+def _overlay_with(tmp_path: Path, **section: object) -> Path:
+    base = yaml.safe_load(
+        (Path(__file__).parents[1] / "overlay.example.yaml").read_text(encoding="utf-8")
+    )
+    base["remote_lane_start"].update(section)
+    path = tmp_path / "overlay.yaml"
+    path.write_text(yaml.safe_dump(base), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        # a literal brace (a json literal in an engine command) is a format field the request cannot fill
+        ("engine_argv", ["sh", "-c", 'echo {"type":"result"}']),
+        # a placeholder the request does not carry
+        ("engine_argv", ["claude", "-p", "{brief}", "--effort", "{effort}"]),
+        ("claim_text", "remote lane on {host} at {when}"),
+    ],
+)
+def test_an_unfillable_placeholder_is_refused_at_load_naming_the_key(
+    key: str, value: object
+) -> None:
+    with pytest.raises(ValueError, match=rf"remote_lane_start\.{key}"):
+        settings(**{key: value})
+
+
+def test_an_unfillable_placeholder_stops_the_entry_before_any_claim(
+    tmp_path: Path,
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text("", encoding="utf-8")
+    brief = tmp_path / "brief.md"
+    brief.write_text("print the host name and stop", encoding="utf-8")
+    pool = tmp_path / "pool.json"
+    pool.write_text('{"readings": []}', encoding="utf-8")
+    overlay = _overlay_with(
+        tmp_path,
+        engine_argv=["sh", "-c", 'echo {"type":"x"}'],
+        receipt_dir=str(tmp_path / "receipts"),
+    )
+    code = main(
+        [
+            "--overlay", str(overlay), "--ledger", str(ledger),
+            "--pool-snapshot", str(pool), "--lane", "fixture-lane",
+            "--ticket", "OMN-22848", "--model", "sonnet",
+            "--brief", str(brief), "--run-id", "rlane-fixture-1",
+        ]
+    )  # fmt: skip
+    assert code == EXIT_USAGE
+    assert ledger.read_text(encoding="utf-8") == ""
+
+
+def test_the_claim_carries_the_worktree_cell_the_ledger_grammar_requires(
+    tmp_path: Path,
+) -> None:
+    """The live ledger refused the first real CLAIM of this entry: no worktree cell (OMN-20148)."""
+    rig = Rig(tmp_path, DONE)
+    rig.orchestrator.run(request())
+    [claim] = rig.attempted_rows("CLAIM")
+    assert cells(claim)["worktree"] == "none"
+    # No TERMINAL for a lane with no checkout names a worktree outcome either.
+    [terminal] = rig.attempted_rows("TERMINAL")
+    assert "worktree" not in cells(terminal)
+
+
+def test_the_claim_of_a_repo_lane_names_its_checkout_and_the_terminal_keeps_it(
+    tmp_path: Path,
+) -> None:
+    rig = Rig(tmp_path, DONE)
+    rig.orchestrator.run(request(repo="omnimarket", sha="a" * 40))
+    [claim] = rig.attempted_rows("CLAIM")
+    path = cells(claim)["worktree"]
+    assert path != "none"
+    assert path.endswith("/omnimarket")
+    [terminal] = rig.attempted_rows("TERMINAL")
+    assert cells(terminal)["worktree"].startswith(f"kept:{path}:")
