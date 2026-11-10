@@ -19,6 +19,7 @@ from omnimarket.models.node_overlays.model_node_overlays import (
     ModelIntegrationSweepOverlay,
     ModelLabDiskHygieneOverlay,
     ModelLabSliPackOverlay,
+    ModelPytestHostGuardOverlay,
     ModelRouteCheckOverlay,
     ModelRuntimeHostOverlay,
 )
@@ -118,6 +119,21 @@ def test_a_missing_or_blank_field_refuses(
 def test_the_sli_pack_status_is_one_of_two_words() -> None:
     with pytest.raises(ValidationError):
         ModelLabSliPackOverlay.model_validate({"status": "on"})
+
+
+def test_the_pytest_host_guard_overlay_maps_row_labels_to_variables_and_refuses_strays() -> (
+    None
+):
+    document = {"legacy_override_by_label": {"row-a": "PREPUSH_INVENTED"}}
+    assert ModelPytestHostGuardOverlay.model_validate(
+        document
+    ).legacy_override_by_label == {"row-a": "PREPUSH_INVENTED"}
+    with pytest.raises(ValidationError):
+        ModelPytestHostGuardOverlay.model_validate({**document, "stray": 1})
+    with pytest.raises(ValidationError):
+        ModelPytestHostGuardOverlay.model_validate(
+            {"legacy_override_by_label": {"row-a": " "}}
+        )
 
 
 def test_the_models_import_with_pydantic_alone() -> None:

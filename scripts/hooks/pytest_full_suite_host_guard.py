@@ -39,9 +39,22 @@ def _load(module: str) -> Any:
     """A module of the host guard node (OMN-23367), loaded on first use.
 
     The shell hook runs this file with no project env, so the file finds the node through this
-    checkout's own src and, when pydantic is missing, runs itself again under uv with it."""
-    if importlib.util.find_spec("pydantic") is None and __name__ == "__main__":
-        again = ["uv", "run", "--no-project", "--with", "pydantic", "python", "-m"]
+    checkout's own src and, when pydantic or yaml is missing, runs itself again under uv with them."""
+    if (
+        importlib.util.find_spec("pydantic") is None
+        or importlib.util.find_spec("yaml") is None
+    ) and __name__ == "__main__":
+        again = [
+            "uv",
+            "run",
+            "--no-project",
+            "--with",
+            "pydantic",
+            "--with",
+            "pyyaml",
+            "python",
+            "-m",
+        ]
         os.execvp(
             "uv", [*again, "scripts.hooks.pytest_full_suite_host_guard", *sys.argv[1:]]
         )
@@ -125,6 +138,7 @@ def _decide(
                 env_overrides={
                     k: v for k, v in env.items() if k.startswith("PREPUSH_")
                 },
+                legacy_override_by_label=_io().legacy_override_by_label(env),
                 private_table_rel=private_rel,
                 host_table_rel=HOST_TABLE_REL,
             )

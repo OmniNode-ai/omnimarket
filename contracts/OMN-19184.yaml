@@ -43,6 +43,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_no_lab_values_in_product_source_omn19184.py -q --no-cov --tb=line
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pytest_full_suite_host_guard tests/unit/models/test_node_overlay_documents_omn22478.py -q --no-cov --tb=line
+    cwd: .
 - id: dod-omn19184-deploy
   description: The route check handler reads its local model through the overlay reader, so the deployed code carries no lab model id. The deploy check runs the route check tests, which refuse a handler carrying its own lab model id.
   source: manual

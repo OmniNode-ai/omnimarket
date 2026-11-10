@@ -95,6 +95,13 @@ class ModelAbCompareRegistryOverlay(_ModelOverlayDocument):
     models: tuple[ModelAbCompareRegistryEntry, ...] = Field(min_length=1)
 
 
+class ModelPytestHostGuardOverlay(_ModelOverlayDocument):
+    """``node_pytest_full_suite_host_guard``: per host-table row label the ``PREPUSH_*`` variable that
+    replaces that row's hostname (OMN-19184)."""
+
+    legacy_override_by_label: dict[NonBlank, NonBlank]
+
+
 __all__ = [
     "ModelAbCompareRegistryEntry",
     "ModelAbCompareRegistryOverlay",
@@ -102,6 +109,7 @@ __all__ = [
     "ModelIntegrationSweepOverlay",
     "ModelLabDiskHygieneOverlay",
     "ModelLabSliPackOverlay",
+    "ModelPytestHostGuardOverlay",
     "ModelRouteCheckOverlay",
     "ModelRuntimeHostOverlay",
 ]

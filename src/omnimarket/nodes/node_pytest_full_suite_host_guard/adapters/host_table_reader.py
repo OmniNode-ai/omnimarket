@@ -11,6 +11,14 @@ import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.models.node_overlays.model_node_overlays import (
+    ModelPytestHostGuardOverlay,
+)
+
 _GIT_LOCATION_ENV = (
     "GIT_DIR",
     "GIT_WORK_TREE",
@@ -35,6 +43,21 @@ def login_overlay_text(env: Env, overlay_name: str, roots_env: str) -> str | Non
                     f"per-login host overlay cannot be read: {exc}"
                 ) from exc
     return None
+
+
+def legacy_override_by_label(env: Env) -> dict[str, str]:
+    """The node's overlay: per row label the env var that replaces that row's hostname (OMN-19184).
+
+    Absence is neutral, like ``login_overlay_text``; a broken overlay refuses and never reads as an
+    absent one.
+    """
+    try:
+        overlay = load_structured_overlay(
+            "node_pytest_full_suite_host_guard", ModelPytestHostGuardOverlay, env
+        )
+    except NodeOverlayNotFoundError:
+        return {}
+    return dict(overlay.legacy_override_by_label)
 
 
 def shipped_table_text(repo_root: Path, host_table_rel: str) -> str:

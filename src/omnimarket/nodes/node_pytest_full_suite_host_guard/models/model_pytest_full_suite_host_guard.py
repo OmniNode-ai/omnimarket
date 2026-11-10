@@ -15,8 +15,9 @@ class ModelPytestFullSuiteHostGuardRequest(BaseModel):
 
     ``table_text`` is the committed table followed by the private table. ``login_overlay_text`` is the
     whole per-login overlay file, None when no overlay is on the roots. ``env_overrides`` holds the
-    ``PREPUSH_*`` variables that replace a row's hostname. An empty ``host`` is an identity that could not
-    be determined and is never refused.
+    ``PREPUSH_*`` variables that replace a row's hostname. ``legacy_override_by_label`` comes from the
+    node's overlay and is empty when no overlay is on the roots. An empty ``host`` is an identity that
+    could not be determined and is never refused.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -26,6 +27,7 @@ class ModelPytestFullSuiteHostGuardRequest(BaseModel):
     login: str
     host: str
     env_overrides: dict[str, str] = Field(default_factory=dict)
+    legacy_override_by_label: dict[str, str] = Field(default_factory=dict)
     private_table_rel: str
     host_table_rel: str
 
