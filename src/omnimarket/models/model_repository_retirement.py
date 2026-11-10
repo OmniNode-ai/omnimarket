@@ -29,6 +29,7 @@ class ModelRepositoryRetirementPolicy(BaseModel):
     registry_key_pattern: str = Field(min_length=1)
     registry_constant_pattern: str = Field(min_length=1)
     generated_directory_markers: tuple[str, ...] = Field(min_length=1)
+    compose_yaml_tags: tuple[str, ...] = Field(min_length=1)
 
     @field_validator("backup_directory")
     @classmethod

@@ -552,3 +552,59 @@ def test_retirement_falsifier_is_wired_to_ci_and_precommit() -> None:
     assert any(
         filename in h.get("entry", "") for repo in hooks["repos"] for h in repo["hooks"]
     )
+
+
+COMPOSE_WITH_TAGS = (
+    "services:\n  qdrant:\n    ports: !override []\n    labels: !reset null\n"
+)
+
+
+def test_contract_declares_the_compose_tags() -> None:
+    policy = load_retirement_policy()
+    assert policy.compose_yaml_tags == ("override", "reset")
+    with pytest.raises(ValueError, match="compose_yaml_tags"):
+        policy.model_validate({**policy.model_dump(), "compose_yaml_tags": ()})
+
+
+def test_compose_tag_file_is_read_without_a_finding(tmp_path: Path) -> None:
+    compose = tmp_path / "docker-compose.prod.yml"
+    compose.write_text(COMPOSE_WITH_TAGS)
+    before = compose.read_bytes()
+    assert retired_repository_findings(tmp_path, load_retirement_policy()) == ()
+    assert compose.read_bytes() == before
+
+
+def test_compose_tag_file_still_reports_a_retired_target(tmp_path: Path) -> None:
+    (tmp_path / "docker-compose.prod.yml").write_text(
+        COMPOSE_WITH_TAGS + "repos: [onex_change_control]\n"
+    )
+    findings = retired_repository_findings(tmp_path, load_retirement_policy())
+    assert [f.repository for f in findings] == ["onex_change_control"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["services:\n  q:\n    ports: !undeclared []\n", "services: [unclosed\n"],
+    ids=["undeclared_tag", "invalid_yaml"],
+)
+def test_undeclared_tag_or_invalid_yaml_is_still_malformed(
+    tmp_path: Path, text: str
+) -> None:
+    (tmp_path / "docker-compose.prod.yml").write_text(text)
+    with pytest.raises(ValueError, match="malformed registry configuration"):
+        retired_repository_findings(tmp_path, load_retirement_policy())
+
+
+def test_compose_tag_workspace_exits_zero_then_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    compose = root / "omnibase_infra/docker-compose.prod.yml"
+    compose.write_text(COMPOSE_WITH_TAGS)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert result.exit_code == 0, result.diagnostics
+    assert not any(s.surface == "retired-repository-targets" for s in result.surfaces)
+    compose.write_text(COMPOSE_WITH_TAGS + "repos: [onex_change_control]\n")
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert result.exit_code == 2
+    assert any(s.surface == "retired-repository-targets" for s in result.surfaces)
