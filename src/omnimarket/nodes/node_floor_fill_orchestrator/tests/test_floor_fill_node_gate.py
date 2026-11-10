@@ -22,6 +22,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillCommandRequest,
     load_floor_fill_config,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    load_floor_fill_live_settings,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ModelRunOutcome,
     ModelStateRead,
@@ -84,6 +87,14 @@ def test_overlay_example_is_the_contract_keys_and_loads() -> None:
     assert "onex_remote_lane" not in " ".join(
         config.runner_command + config.remote_argv
     )
+
+
+def test_overlay_example_live_section_loads_and_names_every_field() -> None:
+    example = yaml.safe_load(
+        (NODE_DIR / "overlay.example.yaml").read_text(encoding="utf-8")
+    )
+    settings = load_floor_fill_live_settings(example["floor_fill_live"])
+    assert set(example["floor_fill_live"]) == set(type(settings).model_fields)
 
 
 @pytest.mark.parametrize("key", sorted(OVERLAY))
