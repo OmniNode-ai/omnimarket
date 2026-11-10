@@ -91,7 +91,10 @@ class HandlerLabProofJudgeUse:
                 event_id=event_id,
             )
 
-        appended = self._appender.append(row + "\n", event_id)
+        # one ledger request per judgement: a repeat of the same use at the same instant is the same request, a later
+        # judgement of the same change is a use of its own and a row of its own
+        request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{event_id}|{stamp}"))
+        appended = self._appender.append(row + "\n", request_id)
         if not appended.ok:
             return ModelLabProofJudgeUseResult(
                 event_published=event_published,

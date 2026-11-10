@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from omnimarket.nodes.node_lab_proof_judge_use_effect.handlers.handler_lab_proof_judge_use import (
     HandlerLabProofJudgeUse,
@@ -99,3 +99,20 @@ def test_refused_no_substitute_records_outcome_and_none_substitute(
     assert "refused_no_substitute" in result.row
     assert "substitute=none" in result.row
     assert result.ledger == "written"
+
+
+def test_later_judgement_of_the_same_change_is_its_own_row(
+    overlay, appender, publisher
+) -> None:
+    """The ledger request id carries the judgement instant: a re-run of the proof later is a use of its own."""
+    handler = HandlerLabProofJudgeUse(
+        overlay=overlay, host="host-a", appender=appender, publisher=publisher
+    )
+    first = _record()
+    later = first.model_copy(
+        update={"observed_at": first.observed_at + timedelta(minutes=5)}
+    )
+    handler.handle(first)
+    handler.handle(later)
+    assert len(set(appender.request_ids)) == 2
+    assert appender.rows[0] != appender.rows[1]
