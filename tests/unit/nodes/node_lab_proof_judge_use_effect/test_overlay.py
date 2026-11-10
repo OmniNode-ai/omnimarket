@@ -5,18 +5,22 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_lab_proof_judge_use_effect.overlay import (
     ModelLabProofJudgeUseOverlay,
 )
-from tests.unit.nodes.node_lab_proof_judge_use_effect.conftest import USE_TOPIC
+from tests.unit.nodes.node_lab_proof_judge_use_effect.conftest import (
+    _EXAMPLE,
+    USE_TOPIC,
+)
 
 VALID = {
     "schema_version": 1,
     "event": {
         "topic": USE_TOPIC,
-        "event_type": "ModelLabProofJudgeUseRecord",
+        "event_type": "lab_proof_judge.use_recorded",
     },
     "ledger": {
         "append": {
@@ -60,7 +64,7 @@ def test_missing_ledger_refused() -> None:
 
 def test_empty_topic_refused() -> None:
     data = dict(VALID)
-    data["event"] = {"topic": "", "event_type": "ModelLabProofJudgeUseRecord"}
+    data["event"] = {"topic": "", "event_type": "lab_proof_judge.use_recorded"}
     with pytest.raises(ValidationError):
         ModelLabProofJudgeUseOverlay(**data)
 
@@ -81,3 +85,15 @@ def test_empty_ticket_refused() -> None:
     data["ledger"] = ledger
     with pytest.raises(ValidationError):
         ModelLabProofJudgeUseOverlay(**data)
+
+
+def test_declared_event_is_registered_with_the_emit_registry() -> None:
+    """The seam to the emit effect: the overlay's topic and event type resolve a posture, so the event is deliverable (not refused)."""
+    from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
+        resolve_override_transform,
+    )
+
+    example = yaml.safe_load(_EXAMPLE.read_text())
+    resolve_override_transform(
+        example["event"]["topic"], example["event"]["event_type"]
+    )

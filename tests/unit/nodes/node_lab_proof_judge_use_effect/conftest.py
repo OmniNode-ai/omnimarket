@@ -82,7 +82,7 @@ def make_overlay() -> ModelLabProofJudgeUseOverlay:
         schema_version=1,
         event={
             "topic": USE_TOPIC,
-            "event_type": "ModelLabProofJudgeUseRecord",
+            "event_type": "lab_proof_judge.use_recorded",
         },
         ledger={
             "append": {

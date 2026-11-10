@@ -46,7 +46,7 @@ def test_not_applicable_publishes_one_event_and_one_row(
     # exactly one event on the declared topic
     assert len(publisher.events) == 1
     assert publisher.events[0]["topic"] == USE_TOPIC
-    assert publisher.events[0]["event_type"] == "ModelLabProofJudgeUseRecord"
+    assert publisher.events[0]["event_type"] == "lab_proof_judge.use_recorded"
     assert result.event_published is True
     assert result.event_id == publisher.events[0]["event_id"]
 
