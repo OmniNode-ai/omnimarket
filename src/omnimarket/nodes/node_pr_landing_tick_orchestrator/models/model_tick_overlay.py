@@ -61,7 +61,7 @@ class ModelTickOrchestratorOverlay(BaseModel):
     consumer_group: str | None = Field(default=None, description="Redpanda only.")
     snapshot_topic: str | None = Field(
         default=None,
-        description="Redpanda only: the topic the script's tick records arrive on.",
+        description="Redpanda only: the topic the landing snapshot step's tick records arrive on (its record_topic).",
     )
     poll_timeout_s: float | None = Field(
         default=None, gt=0, description="Redpanda only."
