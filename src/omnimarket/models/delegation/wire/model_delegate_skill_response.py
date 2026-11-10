@@ -576,6 +576,11 @@ class ModelDelegateSkillResponse(BaseModel):
         """Removed reasoning for in-process callers; not a new wire field."""
         return self._response_reasoning
 
+    @property
+    def failed_acceptance_declared(self) -> bool:
+        """True when the terminal records its own failed acceptance (OMN-21607)."""
+        return declares_failed_acceptance(self)
+
     def retain_response_reasoning(self, reasoning: str) -> Self:
         """Attach in-process evidence without changing the frozen wire fields."""
         self._response_reasoning = reasoning

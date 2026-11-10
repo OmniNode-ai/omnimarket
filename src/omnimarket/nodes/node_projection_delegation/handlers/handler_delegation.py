@@ -34,9 +34,6 @@ from omnimarket.handlers.handler_projection_derived_write import (
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
-from omnimarket.models.delegation.wire.model_delegate_skill_response import (
-    declares_failed_acceptance,
-)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
@@ -2025,14 +2022,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             declared_failure_cause=event.terminal_failure_cause,
             # OMN-21607: a terminal that records its own failed acceptance
             # projects as failed, whatever status it carries.
-            declared_failed_acceptance=declares_failed_acceptance(event),
+            declared_failed_acceptance=event.failed_acceptance_declared,
         )
         row["terminal_ok"] = reduction.terminal_ok
-        row["terminal_failure_cause"] = (
-            reduction.terminal_failure_cause.value
-            if reduction.terminal_failure_cause is not None
-            else None
-        )
+        row["terminal_failure_cause"] = reduction.terminal_failure_cause_value
         # OMN-19448: match the sync writer's copy of the declared disposition.
         # Omitted values must leave a prior terminal's evidence untouched.
         for column, terminal_disposition in (

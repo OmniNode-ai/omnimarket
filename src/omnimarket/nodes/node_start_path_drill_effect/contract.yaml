@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Start Path Drill Effect (OMN-23306, step 0 row 4 of the base-first rebuild, OMN-22478)
+#
+# The census of every place work starts, and the refusal drill (rebuild plan W28). For each census path the drill
+# asks the start-admission effect, on a test gate store and in enforce mode, for a planted start on a piece under a
+# stop (it must be refused) and a control start on an open piece (it must be admitted), and appends one reading row:
+# the census size, the bindings, the count refused and admitted. The decisions go to the observe log, tagged drill.
+# It writes reading and log rows and nothing else: a reading is never a gate, a stop or an admission.
+name: node_start_path_drill_effect
+contract_name: node_start_path_drill_effect
+node_name: node_start_path_drill_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The start-path refusal drill. WORKING when the census holds every declared start path and every path the
+  admission policy names, every planted start is refused, every control start is admitted and every decision
+  reached the observe log; NOT_WORKING otherwise, naming the path left out of the census or the path that let a
+  planted start through.
+
+handler:
+  module: omnimarket.nodes.node_start_path_drill_effect.handlers.handler_start_path_drill
+  class: HandlerStartPathDrill
+  input_model: omnimarket.nodes.node_start_path_drill_effect.models.model_start_path_drill.ModelStartPathDrillCommand
+
+# HandlerStartPathDrill takes the overlay, host, census inputs, observe log, appender and clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+# The start paths this node's census must hold: the plan-holder read's nine (the lane runner, the brief check,
+# three lab-fill paths, the Agent and Workflow hook, the landing fix workers, scheduled ticks, cloud lanes) and the
+# six the second reader names (node_overnight, node_demo_fanout_orchestrator, node_coding_agent_invoke_effect,
+# harness_delegate, epic_team/run.sh, lab-run agent commands). A path found later is added here and in the overlay's
+# census in one change; a path in this list and not in the census reads NOT_WORKING.
+start_paths:
+  - lane_runner
+  - brief_check
+  - lab_fill_a
+  - lab_fill_b
+  - lab_fill_c
+  - agent_workflow_hook
+  - landing_fix_workers
+  - scheduled_ticks
+  - cloud_lanes
+  - node_overnight
+  - node_demo_fanout_orchestrator
+  - node_coding_agent_invoke_effect
+  - harness_delegate
+  - epic_team_run_sh
+  - lab_run_agent_commands
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, admission-log-write]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelStartPathDrillCommand
+  module: omnimarket.nodes.node_start_path_drill_effect.models.model_start_path_drill
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelStartPathDrillResult
+  module: omnimarket.nodes.node_start_path_drill_effect.models.model_start_path_drill
+  description: The verdict, the census counts, the count refused and admitted, and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.start-path-drill-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  start_path_drill_requested: onex.cmd.omnimarket.start-path-drill-requested.v1
+  start_path_drill_written: onex.evt.omnimarket.start-path-drill-written.v1
+  start_path_drill_failed: onex.evt.omnimarket.start-path-drill-failed.v1
+  start_path_drill_run_completed: onex.evt.omnimarket.start-path-drill-run-completed.v1
+  start_path_drill_run_failed: onex.evt.omnimarket.start-path-drill-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.start-path-drill-written.v1
+  - onex.evt.omnimarket.start-path-drill-failed.v1
+  - onex.evt.omnimarket.start-path-drill-run-completed.v1
+  - onex.evt.omnimarket.start-path-drill-run-failed.v1
+
+# The node's daily schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on a host the overlay names, removed by `schedule uninstall` (the rollback).
+schedule:
+  unit_name: onex-start-path-drill-daily
+  state_directory: .onex_state/start-path-drill
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* 06:40:00"
+    randomized_delay: 60s
+    persistent: true
+    description: daily, 06:40 UTC
+
+overlay:
+  node: node_start_path_drill_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_start_path_drill_effect.overlay.ModelStartPathDrillOverlay
+
+metadata:
+  ticket: OMN-23306
+  transport_type: inmemory

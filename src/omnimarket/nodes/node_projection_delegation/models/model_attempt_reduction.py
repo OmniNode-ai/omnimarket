@@ -123,6 +123,13 @@ class ModelDelegationAttemptReduction(BaseModel):
         """True when a typed cause was resolved (used by the sticky fold)."""
         return self.terminal_failure_cause is not None
 
+    @property
+    def terminal_failure_cause_value(self) -> str | None:
+        """The typed cause's wire value, or None when no typed cause was resolved."""
+        if self.terminal_failure_cause is None:
+            return None
+        return self.terminal_failure_cause.value
+
 
 def _ladder_cause(
     ladder: tuple[ModelDelegateSkillAttemptRecord, ...],
