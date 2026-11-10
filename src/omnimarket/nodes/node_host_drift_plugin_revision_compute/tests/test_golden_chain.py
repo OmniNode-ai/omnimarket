@@ -9,6 +9,8 @@ break; it reads the same fixture as latest, and the revision decision reads it a
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -113,9 +115,12 @@ def test_golden_omni_rules_keep_their_order_and_lane_bounds() -> None:
         rules, f"plugin:{OMNI}", "installed 1 merged 1; plugin-stale: ships x"
     )
     behind = rule_for(rules, f"plugin:{OMNI}", "installed 1 merged 1; plugin-behind: x")
-    assert (modified.action, modified.between_lanes) == ("repair-plugin", True)  # type: ignore[union-attr]
-    assert (stale.action, stale.between_lanes) == ("install-plugin-tree", True)  # type: ignore[union-attr]
-    assert (behind.action, behind.between_lanes) == ("install-plugin-tree", False)  # type: ignore[union-attr]
+    assert modified is not None
+    assert stale is not None
+    assert behind is not None
+    assert (modified.action, modified.between_lanes) == ("repair-plugin", True)
+    assert (stale.action, stale.between_lanes) == ("install-plugin-tree", True)
+    assert (behind.action, behind.between_lanes) == ("install-plugin-tree", False)
 
 
 def test_golden_tree_drift_settles_alone_before_behind() -> None:
@@ -159,7 +164,9 @@ def test_error_malformed_facts_are_refused() -> None:
         facts(unknown_field=1)
 
 
-def test_error_a_rule_set_with_a_safe_rule_and_no_action_is_refused(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_error_a_rule_set_with_a_safe_rule_and_no_action_is_refused(
+    tmp_path: Path,
+) -> None:
     bad = tmp_path / "rules.yaml"
     bad.write_text(
         "schema: host-drift-plugin-sync-rules.v1\n"
