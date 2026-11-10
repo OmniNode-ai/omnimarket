@@ -237,5 +237,13 @@
     "basis": "The test files this branch adds that the record lacked, each summed from its measured pytest setup, call and teardown seconds (--durations=0 --durations-min=0, one file per run); existing entries left as they were.",
     "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "e5a71421bf83192402c1740be9bacd62b3b8da47"
+  },
+  "supplement_omn23526": {
+    "ticket": "OMN-23526",
+    "recorded_on": "2026-11-10",
+    "files_added": 53,
+    "basis": "Each file the record did not hold on dev 0d92c2da3b09 plus this change's own test file, summed from its measured pytest setup, call and teardown seconds in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were. The ticket counted 57 absent files on dev a11e4676e82b; other changes recorded 14 of them before this merge and 10 newer files were absent, so the list in the test is the union.",
+    "runner": "lab host h053, lane sweepi37-1630, shared omnimarket venv; the next CI refresh replaces these entries",
+    "base_sha": "0d92c2da3b09eb8140836d586f800759f4c53457"
   }
 }
