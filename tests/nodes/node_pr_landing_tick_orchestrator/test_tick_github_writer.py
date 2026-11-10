@@ -56,6 +56,7 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_write import (
     EnumTickWriteRefusal,
+    ModelTickWriteOutcome,
 )
 
 pytestmark = pytest.mark.unit
@@ -85,7 +86,7 @@ def _pr_facts(
     return recorded.model_copy(update=fields)
 
 
-def _plan(name: str, cutover: str, **over: object):  # type: ignore[no-untyped-def]
+def _plan(name: str, cutover: str, **over: object) -> ModelTickWriteOutcome:
     action = _actions(name)[0]
     return plan_write(
         action,
@@ -236,13 +237,14 @@ def test_golden_chain_an_act_tick_sends_each_merge_to_the_github_effect() -> Non
     effect_bus, writer, status, writes = _act("acme/infra")
     assert status is EnumTickStatus.COMPARED
     assert [t for t, _ in effect_bus.published] == [EFFECT_TOPIC, EFFECT_TOPIC]
-    requests = [e for _, e in effect_bus.published]
-    assert all(isinstance(r, ModelPrLandingGithubRequest) for r in requests)
-    assert {r.pr_number for r in requests} == {1869, 1871}  # type: ignore[union-attr]
-    assert {r.pr_node_id for r in requests} == {"PR_0", "PR_1"}  # type: ignore[union-attr]
+    requests = [
+        e for _, e in effect_bus.published if isinstance(e, ModelPrLandingGithubRequest)
+    ]
+    assert len(requests) == len(effect_bus.published)
+    assert {r.pr_number for r in requests} == {1869, 1871}
+    assert {r.pr_node_id for r in requests} == {"PR_0", "PR_1"}
     assert all(
-        r.operation is EnumPrLandingGithubOperation.ARM_AUTO_MERGE  # type: ignore[union-attr]
-        for r in requests
+        r.operation is EnumPrLandingGithubOperation.ARM_AUTO_MERGE for r in requests
     )
     assert all(o.refusal is None for o in writer.outcomes)
     assert writes == 2
