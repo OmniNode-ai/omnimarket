@@ -1,0 +1,22 @@
+name: node_dev_roll_request_compute
+version: "0.1.0"
+description: "Batches dev_tip_changed events into one dev roll decision (shadow only): the window, the minimum interval between runtime starts and the healthy-for bound are overlay values"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dev_roll_request_compute: "omnimarket.nodes.node_dev_roll_request_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "dev-runtime", "roll-batching", "pure", "shadow"]
+pack: "pr_lifecycle"
+display_name: "Dev Roll Request (shadow)"
+node_role: "compute"
