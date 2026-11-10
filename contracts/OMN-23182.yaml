@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23182
+title: Scenario R3 runs every six hours on the lab as an omnimarket node, a free rung that answers 503 forces one move to a paid rung that answers, and a real paid model reports measured usage and a cost above zero
+summary: The readiness plan put the R3 producer in a workflow of the cloud repository. It now lives in omnimarket as node_delegation_scenario_r3_effect, scheduled every six hours on the lab by its own timer. One run drives the delegation skill handler with a synthetic request on a large input and rungs-mode probe ladders whose first rung is a free loopback stub answering 503 on every call. Leg a puts a paid stub with a fixed answer second; the free rung shows its declared attempts typed model_unavailable, the run makes one move, the accepted attempt is the paid rung and its bytes equal the fixed answer. Leg b puts a real OpenRouter model second, called through the delegation effect on the probe key with max_tokens 16; the accepted attempt reports usage source measured and a cost above zero. A control ladder with both rungs down ends returned_to_caller. It writes one ledger STATUS row (the row the green-days reading counts) and emits the result on the bus.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23182-r3-forced-escalation
+  statement: A free rung that answers 503 forces exactly one move to a paid rung; the paid rung's answer is the fixed answer and a real paid model's accepted attempt carries measured usage and a cost above zero; with both rungs down the run ends returned_to_caller.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the committed R3 inputs pass their own schema test -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r3_effect/test_r3_inputs.py -q`'
+  - id: AC2
+    statement: 'AC2: the golden chain is green and each injected break (a paid rung down, a free rung that answers, an untyped free failure, a wrong answer, a zero measured cost, an unpaid tier, a small input, an empty probe key, leg b switched off, an answering control ladder) turns the scenario red for its named reason -- falsifier: `uv run pytest tests/nodes/node_delegation_scenario_r3_effect/test_golden_chain_scenario_r3_effect.py -q`'
+evidence_requirements:
+- kind: tests
+  description: The R3 inputs schema tests and the golden and error chain tests pass.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r3_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23182-ac1-inputs
+  description: Runs the inputs schema tests. The inputs file parses into the typed model, rejects an unknown key, builds a valid probe ladder for every leg, has a free 503 first rung and a paid second rung on both escalation legs, caps the real rung at 16 tokens, uses a large input, and the contract's runtime block names the lane the green-days reader counts.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r3_effect/test_r3_inputs.py -q --no-cov
+    cwd: .
+- id: dod-omn23182-ac2-chains
+  description: Runs the golden and error chain tests. The in-memory and loopback runs hold every assertion; a paid rung that is down too (control, ends returned_to_caller), a free rung that answers, an untyped free failure, a wrong paid answer, a zero measured cost, a paid rung outside a paid tier, a small input, an empty probe key, leg b switched off, an answering control ladder, unreadable inputs, a failing ledger append and a failing bus emit each turn the run red for their own reason, and the probe key value appears in no row, event, assertion or file.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r3_effect/test_golden_chain_scenario_r3_effect.py -q --no-cov
+    cwd: .
+- id: dod-omn23182-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23182 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r3_effect -q --no-cov
+    cwd: .

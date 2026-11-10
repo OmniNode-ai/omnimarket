@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Install Reading Compute (OMN-22956, rebuild piece 10)
+#
+# Pure compute: handle(ModelInstallReadingRequest) -> ModelInstallReading. The caller supplies the install
+# canary's probes (daily and drill), the hosts that must have one and the time. The max probe age travels
+# on the request, from the piece's overlay; this contract holds none.
+name: node_install_reading_compute
+contract_name: node_install_reading_compute
+node_name: node_install_reading_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Piece 10's reading at a read time. WORKING while the newest install-canary probe of every required
+  host is inside its max age, read a head that installs at least one file and found none of them
+  missing from the host's copy. NOT WORKING when a required host has no probe, the newest probe is
+  stale or future-dated, its file list is empty, a file is missing (a drill that deletes a root data
+  file from a test host's copy reads here), or a drill does not see the fault it injected. UNKNOWN
+  when the probes could not be read and nothing readable already fails. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: install_reading
+      handler:
+        name: HandlerInstallReading
+        module: omnimarket.nodes.node_install_reading_compute.handlers.handler_install_reading
+
+handler:
+  module: omnimarket.nodes.node_install_reading_compute.handlers.handler_install_reading
+  class: HandlerInstallReading
+  input_model: omnimarket.nodes.node_install_reading_compute.models.model_install_reading.ModelInstallReadingRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelInstallReadingRequest
+  module: omnimarket.nodes.node_install_reading_compute.models.model_install_reading
+  description: The install canary's probes, the hosts that must have one and the time to read at.
+output_model:
+  name: ModelInstallReading
+  module: omnimarket.nodes.node_install_reading_compute.models.model_install_reading
+  description: The verdict at that time, its reasons and how many required hosts read whole.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.install-read-requested.v1"
+    operation: "install_reading"
+
+terminal_event: onex.evt.omnimarket.install-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.install-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.install-read.v1
+
+# The reading writer's piece 10 source sends the request and reads the result; neither is a node contract.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.install-read-requested.v1
+    producer: "the reading writer's piece 10 source, which gathers the install canary's probes; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.install-read.v1
+
+metadata:
+  description: "Piece 10 reading: the install canary's probe per required host, whole and fresh"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-09"
+  tags: [compute, install, reading, pure]
+  related_tickets: ["OMN-22478", "OMN-22956"]
