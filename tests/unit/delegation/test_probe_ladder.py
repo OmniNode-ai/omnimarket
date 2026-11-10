@@ -374,7 +374,8 @@ def test_probe_ladder_key_is_in_the_wire_gate_graded_keys_and_released_ladder_un
     request's new key ``probe_ladder`` is accepted by a consumer pinned at or
     after OMN-23161. ``ModelProbeLadder`` keeps exactly its released keys
     (``rungs``), because a pinned consumer's copy forbids any other; the faults
-    mode is a separate class in its own module.
+    mode is a separate class in its own module. ``ModelProbeRung`` gained the
+    optional ``credential`` field (OMN-23511); it defaults to ``not_required``.
     """
     graded = _gate_graded_keys()
     assert PROBE_LADDER_WIRE_KEY in graded["emitted_keys"]
@@ -382,6 +383,7 @@ def test_probe_ladder_key_is_in_the_wire_gate_graded_keys_and_released_ladder_un
     assert sorted(ModelProbeLadder.model_fields) == ["rungs"]
     assert sorted(ModelProbeRung.model_fields) == [
         "backend_id",
+        "credential",
         "endpoint_ref",
         "max_tokens",
         "model_id",

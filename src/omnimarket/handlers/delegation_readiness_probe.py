@@ -41,6 +41,7 @@ from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.handlers.execution_budget_overlay import EXECUTION_BUDGET_OVERLAY_ID
 from omnimarket.handlers.node_overlay_reader import (
@@ -93,6 +94,8 @@ class ModelRungScript(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1)
     #: What the in-memory backend books for an answered call on this rung (a paid rung's scripted, measured cost).
     scripted_cost_usd: Decimal = Field(default=Decimal("0"), ge=0)
+    #: The state the rung declares for its provider credential; absent rungs are never attempted (OMN-23511).
+    credential: EnumProbeRungCredential = EnumProbeRungCredential.NOT_REQUIRED
 
 
 class ModelLegSpec(BaseModel):
@@ -418,6 +421,7 @@ def run_leg(
                 endpoint_ref=urls[rung.backend_id],
                 tier=rung.tier,
                 timeout_ms=rung.timeout_ms,
+                credential=rung.credential,
                 **({"max_tokens": rung.max_tokens} if rung.max_tokens else {}),
             )
             for rung in leg.rungs

@@ -21,6 +21,7 @@ from omnibase_core.enums.enum_delegation_traffic_class import (
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.handlers.network_bindings import network_hosts
 
 # The producer surface the doctor's escalation check stamps on its synthetic
@@ -55,6 +56,15 @@ class ModelProbeRung(BaseModel):
     )
     max_tokens: int = Field(default=256, ge=1)
     timeout_ms: int = Field(default=30000, ge=1)
+    credential: EnumProbeRungCredential = Field(
+        default=EnumProbeRungCredential.NOT_REQUIRED,
+        description=(
+            "The state the rung declares for its provider credential. A rung "
+            "that declares it absent has no value for it: the port never "
+            "attempts that rung -- no provider call, the same skip production "
+            "takes (OMN-23170) -- and the run moves on to the next rung."
+        ),
+    )
 
     @field_validator("endpoint_ref")
     @classmethod
@@ -99,6 +109,7 @@ __all__ = [
     "PROBE_LADDER_SOURCE_SURFACE",
     "PROBE_LADDER_SOURCE_SURFACES",
     "READINESS_PROBE_SOURCE_SURFACE",
+    "EnumProbeRungCredential",
     "ModelProbeLadder",
     "ModelProbeRung",
     "probe_ladder_admitted",
