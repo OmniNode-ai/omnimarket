@@ -55,12 +55,12 @@ pytestmark = pytest.mark.unit
 def test_selection_takes_red_and_named_jobs_of_the_current_head_only() -> None:
     runs, stale = select_merge_relevant_runs(watcher_state(), overlay())
     assert [(r.job_name, r.job_id, r.reason) for r in runs] == [
-        ("CI Summary", SUMMARY_JOB, EnumJobLogFillReason.NAMED),
         (
             "Tests Gate",
             RED_JOB,
             EnumJobLogFillReason.RED,
-        ),  # the later attempt, not 127999999999
+        ),  # the later attempt, not 127999999999; red before named
+        ("CI Summary", SUMMARY_JOB, EnumJobLogFillReason.NAMED),
     ]
     assert {r.repo for r in runs} == {REPO}
     assert stale == 1  # omnimarket#5's CI record is of another head
@@ -101,7 +101,7 @@ def _handler(tmp_path: Path, transport, **settings) -> tuple[HandlerJobLogFiller
 def test_a_pass_fills_each_missing_log_once_and_skips_cached_ones(
     tmp_path: Path,
 ) -> None:
-    transport = transport_for(SUMMARY_JOB, RED_JOB)
+    transport = transport_for(RED_JOB, SUMMARY_JOB)
     handler, root = _handler(tmp_path, transport)
     first = handler.fill(ModelJobLogFillRequest())
     assert first.status is EnumJobLogFillStatus.COMPLETED
@@ -121,7 +121,7 @@ def test_a_pass_fills_each_missing_log_once_and_skips_cached_ones(
 
 def test_a_404_is_recorded_against_its_run_and_the_pass_goes_on(tmp_path: Path) -> None:
     transport = transport_for(
-        SUMMARY_JOB, RED_JOB, bodies={SUMMARY_JOB: (404, b'{"message":"Not Found"}')}
+        RED_JOB, SUMMARY_JOB, bodies={SUMMARY_JOB: (404, b'{"message":"Not Found"}')}
     )
     handler, _ = _handler(tmp_path, transport, reader_concurrency=1)
     result = handler.fill(ModelJobLogFillRequest())
@@ -133,7 +133,9 @@ def test_a_404_is_recorded_against_its_run_and_the_pass_goes_on(tmp_path: Path) 
 
 
 def test_the_cap_bounds_live_reads_and_defers_the_rest(tmp_path: Path) -> None:
-    transport = transport_for(SUMMARY_JOB)
+    transport = transport_for(
+        RED_JOB
+    )  # the red job is first in line, the named one waits
     handler, _ = _handler(tmp_path, transport, max_reads_per_pass=1)
     result = handler.fill(ModelJobLogFillRequest())
     assert (result.filled, result.deferred) == (1, 1)
@@ -196,7 +198,7 @@ def test_control_lane_read_refuses_naming_the_cache_path_then_answers_after_the_
         str(tmp_path / "job-logs") in refused.output
     )  # the refusal names the cache path
 
-    transport = transport_for(SUMMARY_JOB, RED_JOB)
+    transport = transport_for(RED_JOB, SUMMARY_JOB)
     handler, _ = _handler(tmp_path, transport)
     assert handler.fill(ModelJobLogFillRequest()).filled == 2
 

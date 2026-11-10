@@ -4,5 +4,10 @@
 
 from .handler_approved_work_freshness import HandlerApprovedWorkFreshness
 from .handler_lab_fill_selection import HandlerLabFillSelection
+from .handler_lane_resend import HandlerLaneResend
 
-__all__ = ["HandlerApprovedWorkFreshness", "HandlerLabFillSelection"]
+__all__ = [
+    "HandlerApprovedWorkFreshness",
+    "HandlerLabFillSelection",
+    "HandlerLaneResend",
+]
