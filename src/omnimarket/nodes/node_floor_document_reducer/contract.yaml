@@ -1,0 +1,73 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Document Reducer (OMN-23072, slice 1)
+#
+# Holds the latest floor document. The store behind it is the ProtocolFloorDocumentStore the runtime binds: the in-memory
+# store is the default profile (one runtime process holds the document the route serves, and the next scheduled tick
+# refills it after a restart); the database-row store is the real-backend profile, named as a later slice.
+name: node_floor_document_reducer
+contract_name: node_floor_document_reducer
+node_name: node_floor_document_reducer
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: reducer
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Materializes the newest simple floor document by computed_at. A document that is not newer than the held one is
+  refused by name and the held one stays; a redelivery therefore converges. The route reads the held document and
+  never invents one.
+
+handler:
+  module: omnimarket.nodes.node_floor_document_reducer.handlers.handler_floor_document_reducer
+  class: HandlerFloorDocumentReducer
+  input_model: omnimarket.models.floor_17a.model_floor_document_event.ModelFloorSimpleDocumentEvent
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: floor_document.project
+      handler:
+        name: HandlerFloorDocumentReducer
+        module: omnimarket.nodes.node_floor_document_reducer.handlers.handler_floor_document_reducer
+      handler_module: omnimarket.nodes.node_floor_document_reducer.handlers.handler_floor_document_reducer
+      event_model: omnimarket.models.floor_17a.model_floor_document_event.ModelFloorSimpleDocumentEvent
+      event_type: omnimarket.floor-simple-document
+
+input_model:
+  name: ModelFloorSimpleDocumentEvent
+  module: omnimarket.models.floor_17a.model_floor_document_event
+  description: One computed simple floor document.
+output_model:
+  name: ModelFloorDocumentApplied
+  module: omnimarket.models.floor_17a.model_floor_document_event
+  description: Whether the document is now the held one, and why not when it is not.
+
+input_subscriptions:
+  - topic: "onex.evt.omnimarket.floor-simple-document.v1"
+    operation: "floor_document.project"
+
+terminal_event: onex.evt.omnimarket.floor-document-reduced.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.evt.omnimarket.floor-simple-document.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.floor-document-reduced.v1"
+
+published_events:
+  - event_type: ModelFloorDocumentApplied
+    topic: onex.evt.omnimarket.floor-document-reduced.v1
+    description: "One floor document projected, or refused as not newer."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-document-reduced.v1
+
+projection_api:
+  expose: false
+
+metadata:
+  ticket: OMN-23072
+  transport_type: kafka
