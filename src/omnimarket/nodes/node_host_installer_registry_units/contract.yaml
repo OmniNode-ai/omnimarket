@@ -515,6 +515,112 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-snapshot/last-run.json
     state_directory: .onex_state/landing-snapshot
+  # The cutover repositories' landing facts (OMN-23514; node_pr_landing_watcher_facts_effect of OMN-23507): every 60 s
+  # one pass reads the PR watcher state and writes the overlay's repositories' open pull requests (omnimemory only) to
+  # the facts file the cutover snapshot unit reads. It reads and writes local files only: no GitHub call, no bus.
+  # A pass reads one file and writes one: 50 s, under the 60 s interval, is a hung run.
+  landing-watcher-facts:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-watcher-facts
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_watcher_facts_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_watcher_facts_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-watcher-facts/last-run.json
+    state_directory: .onex_state/landing-watcher-facts
+  # The landing snapshot step for cutover repositories (OMN-23514): the same node as landing-snapshot, a second
+  # instance whose overlay (node_pr_landing_snapshot_effect_cutover in the overlays repository, pinned by
+  # ONEX_LANDING_SNAPSHOT_OVERLAY_FILE) reads landing-watcher-facts' output in place of the controller's facts file,
+  # so the controller's facts stay untouched and the new path is measured beside them.
+  landing-snapshot-cutover:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-snapshot-cutover
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
+    environment:
+      # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{registry_root}/overlays/overlays/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-snapshot-cutover/last-run.json
+    state_directory: .onex_state/landing-snapshot-cutover
+  # The landing tick orchestrator in observe mode (OMN-23514): every 60 s one pass reads the snapshot records on the
+  # overlay's topic and bus lane, compares each through the node path and prints one line. The runtime refuses an
+  # overlay that enables act mode and never constructs a writer: nothing is written to GitHub.
+  # A pass polls the topic for the overlay's poll_timeout_s: 50 s, under the 60 s interval, is a hung run.
+  landing-tick-orchestrator:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-tick-orchestrator
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_tick_orchestrator
+    entry_file: src/omnimarket/nodes/node_pr_landing_tick_orchestrator/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
+    state_directory: .onex_state/landing-tick-orchestrator
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
