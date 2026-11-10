@@ -6,7 +6,10 @@
 # nodes: (1) refuse an unsupported shape before any read; (2) place through
 # node_remote_lane_compute from ProtocolLaneHostPool readings (no host: exit 75, nothing
 # written); (3) append the CLAIM through node_work_ledger_append_effect with the request id of
-# lane-claim:<lane>:<attempt>, deduplicated durably by that effect; (4) start the engine detached
+# lane-claim:<lane>:<attempt>, deduplicated durably by that effect; (3b, OMN-23528) provision the
+# host around the engine: each step of the overlay's remote_lane_start.provisioning plan is a host
+# call to node_remote_lane_start_effect, in the remote-lane runner's order, a failed fatal step
+# ends the start with a closing row and no engine; (4) start the engine detached
 # through node_remote_lane_start_effect; (5) supervise its log and exit; (6) close through
 # node_remote_lane_close_compute with one TERMINAL, or a STATUS when the lane closed itself.
 #
@@ -32,6 +35,8 @@ description: >
   already-claimed, exit 70, before any host call), starts the engine detached (start-unresolved:
   no TERMINAL, exit 1), supervises it and appends one TERMINAL. A stop request ends the engine and
   closes the lane only when the stop is confirmed (exit 143); a survivor leaves the CLAIM open.
+  Between the CLAIM and the engine it issues the overlay's provisioning steps; a failing fatal step
+  is start-failed (no engine), a failing other step is recorded in the receipt.
 input_model:
   name: "ModelRemoteLaneStartRequest"
   module: "omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start"
