@@ -48,6 +48,11 @@ handler_routing:
         module: "omnimarket.nodes.node_lane_guard_unit_effect.handlers.handler_lane_guard_unit"
       input_model: "omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit.ModelLaneGuardUnitRequest"
       output_model: "omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit.ModelLaneGuardUnitResult"
+    # OMN-23502: the host program's text, read by the lane start nodes and shipped to a host in a shell variable.
+    - operation: "host_source"
+      handler:
+        name: "lane_guard_host_source"
+        module: "omnimarket.nodes.node_lane_guard_unit_effect.handlers.handler_lane_guard_host_source"
 descriptor:
   node_archetype: effect
   purity: effectful
