@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_lab_fill_eval_catalog_compute
+version: 1.0.0
+description: Judge the lab fill's eval catalog; every eval must declare the readiness scenario it feeds (R1 to R9 or experiment).
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+pack: routing
+node_role: compute
+display_name: Lab Fill Eval Catalog Compute
+entry_points:
+  onex.nodes:
+    node_lab_fill_eval_catalog_compute: omnimarket.nodes.node_lab_fill_eval_catalog_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - PyYAML>=6.0.3
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, lab-fill, evals]

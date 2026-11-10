@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23384
+title: The lab-run upkeep spill keeps sparse files sparse, skips pytest temp, caps its bytes, lives in omnimarket, and h053 gets a disk-watermark timer
+summary: node_lab_run_spill_effect copies idle lab run state to a host disk by data extents (holes stay holes), skips declared build output and pytest temp names, and stops at the host's declared byte cap; node_lab_disk_watermark_effect reads a host volume against declared marks, writes the reading file and exits 2 past the page mark. This contract binds the evidence so dod-verify can judge the pull request that adds both nodes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23384-sparse-capped-spill
+  statement: A spill copies a sparse file without allocating its holes, never enters a skip name or a pytest temp directory, and stops at the declared byte cap; the old shutil.copy2 copy allocates every hole of the same fixture.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the spill copies a sparse file without allocating its holes, skips pytest temp directories and stops at a declared byte cap -- falsifier: uv run pytest over the spill node tests with a 512 MiB sparse fixture reads more than 1 MiB allocated after the copy'
+- id: req-omn23384-watermark-timer
+  statement: The watermark node writes its reading file and pages (exit 2, PAGE line) past the page mark, and renders a systemd user timer that h053 installs from the node's schedule verb.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: h053 runs a disk-watermark timer that writes its reading and pages under the floor -- falsifier: systemctl list-timers on h053 shows no watermark unit a day after rollout'
+evidence_requirements:
+- kind: tests
+  description: The spill node tests (control, sparse, skip, cap, restore, golden and error chains) and the watermark node tests
+  command: uv run --frozen pytest tests/nodes/node_lab_run_spill_effect tests/nodes/node_lab_disk_watermark_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23384-sparse-spill
+  description: Runs the spill node tests. The 512 MiB sparse fixture reads under 1 MiB allocated after the node's copy; the control test shows the old shutil.copy2 copy of the same fixture allocating 512 MiB; pytest temp names are skipped and the byte cap stops the spill. At the merge base the node is absent, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_run_spill_effect/test_lab_run_spill.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23384-watermark
+  description: Runs the watermark node tests (levels at the declared marks, the reading file, exit 2 with a PAGE line past the page mark, the rendered timer units and the install flow). Absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect/test_lab_disk_watermark.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23384-integration-proof-lab
+  description: Runs both nodes' tests at the pushed head on a lab host through the lab work runner, and reads the watermark node's own command line on that host (a dry run of one reading for h053). Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23384 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_run_spill_effect tests/nodes/node_lab_disk_watermark_effect -q --no-cov -p no:randomly'
+    cwd: .
