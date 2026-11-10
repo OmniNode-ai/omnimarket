@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23409
+title: The landing workflow's snapshot step fills each tick's facts, with the pull request node id and failed run ids, and records them on the bus
+summary: node_pr_landing_snapshot_effect, the snapshot step of the composed landing workflow, reads one tick's facts from its declared facts source, fills each pull request's GraphQL node id and the head's failed run ids from its declared write-facts source at the facts' heads, and records every tick's filled facts, appended to its recorder and published on the overlay's record topic, so a tick's facts stay recoverable after the next tick. The first recorded tick with the stuck-head shape of tick 8088 is replayed from its recorded facts.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23409-snapshot-step
+  statement: The snapshot step fills each tick's facts with the pull request node id and failed run ids from the declared sources and records the facts of every tick on the bus, and the first recorded tick with the stuck-head shape replays from its recorded facts.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a snapshot step of the composed landing workflow reads each tick''s facts from the declared sources, fills the node id and failed run ids, and records the facts of every tick on the bus, with a failing control where a tick''s facts are not recoverable after the next tick -- falsifier: uv run pytest on the landing snapshot step''s tests with two consecutive ticks fails on a snapshot that keeps only the last'
+  - id: AC2
+    statement: 'AC2: the first recorded tick with the stuck-head shape of tick 8088 (a green head whose merge is deferred by strict order with a null first) is replayed from its recorded facts and reaches the decision the plan names -- falsifier: uv run pytest on the landing replay test with that recorded tick''s fixture'
+evidence_requirements:
+- kind: tests
+  description: The snapshot step's tests (two consecutive ticks, each recorded with the node ids and failed run ids, the first recoverable after the second, the named last-only recorder control, the typed failures) and the replay of the first recorded stuck-head tick
+  command: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23409-snapshot-step
+  description: Runs the snapshot step's tests. Two consecutive ticks each end in one record on the overlay's record topic carrying the node ids and failed run ids read at the facts' heads; after the second tick the first tick's facts are recoverable field for field; a recorder that keeps only the last tick loses the first; an unread, mismatched or already recorded tick ends in the failed event and replaces no record. The node does not exist at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_landing_snapshot.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23409-stuck-head-replay
+  description: Replays the first recorded tick with the stuck-head shape from the recorded fixture the step produces. The decision merges both green heads at their heads; the strict plan reads the unread base as strict, orders the first merge first, holds nothing and defers no merge; the act-mode writer arms each merge at its head with the node id the step filled; the same tick from unfilled facts names no_node_id for each merge.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_landing_snapshot_replay.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23409-integration-proof-lab
+  description: Runs the snapshot step's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23409 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect -q --no-cov -p no:randomly'
+    cwd: .

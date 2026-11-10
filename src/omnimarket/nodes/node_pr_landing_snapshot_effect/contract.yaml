@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - the landing snapshot step (OMN-23409, rebuild piece 9)
+#
+# The snapshot step of the composed landing workflow
+# (src/omnimarket/contracts/landing_workflow/landing_workflow.v1.yaml). It fills
+# each tick's facts with the PR node id and the head's failed run ids the
+# act-mode writer reads, and records every tick's facts on the bus, so a tick's
+# facts stay recoverable after the next tick.
+name: "node_pr_landing_snapshot_effect"
+contract_name: "node_pr_landing_snapshot_effect"
+node_name: "node_pr_landing_snapshot_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Landing snapshot step. Reads one tick's facts from the declared facts source,
+  reads each pull request's GraphQL node id and the head's failed run ids from
+  the declared write-facts source in one batched read, fills pr_node_id and
+  failed_run_ids into the tick's facts (a read at another head fills nothing),
+  and records the filled facts of that tick: appended to the recorder and
+  published on the overlay's record topic. An unread, mismatched or already
+  recorded tick ends in the typed failed event and replaces no earlier record.
+input_model:
+  name: "ModelLandingSnapshotRequest"
+  module: "omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot"
+  description: "The tick to take the snapshot of."
+output_model:
+  name: "ModelLandingSnapshotResult"
+  module: "omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot"
+  description: "The tick's record, or the typed failure."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot"
+  class: "HandlerPrLandingSnapshot"
+  input_model: "omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot.ModelLandingSnapshotRequest"
+  output_model: "omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot.ModelLandingSnapshotResult"
+dependencies:
+  - name: ProtocolLandingFactsSource
+    dependency_type: protocol
+    description: "the tick's facts from the watcher state and the ledger; in memory by default."
+    required: true
+  - name: ProtocolLandingWriteFactsSource
+    dependency_type: protocol
+    description: "the per-PR node id and failed run ids, one batched read per tick; in memory by default."
+    required: true
+  - name: ProtocolLandingTickRecorder
+    dependency_type: protocol
+    description: "keeps every tick's record; a later tick never replaces an earlier one."
+    required: true
+  - name: ProtocolLandingSnapshotPublisher
+    dependency_type: protocol
+    description: "publishes the tick record or the failed event on the overlay's topics."
+    required: true
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot:HandlerPrLandingSnapshot"
+  handlers:
+    - operation: "snapshot_landing_tick"
+      handler:
+        name: "HandlerPrLandingSnapshot"
+        module: "omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.pr-landing-snapshot-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
+    - "onex.evt.omnimarket.pr-landing-snapshot-failed.v1"
+terminal_event: "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
+  - "onex.evt.omnimarket.pr-landing-snapshot-failed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-snapshot-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
+    failure: "onex.evt.omnimarket.pr-landing-snapshot-failed.v1"
+  external_trigger: "A snapshot command once per landing tick; sources, recorder and publisher are injected."
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  runtime_profiles:
+    - main
+  idempotent: true
+  timeout_ms: 30000
+overlay:
+  id: node_pr_landing_snapshot_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+replay:
+  deterministic: true
+metadata:
+  description: "The landing snapshot step: each tick's facts filled and recorded on the bus."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-10"
+  tags:
+    - effect
+    - pr-landing
+    - landing-tick
+    - snapshot
+  related_tickets:
+    - OMN-23409
