@@ -11,14 +11,16 @@ Pins name the fields the orchestrator supplies, the ones it leaves unsupplied (t
 gap: the pool snapshot carries ``launching_venv_hash`` and the start does not pass it on) and
 the result fields it reads. The planted rename ``engine`` -> ``engine_id`` is the failing
 control: the placement model must refuse it. The in-memory bus leg runs everywhere; the
-Redpanda leg runs against the broker named in ``FLOOR_FILL_PARITY_BOOTSTRAP``:
+Redpanda leg runs over the declared bus lane named in ``LANE_START_SEAM_LANE`` (workspace
+root in ``OMNIBASE_PATH``):
 
-    FLOOR_FILL_PARITY_BOOTSTRAP=<host:port> uv run pytest -m "floor_fill_parity and kafka" -k placement_seam -q
+    LANE_START_SEAM_LANE=dev OMNIBASE_PATH=<workspace root> uv run pytest -m "floor_fill_parity and kafka" -k placement_seam -q
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import uuid
@@ -26,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_spi.contracts.services import ModelLaneHostPoolReading
 from pydantic import ValidationError
 
@@ -46,10 +49,11 @@ from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_plac
     HandlerRemoteLanePlacement,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.tests.lane_start_bus import (
-    BOOTSTRAP_ENV,
+    LANE_ENV,
+    ROOT_ENV,
     Bus,
     InmemoryBus,
-    RedpandaBus,
+    LaneBus,
     topic_prefix,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.tests.lane_start_fixtures import (
@@ -58,6 +62,12 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.tests.lane_start_fixtu
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.floor_fill_parity]
+
+# The real-broker leg's topics (SEAM_NAME + ".req" and ".res") and consumer groups (SEAM_GROUP_PREFIX
+# + a run id) are fixed names, so the dev principal's broker grants can name them; an unnamed topic
+# is refused by the broker's ACLs (TopicAuthorizationFailedError).
+SEAM_NAME = "lane-start-placement-seam"
+SEAM_GROUP_PREFIX = "lane-start-placement-seam-"
 
 OVERLAY = ModelFactoryBindingsOverlay.model_validate(
     {
@@ -186,10 +196,15 @@ async def run_over(bus: Bus, profile: str, binding: str, tmp: Path) -> ModelScen
 
 
 def make_bus(binding: str) -> Bus:
-    prefix = topic_prefix("lane-start-placement-seam")
     if binding == "inmemory":
-        return InmemoryBus(decide, prefix)
-    return RedpandaBus(decide, prefix, os.environ[BOOTSTRAP_ENV])
+        return InmemoryBus(decide, topic_prefix(SEAM_NAME))
+    return LaneBus(
+        decide,
+        SEAM_NAME,
+        os.environ[LANE_ENV],
+        Path(os.environ[ROOT_ENV]),
+        group=f"{SEAM_GROUP_PREFIX}{uuid.uuid4().hex}",
+    )
 
 
 def seam_run(tmp: Path, *, profiles: tuple[str, ...]) -> tuple[ModelScenarioRun, ...]:
@@ -249,13 +264,73 @@ def test_placement_seam_in_memory_bus_projection_matches_the_in_process_one(
     assert {row.key: row.content for row in run.rows} == in_process(tmp_path)
 
 
+def test_placement_seam_broker_leg_connects_through_the_declared_lane_never_an_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failing at the base: the broker leg's bus asks the lane opener for its connection.
+
+    The opener is replaced by an in-memory bus and records what it was asked for: the declared
+    lane and workspace root, and no broker address (the plaintext bootstrap leg the base used is
+    refused by the SASL dev broker).
+    """
+    asked: list[dict[str, Any]] = []
+
+    class LaneLikeBus:
+        """The in-memory bus behind the broker client's subscribe signature (offset reset, a handle with stop)."""
+
+        def __init__(self) -> None:
+            self.bus = EventBusInmemory(
+                environment="lane-start-seam-lane", group="lane"
+            )
+
+        async def subscribe(
+            self, topic: str, *, on_message: Any, group_id: str, auto_offset_reset: str
+        ) -> Any:
+            assert auto_offset_reset == "earliest"
+            unsubscribe = await self.bus.subscribe(
+                topic, on_message=on_message, group_id=group_id
+            )
+
+            class Handle:
+                async def stop(self) -> None:
+                    await unsubscribe()
+
+            return Handle()
+
+        async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+            await self.bus.publish(topic, key, value)
+
+    @contextlib.asynccontextmanager
+    async def fake_opener(**kwargs: Any) -> Any:
+        asked.append(kwargs)
+        lane_like = LaneLikeBus()
+        await lane_like.bus.start()
+        try:
+            yield lane_like
+        finally:
+            await lane_like.bus.close()
+
+    monkeypatch.setattr(
+        "omnimarket.handlers.overlay_store.bus_opener.open_lane_bus", fake_opener
+    )
+    monkeypatch.setenv(LANE_ENV, "dev")
+    monkeypatch.setenv(ROOT_ENV, str(tmp_path))
+    [run] = seam_run(tmp_path, profiles=("redpanda",))
+    assert asked == [
+        {"bus": "kafka", "lane": "dev", "kafka_bootstrap": None, "root": tmp_path}
+    ]
+    assert {row.key: row.content for row in run.rows} == in_process(tmp_path)
+
+
 @pytest.mark.kafka
 @pytest.mark.integration
 def test_placement_seam_redpanda_bus_projection_matches_the_in_memory_one(
     tmp_path: Path,
 ) -> None:
-    if not os.environ.get(BOOTSTRAP_ENV):
-        pytest.skip(f"Kafka not reachable: {BOOTSTRAP_ENV} names no lab broker")
+    if not os.environ.get(LANE_ENV) or not os.environ.get(ROOT_ENV):
+        pytest.skip(
+            f"Kafka not reachable: {LANE_ENV} and {ROOT_ENV} name no declared bus lane"
+        )
     runs = seam_run(tmp_path, profiles=("inmemory", "redpanda"))
     result = compare_runs(runs)
     assert result.passed, result.first_difference
