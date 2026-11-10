@@ -65,6 +65,8 @@ dod_evidence:
 - id: dod-omn23498-integration-proof
   description: Reads the live workflow files at the checked-out head for the two removed triggers and the kept dispatch trigger. The post-merge reading (no scheduled or repository_dispatch run after the merge) is taken from the repository's run list on the first day after the merge and posted on the ticket. Hosted CI cannot read that run list, so only the local Done gate runs this unbound item.
   source: manual
+  binds_ac:
+  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
