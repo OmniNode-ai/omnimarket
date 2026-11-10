@@ -41,12 +41,12 @@ from omnimarket.nodes.node_floor_task_ticket_effect.adapters.adapter_graphql_flo
     READ_QUERY,
     GraphqlFloorTicketStore,
 )
-from omnimarket.nodes.node_floor_task_ticket_effect.adapters.adapter_linear_graphql_poster import (
-    LinearGraphqlAnswerError,
-    LinearGraphqlPoster,
-)
 from omnimarket.nodes.node_floor_task_ticket_effect.handlers import (
     HandlerFloorTaskTicketMint,
+)
+from omnimarket.nodes.node_floor_task_ticket_effect.handlers.http_transport_linear_graphql import (
+    LinearGraphqlAnswerError,
+    LinearGraphqlPoster,
 )
 from omnimarket.nodes.node_floor_task_ticket_effect.models import (
     ModelFloorTaskTicketMintRequest,

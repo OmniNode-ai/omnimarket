@@ -41,7 +41,7 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
 from omnimarket.nodes.node_floor_task_ticket_effect.adapters.adapter_graphql_floor_ticket_store import (
     GraphqlFloorTicketStore,
 )
-from omnimarket.nodes.node_floor_task_ticket_effect.adapters.adapter_linear_graphql_poster import (
+from omnimarket.nodes.node_floor_task_ticket_effect.handlers.http_transport_linear_graphql import (
     LinearGraphqlPoster,
 )
 

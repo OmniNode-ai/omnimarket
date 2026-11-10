@@ -44,6 +44,7 @@ dod_evidence:
     source: manual
     binds_ac:
       - AC2
+      - AC5
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_floor_task_ticket/test_floor_task_ticket_bus_chain.py -q --no-cov --tb=line -p no:randomly -k "golden_chain or error_chain or control_no_route"
@@ -68,10 +69,8 @@ dod_evidence:
         cwd: .
   - id: dod-omn23471-ac5-integration-proof
     description: >-
-      AC5 integrated: one request sent to the running dev runtime ends on the completed topic. The request carries a description the ticket gate refuses (no criteria), so the live read proves the bus route, the overlay, the secret store key, the tracker search and the gate, and creates no ticket: the answer reads state refused with a cause starting ticket-refused. The hosted verifier cannot reach the lab bus, so this unbound check belongs to the local Done gate; its receipt is in the pull request.
+      AC5 integrated: one request sent to the running dev runtime ends on the completed topic. The part hosted CI can run is bound to the AC2 chain test above (the request through the runtime dispatch ends on the completed topic); this live read is the unbound local Done gate check. The request carries a description the ticket gate refuses (no criteria), so the live read proves the bus route, the overlay, the secret store key, the tracker search and the gate, and creates no ticket: the answer reads state refused with a cause starting ticket-refused. The hosted verifier cannot reach the lab bus, so this unbound check belongs to the local Done gate; its receipt is in the pull request.
     source: manual
-    binds_ac:
-      - AC5
     execution_scope: local_done_gate
     checks:
       - check_type: command

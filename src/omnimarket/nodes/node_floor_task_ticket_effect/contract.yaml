@@ -122,5 +122,7 @@ metadata:
   origin_tickets:
   - OMN-17427
   - OMN-23471
-  transport_type: kafka
+  transport_type:
+  - kafka
+  - http
 lifecycle: experimental
