@@ -235,9 +235,6 @@ def test_contract_publishes_the_resolved_and_failed_terminal_events() -> None:
     terminal = contract["runtime_dispatch"]["terminal_events"]
     assert terminal["success"] == "onex.evt.omnimarket.ci-summary-registry-resolved.v1"
     assert terminal["failure"] == "onex.evt.omnimarket.ci-summary-registry-failed.v1"
-    assert sorted(contract["event_bus"]["publish_topics"]) == sorted(
-        [
-            "onex.evt.omnimarket.ci-summary-registry-resolved.v1",
-            "onex.evt.omnimarket.ci-summary-registry-failed.v1",
-        ]
-    )
+    # The runtime publishes the terminal events; the contract declares no event_bus
+    # publish topics, as node_pr_landing_decision_compute (OMN-23395) does not.
+    assert "event_bus" not in contract

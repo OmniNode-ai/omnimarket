@@ -61,13 +61,6 @@ consumed_events:
     topic: onex.cmd.omnimarket.ci-summary-registry-requested.v1
     description: The parsed registry files, sent by the poller's workflow step runtime.
 
-event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.ci-summary-registry-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.ci-summary-registry-resolved.v1
-    - onex.evt.omnimarket.ci-summary-registry-failed.v1
-
 dependencies:
   packages:
     - "omnibase_core>=0.39.0"
