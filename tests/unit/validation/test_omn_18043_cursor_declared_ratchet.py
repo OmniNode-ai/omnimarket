@@ -429,6 +429,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # OMN-19991: local_alerts declares its BIGSERIAL `projection_cursor`
         # from its first commit.
         "node_projection_local_alerts::local_alerts#0",
+        # OMN-19986: local_identity declares its BIGSERIAL `projection_cursor`
+        # from its first commit.
+        "node_projection_local_identity::local_identity#0",
         # OMN-21336: compaction_receipts declares its BIGSERIAL
         # `projection_cursor` from its first commit.
         "node_projection_compaction_receipts::compaction_receipts#0",
@@ -484,7 +487,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # same change as the exposure, so the measured backlog is unmoved.
 # 54 as of OMN-21970: delegation_events#2 declared its cursor and left the
 # baseline, the first entry the backlog has lost.
-_AC3_TOTAL_EXPOSURES = 83
+# 84 as of OMN-19986: local_identity declares its BIGSERIAL cursor in the same
+# change as the exposure, so the measured backlog is unmoved.
+_AC3_TOTAL_EXPOSURES = 84
 _AC3_MEASURED_GAP = 54
 
 

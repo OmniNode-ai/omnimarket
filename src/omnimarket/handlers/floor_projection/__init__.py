@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: MIT
 """The floor's projection reads: the freshness judgement, the snapshot source and the envelope publisher."""
 
-from omnimarket.handlers.floor_projection.envelope_publisher import publish_envelope
+from omnimarket.handlers.floor_projection.envelope_publisher import (
+    publish_envelope,
+    publish_with_overlay,
+)
 from omnimarket.handlers.floor_projection.freshness import (
     ProjectionPayload,
     load_bundle,
@@ -31,5 +34,6 @@ __all__ = [
     "parse_controller_state",
     "projection_payload",
     "publish_envelope",
+    "publish_with_overlay",
     "read_controller_owners",
 ]
