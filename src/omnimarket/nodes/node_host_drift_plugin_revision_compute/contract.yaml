@@ -17,15 +17,15 @@ description: Decide a plugin's host drift by installed revision, not version str
   the plugin rules of the host-drift sync policy. Pure compute over typed probe facts (OMN-20689).
 input_model:
   name: ModelPluginRevisionFacts
-  module: omnimarket.events.plugin_revision
+  module: omnimarket.models.model_plugin_revision
 output_model:
   name: ModelPluginRevisionVerdict
-  module: omnimarket.events.plugin_revision
+  module: omnimarket.models.model_plugin_revision
 handler:
   module: omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_plugin_revision
   class: HandlerHostDriftPluginRevision
-  input_model: omnimarket.events.plugin_revision.ModelPluginRevisionFacts
-  output_model: omnimarket.events.plugin_revision.ModelPluginRevisionVerdict
+  input_model: omnimarket.models.model_plugin_revision.ModelPluginRevisionFacts
+  output_model: omnimarket.models.model_plugin_revision.ModelPluginRevisionVerdict
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -34,7 +34,7 @@ handler_routing:
       module: omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers.handler_plugin_revision
     event_model:
       name: ModelPluginRevisionFacts
-      module: omnimarket.events.plugin_revision
+      module: omnimarket.models.model_plugin_revision
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.host-drift-plugin-revision-requested.v1

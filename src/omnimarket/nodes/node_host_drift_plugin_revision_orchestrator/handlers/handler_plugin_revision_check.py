@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from omnimarket.events.plugin_revision import (
+from omnimarket.models.model_plugin_revision import (
     ModelPluginProbeFacts,
     ModelPluginRevisionFacts,
     ModelPluginRevisionVerdict,
 )
-from omnimarket.events.plugin_rules import (
+from omnimarket.models.model_plugin_rules import (
     EnumPluginRulesOutcome,
     ModelPluginRulesRequest,
     ModelPluginRulesResult,

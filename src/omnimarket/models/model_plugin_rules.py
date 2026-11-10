@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.plugin_revision import (
+from omnimarket.models.model_plugin_revision import (
     ModelPluginSyncRule,
 )
 

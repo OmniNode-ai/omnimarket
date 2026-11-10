@@ -10,11 +10,11 @@ rules routes the same facts to alert-only, proving the verdict depends on the ru
 
 from __future__ import annotations
 
-from omnimarket.events.plugin_revision import (
+from omnimarket.models.model_plugin_revision import (
     EnumPluginDriftVerdict,
     ModelPluginProbeFacts,
 )
-from omnimarket.events.plugin_rules import (
+from omnimarket.models.model_plugin_rules import (
     EnumPluginRulesOutcome,
     ModelPluginRulesResult,
 )

@@ -16,15 +16,15 @@ node_version:
 description: Load and validate the host-drift plugin sync rules from plugin_sync_policy.yaml (OMN-20689).
 input_model:
   name: ModelPluginRulesRequest
-  module: omnimarket.events.plugin_rules
+  module: omnimarket.models.model_plugin_rules
 output_model:
   name: ModelPluginRulesResult
-  module: omnimarket.events.plugin_rules
+  module: omnimarket.models.model_plugin_rules
 handler:
   module: omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules
   class: HandlerHostDriftPluginRules
-  input_model: omnimarket.events.plugin_rules.ModelPluginRulesRequest
-  output_model: omnimarket.events.plugin_rules.ModelPluginRulesResult
+  input_model: omnimarket.models.model_plugin_rules.ModelPluginRulesRequest
+  output_model: omnimarket.models.model_plugin_rules.ModelPluginRulesResult
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -33,7 +33,7 @@ handler_routing:
       module: omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules
     event_model:
       name: ModelPluginRulesRequest
-      module: omnimarket.events.plugin_rules
+      module: omnimarket.models.model_plugin_rules
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.host-drift-plugin-rules-requested.v1

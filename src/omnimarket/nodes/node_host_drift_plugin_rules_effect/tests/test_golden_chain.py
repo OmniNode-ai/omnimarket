@@ -8,10 +8,10 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.events.plugin_rules import (
+from omnimarket.models.model_plugin_rules import (
     EnumPluginRulesOutcome as Outcome,
 )
-from omnimarket.events.plugin_rules import (
+from omnimarket.models.model_plugin_rules import (
     ModelPluginRulesRequest,
 )
 from omnimarket.nodes.node_host_drift_plugin_rules_effect.handlers.handler_plugin_rules import (

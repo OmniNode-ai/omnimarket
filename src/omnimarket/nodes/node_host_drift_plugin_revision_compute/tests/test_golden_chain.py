@@ -14,12 +14,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.plugin_revision import (
+from omnimarket.models.model_plugin_revision import (
     EnumPluginDriftVerdict,
     ModelPluginRevisionFacts,
     ModelPluginSyncRule,
 )
-from omnimarket.events.plugin_rules import (
+from omnimarket.models.model_plugin_rules import (
     ModelPluginRulesRequest,
 )
 from omnimarket.nodes.node_host_drift_plugin_revision_compute.handlers import (

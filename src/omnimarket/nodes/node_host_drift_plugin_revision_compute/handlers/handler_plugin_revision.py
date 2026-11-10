@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from fnmatch import fnmatchcase
 
-from omnimarket.events.plugin_revision import (
+from omnimarket.models.model_plugin_revision import (
     EnumPluginDriftVerdict,
     ModelPluginRevisionFacts,
     ModelPluginRevisionVerdict,
