@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Validator Estate Reading Effect (OMN-23080, piece 4 of the base-first rebuild, OMN-22478)
+#
+# Reads the repositories through git and appends one shadow reading row the floor draws under piece 4: how many
+# validators are canonical generic validators (the generic base, rules in a rule document, no rule table in code)
+# against every other validator, the share of the canonical ones that emit a trace on the bus, and the validators
+# plan's tasks merged against open. It writes one reading row and nothing else: a reading is never a gate, a stop or an
+# admission, and it does not colour piece 4.
+name: node_validator_estate_reading_effect
+contract_name: node_validator_estate_reading_effect
+node_name: node_validator_estate_reading_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The validator estate reading. A repository that cannot be read gives outcome source-unreadable and no numbers;
+  an unreadable repository is never counted as an empty one. The numbers come from git at the refs the overlay names.
+
+handler:
+  module: omnimarket.nodes.node_validator_estate_reading_effect.handlers.handler_validator_estate
+  class: HandlerValidatorEstate
+  input_model: omnimarket.nodes.node_validator_estate_reading_effect.models.model_validator_estate.ModelValidatorEstateCommand
+
+# HandlerValidatorEstate takes the overlay, host, sources, appender and clock as constructor parameters, so the node
+# runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelValidatorEstateCommand
+  module: omnimarket.nodes.node_validator_estate_reading_effect.models.model_validator_estate
+  description: A correlation id, whether to write, and an optional injected fault.
+output_model:
+  name: ModelValidatorEstateResult
+  module: omnimarket.nodes.node_validator_estate_reading_effect.models.model_validator_estate
+  description: The classes, hook counts and plan tasks read, the outcome, and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.validator-estate-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  validator_estate_requested: onex.cmd.omnimarket.validator-estate-requested.v1
+  validator_estate_run_completed: onex.evt.omnimarket.validator-estate-run-completed.v1
+  validator_estate_run_failed: onex.evt.omnimarket.validator-estate-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.validator-estate-run-completed.v1
+  - onex.evt.omnimarket.validator-estate-run-failed.v1
+
+# The node's own daily schedule, installed by `schedule install --host <name>` as a systemd user timer on each host the
+# overlay's schedule_hosts names, removed by `schedule uninstall`. The row stays fresh on the floor for the overlay's
+# publish_max_age_seconds (129600 s), so the cadence must be shorter than that.
+schedule:
+  unit_name: onex-validator-estate-daily
+  state_directory: .onex_state/validator-estate
+  timeout_seconds: 600
+  cadence:
+    on_calendar: "*-*-* 06:50:00"
+    randomized_delay: 60s
+    persistent: true
+    description: daily at 06:50 UTC, inside the 129600 s a validator estate row stays fresh on the floor
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+
+overlay:
+  node: node_validator_estate_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_validator_estate_reading_effect.overlay.ModelEstateOverlay
+
+metadata:
+  ticket: OMN-23080
+  transport_type: inmemory
