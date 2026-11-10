@@ -22,12 +22,28 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from omnimarket.github_landing.github_landing_requests import (
+    edit_pull_request_request,
+    pull_request_request,
+)
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.models.model_repo_write_io import (
+    EnumRepoWriteOperation,
     EnumRepoWriteRefusal,
     ModelRepoWriteCompleted,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+)
+from tests.unit.nodes.node_github_repo_write_effect.test_handler_github_repo_write import (
+    _HEAD as _NODE_HEAD,
+)
+from tests.unit.nodes.node_github_repo_write_effect.test_handler_github_repo_write import (
+    _REPO,
+    _handler,
+    _ok,
+    _pr,
+    _Recorded,
+    _req,
 )
 
 pytestmark = pytest.mark.unit
@@ -221,3 +237,50 @@ def test_a_failure_terminal_validates_as_the_failed_model_with_a_known_reason() 
     failed = ModelRepoWriteFailed.model_validate(answer["result"])
     assert failed.reason in set(EnumRepoWriteRefusal)
     assert failed.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+
+
+async def test_a_reused_key_refusal_crosses_the_wire_as_the_failed_model() -> None:
+    """The refusal a lane reads for a reused key is the typed terminal, same wire shape.
+
+    The write node answers ``ModelRepoWriteFailed`` as JSON on its terminal
+    topic and ``onex scm`` validates it back into the same model. This pins the
+    new reason across that serialisation, with the first write recorded by the
+    real handler and the second request carrying a different body.
+    """
+    transport = _Recorded(
+        [
+            (pull_request_request(_REPO, 4000), _ok(_pr())),
+            (
+                edit_pull_request_request(_REPO, 4000, {"body": "SEAM-FIRST"}),
+                _ok(_pr()),
+            ),
+        ]
+    )
+    handler = _handler(transport)
+
+    def edit(body: str, key: str) -> object:
+        return handler.handle(
+            _req(
+                EnumRepoWriteOperation.PR_EDIT,
+                pr_number=4000,
+                expected_head_sha=_NODE_HEAD,
+                body=body,
+                idempotency_key=key,
+            )
+        )
+
+    assert isinstance(
+        await edit("SEAM-FIRST", "seam-wire-key"), ModelRepoWriteCompleted
+    )
+
+    refused = await edit("SEAM-SECOND", "seam-wire-key")
+
+    assert isinstance(refused, ModelRepoWriteFailed)
+    on_the_wire = json.loads(refused.model_dump_json())
+    assert on_the_wire["outcome"] == "failed"
+    assert on_the_wire["reason"] == "idempotency_key_conflict"
+    assert on_the_wire["requests"] == []
+    assert "SEAM-FIRST" not in json.dumps(on_the_wire)
+    assert "SEAM-SECOND" not in json.dumps(on_the_wire)
+    read_back = ModelRepoWriteFailed.model_validate(on_the_wire)
+    assert read_back.reason is EnumRepoWriteRefusal.IDEMPOTENCY_KEY_CONFLICT
