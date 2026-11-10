@@ -47,6 +47,7 @@ def _overlay(tmp_path: Path) -> Path:
                         "name": "pool-a",
                         "scheduler": "systemd-user",
                         "reading_file": "$HOME/state/pool-a.json",
+                        "admission_floor_gb": 5,
                         "volumes": [
                             {"path": "/", "warn_percent": 80, "page_percent": 90}
                         ],
