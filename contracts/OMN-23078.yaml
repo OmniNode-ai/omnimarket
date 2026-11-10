@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-23078
+title: 'Validators run as one workflow: an orchestrator picks validators from contracts and a reducer holds verdicts and ratchet baselines'
+summary: Two omnimarket nodes. node_validator_workflow_orchestrator picks the validators the overlay lists whose omnibase_core node contract marks them canonical (compute, pure, tagged validator_node) and whose validation contract target_patterns match a changed path, then runs the read effect, the validator compute nodes (Canonical File Shape first), node_validator_verdict_reducer, and the emit and gate effects. node_validator_verdict_reducer folds the findings into a verdict per pull request, holds ratchet baselines as one-way state (a reading against the declared direction is refused) and counts the canonical validators that have run. Both have contracts, overlays and injected dependencies, an in-memory default and a real backend (git reader, file trace spool, file gate, file state store).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23078-validator-workflow
+  statement: Validators run as one workflow, an orchestrator picking them from contracts and a reducer holding verdicts and ratchet baselines.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the orchestrator runs a planted change through the read effect, the canonical validators chosen by contract, and the emit and gate effects, and the reducer''s verdict matches -- falsifier: uv run pytest of the orchestrator and reducer tests on both backends'
+  - id: AC2
+    statement: 'AC2: a ratchet baseline held in the reducer can only move in its allowed direction, and a planted growth is refused -- falsifier: uv run pytest of the reducer''s ratchet test'
+evidence_requirements:
+- kind: tests
+  description: The orchestrator and reducer tests on both backends.
+  command: uv run --frozen pytest tests/unit/nodes/node_validator_workflow_orchestrator tests/unit/nodes/node_validator_verdict_reducer -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23078-ac1
+  description: A planted change runs end to end on the in-memory and the real backend and the reducer's verdict and the gate conclusion match the planted outcome.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_validator_workflow_orchestrator tests/unit/nodes/node_validator_verdict_reducer -q --no-cov
+- id: dod-omn23078-ac2
+  description: The reducer's ratchet test refuses a planted growth and holds the baseline.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_validator_verdict_reducer/test_validator_verdict_ratchet.py -q --no-cov
+- id: dod-omn23078-integration-proof
+  description: The lab run of the node tests at the pushed head, with the failing controls, is recorded in the pull request body; the local Done gate re-runs the tests on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23078 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_validator_workflow_orchestrator tests/unit/nodes/node_validator_verdict_reducer -q --no-cov
+    cwd: .

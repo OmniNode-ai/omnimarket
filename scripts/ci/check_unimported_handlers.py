@@ -63,7 +63,6 @@ _DYNAMIC_APIS = frozenset(
 )
 _STATIC_EXCLUDES = frozenset(
     {
-        "node_merge_sweep_compute/__main__.py",
         "node_merge_sweep_compute/consumer.py",
         "node_navigation_history_reducer/handlers/handler_navigation_history_reducer.py",
     }
