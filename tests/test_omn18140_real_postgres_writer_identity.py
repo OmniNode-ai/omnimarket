@@ -70,6 +70,7 @@ from omnimarket.projection.discovery import load_projection_exposures_from_contr
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _NODE_ROOT = (
     Path(__file__).resolve().parents[1]
@@ -143,11 +144,17 @@ def _row_exposure() -> ProjectionTableConfig:
     return _exposure_for("onex.snapshot.projection.delegation.decisions.v1")
 
 
+# OMN-21970: 0067's per-day view reads written_at, which 0038 adds, so a schema
+# built without 0038 cannot hold it either; it is withheld with 0038.
+_READS_WRITER_IDENTITY = frozenset({"0067_delegation_daily_view.sql"})
+
+
 def _live_migration_files(*, exclude: str | None = None) -> list[Path]:
+    withheld = set() if exclude is None else {exclude, *_READS_WRITER_IDENTITY}
     return [
         path
         for path in sorted(_MIGRATIONS_DIR.glob("*.sql"))
-        if exclude is None or path.name != exclude
+        if path.name not in withheld
     ]
 
 
@@ -155,6 +162,8 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
     """``CONCURRENTLY`` refuses to run inside the implicit transaction asyncpg's
     multi-statement ``execute()`` opens. It exists only to avoid locking a live
     table, which a disposable schema does not have."""
+    # OMN-21970: the node's migrations may name public.; apply them in this schema.
+    raw_sql = for_isolated_schema(raw_sql)
     return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX").replace(
         "CREATE UNIQUE INDEX CONCURRENTLY", "CREATE UNIQUE INDEX"
     )

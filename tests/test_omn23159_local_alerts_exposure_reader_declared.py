@@ -1,25 +1,35 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The local-alerts exposure declares who reads it (OMN-23159).
+"""The local-alerts exposure declares who reads it (OMN-23159, OMN-23414).
 
 omnibase_infra's required check exposure-reader-coverage reads every
 ``bus_backed: true`` projection exposure in this repo's node contracts at the
-omnimarket sha it pins. Recorded failure (validator run on a lab host against the
-omnimarket shas pinned by two open omnibase_infra pull requests, the bot pin
-advance and the local-alerts interim-entry retirement, with the omnidash pin
-unchanged):
+omnimarket sha it pins.
 
-    exposure-reader-coverage FAIL ... These exposures have no reader and no
-    reasoned opt-out: onex.snapshot.projection.local-alerts.v1, code no_reader
+OMN-23159 declared the exposure's ``consumers: none`` opt-out as deliberately
+self-expiring, and said so in the contract: the gate fails a standing opt-out
+once a reader exists, so the change that adds the reader deletes both keys.
 
-The exposure shipped with ``bus_backed: true`` and neither a reader nor a reasoned
-``consumers: none``, so every omnibase_infra pull request that advanced its pin
-past that change read red. The validator lives in omnibase_infra and cannot be
-imported here, so this test pins the two rules of the gate this exposure broke,
-as the validator states them: ``consumers: none`` carries a non-empty
-``consumers_reason``, and a ``consumers_reason`` without ``consumers: none`` is a
-leftover. It checks the contract text only; the gate's own run against the
-pinned reader surface is the authority.
+OMN-23414 is that change. The reader exists: omnidash
+``src/pages/local/status.contracts.yaml``, at the omnidash sha omnibase_infra
+pins and on omnidash dev, declares the ``status-alerts-local-alerts`` data
+binding on ``projection_topic: onex.snapshot.projection.local-alerts.v1``.
+Recorded failure, the validator run over omnimarket and omnidash at the shas in
+omnibase_infra ``.github/sibling-pins.yaml``, reached from
+``tests/ci/test_omn22552_reader_coverage_at_pins.py``:
+
+    exposure-reader-coverage FAIL ... - onex.snapshot.projection.local-alerts.v1
+      code:   stale_opt_out
+      reason: `consumers: none` is declared, but local-page:status.page.yaml now
+              read this topic. Delete the opt-out; a standing opt-out over a live
+              reader is how an escape hatch turns into a permanent amnesty entry.
+
+The validator lives in omnibase_infra and cannot be imported here, so this test
+pins the two rules of the gate this exposure has now crossed in both directions,
+as the validator states them: a live reader means no ``consumers``/
+``consumers_reason`` may stand, and the two keys are only ever declared together.
+It checks the contract text only; the gate's own run against the pinned reader
+surface is the authority.
 """
 
 from __future__ import annotations
@@ -44,32 +54,31 @@ def _projection_api(path: Path) -> dict[str, Any]:
     return block
 
 
-def test_local_alerts_exposure_is_bus_backed_and_names_a_reasoned_opt_out() -> None:
+def test_local_alerts_exposure_declares_no_opt_out_over_its_live_reader() -> None:
     block = _projection_api(CONTRACT)
     assert block["topic"] == TOPIC
     assert block["bus_backed"] is True
-    assert block.get("consumers") == "none", (
-        "a bus_backed exposure with no omnidash or typed backend reader must declare "
-        "`consumers: none` (exposure-reader-coverage, no_reader)"
+    assert "consumers" not in block, (
+        "the omnidash status page declares the status-alerts-local-alerts reader for "
+        "this exposure, so a `consumers: none` opt-out is a stale_opt_out to the gate "
+        "(exposure-reader-coverage): delete it rather than keep an amnesty entry"
     )
-    reason = block.get("consumers_reason")
-    assert isinstance(reason, str), "`consumers: none` needs a `consumers_reason`"
-    assert reason.strip(), "`consumers: none` needs a non-empty `consumers_reason`"
+    assert "consumers_reason" not in block, (
+        "`consumers_reason` is deleted with `consumers: none`; the two are declared "
+        "together or not at all"
+    )
 
 
 def test_exposure_stays_bus_backed_in_the_gate_input() -> None:
-    """The opt-out is the gate's declared route, not a way to hide the exposure from it."""
+    """Deleting the opt-out must not hide the exposure from the gate."""
     block = _projection_api(CONTRACT)
     assert block["topic"] == TOPIC
     assert block["bus_backed"] is True, (
-        "the exposure must stay bus_backed so the gate reads it"
+        "the exposure must stay bus_backed so the gate reads it: setting it false, or "
+        "deleting the exposure, would clear the gate without a reader"
     )
-    assert block.get("consumers") == "none", (
-        "the exposure is declared through `consumers: none`, the gate's own route"
-    )
-    assert str(block.get("consumers_reason", "")).strip(), (
-        "the opt-out carries a reason"
-    )
+    assert block["table"] == "local_alerts"
+    assert block["schema"] == "omnidash_analytics"
 
 
 def test_consumers_reason_never_stands_without_consumers_none() -> None:

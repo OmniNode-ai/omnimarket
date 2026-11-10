@@ -11,6 +11,9 @@ max_reads_per_pass: 20
 reader_concurrency: 2
 reply_tail_bytes: 4096
 reply_timeout_seconds: 60
+reprobe_seconds: 1800
+# Seconds after which a pass starts no more reads. Budget + reply_timeout_seconds stays under the unit's run_timeout_s.
+pass_budget_seconds: 240
 default_profile: inmemory
 profiles:
   inmemory:
