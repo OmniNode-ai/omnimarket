@@ -59,7 +59,8 @@ dod_evidence:
     check_value: 'bash -o pipefail -c ''if grep -q route_check_local_model src/omnimarket/configs/model_bindings.v1.yaml; then echo "deploy check failed: lab model id still in the packaged bindings"; exit 1; fi'''
     cwd: .
   - check_type: command
-    check_value: env PATH="$PWD/.venv/bin:$PATH" onex run-node node_delegation_rubric_check_compute --help
+    check_value: |-
+      bash -o pipefail -c 'uv sync --frozen --no-dev --quiet && env PATH="$PWD/.venv/bin:$PATH" onex run-node node_delegation_rubric_check_compute --help'
     cwd: .
 - id: dod-omn19184-integration-proof
   description: The pushed head runs the route check, the A/B compare orchestrator and the guard on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
