@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-23454
+title: 'A failed ledger append inside a scheduled unit keeps the reason the command gave'
+summary: 'The ledger append command''s error exit keeps the tail of its stderr next to the exit code, so a scheduled unit''s error log names why the bus could not be reached.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23454-ac2
+  statement: 'The ledger append command''s error exit keeps the tail of its stderr next to the exit code, so a scheduled unit''s error log names why the bus could not be reached.'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the R2 unit''s ledger append succeeds inside the unit (the cause of exit 69 is named: environment, login or path) and a failed append''s stderr is kept in the unit''s journal, with a test for the kept stderr -- falsifier: journalctl for the unit after a forced append failure'
+evidence_requirements:
+- kind: tests
+  description: 'Runs the append command''s error-exit tests: the stderr tail travels with the exit code, an empty stderr names the code alone, a long stderr keeps its end, and the scenario R2 handler path carries it. At the merge base three of the five fail.'
+  command: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_append_command_stderr_kept.py tests/nodes/node_delegation_scenario_r2_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23454-stderr-kept
+  description: 'Runs the append command''s error-exit tests: the stderr tail travels with the exit code, an empty stderr names the code alone, a long stderr keeps its end, and the scenario R2 handler path carries it. At the merge base three of the five fail.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_append_command_stderr_kept.py tests/nodes/node_delegation_scenario_r2_effect -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23454-integration-proof-lab
+  description: 'Runs the same tests at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner.'
+  source: manual
+  binds_ac:
+  - AC2
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23454 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_append_command_stderr_kept.py -q --no-cov -p no:randomly'
+    cwd: .
