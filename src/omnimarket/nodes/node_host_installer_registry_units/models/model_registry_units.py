@@ -51,6 +51,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     ledger_host_name: str = Field(
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
     )
+    # The remote-lane runner script the alarm starts for each episode it opens. Optional: a configuration that has no
+    # value for it carries no dispatch_command, and the alarm sends no lane (it says so in its row).
+    remote_lane_runner: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
     # The path of the operator's bootstrap env file the lab-state alarm reads two named keys from (the Slack bot token
     # and the alert channel id) when the unit's environment does not hold them. Only the path is persisted, never a value.
     alert_env_file: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")

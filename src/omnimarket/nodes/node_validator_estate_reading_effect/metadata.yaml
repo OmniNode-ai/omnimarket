@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_validator_estate_reading_effect
+version: 1.0.0
+description: Reads the validator estate from git (canonical generic validators against every other validator, the share of canonical ones that emit bus traces, the validators plan's tasks merged against open) and appends one shadow reading row the floor draws under piece 4.
+pack: operator_tooling
+node_role: effect
+display_name: Validator Estate Reading Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_validator_estate_reading_effect: omnimarket.nodes.node_validator_estate_reading_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- reading
+- validators
