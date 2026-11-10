@@ -29,6 +29,7 @@ from omnimarket.nodes.node_secret_reading_effect.overlay import (
 NODE_MODULE = f"omnimarket.nodes.{NODE_NAME}"
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
+JOIN_J4_OVERLAY_ID = "node_secret_reading_join_j4"
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
@@ -52,6 +53,15 @@ class ModelDrillSchedule(BaseModel):
     cadence: ModelCadence
 
 
+class ModelJoinJ4Schedule(BaseModel):
+    """The J4 join's own unit (OMN-23085): the join test run on a cadence, so the floor holds its golden event."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    unit_name: str = Field(min_length=1)
+    cadence: ModelCadence
+
+
 class ModelSecretReadingSchedule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -62,6 +72,8 @@ class ModelSecretReadingSchedule(BaseModel):
     schedulers: dict[str, str]
     #: Installed only where the overlay names a drill overlay root.
     drill: ModelDrillSchedule | None = None
+    #: Installed only where the overlay root holds the J4 join overlay.
+    join_j4: ModelJoinJ4Schedule | None = None
 
 
 class ModelScheduleResult(BaseModel):
@@ -119,25 +131,39 @@ def render_units(
     home: Path,
     overlay_root: Path,
     drill: bool = False,
+    join_j4: bool = False,
 ) -> tuple[str, str]:
-    """The systemd user service and timer text; ``drill`` renders the drill's unit pair."""
+    """The systemd user service and timer text; ``drill`` and ``join_j4`` render those units' pairs."""
     if drill and schedule.drill is None:
         raise ValueError("the contract declares no drill schedule")
-    unit_name = (
-        schedule.drill.unit_name if drill and schedule.drill else schedule.unit_name
-    )
-    cadence = schedule.drill.cadence if drill and schedule.drill else schedule.cadence
-    title = (
-        "ONEX daily secret reading drill (piece 5; a made-up identity, the error event)"
-        if drill
-        else "ONEX hourly secret reading (piece 5; read-only probes, reading rows only)"
-    )
-    log_stem = "secret-reading-drill" if drill else "secret-reading"
-    tick = (
-        "ONEX daily secret reading drill tick"
-        if drill
-        else "ONEX hourly secret reading tick"
-    )
+    if join_j4 and schedule.join_j4 is None:
+        raise ValueError("the contract declares no J4 join schedule")
+    if join_j4 and schedule.join_j4 is not None:
+        unit_name = schedule.join_j4.unit_name
+        cadence = schedule.join_j4.cadence
+        title = "ONEX J4 join test (overlays to secrets; resolves one key by overlay, scans for it, writes the join row)"
+        log_stem = "secret-join-j4"
+        tick = "ONEX J4 join test tick"
+        exec_module = f"{NODE_MODULE}.runtime_join_j4 run"
+    else:
+        unit_name = (
+            schedule.drill.unit_name if drill and schedule.drill else schedule.unit_name
+        )
+        cadence = (
+            schedule.drill.cadence if drill and schedule.drill else schedule.cadence
+        )
+        title = (
+            "ONEX daily secret reading drill (piece 5; a made-up identity, the error event)"
+            if drill
+            else "ONEX hourly secret reading (piece 5; read-only probes, reading rows only)"
+        )
+        log_stem = "secret-reading-drill" if drill else "secret-reading"
+        tick = (
+            "ONEX daily secret reading drill tick"
+            if drill
+            else "ONEX hourly secret reading tick"
+        )
+        exec_module = f"{NODE_MODULE} read"
     root = _safe(omni_root, "registry root")
     python = _safe(venv / "bin" / "python", "venv interpreter")
     user_home = _safe(home, "home")
@@ -158,7 +184,7 @@ def render_units(
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root.replace('%', '%%')}\n"
-        f"ExecStart={_quote(python)} -m {NODE_MODULE} read\n"
+        f"ExecStart={_quote(python)} -m {exec_module}\n"
         f"StandardOutput=append:{state}/{log_stem}.out.log\n"
         f"StandardError=append:{state}/{log_stem}.err.log\n"
         f"SyslogIdentifier={unit_name}\n"
@@ -198,6 +224,9 @@ class SecretReadingScheduler:
         drill = schedule.drill
         self.drill_service_name = f"{drill.unit_name}.service" if drill else None
         self.drill_timer_name = f"{drill.unit_name}.timer" if drill else None
+        join_j4 = schedule.join_j4
+        self.join_j4_service_name = f"{join_j4.unit_name}.service" if join_j4 else None
+        self.join_j4_timer_name = f"{join_j4.unit_name}.timer" if join_j4 else None
 
     def _drill_root(self) -> Path | None:
         """The drill overlay root the overlay names, when the contract declares a drill."""
@@ -264,6 +293,25 @@ class SecretReadingScheduler:
                     (self.drill_timer_name, drill_timer),
                 ]
                 timers.append(self.drill_timer_name)
+            if (
+                self.join_j4_service_name
+                and self.join_j4_timer_name
+                and (overlay_root / JOIN_J4_OVERLAY_ID / "overlay.yaml").is_file()
+            ):
+                j4_service, j4_timer = render_units(
+                    self.schedule,
+                    self.overlay,
+                    omni_root=omni_root,
+                    venv=venv,
+                    home=self.home,
+                    overlay_root=overlay_root,
+                    join_j4=True,
+                )
+                units += [
+                    (self.join_j4_service_name, j4_service),
+                    (self.join_j4_timer_name, j4_timer),
+                ]
+                timers.append(self.join_j4_timer_name)
         except ValueError as exc:
             return ModelScheduleResult(exit_code=1, stderr=f"{exc}\n")
         if dry_run:
@@ -310,16 +358,23 @@ class SecretReadingScheduler:
                     exit_code=done.returncode, stdout=output, stderr=done.stderr
                 )
         output += f"installed {self.timer_name}: {self.schedule.cadence.description}\n"
-        if self.schedule.drill is not None and len(timers) > 1:
+        if self.schedule.drill is not None and self.drill_timer_name in timers:
             output += (
                 f"installed {self.drill_timer_name}: "
                 f"{self.schedule.drill.cadence.description}\n"
             )
+        if self.schedule.join_j4 is not None and self.join_j4_timer_name in timers:
+            output += (
+                f"installed {self.join_j4_timer_name}: "
+                f"{self.schedule.join_j4.cadence.description}\n"
+            )
         return ModelScheduleResult(exit_code=0, stdout=output)
 
     def _all_timers(self) -> list[str]:
-        return [self.timer_name] + (
-            [self.drill_timer_name] if self.drill_timer_name else []
+        return (
+            [self.timer_name]
+            + ([self.drill_timer_name] if self.drill_timer_name else [])
+            + ([self.join_j4_timer_name] if self.join_j4_timer_name else [])
         )
 
     def uninstall(self, host: str) -> ModelScheduleResult:
@@ -331,6 +386,8 @@ class SecretReadingScheduler:
         names = [self.timer_name, self.service_name]
         if self.drill_timer_name and self.drill_service_name:
             names += [self.drill_timer_name, self.drill_service_name]
+        if self.join_j4_timer_name and self.join_j4_service_name:
+            names += [self.join_j4_timer_name, self.join_j4_service_name]
         for timer in self._all_timers():
             if timer == self.timer_name or (self.unit_dir / timer).exists():
                 done = self.run(["systemctl", "--user", "disable", "--now", timer])
@@ -350,15 +407,29 @@ class SecretReadingScheduler:
             exit_code=0, stdout=output + f"uninstalled {self.timer_name}\n"
         )
 
-    def run_now(self, host: str, *, drill: bool = False) -> ModelScheduleResult:
+    def run_now(
+        self, host: str, *, drill: bool = False, join_j4: bool = False
+    ) -> ModelScheduleResult:
         refused = self._declared(host)
         if refused is not None:
             return refused
+        if drill and join_j4:
+            return ModelScheduleResult(
+                exit_code=1, stderr="run the drill unit or the J4 unit, not both\n"
+            )
         if drill and self.drill_service_name is None:
             return ModelScheduleResult(
                 exit_code=1, stderr="the contract declares no drill schedule\n"
             )
-        service = self.drill_service_name if drill else self.service_name
+        if join_j4 and self.join_j4_service_name is None:
+            return ModelScheduleResult(
+                exit_code=1, stderr="the contract declares no J4 join schedule\n"
+            )
+        service = (
+            self.join_j4_service_name
+            if join_j4
+            else (self.drill_service_name if drill else self.service_name)
+        )
         started = self.run(["systemctl", "--user", "start", str(service)])
         return ModelScheduleResult(
             exit_code=started.returncode,

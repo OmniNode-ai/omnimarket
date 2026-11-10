@@ -4,7 +4,9 @@
 
 The overlay names the backend and its settings. The in-memory snapshots are injected; the Redpanda
 topic reader factory is injected in tests and defaults to the bus reader of tick_topic_reader
-(OMN-23458), which opens the overlay's declared bus lane. This module holds no Kafka client.
+(OMN-23458), which opens the overlay's declared bus lane. The overlay's publish_backend likewise
+selects the compared and compare-failed events' publisher (OMN-23539): the in-memory one by default,
+the bus publisher of tick_bus_publisher for redpanda. This module holds no Kafka client.
 """
 
 from __future__ import annotations
@@ -26,6 +28,10 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
+)
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
+    InMemoryTickPublisher,
+    ProtocolTickPublisher,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickMode,
@@ -52,6 +58,8 @@ class ProtocolTickTopicReader(Protocol):
 
 
 TopicReaderFactory = Callable[[ModelTickTopicSelection], ProtocolTickTopicReader]
+
+PublisherFactory = Callable[[ModelTickOrchestratorOverlay], ProtocolTickPublisher]
 
 
 class InMemorySnapshotSource:
@@ -176,6 +184,27 @@ def build_emission(
     return JsonlEmissionSink(journal_root / path if journal_root else path), "real"
 
 
+def build_publisher(
+    overlay: ModelTickOrchestratorOverlay,
+    *,
+    publisher_factory: PublisherFactory | None = None,
+) -> ProtocolTickPublisher:
+    """The overlay's publish_backend (OMN-23539): in-memory by default, the bus publisher for redpanda."""
+    if overlay.publish_backend is EnumTickBackend.INMEMORY:
+        return InMemoryTickPublisher()
+    if publisher_factory is not None:
+        return publisher_factory(overlay)
+    from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_bus_publisher import (
+        BusTickPublisher,
+    )
+
+    return BusTickPublisher(
+        bus_lane=overlay.bus_lane,
+        workspace_root=overlay.workspace_root,
+        bootstrap_servers=overlay.bootstrap_servers,
+    )
+
+
 def run_snapshots(
     handler: HandlerPrLandingTickOrchestrator,
     source: ProtocolTickSnapshotSource,
@@ -200,9 +229,11 @@ __all__: list[str] = [
     "InMemorySnapshotSource",
     "ProtocolTickSnapshotSource",
     "ProtocolTickTopicReader",
+    "PublisherFactory",
     "RedpandaSnapshotSource",
     "TopicReaderFactory",
     "build_emission",
+    "build_publisher",
     "build_snapshot_source",
     "load_tick_overlay",
     "run_snapshots",
