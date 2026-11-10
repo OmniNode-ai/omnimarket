@@ -29,7 +29,12 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
     ModelRunnerPlanRule,
 )
+from omnimarket.models.floor_17a.model_delegation_idle import (
+    ModelDelegationIdleOverlay,
+    ModelDelegationTicketIn,
+)
 from omnimarket.models.work_state_projection import (
+    EnumCriterionReading,
     EnumWorkItemKind,
     EnumWorkItemState,
     ModelWorkStateResult,
@@ -133,6 +138,49 @@ def read_work_state(path: Path) -> ModelWorkStateResult | None:
         return None
 
 
+def read_delegation_tickets(
+    projection: ModelWorkStateResult | None, spec: ModelDelegationIdleOverlay
+) -> tuple[ModelDelegationTicketIn, ...] | None:
+    """The operator-owned delegation tickets whose start criterion reads true and that are not done (OMN-23313).
+
+    A ticket is delegation work when its parent chain reaches one of the overlay's epics (an epic is not its own member),
+    and the operator's when its tracker assignee is one of the overlay's operator assignees. ``None`` when the projection
+    is absent or no ticket in it carries an assignee at all: the tracker snapshot was the compact form, ownership was not
+    read, and an empty list there would call every ticket nobody's.
+    """
+    if projection is None:
+        return None
+    tickets = {
+        i.ticket: i
+        for i in projection.items
+        if i.kind is EnumWorkItemKind.TICKET and i.ticket
+    }
+    if not any(i.assignee for i in tickets.values()):
+        return None
+    epics = set(spec.epics)
+    operators = set(spec.operator_assignees)
+
+    def under_epic(parent: str | None) -> bool:
+        seen: set[str] = set()
+        while parent and parent not in seen:
+            if parent in epics:
+                return True
+            seen.add(parent)
+            parent = tickets[parent].parent if parent in tickets else None
+        return False
+
+    return tuple(
+        ModelDelegationTicketIn(
+            ticket=i.ticket or "", title=i.title, assignee=i.assignee or ""
+        )
+        for _, i in sorted(tickets.items())
+        if i.assignee in operators
+        and i.state is not EnumWorkItemState.DONE
+        and i.criterion is EnumCriterionReading.TRUE
+        and under_epic(i.parent)
+    )
+
+
 def work_state_lanes(projection: ModelWorkStateResult) -> tuple[ModelFloorLane, ...]:
     """Each projected lane as the floor draws it, attributed to rows by the cells of its CLAIM alone.
 
@@ -225,6 +273,12 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
             last_seen: datetime | None = parse_time(item.get("last_seen"))
         except ValueError:
             last_seen = None
+        try:
+            resolved_at: datetime | None = (
+                parse_time(item["resolved_at"]) if item.get("resolved_at") else None
+            )
+        except ValueError:
+            resolved_at = None
         cost = item.get("cost_minutes")
         out.append(
             ModelFloorCauseIn(
@@ -235,6 +289,7 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
                 size_unit="occurrences",
                 tickets=tuple(str(t) for t in item.get("tickets", [])),
                 last_seen=last_seen,
+                resolved_at=resolved_at,
                 reported_cost_minutes=float(cost)
                 if isinstance(cost, int | float)
                 else None,
