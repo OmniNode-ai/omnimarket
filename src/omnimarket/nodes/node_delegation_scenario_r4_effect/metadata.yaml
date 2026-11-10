@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_scenario_r4_effect
+version: "0.1.0"
+description: "Delegation readiness scenario R4, every rung fails and time is shared fairly, run every six hours: publishes its result on the bus and the ledger"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_scenario_r4_effect: "omnimarket.nodes.node_delegation_scenario_r4_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "delegation", "readiness", "OMN-23173"]
+pack: "pipeline"
+display_name: "Delegation Scenario R4 Effect"
+node_role: "effect"

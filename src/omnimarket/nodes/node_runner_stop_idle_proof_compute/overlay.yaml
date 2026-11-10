@@ -14,3 +14,11 @@ max_age_seconds: 300
 queue_pool_stop_name_prefixes:
   - hp051-ci-mq-runner
 queue_pool_proof_max_age_seconds: 1800
+# OMN-23387: the host of each merge-queue pool. A stop request that names a queue runner is refused when the queue
+# runners left online would sit on fewer than queue_pool_min_hosts hosts, so no stop can restore a single-host pool.
+queue_pool_min_hosts: 2
+queue_pool_hosts:
+  - runner_name_prefix: hp053-ci-mq-runner
+    host: h053
+  - runner_name_prefix: hp051-ci-mq-runner
+    host: h051

@@ -153,14 +153,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_legacy_worktree_audit_effect",
     # OMN-19986: migration-only until its contract and entry point land.
     "node_projection_local_identity",
-    # OMN-23384: the disk watermark effect runs on a host timer (unit
-    # onex-disk-watermark) that calls it in process; it subscribes to no topic
-    # and has no onex.nodes entry point.
-    "node_lab_disk_watermark_effect",
-    # OMN-23384: the lab run spill effect runs in process from the pool host's
-    # own upkeep (spill, restore, age out); it subscribes to no topic and has
-    # no onex.nodes entry point.
-    "node_lab_run_spill_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
