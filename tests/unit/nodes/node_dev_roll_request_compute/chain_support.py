@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.runtime.runtime_dispatch import RuntimeDispatch
 from omnibase_core.runtime.transport.runtime_in_memory_broker import InMemoryBroker
@@ -25,6 +26,11 @@ from omnimarket.nodes.node_dev_roll_request_compute.models import ModelDevRollPo
 
 ROOT = Path(__file__).resolve().parents[4]
 CONTRACT = ROOT / "src/omnimarket/nodes/node_dev_roll_request_compute/contract.yaml"
+_DISPATCH = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["runtime_dispatch"]
+# The topics are read from the contract, the single place the node declares them.
+COMMAND_TOPIC: str = _DISPATCH["command_topic"]
+DECIDED_TOPIC: str = _DISPATCH["terminal_events"]["success"]
+REFUSED_TOPIC: str = _DISPATCH["terminal_events"]["failure"]
 GROUP = "onex.core-runtime.dev-roll-request"
 CLOCK = datetime(2026, 11, 10, 12, 0, 0, tzinfo=UTC)
 KEY = b"OmniNode-ai/omnimarket#dev-roll"

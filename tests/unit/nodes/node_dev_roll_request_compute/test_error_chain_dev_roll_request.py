@@ -11,11 +11,6 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.topics import (
-    DEV_ROLL_DECIDED_TOPIC_V1,
-    DEV_ROLL_DECISION_REQUESTED_TOPIC_V1,
-    DEV_ROLL_REFUSED_TOPIC_V1,
-)
 from omnimarket.nodes.node_dev_roll_request_compute.models import (
     EnumDevRollEventRefusal,
     EnumDevRollHealth,
@@ -27,7 +22,10 @@ from omnimarket.nodes.node_dev_roll_request_compute.models import (
     ModelDevTipChanged,
 )
 from tests.unit.nodes.node_dev_roll_request_compute.chain_support import (
+    COMMAND_TOPIC,
+    DECIDED_TOPIC,
     KEY,
+    REFUSED_TOPIC,
     chain,
     envelope,
     on,
@@ -43,7 +41,7 @@ async def _send(
     dispatch, transport, broker, _topics = chain(policy)
     correlation_id = uuid4()
     await transport.send(
-        DEV_ROLL_DECISION_REQUESTED_TOPIC_V1,
+        COMMAND_TOPIC,
         key=KEY,
         value=envelope(payload, correlation_id),
         headers={},
@@ -65,8 +63,8 @@ async def test_contradicting_facts_are_published_as_refused(
     )
     request = facts((tip(age_seconds=3000),), last)
     broker, correlation_id = await _send(policy, request.model_dump(mode="json"))
-    assert on(broker, DEV_ROLL_DECIDED_TOPIC_V1) == []
-    (out,) = on(broker, DEV_ROLL_REFUSED_TOPIC_V1)
+    assert on(broker, DECIDED_TOPIC) == []
+    (out,) = on(broker, REFUSED_TOPIC)
     assert out.correlation_id == correlation_id
     refused = ModelDevRollRefused.model_validate(out.payload)
     assert refused.reason is EnumDevRollRefusalReason.INCONSISTENT_LAST_ROLL
@@ -78,8 +76,8 @@ async def test_an_unknown_repository_event_is_named_on_the_decision(
     bad = tip("somewhere_else", age_seconds=3000)
     request = facts((bad,))
     broker, _cid = await _send(policy, request.model_dump(mode="json"))
-    assert on(broker, DEV_ROLL_REFUSED_TOPIC_V1) == []
-    (out,) = on(broker, DEV_ROLL_DECIDED_TOPIC_V1)
+    assert on(broker, REFUSED_TOPIC) == []
+    (out,) = on(broker, DECIDED_TOPIC)
     decided = ModelDevRollDecided.model_validate(out.payload)
     assert [(r.event_id, r.reason) for r in decided.refused_events] == [
         (bad.event_id, EnumDevRollEventRefusal.UNKNOWN_REPOSITORY)
@@ -92,8 +90,8 @@ async def test_a_malformed_sha_never_produces_a_decision(
     payload = facts((tip(age_seconds=3000),)).model_dump(mode="json")
     payload["pending_events"][0]["sha"] = "not-a-sha"
     broker, _cid = await _send(policy, payload)
-    assert on(broker, DEV_ROLL_DECIDED_TOPIC_V1) == []
-    assert on(broker, DEV_ROLL_REFUSED_TOPIC_V1) == []
+    assert on(broker, DECIDED_TOPIC) == []
+    assert on(broker, REFUSED_TOPIC) == []
 
 
 def test_the_event_contract_refuses_a_malformed_sha_and_a_naive_time() -> None:

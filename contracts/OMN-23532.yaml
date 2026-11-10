@@ -65,20 +65,27 @@ dod_evidence:
       tests/unit/nodes/node_dev_roll_request_compute/test_seam_deploy_agent_roll_request.py tests/unit/nodes/node_dev_roll_request_compute/test_seam_redeploy_start_command.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23532-ac4
-  description: The contract subscribes only to the decision command and publishes only decided and refused events; no deploy-agent command topic is named in the node.
+  description: The shadow-only test passes (the contract subscribes only to the decision command and publishes only decided and refused events; no file of the node names the deploy-agent command topic), with a control showing the marker check catches a sample that does.
   source: manual
   binds_ac:
   - AC4
   checks:
-  - check_type: command
-    check_value: '! grep -rn ''rebuild-requested'' src/omnimarket/nodes/node_dev_roll_request_compute'
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_shadow_only_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23532-ac5-hosted-replay
+  description: The hosted part of AC5. The replay test feeds the recorded 2026-11-10 job records of the dev deploy agent through the node and asserts the number of rolls it would have made and the longest wait; it fails at the merge base where the node does not exist.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_replay_dev_jobs_2026_11_10.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23532-integration-proof-ac5
   description: The replay of the 2026-11-10 job records ran on the dev host through the lab work runner and printed the REPLAY line. Hosted CI cannot reach the lab, so only the local Done gate runs this
     unbound check.
   source: manual
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23532 --kind test -- env PYTHONDONTWRITEBYTECODE=1
