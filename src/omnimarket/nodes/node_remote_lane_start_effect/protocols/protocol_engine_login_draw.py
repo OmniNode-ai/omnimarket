@@ -8,7 +8,7 @@ from typing import Protocol
 
 from omnibase_spi.contracts.services import ModelLaneHostRef
 
-from omnimarket.events.engine_login import (
+from omnimarket.models.engine_login import (
     ModelEngineLoginDraw,
 )
 

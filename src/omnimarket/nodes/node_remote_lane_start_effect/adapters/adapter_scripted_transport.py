@@ -38,7 +38,7 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.engine_login import (
+from omnimarket.models.engine_login import (
     ModelEngineLoginDraw,
 )
 

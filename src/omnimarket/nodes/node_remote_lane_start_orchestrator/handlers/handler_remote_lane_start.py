@@ -16,7 +16,7 @@ from typing import Literal
 
 from omnibase_spi.protocols.lane import ProtocolLaneHostPool
 
-from omnimarket.events.engine_login import (
+from omnimarket.models.engine_login import (
     ModelEngineLoginPool,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
