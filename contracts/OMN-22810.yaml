@@ -51,6 +51,8 @@ dod_evidence:
 - id: dod-omn22810-ac3-browser-proof-script
   description: The manual Playwright proof script for the strip piece panel (tests/nodes/node_factory_floor_publish_effect/piece_panel_browser.py) passes ruff lint and carries no suppression comments; the browser run itself is recorded in the pull request body.
   source: manual
+  binds_ac:
+  - AC3
   checks:
   - check_type: command
     check_value: uv run --frozen ruff check tests/nodes/node_factory_floor_publish_effect/piece_panel_browser.py
