@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The overlay selects the backend: in-memory by default, Redpanda behind an injected reader (OMN-22921)."""
+"""The overlay selects the backend: in-memory by default, Redpanda behind a topic reader (OMN-22921, OMN-23458)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,9 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_sources im
     load_tick_overlay,
     run_snapshots,
 )
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_topic_reader import (
+    BusTickTopicReader,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickMode,
     EnumTickStatus,
@@ -32,6 +35,8 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orches
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overlay import (
     OVERLAY_ID,
+    ModelTickOrchestratorOverlay,
+    ModelTickTopicSelection,
 )
 
 pytestmark = pytest.mark.unit
@@ -63,6 +68,11 @@ REDPANDA = {
     "snapshot_topic": "onex.evt.example.landing-tick-record.v1",
     "poll_timeout_s": 2.0,
     "emission_journal": ".onex_state/example/emissions.jsonl",
+}
+REDPANDA_LANE = {
+    **{k: v for k, v in REDPANDA.items() if k != "bootstrap_servers"},
+    "bus_lane": "dev",
+    "workspace_root": "/ws",
 }
 
 
@@ -99,19 +109,19 @@ def test_redpanda_overlay_reads_the_snapshot_step_tick_records_through_the_injec
 ):
     calls: list[tuple[int, float]] = []
     overlay = load_tick_overlay(explicit=REDPANDA)
-    seen: list[tuple[str, str, str]] = []
+    seen: list[ModelTickTopicSelection] = []
 
-    def factory(servers: str, topic: str, group: str) -> _Reader:
-        seen.append((servers, topic, group))
+    def factory(selection: ModelTickTopicSelection) -> _Reader:
+        seen.append(selection)
         return _Reader(calls)
 
     source = build_snapshot_source(overlay, topic_reader_factory=factory)
     assert isinstance(source, RedpandaSnapshotSource)
     assert seen == [
-        (
-            "broker.example:9092",
-            "onex.evt.example.landing-tick-record.v1",
-            "landing-tick-observe",
+        ModelTickTopicSelection(
+            topic="onex.evt.example.landing-tick-record.v1",
+            consumer_group="landing-tick-observe",
+            bootstrap_servers="broker.example:9092",
         )
     ]
     snapshots = source.snapshots()
@@ -120,6 +130,51 @@ def test_redpanda_overlay_reads_the_snapshot_step_tick_records_through_the_injec
         s.decision is None and s.provenance == "snapshot-step" for s in snapshots
     )
     assert calls == [(10, 2.0)]
+
+
+def test_a_redpanda_backend_without_a_reader_factory_reads_through_the_bus_reader() -> (
+    None
+):
+    source = build_snapshot_source(load_tick_overlay(explicit=REDPANDA))
+    assert isinstance(source, RedpandaSnapshotSource)
+    assert isinstance(source._reader, BusTickTopicReader)
+
+
+def test_a_lane_overlay_selects_the_lane_and_no_broker_address() -> None:
+    overlay = load_tick_overlay(explicit=REDPANDA_LANE)
+    seen: list[ModelTickTopicSelection] = []
+
+    def factory(selection: ModelTickTopicSelection) -> _Reader:
+        seen.append(selection)
+        return _Reader([])
+
+    build_snapshot_source(overlay, topic_reader_factory=factory)
+    assert len(seen) == 1
+    assert seen[0].bus_lane == "dev"
+    assert seen[0].bootstrap_servers is None
+    assert seen[0].workspace_root == "/ws"
+
+
+def test_a_redpanda_overlay_naming_neither_lane_nor_broker_is_refused() -> None:
+    with pytest.raises(ValueError, match="bus_lane or bootstrap_servers"):
+        load_tick_overlay(
+            explicit={k: v for k, v in REDPANDA.items() if k != "bootstrap_servers"}
+        )
+
+
+def test_an_overlay_naming_both_lane_and_broker_is_refused() -> None:
+    # the overlay loader names the document only; the model names the conflict
+    with pytest.raises(ValueError, match="one of bus_lane or bootstrap_servers"):
+        ModelTickOrchestratorOverlay.model_validate(
+            {**REDPANDA, "bus_lane": "dev", "workspace_root": "/ws"}
+        )
+
+
+def test_a_lane_without_its_workspace_root_is_refused() -> None:
+    with pytest.raises(ValueError, match="bus_lane needs workspace_root"):
+        ModelTickOrchestratorOverlay.model_validate(
+            {k: v for k, v in REDPANDA_LANE.items() if k != "workspace_root"}
+        )
 
 
 def test_a_redpanda_overlay_missing_its_fields_is_refused_naming_them() -> None:
@@ -135,8 +190,3 @@ def test_no_overlay_is_refused_naming_the_overlay() -> None:
 def test_an_unknown_overlay_field_is_refused() -> None:
     with pytest.raises(ValueError, match="mystery"):
         load_tick_overlay(explicit={**INMEMORY, "mystery": 1})
-
-
-def test_a_redpanda_backend_without_a_reader_factory_is_refused() -> None:
-    with pytest.raises(ValueError, match="topic reader factory"):
-        build_snapshot_source(load_tick_overlay(explicit=REDPANDA))

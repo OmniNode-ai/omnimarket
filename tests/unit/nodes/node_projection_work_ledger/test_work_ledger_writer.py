@@ -50,6 +50,11 @@ class _FakeConnection:
     def transaction(self) -> _FakeTransaction:
         return _FakeTransaction()
 
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        # OMN-23152: the writer asks who holds a sequence before it inserts; nobody does here.
+        self._db.holder_lookups.append(args)
+        return None
+
     async def execute(self, sql: str, *args: Any) -> None:
         if "pg_advisory_xact_lock" in sql:
             self._db.locks.append(args)
@@ -80,6 +85,7 @@ class _FakeDb:
     def __init__(self) -> None:
         self.statements: list[tuple[str, tuple[Any, ...]]] = []
         self.locks: list[tuple[Any, ...]] = []
+        self.holder_lookups: list[tuple[Any, ...]] = []
         self.connected = 0
         self.closed = 0
 
@@ -202,6 +208,8 @@ def test_ledger_seq_writer_binds_and_only_fills_null(ledger_seq: int | None) -> 
     assert args[9] == ledger_seq
     assert args[6] == CLAIM
     assert db.locks == [("work-ledger:rolling-work-ledger",)]
+    # OMN-23152: a row with a sequence is checked for a holder first; a row with none is not.
+    assert len(db.holder_lookups) == (0 if ledger_seq is None else 1)
 
 
 def test_ledger_seq_migration_is_idempotent_and_nonunique() -> None:
