@@ -43,10 +43,13 @@ them is an error): ``journal-pending`` when the hook-emit journal still holds it
 source is reported with its path, or as ``absent:`` when it is not there, so a
 missing source is never read as an empty one. The exit code is unchanged.
 
+OMN-21849 splits the ``extra`` rows in ``explain`` into ``extra_unsequenced`` (projection ``ledger_seq`` NULL: a dual-write
+emit from a ledger file that is not the canonical one) and ``extra_sequenced``.
+
 ``--utc-day YYYY-MM-DD`` (OMN-20536) sets the window to that whole UTC day, and
 ``--receipt`` (which needs it, and implies ``--explain``) prints the daily parity
 receipt instead of the report: one STATUS ledger row, ``lane=work-ledger-parity``,
-carrying ``file_rows``, ``projection_rows``, ``missing``, ``extra``,
+carrying ``file_rows``, ``projection_rows``, ``missing``, ``extra``, ``extra_unsequenced``,
 ``state_mismatches``, ``text_mismatches``, ``unexplained``, ``backfilled`` and
 ``exact`` for that day.
 ``backfilled`` is 1 when any of the day's projected rows carries the source
@@ -108,6 +111,12 @@ from omnimarket.nodes.node_projection_work_ledger.parity_receipt import (
 from omnimarket.nodes.node_projection_work_ledger.parity_receipt import (
     receipt_row as receipt_row,
 )
+from omnimarket.nodes.node_projection_work_ledger.parity_unsequenced import (
+    load_projection_sources_json,
+    load_sources_db,
+    read_unsequenced,
+    split_extra_rows,
+)
 from omnimarket.nodes.node_projection_work_ledger.parity_verbs import (
     day_verb_diff,
 )
@@ -126,10 +135,6 @@ _TYPE_CELL = re.compile(r"^\S+ \| (?P<type>[^|]*?)\s*(?:\||$)")
 _SELECT_ROWS = """
     SELECT row_id, row_ts FROM omninode_internal.work_ledger_rows
     WHERE row_ts >= $1 AND row_ts <= $2
-"""
-_SELECT_SOURCES = """
-    SELECT source, count(*) AS n FROM omninode_internal.work_ledger_rows
-    WHERE row_ts >= $1 AND row_ts <= $2 GROUP BY source
 """
 _SELECT_STATE = """
     SELECT entity_key, kind, opened_at, closed_at, opened_row_id, closed_row_id
@@ -671,33 +676,6 @@ def load_projection_raw_rows_json(
     }
 
 
-def load_projection_sources_json(
-    path: Path, since: datetime, until: datetime
-) -> dict[str, int]:
-    """Projected rows in the window per ``source`` (absent counts as ``unknown``)."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    counts: Counter[str] = Counter()
-    for r in data.get("rows", []):
-        if since <= parse_stamp(str(r["row_ts"])[:20]) <= until:
-            counts[str(r.get("source") or "unknown")] += 1
-    return dict(counts)
-
-
-async def _load_projection_sources_db(
-    dsn: str, since: datetime, until: datetime
-) -> dict[str, int]:
-    import asyncpg  # lazy: only the live read needs a database driver
-
-    conn = await asyncpg.connect(dsn)
-    try:
-        return {
-            str(r["source"]): int(r["n"])
-            for r in await conn.fetch(_SELECT_SOURCES, since, until)
-        }
-    finally:
-        await conn.close()
-
-
 async def _load_projection_db(
     dsn: str, since: datetime, until: datetime, horizon: datetime
 ) -> tuple[dict[str, str], dict[str, dict[str, Any]], dict[str, str], dict[str, str]]:
@@ -820,11 +798,20 @@ def main(argv: list[str] | None = None) -> int:
                 proj_rows, proj_state, later_rows, raw_rows = asyncio.run(
                     _load_projection_db(dsn, since, until, horizon)
                 )
-                sources = asyncio.run(_load_projection_sources_db(dsn, since, until))
+                sources = asyncio.run(load_sources_db(dsn, since, until))
             except Exception as exc:
                 # Driver errors are not all OSError subclasses. Keep this boundary
                 # around database I/O only: exit 1 is reserved for a parity result,
                 # and a failed read must never produce a report or receipt.
+                sys.stderr.write(f"work_ledger_parity: error: database read: {exc!r}\n")
+                return 2
+        unsequenced: frozenset[str] = frozenset()
+        if args.explain or args.receipt:
+            try:
+                unsequenced = read_unsequenced(
+                    args.projection_json, args.dsn_env, since, until
+                )
+            except Exception as exc:  # same boundary as the database read above
                 sys.stderr.write(f"work_ledger_parity: error: database read: {exc!r}\n")
                 return 2
         report = compare(
@@ -848,9 +835,10 @@ def main(argv: list[str] | None = None) -> int:
                 journal_dir=_env_path("ONEX_HOOK_EMIT_JOURNAL_DIR"),
                 loss_log_path=_env_path("ONEX_HOOK_EMIT_LOSS_LOG"),
             )
-            report = report.model_copy(
-                update={"explain": explain_missing(missing, evidence)}
+            explain = split_extra_rows(
+                report, unsequenced, explain_missing(missing, evidence)
             )
+            report = report.model_copy(update={"explain": explain})
     except (OSError, KeyError, ValueError) as exc:
         sys.stderr.write(f"work_ledger_parity: error: {exc!r}\n")
         return 2
@@ -884,7 +872,8 @@ def main(argv: list[str] | None = None) -> int:
             e = report.explain
             sys.stdout.write(
                 f"explain failure-log={e.failure_log} journal-dead-letter={e.journal_dead_letter} "
-                f"journal-pending={e.journal_pending} unexplained={e.unexplained}\n"
+                f"journal-pending={e.journal_pending} unexplained={e.unexplained} "
+                f"extra-unsequenced={e.extra_unsequenced} extra-sequenced={e.extra_sequenced}\n"
             )
     return 0 if report.exact else 1
 

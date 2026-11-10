@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: floor_projection_read_effect
+version: "1.0.0"
+description: "Reads the bus projections the factory floor takes its inputs from, keeps each one's own time and writes them for the floor cycle."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_floor_projection_read_effect: omnimarket.nodes.node_floor_projection_read_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, floor, projection]
+pack: "data"
+display_name: "Effect: Floor Projection Reader"
+node_role: "effect"
+license: "MIT"

@@ -24,6 +24,15 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
+from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_categories import (
+    category_of,
+    detail_rows,
+    rollup,
+)
 from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_floor_history import (
     append_snapshot,
     prune,
@@ -51,6 +60,7 @@ from omnimarket.nodes.node_floor_compare_effect.handlers.adapter_piece_measure i
 )
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
     ModelCompareLine,
+    ModelFloorCompareOverlay,
     ModelFloorCompareRequest,
     ModelFloorCompareResult,
     ModelFloorCompareRuntime,
@@ -133,6 +143,8 @@ def _line(
         direction_text=_polarity_text(family),
         words=words,
         old_read_at=old_at,
+        name=noun,
+        unit=family.unit,
     )
 
 
@@ -147,8 +159,14 @@ def build_comparison(
     snapshots: tuple[ModelSnapshot, ...],
     now: ModelSnapshot,
     rt: ModelFloorCompareRuntime,
+    overlay: ModelFloorCompareOverlay | None = None,
+    categories_error: str = "",
 ) -> ModelFloorComparison:
-    """Every number now against the same number at now minus 1, 7 and 30 days; a missing point is unread, never zero."""
+    """Every number now against the same number at now minus 1, 7 and 30 days; a missing point is unread, never zero.
+
+    With the grouping ``overlay``, every line gets its category and each window carries one roll-up card per category and
+    the whole window as details rows; without it the cards are absent and ``categories_error`` says why.
+    """
     windows: list[ModelWindowComparison] = []
     for window in rt.windows:
         target = now.at - timedelta(days=window.days)
@@ -169,18 +187,21 @@ def build_comparison(
                     key[len(family.prefix) :],
                 )
                 noun = f"{family.noun} {label}"
-            lines.append(
-                _line(
-                    key,
-                    reading.value if reading.read else None,
-                    value_in(now, key),
-                    reading.at,
-                    window.label,
-                    family,
-                    noun,
-                    rt,
-                )
+            line = _line(
+                key,
+                reading.value if reading.read else None,
+                value_in(now, key),
+                reading.at,
+                window.label,
+                family,
+                noun,
+                rt,
             )
+            if overlay is not None:
+                line = line.model_copy(
+                    update={"category": category_of(key, overlay).id}
+                )
+            lines.append(line)
         by = {
             v: sorted([ln for ln in lines if ln.verdict == v], key=_size)
             for v in ("better", "worse", "same", "unread")
@@ -196,6 +217,8 @@ def build_comparison(
                 same=len(by["same"]),
                 unread=tuple(by["unread"][:cap]),
                 counts={v: len(by[v]) for v in by},
+                categories=rollup(lines, overlay, window.label) if overlay else (),
+                details=detail_rows(lines),
             )
         )
     return ModelFloorComparison(
@@ -203,6 +226,8 @@ def build_comparison(
         history_points=len(snapshots),
         oldest_point=snapshots[0].at if snapshots else None,
         windows=tuple(windows),
+        details_page_size=rt.details_page_size,
+        categories_error=categories_error,
     )
 
 
@@ -361,7 +386,10 @@ class HandlerFloorCompare:
             rewrite_history(history_path, kept)
             snapshots = kept
         snapshots = tuple(sorted(snapshots, key=lambda s: s.at))
-        comparison = build_comparison(snapshots, snapshot, rt)
+        overlay, categories_error = self._grouping(request, rt, env)
+        comparison = build_comparison(
+            snapshots, snapshot, rt, overlay, categories_error
+        )
         comparison, verdicts_written, more = self._pieces(
             comparison, snapshots, home, now, env
         )
@@ -375,6 +403,7 @@ class HandlerFloorCompare:
                 "recorded": int(recorded),
                 "skipped_lines": skipped,
                 "unread_lines_1d": comparison.windows[0].counts["unread"],
+                "categories_drawn": int(overlay is not None),
                 "history_written": sum(written.values()),
                 "source_notes": len(notes),
                 "pieces_measured": len(comparison.pieces),
@@ -389,7 +418,33 @@ class HandlerFloorCompare:
             history_points=len(snapshots),
             history_written=written,
             source_notes=notes,
+            categories_error=categories_error,
         )
+
+    @staticmethod
+    def _grouping(
+        request: ModelFloorCompareRequest,
+        rt: ModelFloorCompareRuntime,
+        env: Mapping[str, str],
+    ) -> tuple[ModelFloorCompareOverlay | None, str]:
+        """The category grouping from the deployment overlay, or why there is none.
+
+        A missing or invalid overlay never stops the history from being kept: the comparison is still written, without the
+        cards, and says why, so the page can show the reason instead of a wrong grouping.
+        """
+        try:
+            return (
+                load_structured_overlay(
+                    rt.overlay_id,
+                    ModelFloorCompareOverlay,
+                    env,
+                    explicit=request.overlay,
+                    file_env=rt.overlay_file_env,
+                ),
+                "",
+            )
+        except NodeOverlayError as exc:
+            return None, str(exc)
 
     @staticmethod
     def _pieces(

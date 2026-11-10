@@ -117,13 +117,19 @@ def receipt_row(
         )
     )
     unexplained = report.explain.unexplained if report.explain is not None else missing
+    extra_unsequenced = (
+        str(report.explain.extra_unsequenced)
+        if report.explain is not None
+        else "not-run"
+    )
     backfilled = 1 if backfilled_rows(report) > 0 else 0
     exact = "yes" if receipt_exact(report) else "no"
     cells = [
         f"{now:%Y-%m-%dT%H:%M:%SZ}", "STATUS", f"lane={RECEIPT_LANE}",
         f"actor={RECEIPT_ACTOR}", "model=none", f"day={day}",
         f"file_rows={report.file_rows}", f"projection_rows={report.projection_rows}",
-        f"missing={missing}", f"extra={extra}", f"state_mismatches={state}",
+        f"missing={missing}", f"extra={extra}", f"extra_unsequenced={extra_unsequenced}",
+        f"state_mismatches={state}",
         f"text_mismatches={text}",
         f"unexplained={unexplained}", f"backfilled={backfilled}", f"exact={exact}",
         "exact_kinds=" + ",".join(
