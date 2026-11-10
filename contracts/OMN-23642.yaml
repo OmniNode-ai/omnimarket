@@ -1,0 +1,73 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23642
+title: "Lab proof judge: declared not-applicable class and broker-aware test selection"
+summary: >-
+  node_lab_proof_judge_compute holds the rule logic the lab proof pool driver applies to two of its checks. A change whose
+  every changed runtime node is one its overlay declares as running outside the runtime (by its own command, a schedule or a
+  host unit) reads NOT_APPLICABLE on changed_path_live, naming the class, the entries matched and the substitute proof found
+  (a receipt of the node's own run on a lab host at the change's exact head); the same change with no substitute proof still
+  reads FAIL, and a change touching any runtime node the declaration does not name is judged as before. The focused-tests
+  rule takes the repository's own marker selection from the overlay (a test that needs a broker runs only where the pool
+  provides one; otherwise it is reported not-run with its reason, never a pass). node_lab_proof_judge_use_effect records each
+  use as one event on the bus and one ledger row naming the change, head, class and substitute proof. Every value is in an
+  overlay; the pool driver script only passes facts to the node's command.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23642-judge
+    statement: The lab proof judge reads a declared outside-the-runtime change NOT_APPLICABLE only with a substitute proof, and every use is recorded.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a change whose every runtime-affecting path belongs to a node the declaration names as running outside the runtime reads NOT-APPLICABLE with the class, the entries matched and the substitute proof found, and the same change with no substitute proof reads FAIL -- falsifier: pytest tests/unit/nodes/node_lab_proof_judge_compute -q'
+      - id: AC2
+        statement: 'AC2: a change touching a runtime node does not qualify, and a broker test with no test broker reads not-run with its reason, never pass -- falsifier: pytest tests/unit/nodes/node_lab_proof_judge_compute -q -k "runtime or broker"'
+      - id: AC3
+        statement: 'AC3: every use is an event on the bus and a ledger row naming change, head, class and substitute proof, and the proof log is kept beside the receipt with a declared retention -- falsifier: pytest tests/unit/nodes/node_lab_proof_judge_use_effect -q'
+      - id: AC4
+        statement: 'AC4: integrated: the judge run on a lab host at the head of omnimarket 5689 reads NOT-APPLICABLE with its substitute proof recorded in the running runtime -- falsifier: the judge receipt on the lab host reads FAIL or names no substitute proof'
+evidence_requirements:
+  - kind: tests
+    description: The two nodes' focused tests, golden and error chain tests and the failing control.
+    command: uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute tests/unit/nodes/node_lab_proof_judge_use_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23642-judge-tests
+    description: The judge node's tests pass with the change, including the measured case reading NOT_APPLICABLE with its substitute receipt, the same change without a receipt reading FAIL, a receipt for another head not counting, a change touching an undeclared runtime node not qualifying, the broker marker selection, and the golden and error chain tests through the node's CLI. The node is absent at the merge base, so the command fails there.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn23642-use-tests
+    description: The use effect's tests pass with the change, including one event on the declared topic and one ledger row naming the change, head, class and substitute proof, the idempotent repeat, and the error chain (a failed append or a refused publish never hides the other record). The node is absent at the merge base.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_use_effect -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn23642-runtime-reading-5689
+    description: The judge run on a lab host at the head of omnimarket 5689 reads NOT-APPLICABLE with its substitute proof; the lane's runtime report holds that reading (the pool judge is a lab command, so no hosted runner can run this check).
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: 'grep -F "NOT_APPLICABLE" "$OMNI_HOME/.claude_scratch/reports/labna-3410/runtime-reading.txt"'
+        cwd: .
+  - id: dod-omn23642-integration-proof-lab
+    description: Runs the two nodes' tests at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23642 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute tests/unit/nodes/node_lab_proof_judge_use_effect -q --no-cov -n 0 -p no:randomly'
+        cwd: .

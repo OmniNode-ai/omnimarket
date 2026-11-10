@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Proof Judge Compute (OMN-23642)
+#
+# The lab proof judge's rule logic for the two checks the lab script computes
+# (changed_path_live and focused_tests), held as pure handlers. This node runs
+# from the pool driver's own command, not inside a runtime: it has no bus
+# surface and no runtime profiles. The driver calls its CLI verbs
+# (changed-path-live, select-tests, focused-tests, retention) with one JSON
+# request on stdin; `record-substitute` writes a node's own lab run as the
+# substitute receipt a change is judged by.
+name: node_lab_proof_judge_compute
+contract_name: node_lab_proof_judge_compute
+node_name: node_lab_proof_judge_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Computes the lab proof judge's verdicts for the changed-path-live and
+  focused-tests checks. A change that already passes is left unchanged; a change
+  that touches a runtime node the overlay declares as not-applicable is judged
+  NOT_APPLICABLE only when a matching substitute receipt (same repo, node and
+  head, exit 0, accepted host class) exists, otherwise it FAILS. A change that
+  touches a runtime node the declaration does not name FAILS. The focused-tests
+  check never counts a not-run test as passed and never silently drops one.
+
+handler:
+  module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_changed_path_live
+  class: HandlerChangedPathLive
+  input_model: omnimarket.nodes.node_lab_proof_judge_compute.models.model_changed_path_live.ModelChangedPathLiveRequest
+
+# HandlerChangedPathLive takes the overlay model as a constructor parameter, so
+# the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: []
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 120000
+
+input_model:
+  name: ModelChangedPathLiveRequest
+  module: omnimarket.nodes.node_lab_proof_judge_compute.models.model_changed_path_live
+  description: The changed paths, the base verdict, the contract-local nodes and the substitute receipts.
+output_model:
+  name: ModelChangedPathLiveResult
+  module: omnimarket.nodes.node_lab_proof_judge_compute.models.model_changed_path_live
+  description: The verdict, the matched entries, the substitute proofs and the not-applicable use.
+
+runtime_dispatch:
+  external_trigger: true
+  external_trigger_prose: >
+    The pool driver calls `python -m omnimarket.nodes.node_lab_proof_judge_compute changed-path-live`
+    with one JSON request on stdin; the node answers with one JSON result on stdout.
+
+topics:
+  lab_proof_judge_requested: onex.cmd.omnimarket.lab-proof-judge-requested.v1
+  lab_proof_judge_decided: onex.evt.omnimarket.lab-proof-judge-decided.v1
+  lab_proof_judge_run_failed: onex.evt.omnimarket.lab-proof-judge-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-proof-judge-decided.v1
+  - onex.evt.omnimarket.lab-proof-judge-run-failed.v1
+
+overlay:
+  node: node_lab_proof_judge_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23642
+  transport_type: inmemory
