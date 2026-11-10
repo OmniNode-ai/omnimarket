@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23323
+title: The registry-unit installer refuses a worktree overlay root and the floor publisher defaults to the overlays clone; the worktree reconcile reads launchd jobs
+summary: node_host_installer_registry_units gains environment_refuse_worktree_paths, declared on the five units that take ONEX_SKILL_OVERLAY_ROOTS, and refuses a default or an override naming an omni_worktrees path; the factory floor publisher defaults to the overlays canonical clone then the plugin overlays. node_worktree_reconcile_effect gains a launchd unit reader (installed definitions and loaded jobs, failing closed) chosen on a Mac, so a tree a launchd job names is kept.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23323-overlay-root-never-a-worktree
+  statement: A unit installed through the registry installer never takes an overlay root under omni_worktrees, and the worktree reconcile keeps a tree a launchd or systemd unit names.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node_floor_simple_compute owners map from branch OMN-23081-joins-install lands on overlays main (owners changes only), and the floor publisher''s overlay roots no longer name an omni_worktrees path -- falsifier: the publisher plist''s ONEX_SKILL_OVERLAY_ROOTS has no omni_worktrees entry and the served floor''s owners match overlays main'
+  - id: AC2
+    statement: 'AC2: worktree triage keeps any worktree whose path a loaded launchd or systemd unit names in its environment or arguments -- falsifier: uv run pytest tests -q -k worktree_triage_unit_reference, failing when a referenced worktree is classed removable'
+evidence_requirements:
+- kind: tests
+  description: The installer refusal tests and the launchd unit reference tests pass, golden and error chain events included.
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_never_a_worktree.py tests/test_worktree_triage_unit_reference.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23323-ac1
+  description: The installer refuses a worktree path in an overlay-root variable (default or override, a colon list included) on all five units that declare it, and the floor publisher default is the overlays clone then the plugin overlays; a named break removes the declaration and the worktree is accepted -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_never_a_worktree.py -q --no-cov
+    cwd: .
+- id: dod-omn23323-ac2
+  description: A squash-merged worktree a launchd plist or a loaded job names is kept by the reconcile and the same tree with no job naming it is removed; a failing launchctl keeps every tree -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_triage_unit_reference.py -q --no-cov -k worktree_triage_unit_reference
+    cwd: .
+- id: dod-omn23323-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23323 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_never_a_worktree.py tests/test_worktree_triage_unit_reference.py -q --no-cov
+    cwd: .
