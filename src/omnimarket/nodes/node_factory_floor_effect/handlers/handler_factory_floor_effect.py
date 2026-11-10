@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -325,6 +326,15 @@ class HandlerFactoryFloorEffect:
         host_drift = load_host_drift(drift_path)
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
+        # The cloud account node is a subprocess of its own and waits on nothing the ledger read produces: the two
+        # run together (OMN-23081: sequential, the reads took 12 s of the step's 30 s bound).
+        cloud_pool = ThreadPoolExecutor(max_workers=1)
+        cloud_read = cloud_pool.submit(
+            read_cloud_account_source,
+            home,
+            rt.cloud_source,
+            overlay.cloud_accounts_node_command if overlay is not None else (),
+        )
         kinds = frozenset(rt.ledger_kinds)
         # A rows file stands in for the archive reads too when no separate file names them (tests and replays).
         stand_in = request.unresolved_rows_file or request.ledger_rows_file
@@ -369,11 +379,10 @@ class HandlerFactoryFloorEffect:
             ),
             linear_snapshot,
         )
-        cloud_accounts, cloud_cause = read_cloud_account_source(
-            home,
-            rt.cloud_source,
-            overlay.cloud_accounts_node_command if overlay is not None else (),
-        )
+        try:
+            cloud_accounts, cloud_cause = cloud_read.result()
+        finally:
+            cloud_pool.shutdown(wait=False)
         plans = load_plans(
             kb=Path(kb_value),
             plans_relpath=rt.plans_relpath,
