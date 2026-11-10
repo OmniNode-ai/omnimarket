@@ -293,6 +293,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_retry import (
     HandlerShrinkRetry,
+    unit_slice_text,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
@@ -6584,7 +6585,7 @@ class _LocalShrinkPorts:
         backend: ModelResolvedDelegationBackend,
         unit: ModelDelegationSplitUnit,
     ) -> ModelShrinkUnitOutcome:
-        unit_prompt = self._caps.prompt_for(unit.source)
+        unit_prompt = self._caps.prompt_for(unit_slice_text(unit))
         outcome = await self._run_attempt(
             backend=backend,
             prompt=unit_prompt,
@@ -6613,7 +6614,7 @@ class _LocalShrinkPorts:
             return ModelShrinkUnitOutcome(answer="", passed=False, attempt=attempt)
         verdict = record_attempt_rubric_verdict(
             task_class=self._task_type,
-            request_text=unit.source,
+            request_text=unit_slice_text(unit),
             answer_text=result.content or "",
         )
         gate = apply_measured_rubric(gate, verdict, task_class=self._task_type)

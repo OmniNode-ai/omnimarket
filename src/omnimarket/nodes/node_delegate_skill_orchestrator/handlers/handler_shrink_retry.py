@@ -362,6 +362,11 @@ class HandlerShrinkRetry:
         return tuple(answers)
 
 
+def unit_slice_text(unit: ModelDelegationSplitUnit) -> str:
+    """Ports that name the delegate-skill wire models read the slice text through this (OMN-15158 guard)."""
+    return unit.source
+
+
 def _answer(
     unit: ModelDelegationSplitUnit, outcome: ModelShrinkUnitOutcome
 ) -> ModelDelegationUnitAnswer:
@@ -373,4 +378,4 @@ def _answer(
     )
 
 
-__all__ = ["HandlerShrinkRetry", "ProtocolShrinkRetryPorts"]
+__all__ = ["HandlerShrinkRetry", "ProtocolShrinkRetryPorts", "unit_slice_text"]
