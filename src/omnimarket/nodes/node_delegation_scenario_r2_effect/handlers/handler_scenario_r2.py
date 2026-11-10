@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerScenarioR2 and HandlerSubprocessCommand are built by the node CLI factory with the contract runtime block, not routed by handler_routing or imported by name
 """Scenario R2, a local model added after onboarding (OMN-23172, readiness plan 2.2).
 
 One run, in a fresh home directory:
@@ -475,7 +476,6 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
-    command: HandlerSubprocessCommand | None = None,
 ) -> HandlerScenarioR2:
     """The production wiring: the registry home, the bus commands and the scenario's settings from the environment."""
     environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
@@ -491,7 +491,7 @@ def build_runner(
         runtime,
         home=home,
         environment=environment,
-        runner=command or HandlerSubprocessCommand(environment),
+        runner=HandlerSubprocessCommand(environment),
         appender=bus_appender(
             CommandLedgerAppender(
                 append_argv, runtime.lane, host, runtime.ledger_append_timeout_seconds
