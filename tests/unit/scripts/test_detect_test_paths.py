@@ -812,7 +812,8 @@ def test_narrowed_selection_under_the_bound_stays_narrowed() -> None:
     )
     assert selection.is_full_suite is False
     assert "tests/unit/" not in selection.selected_paths
-    assert selection.split_count == 3
+    # The recorded durations move with every refresh; the bound is the claim.
+    assert 3 <= selection.split_count <= 5
 
 
 def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
@@ -892,13 +893,13 @@ def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() 
 def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
     None
 ):
-    # tests/nodes/ alone is about 970 recorded seconds: one path, but three shards.
+    # tests/nodes/ alone is over 900 recorded seconds: one path, at least three shards.
     selection = compute_selection(
         _LIGHT_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
     )
     assert selection.is_full_suite is False
     assert len(selection.selected_paths) < 5
-    assert selection.split_count == 3
+    assert 3 <= selection.split_count <= 5
     assert _shard_seconds(selection) <= 360
 
 
