@@ -346,6 +346,41 @@ class HandlerRegistryUnits:
                     )
         return filled
 
+    def start_check(
+        self,
+        request: ModelRegistryUnitsRequest,
+        unit: dict[str, Any],
+        uv: str,
+        python: str,
+        project: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run ``<module> --help`` with the environment the rendered unit carries (OMN-23514 child).
+
+        The check is what the unit will do at its first tick, so the rendered environment, the request's path overrides
+        included, is applied over the installing shell's: an overlay root that only the request names is then present.
+        ``env`` carries the assignments so the injected runner keeps its one-argument shape.
+        """
+        rendered = [
+            f"{name}={value}" for name, value in self.environment(request, unit).items()
+        ]
+        return self.run(
+            [
+                "env",
+                *rendered,
+                uv,
+                "run",
+                "--frozen",
+                "--python",
+                python,
+                "--project",
+                str(project),
+                "python",
+                "-m",
+                str(unit["module"]),
+                "--help",
+            ]
+        )
+
     def config_target(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
     ) -> Path | None:
@@ -617,21 +652,7 @@ class HandlerRegistryUnits:
                 config=config,
                 config_path=str(config_path or ""),
             )
-        proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
-        )
+        proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
                 f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
@@ -863,21 +884,7 @@ class HandlerRegistryUnits:
                 revision=revision,
                 canonical=canonical,
             )
-        proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
-        )
+        proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
                 f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
