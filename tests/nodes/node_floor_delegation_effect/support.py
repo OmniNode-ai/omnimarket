@@ -36,6 +36,12 @@ OVERLAY = ModelDelegationOverlay.model_validate(
     yaml.safe_load(OVERLAY_FILE.read_text(encoding="utf-8"))
 )
 RT = load_runtime(overlay=OVERLAY)
+LAB_NODE_OVERLAY_FILE = Path(__file__).parent / "fixtures" / "overlay_lab_node.yaml"
+LAB_NODE_RT = load_runtime(
+    overlay=ModelDelegationOverlay.model_validate(
+        yaml.safe_load(LAB_NODE_OVERLAY_FILE.read_text(encoding="utf-8"))
+    )
+)
 
 
 def iso(moment: datetime) -> str:
