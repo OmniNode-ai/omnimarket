@@ -21,8 +21,11 @@ from tests.nodes.node_unit_tree_install_effect.unit_tree_support import (
 )
 
 
-def _handler(root: Path, **kw: object) -> HandlerUnitTreeInstall:
-    return HandlerUnitTreeInstall(make_overlay(**kw), environ(root))  # type: ignore[arg-type]
+def _handler(
+    root: Path,
+    smoke: tuple[tuple[str, ...], ...] = (PASS,),
+) -> HandlerUnitTreeInstall:
+    return HandlerUnitTreeInstall(make_overlay(smoke=smoke), environ(root))
 
 
 def test_install_builds_the_commit_keeps_the_venv_and_records_the_revision(

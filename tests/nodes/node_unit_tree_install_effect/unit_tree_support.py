@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
@@ -84,11 +85,14 @@ def make_overlay(
 
 
 def request(
-    operation: str = "install", unit: str = "u1", host: str = "h1", ref: str = ""
+    operation: Literal["install", "verify", "dry-run"] = "install",
+    unit: str = "u1",
+    host: str = "h1",
+    ref: str = "",
 ) -> ModelUnitTreeInstallRequest:
     return ModelUnitTreeInstallRequest(
         operation=operation, unit=unit, host=host, ref=ref
-    )  # type: ignore[arg-type]
+    )
 
 
 def environ(root: Path) -> dict[str, str]:
