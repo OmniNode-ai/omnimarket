@@ -9,7 +9,10 @@ follows test_exposure_probe.py (same local HTTP fixture and overlay installer)."
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from pydantic import SecretStr
@@ -46,11 +49,23 @@ from tests.nodes.node_runner_group_exposure_effect.test_exposure_probe import (
     TOKEN_ENV,
     TOKEN_VALUE,
     Scenario,
+    _Handler,
     _Server,
-    server,  # noqa: F401  (the local HTTP fixture)
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def server() -> Iterator[_Server]:
+    httpd = _Server(("127.0.0.1", 0), _Handler)
+    httpd.scenario = Scenario()
+    httpd.seen_auth = []
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield httpd
+    httpd.shutdown()
+    httpd.server_close()
+
 
 MINTED = "ghs_minted_example_0123456789"
 APP_ID_REF = "EXAMPLE_APP_ID"
@@ -77,7 +92,7 @@ class _Minter:
 
 
 def _handler(
-    server: _Server,  # noqa: F811
+    server: _Server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     minter: _Minter | None,
@@ -111,7 +126,7 @@ def _request() -> ModelExposureProbeRequest:
 
 
 def test_golden_chain_reads_with_the_minted_token_and_never_the_stored_one(
-    server: _Server,  # noqa: F811
+    server: _Server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -128,7 +143,7 @@ def test_golden_chain_reads_with_the_minted_token_and_never_the_stored_one(
 
 
 def test_golden_chain_a_second_read_mints_again(
-    server: _Server,  # noqa: F811
+    server: _Server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -152,7 +167,7 @@ def test_golden_chain_a_second_read_mints_again(
 )
 def test_error_chain_a_refused_mint_reads_unknown_with_its_own_reason_and_calls_nothing(
     error: Exception,
-    server: _Server,  # noqa: F811
+    server: _Server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -185,7 +200,11 @@ def test_error_chain_a_declared_mint_with_no_minter_is_refused_at_construction()
         timeout_seconds=1,
     )
     with pytest.raises(ValueError, match="token_mint"):
-        GithubGroupSource(source, http_get=_Minter(), environ={})  # type: ignore[arg-type]
+        GithubGroupSource(
+            source,
+            http_get=cast(Any, _Minter()),
+            environ={},
+        )
 
 
 # -- the real minter (secrets and exchange stubbed at their own seams) ----------------------------
