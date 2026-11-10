@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-23432
+title: 'The delegation check for "use the local model after onboarding" runs on its schedule: the installer can start it and hand it its settings'
+summary: The registry host installer declares the R2 scenario tick as a systemd user unit (a tick entry that takes the installer's --omni-home and --state-dir, reads its settings from the secret store through the host's machine identity, and runs scenario R2 once), and its systemd service template renders an optional EnvironmentFile line from a unit's declared environment_file.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23432-r2-scheduled-unit
+  statement: The registry installer can install the R2 scenario timer, and the unit carries no setting value.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the registry installer declares the R2 scheduled unit: an R2 tick entry the installer can call, and EnvironmentFile support in the systemd template, with a test that fails without each -- falsifier: the installer''s render test for the R2 unit at the merge base'
+  - id: AC2
+    statement: 'AC2: the unit''s settings come from the declared secret store through the machine identity on the lab runtime host; no secret value in a unit file, a log or a command line -- falsifier: grep of the rendered unit and its journal for the setting values'
+  - id: AC3
+    statement: 'AC3: integrated: the R2 timer is installed through the installer on the lab host, has run on its schedule at least once, and the served delegation board shows R2, R4 and R6 with a latest scheduled run -- falsifier: systemctl list-timers for the unit and the scenarios of the served delegation tracker'
+evidence_requirements:
+- kind: tests
+  description: The installer render and refusal tests and the tick golden and error chain tests
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_environment_file_unit.py tests/nodes/node_delegation_scenario_r2_effect/test_scenario_r2_tick.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23432-installer-render
+  description: Runs the installer's render and refusal tests for the R2 unit and the EnvironmentFile line. At the merge base the unit is undeclared and the template has no EnvironmentFile placeholder, so the file fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_environment_file_unit.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23432-tick-chain
+  description: Runs the tick's golden chain, the settings-from-the-store error chains (nothing supplied, a store that raises, no ledger route, no store identity) and the seam between the tick's setting names and the scenario schedule. The key value is asserted absent from stdout, stderr, the record and the ledger row.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r2_effect -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23432-installer-existing
+  description: Runs the registry installer's existing tests, which render every other unit unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23432-integration-proof-lab
+  description: Runs the installer and tick tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23432 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_environment_file_unit.py tests/nodes/node_delegation_scenario_r2_effect/test_scenario_r2_tick.py -q --no-cov -p no:randomly'
+    cwd: .
