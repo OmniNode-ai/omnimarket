@@ -36,10 +36,6 @@ from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
     ModelWorklistOverlay,
 )
-from omnimarket.models.floor_projection import (
-    ModelFloorProjectionBundle,
-    ModelFloorProjectionEntry,
-)
 from omnimarket.models.work_state_projection import (
     ModelPullRequestSource,
     ModelTicketSource,
@@ -66,6 +62,7 @@ from tests.nodes.node_floor_simple_effect.support import (
     build_home,
     environ,
     overlay_text,
+    put_projection,
 )
 from tests.nodes.node_floor_simple_effect.test_golden_chain_floor_simple import (
     run,
@@ -583,23 +580,7 @@ def write_owner_map(home: Path, *, as_of: datetime) -> None:
     write_state(state, [], [])
     owners = read_controller_owners(state)
     assert owners is not None
-    bundle = ModelFloorProjectionBundle(
-        read_at=NOW,
-        entries={
-            "owner_map": ModelFloorProjectionEntry(
-                projection_id="owner_map",
-                status="read",
-                max_age_s=900,
-                read_at=NOW,
-                as_of=as_of,
-                producer="test",
-                payload=owners.payload(),
-            )
-        },
-    )
-    out = home / ".onex_state/floor-projection/projection-reads.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(bundle.model_dump_json(), encoding="utf-8")
+    put_projection(home, "owner_map", owners.payload(), as_of=as_of)
 
 
 def cycle_home(
@@ -627,9 +608,7 @@ def cycle_home(
     )
     home = build_home(tmp_path, watch=WATCHED)
     if proj is not None:
-        path = home / ".onex_state/work-state/work-state.json"
-        path.parent.mkdir(parents=True)
-        path.write_text(proj.model_dump_json(), encoding="utf-8")
+        put_projection(home, "work_state", proj.model_dump(mode="json"))
     if state:
         write_owner_map(home, as_of=NOW)
     return home, environ(home) | {"ONEX_SKILL_OVERLAY_ROOTS": str(roots)}
