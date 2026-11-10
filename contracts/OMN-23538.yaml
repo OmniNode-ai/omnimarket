@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23538
 title: Add the 57 missing test files to the test duration record so the freshness check passes on dev
-summary: config/test_file_durations.json is the committed record of seconds per test file that plans the 20 test groups. At dev 7624da3a9 it lacked 57 of 4944 test files (26 of them still lacked at dev 1018ecefa after other merges entered 31), and tests/unit/test_ci_shard_plan_record_freshness_omn17427.py fails at 50 or more, so dev and every change carrying dev's tree read that check red in whichever Tests split holds it. The 57 entries are measured by running the 57 files with the shard run's own pytest options and turned into the record with the existing record command; the check's limit and every existing entry are unchanged.
+summary: config/test_file_durations.json is the committed record of seconds per test file that plans the 20 test groups. At dev 7624da3a9 it lacked 57 of 4944 test files (at dev 1018ecefa other merges had entered 34 of them, 23 were still missing and 3 newer files were unrecorded, so 26 of 4950 were missing), and tests/unit/test_ci_shard_plan_record_freshness_omn17427.py fails at 50 or more, so dev and every change carrying dev's tree read that check red in whichever Tests split holds it. The 57 entries are measured by running the 57 files with the shard run's own pytest options and turned into the record with the existing record command; the check's limit and every existing entry are unchanged.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23538-ac1-record-lists-every-test-file
-  description: The shard plan reads the committed record against the tree and counts the test files it lacks. At the merge base it reads 26 of 4950 unrecorded (57 at dev 7624da3a9, 31 of them entered by later merges); at the head it reads 0. The freshness check passes at the head with its limit of 50 unchanged.
+  description: The shard plan reads the committed record against the tree and counts the test files it lacks. At the merge base it reads 26 of 4950 unrecorded (57 at dev 7624da3a9, 34 of those entered by later merges and 3 newer files added); at the head it reads 0. The freshness check passes at the head with its limit of 50 unchanged.
   source: manual
   binds_ac:
   - AC1
