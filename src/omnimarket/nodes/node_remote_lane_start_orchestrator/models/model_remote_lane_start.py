@@ -173,6 +173,12 @@ class ModelRemoteLaneStartRequest(BaseModel):
     #: The lane's runtime limit in minutes; the CLAIM's est hours follow it as the runner script's do
     #: (``max(1, round(minutes / 60))``). Absent, the overlay's ``est_hours`` stands.
     timeout_min: int | None = Field(default=None, ge=1)
+    #: The host this lane repairs (OMN-23389). The lane runs on another host that reached the target over ssh,
+    #: and a pin to the target names the target, not the run host.
+    repair_target: str | None = Field(default=None, min_length=1)
+    #: Per host, the hosts it reached over ssh, read by the caller beside the pool snapshot. A host with no entry
+    #: was not tried and takes no repair lane.
+    host_ssh_reach: dict[str, tuple[str, ...]] = Field(default_factory=dict)
 
 
 class ModelRemoteLaneStartReceipt(BaseModel):

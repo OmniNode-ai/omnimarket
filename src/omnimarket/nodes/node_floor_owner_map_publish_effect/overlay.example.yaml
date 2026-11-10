@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The controller host's publication of the owner map. A host names its own copy with ONEX_FLOOR_OWNER_MAP_OVERLAY. The in-memory bus is
+# the default and publishes to no broker; the real backend is the broker.
+bus: inmemory
+bus_lane: null
+kafka_bootstrap: null
+projection_id: owner_map

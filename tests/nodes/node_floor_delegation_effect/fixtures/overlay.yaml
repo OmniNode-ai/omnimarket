@@ -19,3 +19,12 @@ scenarios:
   - {id: R7, title: "Receipt names the backend", repo: example-org/infra-a, workflow: scenario-r7.yml, cadence_hours: 6, builder_ticket: OMN-23176}
   - {id: R8, title: "Experiments not counted", repo: example-org/infra-b, workflow: scenario-r8.yml, cadence_hours: 6, builder_ticket: OMN-23175}
   - {id: R9, title: "Malformed tasks refused", repo: example-org/infra-a, workflow: scenario-r9.yml, cadence_hours: 1, builder_ticket: OMN-23177}
+routes:
+  ssh_host_env: EXAMPLE_ROUTES_SSH_HOST
+  compose_project: example-stack
+  service: example-db
+  database: example_analytics
+  db_user: example_reader
+  local_prefix: "onsite-"
+  glm_prefix: "harness:example-glm"
+  window_hours: 6
