@@ -25,6 +25,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorLedgerRow,
     ModelFloorLimitsFacts,
     ModelFloorSelection,
+    ModelFloorSourceHealth,
     ModelFloorSourceReads,
     ModelGoalTicketRoots,
 )
@@ -66,7 +67,6 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_lane_processes,
     load_linear,
     load_placed,
-    load_placement,
     load_plans,
     load_pool,
     load_receipts,
@@ -79,6 +79,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     newest_dated_file,
     newest_linear_snapshot,
     read_ledger_rows,
+    read_placement,
     read_unresolved_rows,
     resolve_dir,
     resolve_home,
@@ -394,6 +395,7 @@ class HandlerFactoryFloorEffect:
             else now
         )
         bars = rt.source_max_age_min
+        placement = read_placement(home / src.placement_relpath)
         health = (
             source_health(
                 source="plans",
@@ -461,6 +463,13 @@ class HandlerFactoryFloorEffect:
                 count=len(goal_rows) if goal_rows is not None else None,
                 cause=goal_cause,
             ),
+            # A field this revision does not know, or a row it cannot read, degrades this reading; it never refuses the run.
+            ModelFloorSourceHealth(
+                source="placement",
+                state="read" if placement.hosts else "read-empty",
+                read_at=now,
+                cause=placement.cause,
+            ),
         )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
@@ -508,7 +517,7 @@ class HandlerFactoryFloorEffect:
                 else None,
                 running_evidence=now if running_evidence is not None else None,
             ),
-            placement=load_placement(home / src.placement_relpath),
+            placement=placement.hosts,
             stoppages=load_stoppages(home / src.friction_report_relpath),
             machines=machines,
             pool=load_pool(lane_dir / ls.pool_receipt),
