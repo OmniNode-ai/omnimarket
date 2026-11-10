@@ -57,3 +57,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run python -m omnimarket.nodes.node_host_reading_effect --help"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22548-ac1-overlay-venv-guards"
+    description: "AC1. The guard tests pass: no reading unit contract names a venv (a planted dispatch venv key is reported), an overlay host with no or an empty venv is refused, and an install whose overlay venv has no interpreter exits 1 and writes no unit."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_units_overlay_venv.py tests/nodes/node_host_reading_effect/test_host_reading_overlay_venv.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"

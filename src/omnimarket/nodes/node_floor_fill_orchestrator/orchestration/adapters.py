@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+from pathlib import Path
 from typing import Protocol
 
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
@@ -65,4 +68,35 @@ class LedgerRowsFloorLedger:
         )
 
 
-__all__: list[str] = ["LedgerRowsFloorLedger"]
+class DirectoryFloorBriefs:
+    """Reads a stopped lane's report under ``reports_root`` and writes each continuation's brief under ``brief_directory`` as ``<lane>.md``."""
+
+    def __init__(self, reports_root: str, brief_directory: str) -> None:
+        self._root = Path(reports_root)
+        self._directory = Path(brief_directory)
+
+    def report_text(self, report_path: str) -> str | None:
+        path = (self._root / report_path).resolve()
+        if not path.is_relative_to(self._root.resolve()):
+            return None
+        try:
+            return path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        except (OSError, UnicodeDecodeError) as error:
+            raise FloorFillUnreadableError(type(error).__name__) from error
+
+    def save_brief(self, lane: str, text: str) -> str:
+        target = self._directory / f"{lane}.md"
+        try:
+            self._directory.mkdir(parents=True, exist_ok=True)
+            handle, temporary = tempfile.mkstemp(dir=self._directory, suffix=".tmp")
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                stream.write(text)
+            os.replace(temporary, target)
+        except OSError as error:
+            raise FloorFillUnreadableError(type(error).__name__) from error
+        return str(target)
+
+
+__all__: list[str] = ["DirectoryFloorBriefs", "LedgerRowsFloorLedger"]
