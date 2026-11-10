@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_landing_watcher_facts_effect
+version: "0.1.0"
+description: "Landing facts for the repositories switched to the composed landing workflow, read from the PR watcher's state (OMN-23507)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_watcher_facts_effect: "omnimarket.nodes.node_pr_landing_watcher_facts_effect"
+capabilities:
+  standalone: false
+  # false until a unit runs it on the host that holds the watcher state.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+- omnibase_core>=0.39.0
+- pyyaml>=6.0
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr-landing", "landing-tick", "watcher-facts", "OMN-23507"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Watcher Facts Effect"
+node_role: "effect"
