@@ -17,6 +17,7 @@ from omnimarket.models.work_state_projection.model_work_state_rules import (
     ModelWorkStateRules,
 )
 from omnimarket.models.work_state_projection.model_work_state_sources import (
+    ModelAncestorSource,
     ModelCommitmentSource,
     ModelLaneReceiptSource,
     ModelPlanTaskSource,
@@ -35,6 +36,9 @@ class ModelWorkStateRequest(BaseModel):
     rules: ModelWorkStateRules
     scope: ModelWorkScope
     tickets: tuple[ModelTicketSource, ...] = ()
+    # Ancestors of the tickets that the open list does not hold: the scope walk reads their parent and project, and they
+    # are never work items.
+    ancestors: tuple[ModelAncestorSource, ...] = ()
     plan_tasks: tuple[ModelPlanTaskSource, ...] = ()
     pull_requests: tuple[ModelPullRequestSource, ...] = ()
     ledger_rows: tuple[ModelLedgerEvidenceRow, ...] = ()
