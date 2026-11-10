@@ -216,6 +216,13 @@
     "runner": "none; entered by lane durregen-1025 on a lab host from the file list scripts/ci/merge_test_durations.py file_weights reports as unrecorded; the next CI refresh replaces these entries",
     "base_sha": "be2d853fd6b5742ebdbd99c52c75d0ea4e44ec17"
   },
+  "supplement_omn23469_dev_merge": {
+    "recorded_on": "2026-11-10",
+    "files_added": 48,
+    "basis": "test files the record did not hold after merging dev 0d92c2da3b, each entered at the median of the record's positive entries (0.17 s); no measurement, existing entries left as they were",
+    "runner": "none; entered from the file list scripts/ci/merge_test_durations.py file_weights reports as unrecorded; the next CI refresh replaces these entries",
+    "base_sha": "0d92c2da3b09eb8140836d586f800759f4c53457"
+  },
   "supplement_omn22868_lab_fill": {
     "recorded_on": "2026-11-09",
     "files_added": 58,
