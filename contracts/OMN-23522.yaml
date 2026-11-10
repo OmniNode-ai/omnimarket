@@ -1,0 +1,47 @@
+schema_version: 1.0.0
+ticket_id: OMN-23522
+title: The main floor page words a working but not joined-up piece as not integrated and shows the ready count
+summary: The floor record carries, since the readiness rule merged, each piece's integration word (ready, working_not_integrated, not_working, not_started), the joins that do not pass, whether a join counts, and a readiness line. The main floor page draws none of it. The page now words a piece through one function (pieceWord) on the strip label, the hover note and the side panel, names the failing joins in the piece's note, shows the record's readiness line under the rebuild strip, and marks a join that does not count as outside the scope. A record with no readiness draws no line, and a piece with no integration word keeps its own reading word. No check and no bound changes; the join details panel is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23522-page-words
+  statement: The main floor page says which pieces are ready and which only work, from the fields the floor record already carries.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the main floor page words a piece whose record says integration is working_not_integrated as "Working, not integrated" on the strip label, the hover note and the side panel, and names the joins that do not pass -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py -n 0 --no-cov with page/simple.html restored to origin/dev fails'
+  - id: AC2
+    statement: 'AC2: the page shows the record''s "Ready, not just working" line under the rebuild strip only when the record carries readiness, marks a join that does not count as "(outside the scope)", and a piece with no integration word keeps its own reading word -- falsifier: the same test file, its error test fails when the fallback to the reading''s own word is removed from the page'
+  - id: AC3
+    statement: 'AC3: every record field the page reads for readiness (integration, blocking_joins, ready on a piece, counted on a join, readiness text) exists in the floor record model -- falsifier: the seam test in tests/nodes/node_factory_floor_publish_effect fails when a field is renamed in the model'
+  - id: AC4
+    statement: 'AC4: integrated: after the branch is installed on the host that runs the factory floor publisher, the served simple page contains pieceWord and Ready, not just working, and the served floor-simple.json readiness text equals the line the page draws -- falsifier: curl of the served simple page and floor-simple.json after one publish cycle'
+evidence_requirements:
+- kind: tests
+  description: The page tests and the page-to-record seam test pass
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py tests/nodes/node_factory_floor_publish_effect/test_page_readiness_seam_omn23522.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23522-page-tests
+  description: Runs the page wording tests (golden and error) and the page-to-record seam test, which fail on dev where the page has no integration word.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py tests/nodes/node_factory_floor_publish_effect/test_page_readiness_seam_omn23522.py -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn23522-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23522 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py tests/nodes/node_factory_floor_publish_effect/test_page_readiness_seam_omn23522.py -q -n 0 --no-cov
+    cwd: .
