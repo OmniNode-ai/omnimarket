@@ -44,9 +44,7 @@ handler_routing:
         module: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection"
 event_bus:
   subscribe_topics: []
-  publish_topics:
-    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
-    - onex.snapshot.projection.floor-work-state.v1
+  publish_topics: []
 externally_consumed_topics:
   # The floor reads it through node_floor_projection_read_effect (OMN-23391).
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.

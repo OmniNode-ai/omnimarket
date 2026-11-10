@@ -13,7 +13,7 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   Publishes the landing controller's owner map as a floor projection with the time it was read.
@@ -22,6 +22,7 @@ handler:
   module: omnimarket.nodes.node_floor_owner_map_publish_effect.handlers.handler_floor_owner_map_publish
   class: HandlerFloorOwnerMapPublish
   input_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishRequest
+  output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
 
 handler_routing:
   routing_strategy: operation_match
@@ -37,6 +38,7 @@ descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
+  runtime_profiles: []
   timeout_ms: 30000
   side_effects:
     - reads the landing controller's state file under the directory the environment names
@@ -57,9 +59,7 @@ runtime_dispatch:
 
 event_bus:
   subscribe_topics: []
-  publish_topics:
-    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
-    - onex.snapshot.projection.floor-owner-map.v1
+  publish_topics: []
 externally_consumed_topics:
   # The floor reads it through node_floor_projection_read_effect.
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
@@ -79,5 +79,5 @@ runtime:
   chain: node_floor_owner_map_publish_effect:publish_floor_owner_map
 
 metadata:
-  transport_type: kafka
+  transport_type: local
   ticket: OMN-23391
