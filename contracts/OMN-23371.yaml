@@ -41,11 +41,18 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/handlers/test_tenant_mirror_declared_host_tenant.py tests/unit/handlers/test_tenant_identity_unmirrored_loud.py -q --no-cov -k 'refused'"
         cwd: "."
+  - id: "dod-omn23371-declared-tenant-dispatch-completes"
+    description: "An in-process dispatch under the declared lab tenant is admitted by the local tenant mirror and completes with its delegation_events row; at the merge base the same dispatch is refused with the OMN-22221 refusal (the failing control)."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/handlers/test_tenant_mirror_declared_host_tenant.py -q --no-cov -k 'in_process_delegate_with_declared_tenant_completes'"
+        cwd: "."
   - id: "dod-omn23371-integration-proof-lab-delegate"
     description: "After the branch is installed on a lab host, a lab lane's in-process delegate under the lab tenant returns a receipt with status success. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound item; the lane records the host, run id and receipt in the pull request."
     source: "manual"
     execution_scope: "local_done_gate"
-    binds_ac: ["AC3"]
     checks:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane tenantmirror-1740 -- uv run --frozen pytest tests/unit/handlers/test_tenant_mirror_declared_host_tenant.py -q --no-cov"

@@ -149,6 +149,22 @@ def test_undeclared_tenant_is_still_refused(tmp_path: Path, lab_host: str) -> No
     assert _mirror_rows(db_path, UUID(unknown)) == []
 
 
+def test_undeclared_tenant_is_refused_where_the_declared_tenant_is_admitted(
+    tmp_path: Path, lab_host: str
+) -> None:
+    """One mirror admits this host's tenant and refuses a tenant no row declares."""
+    db_path = tmp_path / "delegation.sqlite"
+    adapter = SqliteDatabaseAdapter(db_path)
+    unknown = str(uuid4())
+
+    require_tenant_mirrored(adapter, str(_DECLARED_TENANT))
+    with pytest.raises(TenantRegistryResolutionError, match="OMN-22221"):
+        require_tenant_mirrored(adapter, unknown)
+
+    assert len(_mirror_rows(db_path, _DECLARED_TENANT)) == 1
+    assert _mirror_rows(db_path, UUID(unknown)) == []
+
+
 def test_tenant_declared_for_another_host_is_refused(
     tmp_path: Path, lab_host: str
 ) -> None:
