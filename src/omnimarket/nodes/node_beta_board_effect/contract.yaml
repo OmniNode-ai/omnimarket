@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Beta Board Effect (OMN-23315)
+#
+# The beta board as a page on the lab, beside the factory floor. The overlay declares the milestone's criteria, their carriers, the
+# probes (workflows whose finished runs are readings) and the ledger readings; this node computes each criterion's state, since when
+# and owner ticket from those readings, writes the board's JSON, and publishes the page and the JSON to every host the overlay lists.
+# A reading that cannot be read is unread and is never counted as a pass. Paths are relative to the registry home (OMNI_HOME).
+name: node_beta_board_effect
+contract_name: node_beta_board_effect
+node_name: node_beta_board_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Reads the declared probes' finished runs and the declared ledger readings, computes each beta criterion's state (pass, fail,
+  stale, unread), since when and owner ticket, and serves the board as a page on the lab hosts that serve the factory floor.
+
+handler:
+  module: omnimarket.nodes.node_beta_board_effect.handlers.handler_beta_board
+  class: HandlerBetaBoard
+  input_model: omnimarket.nodes.node_beta_board_effect.models.model_beta_board.ModelBetaBoardRequest
+  output_model: omnimarket.nodes.node_beta_board_effect.models.model_beta_board.ModelBetaBoardResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_beta_board_stage
+      handler:
+        name: HandlerBetaBoard
+        module: omnimarket.nodes.node_beta_board_effect.handlers.handler_beta_board
+      input_model: omnimarket.nodes.node_beta_board_effect.models.model_beta_board.ModelBetaBoardRequest
+      output_model: omnimarket.nodes.node_beta_board_effect.models.model_beta_board.ModelBetaBoardResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 90000
+  side_effects:
+    - runs the registry's onex source-control read (run-list) once per declared probe, one at a time, and keeps the answers in the node's state file
+    - reads the ledger rows of each declared ledger reading through the ledger read route the overlay names
+    - writes the board's JSON under the registry home
+    - writes the page and the JSON to the serving directory of each host the overlay lists, over ssh
+
+input_model:
+  name: ModelBetaBoardRequest
+  module: omnimarket.nodes.node_beta_board_effect.models.model_beta_board
+  description: The stage to run and the registry home.
+output_model:
+  name: ModelBetaBoardResult
+  module: omnimarket.nodes.node_beta_board_effect.models.model_beta_board
+  description: Whether the stage ran, the counts of criteria by state, and for each serving host whether the page was published.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_beta_board_effect build|publish|run, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime:
+  home_env: OMNI_HOME
+  onex_relpath: omnibase_infra/scripts/onex
+  # The criteria, carriers, probes, ledger readings and serving hosts are deployment facts of a private estate: the overlay
+  # <root>/node_beta_board_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS, or the file the variable names. There is no packaged fallback.
+  overlay_id: node_beta_board_effect
+  overlay_file_env: ONEX_BETA_BOARD_OVERLAY
+  # A ledger reading keeps its newest rows only.
+  ledger_row_cap: 200
+  output_relpath: .claude_scratch/factory-floor/beta-board.json
+  reads_relpath: .onex_state/beta-board/probe-reads.json
+  page_file: beta.html
+  data_file: beta-board.json
+  probe_run_limit: 20
+  probe_read_timeout_seconds: 25
+  # One read is a source-control round trip of about 3 s on an idle host and several times that under the launchd clamp, so the stage
+  # reads one probe at a time, the least recently read first, and stops starting reads at the deadline (it runs in the publish's
+  # concurrent input group, whose limit is 90 s). A probe read within probe_refresh_seconds is not read again.
+  stage_deadline_seconds: 50
+  probe_refresh_seconds: 240
+  transport:
+    connect_timeout_seconds: 10
+    transfer_timeout_seconds: 30
+  page_refresh_seconds: 300
+
+metadata:
+  transport_type: local

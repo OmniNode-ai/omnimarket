@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.model_reading import EnumReadingVerdict
 
@@ -105,14 +105,40 @@ class ModelMergeGroupJobFact(BaseModel):
     runner_group_id: int | None = None
 
 
+class ModelPrivateQueuePool(BaseModel):
+    """One merge-queue runner pool of the overlay: its runners' name prefix, the host that carries it and how many must be online."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    runner_name_prefix: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    expected_online_members: int = Field(gt=0)
+
+
 class ModelPrivateQueueSettings(BaseModel):
-    """The overlay's private merge-queue pool: the group's name, its runners' name prefix and how many must be online."""
+    """The overlay's private merge-queue pools: the group's name and the pools, which must sit on at least ``min_hosts`` hosts (OMN-23387)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     group_name: str = Field(min_length=1)
-    runner_name_prefix: str = Field(min_length=1)
-    expected_online_members: int = Field(gt=0)
+    pools: tuple[ModelPrivateQueuePool, ...] = Field(min_length=1)
+    # A floor of two: a pool set that rests on one host stops the whole queue when that host does.
+    min_hosts: int = Field(ge=2)
+
+    @model_validator(mode="after")
+    def _pools_span_min_hosts(self) -> ModelPrivateQueueSettings:
+        hosts = sorted({p.host for p in self.pools})
+        if len(hosts) < self.min_hosts:
+            raise ValueError(
+                f"the merge-queue pools resolve to {len(hosts)} host(s) ({', '.join(hosts)}), "
+                f"fewer than the {self.min_hosts} the overlay requires"
+            )
+        prefixes = [p.runner_name_prefix for p in self.pools]
+        if len(set(prefixes)) != len(prefixes):
+            raise ValueError(
+                "two merge-queue pools declare the same runner name prefix"
+            )
+        return self
 
 
 class ModelRunnerGroupReadingSettings(BaseModel):
