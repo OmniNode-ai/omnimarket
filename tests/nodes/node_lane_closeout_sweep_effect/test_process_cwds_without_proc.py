@@ -25,7 +25,8 @@ from tests.nodes.node_lane_closeout_sweep_effect.test_golden_chain_lane_closeout
 pytestmark = pytest.mark.unit
 
 REAL_RUN: Any = subprocess.run
-LSOF_OUT = "p176\nfcwd\nn/\np389\nfcwd\nn/Users/x/lab-run/runs/rlane-a-1a2b3c\n"
+LANE_CWD = "/".join(["", "Users", "x", "lab-run", "runs", "rlane-a-1a2b3c"])
+LSOF_OUT = f"p176\nfcwd\nn/\np389\nfcwd\nn{LANE_CWD}\n"
 
 
 def fake_lsof(stdout: str, code: int = 0) -> object:
@@ -39,17 +40,14 @@ def fake_lsof(stdout: str, code: int = 0) -> object:
 
 
 def test_lsof_output_is_read_as_working_directories() -> None:
-    assert handler.parse_lsof_cwds(LSOF_OUT) == [
-        "/",
-        "/Users/x/lab-run/runs/rlane-a-1a2b3c",
-    ]
+    assert handler.parse_lsof_cwds(LSOF_OUT) == ["/", LANE_CWD]
 
 
 def test_lsof_partial_exit_still_counts_the_lines_it_printed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(handler.subprocess, "run", fake_lsof(LSOF_OUT, code=1))
-    assert handler._lsof_cwds() == ["/", "/Users/x/lab-run/runs/rlane-a-1a2b3c"]
+    assert handler._lsof_cwds() == ["/", LANE_CWD]
 
 
 def test_a_host_that_cannot_run_lsof_says_it_cannot_say(
