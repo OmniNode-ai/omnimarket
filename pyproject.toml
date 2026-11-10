@@ -472,6 +472,7 @@ node_consumer_flow_prune_effect = "omnimarket.nodes.node_consumer_flow_prune_eff
 node_consumer_flow_stall_alert_effect = "omnimarket.nodes.node_consumer_flow_stall_alert_effect"
 node_consumer_group_guard_effect = "omnimarket.nodes.node_consumer_group_guard_effect"
 node_content_ingestion_effect = "omnimarket.nodes.node_content_ingestion_effect"
+node_context_additive_latency_compute = "omnimarket.nodes.node_context_additive_latency_compute"
 node_context_adr_select_compute = "omnimarket.nodes.node_context_adr_select_compute"
 node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
 node_context_compaction_latency_compute = "omnimarket.nodes.node_context_compaction_latency_compute"
