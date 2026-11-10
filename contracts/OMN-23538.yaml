@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23538-ac1-record-lists-every-test-file
-  description: The shard plan reads the committed record against the tree and counts the test files it lacks. At the merge base it reads 26 of 4950 unrecorded (57 at dev 7624da3a9, 34 of those entered by later merges and 3 newer files added); at the head it reads 0. The freshness check passes at the head with its limit of 50 unchanged.
+  description: The shard plan reads the committed record against the tree and counts the test files it lacks. At the merge base it reads 33 of 4970 unrecorded (57 at dev 7624da3a9; later merges entered some and newer files were added); at the head it reads 0. The freshness check passes at the head with its limit of 50 unchanged.
   source: manual
   binds_ac:
   - AC1
@@ -34,7 +34,7 @@ dod_evidence:
     check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 0 of '"
     cwd: .
 - id: dod-omn23538-ac2-shard-plan-partition
-  description: The shard plan tests prove the 20 plans are an exact partition of the collected files, and the plan must read 0 unrecorded with the new record. At the merge base the tests pass but the plan reads 26 unrecorded, so the item fails there; at the head both hold.
+  description: The shard plan tests prove the 20 plans are an exact partition of the collected files, and the plan must read 0 unrecorded with the new record. At the merge base the tests pass but the plan reads 33 unrecorded, so the item fails there; at the head both hold.
   source: manual
   binds_ac:
   - AC2
@@ -43,7 +43,7 @@ dod_evidence:
     check_value: bash -c "uv run --frozen pytest tests/unit/test_ci_shard_plan_omn19684.py -q --no-cov -p no:randomly && python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 0 of '"
     cwd: .
 - id: dod-omn23538-ac3-hosted-proxy
-  description: AC3 hosted proxy. The freshness check passes and the shard plan reads 0 unrecorded, so a change carrying this tree has the check's full headroom of 50. At the merge base the plan reads 26 unrecorded, so the item fails there. The lab readback of dev after merge is the local_done_gate item below.
+  description: AC3 hosted proxy. The freshness check passes and the shard plan reads 0 unrecorded, so a change carrying this tree has the check's full headroom of 50. At the merge base the plan reads 33 unrecorded, so the item fails there. The lab readback of dev after merge is the local_done_gate item below.
   source: manual
   binds_ac:
   - AC3
