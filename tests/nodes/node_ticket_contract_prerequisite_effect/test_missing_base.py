@@ -168,7 +168,7 @@ def test_unreadable_base_preserves_explicit_missing_contract_refusal(
     )
     assert _git(worker, "rev-parse", "HEAD") == before
     assert _git(worker, "status", "--porcelain") == ""
-    assert _git(worker, "branch", "-r") == "origin/worker"
+    assert _remote_branches(worker) == ["refs/remotes/origin/worker"]
 
 
 def test_fetch_preserves_runtime_integration_proof_refusal(tmp_path: Path) -> None:

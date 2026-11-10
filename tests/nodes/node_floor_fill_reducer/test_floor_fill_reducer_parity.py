@@ -365,6 +365,57 @@ def test_reducer_parity_in_memory_bus_matches_the_in_process_decisions() -> None
     assert {row.key: row.content for row in run.rows} == in_process()
 
 
+def test_reducer_parity_the_golden_scenario_over_dotted_floor_task_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The floor's own task ids carry a dot (``T0.1``): the bus legs decide them as the rules do."""
+    monkeypatch.setitem(globals(), "KEY", "floor:line-a:T0.1")
+    monkeypatch.setitem(globals(), "OTHER", "floor:line-a:CM.0")
+    [run] = parity_run(profiles=("inmemory",))
+    assert {row.key: row.content for row in run.rows} == in_process()
+    assert len(run.rows) == len(golden_scenario())
+    rows = {k: json.loads(v) for k, v in in_process().items()}
+    assert rows["04:ReservedChecked"]["trigger"] == "confirmed"
+    assert rows["04:ReservedChecked"]["state"]["entries"][KEY]["lane"] == lane_name(
+        KEY, 1
+    )
+
+
+class SeqCorruptingBus(InmemoryBus):
+    """The injected break ``bus-corrupts-seq``: the transport raises the row's ``seq`` of one reply."""
+
+    async def call(self, payload: dict[str, Any]) -> dict[str, Any]:
+        reply = await super().call(payload)
+        if reply["output"]["trigger"] == "confirmed":
+            reply["output"]["state"]["seq"] += 1
+        return reply
+
+
+def test_reducer_parity_the_injected_break_bus_corrupts_seq_is_judged_unequal() -> None:
+    """The parity reading can fail: a transport that changes one decision is not equal to the baseline."""
+    baseline = asyncio.run(run_over(InmemoryBus(), "inmemory", "inmemory"))
+    uncorrupted = asyncio.run(run_over(InmemoryBus(), "inmemory", "inmemory"))
+    broken = asyncio.run(run_over(SeqCorruptingBus(), "inmemory", "inmemory"))
+    # The control: the same provenance with no corruption passes, so only the seq differs.
+    assert compare_runs((baseline, uncorrupted)).passed
+    result = compare_runs((baseline, broken))
+    assert result.comparisons[0].provenance_errors == ()
+    assert not result.passed
+    assert "ReservedChecked" in result.first_difference
+
+
+def test_reducer_parity_a_run_whose_binding_is_not_its_profile_is_judged_on_provenance() -> (
+    None
+):
+    """The provenance rejection is separate from the row diagnostic, so the break test above must not rely on it."""
+    baseline = asyncio.run(run_over(InmemoryBus(), "inmemory", "inmemory"))
+    mismatched = asyncio.run(run_over(InmemoryBus(), "redpanda", "inmemory"))
+    result = compare_runs((baseline, mismatched))
+    assert not result.passed
+    assert result.comparisons[0].provenance_errors
+    assert result.first_difference.startswith("provenance:")
+
+
 @pytest.mark.kafka
 @pytest.mark.integration
 def test_reducer_parity_redpanda_overlay_matches_the_in_memory_overlay() -> None:
