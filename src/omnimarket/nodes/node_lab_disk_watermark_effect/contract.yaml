@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_disk_watermark_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Read the used share of each volume a pool host declares, write the reading to the host's declared reading file, and
+  page when a volume is past its page mark. A full root volume on h053 stopped every merge-queue job on that host's
+  runners on 2026-11-09 with nothing reading it. A reading below the warn mark is `ok`, between the warn and page marks
+  `warn`, and at or past the page mark `page`: a page is the service exiting with status 2, a PAGE line in the journal
+  and the reading file's `level`, which the automation-liveness watchdog and the floor read. Every host, volume and mark
+  is a row of the node overlay, never of this node.
+input_model:
+  name: ModelLabDiskWatermarkRequest
+  module: omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark
+output_model:
+  name: ModelLabDiskWatermarkReading
+  module: omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark
+handler:
+  name: HandlerLabDiskWatermark
+  module: omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_watermark
+entrypoint:
+  name: NodeLabDiskWatermarkEffect
+  module: omnimarket.nodes.node_lab_disk_watermark_effect.node
+execution:
+  deterministic: false
+  side_effects: true
+overlay:
+  file: overlay.yaml
+  environment_pin: ONEX_LAB_DISK_WATERMARK_OVERLAY
+schedule:
+  unit_name: onex-disk-watermark
+  cadence:
+    first_pass: 1s
+    interval_seconds: 300
+    accuracy: 30s
+    timeout_start_seconds: 120
+    description: a first reading at install, then every 300 s
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+  - writes the host's reading file
+metadata:
+  ticket: OMN-23384
+  transport_type: in_process

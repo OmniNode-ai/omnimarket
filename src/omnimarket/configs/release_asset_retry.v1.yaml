@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# release_asset_retry.v1.yaml -- how download_release_asset retries a gateway
+# failure from the release host (OMN-14172).
+#
+# Read on 2026-11-08 from a lab host: a cold request for a release asset answered
+# 504 after about eleven seconds, and the edge then replayed that 504 in about a
+# tenth of a second for more than eighty seconds before a later cold request was
+# served. Delays shorter than that window land inside the replayed refusal and
+# cannot recover, so the delays below add up to more than the longest window read.
+release_asset_retry:
+  # HTTP statuses that are retried; any other status ends the download at once.
+  statuses: [502, 503, 504]
+  # Seconds slept before each further attempt; the attempt count is one more
+  # than the number of delays.
+  delays_seconds: [30, 60, 90]
