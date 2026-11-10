@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0.0",
+  "question": "Does a working classifier or tracked list of lane results exist in omnimarket, the plugin or the controller, and should it be wired or built?",
+  "read_at": "2026-11-09T12:20:00Z",
+  "read_on": "h053",
+  "read_base": "c908d7cf770a5ab63d73431e96f16e17312916ee",
+  "definitions": {
+    "wiring_state": "wired when at least one evidence entry of kind in_repo_caller, external_caller or schedule counts as a runtime caller; entry_point and bus_subscription alone only register a node and never make it wired. An in_repo_caller that names a caller_equivalent counts only when that equivalent is itself wired.",
+    "reported_state": "working only for an equivalent that is wired and whose run read shows it classifying; every unwired equivalent is reported not-working.",
+    "verdict": "wire: this equivalent covers the need and is used as it is or wired in; build: it does not cover the need, so the part it leaves is named as a build."
+  },
+  "equivalents": [
+    {
+      "id": "lane-result-sweep",
+      "node": "node_lane_result_sweep_effect",
+      "code_path": "src/omnimarket/nodes/node_lane_result_sweep_effect/handlers/handler_lane_result_sweep.py",
+      "covers": "classifies every lane TERMINAL receipt by the worse of its claimed outcome and its lane result, appends one class row per receipt (the tracked list) and a reading row",
+      "wiring_state": "unwired",
+      "wiring_evidence": [
+        {"kind": "entry_point", "path": "pyproject.toml", "detail": "onex.nodes entry node_lane_result_sweep_effect"},
+        {"kind": "bus_subscription", "path": "src/omnimarket/nodes/node_lane_result_sweep_effect/contract.yaml", "detail": "event_bus.subscribe_topics is empty and runtime_dispatch is external_trigger: true"}
+      ],
+      "wiring_gaps": [
+        "no in-repo caller imports the node outside its own package",
+        "no schedule module or timer unit in the node, unlike node_lane_census_effect",
+        "no reference to the node or its topics in omnibase_infra, the plugin repository or omniclaude (git grep at origin/HEAD, empty)"
+      ],
+      "reported_state": "not-working",
+      "verdict": "wire",
+      "verdict_basis": "It already classifies and writes the tracked list; what is missing is a trigger that runs it. The build left is a scheduled run of its sweep verb, not a new classifier.",
+      "run_read": {
+        "host": "h053",
+        "command": "python -m omnimarket.nodes.node_lane_result_sweep_effect probe --since 2026-11-09T00:00:00Z (example overlay, ledger copy taken 2026-11-09T12:01:53Z)",
+        "observed": "verdict NOT_WORKING; 2402 receipt verdicts: 2368 unclassified-late, 19 clear, 15 pending; the ledger copy holds 3 lane-result-class rows in total, all appended 2026-11-07T16:42:07Z by one manual run",
+        "read_at": "2026-11-09T12:08:00Z"
+      }
+    },
+    {
+      "id": "remote-lane-close",
+      "node": "node_remote_lane_close_compute",
+      "code_path": "src/omnimarket/nodes/node_remote_lane_close_compute/handlers/handler_remote_lane_result.py",
+      "covers": "decides how one finished remote lane closes from its engine exit code and its LANE_RESULT or TERMINAL line; keeps no list",
+      "wiring_state": "wired",
+      "wiring_evidence": [
+        {"kind": "entry_point", "path": "pyproject.toml", "detail": "onex.nodes entry node_remote_lane_close_compute"},
+        {"kind": "in_repo_caller", "path": "src/omnimarket/nodes/node_remote_lane_start_orchestrator/orchestration/core.py", "detail": "imports handler_remote_lane_result"},
+        {"kind": "external_caller", "repo": "plugin repository", "path": "plugins/omni/skills/remote-lane/scripts/onex_remote_lane.py", "detail": "NODE_CLOSE = node_remote_lane_close_compute, asked through the canonical runtime at lane close (git grep at origin/HEAD, line 653)", "attested": true}
+      ],
+      "wiring_gaps": ["classifies one lane at close and keeps no list, so it cannot hold a lane to a later review"],
+      "reported_state": "working",
+      "verdict": "wire",
+      "verdict_basis": "It is the classifier at the lane's own close and already runs for every remote lane; the sweep reads the TERMINAL rows it shapes. Nothing is left to wire here.",
+      "run_read": {
+        "host": "h053",
+        "command": "final_lane_outcome('LANE_RESULT outcome=blocked\\nBLOCKER: x'), final_lane_outcome('LANE_RESULT outcome=partial'), final_lane_outcome('no result line here')",
+        "observed": "blocked, partial, unknown",
+        "read_at": "2026-11-09T12:09:00Z"
+      }
+    },
+    {
+      "id": "error-class-normalize",
+      "node": "node_error_class_normalize_compute",
+      "code_path": "src/omnimarket/nodes/node_error_class_normalize_compute/handlers/handler_error_class_normalize.py",
+      "covers": "normalizes one error event to a class key; the sweep uses it to key each receipt",
+      "wiring_state": "unwired",
+      "wiring_evidence": [
+        {"kind": "entry_point", "path": "pyproject.toml", "detail": "onex.nodes entry node_error_class_normalize_compute"},
+        {"kind": "bus_subscription", "path": "src/omnimarket/nodes/node_error_class_normalize_compute/contract.yaml", "detail": "subscribes onex.cmd.omnimarket.error-class-normalize.v1; the only publisher found is node_lane_failure_recovery_effect"},
+        {"kind": "in_repo_caller", "path": "src/omnimarket/nodes/node_lane_result_sweep_effect/handlers/handler_lane_result_sweep.py", "detail": "imports the normalizer to key each receipt", "caller_equivalent": "lane-result-sweep"}
+      ],
+      "wiring_gaps": [
+        "its only in-repo callers are the unwired sweep and node_hook_refusal_row_compute, which has no importer outside its package",
+        "it classifies an error by key and does not read a lane result by itself"
+      ],
+      "reported_state": "not-working",
+      "verdict": "wire",
+      "verdict_basis": "It is a part of the sweep and becomes wired when the sweep has its trigger; it is not a second classifier to build.",
+      "run_read": {
+        "host": "h053",
+        "command": "the sweep probe above, which calls the normalizer per receipt",
+        "observed": "receipts carry class keys such as lane.remote-lane-runner.template.731127ecb9",
+        "read_at": "2026-11-09T12:08:00Z"
+      }
+    },
+    {
+      "id": "lane-failure-recovery",
+      "node": "node_lane_failure_recovery_effect",
+      "code_path": "src/omnimarket/nodes/node_lane_failure_recovery_effect/handlers/handler_lane_failure_recovery.py",
+      "covers": "normalizes guard OOM and retention failures only and submits a recovery contribution",
+      "wiring_state": "unwired",
+      "wiring_evidence": [
+        {"kind": "entry_point", "path": "pyproject.toml", "detail": "onex.nodes entry node_lane_failure_recovery_effect"},
+        {"kind": "bus_subscription", "path": "src/omnimarket/nodes/node_lane_failure_recovery_effect/contract.yaml", "detail": "subscribes onex.cmd.omnimarket.lane-failure-recover.v1"}
+      ],
+      "wiring_gaps": ["no producer of its command topic and no reference to the node in omnibase_infra, the plugin repository or omniclaude"],
+      "reported_state": "not-working",
+      "verdict": "build",
+      "verdict_basis": "It covers two failure kinds, not lane results in general, so it does not stand in for a classifier or a list.",
+      "run_read": {
+        "host": "h053",
+        "command": "git -C $OMNI_HOME/<repo> grep -l node_lane_failure_recovery_effect origin/HEAD, for omnibase_infra, the plugin repository and omniclaude",
+        "observed": "no file in any of the three repositories",
+        "read_at": "2026-11-09T12:11:00Z"
+      }
+    },
+    {
+      "id": "lane-liveness",
+      "node": "node_lane_liveness_compute",
+      "code_path": "src/omnimarket/nodes/node_lane_liveness_compute/handlers/handler_lane_liveness.py",
+      "covers": "decides whether a lane is live, terminated or dropped from CLAIM and TERMINAL times and hook events; it reads no result class",
+      "wiring_state": "wired",
+      "wiring_evidence": [
+        {"kind": "entry_point", "path": "pyproject.toml", "detail": "onex.nodes entry node_lane_liveness_compute"},
+        {"kind": "external_caller", "repo": "plugin repository", "path": "plugins/omni/skills/session-resume/SKILL.md", "detail": "line 135 has the session-resume skill ask the node for every open CLAIM with parent=<your lane> (git grep at origin/HEAD)", "attested": true}
+      ],
+      "wiring_gaps": ["its verdicts are live, terminated or dropped, so a blocked or failed lane reads terminated"],
+      "reported_state": "working",
+      "verdict": "build",
+      "verdict_basis": "It tracks whether a lane is alive, not what its result was; the result class stays with the sweep.",
+      "run_read": {
+        "host": "h053",
+        "command": "HandlerLaneLiveness().handle(one observation with claimed_at and terminal_at inside a 1 h window)",
+        "observed": "verdict terminated",
+        "read_at": "2026-11-09T12:12:00Z"
+      }
+    },
+    {
+      "id": "ledger-terminal-rows",
+      "node": "node_reading_writer_effect",
+      "code_path": "src/omnimarket/nodes/node_reading_writer_effect/adapters/ledger_adapters.py",
+      "covers": "the rolling ledger's TERMINAL rows are the tracked list of lane results as lanes write them; the adapter reads them for the sweep",
+      "wiring_state": "wired",
+      "wiring_evidence": [
+        {"kind": "in_repo_caller", "path": "src/omnimarket/nodes/node_lane_result_sweep_effect/runtime_lane_result_sweep.py", "detail": "build_row_source reads the ledger file and its archive", "caller_equivalent": "lane-result-sweep"},
+        {"kind": "external_caller", "repo": "plugin repository", "path": "plugins/omni/skills/pr-handoff", "detail": "every lane ends with a TERMINAL row appended to the ledger; this lane's ledger copy holds 581 of them in the live file", "attested": true}
+      ],
+      "wiring_gaps": ["the rows carry the lane's claimed outcome; nothing classifies them without the sweep"],
+      "reported_state": "working",
+      "verdict": "wire",
+      "verdict_basis": "The list exists and is filled by every lane; it is the input the sweep classifies.",
+      "run_read": {
+        "host": "h053",
+        "command": "grep -c '| TERMINAL |' on the ledger copy taken 2026-11-09T12:01:53Z",
+        "observed": "581 TERMINAL rows in the live file",
+        "read_at": "2026-11-09T12:10:00Z"
+      }
+    }
+  ],
+  "conclusion": "A classifier and a tracked list of lane results both exist in omnimarket (the sweep and the ledger TERMINAL rows). The sweep is registered but unwired: nothing runs it, one manual run on 2026-11-07 wrote three class rows, and its own probe reads NOT_WORKING. The build left is a scheduled run of the sweep, not a new classifier."
+}

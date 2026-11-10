@@ -1,0 +1,68 @@
+schema: no-producer-topics/v1
+ticket: OMN-23151
+graph_read_at: '2026-11-08T22:40:03Z'
+scanned_roots:
+- omnimarket/src
+- omnibase_infra/src
+- omnibase_core/src
+- omniclaude/src
+- omniintelligence/src
+- omnimemory/src
+- omnibase_spi/src
+- omnibase_compat/src
+graph_edges: 3069
+graph_observations: 1068
+topic_segment: .evt.
+count: 10
+topics:
+- topic: onex.evt.deploy.dev-deploy-health.v1
+  consumers:
+  - omnimarket/src/omnimarket/nodes/node_redeploy_deploy_effect/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omnibase-infra.lab-pass-receipt.v1
+  consumers:
+  - omnimarket/src/omnimarket/nodes/node_projection_lab_lane_health/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omnibase-infra.lab-proof-receipt.v1
+  consumers:
+  - omnimarket/src/omnimarket/nodes/node_projection_lab_proof_receipts/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omnibase-infra.lane-census-observed.v1
+  consumers:
+  - omnimarket/src/omnimarket/nodes/node_projection_lab_lane_health/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omniintelligence.code-entities-extracted-embed.v1
+  consumers:
+  - omniintelligence/src/omniintelligence/nodes/node_embedding_generation_effect/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omniintelligence.entity-extraction-completed.v1
+  consumers:
+  - omniintelligence/src/omniintelligence/nodes/node_storage_router_effect/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omniintelligence.pattern-matched.v1
+  consumers:
+  - omniintelligence/src/omniintelligence/nodes/node_storage_router_effect/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omniintelligence.vectorization-completed.v1
+  consumers:
+  - omniintelligence/src/omniintelligence/nodes/node_storage_router_effect/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omnimarket.code-entities-extracted.v1
+  consumers:
+  - omnimarket/src/omnimarket/nodes/node_code_embedding_effect/contract.yaml
+  - omnimarket/src/omnimarket/nodes/node_code_enrichment_effect/contract.yaml
+  evidence: consumers=2 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068
+- topic: onex.evt.omnimarket.workflow-baseline-run-observed.v1
+  consumers:
+  - omnimarket/src/omnimarket/nodes/node_workflow_baseline_compare_compute/contract.yaml
+  evidence: consumers=1 producer-edges=0 producer-sends=0 other-source-mentions=0
+    graph-edges=3069 graph-observations=1068

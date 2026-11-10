@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-23319
+title: The friction rollup's class rules read a bare class=other row into its real class
+summary: The floor's stoppage:other row held FRICTION rows written with a bare class=other. The rollup applied its class rules only to a row with no class cell, so no rule could name them. The rollup now reads a bare class=other row (no reason cell) through the same rules, and the shipped rules name the 30 such rows of 2026-11-09 by cause (11 rows to 10:50Z, 19 rows 11:06Z to 12:31Z). A row no rule names stays other, counted and costed as before; no row is dropped.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23319-class-rules
+  statement: A FRICTION row with class=other whose text names a known cause is counted in that cause's class, no row is dropped from the count, and after the overlay is installed the served floor lists stoppage:other only for rows no rule classifies.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a FRICTION row with class=other whose text names a known cause is counted in that cause''s class, and no row is dropped from the count -- falsifier: uv run pytest tests -q -k friction_other_class in omnimarket, failing with the rules removed'
+  - id: AC2
+    statement: 'AC2: after install, the served floor no longer lists stoppage:other for rows the rules classify -- falsifier: curl of the served floor shows causes[] without stoppage:other or with only unclassifiable rows'
+evidence_requirements:
+- kind: tests
+  description: The class rule tests of the friction rollup node, including the 19 rows of 2026-11-09T11:06Z to 12:31Z and their control.
+  command: uv run pytest tests/nodes/node_friction_rollup_compute -q -k friction_other_class
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23319-ac1
+  description: The new tests pass on the branch. With the rules as origin/dev holds them (no new class, the four widened patterns as they were) the control test shows the rows that only the new rules name staying other.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_friction_rollup_compute/test_friction_other_class_rules_2026_11_09b.py -q
+- id: dod-omn23319-ac2-rollup
+  description: The rollup the floor is built from names the bare class=other rows of 2026-11-09 by cause, so the served floor lists stoppage:other only for rows no rule classifies. With the rollup code as origin/dev holds it, 3 of these tests fail (the 11 first-batch rows stay other).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_friction_rollup_compute/test_class_rules_bare_other_2026_11_09.py -q
+- id: dod-omn23319-ac2
+  description: After the overlay is installed on the host that publishes the floor, the served floor read shows causes[] without a stoppage:other row for the classified rows. Hosted CI cannot reach the served floor, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c "curl -s \"${FLOOR_SIMPLE_URL:?the served floor-simple.json URL}\" | python3 -c \"import json,sys; d=json.load(sys.stdin); print([c['size'] for c in d['causes'] if c['id']=='stoppage:other'])\""
+- id: dod-omn23319-integration-proof
+  description: Run the friction rollup node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23319 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_friction_rollup_compute -q --no-cov
