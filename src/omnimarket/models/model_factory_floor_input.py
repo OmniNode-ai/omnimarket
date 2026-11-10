@@ -15,6 +15,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
+from omnimarket.models.model_floor_line_select import (
+    LineClass,
+    ModelFloorLineGoal,
+    ModelFloorLineProcess,
+    ModelFloorLineSelectConfig,
+)
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -191,6 +197,10 @@ class ModelFloorLedgerRow(BaseModel):
     head: str = ""
     ruling: str = ""
     mechanism: str = ""
+    # The closing row's typed needs= cell as written (``<action>:<target>`` or ``unparsed``) and its report= cell: what
+    # the lane found and what it asks for next (OMN-23417).
+    needs: str = ""
+    report: str = ""
 
     _utc = field_validator("ts")(_aware)
 
@@ -217,6 +227,8 @@ class ModelFloorStoppage(BaseModel):
     recurring: bool = False
     tickets: tuple[str, ...] = ()
     last_seen: str = ""
+    # When a STATUS row reported the class resolved (the friction report's ``resolved_at``); empty when none did.
+    resolved_at: str = ""
 
 
 class ModelFloorSelection(BaseModel):
@@ -225,10 +237,14 @@ class ModelFloorSelection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = ()
+    # The plan files the newest readable plans-today output selected (class plan), in the output's order. None: no output was supplied, and
+    # a run that declares no line draws every plan it is given, as before.
+    plans_today_paths: tuple[str, ...] | None = None
+    # The line classes this run draws. Declared and plan lines are the floor's own; the other four are drawn only when
+    # the run names them, so a caller that does not forward their facts yet draws the record it always did.
+    line_classes: tuple[LineClass, ...] = ("declared", "plan")
     # The declared line (a plan_path_contains text) that shows each lane's application containers; empty shows none.
     container_read_line: str = ""
-    # The plan paths the plans-today output selected (its ``plans`` entries), in the output's order.
-    plans_today_paths: tuple[str, ...] = ()
 
 
 class ModelFloorMachineDecl(BaseModel):
@@ -649,6 +665,7 @@ class ModelFactoryFloorConfig(BaseModel):
     limits: ModelFloorLimitsConfig
     host_status: ModelFloorHostStatusConfig
     stopped: ModelFloorStoppedConfig
+    line_select: ModelFloorLineSelectConfig
 
 
 class ModelFloorSourceReads(BaseModel):
@@ -787,6 +804,9 @@ class ModelFactoryFloorRequest(BaseModel):
     release_required_repos: tuple[str, ...] = ()
     held_gates: tuple[str, ...] = ()
     # How each source the board depends on was read.
+    # The goal rows and declared processes the line selection (classes goal and process) draws its lines from.
+    line_goals: tuple[ModelFloorLineGoal, ...] = ()
+    line_processes: tuple[ModelFloorLineProcess, ...] = ()
     source_health: tuple[ModelFloorSourceHealth, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)

@@ -1,0 +1,8 @@
+{"t":"load","call":"load","pid":1894,"pidversion":4713,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24935064232,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"execve","pid":1894,"pidversion":4713,"ppid":1865,"image":"/private/tmp/control_tree","mach_abs":24935309850,"tb_numer":125,"tb_denom":3,"detail":"/bin/sh"}
+{"t":"load","call":"load","pid":1894,"pidversion":4714,"ppid":1865,"image":"/bin/sh","mach_abs":24935570317,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"execve","pid":1894,"pidversion":4714,"ppid":1865,"image":"/bin/sh","mach_abs":24935573100,"tb_numer":125,"tb_denom":3,"detail":"/bin/bash"}
+{"t":"load","call":"load","pid":1894,"pidversion":4715,"ppid":1865,"image":"/bin/bash","mach_abs":24935658405,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"fork","pid":1894,"pidversion":4715,"ppid":1865,"image":"/bin/bash","mach_abs":24935664141,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"child","call":"fork","pid":1895,"pidversion":4716,"ppid":1894,"image":"/bin/bash","mach_abs":24935670801,"tb_numer":125,"tb_denom":3,"detail":""}
+{"t":"call","call":"execve","pid":1895,"pidversion":4716,"ppid":1894,"image":"/bin/bash","mach_abs":24935672559,"tb_numer":125,"tb_denom":3,"detail":"/usr/bin/nc"}

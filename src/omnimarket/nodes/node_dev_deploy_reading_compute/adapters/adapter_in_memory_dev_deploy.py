@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_dev_deploy_reading import (
+from omnimarket.models.model_dev_deploy_reading import (
     ModelLabPassReceiptFact,
 )
 from omnimarket.nodes.node_dev_deploy_reading_compute.models.model_join_j10 import (

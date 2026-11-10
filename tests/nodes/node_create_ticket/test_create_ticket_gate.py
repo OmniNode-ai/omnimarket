@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from omnimarket.handlers.handler_lane_intake import read_lane_intake_policy
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
+    InstalledPluginTicketGuard,
     ModelCreateTicketRequest,
     TicketGuardRefusedError,
 )
@@ -133,8 +134,12 @@ def _handler(
 ) -> HandlerCreateTicket:
     monkeypatch.setenv("ONEX_TICKET_GUARD_PATH", str(guard))
     monkeypatch.setenv("ONEX_LANE", "gate-test-lane")
+    # The default gate is the omnibase_core validator (OMN-22850); these tests keep the
+    # installed-plugin guard's own refusal and admission behaviour covered by injecting it.
     return HandlerCreateTicket(
-        linear_client=client, lane_intake_policy=read_lane_intake_policy(guard)
+        linear_client=client,
+        lane_intake_policy=read_lane_intake_policy(guard),
+        ticket_guard=InstalledPluginTicketGuard(guard, "gate-test-lane"),
     )
 
 
@@ -327,20 +332,14 @@ def test_create_ticket_gate_parity_follows_matching_registration(
 
 
 def test_create_ticket_gate_refuses_cli_prints_finding_codes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The headless entry point prints the guard's codes in the result and exits 1."""
+    """The headless entry point prints the core validator's codes in the result and exits 1."""
     from omnimarket.nodes.node_create_ticket.__main__ import main
 
-    reason = (
-        "BLOCKED:\n"
-        "  * [missing_gate_line] description: no Gate line\n"
-        "  * [unfalsified_criterion] description: AC1 names no falsifier\n"
+    monkeypatch.setenv(
+        "ONEX_TICKET_GUARD_PATH", "/nonexistent/ticket_creation_guard.py"
     )
-    guard = _write_guard(
-        tmp_path, 3, json.dumps({"decision": "block", "reason": reason})
-    )
-    monkeypatch.setenv("ONEX_TICKET_GUARD_PATH", str(guard))
     monkeypatch.setenv("ONEX_LANE", "gate-test-lane")
     monkeypatch.setattr(
         "sys.argv",
@@ -352,4 +351,4 @@ def test_create_ticket_gate_refuses_cli_prints_finding_codes(
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "error"
     assert result["ticket_id"] == ""
-    assert result["finding_codes"] == ["missing_gate_line", "unfalsified_criterion"]
+    assert "missing_gate_line" in result["finding_codes"]

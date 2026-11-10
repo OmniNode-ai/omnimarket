@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dispatch_reading_compute
+version: "1.0.0"
+description: "Pure reading that is NOT WORKING when a lane has no dispatch record (a drill lane started from a scratch script is named) or a dispatch record has no terminal result inside its deadline"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dispatch_reading_compute: "omnimarket.nodes.node_dispatch_reading_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "dispatch", "lanes", "reading", "deterministic"]
+pack: "core"
+display_name: "Dispatch Reading"
+node_role: "compute"
