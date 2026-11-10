@@ -266,6 +266,7 @@ class SshLaneHostTransport:
         runtime_config_target: str = "",
         closeout_tool_repo: str = "",
         closeout_ledger_env: str = "",
+        closeout_registry_env: str = "",
         plugin_store: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
@@ -297,6 +298,12 @@ class SshLaneHostTransport:
             raise ValueError(
                 f"remote_lane_start.closeout_ledger_env {closeout_ledger_env!r}: an upper-case variable name"
             )
+        if closeout_registry_env and not re.fullmatch(
+            r"[A-Z][A-Z0-9_]*", closeout_registry_env
+        ):
+            raise ValueError(
+                f"remote_lane_start.closeout_registry_env {closeout_registry_env!r}: an upper-case variable name"
+            )
         if plugin_store and not _PLUGIN_STORE.fullmatch(plugin_store):
             raise ValueError(
                 f"remote_lane_start.plugin_store {plugin_store!r}: path characters, optionally under $HOME"
@@ -304,6 +311,7 @@ class SshLaneHostTransport:
         self._plugin_store = plugin_store.rstrip("/")
         self._closeout_tool_repo = closeout_tool_repo
         self._closeout_ledger_env = closeout_ledger_env
+        self._closeout_registry_env = closeout_registry_env
         self._runtime_config = runtime_config_text
         self._runtime_config_target = runtime_config_target
         if not _PATH_PREFIX.fullmatch(path_prefix):
@@ -948,7 +956,11 @@ class SshLaneHostTransport:
         ``LANE-CLOSEOUT-UNAVAILABLE`` is the ``unavailable`` flag, and a tree the closeout refused is the error
         (the cells of the other trees stay).
         """
-        if not (self._closeout_tool_repo and self._closeout_ledger_env):
+        if not (
+            self._closeout_tool_repo
+            and self._closeout_ledger_env
+            and self._closeout_registry_env
+        ):
             return ModelLaneCloseoutCells(error=self._not_run("closeout_worktrees"))
         if request.registry_root is None:
             return ModelLaneCloseoutCells(
@@ -965,6 +977,7 @@ class SshLaneHostTransport:
             self._ledger_names.get(request.run_id),
             tool_repo=self._closeout_tool_repo,
             ledger_env=self._closeout_ledger_env,
+            registry_env=self._closeout_registry_env,
         )
         first, newline, rest = script.partition("\n")
         prefix = CLOSEOUT_HEADER_PREFIX.format(run_id=request.run_id)

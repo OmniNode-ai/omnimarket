@@ -17,10 +17,10 @@ from typing import Any
 import pytest
 from omnibase_spi.contracts.services import ModelLaneHostRef, ModelLaneHostStepRequest
 
-from omnimarket.nodes.node_lane_guard_unit_effect.handlers import (
-    handler_lane_guard_host_source as source_module,
+from omnimarket.nodes.node_lane_guard_unit_effect import (
+    lane_guard_host_source as source_module,
 )
-from omnimarket.nodes.node_lane_guard_unit_effect.handlers.handler_lane_guard_host_source import (
+from omnimarket.nodes.node_lane_guard_unit_effect.lane_guard_host_source import (
     lane_guard_host_source,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
@@ -120,6 +120,6 @@ def test_a_guard_program_that_lost_a_command_the_nodes_send_is_refused(
     broken = tmp_path / "runtime_lane_guard_host.py"
     broken.write_text("print('guard host program')\n", encoding="utf-8")
     monkeypatch.setattr(source_module, "HOST_PROGRAM", str(broken))
-    monkeypatch.setattr(source_module, "__file__", str(tmp_path / "handlers" / "x.py"))
+    monkeypatch.setattr(source_module, "__file__", str(tmp_path / "x.py"))
     with pytest.raises(ValueError, match="missing command"):
         lane_guard_host_source()

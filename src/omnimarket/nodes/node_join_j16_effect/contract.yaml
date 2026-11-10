@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Join J16 Effect (OMN-23122, J16: an eval result appears on the floor)
+#
+# Reads the newest reading row of piece 16 on the ledger and the floor record, and writes the two chains of join J16 (piece 16,
+# then piece 17) to the emission journal under one correlation id: golden when an eval result reaches the floor record with an
+# age, a typed failure otherwise, with piece 17's typed upstream_ refusal when piece 16 failed. It changes no verdict and no bound.
+name: node_join_j16_effect
+contract_name: node_join_j16_effect
+node_name: node_join_j16_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs join J16 once per publish cycle. A missing, UNKNOWN or stale eval result is piece 16's typed failure and piece 17's typed
+  upstream_ refusal, never a success; a ledger that cannot be read writes nothing and is reported as unread.
+
+handler:
+  module: omnimarket.nodes.node_join_j16_effect.handlers.handler_join_j16
+  class: HandlerJoinJ16
+  input_model: omnimarket.nodes.node_join_j16_effect.models.model_join_j16.ModelJoinJ16Command
+
+# HandlerJoinJ16 takes the overlay, the ledger row source, the emission sink, the floor record path, the backend and the clock as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [emission-journal-append]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelJoinJ16Command
+  module: omnimarket.nodes.node_join_j16_effect.models.model_join_j16
+  description: Whether the run writes its chains.
+output_model:
+  name: ModelJoinJ16Result
+  module: omnimarket.nodes.node_join_j16_effect.models.model_join_j16
+  description: The join's outcome, its correlation id and the failure that ended it.
+
+terminal_event: onex.evt.omnimarket.join-sixteen-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  join_j16_requested: onex.cmd.omnimarket.join-sixteen-requested.v1
+  join_j16_run_completed: onex.evt.omnimarket.join-sixteen-run-completed.v1
+  join_j16_run_failed: onex.evt.omnimarket.join-sixteen-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.join-sixteen-run-completed.v1
+  - onex.evt.omnimarket.join-sixteen-run-failed.v1
+
+overlay:
+  node: node_join_j16_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23122
+  transport_type: inmemory

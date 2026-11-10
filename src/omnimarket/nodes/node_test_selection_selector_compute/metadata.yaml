@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_test_selection_selector_compute
+version: "1.0.0"
+description: Decides the shard count of a narrowed test selection, and whether it is too heavy to stay narrowed, from estimated test time
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_test_selection_selector_compute: omnimarket.nodes.node_test_selection_selector_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ci, test-selection, shard-count]
+node_role: compute
+pack: pr_lifecycle
+display_name: Test Selection Selector

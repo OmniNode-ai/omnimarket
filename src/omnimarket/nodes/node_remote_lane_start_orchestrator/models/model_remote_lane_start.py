@@ -77,9 +77,12 @@ class ModelRemoteLaneStartSettings(BaseModel):
     # The repository directory that holds the host's lane-closeout command, beside the registry root; "" leaves the
     # closeout step to the frozen runner script.
     closeout_tool_repo: str = ""
-    # The variable the closeout command reads the lane's ledger copy path from; both closeout keys set, or the step stays
-    # with the runner script.
+    # The variable the closeout command reads the lane's ledger copy path from; all three closeout keys set, or the
+    # step stays with the runner script.
     closeout_ledger_env: str = ""
+    # The variable the closeout command reads the registry root from; all three closeout keys set, or the step stays
+    # with the runner script.
+    closeout_registry_env: str = ""
     # The plugin store on the host (path characters, optionally under $HOME): a tree is installed there from its archive;
     # "" leaves the step to the runner script.
     plugin_store: str = ""

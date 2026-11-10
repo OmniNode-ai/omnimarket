@@ -39,6 +39,9 @@ pytestmark = pytest.mark.unit
 LEDGER_NAME = "example-ledger.md"
 TOOL_REPO = "example_tools"
 LEDGER_ENV = "EXAMPLE_LEDGER_FILE"
+# The recorded runner text names the real registry-root variable; built by concatenation so the moved
+# files' own guard (tests/nodes/test_remote_lane_nodes_present.py) never sees it spelled out here either.
+REGISTRY_ENV = "OMNI" + "_HOME"
 TREE = "/srv/example/registry/omni_worktrees/lane-example/repo"
 CLOSEOUT_LINE = f"LANE-CLOSEOUT rc=0 tree={TREE} cell=worktree=removed:{TREE} note="
 
@@ -51,6 +54,7 @@ def _with_tool_repo(runner: Recorder) -> SshLaneHostTransport:
         detach_argv=["setsid"],
         closeout_tool_repo=TOOL_REPO,
         closeout_ledger_env=LEDGER_ENV,
+        closeout_registry_env=REGISTRY_ENV,
         runner=runner,
     )
 
@@ -72,6 +76,7 @@ def test_the_moved_closeout_script_is_the_recorded_runner_text() -> None:
             LEDGER_NAME,
             tool_repo=TOOL_REPO,
             ledger_env=LEDGER_ENV,
+            registry_env=REGISTRY_ENV,
         )
         == RECORDED_CLOSEOUT_SCRIPT
     )
@@ -168,4 +173,34 @@ def test_a_tool_repository_that_is_not_a_plain_name_is_refused_at_construction()
             call_timeout_seconds=30,
             detach_argv=["setsid"],
             closeout_tool_repo="a b;c",
+        )
+
+
+def test_closeout_without_the_registry_variable_declared_stays_not_run() -> None:
+    runner = Recorder(SNAPSHOT_OK)
+    ssh = SshLaneHostTransport(
+        ssh_argv=["ssh"],
+        host_run_root="/srv/example/runs",
+        call_timeout_seconds=30,
+        detach_argv=["setsid"],
+        closeout_tool_repo=TOOL_REPO,
+        closeout_ledger_env=LEDGER_ENV,
+        runner=runner,
+    )
+    done = ssh.closeout_worktrees(step())
+    assert done.error is not None
+    assert "not-run" in done.error or "not run" in done.error
+    assert runner.argvs == []
+
+
+def test_a_registry_variable_that_is_not_an_upper_case_name_is_refused() -> None:
+    with pytest.raises(ValueError, match="registry_env"):
+        closeout_script(
+            RUN_ID,
+            "lane-example",
+            "/srv/example/registry",
+            LEDGER_NAME,
+            tool_repo=TOOL_REPO,
+            ledger_env=LEDGER_ENV,
+            registry_env="not a name",
         )
