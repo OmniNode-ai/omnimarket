@@ -157,9 +157,6 @@ runtime:
     row_limit: 100000
   sources:
     record_relpath: .claude_scratch/factory-floor/factory-floor.json
-    # The work-state projection node's output (OMN-22935): the lanes the floor draws are attributed to its rows from their
-    # CLAIM cells in this projection, never from an owner typed into the overlay. An unreadable projection is a cause.
-    work_state_relpath: .onex_state/work-state/work-state.json
     watcher_relpath: .claude_scratch/pr-watcher/state.json
     # The landing controller's admission record (OMN-22876): the merges the floor counts include the ones on no goal list that the
     # controller admitted (its ticket rule, a release, a scope lift), so the floor reads what the controller admits. Found at
@@ -185,6 +182,10 @@ runtime:
     # shared reds), published by the controller's host from its own state. The board's work list names a pull request's owner from it;
     # a map that is unknown (never published, or older than its bound) makes the list unread, never empty.
     owner_map_projection: owner_map
+    # The lane list (OMN-22935, OMN-23391): the lanes the floor draws are attributed to the work-state projection's rows from their CLAIM
+    # cells, never from an owner typed into the overlay. The work-state node publishes its projection with the time it was built; one
+    # that is unknown (never published, or older than its bound) is a cause on the board, and no lane is drawn from it.
+    work_state_projection: work_state
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.
