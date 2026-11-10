@@ -118,5 +118,9 @@ def test_golden_the_computed_record_carries_what_the_page_draws() -> None:
     joins = {j["id"]: j for p in served["pieces"] for j in p["joins"]}
     assert joins["J2"]["counted"] is True
     assert "counted" in joins["J14"]
+    # The page draws each of those cells: a record that carries them and a page that ignores them is the gap this closes.
+    for expr, _cls, _field in PAGE_READS:
+        assert expr in PAGE
+    assert "pieceWord(p)" in PAGE
     # The line under the strip is the record's own text; it names the pieces that work and are not integrated.
     assert "work but are not integrated (pieces 2, 3)" in served["readiness"]["text"]
