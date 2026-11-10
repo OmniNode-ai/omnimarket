@@ -253,6 +253,12 @@ providers:
     # the CLI's own 240s budget. Only a transient failure is retried; on a paid
     # model the customer chose, the spend is the customer's own (INV-068).
     max_retries: 2
+    # OMN-23176. The retries above went out back to back: C29 run 42639763864
+    # (2026-11-09T14:57Z) made its three calls in 5.5 s and all three answered 429
+    # "google/gemini-2.5-flash-lite is temporarily rate-limited upstream. Please
+    # retry shortly", as runs 42589695452 and 42564608889 had. Waiting between
+    # them spreads the three calls over about 40 s of the CLI's 240 s budget.
+    retry_wait_seconds: 20
     # Both mirror the same platform rung. They land in the overlay row's own
     # nullable columns; the routing reducer falls back to its platform
     # defaults (30000 / DELEGATION_MAX_TOKENS_HARD_LIMIT) when either is null.
