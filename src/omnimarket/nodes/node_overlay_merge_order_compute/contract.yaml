@@ -66,6 +66,9 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 
+dependency_ownership:
+  overlay: "Owned by the overlay home's CI step (runtime_overlay_merge_order_check), which loads the node overlay and constructs the handler in process."
+
 externally_consumed_topics:
   - onex.evt.omnimarket.overlay-merge-order-decided.v1
   - onex.evt.omnimarket.overlay-merge-order-run-completed.v1
