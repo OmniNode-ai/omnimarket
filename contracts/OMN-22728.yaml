@@ -62,3 +62,12 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22728 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect -q --no-cov
     cwd: .
+- id: dod-omn22728-read-timeout-chain
+  description: The read-command timeout error chain emits one refused event and no answered event, and the in-time golden chain emits one answered event.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov -k "query_node_timeout or command_route_in_time"
+    cwd: .
