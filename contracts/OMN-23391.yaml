@@ -50,3 +50,10 @@ dod_evidence:
         check_value: "uv run --frozen pytest tests/nodes/node_floor_owner_map_publish_effect tests/nodes/node_floor_simple_effect/test_worklist_floor_simple.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn23391-inventory-j7-route-reads"
+    description: "The inventory holds a row for the floor publish step join_j7 and for the path .onex_state/floor-delegation/route-reads.json, so the inventory test passes on dev's floor contracts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
