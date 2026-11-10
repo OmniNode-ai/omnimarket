@@ -1078,7 +1078,6 @@
   "tests/nodes/node_floor_fill_orchestrator/test_node_floor_fill_orchestrator_parity.py": 0.03,
   "tests/nodes/node_floor_fill_orchestrator/test_node_floor_fill_orchestrator_review.py": 1.14,
   "tests/nodes/node_floor_fill_orchestrator/test_node_floor_fill_orchestrator_safety.py": 0.26,
-  "tests/nodes/node_floor_fill_orchestrator/test_node_floor_fill_orchestrator_seams.py": 3.0,
   "tests/nodes/node_floor_fill_reducer/test_floor_fill_reducer_parity.py": 0.01,
   "tests/nodes/node_floor_fill_reducer/test_floor_fill_reducer_states.py": 0.01,
   "tests/nodes/node_floor_fill_reducer/test_node_floor_fill_reducer.py": 0.78,
