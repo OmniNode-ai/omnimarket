@@ -41,7 +41,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect -q --no-cov -k prrp_snapshot_hosts
     cwd: .
 - id: dod-omn23219-unreadable-table
-  description: A lab host table that cannot be read fails the run with an ALARM and no heartbeat, and the named hosts still receive the file.
+  description: A lab host table that cannot be read fails the run with an ALARM and no heartbeat, and no host receives the file.
   source: manual
   binds_ac:
   - AC2

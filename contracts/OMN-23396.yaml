@@ -29,7 +29,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect -q --no-cov -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_hosts_from_lab_table.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23396-regression
   description: The publisher's golden chain (a failed read records a failure and a recovery publishes) and the node entrypoint binding still pass. Binds no criterion; a regression check.
