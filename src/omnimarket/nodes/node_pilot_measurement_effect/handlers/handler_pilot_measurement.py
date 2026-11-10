@@ -29,20 +29,20 @@ from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.handlers.reading_text import stamp_text
 from omnimarket.models.floor_17a import ModelNodeEmission
 from omnimarket.models.model_reading import EnumReadingVerdict
-from omnimarket.nodes.node_pilot_manifest_check_compute.handlers.handler_pilot_manifest_check import (
-    HandlerPilotManifestCheck,
-)
-from omnimarket.nodes.node_pilot_manifest_check_compute.models.enum_pilot_status import (
+from omnimarket.models.pilot_manifest.enum_pilot_status import (
     EnumPilotStatus,
 )
-from omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_bar_criterion import (
+from omnimarket.models.pilot_manifest.model_pilot_bar_criterion import (
     ModelPilotBarCriterion,
 )
-from omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_manifest import (
+from omnimarket.models.pilot_manifest.model_pilot_manifest import (
     ModelPilotManifest,
 )
-from omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_manifest_check_request import (
+from omnimarket.models.pilot_manifest.model_pilot_manifest_check_request import (
     ModelPilotManifestCheckRequest,
+)
+from omnimarket.nodes.node_pilot_manifest_check_compute.handlers.handler_pilot_manifest_check import (
+    HandlerPilotManifestCheck,
 )
 from omnimarket.nodes.node_pilot_measurement_effect.models.model_pilot_measurement import (
     EnumPilotState,

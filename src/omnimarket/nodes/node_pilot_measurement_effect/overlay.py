@@ -17,10 +17,10 @@ from typing import Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_bar_criterion import (
+from omnimarket.models.pilot_manifest.model_pilot_bar_criterion import (
     ModelPilotBarCriterion,
 )
-from omnimarket.nodes.node_pilot_manifest_check_compute.models.model_pilot_manifest_check_overlay import (
+from omnimarket.models.pilot_manifest.model_pilot_manifest_check_overlay import (
     ModelPilotManifestCheckOverlay,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
