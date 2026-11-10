@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-22527
+title: Return explicit outcomes for serialized lane dispatch
+summary: The criteria of omnimarket#5074, moved unchanged from the shared contract of OMN-19998.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19998-lane-dispatch-contract
+  statement: Lane dispatch uses a frozen serialized spec, a verified canonical record, declared bus topics and deployment-bound grant roles.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the dispatch contract round-trips canonical JSON, refuses invalid policy and admission facts, preserves runner arguments and routes through its declared node; machine topic roles resolve only when bound by the overlay -- falsifiers: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka" and uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov -- falsifier: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka"'
+- id: req-omn19998-lane-dispatch-entry
+  statement: A JSON list reaches the declared dispatch node and returns an ordered placement outcome and reason for every lane without treating an unconfirmed send as placed.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: list dispatch returns placed, placing, refused or crashed per input; missing repository or parent is refused before artifacts or commands; checker, capacity and ownership refusals and pre-send crashes do not hide later lanes; CLI exit codes distinguish unsuccessful and pending placements -- falsifier: uv run --frozen pytest tests/nodes/test_lane_dispatch_batch.py -q -n 0 --no-cov -p no:randomly'
+evidence_requirements:
+- kind: tests
+  description: Return explicit outcomes for serialized lane dispatch
+  command: uv run --frozen pytest tests/nodes/test_lane_dispatch_batch.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19998-lane-dispatch-entry
+  description: Focused batch regressions exercise the checker and runner adapters, per-item crash isolation and missing identity admission. A detached banner or exit zero without a matching placement acknowledgement is not placed.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_lane_dispatch_batch.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19998-lane-dispatch-entry-deploy
+  description: Hosted smoke invokes the list CLI through the declared RuntimeLocal node and in-memory bus with real checker and runner subprocess adapters. It checks placement acknowledgements and process exit codes without launching real lanes or claiming live broker authorization.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_lane_dispatch_batch.py -q -n 0 --no-cov -p no:randomly -k list_cli
+    cwd: .
+- id: dod-omn19998-lane-dispatch-contract
+  description: Frozen model, canonical record, policy refusals and runner arguments are exercised in the focused dispatch suite. This does not assert the original controller timer criteria or a live broker grant.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn19998-lane-dispatch-deploy
+  description: Hosted deployment smoke invokes the declared node through RuntimeLocal with an in-memory overlay and checker/runner protocol adapters. The real Redpanda proof remains subject to deployment topic and group authorization; this smoke does not claim a live installation.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_golden_chain_lane_dispatch_effect.py -q -n 0 --no-cov -k declared_node_over_inmemory_overlay
+    cwd: .
+- id: dod-omn22527-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22527 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_lane_dispatch_batch.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
