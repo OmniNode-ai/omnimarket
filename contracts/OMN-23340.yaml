@@ -54,6 +54,9 @@ dod_evidence:
   - check_type: command
     check_value: grep -q 'effects-held verbs refuse it themselves (OMN-23340)' src/omnimarket/nodes/node_lab_alarm/overlay.py
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_overlay_without_effects_held.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn23340-integration-proof
   description: On the Mac after the branch is installed, the broker-lag unit writes a run record line newer than the install. Hosted CI cannot reach the Mac, so only the local Done gate runs this unbound check.
   source: manual

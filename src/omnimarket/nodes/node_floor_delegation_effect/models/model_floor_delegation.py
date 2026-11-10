@@ -103,6 +103,7 @@ class ModelDelegationContractRuntime(_Frozen):
     scenario_read_timeout_seconds: int = Field(gt=0)
     scenario_stage_deadline_seconds: int = Field(gt=0)
     scenario_refresh_seconds: int = Field(gt=0)
+    scenario_missing_refresh_seconds: int = Field(gt=0)
     scenario_reads_max_age_seconds: int = Field(gt=0)
     ledger_read_command_env: str = Field(min_length=1)
     ledger_read_timeout_seconds: int = Field(gt=0)
@@ -164,6 +165,7 @@ class ModelScenarioRead(_Frozen):
     read_at: str
     runs: tuple[ModelScenarioRun, ...] = ()
     reason: str = ""
+    read_seconds: float | None = None
 
 
 class ModelScenarioReads(_Frozen):
@@ -249,6 +251,7 @@ class ModelScenarioResult(_Frozen):
     builder_ticket: str | None = None
     builder_group: TicketGroup | None = None
     workflow_url: str = ""
+    read_seconds: float | None = None
 
 
 class ModelStartPart(_Frozen):
