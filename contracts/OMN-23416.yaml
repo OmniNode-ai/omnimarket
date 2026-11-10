@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-23416
+title: The fill starts a continuation for each stopped piece of work, with the earlier result in its instructions
+summary: node_floor_fill_orchestrator reads the stopped candidates node_floor_fill_candidates_compute lists and starts one continuation lane per candidate through floor_fill.stopped_runner_command (the lane start node's entry), with the previous lane's report text in the brief file it hands to the entry's --brief. Three new overlay keys carry the command, the reports root and the brief directory.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23416-continuation
+  statement: A stopped lane the fill lists as a candidate gets one continuation lane started by the node, its brief carrying the previous lane's result text, and every seam it touches is pinned by a test that fails when either side changes shape.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_floor_fill_orchestrator reads the stopped candidates and starts one continuation lane per candidate through the lane start node, with the previous lane''s result text in the brief it passes, and a failing control where a stopped candidate present in the input starts nothing on the unfixed orchestrator -- falsifier: uv run pytest on the fill orchestrator''s tests with a planted stopped candidate fails on the unfixed node'
+  - id: AC2
+    statement: 'AC2: the seam between the stopped-lane compute, the fill orchestrator and the lane start node has a join test that fails when any side''s model changes shape, run on the in-memory bus and the real broker -- falsifier: uv run pytest on that join test with a planted field rename'
+evidence_requirements:
+- kind: tests
+  description: The continuation tests (golden, error chain, failing controls) and the seam tests of node_floor_fill_orchestrator
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_continuation.py src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_continuation_seams.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23416-continuation-tests
+  description: Runs the continuation tests. A stopped candidate planted in the floor record starts one continuation lane whose saved brief holds the previous report; the control that removes the stopped send starts nothing, which is what the unfixed orchestrator does (it reads only verdicts.lines).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_continuation.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-seam-tests
+  description: Runs the seam tests, floor record to candidates compute to orchestrator to the lane start entry's parser and the ledger CLAIM read, each with a control that renames one field on one side and goes red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_continuation_seams.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-parity
+  description: Runs the orchestrator's parity test, whose new case plants a stopped candidate; the in-memory bus leg runs everywhere and the Redpanda leg runs against the broker FLOOR_FILL_PARITY_BOOTSTRAP names.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_orchestrator_parity.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-existing-orchestrator-tests
+  description: Runs the orchestrator's existing node gate and orchestrator tests, unchanged in what they assert.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_node_gate.py src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_orchestrator.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23416-integration-proof-lab
+  description: Runs the continuation, seam and parity tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The live drill of a lane that ended partial (AC3 of the ticket) is not part of this item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23416 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_continuation.py src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_continuation_seams.py src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_orchestrator_parity.py -q --no-cov -p no:randomly'
+    cwd: .
