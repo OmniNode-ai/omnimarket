@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift import (
     EnumOverlayVerdict,
+    ModelOverlayCheck,
 )
 from omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order import (
     EnumMergeOrderVerdict,
@@ -114,8 +115,8 @@ def test_the_overlay_decides_which_verdicts_are_ahead() -> None:
 )
 def test_a_check_that_cannot_be_judged_is_refused_never_passed(
     changed: tuple[str, ...],
-    checks: tuple,
-    failure: str,  # type: ignore[type-arg]
+    checks: tuple[ModelOverlayCheck, ...],
+    failure: str,
 ) -> None:
     result = handler().handle(command(changed, checks))
     assert result.status == "failed"

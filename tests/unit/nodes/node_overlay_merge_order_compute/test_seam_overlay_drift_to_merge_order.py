@@ -25,6 +25,7 @@ from omnimarket.nodes.node_overlay_drift_effect.models.model_overlay_drift impor
 from omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order import (
     EnumMergeOrderVerdict,
     ModelOverlayMergeOrderCommand,
+    ModelOverlayMergeOrderResult,
 )
 from tests.unit.nodes.node_overlay_merge_order_compute.merge_order_support import (
     EXAMPLE_OVERLAY,
@@ -62,7 +63,7 @@ def drift_answers(*, planted: bool) -> tuple[ModelOverlayCheck, ...]:
     return InProcessRuntimeValidator().validate(tuple(entries)).results
 
 
-def decide(changed: tuple[str, ...], *, planted: bool):  # type: ignore[no-untyped-def]
+def decide(changed: tuple[str, ...], *, planted: bool) -> ModelOverlayMergeOrderResult:
     return handler().handle(
         ModelOverlayMergeOrderCommand(
             correlation_id="seam-1",
