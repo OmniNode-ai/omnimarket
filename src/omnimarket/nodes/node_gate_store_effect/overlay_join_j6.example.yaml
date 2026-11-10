@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_gate_store_join_j6/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default. The upstream rule and the emission journal are read from the join refusal
+# overlay (node_join_refusal_effect), join J6.
+emission_node: "example_gate_store_node:join_j6"
+stopped_piece: example_piece_stopped
+other_piece: example_piece_other
+piece_limit: 3
+reservation_ttl_seconds: 60
+max_chains_per_run: 1
+drill_window_hours: 6
+drill_commit_deadline_seconds: 0.2
+drill_silence_seconds: 2.0
+allow_injected_break: false
+injected_fault: Swap the audit sink for one that reports the append and keeps nothing

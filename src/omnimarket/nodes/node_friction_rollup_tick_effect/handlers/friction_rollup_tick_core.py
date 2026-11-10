@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core import (
@@ -29,6 +30,22 @@ def stamp(value: datetime) -> str:
 
 def file_stamp(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def report_directory_reference(
+    state_dir: Path, registry_root: Path, settings: ModelFrictionRollupTickSettings
+) -> str:
+    """How the STATUS row names the report directory: relative to the registry root when it is under it, else as given."""
+    try:
+        relative = state_dir.relative_to(registry_root).as_posix()
+    except ValueError:
+        return state_dir.as_posix()
+    return relative if relative != "." else settings.state_subdir
+
+
+def trend_key(window_name: str) -> str:
+    """The trend field that holds the deltas of the window with this configured name."""
+    return f"totals_{window_name}_delta"
 
 
 def _cell(value: str) -> str:
@@ -172,11 +189,11 @@ def compute_trend(
             "generated_at": previous.get("generated_at"),
             "path": previous_path,
         },
-        "totals_24h_delta": {
+        trend_key(primary): {
             key: round(_number(cur_primary.get(key)) - _number(old_primary.get(key)), 6)
             for key in ("friction_rows", "occurrences", "cost_minutes")
         },
-        "totals_2h_delta": {
+        trend_key(short): {
             key: round(_number(cur_short.get(key)) - _number(old_short.get(key)), 6)
             for key in ("friction_rows", "cost_minutes")
         },
@@ -206,8 +223,11 @@ def status_row(
     report_name: str,
     settings: ModelFrictionRollupTickSettings,
     class_rules_note: str | None = None,
+    report_dir: str | None = None,
 ) -> str:
-    """The one STATUS row a tick appends. It must pass the ledger lock's lints."""
+    """The one STATUS row a tick appends. It must pass the ledger lock's lints.
+
+    ``report_dir`` names where the reports are; it defaults to the settings' relative ``state_subdir``."""
     primary, short = settings.primary, settings.short
     window = _as_dict(current[primary.name].get("window"))
     t_primary, t_short = _totals(current[primary.name]), _totals(current[short.name])
@@ -225,8 +245,8 @@ def status_row(
     if previous is None:
         trend_cell = "first run"
     else:
-        d24 = _as_dict(trend.get("totals_24h_delta"))
-        d2 = _as_dict(trend.get("totals_2h_delta"))
+        d24 = _as_dict(trend.get(trend_key(primary.name)))
+        d2 = _as_dict(trend.get(trend_key(short.name)))
         new = [_cell(str(name)) for name in _as_list(trend.get("new_classes"))]
         new_text = (
             _limited(new, " ", settings.new_classes_budget_chars) if new else "none"
@@ -271,8 +291,9 @@ def status_row(
     ]
     if class_rules_note is not None:
         cells.append(class_rules_note)
+    directory = settings.state_subdir if report_dir is None else report_dir
     cells.append(
-        f"report={settings.state_subdir}/{report_name} json={settings.state_subdir}/{settings.latest_stem}.json"
+        f"report={directory}/{report_name} json={directory}/{settings.latest_stem}.json"
     )
     row = " | ".join(cells)
     limit = settings.max_row_chars
@@ -316,8 +337,8 @@ def render_summary_markdown(
         lines.append("First run: no previous tick to compare with.")
     else:
         previous = _as_dict(trend.get("previous"))
-        d24 = _as_dict(trend.get("totals_24h_delta"))
-        d2 = _as_dict(trend.get("totals_2h_delta"))
+        d24 = _as_dict(trend.get(trend_key(primary)))
+        d2 = _as_dict(trend.get(trend_key(short)))
         lines += [
             f"- Previous tick: {previous.get('generated_at')} ({previous.get('path')})",
             f"- {primary}: rows {_signed(_number(d24.get('friction_rows')))},"

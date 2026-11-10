@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-23429
+title: 'The work log and its database copy agree again: three lost entries restored and the source of 100 stray entries found'
+summary: The hourly parity receipt between the work ledger file and its database projection names the projection rows that carry no ledger sequence (extra_unsequenced) apart from sequenced extras, so the 100 stray rows of 2026-11-09 are measured and named in every receipt. The receipt's exit codes, exact flag, missing and extra counts are unchanged, and piece 6 still reads only missing and unexplained.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23429-extra-unsequenced
+  statement: The parity explain and the receipt row split the extra projection rows into extra_unsequenced (ledger_seq NULL) and extra_sequenced, read only under --explain or --receipt, and a failed read is an error that prints no report.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the parity receipt names unsequenced extra rows (extra_unsequenced) and merges with this ticket''s contract, failing without the change -- falsifier: uv run pytest on the parity receipt tests at the merge base'
+evidence_requirements:
+- kind: tests
+  description: The extra_unsequenced tests of node_projection_work_ledger (the behaviour tests and the two seam tests on the row piece 6 and the receipt writer read)
+  command: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_parity_extra_unsequenced.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23429-extra-unsequenced
+  description: Runs the extra_unsequenced tests. At the merge base the three source files lack the split and 7 of the 8 tests fail; at the head all 8 pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_parity_extra_unsequenced.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23429-neighbouring-parity-tests
+  description: Runs the neighbouring parity explain tests, which read the same report model and the receipt row unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_explain.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23429-integration-proof-lab
+  description: Runs the extra_unsequenced tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23429 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_parity_extra_unsequenced.py -q --no-cov -p no:randomly'
+    cwd: .

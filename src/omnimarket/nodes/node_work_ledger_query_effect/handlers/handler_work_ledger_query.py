@@ -23,6 +23,7 @@ from omnimarket.models.work_ledger_query import (
     ModelWorkLedgerParity,
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerQueryResult,
+    ModelWorkLedgerRowRecord,
     ModelWorkLedgerStateQuery,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
@@ -38,10 +39,14 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
+    ProtocolWorkLedgerFilteredRowReader,
     ProtocolWorkLedgerQueryReader,
     ProtocolWorkLedgerStateReader,
     WorkLedgerReadError,
     load_work_ledger_query_source,
+)
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_page import (
+    rows_page,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_state_answer import (
     decode_cursor,
@@ -126,7 +131,7 @@ class HandlerWorkLedgerQuery:
                     base, "open-rulings needs a reader backed by work_ledger_state"
                 )
         try:
-            records = self._reader.read_rows(since=request.since, until=until)
+            records = self._read_rows(request, until)
             newest_ts, newest_projected = self._reader.freshness(until=until)
             first = request.since or (min((r.row_ts for r in records), default=until))
             days = replay.utc_days(first, until)
@@ -150,7 +155,34 @@ class HandlerWorkLedgerQuery:
         parsed = replay.parse_rows(records)
         if request.principal is not None:
             parsed = [r for r in parsed if r.token("principal") == request.principal]
-        answer = self._answer(request, parsed, now, self._hold_stale_after)
+        if (
+            request.query is EnumWorkLedgerQueryKind.ROWS
+            and request.page_size is not None
+        ):
+            try:
+                total, page, next_cursor = rows_page(
+                    parsed,
+                    lanes=request.lanes or ((request.lane,) if request.lane else ()),
+                    page_size=request.page_size,
+                    cursor=request.cursor,
+                    kinds=request.kinds,
+                    since=request.since,
+                    ticket=request.ticket,
+                    pr=request.pr,
+                    row_ref=request.row_ref,
+                    term=request.term,
+                )
+            except WorkLedgerReadError as exc:
+                return self._fail(base, str(exc), page_size=request.page_size)
+            answer = {
+                "matched": total,
+                "rows": tuple(page),
+                "lines": tuple(r.text for r in page),
+                "page_size": request.page_size,
+                "next_cursor": next_cursor,
+            }
+        else:
+            answer = self._answer(request, parsed, now, self._hold_stale_after)
         return base.model_copy(
             update={
                 **answer,
@@ -162,6 +194,36 @@ class HandlerWorkLedgerQuery:
                 "parity": parity,
             }
         )
+
+    def _read_rows(
+        self, request: ModelWorkLedgerQueryRequest, until: datetime
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """The window's rows; a rows read with a start is narrowed in the store when it can be (OMN-19609).
+
+        Only the rows and rulings answers are narrowed, and only when the request names a start, so the
+        parity days (taken from the first row read when no start is named) and every other answer read
+        the window whole. The narrowing is a superset of what select_rows keeps, so the answer is the same.
+        """
+        reader = self._reader
+        if (
+            request.since is not None
+            and request.query
+            in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}
+            and isinstance(reader, ProtocolWorkLedgerFilteredRowReader)
+        ):
+            kinds = tuple(request.kinds) or (
+                tuple(replay.RULING_TYPES)
+                if request.query is EnumWorkLedgerQueryKind.RULINGS
+                else ()
+            )
+            if kinds or request.lane:
+                return reader.read_rows_matching(
+                    since=request.since,
+                    until=until,
+                    kinds=tuple(k.upper() for k in kinds),
+                    contains=request.lane or None,
+                )
+        return reader.read_rows(since=request.since, until=until)
 
     @staticmethod
     def _message(exc: Exception) -> str:

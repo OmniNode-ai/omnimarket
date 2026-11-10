@@ -44,9 +44,21 @@ class ModelCloseoutScopeOverlay(BaseModel):
     eligible_states: list[str] = Field(min_length=1)
     rank_rules: list[EnumRankRule]
     no_contract_reserve: int = Field(ge=0)
+    # True: a ticket with no contract on a default branch (and no recorded post-merge condition)
+    # is selected only through the reserve above, never into a free slot of the ranking.
+    no_contract_only_by_reserve: bool
     bundle_max_bytes: int = Field(ge=1024)
     held_cap: int = Field(ge=0)
     waiting_cap: int = Field(ge=0)
+    # OMN-23282: what the closer remembers of each examination. A ticket whose description, newest
+    # closer comment and contract state are unchanged across this many of its selections has an
+    # unchanged rejection, and is held out of later runs until one of them changes. The memory file
+    # sits under the registry root at this relative path. Both have a default so a deployed
+    # overlay written before this key still loads; the packaged overlay.yaml states them.
+    hold_after_unchanged_selections: int = Field(default=1, ge=1)
+    examined_memory_path: str = Field(
+        default=".onex_state/closeout_examined.json", min_length=1
+    )
     contract_repos: list[str]
     default_refs: list[str] = Field(min_length=1)
     no_contract_detail_prefix: str = Field(min_length=1)

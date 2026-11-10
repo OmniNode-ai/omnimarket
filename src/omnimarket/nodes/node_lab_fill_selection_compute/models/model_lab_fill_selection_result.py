@@ -38,3 +38,6 @@ class ModelLabFillSelectionResult:
     # Implementation-merged tickets taken as DoD-verify work for the slots ordinary and pr-land
     # work leave idle, one per ticket in candidate order (OMN-17427).
     dod_verify: tuple[ModelLabFillDecision, ...] = ()
+    # Tickets held because an earlier lane ended already-built or skipped-owned with a merged PR, listed
+    # once per tick for the proof-close path instead of a fill lane (OMN-22347).
+    closer: tuple[ModelLabFillDecision, ...] = ()

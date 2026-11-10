@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Models of the lab-fill effect node (OMN-20668)."""
 
+from .model_lab_fill_approved_work import (
+    ModelLabFillApprovedCandidate,
+    ModelLabFillApprovedWorkRequest,
+    ModelLabFillApprovedWorkResult,
+)
 from .model_lab_fill_effect import (
     ModelLabFillFallbackHostRequest,
     ModelLabFillFallbackHostResult,
@@ -25,6 +30,12 @@ from .model_lab_fill_sources import (
     ModelLabFillSourcesRequest,
     ModelLabFillSourcesResult,
 )
+from .model_lab_fill_sprint_tickets import (
+    ModelLabFillSprintCandidate,
+    ModelLabFillSprintStage,
+    ModelLabFillSprintTicketsRequest,
+    ModelLabFillSprintTicketsResult,
+)
 from .model_lab_fill_tick import (
     ModelLabFillTickAlarm,
     ModelLabFillTickCloud,
@@ -38,6 +49,9 @@ from .model_lab_fill_tick import (
 )
 
 __all__ = [
+    "ModelLabFillApprovedCandidate",
+    "ModelLabFillApprovedWorkRequest",
+    "ModelLabFillApprovedWorkResult",
     "ModelLabFillFallbackHostRequest",
     "ModelLabFillFallbackHostResult",
     "ModelLabFillLaunchRequest",
@@ -55,6 +69,10 @@ __all__ = [
     "ModelLabFillSourceRead",
     "ModelLabFillSourcesRequest",
     "ModelLabFillSourcesResult",
+    "ModelLabFillSprintCandidate",
+    "ModelLabFillSprintStage",
+    "ModelLabFillSprintTicketsRequest",
+    "ModelLabFillSprintTicketsResult",
     "ModelLabFillStatusWriteRequest",
     "ModelLabFillStatusWriteResult",
     "ModelLabFillTickAlarm",

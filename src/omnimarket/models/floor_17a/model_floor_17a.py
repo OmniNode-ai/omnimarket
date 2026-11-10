@@ -84,6 +84,11 @@ class ModelJoinDef(_Frozen):
     # instant is not judged, because the join's to-piece could not have answered it. A chain at or after the bound is judged
     # as ever, so a chain that is really broken stays red. ``None`` judges every chain in the window.
     judged_since: AwareDatetime | None = None
+    # Whether a to-piece typed failure under a from-piece success is a finding of this join (OMN-23086), declared by the overlay.
+    # Off, such an answer is not read (the join reads not run or error only); on, each is named with the failure's code and
+    # the join reads broken. A join with a running caller of its own turns it on, so a failed answer is told apart from a
+    # missed run.
+    names_failed_answers: bool = False
 
 
 class ModelPieceDef(_Frozen):
@@ -152,6 +157,7 @@ FindingCode = Literal[
     "downstream_started_after_upstream_failed",
     "downstream_missing_typed_failure",
     "downstream_started_before_upstream_succeeded",
+    "downstream_failed_after_upstream_succeeded",
 ]
 
 
@@ -253,6 +259,16 @@ class ModelRunnerPlanRule(_Frozen):
     restore: str = ""
 
 
+class ModelOwnerSourceOverlay(_Frozen):
+    """Where owner entries may come from (OMN-23388): the floor overlay file must equal its own git checkout's ``remote_ref``."""
+
+    # The ref of the overlays repository's main (for example ``origin/main``); the floor overlay file, which carries the
+    # owner map, must be byte-equal to the same file at this ref, or the cycle refuses it naming the source.
+    remote_ref: str = Field(min_length=1)
+    # How long one git read may take before the source counts as unreadable.
+    git_timeout_s: int = Field(default=20, gt=0)
+
+
 class ModelLabStateOverlay(_Frozen):
     """The overlay of the lab-state reader and node: the sources and how each is read."""
 
@@ -263,6 +279,8 @@ class ModelLabStateOverlay(_Frozen):
     deploy_lag_lookback_days: int = Field(gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
+    # Hosts the pool probe does not read; every other host of the floor record needs a disk line in the pool receipt.
+    disk_unprobed_hosts: tuple[str, ...] = ()
     # A host the pool refuses only on load that its own placed units explain is busy with our work, not failing (OMN-22870).
     # ``own_load_marker`` is the refusal part the placement prints when the units placed on the host explain the load over the
     # bar; ``load_bar_markers`` are the load bar's own refusal parts. A refusal made of those parts alone, with the own-load
@@ -279,6 +297,9 @@ class ModelLabStateOverlay(_Frozen):
     deploy_agent_url: str = ""
     deploy_agent_history: int = Field(default=50, gt=0)
     deploy_agent_timeout_s: int = Field(default=10, gt=0)
+    # When declared, the floor overlay's owner entries are accepted only from this ref of the overlays repository
+    # (OMN-23388); ``None`` checks no source.
+    owner_source: ModelOwnerSourceOverlay | None = None
 
     @model_validator(mode="after")
     def _one_per_kind(self) -> ModelLabStateOverlay:
@@ -446,15 +467,39 @@ class ModelFloorCause(_Frozen):
     # after its last row, ``None`` for a cause that is not one.
     still_occurring: bool | None = None
     resolved_at: datetime | None = None
+    # Who is on it, as far as the floor can tell (OMN-23388): ``owned`` when a live lane is on the row, ``unowned`` when
+    # none is and the owner map and the lane list were fresh and read, ``unknown`` when none is but either input was
+    # stale or unread. Only ``unowned`` says nobody is on it.
+    owner_state: Literal["owned", "unowned", "unknown"] = "unowned"
+    # Why the owner is unknown, with the read's age; empty unless ``owner_state`` is ``unknown``.
+    owner_note: str = ""
 
 
 class ModelFloorJoinRow(_Frozen):
+    """One join as the board draws it (OMN-23081): its state, whether it counts toward ready, who owns it and which side failed."""
+
     id: str
     label: str
     to_piece: int
     state: str
     golden_age_s: int | None
     error_age_s: int | None
+    from_piece: int = 0
+    # The join counts toward READY when both of its pieces are in the readiness scope.
+    counted: bool = False
+    # The join's state is one the overlay lists as passing.
+    passes: bool = False
+    # The red row of a counted join that does not pass (``join:<id>``); ``None`` for a passing or uncounted join.
+    cause_id: str | None = None
+    # The join's definition in words, from the overlay: which pieces it joins.
+    definition: str = ""
+    # Which side failed: ``from``, ``to`` or ``neither`` (both pieces read, no cycle ran it); empty for a passing join.
+    failed_side: str = ""
+    failed_reason: str = ""
+    # Age of the newest chain of the join, golden or error; ``None`` when the join never ran.
+    last_run_age_s: int | None = None
+    owners: tuple[str, ...] = ()
+    lanes: tuple[str, ...] = ()
 
 
 class ModelFloorShadowLine(_Frozen):
@@ -492,6 +537,17 @@ class ModelFloorPieceRow(_Frozen):
     golden_in_window: int | None = None
     error_in_window: int | None = None
     shadows: tuple[ModelFloorShadowLine, ...] = ()
+    # READY (OMN-23081): the piece is in the readiness scope, its own reading is WORKING and every counted join at either end
+    # passes. ``integration`` says which of the four a piece is; a piece that works and is not ready draws amber.
+    ready: bool = False
+    in_scope: bool = False
+    integration: Literal[
+        "ready", "working_not_integrated", "not_working", "not_started"
+    ] = "not_started"
+    # The ids of the counted joins, at either end of the piece, that do not pass.
+    blocking_joins: tuple[str, ...] = ()
+    # How many joins count for this piece (both ends in scope).
+    counted_joins: int = 0
 
 
 class ModelFloorLabLine(_Frozen):
@@ -515,6 +571,17 @@ class ModelFloorAlarmLine(_Frozen):
     channel: str
 
 
+class ModelFloorReadiness(_Frozen):
+    """The count the board reports in place of "working" pieces (OMN-23081): ready pieces, and those that work but are not integrated."""
+
+    in_scope: tuple[int, ...]
+    ready: tuple[int, ...]
+    working_not_integrated: tuple[int, ...]
+    not_working: tuple[int, ...]
+    broken_joins: tuple[str, ...]
+    text: str
+
+
 class ModelRebuild(_Frozen):
     current_piece: int
     headline: str
@@ -523,6 +590,20 @@ class ModelRebuild(_Frozen):
     go_given_through: int | None
     # The pieces a ruling opened by name beyond the in-order go (OMN-23313); empty when none, or when the ledger was unread.
     go_pieces: tuple[int, ...] = ()
+
+
+class ModelOwnerInputs(_Frozen):
+    """The two inputs of "who is on it", judged by age (OMN-23388); ``None`` on the document is an overlay that judges none."""
+
+    unknown: bool
+    # Why, naming each input that is stale or unread with its age; empty when both were fresh and read.
+    reason: str = ""
+    # Seconds since the owner map was read; ``None`` when it was not read.
+    owner_map_age_s: int | None = None
+    owner_map_max_age_s: int | None = None
+    # Seconds since the lane list was read; ``None`` when it was not read.
+    lanes_age_s: int | None = None
+    lanes_max_age_s: int | None = None
 
 
 class ModelRedRule(_Frozen):
@@ -538,6 +619,9 @@ class ModelRedRule(_Frozen):
     # Every red cause no live lane is on, whatever tickets it lists as owners (OMN-23243): a listed owner ticket with no
     # running lane carries nothing, so the rule reads NOT WORKING and names the row instead of counting it as carried.
     uncarried_red: tuple[str, ...] = ()
+    # Every red cause no live lane is on while the owner map or the lane list was stale or unread (OMN-23388): the board
+    # cannot say nobody is on these, so they are named here and never in ``unowned_red`` or ``uncarried_red``.
+    owner_unknown_red: tuple[str, ...] = ()
 
 
 class ModelHealthReadingUsed(_Frozen):
@@ -589,6 +673,8 @@ class ModelFloorSimple(_Frozen):
     details_href: str
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None
+    # How many pieces are ready, not how many work (OMN-23081); ``None`` is a record written before the rule existed.
+    readiness: ModelFloorReadiness | None = None
     outside_goal: ModelOutsideGoal = Field(
         default_factory=lambda: ModelOutsideGoal(read=False)
     )
@@ -599,6 +685,8 @@ class ModelFloorSimple(_Frozen):
     # The board's work list (OMN-23184): every in-scope item that needs help, one row per class, members paged. ``None`` is a
     # record written before the list existed, or an overlay that declares none.
     worklist: tuple[ModelWorklistClass, ...] | None = None
+    # The owner map and lane list as judged this cycle (OMN-23388); ``None`` when the overlay declares no judgment.
+    owner_inputs: ModelOwnerInputs | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -781,6 +869,16 @@ class ModelNumbersOverlay(_Frozen):
     record_max_age_s: int = Field(gt=0)
 
 
+class ModelOwnerInputsOverlay(_Frozen):
+    """What makes "who is on it" readable (OMN-23388): the lab source that reads the owner map, and the lane list's bound."""
+
+    # The id of the lab source whose reading is the owner map's (the overlay store source). Its own declared bound is the
+    # owner map's maximum age; a source it did not report, or that was not read, is an owner map that was not read.
+    owner_map_source: str = Field(min_length=1)
+    # The lane list (the floor record's lanes) is older than this many seconds: its owners are unknown.
+    lanes_max_age_s: int = Field(gt=0)
+
+
 class ModelCauseOverlay(_Frozen):
     max_shown: int = Field(gt=0)
     # The delegation:idle row (OMN-23313); ``None`` declares none and the floor draws none.
@@ -794,6 +892,30 @@ class ModelCauseOverlay(_Frozen):
     estimated_cost_stoppages: tuple[str, ...] = ()
     # A stoppage seen within this many seconds of the clock is still occurring; ``None`` does not judge it.
     still_occurring_within_s: int | None = Field(default=None, gt=0)
+    # When declared, a row with no lane on it reads owner unknown, not unowned, while the owner map or lane list is stale or
+    # unread (OMN-23388); ``None`` judges neither input.
+    owner_inputs: ModelOwnerInputsOverlay | None = None
+
+
+class ModelReadinessOverlay(_Frozen):
+    """What READY means for a rebuild piece (OMN-23081, the operator's ruling of 2026-11-08 05:08:55Z).
+
+    A piece is READY when it is in scope, its own reading is WORKING, at least ``min_joins`` joins count for it and every
+    counted join reads one of ``passing_join_states``. A join counts when both of its pieces are in ``in_scope_pieces``.
+    Every counted join that does not pass is a red row (``join:<id>``) whose owner tickets are the cause overlay's owners.
+    ``finding_sides`` says which side of a join a chain finding blames; no value of this kind is in code.
+    """
+
+    in_scope_pieces: tuple[int, ...] = Field(min_length=1)
+    min_joins: int = Field(ge=1)
+    passing_join_states: tuple[str, ...] = Field(min_length=1)
+    finding_sides: dict[str, Literal["from", "to"]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _pieces_exist(self) -> ModelReadinessOverlay:
+        if any(not 1 <= p <= 18 for p in self.in_scope_pieces):
+            raise ValueError("the readiness scope names pieces 1 to 18 only")
+        return self
 
 
 class ModelFloorSimpleOverlay(_Frozen):
@@ -804,6 +926,7 @@ class ModelFloorSimpleOverlay(_Frozen):
     rebuild: ModelRebuildOverlay
     numbers: ModelNumbersOverlay
     causes: ModelCauseOverlay
+    readiness: ModelReadinessOverlay
     piece_events: tuple[ModelPieceEventRule, ...] = ()
     # Where the reading writer's rows are on the ledger; ``None`` reads none (the file route of the runtime alone).
     ledger_readings: ModelLedgerReadingRule | None = None
@@ -863,6 +986,8 @@ class ModelFloorSimpleInput(_Frozen):
     pr_class_counts: dict[str, int] = Field(default_factory=dict)
     pr_class_tickets: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     pr_class_prs: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    # Open pull requests ("repo#number") that cite no ticket, as the work-state projection flags them.
+    unticketed_prs: tuple[str, ...] = ()
     # When the friction rollup behind the stoppages was built: the stoppages say nothing newer.
     friction_as_of: datetime | None = None
     stoppages: tuple[ModelFloorCauseIn, ...] = ()

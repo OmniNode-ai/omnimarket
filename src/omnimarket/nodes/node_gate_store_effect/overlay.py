@@ -27,6 +27,10 @@ def load_gate_store_policy(
     for piece, limit in policy.limits.items():
         if limit < 1:
             raise NodeOverlayError(f"{OVERLAY_ID}.limits.{piece} must be at least 1")
+    if policy.backend.value == "postgres" and policy.postgres is None:
+        raise NodeOverlayError(
+            f"{OVERLAY_ID}.postgres is required when backend is postgres"
+        )
     for piece in policy.order:
         if piece not in policy.limits:
             raise NodeOverlayError(

@@ -32,6 +32,7 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
@@ -329,6 +330,14 @@ class HandlerRegistryUnits:
             )
             if supplied:
                 filled[str(name)] = supplied
+        for name in unit.get("environment_refuse_worktree_paths") or []:
+            offending = [
+                entry
+                for entry in filled.get(str(name), "").split(os.pathsep)
+                if under_worktrees(entry)
+            ]
+            if offending:
+                raise UnitRootRefusedError(request.unit, offending)
         if request.mode == "install":
             for name in unit.get("required_environment_inputs") or []:
                 if not filled.get(str(name)):
@@ -362,7 +371,8 @@ class HandlerRegistryUnits:
         ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
         variable of the installing shell, and falls back to the value the unit's last install recorded, so a
         reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
-        never written with a hole in it.
+        never written with a hole in it, except in a top-level key the declaration lists under ``optional_keys``:
+        that key is left out of the document.
         """
         declared = unit.get("config_file")
         if not declared:
@@ -393,7 +403,14 @@ class HandlerRegistryUnits:
                 return {str(key): fill(item) for key, item in node.items()}
             return node
 
-        return json.dumps(fill(declared["document"]), indent=1) + "\n"
+        document = dict(declared["document"])
+        for key in declared.get("optional_keys") or []:
+            if key in document:
+                try:
+                    fill(document[key])
+                except ValueError:
+                    del document[key]
+        return json.dumps(fill(document), indent=1) + "\n"
 
     def config_inputs(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]

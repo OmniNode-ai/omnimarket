@@ -161,6 +161,7 @@ jobs:
           # new verifier run id therefore restarts the clock (OMN-17427).
           deadline=2580
           seen_run=""
+          waits=0
 
           while [ "$elapsed" -lt "$deadline" ]; do
             # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
@@ -220,6 +221,25 @@ jobs:
                 ;;
               "")
                 echo "Waiting for repo-evidence / dod-verify to post for ${HEAD_SHA}..."
+                # OMN-23087: dod-verify posts only once the Repo Evidence Gate run has started. A run
+                # that ended startup_failure has no jobs, so it never posts and this wait would burn the
+                # whole window (43 minutes of polling per workflow file, which also fed the rate limit
+                # this step then reported). Read the gate's own run for this head every third poll and
+                # refuse at once, naming the real cause. A failed read, no run yet, or a run still going
+                # keeps waiting exactly as before, so nothing here admits or hides a verdict.
+                waits=$((waits + 1))
+                if [ $(( (waits - 1) % 3 )) -eq 0 ]; then
+                  gate_run="" gate_status="" gate_conclusion=""
+                  if gate="$(gh api "repos/${REPO}/actions/workflows/call-repo-evidence-gate.yml/runs?head_sha=${HEAD_SHA}&event=pull_request_target&per_page=20" --jq '[.workflow_runs[]] | sort_by(.created_at) | last | "\(.id // "-") \(.status // "-") \(.conclusion // "-")"' 2>&1)"; then
+                    read -r gate_run gate_status gate_conclusion <<< "$gate" || true
+                  else
+                    echo "::notice::Repo Evidence Gate run read failed; still waiting: ${gate}"
+                  fi
+                  if [ "$gate_status" = "completed" ] && [ "$gate_conclusion" = "startup_failure" ]; then
+                    echo "::error::The Repo Evidence Gate run ${gate_run} for ${HEAD_SHA} ended startup_failure, so repo-evidence / dod-verify will never post. This is the gate failing to start, not a timeout or a rate limit; fix its startup, then re-run."
+                    exit 1
+                  fi
+                fi
                 ;;
               *)
                 echo "Repo evidence is ${conclusion}; waiting."
@@ -1202,10 +1222,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
-        with:
-          version: "latest"
+      - name: Install uv from PyPI (OMN-21968)
+        run: |
+          python3 -m pip install --user --break-system-packages --disable-pip-version-check uv
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+          "$(python3 -m site --user-base)/bin/uv" --version
 
       - name: Set up Python 3.12
         run: uv python install 3.12
@@ -1232,6 +1253,9 @@ jobs:
         id: detect
         env:
           FLAG: "on"
+          # OMN-23296: the selector calls node_test_selection_selector_compute, which
+          # imports only pydantic and pyyaml; src/ holds it without installing the package.
+          PYTHONPATH: src
         run: |
           . .venv/bin/activate
           python -m scripts.ci.detect_test_paths \
@@ -1307,10 +1331,11 @@ jobs:
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
-      - name: Install uv
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
-        with:
-          version: "latest"
+      - name: Install uv from PyPI (OMN-21968)
+        run: |
+          python3 -m pip install --user --break-system-packages --disable-pip-version-check uv
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+          "$(python3 -m site --user-base)/bin/uv" --version
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
@@ -3401,11 +3426,18 @@ jobs:
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
-      - name: Install uv (dependency cache — OMN-14680)
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+      - name: Install uv from PyPI (OMN-21968)
+        run: |
+          python3 -m pip install --user --break-system-packages --disable-pip-version-check uv
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+          "$(python3 -m site --user-base)/bin/uv" --version
+      - name: Cache uv downloads (dependency cache — OMN-14680)
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25  # v5
         with:
-          version: "latest"
-          enable-cache: true
+          path: ~/.cache/uv
+          key: uv-coverage-sweep-gate-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-coverage-sweep-gate-${{ runner.os }}-
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies

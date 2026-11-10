@@ -24,6 +24,7 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.handlers.floor_projection import read_controller_owners
 from omnimarket.models.floor_17a import (
     ModelFloorLane,
     ModelFloorSimple,
@@ -50,7 +51,6 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple im
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import read_watcher
 from omnimarket.nodes.node_floor_simple_effect.handlers.worklist_sources import (
     projected_in_scope_prs,
-    read_controller_owners,
     read_worklist,
 )
 from omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection import (
@@ -62,6 +62,7 @@ from tests.nodes.node_floor_simple_effect.support import (
     build_home,
     environ,
     overlay_text,
+    put_projection,
 )
 from tests.nodes.node_floor_simple_effect.test_golden_chain_floor_simple import (
     run,
@@ -229,7 +230,7 @@ def test_golden_every_red_or_conflicting_in_scope_pull_request_is_listed_with_it
     )
     items = read_worklist(
         watcher_path=WATCHER,
-        controller_state_path=state,
+        owners=read_controller_owners(state),
         projection=proj,
         scope=SCOPE,
         overlay=OVERLAY,
@@ -264,7 +265,7 @@ def test_golden_a_green_pull_request_and_a_draft_are_not_listed(tmp_path: Path) 
     write_state(state, [], [])
     items = read_worklist(
         watcher_path=WATCHER,
-        controller_state_path=state,
+        owners=read_controller_owners(state),
         projection=proj,
         scope=SCOPE,
         overlay=OVERLAY,
@@ -308,7 +309,15 @@ def test_golden_a_stopped_ticket_with_a_named_follow_up_and_no_successor_is_list
             left=left,
         )
 
-    with_pr = next(iter(declared_tickets()))
+    with_pr = next(
+        ticket_of(WATCHED["prs"][k]["facts"]["title"])
+        for k in sorted(WATCHED["prs"])
+        if SCOPE.classify(k) == "in_scope"
+        and WATCHED["prs"][k]["facts"]["state"] == "OPEN"
+        and not WATCHED["prs"][k]["facts"].get("draft", False)
+        and WATCHED["prs"][k]["cls"] != "held-excluded"
+        and ticket_of(WATCHED["prs"][k]["facts"]["title"])
+    )
     added = ModelWorkStateResult(
         as_of=proj.as_of,
         counts=proj.counts,
@@ -328,7 +337,7 @@ def test_golden_a_stopped_ticket_with_a_named_follow_up_and_no_successor_is_list
         write_state(path, [], [])
         items = read_worklist(
             watcher_path=WATCHER,
-            controller_state_path=path,
+            owners=read_controller_owners(path),
             projection=added,
             scope=SCOPE,
             overlay=OVERLAY,
@@ -350,7 +359,7 @@ def test_golden_a_required_check_red_over_an_hour_on_several_pull_requests_is_a_
     write_state(state, [], [])
     items = read_worklist(
         watcher_path=WATCHER,
-        controller_state_path=state,
+        owners=read_controller_owners(state),
         projection=proj,
         scope=SCOPE,
         overlay=OVERLAY,
@@ -369,7 +378,7 @@ def test_golden_a_required_check_red_over_an_hour_on_several_pull_requests_is_a_
     short = OVERLAY.model_copy(update={"shared_red_after_s": 10**9})
     items_none = read_worklist(
         watcher_path=WATCHER,
-        controller_state_path=state,
+        owners=read_controller_owners(state),
         projection=proj,
         scope=SCOPE,
         overlay=short,
@@ -387,7 +396,7 @@ def test_golden_a_cause_lease_over_a_member_owns_the_shared_red(tmp_path: Path) 
     write_state(state, [], [])
     base = read_worklist(
         watcher_path=WATCHER,
-        controller_state_path=state,
+        owners=read_controller_owners(state),
         projection=proj,
         scope=SCOPE,
         overlay=OVERLAY,
@@ -404,7 +413,7 @@ def test_golden_a_cause_lease_over_a_member_owns_the_shared_red(tmp_path: Path) 
     )
     items = read_worklist(
         watcher_path=WATCHER,
-        controller_state_path=state,
+        owners=read_controller_owners(state),
         projection=proj,
         scope=SCOPE,
         overlay=OVERLAY,
@@ -573,6 +582,15 @@ def test_error_the_reading_fails_on_an_item_read_unowned_while_a_lane_is_on_it()
 # --- the board cycle -------------------------------------------------------------------------------------------------------
 
 
+def write_owner_map(home: Path, *, as_of: datetime) -> None:
+    """The owner map as the reader leaves it for the cycle: an empty controller state published as the projection."""
+    state = home / "landing/state.json"
+    write_state(state, [], [])
+    owners = read_controller_owners(state)
+    assert owners is not None
+    put_projection(home, "owner_map", owners.payload(), as_of=as_of)
+
+
 def cycle_home(
     tmp_path: Path, proj: ModelWorkStateResult | None, state: bool
 ) -> tuple[Path, dict[str, str]]:
@@ -598,11 +616,9 @@ def cycle_home(
     )
     home = build_home(tmp_path, watch=WATCHED)
     if proj is not None:
-        path = home / ".onex_state/work-state/work-state.json"
-        path.parent.mkdir(parents=True)
-        path.write_text(proj.model_dump_json(), encoding="utf-8")
+        put_projection(home, "work_state", proj.model_dump(mode="json"))
     if state:
-        write_state(home / "landing/state.json", [], [])
+        write_owner_map(home, as_of=NOW)
     return home, environ(home) | {"ONEX_SKILL_OVERLAY_ROOTS": str(roots)}
 
 
@@ -650,3 +666,28 @@ def test_error_an_unreadable_state_file_is_none(tmp_path: Path) -> None:
     bad.write_text("not json", encoding="utf-8")
     assert read_controller_owners(bad) is None
     assert read_controller_owners(tmp_path / "absent.json") is None
+
+
+def test_error_an_owner_map_older_than_its_bound_makes_the_list_unread_not_stale_owners(
+    tmp_path: Path,
+) -> None:
+    """The controller's host stopped publishing 3 hours ago; the old map must not name owners now."""
+    proj = projection(declared_tickets())
+    home, env = cycle_home(tmp_path, proj, state=False)
+    write_owner_map(home, as_of=NOW - timedelta(hours=3))
+    run(home, env=env)
+    doc = written(home)
+    assert doc.sources_read["worklist"] is False
+    assert doc.worklist is None
+
+
+def test_golden_the_owner_column_fills_from_the_projection_with_no_local_state_file(
+    tmp_path: Path,
+) -> None:
+    proj = projection(declared_tickets())
+    home, env = cycle_home(tmp_path, proj, state=True)
+    (home / "landing/state.json").unlink()
+    run(home, env=env)
+    doc = written(home)
+    assert doc.sources_read["worklist"] is True
+    assert doc.worklist is not None
