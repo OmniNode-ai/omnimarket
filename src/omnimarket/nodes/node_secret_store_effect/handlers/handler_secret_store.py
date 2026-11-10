@@ -67,6 +67,7 @@ from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
     ModelSecretStoreResult,
 )
+from omnimarket.models.secret_store.plain_http_rule import PlainHttpRefusedError
 from omnimarket.nodes.node_secret_store_effect.adapters import (
     IdentityFileStore,
     identity_needed,
@@ -378,12 +379,15 @@ class HandlerSecretStore:
                     refusal=misconfigured,
                     detail=f"the bootstrap store has no entry for '{missing_ref}'",
                 )
-        store = secret_store_for(
-            overlay,
-            client_id=client_id,
-            client_secret=client_secret,
-            exchange=http_exchange,
-        )
+        try:
+            store = secret_store_for(
+                overlay,
+                client_id=client_id,
+                client_secret=client_secret,
+                exchange=http_exchange,
+            )
+        except PlainHttpRefusedError as exc:
+            return _Resolved(refusal=misconfigured, detail=str(exc))
         if store is None:
             return _Resolved(
                 refusal=misconfigured,
