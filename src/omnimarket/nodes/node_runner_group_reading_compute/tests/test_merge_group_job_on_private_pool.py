@@ -124,7 +124,7 @@ class _AnyJobProves(HandlerRunnerGroupReading):
                 update={
                     "runner_group_id": group.group_id,
                     "conclusion": "success",
-                    "runner_name": f"{queue.runner_name_prefix}-1",
+                    "runner_name": f"{queue.pools[0].runner_name_prefix}-1",
                 }
             )
             for j in request.merge_group_jobs or ()
