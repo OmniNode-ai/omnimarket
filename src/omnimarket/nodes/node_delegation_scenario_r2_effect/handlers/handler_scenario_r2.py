@@ -94,6 +94,7 @@ class ModelScenarioR2Runtime(BaseModel):
     local_first_env: str = Field(min_length=1)
     local_second_env: str = Field(min_length=1)
     dead_url_env: str = Field(min_length=1)
+    secret_store_folder: str = Field(min_length=1)
     local_backend_id: str = Field(min_length=1)
     delegate_task_type: str = Field(min_length=1)
     delegate_prompt: str = Field(min_length=1)
