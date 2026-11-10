@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
-from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.handlers.emission_sink import ChainEmitter, InMemoryEmissionSink
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, load_lab_work_topics
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
@@ -409,3 +409,135 @@ def test_golden_the_emission_failure_codes_are_typed_and_the_events_validate() -
         SETTINGS.seam_node,
     }
     assert all(e.backend == "in_memory" and not e.drill for e in world.sink.events)
+
+
+class _ProxyCaller:
+    """The real pool caller, except for the one thing a test breaks: ``hang`` never answers a dispatch, ``advert_error`` raises on the read."""
+
+    def __init__(
+        self, real: LabWorkCaller, *, hang: bool = False, advert_error: bool = False
+    ) -> None:
+        self._real = real
+        self._hang = hang
+        self._advert_error = advert_error
+
+    def advertisements(self) -> Any:
+        if self._advert_error:
+            raise RuntimeError("the advertisement read broke")
+        return self._real.advertisements()
+
+    def place(self, **kwargs: Any) -> Any:
+        return self._real.place(**kwargs)
+
+    async def dispatch(self, request: ModelLabWorkUnitRequest) -> Any:
+        if self._hang:
+            await asyncio.Event().wait()
+        return await self._real.dispatch(request)
+
+
+def _join_with(world: _World, **broken: bool) -> JoinJ2:
+    return JoinJ2(
+        settings=SETTINGS,
+        caller=_ProxyCaller(_caller(world), **broken),
+        sink=world.sink,
+        backend="in_memory",
+    )
+
+
+def _broken_chains(world: _World) -> list[str]:
+    """The finding codes the floor's fold reads long after the run, when an open chain has aged past its deadline."""
+    later = datetime.now(UTC) + timedelta(hours=1)
+    return [f.code for f in _receipts(world, now=later).findings]
+
+
+def test_error_control_a_seam_start_with_no_terminal_reads_start_without_terminal() -> (
+    None
+):
+    """The reading can fail: a seam chain that starts and never ends is what the floor names as broken."""
+
+    async def scenario(world: _World) -> None:
+        await world.open()
+        seam = ChainEmitter(
+            world.sink,
+            node=SETTINGS.seam_node,
+            piece=SETTINGS.seam_piece,
+            backend="in_memory",
+        )
+        seam.start()
+
+    world, _ = _run(scenario)
+    assert _broken_chains(world) == ["start_without_terminal"]
+
+
+def test_error_a_host_still_open_at_the_run_deadline_ends_its_seam_chain_typed() -> (
+    None
+):
+    async def scenario(world: _World) -> tuple[ModelJoinJ2HostResult, ...]:
+        await world.open()
+        for name in POOLED:
+            await world.serve(name, _EchoRunner())
+        return await _join_with(world, hang=True).run_hosts(
+            POOLED, deadline_seconds=0.3
+        )
+
+    world, results = _run(scenario)
+    for result in _by_host(results).values():
+        assert result.outcome is EnumJoinJ2Outcome.NO_RESULT
+        assert result.failure_code == "seam_deadline_exceeded"
+        assert _phases(world, result.correlation_id, 2) == [
+            ("start", None),
+            ("success", None),
+        ]
+        assert _phases(world, result.correlation_id, 3) == [
+            ("start", None),
+            ("failure", "seam_deadline_exceeded"),
+        ]
+    assert _broken_chains(world) == []
+
+
+def test_error_a_cancelled_run_ends_every_open_chain_typed_and_the_cancel_goes_on() -> (
+    None
+):
+    async def scenario(world: _World) -> list[str]:
+        await world.open()
+        await world.serve(POOLED[0], _EchoRunner())
+        run = asyncio.ensure_future(
+            _join_with(world, hang=True).run_hosts((POOLED[0],))
+        )
+        await asyncio.sleep(0.3)
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+        return [f"{e.piece}:{e.phase}:{e.failure_code}" for e in world.sink.events]
+
+    world, seen = _run(scenario)
+    assert seen == [
+        "2:start:None",
+        "2:success:None",
+        "3:start:None",
+        "3:failure:seam_interrupted",
+    ]
+    assert _broken_chains(world) == []
+
+
+def test_error_an_advertisement_read_that_raises_after_the_canary_start_ends_the_canary_typed() -> (
+    None
+):
+    async def scenario(world: _World) -> tuple[ModelJoinJ2HostResult, ...]:
+        await world.open()
+        await world.serve(POOLED[0], _EchoRunner())
+        return await _join_with(world, advert_error=True).run_hosts((POOLED[0],))
+
+    world, results = _run(scenario)
+    result = _by_host(results)[POOLED[0]]
+    assert result.outcome is EnumJoinJ2Outcome.NO_RESULT
+    assert result.failure_code == "canary_raised"
+    assert _phases(world, result.correlation_id, 2) == [
+        ("start", None),
+        ("failure", "canary_raised"),
+    ]
+    # the seam never started: it holds the one typed upstream refusal, the shape of a join's error case
+    assert _phases(world, result.correlation_id, 3) == [
+        ("failure", "upstream_canary_raised")
+    ]
+    assert _broken_chains(world) == []
