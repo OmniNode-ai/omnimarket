@@ -8,14 +8,17 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     Level,
     ModelLabDiskWatermarkOverlay,
@@ -86,6 +89,49 @@ def level_of(used_percent: float, volume: ModelWatermarkVolume) -> Level:
     return "ok"
 
 
+def check_page_mark_above_floor(
+    row: ModelWatermarkHost, volume: ModelWatermarkVolume, usage: Usage
+) -> None:
+    """Refuse a page mark that is not above the host's admission floor: the page must come first."""
+    free_at_page_gb = usage.total * (100 - volume.page_percent) / 100 / 1024**3
+    if free_at_page_gb <= row.admission_floor_gb:
+        raise WatermarkRefusalError(
+            f"{row.name}: {volume.path} page mark {volume.page_percent}% leaves "
+            f"{free_at_page_gb:.1f} GB free, not above the {row.admission_floor_gb:g} GB admission floor"
+        )
+
+
+def read_level(
+    host_name: str, environ: Mapping[str, str] | None = None, home: Path | None = None
+) -> Level | None:
+    """The level in the host's reading file; None when no overlay is deployed, the host has no row or no file is written yet.
+
+    A reading file that exists and cannot be parsed raises, so a page is never lost to a corrupt file.
+    """
+    try:
+        overlay = load_structured_overlay(
+            NODE_NAME,
+            ModelLabDiskWatermarkOverlay,
+            environ,
+            file_env=OVERLAY_ENV,
+        )
+    except NodeOverlayNotFoundError:
+        return None
+    rows = [row for row in overlay.hosts if row.name == host_name]
+    if len(rows) != 1:
+        return None
+    target = expand(rows[0].reading_file, home if home is not None else Path.home())
+    try:
+        text = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    level = json.loads(text).get("level")
+    for known in LEVEL_ORDER:
+        if level == known:
+            return known
+    raise WatermarkRefusalError(f"{target} holds no level of ok, warn or page")
+
+
 def expand(value: str, home: Path) -> Path:
     if value.startswith("$HOME/"):
         value = str(home / value[len("$HOME/") :])
@@ -118,6 +164,7 @@ class HandlerLabDiskWatermark:
         volumes: list[ModelVolumeReading] = []
         for volume in row.volumes:
             usage = self.usage(volume.path)
+            check_page_mark_above_floor(row, volume, usage)
             percent = 100.0 * usage.used / usage.total if usage.total else 0.0
             volumes.append(
                 ModelVolumeReading(
