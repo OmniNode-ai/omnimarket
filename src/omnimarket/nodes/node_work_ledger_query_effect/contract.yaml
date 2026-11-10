@@ -31,6 +31,8 @@ description: >
   exactly when error is set), the page_size it was cut to and a watermark, the
   newest projected_at of the state table at the read; a page that has more
   carries next_cursor.
+  A rows query carrying page_size answers one keyset page, oldest first, with the
+  rows' lines and a next_cursor while more remain; its lanes are a union.
   A rows query carrying history reads an explicit ledger_seq interval using an exclusive
   database-ingest cutoff. It retains raw rows and source names, checks source
   coverage before discovery filters, and binds cursors to the request and the

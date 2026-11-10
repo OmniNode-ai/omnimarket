@@ -212,6 +212,23 @@ class ModelLandingPrFacts(BaseModel):
         pattern=SHA_PATTERN,
         description="The head auto-merge is armed on, if armed.",
     )
+    pr_node_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The PR's GraphQL node id, which the GitHub landing effect's arm and "
+            "enqueue need (OMN-23405). Unread: the act-mode writer refuses the "
+            "merge as no_node_id. The decision never reads it."
+        ),
+    )
+    failed_run_ids: tuple[int, ...] = Field(
+        default=(),
+        description=(
+            "This head's failed workflow run ids, which the GitHub landing "
+            "effect's rerun needs (OMN-23405). Empty: the act-mode writer refuses "
+            "a rerun as no_run_ids. The decision never reads it."
+        ),
+    )
     red_annotations: dict[str, str] = Field(
         default_factory=dict,
         description=(
@@ -354,6 +371,21 @@ class ModelLandingCauseOwner(BaseModel):
         if self.check is None and self.cause is None:
             raise ValueError("a cause owner names the cause key or its check")
         return self
+
+
+class ModelLandingCrossRepoCause(BaseModel):
+    """A red check the controller has named as caused by a change in another repository.
+
+    ``check`` is the red check's name as the PR watcher reads it; ``owner`` is the
+    change, as ``repo#n``, whose merge clears it. Read from the controller's own
+    earlier messages and the declared order of the change (OMN-23345): a worker
+    leased on a PR that is not the cause's repository cannot push the fix.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check: str = Field(..., min_length=1)
+    owner: str = Field(..., pattern=PR_KEY_PATTERN)
 
 
 class ModelLandingCauseRelease(BaseModel):
@@ -597,6 +629,13 @@ class ModelLandingFacts(BaseModel):
         default=(), description="Repos under their landing floor (the floor alarm)."
     )
     cause_owners: tuple[ModelLandingCauseOwner, ...] = ()
+    cross_repo_causes: tuple[ModelLandingCrossRepoCause, ...] = Field(
+        default=(),
+        description=(
+            "Red checks already named as caused by an open change in another "
+            "repository: a PR red only on these gets no worker (OMN-23345)."
+        ),
+    )
     cause_releases: tuple[ModelLandingCauseRelease, ...] = ()
     cause_escalations: tuple[ModelLandingCauseEscalation, ...] = Field(
         default=(),
@@ -661,6 +700,7 @@ __all__: list[str] = [
     "ModelLandingCauseOwner",
     "ModelLandingCauseRelease",
     "ModelLandingCompanionFacts",
+    "ModelLandingCrossRepoCause",
     "ModelLandingFacts",
     "ModelLandingPolicy",
     "ModelLandingPrFacts",

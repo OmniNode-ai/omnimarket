@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23337
+title: Lab slot caps and test-run admission limits follow each host's measured capacity instead of fixed numbers
+summary: A new capacity node judges a lab host from its measured cores, memory, swap activity and load against overlay-held ratios and computes its slot cap from measured headroom; the focused test run admits through it, and the host capacity advertisement the floor reads records the inputs and carries the computed cap.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23337-adaptive-capacity
+  statement: Admission compares load per logical core and free memory share against overlay-held ratios, and each host's slot cap is its running lanes plus its measured headroom within an overlay floor and ceiling, recorded with its inputs on every reading.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each lab host''s capacity reading records its logical cores, memory, swap activity and load, and admission compares load per core and free memory against overlay-held ratios, never an absolute load number -- falsifier: uv run pytest tests -q -k admission_per_core in omnimarket, failing with an absolute bar restored'
+  - id: AC2
+    statement: 'AC2: each host''s slot cap is computed from its measured headroom (cores, free memory, current lanes'' measured use) within an overlay-held floor and ceiling, recomputed every capacity reading, and every change is recorded with its inputs -- falsifier: uv run pytest tests -q -k adaptive_slot_cap, failing when a cap ignores measured memory'
+  - id: AC3
+    statement: 'AC3: after install, the floor''s slots number and the focused-run admission agree on every host for an hour, and no focused test run is refused on a host whose per-core load is under the ratio -- falsifier: the lab capacity readings and focused-run receipts for that hour'
+evidence_requirements:
+- kind: tests
+  description: The capacity node's golden and error tests, the focused run's admission tests and the advertisement tests pass
+  command: uv run --frozen pytest tests/nodes/node_host_capacity_compute -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23337-admission-per-core
+  description: Runs the per-core admission tests. A many-core host at load 12.7 to 16.5 and 14.2 is admitted where a fixed 8.0 refused it, the same load is refused on a 32-core host and admitted on a 128-core one, the hosts of 10, 12 and 32 cores are admitted to no more than the old 8.0, free memory is a share of total, and swap activity refuses. The failing control restores the absolute 8.0 bar in the focused run's admission and the large-host tests go red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_capacity_compute/test_golden_chain_host_capacity_compute.py tests/nodes/node_push_validation_effect/test_handler_focused_test_run_effect.py -q --no-cov -p no:randomly -k admission_per_core
+    cwd: .
+- id: dod-omn23337-adaptive-slot-cap
+  description: Runs the slot cap tests. The cap follows measured memory (a memory-poor idle host gets a smaller cap, and the failing control that ignores memory goes red), measured load and running lanes, is held between the overlay floor and ceiling, a host named in the overlay has its own bounds, free slots and admission agree on every reading of a grid, and the advertisement records the inputs of every cap.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_capacity_compute/test_golden_chain_host_capacity_compute.py tests/unit/lab_work/test_adaptive_capacity_omn23337.py -q --no-cov -p no:randomly -k adaptive_slot_cap
+    cwd: .
+- id: dod-omn23337-regression
+  description: The focused run's own tests, the admission probe tests, the placement and fill tests still pass with the changed handler and models. Binds no criterion; it is a regression check.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_push_validation_effect/test_focused_test_run_admission_omn23337.py tests/nodes/node_focused_test_run_effect/test_node_focused_test_run_effect.py tests/unit/lab_work/test_lab_work_placement.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23337-agreement
+  description: Runs the agreement tests that stand behind AC3 on a grid of readings. The slots number the floor reads and the focused run's admission are one answer on every reading of the grid (a host that passes the bars has at least one free slot, a refused host has none), and a refused host has zero free slots in the lab fill plan. This binds the mechanism of AC3 only; the hour on the installed lab hosts cannot run on a hosted runner and is read from the lab capacity readings and focused-run receipts, recorded on the pull request and the ticket.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_capacity_compute/test_golden_chain_host_capacity_compute.py tests/unit/lab_work/test_adaptive_capacity_omn23337.py -q --no-cov -p no:randomly -k "free_slots_and_admission_are_one_answer or a_refused_hosts_free_slots"
+    cwd: .
+- id: dod-omn23337-integration-proof
+  description: After the branch is installed on the lab hosts, over an hour the floor's slots number and the focused-run admission agree on every host and no focused run is refused on a host whose per-core load is under the ratio. Hosted CI cannot read the lab hosts' advertisements, so only the local Done gate runs this check, and a local_done_gate item binds no criterion (the hosted gate refuses one); the hour's readings are recorded on the pull request and the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23337 --kind test -- uv run --frozen pytest tests/nodes/node_host_capacity_compute tests/unit/lab_work/test_adaptive_capacity_omn23337.py -q --no-cov -p no:randomly'
+    cwd: .
