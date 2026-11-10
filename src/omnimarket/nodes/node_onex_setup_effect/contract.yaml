@@ -39,6 +39,12 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
+    - operation: onex_setup.local_runtime
+      handler:
+        name: HandlerSetupLocalRuntime
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_runtime
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_runtime
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
     - operation: onex_setup.workspace
       handler:
         name: HandlerSetupWorkspace

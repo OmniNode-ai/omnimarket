@@ -28,6 +28,52 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
+def test_ollama_verify_uses_the_same_engine_without_installing(tmp_path: Path) -> None:
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        load_ollama_config,
+    )
+
+    config = load_ollama_config()
+    assert config is not None
+    home, workspace = tmp_path / "home", tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    before = _snapshot(tmp_path)
+    result = subprocess.run(
+        (
+            str(Path(sys.executable).parent / "onex"),
+            "setup",
+            "--action",
+            "verify",
+            "--json",
+            "--no-interactive",
+            "--workspace",
+            str(workspace),
+            "--component",
+            "delegation",
+            "--provider",
+            "ollama",
+            "--model",
+            config.models[-1].model,
+        ),
+        env={
+            "HOME": str(home),
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "ONEX_STATE_DIR": str(tmp_path / "state"),
+        },
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        input="",
+        timeout=45,
+    )
+    assert result.stdout.startswith("{"), result.stdout + result.stderr
+    journal = ModelSetupJournal.model_validate_json(result.stdout)
+    assert "ollama" in {item.step for item in journal.observations}
+    assert all(not item.changed for item in journal.observations)
+    assert _snapshot(tmp_path) == before
+
+
 @pytest.mark.parametrize("plan_file", [False, True])
 def test_installed_verify_observes_empty_install_without_writes(
     tmp_path: Path, plan_file: bool

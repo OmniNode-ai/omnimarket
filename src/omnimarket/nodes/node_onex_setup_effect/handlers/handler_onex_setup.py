@@ -60,17 +60,12 @@ SETUP_PROVIDERS: tuple[str, ...] = (
     "openai",
     "openai_compatible",
     "local",
+    "ollama",
 )
 #: Providers setup refuses, each with its problem and the way to reach it instead.
-REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {
-    "ollama": (
-        "ollama is not a setup provider",
-        "reach Ollama by its OpenAI-compatible URL: "
-        "--provider local --url http://localhost:11434/v1 --model <a model it runs>",
-    ),
-}
+REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {}
 URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible")
-KEYLESS_PROVIDERS: tuple[str, ...] = ("local",)
+KEYLESS_PROVIDERS: tuple[str, ...] = ("local", "ollama")
 ARGUMENTS_STEP = "arguments"
 SETUP_MARKER = "# generated-by: onex setup"
 INSTALL_SH_MARKER = "# generated-by: omnibase install.sh"

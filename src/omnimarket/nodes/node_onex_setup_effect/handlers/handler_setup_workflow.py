@@ -150,6 +150,9 @@ class HandlerSetupWorkflow:
             from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_legacy_import import (
                 HandlerSetupLegacyImport,
             )
+            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_runtime import (
+                HandlerSetupLocalRuntime,
+            )
             from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
                 HandlerSetupPreflight,
             )
@@ -173,8 +176,14 @@ class HandlerSetupWorkflow:
                         "user_config",
                         "runtime_config",
                         "identity",
-                        "models",
                     )
+                ),
+                HandlerSetupLocalRuntime(),
+                HandlerSetupEnvironment(
+                    name="models",
+                    onex_home=onex_home,
+                    credentials=credentials,
+                    model_step=model_step,
                 ),
                 HandlerSetupDashboard(onex_home=onex_home),
                 HandlerSetupClaude(name="claude-plugin"),

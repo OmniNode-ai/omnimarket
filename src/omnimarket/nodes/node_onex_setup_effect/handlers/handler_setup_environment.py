@@ -13,6 +13,7 @@ import stat
 from pathlib import Path
 from typing import Literal
 
+import yaml
 from omnibase_core.cli.cli_user_config import read_user_config, user_config_path
 from pydantic import SecretStr
 
@@ -21,6 +22,16 @@ from omnimarket.inference.local_byok_credential_adapter import LocalByokCredenti
 from omnimarket.local_deployment.tenant_identity import (
     mint_local_tenant_identity,
     read_local_tenant_identity,
+)
+from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_model_overlay_write import (
+    HandlerModelOverlayWrite,
+)
+from omnimarket.nodes.node_model_overlay_write_effect.models.model_model_overlay_write_request import (
+    ModelModelOverlayWriteRequest,
+)
+from omnimarket.nodes.node_model_overlay_write_effect.protocols.protocol_overlay_file_store_backends import (
+    FilesystemOverlayFileStore,
+    InMemoryOverlayFileStore,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers import (
     handler_onex_setup as original,
@@ -59,6 +70,74 @@ def _read(path: Path) -> str | None:
     return raw.decode()
 
 
+def reconcile_ollama_overlay(
+    plan: ModelSetupPlan, *, write: bool = False, tested_endpoint: str | None = None
+) -> bool:
+    """Compose the existing overlay owner without erasing other local routes.
+
+    The explicit model selects its canonical tier. Native resource suitability is
+    checked by the preceding Ollama adapter, before this configuration effect.
+    """
+    selected = next(
+        (item for item in plan.providers if item.provider == "ollama"), None
+    )
+    if selected is None:
+        return True
+    path = model_keys.model_handler().overrides_path()
+    request = ModelModelOverlayWriteRequest(
+        mode="native",
+        source="ollama",
+        memory_gb=0,
+        served_model_id=selected.models[0],
+        target_path=path,
+        marker_line="# Written by omninode-dev-setup: Ollama on this Mac.",
+    )
+    preview = InMemoryOverlayFileStore()
+    result = HandlerModelOverlayWrite(preview).handle(request)
+    if result.outcome == "refused":
+        raise ValueError(
+            "The canonical model configuration refused the selected Ollama model"
+        )
+    expected = yaml.safe_load(preview.files[path])
+    raw = _read(path)
+    try:
+        actual = yaml.safe_load(raw) if raw is not None else {}
+    except yaml.YAMLError:
+        raise ValueError(
+            "Review the existing model overlay; its unreadable content was preserved"
+        ) from None
+    if not isinstance(actual, dict) or not isinstance(actual.get("backends", []), list):
+        raise ValueError(
+            "Review the existing model overlay; its foreign structure was preserved"
+        )
+    rows = actual.get("backends", [])
+    wanted = {row["backend_id"]: row for row in expected["backends"]}
+    if tested_endpoint is not None and tested_endpoint not in {
+        row["endpoint_url"] for row in wanted.values()
+    }:
+        return False
+    current = {row.get("backend_id"): row for row in rows if isinstance(row, dict)}
+    ready = all(
+        name in current
+        and all(current[name].get(key) == value for key, value in row.items())
+        for name, row in wanted.items()
+    )
+    if ready or not write:
+        return ready
+    if any(
+        not isinstance(row, dict) or row.get("backend_id") not in wanted for row in rows
+    ) or len(current) != len(rows):
+        raise ValueError(
+            "Review the existing local routes before changing Ollama; unrelated routes were preserved"
+        )
+    result = HandlerModelOverlayWrite(FilesystemOverlayFileStore()).handle(request)
+    if result.outcome == "refused":
+        raise ValueError(
+            "The existing model overlay is user-owned and was preserved; review it before changing Ollama"
+        )
+    return reconcile_ollama_overlay(plan)
+
+
 class HandlerSetupEnvironment:
     """One native component adapter; all observations are read-only."""
 
@@ -83,7 +162,9 @@ class HandlerSetupEnvironment:
             model_step=self._prove_model,
         )
         if request.operation == "apply":
-            adapter.apply(request.plan)
+            result = adapter.apply(request.plan)
+            if result is not None and result.status not in ("success", "skipped"):
+                return result
         return adapter.observe(request.plan)
 
     def _result(
@@ -159,12 +240,24 @@ class HandlerSetupEnvironment:
         evidence: dict[str, str] = {}
         receipts: list[ModelOnexSetupReceipt] = []
         for desired in plan.providers:
+            if desired.provider == "ollama":
+                try:
+                    ready = reconcile_ollama_overlay(plan)
+                except ValueError as exc:
+                    return ModelSetupObservation(
+                        step="models", status="action_required", fix=str(exc)
+                    )
+                if not ready:
+                    return self._result(
+                        False,
+                        fix="Reconcile the native Ollama routing overlay before model verification.",
+                    )
             current = statuses.get(desired.provider)
             test = current.last_test if current else None
             if (
                 current is None
                 or not current.set_up
-                or current.models != desired.models
+                or (desired.provider != "ollama" and current.models != desired.models)
                 or test is None
                 or test.status != "passed"
                 or test.model != desired.models[0]
@@ -173,9 +266,23 @@ class HandlerSetupEnvironment:
                     False,
                     fix=f"Configure and prove the selected {desired.provider} models.",
                 )
-            if desired.url and (test.endpoint or "").rstrip("/").removesuffix(
-                "/v1/chat/completions"
-            ).removesuffix("/v1") != desired.url.rstrip("/").removesuffix("/v1"):
+            if desired.provider == "ollama" and (
+                test.endpoint is None
+                or not reconcile_ollama_overlay(plan, tested_endpoint=test.endpoint)
+            ):
+                return self._result(
+                    False,
+                    fix="Prove the selected Ollama model on this Mac; its previous test used another endpoint.",
+                )
+            if (
+                desired.provider != "ollama"
+                and desired.url
+                and (test.endpoint or "")
+                .rstrip("/")
+                .removesuffix("/v1/chat/completions")
+                .removesuffix("/v1")
+                != desired.url.rstrip("/").removesuffix("/v1")
+            ):
                 return self._result(
                     False,
                     fix=f"Reconcile the changed {desired.provider} endpoint before verification.",
@@ -196,7 +303,7 @@ class HandlerSetupEnvironment:
             update={"receipts": tuple(receipts)}
         )
 
-    def apply(self, plan: ModelSetupPlan) -> None:
+    def apply(self, plan: ModelSetupPlan) -> ModelSetupObservation | None:
         if self.name == "workspace":
             if plan.workspace.exists() and not plan.workspace.is_dir():
                 raise ValueError(
@@ -229,9 +336,15 @@ class HandlerSetupEnvironment:
         else:
             for desired in plan.providers:
                 if desired.provider == "ollama":
-                    raise ValueError(
-                        "The selected Ollama server must be provisioned before model registration"
-                    )
+                    try:
+                        if not reconcile_ollama_overlay(plan, write=True):
+                            raise ValueError(
+                                "Ollama routing did not pass actual configuration readback"
+                            )
+                    except ValueError as exc:
+                        return ModelSetupObservation(
+                            step="models", status="action_required", fix=str(exc)
+                        )
                 if desired.provider == "local" and len(desired.models) != 1:
                     raise ValueError(
                         "The existing local registration API accepts one model per server"
@@ -248,7 +361,7 @@ class HandlerSetupEnvironment:
                     unattended=True,
                 )
                 self._prove_model(request)
-                if len(desired.models) > 1:
+                if len(desired.models) > 1 and desired.provider != "ollama":
                     key = self._credentials.get(desired.provider)
                     if key is None:
                         raise ValueError(
@@ -260,3 +373,4 @@ class HandlerSetupEnvironment:
                         desired.models,
                         url=desired.url,
                     )
+        return None

@@ -398,7 +398,7 @@ def test_interactive_walk_asks_for_provider_url_and_model(
     assert len(recorder.delegations()) == 1
 
 
-def test_unattended_ollama_refused_names_local(
+def test_unknown_ollama_model_refused_before_installation(
     home: Path, tmp_path: Path, server: str, recorder: Recorder
 ) -> None:
     result = _setup(
@@ -406,7 +406,7 @@ def test_unattended_ollama_refused_names_local(
         stdin="",
     )
     assert result.exit_code != 0, result.output
-    assert "--provider local --url" in result.output
+    assert "declared" in result.output
     assert "[done]" not in result.output
     assert not (home / ".onex").exists()
     assert recorder.argv == []

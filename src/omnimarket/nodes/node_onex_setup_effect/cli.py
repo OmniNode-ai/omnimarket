@@ -136,9 +136,14 @@ def _workflow_cli(
             "Invalid or conflicting setup selections. Use a bounded secret-free JSON plan with supported components; inline flags cannot override --plan."
         ) from None
     if any(item.provider == "ollama" for item in plan.providers):
-        raise click.ClickException(
-            "Ollama provisioning is not integrated yet. For an existing server, select --provider local --url http://localhost:11434/v1 with its model. Nothing was installed."
+        from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_runtime import (
+            HandlerSetupLocalRuntime,
         )
+
+        try:
+            HandlerSetupLocalRuntime().validate_selection(plan)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from None
     credentials: dict[str, SecretStr] = {}
     if plan.action != "verify":
         if "delegation" in plan.components and not plan.providers:
