@@ -6,6 +6,7 @@ The script keeps the reads (git, files, environment, grants) and the pytest hook
 host and which login may run a full suite sits here and takes bytes in and gives a decision out.
 """
 
+import posixpath
 import re
 
 from omnimarket.nodes.node_pytest_full_suite_host_guard.models.model_pytest_full_suite_host_guard import (
@@ -52,6 +53,18 @@ def login_overlay_block(overlay_text: str) -> str:
     return "\n".join(block)
 
 
+def resolve_login_path(path: str, home: str) -> str:
+    """A row path as it runs: absolute stays, relative resolves under the login's home."""
+    if path.startswith("/"):
+        return path
+    if not home:
+        raise ValueError(
+            f"per-login host row path {path!r} is relative and the login has no home "
+            "directory on this host"
+        )
+    return posixpath.join(home.rstrip("/"), path)
+
+
 def parse_login_rows(block: str) -> dict[tuple[str, str], tuple[str, str]]:
     """``label login uv_abs_path workroot`` rows keyed by (label, login)."""
     rows: dict[tuple[str, str], tuple[str, str]] = {}
@@ -59,10 +72,13 @@ def parse_login_rows(block: str) -> dict[tuple[str, str], tuple[str, str]]:
         fields = raw.split("#", 1)[0].split()
         if not fields:
             continue
-        if len(fields) != 4 or not all(f.startswith("/") for f in fields[2:]):
+        if len(fields) != 4 or not all(
+            f and not f.startswith("~") and ".." not in f.split("/") for f in fields[2:]
+        ):
             raise ValueError(
                 f"per-login host row must be `label login uv_abs_path workroot` "
-                f"with absolute paths: {raw!r}"
+                f"with paths absolute or relative to the login's home, never `~` "
+                f"or `..`: {raw!r}"
             )
         key = (fields[0], fields[1])
         if key in rows:
@@ -72,7 +88,11 @@ def parse_login_rows(block: str) -> dict[tuple[str, str], tuple[str, str]]:
 
 
 def apply_login_rows(
-    table_text: str, rows: dict[tuple[str, str], tuple[str, str]], login: str
+    table_text: str,
+    rows: dict[tuple[str, str], tuple[str, str]],
+    login: str,
+    *,
+    home: str = "",
 ) -> str:
     """Replace uv_abs_path and workroot of the rows ``login`` owns; nothing else moves."""
     if not login:
@@ -83,7 +103,10 @@ def apply_login_rows(
         if len(fields) >= _ROW_COLUMNS and not line.lstrip().startswith("#"):
             owned = rows.get((fields[0], login))
             if owned:
-                fields[UV_COLUMN], fields[WORKROOT_COLUMN] = owned
+                fields[UV_COLUMN], fields[WORKROOT_COLUMN] = (
+                    resolve_login_path(owned[0], home),
+                    resolve_login_path(owned[1], home),
+                )
                 line = "\t".join(fields)
         out.append(line)
     return "\n".join(out)
@@ -206,7 +229,9 @@ class HandlerPytestFullSuiteHostGuard:
         table = request.table_text
         if request.login_overlay_text is not None:
             rows = parse_login_rows(login_overlay_block(request.login_overlay_text))
-            table = apply_login_rows(table, rows, request.login)
+            table = apply_login_rows(
+                table, rows, request.login, home=request.login_home
+            )
         names = designated_hostnames(table, request.env_overrides)
         fields = authorizing_row(table, request.host)
         message = full_suite_host_violation_message(
