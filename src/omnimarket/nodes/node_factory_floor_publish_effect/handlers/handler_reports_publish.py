@@ -28,6 +28,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     Runner,
     copy_to_server,
     load_runtime,
+    local_copy_root,
     run_process,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload import (
@@ -71,8 +72,11 @@ def _isoz(moment: datetime) -> str:
 class HandlerReportsPublish:
     """Boundary of the reports publish: the data reads and the copies happen here."""
 
-    def __init__(self, runner: Runner = run_process) -> None:
+    def __init__(
+        self, runner: Runner = run_process, unreachable: set[str] | None = None
+    ) -> None:
         self._run = runner
+        self._unreachable: set[str] = unreachable if unreachable is not None else set()
 
     def handle(
         self,
@@ -136,8 +140,17 @@ class HandlerReportsPublish:
         ).encode("utf-8")
         files.append((reports.manifest, manifest))
 
+        local_root = local_copy_root(overlay, home)
         for name, payload in files:
-            copy_to_server(self._run, rt, overlay, name, payload)
+            copy_to_server(
+                self._run,
+                rt,
+                overlay,
+                name,
+                payload,
+                local_root=local_root,
+                unreachable=self._unreachable,
+            )
         return ModelReportsPublishResult(
             published=tuple(name for name, _ in files),
             unread=tuple(unread),

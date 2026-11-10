@@ -19,6 +19,9 @@ from omnimarket.handlers.delegation_model_scope import (
 )
 from omnimarket.handlers.handler_model_keys import model_handler
 from omnimarket.handlers.models_first_command import first_model, models_text
+from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_models_overlay_command import (
+    write_model_overlay,
+)
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
 )
@@ -79,7 +82,11 @@ def listed(as_json: bool) -> tuple[ModelModelStatus, ...]:
 
 
 #: The commands ``onex models`` adds beside its own.
-MODEL_COMMANDS: tuple[click.Command, ...] = (first_model, only_models)
+MODEL_COMMANDS: tuple[click.Command, ...] = (
+    first_model,
+    only_models,
+    write_model_overlay,
+)
 
 __all__: list[str] = [
     "MODEL_COMMANDS",

@@ -33,6 +33,11 @@ class ModelHostAdmission(BaseModel):
 
     running_task_containers: int = Field(..., ge=0)
     load_one_minute: float = Field(..., ge=0)
+    logical_cores: int = Field(..., gt=0)
+    mem_total_gb: float = Field(..., gt=0)
+    mem_avail_gb: float = Field(..., ge=0)
+    swap_in_kb_s: float | None = None
+    swap_out_kb_s: float | None = None
 
 
 class ModelEnvImage(BaseModel):
