@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -94,6 +94,7 @@ class KafkaSeamBus:
         try:
             await transport.start()
             started = time.monotonic()
+            sent_wall = datetime.now(UTC)
             await transport.send(
                 demand.command_topic,
                 key=str(correlation).encode("utf-8"),
@@ -113,7 +114,7 @@ class KafkaSeamBus:
                         continue
                     answer, reply_stamp = found
                     elapsed = int((time.monotonic() - started) * 1000)
-                    stamp_ms = _stamp_ms(envelope.envelope_timestamp, reply_stamp)
+                    stamp_ms = _stamp_ms(sent_wall, reply_stamp)
                     if elapsed > demand.deadline_seconds * 1000:
                         # A reply after the deadline is recorded, never excused: the seam
                         # stays not working, and the row says how late and when it was made.
@@ -147,17 +148,20 @@ class KafkaSeamBus:
             await transport.close()
 
 
-def _stamp_ms(command_stamp: datetime, reply_stamp: object) -> int | None:
-    """Reply envelope creation time minus the command's, in ms; None when it cannot be read."""
+def _stamp_ms(sent_at: datetime, reply_stamp: object) -> int | None:
+    """Reply envelope creation time minus the wall time the send began, in ms; None when unreadable.
+
+    Two hosts' clocks are compared, so the number carries their skew.
+    """
     if not isinstance(reply_stamp, str):
         return None
     try:
         parsed = datetime.fromisoformat(reply_stamp)
     except ValueError:
         return None
-    if parsed.tzinfo is None or command_stamp.tzinfo is None:
+    if parsed.tzinfo is None or sent_at.tzinfo is None:
         return None
-    return int((parsed - command_stamp).total_seconds() * 1000)
+    return int((parsed - sent_at).total_seconds() * 1000)
 
 
 def _correlated_answer(

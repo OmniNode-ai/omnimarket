@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -197,6 +197,7 @@ class _FakeTransport:
     ) -> None:
         self._sent = json.loads(value)
         self._sent_at = time.monotonic()
+        self._sent_wall = datetime.now(UTC)
 
     async def poll(self, *, max_messages: int, timeout_ms: int) -> list[object]:
         assert self._sent is not None
@@ -205,7 +206,7 @@ class _FakeTransport:
         )
         if due and not self._answered:
             self._answered = True
-            stamp = datetime.fromisoformat(str(self._sent["envelope_timestamp"]))
+            stamp = self._sent_wall
             body = {
                 "correlation_id": self._sent["correlation_id"],
                 "envelope_timestamp": (stamp + timedelta(milliseconds=500)).isoformat(),
@@ -249,7 +250,8 @@ def test_kafka_adapter_an_in_time_reply_has_the_ack_and_the_reply_stamp(
     answer = _kafka(monkeypatch, 0.0).demand(_kafka_demand(1.0))
     assert answer.crossing is EnumSeamCrossing.RESULT
     assert answer.send_ack_ms is not None
-    assert answer.reply_stamp_ms == 500
+    assert answer.reply_stamp_ms is not None
+    assert 450 <= answer.reply_stamp_ms <= 550
 
 
 def test_kafka_adapter_a_reply_after_the_deadline_is_late_and_not_a_result(
