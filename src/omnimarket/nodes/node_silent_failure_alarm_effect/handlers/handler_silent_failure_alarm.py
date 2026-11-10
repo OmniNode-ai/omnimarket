@@ -111,8 +111,10 @@ _JOB_STDERR = re.compile(r"^\s*stderr path\s*=\s*(\S.*?)\s*$", re.MULTILINE)
 _LOG_TAIL_LINES = 60
 _HOST_CELL = re.compile(r"^h\d+$")
 # A host timer (host-drift) writes drift-pass rows that name its host. It runs no session, so it
-# sends no hook event; its rows are not lanes and prove nothing about capture (OMN-22778).
-_TIMER_ACTOR_PREFIX = "timer:"
+# sends no hook event; its rows are not lanes and prove nothing about capture (OMN-22778). A
+# reading node (``node:``) writes the same kind of row: its ``host=`` cell names the host it probed,
+# and it ran on the host that runs the readings (OMN-23019).
+_NON_LANE_ACTOR_PREFIXES = ("timer:", "node:")
 _RUN_KEY = re.compile(r"^\d{4}-(\d\d)-(\d\d)T(\d\d)(\d\d)Z$")
 _LANE_RUN_KEY = re.compile(r"^lab-fill-.+-(\d{8})$")
 _STATUS = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -1036,7 +1038,18 @@ class HandlerSilentFailureAlarm:
             if options.dispatch_command is None:
                 return (
                     False,
-                    "dispatch unconfigured (ONEX_ALARM_DISPATCH_COMMAND unset)",
+                    "dispatch unconfigured (dispatch_command unset in the alarm configuration "
+                    "named by ONEX_SILENT_FAILURE_ALARM_CONFIG)",
+                )
+            absent = [
+                part
+                for part in options.dispatch_command
+                if part.startswith("/") and not Path(part).exists()
+            ]
+            if absent:
+                return (
+                    False,
+                    f"dispatch command names a path that is absent: {absent[0]}",
                 )
             short = re.sub(r"[^a-z0-9-]", "-", episode.episode[-24:].lower())
             log = options.brief_dir / f"{episode.episode}-dispatch.log"
@@ -1237,8 +1250,9 @@ class HandlerSilentFailureAlarm:
     ) -> dict[str, tuple[datetime, ...]]:
         """The stamps of the rows of ``kinds`` naming a pool host, by host id.
 
-        A row written by a host timer (``actor=timer:``) names its host without a lane having run
-        there, so it is not read as one (OMN-22778). Neither is a lane's own row naming a host its
+        A row written by a host timer (``actor=timer:``) or a reading node (``actor=node:``) names
+        its host without a lane having run there, so it is not read as one (OMN-22778, OMN-23019).
+        Neither is a lane's own row naming a host its
         CLAIM never put the lane on: the ``host=`` cell of a STATUS that reports an install on h051,
         written by a lane running on h053, describes h051 and sends no hook event for it (OMN-23023).
         A lane with no CLAIM host in the window is counted as before.
@@ -1258,7 +1272,7 @@ class HandlerSilentFailureAlarm:
                 or stamp is None
                 or host is None
                 or not _HOST_CELL.match(host)
-                or (row.token("actor") or "").startswith(_TIMER_ACTOR_PREFIX)
+                or (row.token("actor") or "").startswith(_NON_LANE_ACTOR_PREFIXES)
             ):
                 continue
             lane = row.token("lane")

@@ -1,6 +1,6 @@
 name: node_stall_responder_compute
 version: "1.0.0"
-description: "Stall responder: THROUGHPUT STALL rows answered with one cause dispatch per distinct cause key, and the lab-idle FRICTION cost summed for the status line (OMN-22885) -- no I/O"
+description: "Stall responder: THROUGHPUT STALL rows answered with one cause dispatch per distinct cause key (OMN-22885) -- no I/O"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -17,7 +17,7 @@ dependencies:
   - "omnibase_core>=0.40.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["stall", "lab-idle", "compute", "deterministic", "OMN-22885"]
+tags: ["stall", "compute", "deterministic", "OMN-22885"]
 pack: "liveness"
 display_name: "Stall Responder"
 node_role: "compute"

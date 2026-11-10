@@ -1,0 +1,23 @@
+# The lab pool host's serve process (OMN-20213), a systemd USER unit.
+# Restart on-failure: a clean SIGTERM stop exits 0 and stays stopped; a crash or
+# kill -9 restarts. Retry indefinitely when the broker is down at boot.
+# Rendered by node_host_installer_serve_units; the placeholders are filled from the node's overlay.
+
+[Unit]
+Description=ONEX lab-work serve process for the lab pool host (OMN-20213)
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/__ENV_FILE__
+ExecStart=/bin/bash -c 'cd "$OMNIBASE_PATH/omnimarket" && exec .venv/bin/python -m omnimarket.lab_work.cli serve --bus-lane "$LAB_WORK_BUS_LANE" --host-name "$LAB_WORK_HOST_NAME" --rank-penalty "$LAB_WORK_RANK_PENALTY" ${LAB_WORK_MAX_UNITS:+--max-units "$LAB_WORK_MAX_UNITS"} --work-root "$LAB_WORK_ROOT"'
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=120
+KillSignal=SIGTERM
+StandardOutput=append:%h/__LOG_DIRECTORY__/serve.log
+StandardError=inherit
+SyslogIdentifier=__SYSLOG_IDENTIFIER__
+
+[Install]
+WantedBy=default.target

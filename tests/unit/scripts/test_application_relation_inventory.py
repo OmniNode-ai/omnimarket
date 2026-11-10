@@ -820,7 +820,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for context_audit_events, declared with its CREATE in the same change = 123.
     # +1 for the overlay_store table, declared with its CREATE = 124.
     # +6 for the agent observability tables declared beside their CREATE = 130.
-    assert census["source_declared_tables"] == 130
+    # +1 for OMN-21970's projection_delegation_daily view (0067), which the
+    # census counts with the other delegation views = 131.
+    # +2 for OMN-20034's goal_trace_events and goal_traces: ownership is declared
+    # before infra vendors the migration = 133.
+    assert census["source_declared_tables"] == 133
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

@@ -46,6 +46,14 @@ class ModelRegistryUnitsRequest(BaseModel):
     # with neither reproduces the configuration. Empty defers to the installing shell, then to the last install.
     appender_root: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
     host_table_path: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
+    # The name the ledger knows the installing host by, persisted in a unit that declares this input (the factory floor
+    # publisher's join J5 step and its ledger reads name it). Empty defers to the installing shell's ONEX_LEDGER_HOST_NAME.
+    ledger_host_name: str = Field(
+        default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
+    )
+    # The remote-lane runner script the alarm starts for each episode it opens. Optional: a configuration that has no
+    # value for it carries no dispatch_command, and the alarm sends no lane (it says so in its row).
+    remote_lane_runner: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
     # The path of the operator's bootstrap env file the lab-state alarm reads two named keys from (the Slack bot token
     # and the alert channel id) when the unit's environment does not hold them. Only the path is persisted, never a value.
     alert_env_file: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")

@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23365
+title: The lab-work serve installer lives in omnimarket and writes ONEX_SKILL_OVERLAY_ROOTS into the serve environment
+summary: node_host_installer_serve_units installs the lab-work serve and clone-refresh serve systemd user units of a Linux pool host from the lab_hosts overlay (moved from the private host installer) and writes ONEX_SKILL_OVERLAY_ROOTS, read from the node's own overlay, into the serve environment, so a serve started from a registry root finds the host_capacity overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23365-serve-installer-in-omnimarket
+  statement: The serve environment names the overlay roots the serve reads its overlays through, taken from a declared overlay and refused when none is declared for the host.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lab-work-serve systemd installer unit is the omnimarket node node_host_installer_serve_units and the unit is deleted from the private host installer -- falsifier: uv run pytest tests/nodes/node_host_installer_serve_units passes, and the private installer contract has no lab-work-serve-systemd entry on main'
+  - id: AC2
+    statement: 'AC2: the rendered serve environment names ONEX_SKILL_OVERLAY_ROOTS from the host overlay -- falsifier: uv run pytest tests/nodes/node_host_installer_serve_units -k skill_overlay_roots, which fails at the merge base where the node does not exist and fails with the host missing from the overlay'
+evidence_requirements:
+- kind: tests
+  description: The rendering, install sequence, refusal and golden and error chain tests of node_host_installer_serve_units
+  command: uv run --frozen pytest tests/nodes/node_host_installer_serve_units -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23365-serve-env
+  description: Runs the serve unit tests. The h051 environment carries ONEX_SKILL_OVERLAY_ROOTS from the node overlay (the failing control is a host the overlay does not list, which is refused and renders nothing), keeps the declared serve arguments and lane variables, and a second install writes and restarts nothing.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_serve_units/test_host_serve_units.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23365-chain-events
+  description: Runs the golden chain and error chain tests through the node entry point.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_serve_units/test_golden_chain_host_serve_units.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23365-integration-proof-serve
+  description: The first check runs the node's tests at the pushed head on a lab host through the lab work runner. The second reads the installed serve environment on h051 after the node installed it from this branch and requires ONEX_SKILL_OVERLAY_ROOTS in it. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23365 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_serve_units -q --no-cov -p no:randomly'
+    cwd: .
+  - check_type: command
+    check_value: 'ssh h051 ''grep -c "^ONEX_SKILL_OVERLAY_ROOTS=" "$HOME/.config/onex/lab-work-serve.env"'' | grep -qx 1'
+    cwd: .

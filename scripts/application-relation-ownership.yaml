@@ -1088,6 +1088,31 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0000_create_claude_hook_events.sql
       access: read_write
       role: claude_agent_spans
+    # OMN-20034 (GC.11): register this repository as the CATALOG owner of the
+    # physical relations `goal_trace_events` and `goal_traces` -- the goal-trace
+    # projection: one content-free row per event a goal's trace absorbed, and
+    # one folded row per goal (revision chain, closed revision, verdict,
+    # checksum). Created by node_projection_goal_trace's own node-owned
+    # migration. Both are created DIRECTLY in omninode_internal, so they need no
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 entry.
+    #
+    # THESE ENTRIES LAND BEFORE THE MIGRATION THEY DESCRIBE, in the same
+    # three-step order the claude_hook_events comment above records: (1) these
+    # declarations, (2) omnibase_infra vendors the migration, (3) omnimarket
+    # lands the node package and the migration. `access: read_write` and the
+    # roles mirror the node contract's own db_io.db_tables declarations.
+    - name: goal_trace_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_goal_trace/migrations/0000_create_goal_trace_events.sql
+      access: read_write
+      role: goal_trace_events
+    - name: goal_traces
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_goal_trace/migrations/0000_create_goal_trace_events.sql
+      access: read_write
+      role: goal_traces
     # OMN-19861: register this repository as the CATALOG owner of the physical
     # relation `demo_readiness_latest`, created by
     # node_projection_demo_readiness's own node-owned migration.
@@ -1495,6 +1520,17 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-20034: the standalone sequence behind goal_trace_events' BIGSERIAL
+  # projection_cursor column. The node's 0001 grants USAGE on it by literal
+  # name, and the SQL gate resolves a sequence as a target in its own right
+  # (the OMN-18999 correction above). goal_traces has no cursor.
+  - name: goal_trace_events_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   # OMN-19861: the 0001 migration grants USAGE on
   # demo_readiness_latest_projection_cursor_seq by literal name. The
   # OMN-15361 gate resolves each sequence as its own target, so the table
@@ -1744,13 +1780,13 @@ relation_evidence:
     schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
-    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql
     readers:
       - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
       - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
     writers: []
     authoritative_sources:
-      - src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0067_delegation_daily_view.sql
     classification_evidence: >-
       tenant read view over delegation_events with one row per tenant whose days
       list holds every UTC day's runs, verdict counts and token totals, so the
