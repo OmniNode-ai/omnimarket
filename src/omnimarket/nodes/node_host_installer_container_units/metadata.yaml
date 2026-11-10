@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_installer_container_units
+version: 0.1.0
+description: >
+  Installs, inspects and removes the systemd user unit that keeps a declared docker container running on a Linux pool
+  host; the units, hosts, restart interval and port probe come from the overlay.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_installer_container_units: omnimarket.nodes.node_host_installer_container_units
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: write
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- in_process
+pack: operator_tooling
+display_name: Host Installer Container Units
+node_role: effect

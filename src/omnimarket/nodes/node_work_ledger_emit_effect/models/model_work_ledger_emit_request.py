@@ -26,10 +26,18 @@ class ModelWorkLedgerEmitRequest(BaseModel):
     ledger_id: str = Field(default=DEFAULT_LEDGER_ID, min_length=1)
     event: ModelWorkEvent | None = None
     provenance_kind: Literal["markdown", "typed"] = "markdown"
+    ledger_seq: int | None = Field(
+        default=None,
+        ge=1,
+        description="The sequence the judge assigned the row when it accepted it (OMN-23152).",
+    )
     source: str = Field(
-        default="onex-ledger",
+        default="ledger-emit",
         min_length=1,
-        description="Which path wrote the row: onex-ledger (dual write) or ledger-emit (skill).",
+        description=(
+            "Which path wrote the row: ledger-emit (this node, the default) or onex-ledger "
+            "(the dual write, which carries a ledger_seq; the projection refuses it without one)."
+        ),
     )
 
 

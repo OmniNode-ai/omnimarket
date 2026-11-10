@@ -13,8 +13,14 @@
 #   pieces           per piece: readable_today with sources, or UNKNOWN with its reason; every piece
 #                    names the fault injected on purpose
 #   landing_route    where piece 9 reads the pull request watcher: the variable holding its state file, the goal
-#                    scope overlay, the watcher classes that are green and waiting and the conflict merge states
-#   read_retry       optional: a source whose read failed is read again, `passes` more times, `pause_seconds` apart
+#                    scope overlay, the watcher classes that are green and waiting and the conflict merge states.
+#                    A route with `source: projection` reads the pr_state projection instead and may carry
+#                    `retry: {passes, pause_seconds}`: a projection that could not be reached is read again, `passes`
+#                    more times, `pause_seconds` apart, inside the same run; absent, it is read once
+#   read_retry       optional: a source whose read failed is read again, `passes` more times, `pause_seconds` apart;
+#                    `budget_seconds` (optional) bounds the seconds a cycle spends on failed reads (OMN-23519);
+#                    `reread_budget_seconds` (optional: seconds the end-of-run final pass may spend re-reading sources
+#                    that stayed unreadable; absent, no final pass)
 #   append_retry     optional: a piece whose append failed is written again, `passes` more times, `pause_seconds` apart
 #   schedule_hosts   hosts that install the hourly systemd user timer
 #   unit_environment environment the installed unit carries (the routes' variables)
@@ -77,16 +83,6 @@ pieces:
     merge_window_seconds: 3600
     waiting_threshold: 10
     snapshot_max_age_seconds: 900
-    canary:
-      source_id: canary
-      row_type: STATUS
-      lane: landing-canary
-      mode: newest
-      pass_when:
-      - cell: outcome
-        op: eq
-        value: landed
-      max_age_seconds: 93600
   injected_fault: hold one eligible head for over an hour in a test repository
 - piece: 15
   name: delegation

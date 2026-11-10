@@ -195,6 +195,8 @@ not_routing_resolution_sites:
     reason: finds the overlay file of the floor fill to read the tick host and interval for its systemd user timer; the overlay holds the fill's schedule and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_code_graph_effect/runtime_code_graph.py:find_node_overlay(NODE_NAME)"
     reason: locates the code graph overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the graph schedule and repository set and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_validator_estate_reading_effect/runtime_validator_estate.py:find_node_overlay(NODE_NAME)"
+    reason: locates the validator estate overlay directory so the install verb can pin its root in the daily timer unit; the overlay holds the estate schedule and reading sources and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_claude_token_pool_effect/runtime_claude_token_pool.py:find_node_overlay(NODE_NAME)"
     reason: locates the Claude token pool overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the token rotation schedule and pool settings and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_runner_group_exposure_effect/runtime_exposure_probe.py:find_node_overlay(NODE_NAME)"
@@ -239,6 +241,8 @@ not_routing_resolution_sites:
     reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_merged_history.py:find_node_overlay(NODE_NAME)"
     reason: reads the extra_repos of the lab fill overlay, the private clone names the merged-history read also covers; it chooses no backend, model, tier or provider
+  - site: "src/omnimarket/handlers/delegation_eval_read_binding.py:resolve_setting(OVERLAY_ID)"
+    reason: the name of the environment variable that holds the read connection string for the delegation eval label and event tables; a database address for tenant-scoped reads, and it chooses no backend, model, tier or provider
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route

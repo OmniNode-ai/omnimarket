@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example overlay for node_validator_verdict_reducer (OMN-23078). Synthetic values.
+ratchets:
+  # Entries in a repository's canonical-file-shape baseline: the list only shrinks.
+  - key: canonical_file_shape.baseline_entries
+    direction: shrink_only
+store:
+  backend: in_memory
+  path_env: ONEX_VALIDATOR_VERDICT_STATE_PATH

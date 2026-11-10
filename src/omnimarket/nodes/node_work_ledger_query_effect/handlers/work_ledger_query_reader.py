@@ -78,6 +78,36 @@ class ProtocolWorkLedgerQueryReader(Protocol):
 
 
 @runtime_checkable
+class ProtocolWorkLedgerFilteredRowReader(Protocol):
+    """Read rows of a window narrowed in the store before they are sent (OMN-19609).
+
+    ``kinds`` keeps rows of those row types exactly. ``contains`` keeps rows whose
+    text holds that string, a superset of every row the ``lane`` filter keeps (it
+    matches the lane, from or to cell); ``term`` keeps rows whose text holds the
+    request's term ignoring case (an ASCII term only, so it is a superset of what the
+    handler keeps); the handler still applies its own filters, so the answer is the
+    answer of the unfiltered read. ``since`` is ``None`` for a read with no start (OMN-23615).
+    """
+
+    def read_rows_matching(
+        self,
+        *,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        term: str | None = None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]: ...
+
+
+@runtime_checkable
+class ProtocolWorkLedgerOldestRowReader(Protocol):
+    """Name the oldest row of the whole ledger, so a narrowed read with no start keeps its parity window (OMN-23615)."""
+
+    def oldest_row_ts(self, *, until: datetime) -> datetime | None: ...
+
+
+@runtime_checkable
 class ProtocolWorkLedgerStateReader(Protocol):
     """Read one page of the open set from ``work_ledger_state`` (OMN-21948)."""
 
@@ -317,6 +347,47 @@ class PostgresWorkLedgerQueryReader:
                 (since, until),
             )
         return self._records(rows)
+
+    def read_rows_matching(
+        self,
+        *,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        term: str | None = None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """The window's rows narrowed by row type and a text match, in the store."""
+        clauses = ["row_ts <= %s"]
+        params: list[object] = [until]
+        if since is not None:
+            clauses.insert(0, "row_ts >= %s")
+            params.insert(0, since)
+        if kinds:
+            clauses.append("row_type = ANY(%s)")
+            params.append(list(kinds))
+        if contains:
+            clauses.append("strpos(raw_row, %s) > 0")
+            params.append(contains)
+        if term:
+            clauses.append("position(lower(%s) in lower(raw_row)) > 0")
+            params.append(term)
+        rows = self._query(
+            "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY row_ts, projected_at, row_id",
+            tuple(params),
+        )
+        return self._records(rows)
+
+    def oldest_row_ts(self, *, until: datetime) -> datetime | None:
+        rows = self._query(
+            "SELECT min(row_ts) FROM {relation} WHERE row_ts <= %s", (until,)
+        )
+        oldest = rows[0][0]
+        if oldest is not None and not isinstance(oldest, datetime):
+            raise TypeError("database oldest row_ts is not a timestamp")
+        return oldest
 
     def read_history(
         self, *, ledger_id: str, first_seq: int, last_seq: int, until: datetime

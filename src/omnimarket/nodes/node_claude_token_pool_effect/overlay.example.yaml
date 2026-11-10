@@ -20,6 +20,12 @@ marks_source:
   mirror_path: .cache/omni/claude-token-pool.json
   max_age_seconds: 900
 events_file: token-rotations.jsonl
+# When a usable login has been in use longer than the bound, under which the host's lanes have
+# already started, the tick spreads it onto a token no host's lanes have used yet; absent (or
+# enabled: false) means the tick only swaps a login that is limited or revoked.
+spread:
+  enabled: true
+  in_use_longer_than_seconds: 3600
 unit_environment: {}
 schedule:
   interval_seconds: 300

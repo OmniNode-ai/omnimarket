@@ -1,0 +1,5 @@
+{
+  "target_file": "src/omnimarket/cost/usage_normalizer.py",
+  "subject_file": "r3b_04_usage_normalizer.txt",
+  "timeout_s": 30
+}

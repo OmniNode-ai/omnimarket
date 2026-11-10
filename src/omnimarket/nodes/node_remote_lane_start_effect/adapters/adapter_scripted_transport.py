@@ -15,6 +15,7 @@ from typing import ClassVar, Literal
 from omnibase_spi.contracts.services import (
     ModelLaneChangeList,
     ModelLaneCloseoutCells,
+    ModelLaneHostRef,
     ModelLaneHostStepRequest,
     ModelLaneHostStepResult,
     ModelLaneLedgerOutboxRows,
@@ -37,6 +38,10 @@ from omnibase_spi.contracts.services import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.engine_login import (
+    ModelEngineLoginDraw,
+)
+
 #: The calls that start an engine on a host; the CLAIM must precede the first of them.
 ENGINE_START_CALLS = ("prepare_worktree", "start_engine_detached")
 
@@ -48,6 +53,7 @@ class ModelScriptedTransportScript(BaseModel):
 
     prepare_error: str | None = None
     provision_error: str | None = None
+    step_errors: dict[str, str] = Field(default_factory=dict)
     start_state: Literal["started", "failed", "unresolved"] = "started"
     start_error: str = "engine did not start"
     exit_polls: int = Field(default=0, ge=0)
@@ -55,6 +61,30 @@ class ModelScriptedTransportScript(BaseModel):
     log_lines: tuple[str, ...] = ()
     stop_confirmed: bool = True
     stop_exit_code: int | None = 143
+    closeout_cells: tuple[str, ...] = ()
+    outbox_rows: tuple[str, ...] = ()
+    lane_changes: tuple[str, ...] = ()
+
+
+class ScriptedLoginDraw:
+    """The in-memory engine login draw: answers the labels it was given in order, then ``none``; logs each draw."""
+
+    synchronous_execution: ClassVar[bool] = True
+
+    def __init__(
+        self, labels: tuple[str | None, ...], calls: list[str] | None = None
+    ) -> None:
+        self._labels = list(labels)
+        self.calls: list[str] = calls if calls is not None else []
+
+    def draw_login(self, host: ModelLaneHostRef) -> ModelEngineLoginDraw:
+        self.calls.append(f"host:draw_login host={host.name}")
+        label = self._labels.pop(0) if self._labels else None
+        if label is None:
+            return ModelEngineLoginDraw(
+                state="none", detail="scripted: no usable token"
+            )
+        return ModelEngineLoginDraw(label=label, state="drawn")
 
 
 class ScriptedLaneHostTransport:
@@ -143,12 +173,16 @@ class ScriptedLaneHostTransport:
             lines=lines, next_offset=request.offset + len(lines)
         )
 
+    def _error_for(self, op: str) -> str | None:
+        return self._script.step_errors.get(op, self._script.provision_error)
+
     def _step(
         self, op: str, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
         self.calls.append(f"host:{op} host={request.host.name} run={request.run_id}")
-        if self._script.provision_error:
-            return ModelLaneHostStepResult(ok=False, error=self._script.provision_error)
+        error = self._error_for(op)
+        if error:
+            return ModelLaneHostStepResult(ok=False, error=error)
         return ModelLaneHostStepResult(ok=True, detail=f"scripted {op}")
 
     def resolve_registry_root(
@@ -157,8 +191,9 @@ class ScriptedLaneHostTransport:
         self.calls.append(
             f"host:resolve_registry_root host={request.host.name} run={request.run_id}"
         )
-        if self._script.provision_error:
-            return ModelLaneRegistryRootResult(error=self._script.provision_error)
+        error = self._error_for("resolve_registry_root")
+        if error:
+            return ModelLaneRegistryRootResult(error=error)
         return ModelLaneRegistryRootResult(registry_root="/registry")
 
     def prepare_run_dirs(
@@ -167,8 +202,9 @@ class ScriptedLaneHostTransport:
         self.calls.append(
             f"host:prepare_run_dirs host={request.host.name} run={request.run_id}"
         )
-        if self._script.provision_error:
-            return ModelLaneRunDirsResult(error=self._script.provision_error)
+        error = self._error_for("prepare_run_dirs")
+        if error:
+            return ModelLaneRunDirsResult(error=error)
         root = request.registry_root or "/registry"
         return ModelLaneRunDirsResult(
             run_dir=f"{root}/runs/{request.run_id}",
@@ -181,10 +217,9 @@ class ScriptedLaneHostTransport:
         self.calls.append(
             f"host:{op} host={request.host.name} run={request.run_id} name={request.name}"
         )
-        if self._script.provision_error:
-            return ModelLaneStagedInput(
-                staged=False, error=self._script.provision_error
-            )
+        error = self._error_for(op)
+        if error:
+            return ModelLaneStagedInput(staged=False, error=error)
         return ModelLaneStagedInput(
             staged=True, path=f"/registry/runs/{request.run_id}.ctx/{request.name}"
         )
@@ -203,10 +238,9 @@ class ScriptedLaneHostTransport:
         self.calls.append(
             f"host:ship_plugin_trees host={request.host.name} run={request.run_id} trees={len(request.trees)}"
         )
-        if self._script.provision_error:
-            return ModelLaneShipPluginTreesResult(
-                shipped=False, error=self._script.provision_error
-            )
+        error = self._error_for("ship_plugin_trees")
+        if error:
+            return ModelLaneShipPluginTreesResult(shipped=False, error=error)
         return ModelLaneShipPluginTreesResult(
             shipped=True,
             plugin_dirs=tuple(
@@ -240,9 +274,10 @@ class ScriptedLaneHostTransport:
         self.calls.append(
             f"host:read_ledger_outbox host={request.host.name} run={request.run_id}"
         )
-        if self._script.provision_error:
-            return ModelLaneLedgerOutboxRows(error=self._script.provision_error)
-        return ModelLaneLedgerOutboxRows()
+        error = self._error_for("read_ledger_outbox")
+        if error:
+            return ModelLaneLedgerOutboxRows(error=error)
+        return ModelLaneLedgerOutboxRows(rows=self._script.outbox_rows)
 
     def read_lane_changes(
         self, request: ModelLaneHostStepRequest
@@ -250,9 +285,10 @@ class ScriptedLaneHostTransport:
         self.calls.append(
             f"host:read_lane_changes host={request.host.name} run={request.run_id}"
         )
-        if self._script.provision_error:
-            return ModelLaneChangeList(error=self._script.provision_error)
-        return ModelLaneChangeList()
+        error = self._error_for("read_lane_changes")
+        if error:
+            return ModelLaneChangeList(error=error)
+        return ModelLaneChangeList(changes=self._script.lane_changes)
 
     def closeout_worktrees(
         self, request: ModelLaneHostStepRequest
@@ -260,9 +296,10 @@ class ScriptedLaneHostTransport:
         self.calls.append(
             f"host:closeout_worktrees host={request.host.name} run={request.run_id}"
         )
-        if self._script.provision_error:
-            return ModelLaneCloseoutCells(error=self._script.provision_error)
-        return ModelLaneCloseoutCells()
+        error = self._error_for("closeout_worktrees")
+        if error:
+            return ModelLaneCloseoutCells(error=error)
+        return ModelLaneCloseoutCells(cells=self._script.closeout_cells)
 
     def hold_run_dir_guard(
         self, request: ModelLaneHostStepRequest

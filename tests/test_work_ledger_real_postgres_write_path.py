@@ -134,7 +134,13 @@ async def _migrated(
 ) -> AsyncIterator[tuple[WorkLedgerProjectionWriter, asyncpg.Connection, str]]:
     connection = await _connect_or_skip()
     schema = f"omn19513_{uuid4().hex[:12]}"
-    names = ("_INSERT_ROW", "_OPEN_ENTITY", "_CLOSE_ENTITY")
+    names = (
+        "_INSERT_ROW",
+        "_OPEN_ENTITY",
+        "_CLOSE_ENTITY",
+        "_SEQ_HOLDER",
+        "_INSERT_SEQ_CONFLICT",
+    )
     originals = {n: getattr(writer_module, n) for n in names}
     try:
         await connection.execute(f"CREATE SCHEMA {schema}")
@@ -143,6 +149,12 @@ async def _migrated(
         )
         await connection.execute(
             (MIGRATION.parent / "0003_work_ledger_seq.sql")
+            .read_text()
+            .replace("omninode_internal.", f"{schema}.")
+        )
+        # 0010 grants the runtime role, which the throwaway schema lacks, so only 0009 is applied.
+        await connection.execute(
+            (MIGRATION.parent / "0009_work_ledger_seq_unique.sql")
             .read_text()
             .replace("omninode_internal.", f"{schema}.")
         )
@@ -302,6 +314,8 @@ async def test_ledger_seq_window_presence_includes_rows_outside_window(
     )
 
     async with _migrated() as (_writer, connection, schema):
+        # Rows written before 0009 can still hold a duplicate seq; drop the index so the reader sees one.
+        await connection.execute(f"DROP INDEX {schema}.uq_work_ledger_rows_seq")
         # The window spans seqs 2..5; seq 3 exists outside its timestamp bounds.
         # Seq 4 is missing, seq 5 is duplicated, and an unsequenced row is newest.
         for row_id, seq, timestamp in (

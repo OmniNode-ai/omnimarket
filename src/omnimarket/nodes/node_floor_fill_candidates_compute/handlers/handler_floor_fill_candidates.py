@@ -36,6 +36,7 @@ from omnimarket.models.floor_fill import (
     parse_stamp,
 )
 from omnimarket.models.floor_fill.model_floor_fill_candidates import (
+    NEEDS_UNPARSED,
     STOPPED_KEY_PREFIX,
     STOPPED_LINE,
     ModelRecordItem,
@@ -249,6 +250,12 @@ class _View:
         if entry.prs:
             where += f"; pull requests {', '.join(entry.prs)}"
         rows = "\n".join(f"- {row}" for row in entry.rows) or "- (no rows were carried)"
+        # The closing row's typed ask; an ``unparsed`` cell names none, so the brief does not carry it.
+        asks = (
+            f"\n\nThe predecessor asked for next: {entry.needs}"
+            if entry.needs and entry.needs != NEEDS_UNPARSED
+            else ""
+        )
         if report is None:
             said = (
                 f"not supplied; read {entry.report_path} if it exists"
@@ -259,7 +266,7 @@ class _View:
             said = report[: request.stopped_report_chars]
         return (
             f"Continue lane {entry.lane} on ticket {ticket}. It ended {entry.outcome} at {entry.ended_at}, naming {named}; "
-            f"{where}.\n\nThe predecessor's last rows:\n{rows}\n\nThe predecessor's report ({entry.report_path or 'no path'}):\n"
+            f"{where}.{asks}\n\nThe predecessor's last rows:\n{rows}\n\nThe predecessor's report ({entry.report_path or 'no path'}):\n"
             f"{said}\n\nRule: {request.stopped_continue_rule}"
         )
 
@@ -313,8 +320,8 @@ class _View:
         return self._criterion_refusal(line_id, item.id)
 
     def _occupied_cause(self, line_id: str, item: ModelRecordItem) -> str:
-        if item.state == "done":
-            return "done"
+        if item.state in ("done", "integrating"):
+            return item.state
         if item.kind != LANE_KIND:
             return f"not-a-lane:{item.kind}"
         if item.state in ("active", "stop"):

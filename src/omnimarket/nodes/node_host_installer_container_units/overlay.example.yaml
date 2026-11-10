@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of the node overlay: every host, container, address and number is made up.
+units:
+  - name: onex-example-broker
+    hosts: [host-a]
+    container: example-broker
+    ticket: OMN-23390
+    docker_binary: /usr/bin/docker
+    restart_seconds: 10
+    stop_timeout_seconds: 30
+    probe_address: 127.0.0.1
+    probe_port: 59092
+    probe_wait_seconds: 60

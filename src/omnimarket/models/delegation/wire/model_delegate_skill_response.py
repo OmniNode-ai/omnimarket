@@ -576,6 +576,11 @@ class ModelDelegateSkillResponse(BaseModel):
         """Removed reasoning for in-process callers; not a new wire field."""
         return self._response_reasoning
 
+    @property
+    def failed_acceptance_declared(self) -> bool:
+        """True when the terminal records its own failed acceptance (OMN-21607)."""
+        return declares_failed_acceptance(self)
+
     def retain_response_reasoning(self, reasoning: str) -> Self:
         """Attach in-process evidence without changing the frozen wire fields."""
         self._response_reasoning = reasoning
@@ -1672,6 +1677,33 @@ def _evidence_indicates_success(response: ModelDelegateSkillResponse) -> bool:
     return response.quality_gate_passed
 
 
+def declares_failed_acceptance(response: ModelDelegateSkillResponse) -> bool:
+    """Say whether the terminal itself records that its answer failed acceptance.
+
+    OMN-21607. A terminal that reports ``quality_gate_passed=False`` AND names
+    the acceptance it failed (a failed acceptance criterion, a failed quality
+    gate, or a score below the required bar) has said the answer was refused.
+    A bare ``quality_gate_passed=False`` with none of that still says nothing,
+    because several ports never report the flag. Pure: reads the response only.
+    """
+    if response.quality_gate_passed:
+        return False
+    return bool(
+        response.failed_acceptance_criteria
+        or response.quality_gates_failed
+        or response.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR
+    )
+
+
+def failed_acceptance_reason(response: ModelDelegateSkillResponse) -> str:
+    """Name, in one line, the acceptance a declared-failed answer did not meet."""
+    parts: list[str] = [*response.failed_acceptance_criteria]
+    parts.extend(gate for gate in response.quality_gates_failed if gate not in parts)
+    if parts:
+        return "; ".join(parts)
+    return "answer scored below the required quality bar"
+
+
 def delegate_skill_succeeded(response: ModelDelegateSkillResponse) -> bool:
     """Resolve the COMPOSITE verdict for a delegation from its own evidence.
 
@@ -1705,6 +1737,11 @@ def delegate_skill_succeeded(response: ModelDelegateSkillResponse) -> bool:
     ):
         return False
     if response.terminal_failure_cause is not None:
+        return False
+    # OMN-21607: an answer the terminal itself records as failing acceptance is
+    # not a success, whatever status the port reported and whether or not it
+    # reported a ladder.
+    if declares_failed_acceptance(response):
         return False
     attempt_verdict = _authoritative_attempt_ladder_verdict(response)
     if attempt_verdict is False:
@@ -1800,14 +1837,30 @@ def delegate_skill_terminal_from_response(
             data["failed_acceptance_criteria"] = (
                 "composite delegate-skill terminal verdict failed",
             )
+        failed_acceptance = declares_failed_acceptance(response)
+        if (
+            failed_acceptance
+            and data.get("terminal_failure_cause") is None
+            and response.attempts_count > 0
+        ):
+            # OMN-21607: the run was decided by the acceptance check, so the
+            # failed terminal names that cause, not an empty one.
+            data["terminal_failure_cause"] = (
+                EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            )
         if not data.get("error_message"):
             cause = response.terminal_failure_cause
             data["error_message"] = (
                 f"delegation terminalized as failed: {cause.value}"
                 if cause is not None
                 else (
-                    "delegation terminalized as failed: no attempt in the "
-                    "escalation ladder passed the quality gate"
+                    "delegation failed its acceptance check: "
+                    f"{failed_acceptance_reason(response)}"
+                    if failed_acceptance
+                    else (
+                        "delegation terminalized as failed: no attempt in the "
+                        "escalation ladder passed the quality gate"
+                    )
                 )
             )
     return ModelDelegateSkillFailed.model_validate(data)
@@ -1823,8 +1876,10 @@ __all__ = [
     "ModelDelegateSkillFailed",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "declares_failed_acceptance",
     "delegate_skill_succeeded",
     "delegate_skill_terminal_from_response",
+    "failed_acceptance_reason",
     "resolve_end_of_ladder_reason",
     "resolve_terminal_failure_cause",
 ]

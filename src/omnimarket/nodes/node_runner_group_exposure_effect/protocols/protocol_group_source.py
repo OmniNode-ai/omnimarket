@@ -23,4 +23,8 @@ class ProtocolHttpGet(Protocol):
     ) -> tuple[int, bytes]: ...
 
 
-__all__ = ["ProtocolGroupSource", "ProtocolHttpGet"]
+class ProtocolTokenMint(Protocol):
+    def mint(self, *, org: str, app_id_secret: str, private_key_secret: str) -> str: ...
+
+
+__all__ = ["ProtocolGroupSource", "ProtocolHttpGet", "ProtocolTokenMint"]
