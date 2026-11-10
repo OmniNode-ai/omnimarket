@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-23418
+title: The hourly message-bus health check tells a slow reply apart from no reply, and names where the delay is
+summary: The seam deadline probe (node_seam_deadline_probe_effect) records the broker's acknowledgement time of its send and, on a seam that misses its deadline, keeps listening for a bounded time set in its overlay, so a reply that comes late reads apart from no reply. The verdict, the deadline and the crossing values do not change.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23418-late-reply
+  statement: A seam that misses its deadline is listened to for a bounded time longer, and its row says whether a reply came late, never came, or was not listened for, with the send acknowledgement time.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the seam deadline probe records the send acknowledgement time and listens a bounded time for a late reply on a NOT_WORKING seam, so a responder stall reads apart from no reply, with a failing control where a planted late reply reads the same as no reply on the unfixed probe -- falsifier: uv run pytest on the seam probe''s tests with a planted late reply fails on the unfixed probe'
+  - id: AC2
+    statement: 'AC2: the stall is located: the responder''s receive time for one late reply is measured and the slow hop (broker or responder) is named with its numbers -- falsifier: a comment on this ticket with the send, broker and responder timestamps of one late reply'
+  - id: AC3
+    statement: 'AC3: integrated: the reading unit on h053 is reinstalled from the current overlay through the host installer, runs the changed probe at its next hour, and the piece 3 reading row shows the new fields -- falsifier: the piece 3 reading row in the ledger after the next minute-35 run'
+evidence_requirements:
+- kind: tests
+  description: The seam deadline probe's tests (the late reply control, the golden and error chains, the kafka adapter over a fake transport) and the seam test against the row's two readers
+  command: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23418-late-reply-tests
+  description: Runs the late reply tests. A reply planted after the deadline but inside the listen window reads late (NOT_WORKING, no-result-by-deadline, late_ms set); the same tests fail on the probe before this change, which writes no reply cell.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_late_reply.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23418-row-consumers-seam
+  description: Runs the seam test between the probe's row and the floor's piece 3 event rule and the reading writer's piece 3 source rule; the reply cells reach the piece 3 reading and collide with none of the cells the consumers read. The same tests fail at the merge base, where the row has no reply cells.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_row_consumers.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23418-existing-probe-tests
+  description: Runs the existing golden and error chain tests of the probe, which read the verdict and crossing cells unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_deadline_chain_events.py tests/nodes/node_seam_deadline_probe_effect/test_seam_counts_and_on_demand.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23418-stall-located
+  description: The kafka adapter records the send acknowledgement, the reply envelope's creation time (stamp_ms) and the late arrival of one late reply, so the slow hop can be named from the row. The live numbers go in the comment on the ticket (a runtime read, not run by hosted CI).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_late_reply.py -q --no-cov -p no:randomly -k kafka_adapter
+    cwd: .
+- id: dod-omn23418-h053-reading-row
+  description: The reading unit on h053 is reinstalled through the host installer from h051; the seam-deadline row after the next minute-35 run carries the reply cells. Local Done gate only, a runtime read.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect/test_seam_row_consumers.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23418-integration-proof-lab
+  description: Runs the probe's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The live read (a real-broker probe from h051, the h053 unit and its row) is in the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23418 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_deadline_probe_effect -q --no-cov -p no:randomly'
+    cwd: .

@@ -1,0 +1,4 @@
+# Test fixture of the floor schedule overlay (the deployed overlay lives in the overlays repository).
+run_interval_seconds: 60
+reading_source: unread
+floor_overlay_id: node_floor_simple_compute

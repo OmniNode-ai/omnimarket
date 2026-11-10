@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23367
+title: node_pytest_full_suite_host_guard reads per-login host rows so the prepush guard script stops growing
+summary: The decision of whether a full suite may run on this host for this login (the host table rows, the per-login uv and run folder rows, the designated-host reading and the refusal text) moves out of scripts/hooks/pytest_full_suite_host_guard.py into the node node_pytest_full_suite_host_guard (contract, handler, models, table reader adapter). The script calls the node and shrinks below its baselined code line count.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23367-host-guard-node
+  statement: The node answers, from the host table rows and the per-login rows, whether a full suite may run on a host for a login and which uv and run folder that login resolves to; a malformed overlay raises; the guard script calls the node and holds fewer code lines than its baseline of 293.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a node with contract and handler reads the host table''s per-login rows and answers whether a full suite may run on this host for this login -- falsifier: uv run pytest tests/nodes/node_pytest_full_suite_host_guard -q fails today because the node does not exist'
+  - id: AC2
+    statement: 'AC2: the two guard scripts call the node and shrink below their baselined line counts -- falsifier: uv run pytest tests/test_canonical_file_shape.py -q in each repository'
+evidence_requirements:
+- kind: tests
+  description: The golden chain and error chain tests of the node, the guard script tests and the size test
+  command: uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard tests/scripts/test_prepush_guard_script_shrunk.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23367-node-tests
+  description: Runs the node's golden chain and error chain tests. A second login resolves to its own uv and run folder, the first login and a read with no overlay keep the host row, a host that is not designated is refused with the private table named, an unknown host identity is never refused, and a malformed or repeated overlay row raises. The injected break replaces the per-login row application with the identity and the golden reading turns red. Absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23367-script-shrunk
+  description: Runs the size test of the guard script, which requires fewer code lines than the baseline of 293 and no host rule left in the script, plus the guard's own tests. Absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/scripts/test_prepush_guard_script_shrunk.py tests/scripts/test_pytest_full_suite_host_guard.py tests/scripts/test_prepush_per_login_rows.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23367-integration-proof-lab
+  description: Runs the node's tests and the guard script's tests at the pushed head on a lab host through the lab work runner, and then reads the guard's decision verb through the shell-hook entry point with no project env. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23367 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard tests/scripts/test_prepush_guard_script_shrunk.py tests/scripts/test_pytest_full_suite_host_guard.py tests/scripts/test_prepush_per_login_rows.py -q --no-cov -p no:randomly'
+    cwd: .

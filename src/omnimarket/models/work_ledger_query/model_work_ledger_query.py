@@ -139,8 +139,17 @@ class ModelWorkLedgerQueryRequest(BaseModel):
             self.lane or self.lanes
         ):
             raise ValueError("inbox requires a lane or lanes")
-        if self.page_size is not None and self.query not in POINT_QUERY_KINDS:
-            raise ValueError("page_size applies to the point queries only")
+        paged_rows = (
+            self.query is EnumWorkLedgerQueryKind.ROWS and self.page_size is not None
+        )
+        if (
+            self.page_size is not None
+            and self.query not in POINT_QUERY_KINDS
+            and self.query is not EnumWorkLedgerQueryKind.ROWS
+        ):
+            raise ValueError("page_size applies to the point queries and to rows only")
+        if self.page_size is not None and self.history is not None:
+            raise ValueError("history pages by ledger_seq, not page_size")
         if self.history is not None:
             if self.query is not EnumWorkLedgerQueryKind.ROWS:
                 raise ValueError("history requires query=rows")
@@ -152,10 +161,14 @@ class ModelWorkLedgerQueryRequest(BaseModel):
                 raise ValueError("history until must carry a UTC offset")
             if self.since is not None:
                 raise ValueError("history uses sequence bounds, not writer timestamps")
-        elif self.run is not None or (
-            self.cursor is not None and self.query not in POINT_QUERY_KINDS
+        elif self.run is not None:
+            raise ValueError("run requires a history range")
+        elif (
+            self.cursor is not None
+            and self.query not in POINT_QUERY_KINDS
+            and not paged_rows
         ):
-            raise ValueError("run and cursor require a history range")
+            raise ValueError("cursor requires a history range or a paged query")
         return self
 
 

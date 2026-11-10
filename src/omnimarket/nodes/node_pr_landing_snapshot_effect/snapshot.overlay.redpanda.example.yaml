@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Redpanda profile of node_pr_landing_snapshot_effect (OMN-23409), the shape of the deployed copy in
+# the overlays repository (node_pr_landing_snapshot_effect/overlay.yaml) on the landing controller's
+# host. Records go on the dev bus lane; the broker and its client transport resolve from the lane
+# config under workspace_root, never from this file.
+backend: redpanda
+record_topic: onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1
+failed_topic: onex.evt.omnimarket.pr-landing-snapshot-failed.v1
+floor_piece: 9
+bus_lane: dev
+workspace_root: $OMNIBASE_PATH
+# the landing controller's facts file for its last tick, overwritten every tick
+facts_path: $HOME/.local/state/omni/landing/last-facts.json
+watcher_state_path: $OMNIBASE_PATH/.claude_scratch/pr-watcher/state.json
+watcher_max_age_seconds: 900
+owner: OmniNode-ai
+record_journal: $OMNIBASE_PATH/.onex_state/landing-snapshot/records.jsonl
+emission_journal: $OMNIBASE_PATH/.onex_state/floor-simple/emissions.jsonl
