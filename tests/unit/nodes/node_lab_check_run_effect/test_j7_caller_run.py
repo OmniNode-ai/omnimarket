@@ -21,6 +21,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
+    ModelFSMSubcontract,
+)
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.handlers.rules_stop_gate import stop_gate
@@ -35,6 +38,7 @@ from omnimarket.models.model_lab_check_run_join_j7_run import (
     EnumJoinJ7RunOutcome,
     ModelJoinJ7RunCommand,
 )
+from omnimarket.models.stop_gate import ModelStopGateRequest, ModelStopGateResult
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
@@ -399,11 +403,10 @@ def test_control_a_stop_gate_that_ignores_the_stop_leaves_the_join_not_golden(
         handler_lab_check_run_join_j7_run as module,
     )
 
-    def ignoring(request: object, fsm: object) -> object:
-        return stop_gate(
-            request.model_copy(update={"stops": ()}),  # type: ignore[attr-defined]
-            fsm,  # type: ignore[arg-type]
-        )
+    def ignoring(
+        request: ModelStopGateRequest, fsm: ModelFSMSubcontract
+    ) -> ModelStopGateResult:
+        return stop_gate(request.model_copy(update={"stops": ()}), fsm)
 
     monkeypatch.setattr(module, "stop_gate", ignoring)
     rig = _Rig([_reading_row(GOLDEN_AT, "WORKING")])
