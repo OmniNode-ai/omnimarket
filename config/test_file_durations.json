@@ -1800,6 +1800,7 @@
   "tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py": 0.16,
   "tests/nodes/node_remote_lane_compute/test_error_chain_remote_lane_compute.py": 0.08,
   "tests/nodes/node_remote_lane_compute/test_golden_chain_remote_lane_compute.py": 0.06,
+  "tests/nodes/node_remote_lane_compute/test_host_reach_placement.py": 0.17,
   "tests/nodes/node_remote_lane_compute/test_host_swapping_slots.py": 0.17,
   "tests/nodes/node_remote_lane_compute/test_remote_lane_parity.py": 2.78,
   "tests/nodes/node_remote_lane_compute/test_repair_lane_placement.py": 0.17,
