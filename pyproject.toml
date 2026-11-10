@@ -567,6 +567,8 @@ node_delegation_orchestrator = "omnimarket.nodes.node_delegation_orchestrator"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_delegation_quality_gate_reducer = "omnimarket.nodes.node_delegation_quality_gate_reducer"
+node_delegation_readiness_verdict_compute = "omnimarket.nodes.node_delegation_readiness_verdict_compute"
+node_delegation_readiness_verdict_effect = "omnimarket.nodes.node_delegation_readiness_verdict_effect"
 node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_receipt_verdict_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
@@ -792,6 +794,7 @@ node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_ta
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_lab_history_archive_effect = "omnimarket.nodes.node_lab_history_archive_effect"
 node_lab_host_key_distribution_effect = "omnimarket.nodes.node_lab_host_key_distribution_effect"
+node_lab_host_repair_dispatch_effect = "omnimarket.nodes.node_lab_host_repair_dispatch_effect"
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
@@ -838,6 +841,7 @@ node_lane_guard_unit_effect = "omnimarket.nodes.node_lane_guard_unit_effect"
 node_lane_host_discovery_compute = "omnimarket.nodes.node_lane_host_discovery_compute"
 node_lane_liveness_compute = "omnimarket.nodes.node_lane_liveness_compute"
 node_lane_model_policy_compute = "omnimarket.nodes.node_lane_model_policy_compute"
+node_lane_parent_notice_recovery_effect = "omnimarket.nodes.node_lane_parent_notice_recovery_effect"
 node_lane_pin_fallback_compute = "omnimarket.nodes.node_lane_pin_fallback_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
 node_lane_process_effect = "omnimarket.nodes.node_lane_process_effect"
@@ -1542,14 +1546,14 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261108072811-e64fe3502b45" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261109210547-8b4382a1606d" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-# OMN-22472: core and infra move together; this core tag is the one infra dev-20261108072811-e64fe3502b45 locks and carries omnibase_core#2258.
+# OMN-22472: core and infra move together; this core tag is the one infra dev-20261109210547-8b4382a1606d locks and carries omnibase_core#2258.
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261108014124-2fe30fd9dc47" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108015921-ace601e12033" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261106074413-b4fa53dcb119" }
