@@ -1157,6 +1157,7 @@ node_refill_sprint_orchestrator = "omnimarket.nodes.node_refill_sprint_orchestra
 node_regression_test_orchestrator = "omnimarket.nodes.node_regression_test_orchestrator"
 node_reject_skip_token_compute = "omnimarket.nodes.node_reject_skip_token_compute"
 node_release = "omnimarket.nodes.node_release"
+node_release_candidate_verify_effect = "omnimarket.nodes.node_release_candidate_verify_effect"
 node_release_pin_guard_compute = "omnimarket.nodes.node_release_pin_guard_compute"
 node_remote_lane_close_compute = "omnimarket.nodes.node_remote_lane_close_compute"
 node_remote_lane_compute = "omnimarket.nodes.node_remote_lane_compute"
