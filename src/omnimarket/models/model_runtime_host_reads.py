@@ -39,3 +39,8 @@ class ModelRuntimeHostReadOverlay(BaseModel):
     runtime_clone_home: str | None = Field(default=None, pattern=r"^/[A-Za-z0-9_./-]+$")
     repo_refs: tuple[ModelRuntimeRepoRef, ...] = Field(min_length=1)
     timeout_seconds: int = Field(default=30, gt=0)
+    # The runner fleet projection as the runtime serves it over HTTP from the compacted snapshot topic (a bus-backed
+    # read: no ssh, no docker exec on the loaded runtime host). Unset: the fleet is read only over ssh. Set: it is read
+    # here first and over ssh only when this read fails, both inside the step's own bound.
+    fleet_projection_url: str | None = Field(default=None, pattern=r"^https?://[^\s]+$")
+    fleet_projection_timeout_seconds: int = Field(default=5, gt=0)

@@ -41,7 +41,6 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
 from tests.nodes.node_reading_writer_effect.reading_support import RUN_AT, START
 from tests.unit.nodes.node_reading_writer_effect.landing_support import (
     HEAD_LIMIT,
-    canary_row,
     heads,
     landing_overlay,
     snapshot,
@@ -144,13 +143,13 @@ def assert_landing_golden(
 
 
 def test_golden_chain_a_landing_that_holds_writes_a_working_row() -> None:
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     landing = InMemoryLandingSource(snapshot(waiting=heads(2), merges=4))
     assert_landing_golden(asyncio.run(_publish(ledger, landing)), ledger, "WORKING")
 
 
 def test_golden_chain_a_held_head_writes_a_not_working_row() -> None:
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     held = (ModelLandingHead(ref="repo#9", waiting_seconds=HEAD_LIMIT + 60),)
     landing = InMemoryLandingSource(snapshot(waiting=held, merges=4))
     assert_landing_golden(asyncio.run(_publish(ledger, landing)), ledger, "NOT_WORKING")
@@ -159,7 +158,7 @@ def test_golden_chain_a_held_head_writes_a_not_working_row() -> None:
 def test_error_chain_an_unreadable_watcher_ends_in_the_typed_piece_failure_and_an_unknown_row() -> (
     None
 ):
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     landing = InMemoryLandingSource(error="the watcher state file is not read")
     events = asyncio.run(_publish(ledger, landing))
     assert [topic for topic, _ in events] == [
@@ -190,14 +189,14 @@ class _BlindSource:
 
 
 def test_break_a_blind_source_turns_the_held_head_golden_chain_red() -> None:
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     events = asyncio.run(_publish(ledger, _BlindSource()))
     with pytest.raises(AssertionError):
         assert_landing_golden(events, ledger, "NOT_WORKING")
 
 
 def test_break_a_wrong_correlation_id_turns_the_golden_chain_red() -> None:
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     events = asyncio.run(
         _publish(ledger, InMemoryLandingSource(snapshot(waiting=heads(1), merges=1)))
     )
@@ -209,7 +208,7 @@ def test_break_a_wrong_correlation_id_turns_the_golden_chain_red() -> None:
 
 
 def test_break_a_dropped_terminal_event_turns_the_golden_chain_red() -> None:
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     events = asyncio.run(
         _publish(ledger, InMemoryLandingSource(snapshot(waiting=heads(1), merges=1)))
     )
