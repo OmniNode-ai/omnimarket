@@ -9,6 +9,7 @@ import json
 import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -30,12 +31,15 @@ COMPLETED_TOPIC = "onex.evt.omnimarket.context-additive-latency-completed.v1"
 HOSTS = ["launching-mac", "lab-host"]
 
 
-def _contract() -> dict[str, object]:
-    return yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
+def _contract() -> dict[str, Any]:
+    contract: dict[str, Any] = yaml.safe_load(
+        (NODE / "contract.yaml").read_text(encoding="utf-8")
+    )
+    return contract
 
 
 def _route_models() -> tuple[type[BaseModel], type[BaseModel]]:
-    route = _contract()["handler_routing"]["handlers"][0]  # type: ignore[index]
+    route = _contract()["handler_routing"]["handlers"][0]
     resolved: list[type[BaseModel]] = []
     for key in ("input_model", "output_model"):
         module_name, class_name = route[key].rsplit(".", 1)
@@ -114,10 +118,10 @@ def test_contract_loads_and_declares_its_topics() -> None:
     contract = _contract()
     assert contract["name"] == "context_additive_latency_compute"
     assert contract["node_type"] == "compute"
-    assert contract["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]  # type: ignore[index]
-    assert contract["event_bus"]["publish_topics"] == [COMPLETED_TOPIC]  # type: ignore[index]
+    assert contract["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]
+    assert contract["event_bus"]["publish_topics"] == [COMPLETED_TOPIC]
     assert contract["terminal_event"] == COMPLETED_TOPIC
-    assert contract["runtime_dispatch"]["command_topic"] == COMMAND_TOPIC  # type: ignore[index]
+    assert contract["runtime_dispatch"]["command_topic"] == COMMAND_TOPIC
     assert contract["externally_consumed_topics"] == [COMPLETED_TOPIC]
     assert contract["metadata"] == {"ticket": "OMN-21134", "transport_type": "kafka"}
     assert contract["descriptor"] == {
@@ -128,14 +132,12 @@ def test_contract_loads_and_declares_its_topics() -> None:
         "runtime_profiles": ["main"],
     }
     routing = contract["handler_routing"]
-    assert routing["routing_strategy"] == "operation_match"  # type: ignore[index]
-    assert [r["operation"] for r in routing["handlers"]] == [  # type: ignore[index]
-        "qualify_additive_latency"
-    ]
+    assert routing["routing_strategy"] == "operation_match"
+    assert [r["operation"] for r in routing["handlers"]] == ["qualify_additive_latency"]
 
 
 def test_contract_handler_and_models_resolve() -> None:
-    route = _contract()["handler_routing"]["handlers"][0]  # type: ignore[index]
+    route = _contract()["handler_routing"]["handlers"][0]
     declaration = route["handler"]
     assert declaration["name"] == "HandlerAdditiveLatency"
     assert declaration["module"].startswith(f"{PACKAGE}.handlers.")

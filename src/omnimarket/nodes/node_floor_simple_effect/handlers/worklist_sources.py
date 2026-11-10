@@ -3,8 +3,8 @@
 """The sources of the board's work list (OMN-23184).
 
 Reads three things and no more: the pull request watcher's state (open, non-draft, in-scope pull requests that are red or
-conflicting, and the required checks red across several of them), the landing controller's state file (its landing leases
-and the cause leases that hold shared reds), and the work-state projection (the tickets a lane left stopped, and the
+conflicting, and the required checks red across several of them), the owner map (the landing controller's landing leases
+and the cause leases that hold shared reds, from the bus projection the controller's host publishes, OMN-23391), and the work-state projection (the tickets a lane left stopped, and the
 pull requests the goal's ticket rule keeps in scope). An input that cannot be read makes the whole list unread (``None``),
 never an empty one: a list read from half its sources would call unowned work owned or absent.
 """
@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.floor_projection.owner_map import LaneOwners
 from omnimarket.models.floor_17a import ModelGoalScope
 from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
@@ -32,11 +33,6 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     parse_time,
     tickets_of,
 )
-
-
-def short_key(ref: str) -> str:
-    """``owner/repo#n`` as ``repo#n``; a cause key (no ``#``) unchanged."""
-    return ref.rpartition("/")[2] if "#" in ref else ref
 
 
 def projected_in_scope_prs(projection: ModelWorkStateResult | None) -> frozenset[str]:
@@ -75,51 +71,6 @@ def pr_scope(
     if where == "unlisted" and key in projected:
         return "in_scope"
     return where
-
-
-class LaneOwners:
-    """Who the landing controller says holds a pull request: a landing lease on it, or the lease of a cause that holds it."""
-
-    def __init__(
-        self, landing: dict[str, str], cause: dict[str, str], parked: dict[str, str]
-    ):
-        self.landing = landing
-        self.cause = cause
-        self.parked = parked
-
-    def of(self, pr: str) -> tuple[str, str]:
-        """(landing lease, cause lease) for ``repo#n``; a parked cause is named as the cause owner."""
-        return self.landing.get(pr, ""), self.cause.get(pr) or self.parked.get(pr, "")
-
-
-def read_controller_owners(path: Path) -> LaneOwners | None:
-    """The controller's state file (``leases`` and ``causes``), or ``None`` when it is absent or not a state."""
-    try:
-        state = json.loads(path.read_text(encoding="utf-8"))
-        leases = state.get("leases") or []
-        causes = state.get("causes") or []
-        if not isinstance(leases, list) or not isinstance(causes, list):
-            return None
-        by_subject = {short_key(str(le["pr"])): int(le["lease_id"]) for le in leases}
-        cause_keys = {str(c["key"]) for c in causes}
-        landing: dict[str, str] = {}
-        cause: dict[str, str] = {}
-        parked: dict[str, str] = {}
-        for subject, lease_id in by_subject.items():
-            if subject not in cause_keys:
-                landing[subject] = f"landing-L{lease_id}"
-        for rec in causes:
-            key = str(rec["key"])
-            members = [short_key(str(m["pr"])) for m in rec.get("members") or ()]
-            if key in by_subject:
-                for member in members:
-                    cause[member] = f"cause-L{by_subject[key]} {key}"
-            elif rec.get("parked_until"):
-                for member in members:
-                    parked[member] = f"parked {key} until {rec['parked_until']}"
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return None
-    return LaneOwners(landing, cause, parked)
 
 
 def _age(now: datetime, stamp: Any) -> int | None:
@@ -289,7 +240,7 @@ def stopped_items(
 def read_worklist(
     *,
     watcher_path: Path,
-    controller_state_path: Path,
+    owners: LaneOwners | None,
     projection: ModelWorkStateResult | None,
     scope: ModelGoalScope | None,
     overlay: ModelWorklistOverlay | None,
@@ -302,7 +253,6 @@ def read_worklist(
         return None
     if scope is None or projection is None:
         return None
-    owners = read_controller_owners(controller_state_path)
     if owners is None:
         return None
     try:
