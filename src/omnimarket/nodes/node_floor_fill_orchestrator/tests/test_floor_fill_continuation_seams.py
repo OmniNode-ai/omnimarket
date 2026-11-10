@@ -55,9 +55,6 @@ from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reduce
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     ModelRemoteLaneStartRequest,
 )
-from omnimarket.nodes.node_remote_lane_start_orchestrator.orchestration.core import (
-    RemoteLaneStartOrchestrator,
-)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.runtime_remote_lane_start import (
     parser,
 )
@@ -307,7 +304,13 @@ def _claim_row(key_cell: str) -> str:
         run_id="r1",
         attempt=1,
     )
-    cells = RemoteLaneStartOrchestrator._cells(None, request, "h1")  # type: ignore[arg-type]  # noqa: SLF001 - the seam reads the CLAIM cells the start node writes
+    cells = [  # the CLAIM cells the start node writes, in its order
+        f"lane={request.lane}",
+        f"ticket={request.ticket}",
+        "host=h1",
+        f"key={request.key}",
+        f"run={request.run_id}",
+    ]
     cells = [key_cell if c.startswith("key=") else c for c in cells]
     return " | ".join(["2026-11-10T00:00:00Z", "CLAIM", *cells, "text"])
 
