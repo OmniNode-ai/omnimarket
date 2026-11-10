@@ -27,6 +27,22 @@ class ModelOllamaModelTier(BaseModel):
     download_gb: float = Field(
         ..., gt=0, description="Download size in GB, checked against free disk."
     )
+    parameter_count: str = Field(
+        ..., min_length=1, description="Model size label the lane overlay declares."
+    )
+    context_window: int = Field(
+        ..., gt=0, description="Context window (tokens) the lane overlay declares."
+    )
+    max_tokens: int = Field(
+        ..., gt=0, description="Output ceiling (tokens) the lane overlay declares."
+    )
+
+    @model_validator(mode="after")
+    def _output_fits_the_window(self) -> ModelOllamaModelTier:
+        if self.max_tokens > self.context_window:
+            msg = f"ollama model {self.model!r}: max_tokens must not exceed context_window"
+            raise ValueError(msg)
+        return self
 
 
 class ModelOllamaConfig(BaseModel):

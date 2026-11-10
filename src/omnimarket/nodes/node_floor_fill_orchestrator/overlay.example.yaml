@@ -52,6 +52,6 @@ floor_fill_live:
   # The plan file of a floor line under floor_fill.plans_root; {line_id} is the line's id.
   plan_file_pattern: "{line_id}.md"
   # The rolling ledger file the CLAIM and liveness reads scan.
-  ledger_path: /srv/example/ledger/ROLLING_WORK_LEDGER.md
+  ledger_path: /srv/example/ledger/work-ledger.md
   # Where a started lane's log is written.
   process_output_dir: /srv/example/work/lane-logs

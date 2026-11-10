@@ -15,6 +15,10 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.floor_fill.model_start_criterion import (
+    M0Verdict,
+    ModelFloorStartCriterion,
+)
 from omnimarket.models.model_factory_floor_input import ItemState
 
 OVERLAY_KEYS = (
@@ -140,6 +144,12 @@ class ModelFloorFillCandidatesRequest(BaseModel):
     payload_verdicts: tuple[ModelFloorTaskPayloadVerdict, ...] = ()
     ticket_verdicts: tuple[ModelFloorEntryTicketVerdict, ...] = ()
     entries: tuple[ModelFloorFillStateEntry, ...] = ()
+    # Readiness inputs: the ``Start when:`` line of each task's ticket, the served floor record text (its pieces list),
+    # the pull requests and tickets read merged, and the M0 verdict. Nothing an operator says is a field here.
+    start_criteria: tuple[ModelFloorStartCriterion, ...] = ()
+    pieces_record: str | None = None
+    merged_refs: tuple[str, ...] = ()
+    m0_verdict: M0Verdict = "UNREAD"
     reports: tuple[ModelStoppedLaneReport, ...] = ()
 
     @model_validator(mode="before")
@@ -153,6 +163,13 @@ class ModelFloorFillCandidatesRequest(BaseModel):
                     + ", ".join(f"{OVERLAY_PREFIX}{key}" for key in missing)
                 )
         return data
+
+    @model_validator(mode="after")
+    def _one_criterion_per_task(self) -> ModelFloorFillCandidatesRequest:
+        seen = [(c.line_id, c.task_id) for c in self.start_criteria]
+        if len(seen) != len(set(seen)):
+            raise ValueError("a task carries one start criterion")
+        return self
 
     @field_validator("now")
     @classmethod
@@ -193,6 +210,8 @@ class ModelFloorFillNotReady(BaseModel):
 
     task_id: str
     cause: str
+    # The prerequisites of the task's start criterion that read false, each naming why; set only by an unmet criterion.
+    unmet: tuple[str, ...] = ()
 
 
 class ModelFloorFillLine(BaseModel):

@@ -15,6 +15,9 @@ from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
     ModelFloorTaskPayloadVerdict,
 )
+from omnimarket.models.floor_fill.model_start_criterion import (
+    ModelFloorStartCriterion,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     FloorFillUnreadableError,
     ModelMintResult,
@@ -38,6 +41,14 @@ class UnboundFloorTickets:
         self, floor_record: str, plan_texts: Mapping[str, str | None]
     ) -> Sequence[ModelFloorTaskPayloadVerdict]:
         raise FloorFillUnreadableError("unbound:tickets")
+
+    def start_criteria(self, floor_record: str) -> Sequence[ModelFloorStartCriterion]:
+        """No criterion: nothing is ready, so nothing can start.
+
+        The verdict reads still refuse by name (``payload_verdicts`` and ``entry_ticket_verdicts`` raise
+        ``FloorFillUnreadableError("unbound:tickets")``), and the mint answers ``unavailable``.
+        """
+        return ()
 
     def entry_ticket_verdicts(
         self, tickets: Mapping[str, str]
