@@ -13,6 +13,7 @@ every refused lane is named with its reason in the refusals cell.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 
 from ..models.model_lab_fill_lane_states import (
@@ -25,6 +26,42 @@ from .helpers_outcomes import text
 
 _SKIPPED = "skipped:"
 _NOT_STARTED = "not-started"
+
+# OMN-23025: the send job labels every brief-build exit other than the check's refusal (3) as
+# brief-rules-unreadable, whichever step failed. On 2026-11-08 that one label covered Linear's
+# HTTP 429 in the ticket reads (07:50Z fire 29 lanes, 08:10Z fire 22) and the absent ticket_mirror
+# overlay (09:10Z to 09:50Z fires, 8 lanes). The job's log tail rides in the placement's detail;
+# these rules read it, the rules reader's own failures first because it runs first.
+_CATCH_ALL = "brief-rules-unreadable"
+_RULES_FILE = re.compile(r"(/[^\s:]*lane-rules-block\.md)")
+_RULES_CHECKOUT = re.compile(r"resolver: no valid \S+ clone")
+_RULES_MARKER = re.compile(r"brief standing rules (?:lack|heading is missing)")
+_RULES_SCRIPT = re.compile(r"lane_rules_block")
+_RATE_LIMIT = re.compile(r"HTTP(?: Error)? 429\b|Too Many Requests", re.IGNORECASE)
+_MIRROR = re.compile(r"ticket_mirror overlay")
+
+
+def name_skip_cause(reason: str, detail: str) -> str:
+    """The catch-all skip reason renamed for the step its log tail shows failed; any other reason is kept.
+
+    A detail no rule knows keeps the dispatch's label, so a new failure is never given a
+    cause it does not show.
+    """
+    if reason != _CATCH_ALL or not detail:
+        return reason
+    if match := _RULES_FILE.search(detail):
+        return f"{_CATCH_ALL}:{match.group(1)}"
+    if _RULES_CHECKOUT.search(detail):
+        return f"{_CATCH_ALL}:rules-checkout"
+    if _RULES_MARKER.search(detail):
+        return f"{_CATCH_ALL}:standing-rules-marker"
+    if _RULES_SCRIPT.search(detail):
+        return f"{_CATCH_ALL}:lane_rules_block.py"
+    if _RATE_LIMIT.search(detail):
+        return "brief-ticket-rate-limited"
+    if _MIRROR.search(detail):
+        return "brief-mirror-overlay-missing"
+    return reason
 
 
 def settle_lane(
@@ -46,7 +83,12 @@ def settle_lane(
         )
     if outcome.startswith(_SKIPPED):
         return ModelLabFillLaneState(
-            lane=lane, host=host, state="never-started", reason=outcome[len(_SKIPPED) :]
+            lane=lane,
+            host=host,
+            state="never-started",
+            reason=name_skip_cause(
+                outcome[len(_SKIPPED) :], text(placement.get("detail"))
+            ),
         )
     if outcome == "refused" or outcome.startswith(("engine-failed:", "deferred:")):
         return ModelLabFillLaneState(
