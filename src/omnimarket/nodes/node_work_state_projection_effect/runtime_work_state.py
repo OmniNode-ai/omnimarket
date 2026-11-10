@@ -14,6 +14,7 @@ projection's `unread`, never drawn empty.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import sys
@@ -29,6 +30,7 @@ import yaml
 from omnimarket.handlers.commitment_rows import (
     fold_commitments,
 )
+from omnimarket.handlers.floor_projection import publish_with_overlay
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     find_node_overlay,
@@ -36,6 +38,10 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.models.commitment import (
     ModelCommitmentRules,
+)
+from omnimarket.models.floor_projection import (
+    ModelFloorProjectionEnvelope,
+    ModelFloorProjectionPublishOverlay,
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.models.work_state_projection import (
@@ -381,6 +387,46 @@ def run(
     return result
 
 
+def publish_projection(
+    result: ModelWorkStateResult, env: Mapping[str, str], now: datetime
+) -> str:
+    """Publish the projection as the ``work_state`` floor projection; the answer says what happened.
+
+    ``not configured`` when no publish overlay names a bus (the file stays the only copy), ``not published`` for the in-memory
+    default, ``published`` otherwise. A projection over the contract's bound raises with its size.
+    """
+    rt = _runtime()["publish"]
+    try:
+        overlay = load_structured_overlay(
+            rt["overlay_id"],
+            ModelFloorProjectionPublishOverlay,
+            env,
+            file_env=rt["file_env"],
+        )
+    except NodeOverlayError:
+        return "not configured"
+    payload = result.model_dump(mode="json")
+    size = len(json.dumps(payload))
+    if size > int(rt["max_payload_bytes"]):
+        raise ValueError(
+            f"the projection is {size} bytes, over the {rt['max_payload_bytes']} byte bound"
+        )
+    sent = asyncio.run(
+        publish_with_overlay(
+            overlay,
+            env,
+            rt["topic"],
+            ModelFloorProjectionEnvelope(
+                projection_id=overlay.projection_id,
+                as_of=now,
+                producer=EFFECT,
+                payload=payload,
+            ),
+        )
+    )
+    return "published" if sent else "not published"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=f"python -m omnimarket.nodes.{EFFECT}")
     parser.add_argument(
@@ -395,11 +441,15 @@ def main(argv: list[str] | None = None) -> int:
     except (NodeOverlayError, KeyError) as exc:
         sys.stderr.write(f"work-state: refused ({type(exc).__name__}: {exc})\n")
         return 2
+    try:
+        published = publish_projection(result, os.environ, datetime.now(UTC))
+    except Exception as exc:  # a bus that refuses is a reading: the projection ages and the floor reads it unknown
+        published = f"not published ({type(exc).__name__}: {exc})"
     ready = result.ready()
     lines = [
         "work-state: "
         + " ".join(f"{k}={v}" for k, v in sorted(result.counts.items()))
-        + f" ready_in_scope={len(ready)} unread={len(result.unread)}",
+        + f" ready_in_scope={len(ready)} unread={len(result.unread)} projection={published}",
         *(f"UNKNOWN {entry}" for entry in result.unread),
         *(
             f"STALE {s.source.value} age={s.age_seconds:g}s {s.cause}"
@@ -411,4 +461,4 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["build_request", "main", "run", "source_readers"]
+__all__ = ["build_request", "main", "publish_projection", "run", "source_readers"]

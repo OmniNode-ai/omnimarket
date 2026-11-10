@@ -18,6 +18,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from pydantic import JsonValue, ValidationError
+
 from omnimarket.handlers.floor_projection import ProjectionPayload
 from omnimarket.models.floor_17a import (
     ModelFloorCauseIn,
@@ -132,11 +134,15 @@ _LIVENESS_OF_STATE = {
 }
 
 
-def read_work_state(path: Path) -> ModelWorkStateResult | None:
-    """The work-state projection as the projection node wrote it, or None when it is absent or not a projection."""
+def work_state_from_payload(
+    payload: dict[str, JsonValue] | None,
+) -> ModelWorkStateResult | None:
+    """The work-state projection from the payload of the ``work_state`` floor projection, or None when it is unknown or not a projection."""
+    if payload is None:
+        return None
     try:
-        return ModelWorkStateResult.model_validate_json(path.read_bytes())
-    except (OSError, ValueError):
+        return ModelWorkStateResult.model_validate(payload)
+    except ValidationError:
         return None
 
 

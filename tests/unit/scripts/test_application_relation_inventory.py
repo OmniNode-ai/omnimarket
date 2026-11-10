@@ -638,7 +638,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for context_audit_events, created by node_projection_context_audit = 113.
     # +1 for the overlay_store table, declared and created in the same PR = 114.
     # +6 for the agent observability projection's node-owned tables = 120.
-    assert census["source_created_tables"] == 120
+    # +1 for OMN-23152's work_ledger_seq_conflicts, declared and created in the same PR = 121.
+    assert census["source_created_tables"] == 121
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -824,7 +825,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # census counts with the other delegation views = 131.
     # +2 for OMN-20034's goal_trace_events and goal_traces: ownership is declared
     # before infra vendors the migration = 133.
-    assert census["source_declared_tables"] == 133
+    # +1 for OMN-23152's work_ledger_seq_conflicts = 134.
+    assert census["source_declared_tables"] == 134
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
