@@ -27,7 +27,10 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.emission_sink import JsonlEmissionSink
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.models.work_ledger_append import ModelJoinJ5RunCommand
+from omnimarket.models.work_ledger_append import (
+    ModelJoinJ5RunCommand,
+    ModelJoinJ5RunResult,
+)
 from omnimarket.nodes.node_join_refusal_effect.overlay import (
     NODE_NAME as REFUSAL_NODE,
 )
@@ -49,6 +52,9 @@ from omnimarket.nodes.node_work_ledger_append_effect.adapters import (
     SourceProjectedRows,
     StoreProbeIdentities,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.adapters.run_deadline import (
+    run_deadline,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_join_j5 import (
     HandlerWorkLedgerJoinJ5,
     load_join_j5_policy,
@@ -67,6 +73,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
     InMemoryStoreIdentities,
     ProtocolProjectedRows,
     ProtocolStoreIdentities,
+    RunDeadlineExceededError,
 )
 
 BREAKS = ("deaf-projection", "unresolvable-identity")
@@ -139,7 +146,18 @@ def _run(arguments: argparse.Namespace) -> int:
         to_piece=policy.to_piece,
         clock=lambda: datetime.now(UTC),
     )
-    result = handler.handle(ModelJoinJ5RunCommand(probe=arguments.verb == "probe"))
+    try:
+        with run_deadline(join.run_deadline_seconds):
+            result = handler.handle(
+                ModelJoinJ5RunCommand(probe=arguments.verb == "probe")
+            )
+    except RunDeadlineExceededError:
+        # The limit passed before any chain started (an unreadable or slow ledger read): nothing was begun, so nothing is
+        # left open; the run says so and fails.
+        result = ModelJoinJ5RunResult(
+            read_ok=False,
+            reason=f"run deadline of {join.run_deadline_seconds} s passed before a chain started",
+        )
     sys.stdout.buffer.write(
         (json.dumps(result.model_dump(mode="json"), sort_keys=True) + "\n").encode()
     )

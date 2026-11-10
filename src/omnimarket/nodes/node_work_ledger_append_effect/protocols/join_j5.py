@@ -33,6 +33,10 @@ class StoreIdentityUnresolvedError(LookupError):
     """The store holds no identity for the reference, or could not be read."""
 
 
+class RunDeadlineExceededError(Exception):
+    """The run's own time limit passed while a call was open; the run deadline raises it, the join closes its chain."""
+
+
 class ProtocolStoreIdentities(Protocol):
     """Piece 5's side of the join: the store gives the broker principal an append runs under."""
 
@@ -234,6 +238,7 @@ __all__ = [
     "ProtocolJoinAppend",
     "ProtocolProjectedRows",
     "ProtocolStoreIdentities",
+    "RunDeadlineExceededError",
     "ScratchFileJoinLedger",
     "StoreIdentityUnresolvedError",
 ]

@@ -96,6 +96,8 @@ TIMEOUT_PROGRAM = (
     "exit($? & 127 ? 128 + ($? & 127) : $? >> 8)"
 )
 TIMEOUT_INTERPRETER = "/usr/bin/perl"
+# The start check of a unit that declares no probe_argv: the module's own help request (what every unit was checked with).
+DEFAULT_START_CHECK_ARGV = ("--help",)
 
 
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -345,6 +347,61 @@ class HandlerRegistryUnits:
                         f"{name} is unset: supply the unit's declared request input or export it before installing"
                     )
         return filled
+
+    @staticmethod
+    def probe_argv(unit: dict[str, Any]) -> list[str]:
+        """The arguments the start check passes to the unit's module: the unit's declared ``probe_argv``.
+
+        A module whose ``--help`` runs a real pass (the landing mains) declares a probe its main honours without a
+        pass, a bus read or a write (OMN-23604). A unit declaring none is checked with the help request, as before.
+        """
+        if "probe_argv" not in unit:
+            return list(DEFAULT_START_CHECK_ARGV)
+        declared = unit["probe_argv"]
+        if (
+            not isinstance(declared, list)
+            or not declared
+            or not all(isinstance(word, str) and word for word in declared)
+        ):
+            raise ValueError(
+                f"{unit['module']} declares a probe_argv that is not a non-empty list of non-empty words: {declared!r}"
+            )
+        return list(declared)
+
+    def start_check(
+        self,
+        request: ModelRegistryUnitsRequest,
+        unit: dict[str, Any],
+        uv: str,
+        python: str,
+        project: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run ``<module> <probe_argv>`` with the environment the rendered unit carries (OMN-23514 child).
+
+        The check is what the unit will do at its first tick, so the rendered environment, the request's path overrides
+        included, is applied over the installing shell's: an overlay root that only the request names is then present.
+        ``env`` carries the assignments so the injected runner keeps its one-argument shape.
+        """
+        rendered = [
+            f"{name}={value}" for name, value in self.environment(request, unit).items()
+        ]
+        return self.run(
+            [
+                "env",
+                *rendered,
+                uv,
+                "run",
+                "--frozen",
+                "--python",
+                python,
+                "--project",
+                str(project),
+                "python",
+                "-m",
+                str(unit["module"]),
+                *self.probe_argv(unit),
+            ]
+        )
 
     def config_target(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
@@ -617,24 +674,10 @@ class HandlerRegistryUnits:
                 config=config,
                 config_path=str(config_path or ""),
             )
-        proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
-        )
+        proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join(self.probe_argv(unit))}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         if unit.get("launchd_root"):
@@ -863,24 +906,10 @@ class HandlerRegistryUnits:
                 revision=revision,
                 canonical=canonical,
             )
-        proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
-        )
+        proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join(self.probe_argv(unit))}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         unit_dir.mkdir(parents=True, exist_ok=True)

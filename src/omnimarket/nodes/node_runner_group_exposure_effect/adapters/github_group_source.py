@@ -4,7 +4,8 @@
 
 Every call is counted against the overlay's ``max_calls``; the call past it is not made and the read
 ends in ``budget-exhausted``. Reads only (GET). The token comes from the environment variable the
-overlay names, at call time, and is never put in a result, an error or a log line.
+overlay names, at call time, or — when the overlay declares ``token_mint`` — is minted once per
+source instance from the named secrets; it is never put in a result, an error or a log line.
 
 Reading rules, all conservative so that an unreadable fact reads UNKNOWN and never WORKING:
 - a job selects the group when its ``runs-on`` (string, list or ``labels``) names a group label, or
@@ -37,6 +38,7 @@ from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_group_source import (
     ProtocolHttpGet,
+    ProtocolTokenMint,
 )
 
 _DENIED = (401, 403, 404)
@@ -55,17 +57,42 @@ class GithubGroupSource:
         settings: ModelGithubSource,
         http_get: ProtocolHttpGet,
         environ: Mapping[str, str],
+        token_mint: ProtocolTokenMint | None = None,
     ) -> None:
+        if settings.token_mint is not None and token_mint is None:
+            raise ValueError(
+                "the overlay declares token_mint, but no token minter was injected"
+            )
         self._s = settings
         self._http = http_get
         self._environ = environ
+        self._mint = token_mint
+        self._minted: str | None = None
         self._calls = 0
+
+    def _token(self) -> str:
+        """The read's bearer token: minted once per instance, or read from the environment."""
+        if self._s.token_mint is None:
+            return self._environ.get(self._s.token_env, "")
+        if self._minted is None:
+            mint = self._s.token_mint
+            if self._mint is None:
+                raise _StopError(EnumExposureReadFailure.TOKEN_MINT_FAILED)
+            try:
+                self._minted = self._mint.mint(
+                    org=mint.org,
+                    app_id_secret=mint.app_id_secret,
+                    private_key_secret=mint.private_key_secret,
+                )
+            except Exception as error:
+                raise _StopError(EnumExposureReadFailure.TOKEN_MINT_FAILED) from error
+        return self._minted
 
     # -- transport -----------------------------------------------------------------------
     def _get(self, path: str, *, denied_is_org: bool = False) -> Any:
         if self._calls >= self._s.max_calls:
             raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
-        token = self._environ.get(self._s.token_env, "")
+        token = self._token()
         if not token:
             raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         self._calls += 1
@@ -90,7 +117,7 @@ class GithubGroupSource:
         """A GET whose 404 means the thing is absent (a repository with no workflows)."""
         if self._calls >= self._s.max_calls:
             raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
-        token = self._environ.get(self._s.token_env, "")
+        token = self._token()
         if not token:
             raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         self._calls += 1
