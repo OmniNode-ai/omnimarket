@@ -482,13 +482,13 @@ _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
 )
 
 
-def _lane_job_log_reads_cache_only() -> bool:
-    """The gateway contract's (or its overlay's) lane job-log policy; imported when asked."""
+def _lane_job_log_flag() -> str | None:
+    """The gateway contract's (or its overlay's) lane job-log flag; imported when asked."""
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-        lane_reads_cache_only,
+        lane_job_log_flag,
     )
 
-    return lane_reads_cache_only()
+    return lane_job_log_flag()
 
 
 def _read_command(spec: ModelScmVerb) -> click.Command:
@@ -593,10 +593,11 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         elif source == "local":
             raise click.UsageError(f"{spec.verb} has no local answer; use the bus")
         given = {name: value for name, value in fields.items() if value is not None}
-        if spec.verb == "job-log" and _lane_job_log_reads_cache_only():
-            # OMN-23032: the declared policy makes a lane's job-log read cache-only;
-            # node_job_log_filler_effect fills the cache, and a miss names its path.
-            given["cache_only"] = True
+        if spec.verb == "job-log":
+            flag = _lane_job_log_flag()
+            if flag is not None:
+                # OMN-23378: the declared policy sets a lane's job-log read's flag.
+                given[flag] = True
         correlation_id = uuid.uuid4()
         try:
             request = ModelGithubGatewayRequest(
