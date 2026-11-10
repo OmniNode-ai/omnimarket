@@ -69,7 +69,11 @@ def test_j16_golden_one_publish_run_calls_the_node_before_the_floor_step(
     runner, steps = _run(tmp_path)
     calls = _module_calls(runner)
     modules = [m for m, _ in calls]
-    assert modules.index(JOIN_J16) < modules.index(FLOOR_SIMPLE)
+    # The concurrent mvp_launch_reads step shares the floor_simple module, so the
+    # floor step itself is the last call of that module, not the first.
+    assert modules.index(JOIN_J16) < len(modules) - 1 - modules[::-1].index(
+        FLOOR_SIMPLE
+    )
     assert dict(calls)[JOIN_J16] == ["run"]
     assert dict(steps)["join_j16"] == "ok"
     assert dict(steps)["floor_simple"] == "ok"
