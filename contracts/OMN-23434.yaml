@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23434
 title: Handing code-writing to cheaper models works again on the lab machines
-summary: Adds the join test for the seam between the lane delegation step, the code-edit node and the delegate terminal (golden and error chains, pinned wire, three planted renames), and adds node_delegation_code_budget_compute, whose overlay carries the code step's call budget sized from measured drafts. The join test reads red against a core that rejects ceiling_source and green against one that carries it.
+summary: Declares crush in the lane toolchain table, adds the join test for the seam between the lane delegation step, the code-edit node and the delegate terminal (golden and error chains, pinned wire, three planted renames), and adds node_delegation_code_budget_compute, whose overlay carries the code step's call budget sized from measured drafts. The join test reads red against a core that rejects ceiling_source and green against one that carries it.
 is_seam_ticket: true
 interface_change: false
 interfaces_touched: []
@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: "AC1: omnimarket#5703 merges with this ticket's contract (join test with the three planted renames, node_delegation_code_budget_compute) and overlays#188 merges -- falsifier: the join test with one field renamed"
+- id: req-omn23434-crush-declared
+  statement: The lane toolchain table declares crush for the hosts that run lab code drafts, and the declared installer reads a missing crush as an installer step or an operator step, never as a pass.
+  acceptance:
+  - id: AC3
+    statement: "AC3: crush is declared in the host installer and installed by it on h051 -- falsifier: the installer's own status verb for the crush entry on h051"
 evidence_requirements:
 - kind: tests
   description: The join test (golden and error chains, pinned wire, three planted renames) and the budget node's golden, error and mutation tests.
@@ -37,6 +42,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_delegation_code_budget_compute -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23434-ac3-crush-declared
+  description: The committed lane toolchain table declares crush (probe, install repair) for h051, h101 and h201 before pyright; a missing crush with no installer argv is an operator step, one with an overlay argv is installed and re-probed, and a failing installer is reported failed. The four tests read red on the table without the crush entry.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_crush_declared.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn23434-deploy-probe
   description: Hosted structural probe that needs no lab route or broker. GitHub serves the join test at the checked-out HEAD with the planted-rename switch, and serves the budget node contract at the same HEAD. It fails at the merge base, which holds neither file.
