@@ -37,6 +37,14 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_limits import (
     compute_limits,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_line_select import (
+    class_rank,
+    coverage,
+    line_id_of,
+    missing_plan_paths,
+    pick_plans,
+    select_extra_lines,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping import (
     PrRecord,
     is_built,
@@ -782,7 +790,7 @@ def _stations(
 
 
 def _line_id(plan: ModelFloorPlanInput) -> str:
-    return plan.plan_path.rsplit("/", 1)[-1].removesuffix(".md")
+    return line_id_of(plan)
 
 
 def _exempts(
@@ -1183,7 +1191,9 @@ def _blocker(
     return None
 
 
-def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
+def _undrawn(
+    request: ModelFactoryFloorRequest, tokens: tuple[str, ...]
+) -> tuple[ModelFloorLine, ...]:
     """A declared line no plan matched is drawn stopped with its cause, never left out of the record."""
     cause = request.config.undrawn_not_found_cause
     return tuple(
@@ -1223,9 +1233,30 @@ def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
                 causes=(f"{cause}: no plan path contains {token}",),
             ),
         )
-        for token in dict.fromkeys(request.selection.plan_path_contains)
+        for token in dict.fromkeys(tokens)
         if not any(token in plan.plan_path for plan in request.plans)
     )
+
+
+def _undrawn_lines(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
+    """Undrawn declared lines in the overlay's order, then undrawn plans-today plans (class plan, keyed by base name)."""
+    declared = (
+        _undrawn(request, request.selection.plan_path_contains)
+        if "declared" in request.selection.line_classes
+        else ()
+    )
+    paths = missing_plan_paths(request)
+    planned = tuple(
+        line.model_copy(
+            update={
+                "line_id": path.rsplit("/", 1)[-1].removesuffix(".md"),
+                "line_class": "plan",
+            }
+        )
+        for path in paths
+        for line in _undrawn(request, (path,))
+    )
+    return declared + planned
 
 
 def _line(
@@ -1453,25 +1484,49 @@ def _running(
 
 def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloorResult:
     """Compute the floor without reading or mutating anything outside the request."""
-    selected = tuple(
-        plan
-        for plan in request.plans
-        if not request.selection.plan_path_contains
-        or any(text in plan.plan_path for text in request.selection.plan_path_contains)
-    )
-    mapped = tuple(_with_task_map(plan, request) for plan in selected)
+    picks = pick_plans(request)
+    mapped = tuple(_with_task_map(pick.plan, request) for pick in picks)
     selected = tuple(plan for plan, _merged in mapped)
     holds = _holds(request)
     index = _index(request)
-    lines = tuple(_line(plan, holds, request, index, merged) for plan, merged in mapped)
+    plan_lines = tuple(
+        _line(plan, holds, request, index, merged).model_copy(
+            update={"line_class": pick.line_class}
+        )
+        for pick, (plan, merged) in zip(picks, mapped, strict=True)
+    )
     newest = max((row.ts for row in request.ledger), default=None)
-    floor = _floor(request, selected, lines)
-    lines = _running(lines, floor.lanes)
+    floor = _floor(request, selected, plan_lines)
+    plan_lines = _running(plan_lines, floor.lanes)
+    undrawn = _undrawn_lines(request)
+    scopes = {_line_id(plan): _scope(plan) for plan in selected}
+    live = tuple(
+        row
+        for row in request.ledger
+        if row.kind == request.config.line_select.claim_kind
+        and _live_claim((row,), request, index) is not None
+    )
+    extra, ruled = select_extra_lines(
+        request, plan_lines + undrawn, scopes, live, _data_age(request)
+    )
+    drawn = tuple(
+        line.model_copy(update={"ruled_by": ruled[line.line_id]})
+        if line.line_id in ruled
+        else line
+        for line in plan_lines + undrawn
+    )
+    ordered = tuple(
+        sorted(
+            drawn + extra,
+            key=lambda line: class_rank(request, line.line_class),
+        )
+    )
     return ModelFactoryFloorResult(
         schema_id=request.config.schema_id,
         generated_at=_stamp(request.generated_at),
-        lines=with_application_containers(request, lines + _undrawn(request)),
+        lines=with_application_containers(request, ordered),
         floor=floor,
+        coverage=coverage(request, ordered),
         sources=ModelFloorSources(
             watcher_last_tick=_stamp(request.watcher.last_tick),
             ledger_rows=len(request.ledger),

@@ -144,6 +144,7 @@ def _onex_home(
     mode: int = 0o600,
     block: bool = True,
     writer: bool = True,
+    plain_http_hosts: str | None = None,
 ) -> Path:
     home = root / "onex"
     home.mkdir(parents=True, exist_ok=True)
@@ -157,6 +158,8 @@ def _onex_home(
             "  environment_slug: dev",
             "  secret_path: /captured",
         ]
+        if plain_http_hosts is not None:
+            lines.append(f"  plain_http_hosts: {plain_http_hosts}")
         if writer:
             lines += [
                 "  writer_client_id: writer-id",
@@ -354,6 +357,45 @@ def test_config_accepts_plain_http_to_a_loopback_store(
     tmp_path: Path, addr: str
 ) -> None:
     assert load_writer_config(_onex_home(tmp_path, addr=addr)) is not None
+
+
+def test_config_accepts_plain_http_to_a_host_the_block_names(tmp_path: Path) -> None:
+    home = _onex_home(
+        tmp_path, addr="http://192.0.2.10:8880", plain_http_hosts="[192.0.2.0/24]"
+    )
+    config = load_writer_config(home)
+    assert config is not None
+    assert config.plain_http_hosts == ("192.0.2.0/24",)
+
+
+def test_config_still_refuses_a_remote_host_the_block_does_not_name(
+    tmp_path: Path,
+) -> None:
+    home = _onex_home(
+        tmp_path, addr="http://192.0.2.10:8880", plain_http_hosts="[198.51.100.0/24]"
+    )
+    with pytest.raises(CapturedSecretWriterConfigError, match="infisical_addr"):
+        load_writer_config(home)
+
+
+def test_the_captured_store_and_the_secret_store_overlay_share_one_host_rule() -> None:
+    from omnimarket.models.secret_store import plain_http_rule
+    from omnimarket.nodes.node_captured_secret_store_effect.handlers import (
+        handler_captured_secret_store,
+    )
+    from omnimarket.nodes.node_secret_store_effect.adapters import (
+        handler_infisical_http,
+    )
+
+    assert (
+        handler_captured_secret_store.require_safe_store_address
+        is plain_http_rule.require_safe_store_address
+    )
+    assert (
+        handler_infisical_http.require_safe_store_address
+        is plain_http_rule.require_safe_store_address
+    )
+    assert not hasattr(handler_captured_secret_store, "_plain_http_allowed")
 
 
 def test_a_reference_is_set_if_and_only_if_the_store_holds_it() -> None:
