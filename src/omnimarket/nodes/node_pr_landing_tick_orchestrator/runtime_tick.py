@@ -92,6 +92,7 @@ def run_once(
         "divergent": sorted(
             {d.subject for result in results for d in result.divergences}
         ),
+        "skipped": [row.model_dump(mode="json") for row in source.skipped()],
     }
     return (1 if failed else 0), line
 
