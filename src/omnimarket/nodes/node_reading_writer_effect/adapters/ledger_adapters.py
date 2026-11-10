@@ -317,6 +317,23 @@ def _refusal_text(done: subprocess.CompletedProcess[str]) -> str:
     return done.stderr[-400:] or "refused-without-reason"
 
 
+_STDERR_TAIL_CHARS = 400
+
+
+def _exit_error_text(done: subprocess.CompletedProcess[str]) -> str:
+    """Why the append command died on an exit nothing else claims: the code, then the stderr tail.
+
+    The scheduled unit logs only this message, so the tail travels with the code: a line such as
+    ``append-command-exit-69: bus: the lane declaration ... does not exist`` names its own cause.
+    The tail is flattened to one line and bounded, so the message stays far inside the model's
+    2000-character limit whatever the command wrote; stderr that says nothing names the code alone.
+    """
+    tail = done.stderr.strip()[-_STDERR_TAIL_CHARS:].replace("\n", " | ")
+    if not tail:
+        return f"append-command-exit-{done.returncode}"
+    return f"append-command-exit-{done.returncode}: {tail}"
+
+
 class CommandLedgerAppender:
     """Appends through the configured bus append command: rows on stdin, one JSON receipt out."""
 
@@ -358,9 +375,7 @@ class CommandLedgerAppender:
         if done.returncode == 65:
             return ModelAppendOutcome(status="refused", message=_refusal_text(done))
         if done.returncode != 0:
-            return ModelAppendOutcome(
-                status="error", message=f"append-command-exit-{done.returncode}"
-            )
+            return ModelAppendOutcome(status="error", message=_exit_error_text(done))
         last = done.stdout.strip().splitlines()[-1:] or [""]
         try:
             receipt = json.loads(last[0])

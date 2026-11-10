@@ -486,7 +486,9 @@ def _cli(
         "--candidates", str(_write(tmp_path / "c.json", candidates)),
         "--pr-state", str(_write(tmp_path / "p.json", prs)),
         "--text-state", str(_write(tmp_path / "t.json", texts)),
-        "--max", "12", *extra,
+        "--max", "12",
+        "--examined-memory", str(tmp_path / "examined_memory.json"),
+        *extra,
     ]  # fmt: skip
     return subprocess.run(command, capture_output=True, text=True, check=False)
 

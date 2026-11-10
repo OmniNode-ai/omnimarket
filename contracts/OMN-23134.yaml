@@ -1,0 +1,69 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23134
+title: The floor's compare page counts each repository once, under its canonical name, so no repository appears as two rows
+summary: >-
+  node_floor_compare_effect keyed per-repository merge counts by the spelling each source held (the canonical clone's directory name), so one repository spelled with an underscore and with a hyphen, and one repository under its old and its new name, were two rows each. The compare now reads every per-repository key under the registry's canonical name through a repository names overlay, so each repository is one row.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23134-canonical-repository-rows
+    statement: >-
+      Every per-repository key of the compare history is read under the registry's canonical repository name, taken from overlay data.
+    acceptance:
+      - id: AC1
+        statement: "AC1: merge counts are keyed by the registry's canonical repository name, so underscore and hyphen spellings and renamed repositories land in one row -- falsifier: uv run pytest over the compare handler with recorded rows naming an underscore and a hyphen spelling of one repository"
+      - id: AC2
+        statement: "AC2: the served compare page shows each repository once -- falsifier: curl the compare JSON and assert no two rows share a canonical repository"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The repository names tests, including the failing control (an overlay that maps nothing serves each spelling as its own row).
+    command: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23134-ac1-canonical-keys
+    description: >-
+      Recorded rows naming both spellings land in one row under the registry name; a spelling listed in the overlay is read under its canonical name and nothing in code names a repository. Red on dev (the cycle test shows both spellings), green on the branch.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23134-ac2-served-rows-once
+    description: >-
+      The compare cycle run over a registry home holding one repository under two clone directory names writes a comparison JSON with each repository once; the overlay that maps nothing is the failing control and writes it twice.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov -k "served or golden"
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-deploy-omn23134-compare-node
+    description: >-
+      Deploy assessment: the change adds no Kafka topic, migration or prod mutation; it reaches the runtime through the package on the next standard image rebuild. The command reads the changed adapter from GitHub at the fix commit and fails when the canonical_snapshots symbol the fix introduces is missing. The compare node's tests also run on the in-memory profile, which hosted CI can run.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_compare_effect/handlers/adapter_repository_names.py?ref=4c4c8201c91331727f1071d313c3957b110ff84d' --jq .content | base64 -d | grep 'def canonical_snapshots' >/dev/null"
+        cwd: "."
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
+  - id: dod-omn23134-integration-proof
+    description: >-
+      The pushed head ran the repository names tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane compare-dupes-1215 -- uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov
+        cwd: .
