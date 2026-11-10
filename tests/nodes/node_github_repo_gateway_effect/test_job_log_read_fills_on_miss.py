@@ -365,8 +365,10 @@ def test_seam_the_verb_request_round_trips_and_matches_the_fillers_shape(
     )
     lane_fields = lane.model_dump(exclude={"correlation_id"})
     filler_fields = fillers.model_dump(exclude={"correlation_id"})
-    assert lane_fields.pop("fill_on_miss") is True
-    assert filler_fields.pop("fill_on_miss") is False
+    lane_fill = lane_fields.pop("fill_on_miss")
+    filler_fill = filler_fields.pop("fill_on_miss")
+    assert lane_fill is True
+    assert filler_fill is False
     assert lane_fields == filler_fields
 
 
