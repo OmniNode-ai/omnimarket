@@ -212,14 +212,19 @@ def test_a_broker_refusal_exits_with_the_bus_unavailable_code_and_no_traceback(
 
     from omnimarket.handlers.scm import scm_git_credential
 
-    @contextlib.asynccontextmanager
-    async def refused() -> AsyncIterator[Any]:
-        raise InfraConnectionError(
-            "Failed to start group-less read of topic "
-            "onex.evt.omnimarket.github-git-credential-issued.v1: "
-            "TopicAuthorizationFailedError"
-        )
-        yield  # pragma: no cover
+    class _Refused:
+        async def __aenter__(self) -> Any:
+            raise InfraConnectionError(
+                "Failed to start group-less read of topic "
+                "onex.evt.omnimarket.github-git-credential-issued.v1: "
+                "TopicAuthorizationFailedError"
+            )
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    def refused() -> Any:
+        return _Refused()
 
     def opener(*_args: object, **_kwargs: object) -> Any:
         return refused
