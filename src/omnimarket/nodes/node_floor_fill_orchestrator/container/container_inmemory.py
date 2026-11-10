@@ -23,6 +23,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ModelRunOutcome,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
+    ScriptedBriefs,
     ScriptedClock,
     ScriptedCommandForward,
     ScriptedFacts,
@@ -50,6 +51,7 @@ def build_inmemory_handler(config: ModelFloorFillConfig) -> HandlerFloorFillComm
         ledger=ScriptedLedger(),
         tickets=ScriptedTickets(),
         runner=ScriptedStarter(),
+        briefs=ScriptedBriefs(),
         clock=ScriptedClock(datetime(1970, 1, 1, tzinfo=UTC)),
     )
     return HandlerFloorFillCommand(

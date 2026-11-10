@@ -71,7 +71,7 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 .hcell .v.unread{font-weight:400;font-style:italic;color:var(--mute);font-size:13px}.chip{margin-left:6px;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--amber);color:#fff}
 .hocc{display:grid;gap:2px;font-size:14px;margin:0;padding:0;list-style:none}.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}.hocc li span:last-child{color:var(--mute);font-size:13px}
 </style></head><body><main>
-<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a><a role="tab" id="tab-compare" href="compare.html">Better or worse</a></div>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a><a role="tab" id="tab-compare" href="compare.html">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html">Delegation</a></div>
 <section id="pane-process" role="tabpanel" aria-labelledby="tab-process"><div id="app"><div class="frozen">Reading the floor...</div></div></section>
 <section id="pane-machines" role="tabpanel" aria-labelledby="tab-machines" hidden><div id="machines"><div class="frozen">Reading the machines...</div></div></section>
 </main>
@@ -150,7 +150,7 @@ function draw(){
   h += `<h2>What's holding things up, biggest first</h2>`;
   if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
   for (const c of listed.slice(0, doc.causes_shown)) {
-    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
+    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : c.owner_state === "unknown" ? "Owner unknown: " + c.owner_note + "." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
     h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
@@ -165,6 +165,8 @@ function draw(){
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
   if ((r.unowned_red || []).length) h += `<div class="rule bad">${r.unowned_red.length} red with no declared owner: ${r.unowned_red.map(esc).join(", ")}.</div>`;
+  if ((r.owner_unknown_red || []).length) h += `<div class="rule bad">${r.owner_unknown_red.length} red with owner unknown: ${r.owner_unknown_red.map(esc).join(", ")}. ${doc.owner_inputs ? esc(doc.owner_inputs.reason) : ""}</div>`;
+  if ((r.uncarried_red || []).length) h += `<div class="rule bad">${r.uncarried_red.length} red with no live lane on it: ${r.uncarried_red.map(esc).join(", ")}.</div>`;
   if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
   if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
   h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
@@ -184,13 +186,14 @@ function whoIsOn(p){
   const ids = [p.cause_id, "piece:" + p.piece].filter(Boolean);
   const cs = (doc.causes || []).filter(c => ids.includes(c.id));
   const uniq = xs => [...new Set(xs)];
-  return {lanes: uniq(cs.flatMap(c => c.lanes || [])), prs: uniq(cs.flatMap(c => c.prs || [])), tickets: uniq(cs.flatMap(c => c.tickets || []))};
+  return {lanes: uniq(cs.flatMap(c => c.lanes || [])), prs: uniq(cs.flatMap(c => c.prs || [])), tickets: uniq(cs.flatMap(c => c.tickets || [])), unknown: (cs.find(c => c.owner_state === "unknown") || {}).owner_note || ""};
 }
 const prWords = r => { const m = /^(.+)#(\d+)$/.exec(r); return m ? m[1] + " pull request " + m[2] : r; };
 function whoLine(p){
   if (p.status === "not_started") return "Not started.";
   const w = whoIsOn(p);
   if (w.lanes.length) return "On it: " + w.lanes.slice(0, 2).join(", ") + (w.lanes.length > 2 ? " and " + (w.lanes.length - 2) + " more" : "") + ".";
+  if (w.unknown && p.status !== "working") return "Owner unknown: " + w.unknown + ".";
   return p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it.";
 }
 function readAge(p){ return p.reading_age_s == null ? "No reading yet." : "Read " + ago(p.reading_age_s) + "."; }
@@ -239,7 +242,7 @@ function panelBody(p){
   h += eventsSection(p);
   h += `<h3>Against the old way, 7 days</h3>` + measureSection(p);
   h += `<h3>Who is on it</h3>`;
-  h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it."}</p>`;
+  h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : w.unknown ? "Owner unknown: " + esc(w.unknown) + "." : "Nobody is on it."}</p>`;
   h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
   const joins = (p.joins || []).map(j => `${esc(j.id)}, ${esc(j.label)}: ${esc(j.state.replace("_", " "))}`);
   if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;

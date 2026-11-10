@@ -11,7 +11,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,7 +29,12 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
     ModelRunnerPlanRule,
 )
+from omnimarket.models.floor_17a.model_delegation_idle import (
+    ModelDelegationIdleOverlay,
+    ModelDelegationTicketIn,
+)
 from omnimarket.models.work_state_projection import (
+    EnumCriterionReading,
     EnumWorkItemKind,
     EnumWorkItemState,
     ModelWorkStateResult,
@@ -38,6 +43,7 @@ from omnimarket.models.work_state_projection import (
 TICKET = re.compile(r"\bOMN-\d+\b")
 SIZE_UNITS = {"K": 1 / 1024 / 1024, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
 TAIL_BYTES = 400_000
+CACHED_CELL = re.compile(r"\bcached=(\d+(?:\.\d+)?)s\b")
 # No admission record given: the lists alone decide. ``None`` instead is a record that could not be read.
 NO_ADMISSIONS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
@@ -133,6 +139,49 @@ def read_work_state(path: Path) -> ModelWorkStateResult | None:
         return None
 
 
+def read_delegation_tickets(
+    projection: ModelWorkStateResult | None, spec: ModelDelegationIdleOverlay
+) -> tuple[ModelDelegationTicketIn, ...] | None:
+    """The operator-owned delegation tickets whose start criterion reads true and that are not done (OMN-23313).
+
+    A ticket is delegation work when its parent chain reaches one of the overlay's epics (an epic is not its own member),
+    and the operator's when its tracker assignee is one of the overlay's operator assignees. ``None`` when the projection
+    is absent or no ticket in it carries an assignee at all: the tracker snapshot was the compact form, ownership was not
+    read, and an empty list there would call every ticket nobody's.
+    """
+    if projection is None:
+        return None
+    tickets = {
+        i.ticket: i
+        for i in projection.items
+        if i.kind is EnumWorkItemKind.TICKET and i.ticket
+    }
+    if not any(i.assignee for i in tickets.values()):
+        return None
+    epics = set(spec.epics)
+    operators = set(spec.operator_assignees)
+
+    def under_epic(parent: str | None) -> bool:
+        seen: set[str] = set()
+        while parent and parent not in seen:
+            if parent in epics:
+                return True
+            seen.add(parent)
+            parent = tickets[parent].parent if parent in tickets else None
+        return False
+
+    return tuple(
+        ModelDelegationTicketIn(
+            ticket=i.ticket or "", title=i.title, assignee=i.assignee or ""
+        )
+        for _, i in sorted(tickets.items())
+        if i.assignee in operators
+        and i.state is not EnumWorkItemState.DONE
+        and i.criterion is EnumCriterionReading.TRUE
+        and under_epic(i.parent)
+    )
+
+
 def work_state_lanes(projection: ModelWorkStateResult) -> tuple[ModelFloorLane, ...]:
     """Each projected lane as the floor draws it, attributed to rows by the cells of its CLAIM alone.
 
@@ -225,6 +274,12 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
             last_seen: datetime | None = parse_time(item.get("last_seen"))
         except ValueError:
             last_seen = None
+        try:
+            resolved_at: datetime | None = (
+                parse_time(item["resolved_at"]) if item.get("resolved_at") else None
+            )
+        except ValueError:
+            resolved_at = None
         cost = item.get("cost_minutes")
         out.append(
             ModelFloorCauseIn(
@@ -235,6 +290,7 @@ def record_stoppages(record: Mapping[str, Any]) -> tuple[ModelFloorCauseIn, ...]
                 size_unit="occurrences",
                 tickets=tuple(str(t) for t in item.get("tickets", [])),
                 last_seen=last_seen,
+                resolved_at=resolved_at,
                 reported_cost_minutes=float(cost)
                 if isinstance(cost, int | float)
                 else None,
@@ -335,7 +391,11 @@ def read_watcher(
     scope: ModelGoalScope | None,
     conflict_states: tuple[str, ...] = (),
     admissions: Mapping[str, Mapping[str, Any]] | None = NO_ADMISSIONS,
+    projected: frozenset[str] = frozenset(),
 ) -> WatcherReading | None:
+    """``projected`` holds the pull requests (``repo#n``) the work-state projection keeps in scope through the goal's ticket
+    rule. The goal scope's lists name 58 pull requests and the rule admits the rest by ticket, so reading the lists alone left
+    the red class holding the 2 listed ones while the controller counted 60 to 70 (OMN-23184)."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         last_tick = parse_time(data["last_tick"])
@@ -363,6 +423,8 @@ def read_watcher(
             str(facts.get("head_ref", "")),
             str(facts.get("body", "")),
         )
+        if where == "unlisted" and str(key) in projected:
+            where = "in_scope"
         if where != "in_scope":
             outside += 1
             paused += where == "paused"
@@ -448,6 +510,23 @@ def _by_kind(overlay: ModelLabStateOverlay, kind: str) -> ModelLabSourceDef:
     return next(s for s in overlay.sources if s.kind == kind)
 
 
+def _busy_with_own_units(reason: str, overlay: ModelLabStateOverlay) -> bool:
+    """True when the pool's refusal is the load bar alone and the units placed on the host explain that load (OMN-22870).
+
+    The placement prints the own-load part only when the load bar refuses and the load less the cost of the units placed
+    there is inside the bar. A host full of our own work refuses new work; it is not failing. Any other refusal part,
+    and a load nothing placed explains (no own-load part), is not this case.
+    """
+    marker = overlay.own_load_marker
+    if not marker:
+        return False
+    parts = [p.strip() for p in reason.split(overlay.refusal_separator) if p.strip()]
+    if not any(p.startswith(marker) for p in parts):
+        return False
+    allowed = (marker, *overlay.load_bar_markers)
+    return all(p.startswith(allowed) for p in parts)
+
+
 def read_hosts(
     record: Mapping[str, Any] | None, overlay: ModelLabStateOverlay
 ) -> ModelLabSourceRead:
@@ -473,14 +552,22 @@ def read_hosts(
             subjects.append(ModelLabSubject(name=host, ok=False, note="unread"))
             continue
         admission = m.get("admission") or {}
+        reason = str(admission.get("reason", ""))
         refused = admission.get("state") == "refused"
+        if refused and _busy_with_own_units(reason, overlay):
+            subjects.append(
+                ModelLabSubject(
+                    name=host,
+                    ok=True,
+                    note=f"busy with its own placed units: {reason}"[:140],
+                )
+            )
+            continue
         subjects.append(
             ModelLabSubject(
                 name=host,
                 ok=not refused,
-                note=str(admission.get("reason", ""))[:140]
-                if refused
-                else "advertising",
+                note=reason[:140] if refused else "advertising",
             )
         )
     working = sum(1 for s in subjects if s.ok)
@@ -684,7 +771,38 @@ def _free_gb(entry: str, key: str) -> float | None:
     return float(match.group(1)) * SIZE_UNITS[match.group(2)] if match else None
 
 
-def read_disk(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
+def _cached_s(rest: str) -> float:
+    """Seconds the host's cell text was already old when the receipt was written (the probe's ``cached=<n>s`` cell), else 0."""
+    match = CACHED_CELL.search(rest)
+    return float(match.group(1)) if match else 0.0
+
+
+def disk_expected_hosts(
+    record: Mapping[str, Any] | None, overlay: ModelLabStateOverlay
+) -> tuple[str, ...]:
+    """The hosts the pool receipt must hold a disk line for: every machine of the floor record that is not declared out or
+    in repair and that the overlay does not list as unprobed. A host the receipt lacks is unread, never absent."""
+    if record is None:
+        return ()
+    machines = [m for m in record["floor"].get("machines", []) if isinstance(m, dict)]
+    return tuple(
+        host
+        for m in machines
+        if (host := str(m.get("host", "")))
+        and str(m.get("state", "")) not in overlay.declared_host_states
+        and host not in overlay.disk_unprobed_hosts
+    )
+
+
+def read_disk(
+    path: Path,
+    overlay: ModelLabStateOverlay,
+    now: datetime | None = None,
+    expected_hosts: Sequence[str] = (),
+) -> ModelLabSourceRead:
+    """A host is above the bar only when every disk figure the overlay names is read, no older than the source's bound
+    and at or over the bar. A figure that is unread, a host the receipt holds no line for, and a figure older than its
+    bound count as not above the bar (OMN-23224); the bar is the overlay's and is not changed here."""
     source = _by_kind(overlay, "disk")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -700,21 +818,40 @@ def read_disk(path: Path, overlay: ModelLabStateOverlay) -> ModelLabSourceRead:
     subjects: list[ModelLabSubject] = []
     for entry in readings:
         host, _, rest = str(entry).partition(":")
-        free = [f for k in overlay.disk_keys if (f := _free_gb(rest, k)) is not None]
-        if not free:
-            subjects.append(
-                ModelLabSubject(name=host, ok=False, note="no disk figure in the read")
+        figures = {k: _free_gb(rest, k) for k in overlay.disk_keys}
+        free = [f for f in figures.values() if f is not None]
+        unread = [k for k, f in figures.items() if f is None]
+        age_s = _cached_s(rest) + (
+            max((now - started).total_seconds(), 0.0) if now is not None else 0.0
+        )
+        low = min(free) if free else None
+        why: list[str] = []
+        if unread:
+            why.append(f"{', '.join(unread)} unread in the pool receipt")
+        if low is not None and low < floor:
+            why.append(f"{low:.1f} GB free, under the {floor:g} GB floor")
+        if age_s > source.max_age_s:
+            why.append(
+                f"reading {age_s:.0f} s old, over the {source.max_age_s} s bound"
             )
-            continue
-        low = min(free)
         subjects.append(
             ModelLabSubject(
                 name=host,
-                ok=low >= floor,
-                value=round(low, 1),
-                note=f"{low:.1f} GB free{'' if low >= floor else f', under the {floor:g} GB floor'}",
+                ok=not why,
+                value=None if low is None else round(low, 1),
+                note="; ".join(why) if why else f"{low:.1f} GB free",
             )
         )
+    held = {s.name for s in subjects}
+    subjects.extend(
+        ModelLabSubject(
+            name=missing,
+            ok=False,
+            note="no line in the pool receipt, so its disk is unread",
+        )
+        for missing in expected_hosts
+        if missing not in held
+    )
     if not subjects:
         return _unread(source.id, "the pool receipt holds no host")
     low_hosts = [s.name for s in subjects if not s.ok]

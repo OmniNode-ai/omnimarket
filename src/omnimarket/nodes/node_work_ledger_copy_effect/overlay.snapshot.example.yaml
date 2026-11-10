@@ -19,7 +19,8 @@ drill:
   reachability_argv: [nc, -z, -w, "3", "{host}", "{port}"]
   probe_timeout_seconds: 10
   scratch_table: drill_ledger_rows
-report_append_argv: [onex-ledger, /srv/ledger/ROLLING_WORK_LEDGER.md, --append]
+report_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+report_host: copy-host.example.invalid
 report_lane: ledger-restore-drill
 report_ticket: OMN-1
 report_actor: node:node_work_ledger_copy_effect

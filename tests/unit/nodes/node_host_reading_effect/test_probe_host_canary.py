@@ -93,6 +93,7 @@ class CanaryWorld:
         self.advertisements_configured = True
         self.drill = False
         self.parked_markers: tuple[str, ...] | None = None
+        self.guard_missing_exit_codes: tuple[int, ...] | None = None
 
     # -- the named breaks ------------------------------------------------------------------
 
@@ -119,6 +120,11 @@ class CanaryWorld:
 
     def break_lane_guard_missing(self, host: str) -> None:
         self.breaks[host] = "guard_missing"
+
+    def break_lane_guard_stub_exit(self, host: str) -> None:
+        """The pool read admits the host (its advertisement carries no lane-guard entry) and the
+        lane wrapper's stub then exits 78: the host's installed copy of the guard is absent."""
+        self.breaks[host] = "guard_stub"
 
     def break_unadvertised(self, host: str) -> None:
         """The pool read never names the host (no advertisement reached the placer) and the
@@ -191,6 +197,10 @@ class CanaryWorld:
             canary = canary.model_copy(
                 update={"pool_parked_markers": self.parked_markers}
             )
+        if self.guard_missing_exit_codes is not None:
+            canary = canary.model_copy(
+                update={"guard_missing_exit_codes": self.guard_missing_exit_codes}
+            )
         if not self.advertisements_configured:
             canary = canary.model_copy(update={"advertisements_command_env": None})
         return base.model_copy(update={"canary": canary})
@@ -210,6 +220,10 @@ class CanaryWorld:
                 '(host table job_kinds) load/core=0.07" >&2; exit 75'
             ),
             "guard_missing": 'echo "lab-run: $0: lane guard 7a54cfc0 not installed" >&2; exit 75',
+            "guard_stub": (
+                'echo "LANE-GUARD-MISSING /example/sha256/0db5df69/lane_guard_host.py is absent '
+                'or altered on this host" >&2; exit 78'
+            ),
             "unadvertised": (
                 'echo "lab-run: h-other: not the requested host" >&2; '
                 'echo "lab-run: no pool host passes the shared admission rule" >&2; exit 75'
@@ -256,6 +270,13 @@ class CanaryWorld:
         }
         if kind in refusals:
             return ModelCanaryRun(exit_code=75, stderr=refusals[kind])
+        if kind == "guard_stub":
+            return ModelCanaryRun(
+                exit_code=78,
+                stderr=admitted
+                + "LANE-GUARD-MISSING /example/sha256/0db5df69/lane_guard_host.py is absent "
+                "or altered on this host\n",
+            )
         if kind == "unadvertised":
             return ModelCanaryRun(
                 exit_code=75,
@@ -462,6 +483,56 @@ def test_failing_control_without_the_parked_markers_the_refusal_reads_busy() -> 
 
 
 # -- error -------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_error_chain_an_admitted_host_whose_guard_copy_is_absent_names_the_guard(
+    backend: str,
+) -> None:
+    """OMN-22869: the pool read admitted the host and its lane wrapper's stub exited 78
+    LANE-GUARD-MISSING (the 2026-11-09 board red). The row names the guard, not an untyped
+    result, and the reading stays NOT_WORKING: no lane can start on that host."""
+    world = CanaryWorld(backend)
+    world.break_lane_guard_stub_exit("h-b")
+    ledger = InMemoryLedger()
+    events = asyncio.run(_publish(world, ledger, PAYLOAD))
+    written = events[0][1]
+    assert events[-1][0] == TOPICS["host_reading_run_completed"]
+    assert written["verdict"] == "NOT_WORKING"
+    assert written["reasons"] == ["canary-guard-missing-h-b"], written
+    (row,) = ledger.lines
+    assert "reason=canary-guard-missing-h-b" in row
+    assert "failed_hosts=h-b" in row
+    assert "typed=h-a" in row
+
+
+def test_failing_control_without_the_guard_exit_code_the_stub_exit_reads_untyped() -> (
+    None
+):
+    """The break: empty the overlay's guard-missing exit codes (the behaviour before OMN-22869)
+    and the same stub exit reads untyped, so the assertion of the test above turns red."""
+    world = CanaryWorld("memory")
+    world.break_lane_guard_stub_exit("h-b")
+    world.guard_missing_exit_codes = ()
+    verdict, reasons, _ = _read(world)
+    assert verdict == "NOT_WORKING"
+    assert reasons == ["canary-untyped-h-b"], reasons
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_a_pool_refusal_for_the_guard_stays_busy_while_the_stub_exit_fails(
+    backend: str,
+) -> None:
+    """The two guard endings stay apart: the pool read's refusal (exit 75) is a typed busy, the
+    stub's exit 78 after an admission is a failed host."""
+    world = CanaryWorld(backend)
+    world.break_lane_guard_missing("h-a")
+    world.break_lane_guard_stub_exit("h-b")
+    verdict, reasons, cells = _read(world)
+    assert verdict == "NOT_WORKING"
+    assert reasons == ["canary-guard-missing-h-b"], reasons
+    assert cells["busy"] == "h-a"
+    assert cells["failed_hosts"] == "h-b"
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

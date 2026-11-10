@@ -34,7 +34,7 @@ from omnimarket.nodes.node_push_validation_effect.protocols.protocol_focused_tes
     ProtocolFocusedTestRunClient,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("host_capacity_overlay")]
 
 ROOT = "/srv/lab/dtl"
 CORRELATION = "0f1e2d3c-4b5a-4968-8778-a1b2c3d4e5f6"
@@ -74,7 +74,13 @@ class FakeClient:
     def admission(self) -> ModelHostAdmission:
         self.calls.append("admission")
         return ModelHostAdmission(
-            running_task_containers=self.b["running"], load_one_minute=self.b["load"]
+            running_task_containers=self.b["running"],
+            load_one_minute=self.b["load"],
+            logical_cores=self.b.get("cores", 32),
+            mem_total_gb=96.0,
+            mem_avail_gb=self.b.get("mem_avail", 46.0),
+            swap_in_kb_s=self.b.get("swap_in", 0.0),
+            swap_out_kb_s=0.0,
         )
 
     def sweep_orphans(self) -> None:
@@ -166,14 +172,57 @@ async def test_a_clean_run_is_completed_with_its_junit_and_teardown() -> None:
     )
 
 
-@pytest.mark.parametrize(("running", "load"), [(2, 1.0), (0, 8.5)])
+@pytest.mark.parametrize(
+    ("running", "load", "cores", "mem_avail", "swap_in"),
+    [
+        (2, 1.0, 32, 46.0, 0.0),  # the two-container bar
+        (0, 8.5, 32, 46.0, 0.0),  # over the load per core of the overlay
+        (0, 0.5, 32, 5.0, 0.0),  # free memory under its share
+        (0, 0.5, 32, 46.0, 50000.0),  # paging
+    ],
+)
 async def test_admission_refuses_with_host_busy_before_creating_anything(
-    running: int, load: float
+    running: int, load: float, cores: int, mem_avail: float, swap_in: float
 ) -> None:
-    client = FakeClient(running=running, load=load)
+    client = FakeClient(
+        running=running, load=load, cores=cores, mem_avail=mem_avail, swap_in=swap_in
+    )
     receipt = await _run(client)
     assert receipt.status is EnumFocusedTestRunStatus.HOST_BUSY
     assert client.calls == ["admission"]
+
+
+@pytest.mark.parametrize(("cores", "load"), [(96, 12.7), (96, 16.5), (64, 14.2)])
+async def test_admission_per_core_a_large_host_over_the_old_absolute_bar_is_admitted(
+    cores: int, load: float
+) -> None:
+    # h051 read 12.7 to 16.5 and h053 14.2 on many-core servers; a fixed 8.0 refused them.
+    client = FakeClient(load=load, cores=cores)
+    receipt = await _run(client)
+    assert receipt.status is not EnumFocusedTestRunStatus.HOST_BUSY, receipt.detail
+    assert "admission" in client.calls
+    assert "run" in client.calls
+
+
+async def test_admission_per_core_a_host_refuses_naming_its_per_core_load_and_inputs() -> (
+    None
+):
+    client = FakeClient(load=34.5, cores=32)
+    receipt = await _run(client)
+    assert receipt.status is EnumFocusedTestRunStatus.HOST_BUSY
+    assert "1.08 per core" in receipt.detail
+    assert "cores=32" in receipt.detail
+
+
+async def test_an_overlay_that_is_missing_is_an_infra_error_never_a_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS")
+    client = FakeClient()
+    receipt = await _run(client)
+    assert receipt.status is EnumFocusedTestRunStatus.INFRA_ERROR
+    assert "host_capacity" in receipt.detail
+    assert "run" not in client.calls
 
 
 @pytest.mark.parametrize("find", ["no such text", "    "])
