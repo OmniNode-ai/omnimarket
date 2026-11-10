@@ -366,3 +366,14 @@ RECORDED_CLOSEOUT_SCRIPT = "\n".join(
         'rm -f "$E"',
     ]
 )
+
+
+# Recorded 2026-11-10 (OMN-23502) from the omni plugin's ``plugin_ensure_script`` for one synthetic source: the lines
+# that install a tree into the plugin store (a temporary directory renamed into place, then the tree touched as its
+# last use). The runner fills the temporary directory from ``git archive``; the ssh transport fills it from the
+# archive on its stdin, so the extraction line is the only one that differs.
+RECORDED_PLUGIN_TREE_LINES = (
+    '  T="$D.tmp.$$"; rm -rf "$T"; mkdir -p "$T" || exit 70',
+    '  python3 -c "import os,sys; os.rename(sys.argv[1], sys.argv[2])" "$T" "$D" 2>/dev/null || rm -rf "$T"',
+    'touch "$D" 2>/dev/null || true',
+)

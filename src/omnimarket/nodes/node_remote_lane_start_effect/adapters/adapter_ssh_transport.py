@@ -23,6 +23,7 @@ import re
 import shlex
 import subprocess
 from collections.abc import Sequence
+from pathlib import Path
 from typing import ClassVar, Protocol
 
 from omnibase_spi.contracts.services import (
@@ -190,6 +191,17 @@ RUNTIME_CONFIG_PRINTED = ("RUNTIME-CONFIG installed ", "RUNTIME-CONFIG present "
 #: The first-line prefix the runner's closeout script opens with: the home-relative run root, swapped here for the declared one.
 CLOSEOUT_HEADER_PREFIX = 'LR="$HOME/lab-run"; C="$LR/runs/{run_id}.ctx"; '
 
+#: A plugin store path written inside double quotes: path characters, optionally under ``$HOME``.
+_PLUGIN_STORE = re.compile(r"(?:\$HOME)?[A-Za-z0-9_./-]+")
+#: A plugin name as the engine loads it, and the digest that names the cached tree.
+_PLUGIN_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")
+_TREE_DIGEST = re.compile(r"[A-Za-z0-9]{12,}")
+PLUGIN_DIR_PRINTED = "PLUGIN-DIR "
+#: The runner builds a shared virtualenv for a tree that carries this lock file; the ssh transport does not yet.
+PLUGIN_LOCK_FILE = "uv.lock"
+PLUGIN_VENV_NOT_RUN = "PLUGIN-VENV-NOT-RUN "
+PLUGIN_VENV_EXIT = 21
+
 #: The ledger outbox file under the run's context directory, read after the engine ends.
 OUTBOX_FILE = "ledger-outbox.rows"
 
@@ -254,6 +266,7 @@ class SshLaneHostTransport:
         runtime_config_target: str = "",
         closeout_tool_repo: str = "",
         closeout_ledger_env: str = "",
+        plugin_store: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
         if ledger_write_via not in ("local", "bus"):
@@ -284,6 +297,11 @@ class SshLaneHostTransport:
             raise ValueError(
                 f"remote_lane_start.closeout_ledger_env {closeout_ledger_env!r}: an upper-case variable name"
             )
+        if plugin_store and not _PLUGIN_STORE.fullmatch(plugin_store):
+            raise ValueError(
+                f"remote_lane_start.plugin_store {plugin_store!r}: path characters, optionally under $HOME"
+            )
+        self._plugin_store = plugin_store.rstrip("/")
         self._closeout_tool_repo = closeout_tool_repo
         self._closeout_ledger_env = closeout_ledger_env
         self._runtime_config = runtime_config_text
@@ -666,9 +684,72 @@ class SshLaneHostTransport:
     def ship_plugin_trees(
         self, request: ModelLaneShipPluginTreesRequest
     ) -> ModelLaneShipPluginTreesResult:
-        return ModelLaneShipPluginTreesResult(
-            shipped=False, error=self._not_run("ship_plugin_trees")
-        )
+        """The runner's ``plugin_ensure_script``, filled from the caller's archives instead of a git fetch.
+
+        Each tree is one call: its gzip tar archive (``archive_path`` on the caller) goes on stdin, is extracted into
+        a temporary directory beside ``<plugin_store>/<name>-<digest>``, and renamed into place unless that tree is
+        already there; the tree is touched (its last use) and ``PLUGIN-DIR <name> <dir>`` comes back. A tree that
+        carries a lock file needs the runner's shared virtualenv, which this transport does not build: it is refused
+        by name rather than shipped without one.
+        """
+        if not self._plugin_store:
+            return ModelLaneShipPluginTreesResult(
+                shipped=False, error=self._not_run("ship_plugin_trees")
+            )
+        dirs: list[tuple[str, str]] = []
+        for tree in request.trees:
+            if not _PLUGIN_NAME.fullmatch(tree.name):
+                return ModelLaneShipPluginTreesResult(
+                    shipped=False,
+                    error=f"ship_plugin_trees: {tree.name!r} is not a plugin name",
+                )
+            if not _TREE_DIGEST.fullmatch(tree.source_digest):
+                return ModelLaneShipPluginTreesResult(
+                    shipped=False,
+                    error=f"ship_plugin_trees: {tree.name}: the digest is not at least 12 letters or digits",
+                )
+            try:
+                archive = Path(tree.archive_path).read_bytes()
+            except OSError as exc:
+                return ModelLaneShipPluginTreesResult(
+                    shipped=False,
+                    error=f"ship_plugin_trees: {tree.name}: archive unreadable: {exc}",
+                )
+            tree_dir = f"{self._plugin_store}/{tree.name}-{tree.source_digest[:12]}"
+            script = "\n".join(
+                [
+                    f'{self._path}S="{self._plugin_store}"; mkdir -p "$S" || exit 70',
+                    f'D="{tree_dir}"',
+                    'if [ ! -d "$D" ]; then',
+                    '  T="$D.tmp.$$"; rm -rf "$T"; mkdir -p "$T" || exit 70',
+                    '  tar -xzf - -C "$T" || exit 70',
+                    '  python3 -c "import os,sys; os.rename(sys.argv[1], sys.argv[2])" "$T" "$D" 2>/dev/null || rm -rf "$T"',
+                    "else",
+                    "  cat >/dev/null",
+                    "fi",
+                    'touch "$D" 2>/dev/null || true',
+                    f'if [ -f "$D/{PLUGIN_LOCK_FILE}" ]; then echo "{PLUGIN_VENV_NOT_RUN}{tree.name}"; exit {PLUGIN_VENV_EXIT}; fi',
+                    f'echo "{PLUGIN_DIR_PRINTED}{tree.name} $D"',
+                ]
+            )
+            result = self._sh(
+                request.host, script, request.timeout_seconds, stdin=archive
+            )
+            printed = next(
+                (
+                    line.split(" ", 2)
+                    for line in result.stdout.splitlines()
+                    if line.startswith(PLUGIN_DIR_PRINTED)
+                ),
+                None,
+            )
+            if result.exit_code != 0 or printed is None or len(printed) != 3:
+                return ModelLaneShipPluginTreesResult(
+                    shipped=False,
+                    error=f"ship_plugin_trees: {tree.name}: {self._failure(result)}",
+                )
+            dirs.append((printed[1], printed[2].strip()))
+        return ModelLaneShipPluginTreesResult(shipped=True, plugin_dirs=tuple(dirs))
 
     def mirror_ledger(
         self, request: ModelLaneHostStepRequest

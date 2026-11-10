@@ -25,6 +25,8 @@ remote_lane_start:
   closeout_tool_repo: example_tools
   # The variable that closeout command reads the lane's ledger copy path from (both closeout keys, or neither).
   closeout_ledger_env: EXAMPLE_LEDGER_FILE
+  # Where the host keeps installed plugin trees, one directory per tree (optional; empty leaves the step to the runner).
+  plugin_store: $HOME/example-store/plugins
   ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
   # Starts the engine in a session of its own; a host with no setsid binary names a shim.
   detach_argv: [setsid]

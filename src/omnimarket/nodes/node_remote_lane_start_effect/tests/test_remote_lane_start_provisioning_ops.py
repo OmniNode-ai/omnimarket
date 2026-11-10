@@ -63,6 +63,7 @@ MOVED_OPS = frozenset(
         "mirror_ledger",
         "relay_reports",
         "closeout_worktrees",
+        "ship_plugin_trees",
     }
 )
 PROVISIONING_OPS = tuple(

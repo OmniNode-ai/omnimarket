@@ -74,6 +74,9 @@ class ModelRemoteLaneStartSettings(BaseModel):
     # The variable the closeout command reads the lane's ledger copy path from; both closeout keys set, or the step stays
     # with the runner script.
     closeout_ledger_env: str = ""
+    # The plugin store on the host (path characters, optionally under $HOME): a tree is installed there from its archive;
+    # "" leaves the step to the runner script.
+    plugin_store: str = ""
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
     # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin

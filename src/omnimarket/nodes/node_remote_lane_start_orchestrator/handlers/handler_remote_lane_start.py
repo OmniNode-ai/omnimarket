@@ -108,6 +108,7 @@ def build_real(
             registry_marker=settings.registry_marker,
             closeout_tool_repo=settings.closeout_tool_repo,
             closeout_ledger_env=settings.closeout_ledger_env,
+            plugin_store=settings.plugin_store,
             ledger_write_via=settings.ledger_write_via,
             guard_host_source=lane_guard_host_source(),
             login_pool=ModelEngineLoginPool(
