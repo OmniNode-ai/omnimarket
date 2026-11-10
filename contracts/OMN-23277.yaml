@@ -1,0 +1,94 @@
+schema_version: 1.0.0
+ticket_id: OMN-23277
+title: Move the lab-fill send step (brief render, check, launch) to omnimarket and delete laneTask from lab-fill.js
+summary: node_lab_fill_effect gains the send_lab_fill_lane operation (brief render, send gate, brief check, launch) and a send gate inside its launch handler. The gate skips a ticket whose implementation pull request has merged and routes it to the closer (node_dod_closeout_sweep_compute) instead of sending a lane, and never sends a brief whose facts need h200 to a host that does not reach h200. The deletion of laneTask from the internal repository's lab-fill.js waits on the live fill caller switching to the node.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23277-send-step
+    statement: The send step runs from an omnimarket node.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the send step (brief render, brief check, launch) runs from an omnimarket node, and lab-fill.js in the internal repository no longer holds laneTask -- falsifier: uv run pytest tests -q -k lab_fill_send in omnimarket passes, and grep -c laneTask on lab-fill.js at the internal repository main reads 0'
+  - id: req-omn23277-merged-skip
+    statement: A merged ticket is routed to the closer, not sent a lane.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: the moved step skips a ticket whose implementation PR has merged and routes it to the closer instead of sending a lane -- falsifier: uv run pytest tests -q -k merged_ticket_skip in omnimarket, failing with the skip removed'
+  - id: req-omn23277-h200-bound
+    statement: An h200-bound brief is never sent to a host that cannot reach h200.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the moved step never sends a brief whose facts need h200 to a host that cannot reach h200 -- falsifier: uv run pytest tests -q -k h200_bound in omnimarket, failing with the host check removed'
+evidence_requirements:
+  - kind: tests
+    description: The send tests and the lab-fill effect suites run at the pushed head.
+    command: uv run pytest tests/nodes/node_lab_fill_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23277-ac1
+    description: AC1 node half only; runs the send step from the node against a fake runner and reads the runner arguments and the written brief. The grep half (laneTask in the internal repository's lab-fill.js) is not met by this pull request.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -k lab_fill_send -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn23277-ac2
+    description: AC2 runs the send step with merged pull requests naming the ticket and reads that no lane starts and the result routes to the closer; with the skip removed the test fails.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -k merged_ticket_skip -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn23277-ac3
+    description: AC3 runs the send step with a brief naming h200 for a host that does not reach it and reads that no lane starts; with the host check removed the test fails.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -k h200_bound -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn23277-send-node-integration-proof
+    description: The pushed head ran the lab-fill effect node tests, the send tests included, on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23277 -- uv run --frozen pytest tests/nodes/node_lab_fill_effect -q --no-cov'
+        cwd: .
+  - id: dod-omn23277-deploy-source-readback
+    description: Hosted-runner source-artifact readback requires the published send handler and send gate at the evaluated commit to match this checkout, then runs the focused send tests. This checks the source artifact and its behaviour under test, not a lab fill rollout.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for module in handlers/handler_lab_fill_send.py handlers/handler_lab_fill_send_gate.py; do
+            path="src/omnimarket/nodes/node_lab_fill_effect/$module"
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.py"
+            cmp "$path" "$readback_dir/source.py"
+          done
+          grep -c '^class HandlerLabFillSendGate' src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_send_gate.py
+          printf 'lab-fill send gate source readback matched %s\n' "$revision"
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -q --no-cov --tb=line
+        cwd: .

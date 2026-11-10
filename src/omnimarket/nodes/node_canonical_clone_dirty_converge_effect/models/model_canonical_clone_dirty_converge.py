@@ -27,6 +27,11 @@ class ModelDirtyConvergeDeclaration(BaseModel):
     lane: str
     tracking_branches: tuple[str, ...] = Field(min_length=1)
     max_listed: int = Field(ge=1)
+    # Directories, relative to the registry root, that the deploy agent's image build holds for as long
+    # as it stages and builds; a tick leaves every clone alone while one is live (OMN-22718).
+    build_lock_dirs: tuple[str, ...] = Field(min_length=1)
+    # A held lock older than this is no live build: the deploy agent bounds one image build at 3600 s.
+    build_lock_max_age_seconds: int = Field(gt=3600)
 
     @model_validator(mode="after")
     def _relative(self) -> Self:
@@ -35,6 +40,8 @@ class ModelDirtyConvergeDeclaration(BaseModel):
                 raise ValueError(
                     "engine and converge_script are registry-relative paths"
                 )
+        if any(path.startswith("/") for path in self.build_lock_dirs):
+            raise ValueError("build_lock_dirs are registry-relative paths")
         return self
 
 

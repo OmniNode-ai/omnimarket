@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Bus Login Exposure Effect (OMN-22860)
+#
+# Reads what one broker login can see (topics and consumer groups) and reports every topic or group
+# the overlay does not allow it as an exposure. The source (in-memory fixture or Redpanda admin
+# reads as the login) and every setting come from the overlay; this contract holds no setting. The
+# probe only reads: it never produces, consumes, commits or changes an ACL.
+name: node_bus_login_exposure_effect
+contract_name: node_bus_login_exposure_effect
+node_name: node_bus_login_exposure_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Lists the topics and consumer groups the probed login can see on the broker and compares them
+  with the overlay's allowed lists. A visible topic or group outside the lists reads NOT_WORKING
+  and is named; a view that cannot be read (describe denied, credentials missing, unreadable) or a
+  read past its max age reads UNKNOWN and ends in the typed failure event.
+
+handler:
+  module: omnimarket.nodes.node_bus_login_exposure_effect.handlers.handler_bus_login_exposure
+  class: HandlerBusLoginExposure
+  input_model: omnimarket.nodes.node_bus_login_exposure_effect.models.model_bus_login_exposure.ModelBusLoginExposureRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: bus_login_exposure_probe
+      handler:
+        name: HandlerBusLoginExposure
+        module: omnimarket.nodes.node_bus_login_exposure_effect.handlers.handler_bus_login_exposure
+
+# HandlerBusLoginExposure takes the overlay, an admin factory and the environment as constructor
+# parameters; the node runs through its own CLI (`python -m
+# omnimarket.nodes.node_bus_login_exposure_effect`), which reads the overlay named by
+# ONEX_SKILL_OVERLAY_ROOTS and exits 0 clean, 1 exposed, 2 unknown.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [network-read]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelBusLoginExposureRequest
+  module: omnimarket.nodes.node_bus_login_exposure_effect.models.model_bus_login_exposure
+  description: The correlation id and the time the read is judged at.
+output_model:
+  name: ModelBusLoginExposureResult
+  module: omnimarket.nodes.node_bus_login_exposure_effect.models.model_bus_login_exposure
+  description: The backend used and the login's visible and exposed topics and groups.
+
+terminal_event: onex.evt.omnimarket.bus-login-exposure-probed.v1
+
+# Declared command/terminal seam (dispatch-addressable). The bus lists below stay empty: these
+# runtime_dispatch topics are the CLI dispatcher's own command/result seam.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.bus-login-exposure-probe-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.bus-login-exposure-probed.v1
+    failure: onex.evt.omnimarket.bus-login-exposure-probe-failed.v1
+  external_trigger: true
+
+topics:
+  probe_requested: onex.cmd.omnimarket.bus-login-exposure-probe-requested.v1
+  probe_completed: onex.evt.omnimarket.bus-login-exposure-probed.v1
+  probe_failed: onex.evt.omnimarket.bus-login-exposure-probe-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.bus-login-exposure-probed.v1
+  - onex.evt.omnimarket.bus-login-exposure-probe-failed.v1
+
+overlay:
+  node: node_bus_login_exposure_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22860
+  transport_type: kafka

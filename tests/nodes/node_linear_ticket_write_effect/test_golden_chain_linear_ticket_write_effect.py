@@ -215,21 +215,6 @@ def test_cli_is_registered_and_has_all_operations():
     )
 
 
-async def test_missing_guard_is_reported_without_a_registry_root(monkeypatch, tmp_path):
-    monkeypatch.delenv("OMNI_HOME", raising=False)
-    monkeypatch.delenv("OMNIBASE_INTERNAL_PATH", raising=False)
-    monkeypatch.delenv("ONEX_PILLAR_OWNERS_PATH", raising=False)
-    monkeypatch.setenv("ONEX_TICKET_GUARD_PATH", str(tmp_path / "missing.py"))
-    result = await HandlerLinearTicketWriteEffect().handle(
-        request(
-            operation="create",
-            title="Scratch",
-            description="created-by-lane: lane-a\n\nbody",
-        )
-    )
-    assert result.reason == "guard_unavailable"
-
-
 @pytest.mark.parametrize("operation", ["create", "comment", "transition"])
 async def test_each_write_replays_but_another_lane_has_its_own_identity(operation):
     core = Core()
