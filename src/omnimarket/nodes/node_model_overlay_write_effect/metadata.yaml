@@ -1,0 +1,24 @@
+name: node_model_overlay_write_effect
+version: "1.0.0"
+description: "Writes the developer model overlay for native onex and the local compose stack; refuses the lab stack's own-key mode"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_model_overlay_write_effect: "omnimarket.nodes.node_model_overlay_write_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "click>=8.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["models", "delegation", "effect", "onboarding", "overlay"]
+pack: "delegation"
+display_name: "Model Overlay Write Effect"
+node_role: "effect"
