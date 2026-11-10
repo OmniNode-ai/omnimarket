@@ -15,7 +15,6 @@
     "nodes/node_host_capability_compute/lane_toolchain.yaml",
     "nodes/node_host_installer_registry_units/contract.yaml",
     "nodes/node_lab_disk_watermark_effect/contract.yaml",
-    "nodes/node_lab_disk_watermark_effect/overlay.yaml",
     "nodes/node_lab_fill_effect/contract.yaml",
     "nodes/node_lab_run_spill_effect/overlay.yaml",
     "nodes/node_linear_ticket_write_effect/runtime_lab_proof.py",
