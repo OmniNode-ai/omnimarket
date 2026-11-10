@@ -231,6 +231,13 @@
     "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "72f7015b7109e0d0b41c5b6e835426480b775934"
   },
+  "supplement_omn_prepush3_login_relative_paths": {
+    "recorded_on": "2026-11-10",
+    "files_added": 20,
+    "basis": "The test files this branch adds that the record lacked, each summed from its measured pytest setup, call and teardown seconds (--durations=0 --durations-min=0, one file per run); existing entries left as they were.",
+    "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "e5a71421bf83192402c1740be9bacd62b3b8da47"
+  },
   "supplement_omn23526": {
     "ticket": "OMN-23526",
     "recorded_on": "2026-11-10",

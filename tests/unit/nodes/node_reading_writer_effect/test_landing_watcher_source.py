@@ -23,7 +23,6 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 )
 from tests.nodes.node_reading_writer_effect.reading_support import RUN_AT, START, stamp
 from tests.unit.nodes.node_reading_writer_effect.landing_support import (
-    canary_row,
     landing_overlay,
     writer,
 )
@@ -117,7 +116,7 @@ def test_a_head_green_over_an_hour_makes_the_written_reading_not_working(
     environ = _environ(
         tmp_path, {"scoped#1": _pr(cls="green-unarmed", green_minutes_ago=75)}, {}
     )
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     result = writer(ledger, WatcherFileLandingSource(ROUTE, environ)).handle(
         ModelReadingWindowCommand(correlation_id="c-w", window_start=START, pieces=(9,))
     )
@@ -130,7 +129,7 @@ def test_the_same_head_green_inside_the_hour_reads_working(tmp_path: Path) -> No
     environ = _environ(
         tmp_path, {"scoped#1": _pr(cls="green-unarmed", green_minutes_ago=30)}, {}
     )
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     result = writer(ledger, WatcherFileLandingSource(ROUTE, environ)).handle(
         ModelReadingWindowCommand(correlation_id="c-w", window_start=START, pieces=(9,))
     )

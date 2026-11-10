@@ -64,6 +64,12 @@ description: >
   for a newer grant, lease_expired for no live grant or a lease expiring inside
   descriptor.timeout_ms, lease_unreadable when the port answers unknown, fails
   or is not wired.
+  A key already recorded for a finished write of the same repository and
+  operation, sent again with different request content (body, title, base, head,
+  pull request number and the rest, apart from the correlation id, dry_run, the
+  asking lane and run, the expected head, the lease and the claim), is refused
+  idempotency_key_conflict, naming the differing fields and never their values;
+  the first write's result is not replayed. The same content replays once.
 
 input_model:
   name: ModelRepoWriteRequest

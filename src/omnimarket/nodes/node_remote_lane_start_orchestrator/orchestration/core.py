@@ -312,16 +312,19 @@ class RemoteLaneStartOrchestrator:
             cells.append(f"escalation_reason={request.escalation_reason}")
         return cells
 
-    def _login_cells(self, host: ModelLaneHostRef) -> list[str]:
+    def _login_cells(
+        self, host: ModelLaneHostRef, receipt: ModelRemoteLaneStartReceipt
+    ) -> list[str]:
         """The CLAIM's ``login=`` cell: the label the host's token pool node draws for the engine, or ``none``.
 
         The draw is the pool node's own ``resolve`` (first unlimited label in draw order, limited and revoked
         labels skipped); the cell carries the label only, never a token value. A start with no draw wired
-        (the in-memory default) writes no cell.
+        (the in-memory default) writes no cell. The receipt names the drawn label (OMN-23550).
         """
         if self._login is None:
             return []
         drawn = self._login.draw_login(host)
+        receipt.login = drawn.label
         self._say(
             f"login host={host.name} label={drawn.label or 'none'}"
             + (f" ({drawn.detail})" if drawn.detail else "")
@@ -541,7 +544,7 @@ class RemoteLaneStartOrchestrator:
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
             self._worktree_cell(request),
-            *self._login_cells(host_ref),
+            *self._login_cells(host_ref, receipt),
         ]
         claim_row, appended = self._append(
             request,
