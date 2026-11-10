@@ -37,6 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 858c2c689461: omnibase_infra dev at the core 2080333acfaf pin (OMN-21826).
 # beb08a83c93e: omnibase_infra#5602 (OMN-19986, OMN-19991), same core pin.
 # 33b470fda2b8: omnibase_infra#5768 (OMN-22899, vendors view_seam_readings and its grant), core b002ec3ceab1.
+# 8b4382a1606d: omnibase_infra#5818 vendors node_projection_delegation 0068; core pin unchanged.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),

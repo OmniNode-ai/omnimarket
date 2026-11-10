@@ -4943,6 +4943,8 @@
         "node_delegation_dod_verify_request_compute",
         "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
+        "node_delegation_events_defect_scan_compute",
+        "node_delegation_events_defect_scan_effect",
         "node_dod_verify",
         "node_factory_floor_publish_effect",
         "node_lab_secret_store_override_effect",
@@ -10857,7 +10859,8 @@
         "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0045_terminal_construction_outcome_metrics.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0050_delegation_summary_excludes_fixture_savings.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0050_delegation_summary_excludes_fixture_savings.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0068_delegation_summary_excludes_experiment.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
