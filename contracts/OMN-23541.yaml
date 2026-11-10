@@ -18,6 +18,8 @@ requirements:
         statement: "AC3: the seam with the board's rows readers holds on the in-memory bus and the real broker -- falsifier: uv run pytest tests/nodes/node_floor_delegation_effect/test_seam_ledger_bounded_rows.py fails when either side renames or drops a field the other reads"
       - id: "AC4"
         statement: "AC4: integrated: after a dev runtime roll that carries this change, a rows query for one lane with no start sent through the bus read command is answered with bounded true in under 12 seconds end to end -- falsifier: the same query on the runtime before the roll answered with no bounded field in 22.5 s at the base and 26.0 s after the 14:52Z roll"
+      - id: "AC5"
+        statement: "AC5: a query with a start answers exactly as the unchanged code, and a query with no start is bounded by design and its answer says so (the window used, and that older rows exist) -- falsifier: the two ac2 tests in the same test file fail when a matching row is dropped from a with-start answer, or when a no-start answer carries no bounded window"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3: the bounded read tests, the golden and error chain tests of the query node and the seam test."
@@ -51,6 +53,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_default_window_omn23541.py -k golden_no_since -q --no-cov -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn23541-ac5-both-halves"
+    description: "AC5: the with-start answer equals the unchanged reading; the no-start answer is bounded and says so. The no-start test fails at the base commit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_default_window_omn23541.py -k ac2 -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
   - id: dod-omn23541-integration-proof
     description: The pushed head ran the bounded read tests and the seam tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual

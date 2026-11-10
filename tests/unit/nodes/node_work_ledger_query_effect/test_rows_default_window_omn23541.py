@@ -254,3 +254,53 @@ def test_injected_break_reader_ignores_since_and_hands_back_every_row() -> None:
     assert result.error is None
     in_window = [r for r in store.records if r.row_ts >= UNIL - timedelta(days=days)]
     assert store.rows_handed_back > len(in_window)
+
+
+def test_ac2_with_start_answer_equals_the_unchanged_reading() -> None:
+    """A query WITH a start answers exactly as the unchanged code did (AC2)."""
+    days = _contract_window_days()
+    since = UNIL - timedelta(days=days + 3)
+    requests = [
+        _request("rows", since=since),
+        _request("rows", since=since, lane="old"),
+        _request("rows", since=since, kinds=["STATUS"]),
+    ]
+    for request in requests:
+        records = _ledger(days)
+        expected = sorted(
+            r.row_id
+            for r in records
+            if since <= r.row_ts <= UNIL
+            and (request.lane is None or r.row_lane == request.lane)
+            and (not request.kinds or r.row_type in request.kinds)
+        )
+        answers = (
+            _answer(CountingStore(records), request),
+            _answer(NarrowingCountingStore(records), request),
+        )
+        assert [r.row_id for r in answers[0].rows] == [
+            r.row_id for r in answers[1].rows
+        ]
+        for result in answers:
+            assert result.error is None
+            assert result.bounded is False
+            assert result.bounded_window_days is None
+            assert result.window_since == request.since
+            assert sorted(r.row_id for r in result.rows) == expected
+
+
+def test_ac2_no_start_answer_is_bounded_and_says_older_rows_exist() -> None:
+    """A query with NO start is bounded by design and its answer says so (AC2)."""
+    days = _contract_window_days()
+    store = NarrowingCountingStore(_ledger(days))
+    result = _answer(store, _request("rows"))
+    assert result.error is None
+    assert result.bounded is True
+    assert result.bounded_window_days == days
+    assert result.window_since == UNIL - timedelta(days=days)
+    answer_ids = {r.row_id for r in result.rows}
+    older_ids = {r.row_id for r in store.records if r.row_ts < result.window_since}
+    assert older_ids
+    assert not answer_ids & older_ids
+    in_window_ids = {r.row_id for r in store.records if r.row_ts >= result.window_since}
+    assert in_window_ids <= answer_ids
