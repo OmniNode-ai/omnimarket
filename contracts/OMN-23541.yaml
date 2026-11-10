@@ -17,7 +17,7 @@ requirements:
       - id: "AC3"
         statement: "AC3: the seam with the board's rows readers holds on the in-memory bus and the real broker -- falsifier: uv run pytest tests/nodes/node_floor_delegation_effect/test_seam_ledger_bounded_rows.py fails when either side renames or drops a field the other reads"
       - id: "AC4"
-        statement: "AC4: integrated: after a dev runtime roll that carries this change, a rows query with no start sent through the bus read command is answered with bounded true in far less than the 22.5 s measured at the base -- falsifier: the same query on the runtime before the roll answers with no bounded field"
+        statement: "AC4: integrated: after a dev runtime roll that carries this change, a rows query for one lane with no start sent through the bus read command is answered with bounded true in under 12 seconds end to end -- falsifier: the same query on the runtime before the roll answered with no bounded field in 22.5 s at the base and 26.0 s after the 14:52Z roll"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3: the bounded read tests, the golden and error chain tests of the query node and the seam test."
