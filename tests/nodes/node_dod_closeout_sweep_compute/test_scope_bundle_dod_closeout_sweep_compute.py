@@ -129,7 +129,8 @@ def test_an_overlay_that_drops_a_key_is_refused_never_defaulted(tmp_path: Path) 
 def test_a_ticket_with_a_contract_ranks_before_one_without() -> None:
     # 30 tickets, only 5 have contracts; the oldest 12 would otherwise be taken in id order.
     contracts = {f"OMN-{i}" for i in (20, 21, 22, 23, 24)}
-    chosen = _selected(_bundle(30, contracts, 12, _overlay(no_contract_reserve=0)))
+    ranking_only = _overlay(no_contract_reserve=0, no_contract_only_by_reserve=False)
+    chosen = _selected(_bundle(30, contracts, 12, ranking_only))
     assert contracts <= set(chosen)
     assert len(chosen) == 12
 
@@ -143,6 +144,7 @@ def test_failing_control_without_the_contract_rule_the_contractless_fill_the_run
     broken = _overlay(
         rank_rules=[EnumRankRule.WAITING_ON, EnumRankRule.MERGED_IN_REVIEW],
         no_contract_reserve=0,
+        no_contract_only_by_reserve=False,
     )
     chosen = _selected(_bundle(30, contracts, 12, broken))
     assert not (contracts & set(chosen))
@@ -417,7 +419,8 @@ async def test_golden_chain_scope_bundle_ranks_a_contract_ticket_first_over_the_
     bundle: dict[str, Any] = dict(result.scope_bundle)
     selected = [c["id"] for c in bundle["candidates"]]
     assert "OMN-27" in selected
-    assert bundle["totals"]["selected"] == 12
+    # the one verifiable ticket and the two reserved contractless ones
+    assert bundle["totals"]["selected"] == 3
 
 
 @pytest.mark.asyncio
@@ -504,7 +507,7 @@ def test_the_bundle_command_prints_one_object_with_the_contract_ranking(
     assert run.returncode == 0, run.stderr
     bundle = json.loads(run.stdout)
     assert "OMN-30" in [c["id"] for c in bundle["candidates"]]
-    assert bundle["totals"]["selected"] == 12
+    assert bundle["totals"]["selected"] == 3
 
 
 def test_the_bundle_command_with_no_contract_state_reads_the_clones(
@@ -528,7 +531,7 @@ def test_the_bundle_command_with_no_contract_state_reads_the_clones(
     bundle = json.loads(run.stdout)
     assert "OMN-30" in [c["id"] for c in bundle["candidates"]]
     assert "OMN-30" not in bundle["no_contract"]
-    assert len(bundle["no_contract"]) == 11
+    assert len(bundle["no_contract"]) == 2
 
 
 def test_error_chain_the_command_refuses_garbled_input_and_never_prints_an_empty_bundle(
