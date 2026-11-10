@@ -123,10 +123,12 @@ def _judge(
 def _judge_landing(
     requirements: ModelLandingRequirements,
     snapshot: ModelLandingSnapshot,
-    canary_rows: list[ModelLedgerEvidenceRow],
-    window_end: datetime,
 ) -> list[str]:
-    """The landing goal's hourly requirements against one watcher snapshot; the reasons it fails, none when it holds."""
+    """The landing goal's hourly requirements against one snapshot of real landing; the reasons it fails, none when it holds.
+
+    A head that waited over the limit fails whatever else holds; with the queue at the threshold the goal's
+    merges must have happened. A quiet queue with fresh state holds: nothing eligible is unmerged.
+    """
     if snapshot.age_seconds > requirements.snapshot_max_age_seconds:
         # The age moves with the probe time, so it never goes in the reason: a later probe of the
         # same window over the same snapshot must give the same content (OMN-23077).
@@ -142,16 +144,14 @@ def _judge_landing(
         if head.waiting_seconds > requirements.head_max_age_seconds
     ]
     waiting = len(snapshot.heads)
-    if waiting >= requirements.waiting_threshold:
-        if snapshot.merges_in_window < requirements.goal_merges_per_window:
-            failures.append(
-                f"goal-not-met:waiting-{waiting}:merges-{snapshot.merges_in_window}"
-                f"-of-{requirements.goal_merges_per_window}"
-            )
-    else:
-        canary = _judge(requirements.canary, canary_rows, window_end)
-        if canary is not None:
-            failures.append(canary)
+    if (
+        waiting >= requirements.waiting_threshold
+        and snapshot.merges_in_window < requirements.goal_merges_per_window
+    ):
+        failures.append(
+            f"goal-not-met:waiting-{waiting}:merges-{snapshot.merges_in_window}"
+            f"-of-{requirements.goal_merges_per_window}"
+        )
     return failures
 
 
@@ -273,12 +273,7 @@ class HandlerReadingCompute:
             is not None
         ]
         if spec.landing is not None and request.landing is not None:
-            failures += _judge_landing(
-                spec.landing,
-                request.landing,
-                gathered[spec.landing.canary.source_id].rows,
-                request.window_end,
-            )
+            failures += _judge_landing(spec.landing, request.landing)
         if failures:
             return result(
                 EnumReadingVerdict.NOT_WORKING,
