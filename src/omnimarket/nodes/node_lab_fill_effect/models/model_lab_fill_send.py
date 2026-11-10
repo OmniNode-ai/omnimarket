@@ -13,7 +13,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .model_lab_fill_send_gate import CLOSER_EXEMPT_KINDS, DEFAULT_FACT_HOSTS
+from omnimarket.handlers.rules_lab_fill_closer import CLOSER_EXEMPT_KINDS
+
+from .model_lab_fill_send_gate import DEFAULT_FACT_HOSTS
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
