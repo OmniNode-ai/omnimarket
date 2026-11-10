@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-23535
+title: Ledger query answerer joins first when the dev runtime starts
+summary: The dev main runtime's boot priority list (omnibase_infra runtime policy) names the work-ledger query node by the name in its contract.yaml. This pull request pins the node's side of that seam, the contract name and the request topic, so a rename cannot silently drop the priority.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23535-name-seam
+  statement: The work-ledger query node's contract.yaml keeps the name and the request topic the dev main boot priority list carries.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the dev main runtime's boot priority list names the work-ledger query node, and the rendered policy env carries it -- falsifier: uv run pytest tests/unit/runtime/test_omn18087_boot_bound_and_policy.py fails when the node is removed from contracts/services/runtime_policy.contract.yaml"
+evidence_requirements:
+- kind: tests
+  description: The seam test over the node's contract name and request topic.
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_boot_priority_name_seam.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23535-name-seam
+  description: Runs the seam test that pins the node's contract name and request topic; it fails when either changes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_boot_priority_name_seam.py -q --no-cov -p no:randomly
+    cwd: .
