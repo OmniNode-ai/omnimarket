@@ -1366,6 +1366,7 @@ node_work_progress_alert_effect = "omnimarket.nodes.node_work_progress_alert_eff
 node_work_progress_compute = "omnimarket.nodes.node_work_progress_compute"
 node_work_state_projection_compute = "omnimarket.nodes.node_work_state_projection_compute"
 node_work_state_projection_effect = "omnimarket.nodes.node_work_state_projection_effect"
+node_work_state_projection_scheduled_effect = "omnimarket.nodes.node_work_state_projection_scheduled_effect"
 node_worker_memory_admission_compute = "omnimarket.nodes.node_worker_memory_admission_compute"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
 node_workflow_baseline_compare_compute = "omnimarket.nodes.node_workflow_baseline_compare_compute"
