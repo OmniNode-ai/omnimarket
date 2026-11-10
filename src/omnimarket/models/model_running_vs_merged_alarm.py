@@ -27,6 +27,27 @@ class ModelRunningSurface(BaseModel):
     branch_source: str = ""
 
 
+class ModelFleetFoldAbsence(BaseModel):
+    """What the declaration says about a host-drift fleet fold that does not exist (OMN-23275).
+
+    ``owners`` are the hosts the manifest gives the host-drift unit, as ``id (hostname)``;
+    ``declared_here`` is whether the reading host is one of them and ``plist_installed`` whether the
+    unit's launchd plist is on the reading host. ``unit``, ``manifest``, ``installer`` and ``ticket``
+    are the words of the finding the caller reads from its overlay, so the handler holds none."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str
+    this_host: str
+    unit: str
+    manifest: str
+    installer: str
+    ticket: str
+    owners: tuple[str, ...] = ()
+    declared_here: bool = False
+    plist_installed: bool = False
+
+
 class ModelRunningVsMergedRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -34,6 +55,8 @@ class ModelRunningVsMergedRequest(BaseModel):
     # False when the fleet fold could not be read: the verdict is then UNKNOWN, never OK.
     fleet_readable: bool = True
     unreadable_why: str = ""
+    # Set when the fold file does not exist at all: the finding then says who declares its producer.
+    fleet_absence: ModelFleetFoldAbsence | None = None
     # When the fold was written; a fold older than ``fleet_max_age_minutes`` cannot vouch for now.
     folded_at: AwareDatetime | None = None
     items: tuple[ModelRunningSurface, ...] = ()
