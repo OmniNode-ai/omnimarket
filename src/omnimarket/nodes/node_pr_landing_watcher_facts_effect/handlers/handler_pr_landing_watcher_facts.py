@@ -24,14 +24,12 @@ import yaml
 
 from omnimarket.models.landing_decision import (
     SHA_PATTERN,
-    ModelLandingFacts,
-    ModelLandingPrFacts,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingCi,
     EnumLandingMergeState,
     EnumLandingPrState,
     EnumLandingSuspension,
+    ModelLandingFacts,
+    ModelLandingPrFacts,
 )
 from omnimarket.nodes.node_pr_landing_watcher_facts_effect.handlers.watcher_facts_errors import (
     WatcherFactsSourceError,
