@@ -28,9 +28,17 @@ PARITY = json.loads(
     )
 )
 STATE_MARK = "<STATE>"
+#: Where the timer recorded its reports. The node names the effective report directory in the STATUS row, so a test that
+#: passes its own state directory maps that directory back to this recorded form before it compares with the timer.
+RECORDED_REPORT_DIR = ".onex_state/friction-rollup"
 #: Totals keys the compute node's report carries and the timer's rollup (the unit's main branch) did not: they were
 #: added by OMN-22563 (class rules). On the recorded rows no rule matches, so each is 0; the tests assert that.
 ADDITIVE_TOTALS_KEYS = ("rows_classified_by_rule",)
+
+
+def timer_row(row: str, state_dir: Path) -> str:
+    """The STATUS row with the effective report directory written as the timer recorded it."""
+    return row.replace(state_dir.as_posix(), RECORDED_REPORT_DIR)
 
 
 def without_additive(json_text: str) -> str:
@@ -91,11 +99,11 @@ def observed(result: ModelFrictionRollupTickResult, state_dir: Path) -> dict[str
     """The node's output in the shape the timer's recorded tick has."""
     stdout = result.log_line.replace(str(state_dir), STATE_MARK) + "\n"
     if result.state == "DRY-RUN":
-        stdout = result.status_row + "\n" + stdout
+        stdout = timer_row(result.status_row, state_dir) + "\n" + stdout
     return {
         "exit_code": result.exit_code,
         "stdout": stdout,
-        "row": result.status_row,
+        "row": timer_row(result.status_row, state_dir),
         "json_text": without_additive(result.report_json_text),
         "markdown_text": result.report_markdown_text,
     }
