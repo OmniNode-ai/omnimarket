@@ -507,6 +507,13 @@ class _ReconcilePass:
             with suppress(subprocess.TimeoutExpired):
                 self.child.communicate(timeout=5)
 
+    def receipt_path(self) -> str:
+        if self.request.receipt:
+            return self.request.receipt
+        # A check run must not overwrite the last repair receipt the wrapper reads.
+        suffix = ".check" if self.request.mode == "check" else ""
+        return str(self.root / f".onex-workspace-reconcile{suffix}.json")
+
     def evaluate(
         self, facts: tuple[ModelSurfaceFact, ...]
     ) -> ModelHostReconcileDecisions:
@@ -516,8 +523,7 @@ class _ReconcilePass:
                 workspace_root=str(self.root),
                 scripts_dir=str(self.scripts),
                 rerun_command=f"python -m omnimarket.nodes.node_host_reconcile_effect --omni-home {self.root}",
-                receipt_path=self.request.receipt
-                or str(self.root / ".onex-workspace-reconcile.json"),
+                receipt_path=self.receipt_path(),
                 facts=facts,
             )
         )
@@ -1064,7 +1070,7 @@ class _ReconcilePass:
             + "\n  ]\n}\n"
         )
 
-        path = self.request.receipt or str(self.root / ".onex-workspace-reconcile.json")
+        path = self.receipt_path()
         if self.command(
             ["tee", path], owner=True, input_text=text, discard_stdout=True
         ).returncode:

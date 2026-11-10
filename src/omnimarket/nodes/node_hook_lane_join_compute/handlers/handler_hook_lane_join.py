@@ -10,7 +10,8 @@ stamp-joined agents on 2026-11-05 were such executors with three calls, not the 
 A lane is joined only when exactly one agent fits its name and starts within the window of its CLAIM, and that agent
 fits no other lane. Two runs of one description inside the window, or two lanes fitting one agent, stay unjoined with
 the reason. Nothing is guessed. The request also carries the host of every event, and the result counts them, so a
-reader can name which hosts reported and which sent nothing.
+reader can name which hosts reported and which sent nothing. An agent no lane fits, and an expected host with no
+event, are counted and named in the result rather than dropped.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from collections import Counter
 from datetime import timedelta
 
 from ..models import (
+    ModelHookAgentUnmatched,
     ModelHookHostCount,
     ModelHookLaneJoin,
     ModelHookLaneJoinAgent,
@@ -46,6 +48,7 @@ class HandlerHookLaneJoin:
             if agent.description
         ]
         fits: dict[str, list[ModelHookLaneJoinAgent]] = {}
+        fitted: set[Key] = set()
         unjoined: list[ModelHookLaneUnjoined] = []
         for lane in request.lanes:
             if lane.claim_at is None:
@@ -71,6 +74,7 @@ class HandlerHookLaneJoin:
                 )
             else:
                 fits[lane.name] = found
+                fitted.update(_key(agent) for agent in found)
         owners = Counter(_key(agent) for found in fits.values() for agent in found)
         joins: list[ModelHookLaneJoin] = []
         for name, found in fits.items():
@@ -95,13 +99,35 @@ class HandlerHookLaneJoin:
                         agent_id=found[0].agent_id,
                     )
                 )
+        unmatched = tuple(
+            ModelHookAgentUnmatched(
+                session_id=agent.session_id,
+                agent_id=agent.agent_id,
+                description=agent.description,
+                reason=(
+                    "no lane fits the description and start time"
+                    if agent.description
+                    else "the agent carries no description"
+                ),
+            )
+            for agent in request.agents
+            if _key(agent) not in fitted
+        )
         counts = Counter(
             host or request.unstamped_label for host in request.event_hosts
         )
+        silent = tuple(
+            host for host in dict.fromkeys(request.expected_hosts) if host not in counts
+        )
+        counts.update(dict.fromkeys(silent, 0))
         hosts = tuple(
             ModelHookHostCount(host=host, events=n)
             for host, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         )
         return ModelHookLaneJoinResult(
-            joins=tuple(joins), unjoined=tuple(unjoined), hosts=hosts
+            joins=tuple(joins),
+            unjoined=tuple(unjoined),
+            unmatched_agents=unmatched,
+            hosts=hosts,
+            silent_hosts=silent,
         )
