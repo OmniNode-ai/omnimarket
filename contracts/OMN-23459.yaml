@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-23459
+title: The landing decision failure mailbox is created on the dev message system and the dev lane account may use it
+summary: The landing decision node publishes its failure terminal on onex.evt.omnimarket.pr-landing-decision-failed.v1. The platform topic provisioner reads consumed_events, published_events and event_bus, not runtime_dispatch, so the topic was created by nothing. The decision node contract now declares it under published_events (no event_bus, no handler routing added), and the dev-lane principal's grants in the lab infrastructure declaration cover it (a separate change in that repository).
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23459-failure-terminal-provisioned
+  statement: The failure terminal of the landing decision node is declared where the topic provisioner reads it, and the dev-lane grants seam test holds the granted topics to what a node contract provisions.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the topic provisioner (ContractTopicExtractor) extracts onex.evt.omnimarket.pr-landing-decision-failed.v1 from the decision node contract and no event_bus is added -- falsifier: tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py test_provisioner_extracts_the_failure_terminal fails at the merge base, where the node declares no published_events'
+  - id: AC2
+    statement: 'AC2: every topic the seam test lists as granted to the dev-lane principal, the failure terminal included, is provisioned by a node contract -- falsifier: tests/chain/test_landing_grant_seam.py test_every_granted_topic_is_provisioned_by_a_node_contract fails at the merge base'
+evidence_requirements:
+- kind: tests
+  description: The failure terminal is extracted by the provisioner (with a control showing the extractor yields nothing for a contract without the declaration)
+  command: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py -q --no-cov -p no:randomly
+- kind: tests
+  description: The landing grant seam test with the failure terminal among the granted topics
+  command: uv run --frozen pytest tests/chain/test_landing_grant_seam.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23459-failure-terminal-provisioned
+  description: Runs the provisioning test. It passes with the published_events declaration in the decision node contract; at the merge base, where the declaration is absent, test_provisioner_extracts_the_failure_terminal and test_failure_declaration_adds_no_wiring fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23459-granted-topics-provisioned
+  description: Runs the landing grant seam test. It passes with the failure terminal granted and declared; with the test file laid over the merge base contract, test_every_granted_topic_is_provisioned_by_a_node_contract fails because no node contract there declares the failure terminal.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chain/test_landing_grant_seam.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23459-integration-proof-lab
+  description: Runs the failure terminal provisioning test and the landing grant seam test at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The read of the failure terminal on the dev broker after the deploy agent's roll is recorded on the ticket (AC3 of the ticket), not claimed here.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23459 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py tests/chain/test_landing_grant_seam.py -q --no-cov -p no:randomly'
+    cwd: .

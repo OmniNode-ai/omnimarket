@@ -3,11 +3,11 @@
 """The landing chain's broker calls stay inside the dev principal's grants (OMN-23395).
 
 The dev-lane principal's broker grants (the developer principal bindings of the lab
-infrastructure declaration) grant exactly two topics -- the decision node's command and success
-terminals -- and two consumer-group prefixes; the failure terminal is not granted. This
-seam test spells the granted lists here and holds ``RedpandaDecisionBus`` against them,
-so the chain the controller will run cannot drift onto a topic or a group the dev broker
-refuses. It runs with no broker: the bus opener the bus imports inside ``start`` is
+infrastructure declaration) grant exactly three topics -- the decision node's command,
+success and failure terminals -- and two consumer-group prefixes; the chain itself never
+uses the failure terminal. This seam test spells the granted lists here and holds
+``RedpandaDecisionBus`` against them, so the chain the controller will run cannot
+drift onto a topic or a group the dev broker refuses. It runs with no broker: the bus opener the bus imports inside ``start`` is
 patched to yield a fake client that records every call. The control feeds the same
 checks a group id under a prefix the grants do not name and demands red.
 """
@@ -38,8 +38,9 @@ pytestmark = pytest.mark.unit
 # other repository.
 GRANTED_COMMAND_TOPIC: Final = "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
 GRANTED_SUCCESS_TOPIC: Final = "onex.evt.omnimarket.pr-landing-decision-completed.v1"
+GRANTED_FAILURE_TOPIC: Final = "onex.evt.omnimarket.pr-landing-decision-failed.v1"
 GRANTED_TOPICS: Final[frozenset[str]] = frozenset(
-    {GRANTED_COMMAND_TOPIC, GRANTED_SUCCESS_TOPIC}
+    {GRANTED_COMMAND_TOPIC, GRANTED_SUCCESS_TOPIC, GRANTED_FAILURE_TOPIC}
 )
 NODE_GROUP_PREFIX: Final = "landing-chain-node-"
 CONTROLLER_GROUP_PREFIX: Final = "landing-chain-controller-"
@@ -72,7 +73,12 @@ def assert_grant_shape(
         assert published["topic"] in GRANTED_TOPICS, (
             f"published {published['topic']!r}, which the grants do not name"
         )
-    assert failure not in GRANTED_TOPICS, "the grants cover the failure terminal"
+    assert failure not in {sub["topic"] for sub in subscriptions}, (
+        "the chain subscribes to the failure terminal"
+    )
+    assert failure not in {published["topic"] for published in publishes}, (
+        "the chain publishes to the failure terminal"
+    )
     carried = {sub["topic"] for sub in subscriptions} | {
         published["topic"] for published in publishes
     }
@@ -158,7 +164,7 @@ async def test_decision_bus_publishes_only_granted_topics(
         )
         assert_grant_shape(fake.subscriptions, fake.published, run_id=bus.run_id)
         failure = decision_topics()["failure"]
-        assert failure not in GRANTED_TOPICS
+        assert failure in GRANTED_TOPICS
         assert failure not in {sub["topic"] for sub in fake.subscriptions}
         assert failure not in {published["topic"] for published in fake.published}
     finally:

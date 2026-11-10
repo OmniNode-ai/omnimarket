@@ -133,6 +133,13 @@ consumed_events:
   - event_type: ModelLandingFacts
     topic: "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
     description: The command the landing controller sends this node (one tick's facts); declared here so the platform topic provisioner (ContractTopicExtractor reads consumed_events, not runtime_dispatch) creates the topic on the broker (OMN-23395).
+# The failure terminal is published by this node when the tick raises
+# LandingCoverageError; the topic provisioner reads published_events, not
+# runtime_dispatch, so this entry makes the topic exist on the broker (OMN-23459).
+published_events:
+  - event_type: LandingCoverageError
+    topic: "onex.evt.omnimarket.pr-landing-decision-failed.v1"
+    description: The failure terminal this node publishes when a tick would leave an open, green, CLEAN pull request with neither a merge nor a named land_skip; declared here so the platform topic provisioner (it reads published_events, not runtime_dispatch) creates the topic on the broker (OMN-23459).
 descriptor:
   node_archetype: compute
   purity: pure

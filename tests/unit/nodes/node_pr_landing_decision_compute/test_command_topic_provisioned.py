@@ -14,6 +14,7 @@ from tests.chain.landing_chain import decision_topics
 pytestmark = pytest.mark.unit
 
 COMMAND_TOPIC = "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
+FAILURE_TOPIC = "onex.evt.omnimarket.pr-landing-decision-failed.v1"
 
 NODE_DIR = (
     Path(__file__).parents[4]
@@ -83,3 +84,36 @@ def test_control_contract_without_the_declaration_provisions_nothing(
     result = ContractTopicExtractor().extract(node_dir)
 
     assert COMMAND_TOPIC not in {entry.topic for entry in result}
+
+
+def test_provisioner_extracts_the_failure_terminal() -> None:
+    result = ContractTopicExtractor().extract(NODE_DIR)
+
+    assert FAILURE_TOPIC in {entry.topic for entry in result}
+    assert (
+        _contract()["runtime_dispatch"]["terminal_events"]["failure"] == FAILURE_TOPIC
+    )
+    assert decision_topics()["failure"] == FAILURE_TOPIC
+
+
+def test_failure_declaration_adds_no_wiring() -> None:
+    contract = _contract()
+
+    assert "event_bus" not in contract
+    assert [event["topic"] for event in contract["published_events"]] == [FAILURE_TOPIC]
+    assert {event["topic"] for event in contract["consumed_events"]} == {COMMAND_TOPIC}
+
+
+def test_control_contract_without_published_events_provisions_no_failure_terminal(
+    tmp_path: Path,
+) -> None:
+    contract = _contract()
+    contract.pop("published_events", None)
+    node_dir = tmp_path / "node_x"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(yaml.safe_dump(contract), encoding="utf-8")
+
+    result = ContractTopicExtractor().extract(node_dir)
+
+    assert FAILURE_TOPIC not in {entry.topic for entry in result}
+    assert COMMAND_TOPIC in {entry.topic for entry in result}
