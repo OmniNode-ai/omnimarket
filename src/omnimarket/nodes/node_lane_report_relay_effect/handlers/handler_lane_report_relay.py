@@ -17,9 +17,11 @@ import shlex
 import subprocess
 import tarfile
 import tempfile
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
 
@@ -318,3 +320,207 @@ def lab_work_script(script: str, declared_root: str | None) -> str:
     return script.replace("$HOME/lab-run", str(root)).replace(
         "${HOME}/lab-run", str(root)
     )
+
+
+# ---------------------------------------------------------------------------------------------------
+# Closeout on the host that owns the worktree (OMN-20148), moved from the omni plugin's handler (OMN-23502).
+# The texts are the frozen runner's, byte for byte: tests/recorded_runner_steps.py holds the recording and the
+# ssh transport's parity test fails when either side changes.
+# ---------------------------------------------------------------------------------------------------
+
+
+def wip_tag(lane: str, run_id: str) -> str:
+    """The WIP branch the guard pushes to: ``wip/<tag>``, one per lane run."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", f"{lane}-{run_id}").strip("-.")
+
+
+# A remote lane's trees live on the lab host, so the launching host cannot remove them, and no host had
+# the closeout command installed. The lane is told to make its trees under ``$OMNI_HOME/omni_worktrees/
+# <lane>/<repo>`` (the footer), and when it ends the runner runs the host's own ``onex-lane-closeout`` for
+# every tree under that directory, before the TERMINAL is written. The directory is the ownership proof:
+# a lane name is unique among open CLAIMs, so no other lane's tree is ever touched. The consent row is
+# the operator's of 2026-09-30T15:01:08Z, read by the command from the lane's ledger snapshot.
+CLOSEOUT_LINE_RE = re.compile(
+    r"^LANE-CLOSEOUT rc=(\d+) tree=(\S+) cell=(\S*)(?: note=(.*))?$"
+)
+
+
+CACHE_CLOSEOUT_LINE_RE = re.compile(
+    r"^LANE-CACHE-CLOSEOUT (removed|failed) kb=(\d+) path=(.+)$"
+)
+CACHE_SCRATCH_ROOTS_ENV = "ONEX_LANE_CACHE_SCRATCH_ROOTS"
+
+
+def lane_cache_sweep_script(lane: str, registry_root: str) -> str:
+    """Remote shell (POSIX sh) that removes the lane's own pre-commit and uv caches and prints one
+    ``LANE-CACHE-CLOSEOUT removed|failed kb=<n> path=<p>`` line per directory it handled.
+
+    Cache roots: ``$HOME/.cache`` and ``$XDG_CACHE_HOME`` (lane-named directories directly under them). Scratch
+    roots, whose ``<lane>`` directory may hold a ``uv-cache`` or ``pre-commit`` directory: the registry's
+    ``.claude_scratch``, ``$HOME/lab-run/scratch``, ``/mnt/*/omninode/scratch`` and the colon-separated roots
+    in the host's ``ONEX_LANE_CACHE_SCRATCH_ROOTS``. The scratch directory itself (reports, results) stays."""
+    return "\n".join(
+        [
+            f"rlc_lane={shlex.quote(lane)}; rlc_oh={shlex.quote(registry_root)}",
+            "rlc_rm() {",
+            '  [ -d "$1" ] && [ ! -L "$1" ] || return 0',
+            '  rlc_kb=$(du -sk "$1" 2>/dev/null | cut -f1); rlc_kb=${rlc_kb:-0}',
+            '  if rm -rf -- "$1" 2>/dev/null && [ ! -e "$1" ]; then echo "LANE-CACHE-CLOSEOUT removed kb=$rlc_kb path=$1"',
+            '  else echo "LANE-CACHE-CLOSEOUT failed kb=$rlc_kb path=$1"; fi',
+            "}",
+            "rlc_named() {",
+            "  for rlc_s in pre-commit pre-commit-cache uv uv-cache; do",
+            '    case "$1" in "$rlc_lane-$rlc_s"|*"-$rlc_lane-$rlc_s"|"$rlc_s-$rlc_lane") return 0;; esac',
+            "  done",
+            "  return 1",
+            "}",
+            "rlc_kind() {",
+            '  case "$1" in pre-commit|pre-commit-cache|uv|uv-cache|.pre-commit|.uv-cache) return 0;; esac',
+            "  return 1",
+            "}",
+            "rlc_scratch() {",
+            '  rlc_d="$1/$rlc_lane"',
+            '  [ -d "$rlc_d" ] && [ ! -L "$rlc_d" ] || return 0',
+            '  for rlc_p in "$rlc_d"/* "$rlc_d"/.[!.]*; do',
+            '    [ -d "$rlc_p" ] || continue',
+            "    rlc_n=${rlc_p##*/}",
+            '    if rlc_kind "$rlc_n" || rlc_named "$rlc_n"; then rlc_rm "$rlc_p"; fi',
+            "  done",
+            "}",
+            "rlc_sweep() {",
+            '  [ -n "$rlc_lane" ] || return 0',
+            '  for rlc_root in "$HOME/.cache" "${XDG_CACHE_HOME:-}"; do',
+            '    [ -n "$rlc_root" ] && [ -d "$rlc_root" ] || continue',
+            '    for rlc_p in "$rlc_root"/*; do',
+            '      [ -d "$rlc_p" ] || continue',
+            '      if rlc_named "${rlc_p##*/}"; then rlc_rm "$rlc_p"; fi',
+            "    done",
+            "  done",
+            '  for rlc_root in "$rlc_oh/.claude_scratch" "$HOME/lab-run/scratch" /mnt/*/omninode/scratch; do rlc_scratch "$rlc_root"; done',
+            f'  rlc_ifs=$IFS; IFS=:; for rlc_root in ${{{CACHE_SCRATCH_ROOTS_ENV}:-}}; do IFS=$rlc_ifs; [ -n "$rlc_root" ] && rlc_scratch "$rlc_root"; IFS=:; done; IFS=$rlc_ifs',
+            "}",
+            "rlc_sweep",
+        ]
+    )
+
+
+def parse_cache_closeout(stdout: str) -> list[dict[str, Any]]:
+    """One ``{status, kb, path}`` per ``LANE-CACHE-CLOSEOUT`` line the host printed."""
+    found: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        m = CACHE_CLOSEOUT_LINE_RE.match(line.strip())
+        if m:
+            found.append(
+                {"status": m.group(1), "kb": int(m.group(2)), "path": m.group(3)}
+            )
+    return found
+
+
+def closeout_script(
+    run_id: str,
+    lane: str,
+    registry_root: str,
+    ledger_name: str | None,
+    *,
+    tool_repo: str,
+    ledger_env: str,
+    retry_s: int = 6,
+    keep: Sequence[str] = (),
+) -> str:
+    """Remote shell (POSIX sh): run ``onex-lane-closeout`` once per tree under the lane's directory.
+
+    Prints one ``LANE-CLOSEOUT rc= tree= cell= note=`` line per tree, ``LANE-CLOSEOUT-NONE`` when the lane
+    made none, or ``LANE-CLOSEOUT-UNAVAILABLE`` (trees left in place) when the host has no clone of ``tool_repo``
+    with the command beside its registry. The clone is looked for where the tools resolve it: the
+    host's ``<TOOL_REPO>_HOME``, else beside ``OMNI_HOME``, else beside its resolved target (a
+    symlinked ``OMNI_HOME`` puts the clone beside the target). A tree whose process is still ending (the
+    engine's watchdog follows the dropped ssh session within seconds) is retried. A tree with uncommitted
+    changes, unpushed commits or a branch with no upstream never reaches the command (OMN-20281): its
+    commits are pushed to a WIP branch first, and when that fails or there are uncommitted changes the
+    line's cell is ``worktree=kept:<tree>:<reason>`` and the tree stays. A tree in ``keep`` (its salvage
+    failed, OMN-22229) is never offered to the command: its cell is ``worktree=kept:<tree>:salvage-failed``."""
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", tool_repo):
+        raise ValueError(
+            f"closeout_script: tool_repo {tool_repo!r}: a plain repository directory name"
+        )
+    tool_home_env = f"{tool_repo.upper()}_HOME"
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", ledger_env):
+        raise ValueError(
+            f"closeout_script: ledger_env {ledger_env!r}: an upper-case variable name"
+        )
+    ledger_assignment = f'{ledger_env}="$C/ledger/{ledger_name}"' if ledger_name else ""
+    q_lane = shlex.quote(lane)
+    q_tag = shlex.quote(wip_tag(lane, run_id))
+    return "\n".join(
+        [
+            f'LR="$HOME/lab-run"; C="$LR/runs/{run_id}.ctx"; OH={shlex.quote(registry_root)}; D="$OH/omni_worktrees/"{q_lane}',
+            workdir_guard_function(),
+            lane_cache_sweep_script(lane, registry_root),
+            'if [ ! -d "$D" ]; then echo "LANE-CLOSEOUT-NONE no $D"; exit 0; fi',
+            LANE_TREES_SH,
+            'if [ -z "$TREES" ]; then echo "LANE-CLOSEOUT-NONE no trees under $D"; exit 0; fi',
+            'RH=$(cd "$OH" && pwd -P)',
+            'IH=""',
+            f'for d in "${{{tool_home_env}:-}}" "$(dirname "$OH")/{tool_repo}" "$(dirname "$RH")/{tool_repo}"; do',
+            '  if [ -n "$d" ] && [ -x "$d/.venv/bin/onex-lane-closeout" ]; then IH="$d"; break; fi',
+            "done",
+            f'if [ -z "$IH" ]; then echo "LANE-CLOSEOUT-UNAVAILABLE $(hostname): no {tool_repo} with onex-lane-closeout beside $OH; trees left: $(echo $TREES)"; exit 0; fi',
+            'E=$(mktemp "${TMPDIR:-/tmp}/onex-lane-closeout.XXXXXX") || exit 70',
+            f"KEEP={shlex.quote(' '.join(keep))}",
+            'printf "%s\\n" "$TREES" | while read -r n; do',
+            '  t="$D/$n"; k=0; wipnote=""',
+            '  case " $KEEP " in *" $t "*) echo "LANE-CLOSEOUT rc=0 tree=$t cell=worktree=kept:$t:salvage-failed note="; continue;; esac',
+            f'  g=$(rl_guard "$t" {q_tag}-"$(printf "%s" "$n" | tr "/" "-")" "" "")',
+            '  case "$g" in',
+            '    keep*) echo "LANE-CLOSEOUT rc=0 tree=$t cell=worktree=kept:$t:${g#keep } note="; continue;;',
+            '    wip*) wipnote="wip-pushed=${g#wip } ";;',
+            "  esac",
+            "  while :; do",
+            (
+                f'    cell=$(env -u ONEX_WORKTREES_ROOT OMNI_HOME="$OH" {tool_home_env}="$IH" {ledger_assignment} '
+                f'"$IH/.venv/bin/onex-lane-closeout" --lane {q_lane} --worktree "$t" 2>"$E" </dev/null); rc=$?'
+            ),
+            '    if [ "$rc" = 3 ] && [ "$k" -lt 3 ]; then',
+            '      case "$cell" in *:process-inside*) k=$((k+1)); sleep '
+            + str(int(retry_s))
+            + "; continue;; esac",
+            "    fi",
+            "    break",
+            "  done",
+            '  note="$wipnote$(tr "\\n" " " < "$E" | cut -c1-600)"',
+            '  case "$cell" in *:remove-failed)',
+            '    case "$g" in wip*)',
+            (
+                f'      queued=$(python3 "$HOME/.local/share/onex-lane-guard/lane_reaper.py" --queue-closeout "$t" '
+                f'--closeout-lane {q_lane} --closeout-omni-home "$OH" --closeout-command "$IH/.venv/bin/onex-lane-closeout" '
+                '--pushed-ref "${g#wip }" --failure-file "$E" --closeout-rc "$rc" 2>&1); qr=$?'
+            ),
+            '      note="$note retry-queue-rc=$qr $(printf "%s" "$queued" | tr "\\n" " ")"',
+            "      ;; esac",
+            "    ;; esac",
+            '  echo "LANE-CLOSEOUT rc=$rc tree=$t cell=$cell note=$note"',
+            "done",
+            'rm -f "$E"',
+        ]
+    )
+
+
+def parse_closeout(stdout: str) -> list[dict[str, Any]]:
+    """One ``{rc, tree, cell, note}`` per ``LANE-CLOSEOUT`` line the host printed."""
+    found: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        m = CLOSEOUT_LINE_RE.match(line.strip())
+        if m:
+            found.append(
+                {
+                    "rc": int(m.group(1)),
+                    "tree": m.group(2),
+                    "cell": m.group(3),
+                    "note": (m.group(4) or "").strip(),
+                }
+            )
+    return found
+
+
+def closeout_unavailable(stdout: str) -> bool:
+    return "LANE-CLOSEOUT-UNAVAILABLE" in stdout

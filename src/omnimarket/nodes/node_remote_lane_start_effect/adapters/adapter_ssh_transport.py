@@ -59,9 +59,15 @@ from omnimarket.models.engine_login import (
 from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
     CHANGES_LINE_RE,
     changes_script,
+    closeout_script,
+    closeout_unavailable,
+    parse_closeout,
 )
 from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
     hold_run_dir_guard as _hold_run_dir_guard,
+)
+from omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay import (
+    remote_script as relay_remote_script,
 )
 
 #: What every provisioning step of the protocol answers from this transport: the frozen runner
@@ -172,7 +178,17 @@ RUNTIME_CONFIG_SECRET = re.compile(
 #: The file mode ``put_file`` leaves (``mktemp`` makes the file 0600); only another mode adds a ``chmod``.
 STAGED_DEFAULT_MODE = 0o600
 SNAPSHOT_PRINTED = "LEDGER-SNAPSHOT "
+
+#: The staged file name the mirror script reads the lane's CLAIM row from (the spi request carries no row).
+CLAIM_ROW_FILE = "claim-row.txt"
+#: The lines the runner's ``ledger_mirror_script`` prints.
+MIRROR_PRINTED = "LEDGER-MIRROR "
+MIRROR_PRINTED_OK = "LEDGER-MIRROR ok"
+MIRROR_PRINTED_FAILED = "LEDGER-MIRROR failed"
 RUNTIME_CONFIG_PRINTED = ("RUNTIME-CONFIG installed ", "RUNTIME-CONFIG present ")
+
+#: The first-line prefix the runner's closeout script opens with: the home-relative run root, swapped here for the declared one.
+CLOSEOUT_HEADER_PREFIX = 'LR="$HOME/lab-run"; C="$LR/runs/{run_id}.ctx"; '
 
 #: The ledger outbox file under the run's context directory, read after the engine ends.
 OUTBOX_FILE = "ledger-outbox.rows"
@@ -236,6 +252,8 @@ class SshLaneHostTransport:
         ledger_write_via: str = "local",
         runtime_config_text: str = "",
         runtime_config_target: str = "",
+        closeout_tool_repo: str = "",
+        closeout_ledger_env: str = "",
         runner: ProtocolHostCommandRunner | None = None,
     ) -> None:
         if ledger_write_via not in ("local", "bus"):
@@ -254,6 +272,20 @@ class SshLaneHostTransport:
             raise ValueError(
                 f"remote_lane_start.runtime_config_target {runtime_config_target!r}: a relative path of path characters"
             )
+        if closeout_tool_repo and not re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_]*", closeout_tool_repo
+        ):
+            raise ValueError(
+                f"remote_lane_start.closeout_tool_repo {closeout_tool_repo!r}: a plain repository directory name"
+            )
+        if closeout_ledger_env and not re.fullmatch(
+            r"[A-Z][A-Z0-9_]*", closeout_ledger_env
+        ):
+            raise ValueError(
+                f"remote_lane_start.closeout_ledger_env {closeout_ledger_env!r}: an upper-case variable name"
+            )
+        self._closeout_tool_repo = closeout_tool_repo
+        self._closeout_ledger_env = closeout_ledger_env
         self._runtime_config = runtime_config_text
         self._runtime_config_target = runtime_config_target
         if not _PATH_PREFIX.fullmatch(path_prefix):
@@ -287,6 +319,7 @@ class SshLaneHostTransport:
         self._marker = registry_marker
         self._guard_source = guard_host_source
         self._runner = runner or SubprocessHostCommandExecutor()
+        self._ledger_names: dict[str, str] = {}
 
     def run_dir(self, run_id: str) -> str:
         return f"{self._root}/{run_id}"
@@ -594,6 +627,7 @@ class SshLaneHostTransport:
             None,
         )
         if result.exit_code == 0 and printed:
+            self._ledger_names[request.run_id] = request.name
             return ModelLaneStagedInput(staged=True, path=printed)
         return ModelLaneStagedInput(staged=False, error=self._failure(result))
 
@@ -639,7 +673,47 @@ class SshLaneHostTransport:
     def mirror_ledger(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
-        return ModelLaneHostStepResult(ok=False, error=self._not_run("mirror_ledger"))
+        """The runner's ``ledger_mirror_script``: append the lane's CLAIM row (staged on the host as
+        ``claim-row.txt``) to the lane's own ledger copy and print ``LEDGER-MIRROR ok|failed``.
+
+        The spi request carries no row, so the caller stages it first with ``stage_file`` under
+        ``CLAIM_ROW_FILE``; the script reads it from there. The recorded text is the bus variant when
+        ``ledger_write_via`` is bus, the relock variant otherwise, with the runner's ``$LR`` prefix
+        dropped and ``$LR/runs/<run>`` replaced by the context directory.
+        """
+        ledger_name = self._ledger_names.get(request.run_id)
+        if ledger_name is None:
+            return ModelLaneHostStepResult(
+                ok=False, error="mirror_ledger: no ledger name remembered for the run"
+            )
+        ctx = self._context_dir(request.run_id)
+        relock = self._ledger_via != "bus"
+        path = f'"$C/ledger/{ledger_name}"'
+        script = "\n".join(
+            [
+                f'C="{ctx}"; F={path}',
+                f'exec < "$C/{CLAIM_ROW_FILE}" || {{ echo "{MIRROR_PRINTED_FAILED}"; exit 70; }}',
+                *(['chmod u+w "$F" 2>/dev/null'] if relock else []),
+                'if [ -s "$F" ] && [ -n "$(tail -c 1 "$F")" ]; then echo >> "$F"; fi',
+                f"if cat >> {path}; then R=ok; else R=failed; fi",
+                *(['chmod a-w "$F" 2>/dev/null'] if relock else []),
+                f'echo "{MIRROR_PRINTED}$R"',
+            ]
+        )
+        result = self._sh(request.host, script, request.timeout_seconds)
+        printed = next(
+            (
+                line.strip()
+                for line in result.stdout.splitlines()
+                if line.strip().startswith(MIRROR_PRINTED)
+            ),
+            None,
+        )
+        if result.exit_code == 0 and printed == MIRROR_PRINTED_OK:
+            return ModelLaneHostStepResult(ok=True, cells=(("ledger_mirror", "ok"),))
+        if printed == MIRROR_PRINTED_FAILED:
+            return ModelLaneHostStepResult(ok=False, error=printed)
+        return ModelLaneHostStepResult(ok=False, error=self._failure(result))
 
     def write_runtime_config(
         self, request: ModelLaneHostStepRequest
@@ -724,7 +798,26 @@ class SshLaneHostTransport:
     def relay_reports(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneHostStepResult:
-        return ModelLaneHostStepResult(ok=False, error=self._not_run("relay_reports"))
+        """The relay handler's ``remote_script``: tar the lane's report files and print the bytes.
+
+        The script is the handler's ``remote_script`` for the registry root and lane, with `` | base64``
+        appended to its last line so the tar bytes survive the text channel; the printed
+        ``RELAY-TAR\n<base64>`` comes back as the ``relay_output_b64`` cell.
+        """
+        if request.registry_root is None:
+            return ModelLaneHostStepResult(
+                ok=False, error="relay_reports: registry root not resolved"
+            )
+        script = relay_remote_script(request.registry_root, request.lane)
+        lines = script.splitlines()
+        lines[-1] = lines[-1] + " | base64"
+        result = self._sh(request.host, "\n".join(lines), request.timeout_seconds)
+        if result.exit_code == 0:
+            return ModelLaneHostStepResult(
+                ok=True,
+                cells=(("relay_output_b64", "".join(result.stdout.split())),),
+            )
+        return ModelLaneHostStepResult(ok=False, error=self._failure(result))
 
     def read_ledger_outbox(
         self, request: ModelLaneHostStepRequest
@@ -767,7 +860,60 @@ class SshLaneHostTransport:
     def closeout_worktrees(
         self, request: ModelLaneHostStepRequest
     ) -> ModelLaneCloseoutCells:
-        return ModelLaneCloseoutCells(error=self._not_run("closeout_worktrees"))
+        """The runner's ``closeout_script``: the host's own ``onex-lane-closeout`` once per tree under the lane's directory.
+
+        The script is the moved ``closeout_script`` (the relay handler module), its first line's home-relative
+        run root swapped for the declared one. Each printed ``LANE-CLOSEOUT`` line's cell comes back as a cell;
+        ``LANE-CLOSEOUT-UNAVAILABLE`` is the ``unavailable`` flag, and a tree the closeout refused is the error
+        (the cells of the other trees stay).
+        """
+        if not (self._closeout_tool_repo and self._closeout_ledger_env):
+            return ModelLaneCloseoutCells(error=self._not_run("closeout_worktrees"))
+        if request.registry_root is None:
+            return ModelLaneCloseoutCells(
+                error="closeout_worktrees: registry root not resolved"
+            )
+        if not _LITERAL_PATH.fullmatch(request.registry_root):
+            return ModelLaneCloseoutCells(
+                error=f"closeout_worktrees: registry root {request.registry_root!r}: only path characters"
+            )
+        script = closeout_script(
+            request.run_id,
+            request.lane,
+            request.registry_root,
+            self._ledger_names.get(request.run_id),
+            tool_repo=self._closeout_tool_repo,
+            ledger_env=self._closeout_ledger_env,
+        )
+        first, newline, rest = script.partition("\n")
+        prefix = CLOSEOUT_HEADER_PREFIX.format(run_id=request.run_id)
+        if not first.startswith(prefix):
+            return ModelLaneCloseoutCells(
+                error="closeout_worktrees: the closeout script no longer opens with the run directory line"
+            )
+        ctx = self._context_dir(request.run_id)
+        result = self._sh(
+            request.host,
+            f'C="{ctx}"; {first[len(prefix) :]}{newline}{rest}',
+            request.timeout_seconds,
+        )
+        if result.exit_code != 0:
+            return ModelLaneCloseoutCells(error=self._failure(result))
+        if closeout_unavailable(result.stdout):
+            return ModelLaneCloseoutCells(unavailable=True)
+        trees = parse_closeout(result.stdout)
+        refused = [t for t in trees if not t["cell"]]
+        return ModelLaneCloseoutCells(
+            cells=tuple(t["cell"] for t in trees if t["cell"]),
+            error=(
+                "closeout_worktrees: refused "
+                + "; ".join(
+                    f"{t['tree']}: {t['note'] or 'rc=' + str(t['rc'])}" for t in refused
+                )
+                if refused
+                else None
+            ),
+        )
 
     def hold_run_dir_guard(
         self, request: ModelLaneHostStepRequest

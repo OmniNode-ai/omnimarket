@@ -60,6 +60,9 @@ MOVED_OPS = frozenset(
         "stop_lane_guard",
         "stage_ledger_snapshot",
         "stage_file",
+        "mirror_ledger",
+        "relay_reports",
+        "closeout_worktrees",
     }
 )
 PROVISIONING_OPS = tuple(

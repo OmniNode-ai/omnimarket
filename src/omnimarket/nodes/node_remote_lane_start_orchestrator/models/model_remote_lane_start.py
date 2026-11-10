@@ -68,6 +68,12 @@ class ModelRemoteLaneStartSettings(BaseModel):
     registry_root_candidates: tuple[str, ...]
     # The directory a registry root holds (the runner's marker), so a candidate that is not one is skipped.
     registry_marker: str = Field(min_length=1)
+    # The repository directory that holds the host's lane-closeout command, beside the registry root; "" leaves the
+    # closeout step to the frozen runner script.
+    closeout_tool_repo: str = ""
+    # The variable the closeout command reads the lane's ledger copy path from; both closeout keys set, or the step stays
+    # with the runner script.
+    closeout_ledger_env: str = ""
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
     # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin
