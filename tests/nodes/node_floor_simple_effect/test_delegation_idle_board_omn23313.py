@@ -37,6 +37,7 @@ from tests.nodes.node_floor_simple_effect.support import (
     OVERLAYS,
     build_home,
     environ,
+    put_projection,
 )
 
 pytestmark = pytest.mark.unit
@@ -87,9 +88,7 @@ def tick(tmp_path: Path, *, block: bool, assignee: str | None) -> ModelFloorSimp
             ),
         )
     )
-    path = home / ".onex_state/work-state/work-state.json"
-    path.parent.mkdir(parents=True)
-    path.write_text(projection.model_dump_json(), encoding="utf-8")
+    put_projection(home, "work_state", projection.model_dump(mode="json"))
     env = {
         **environ(home),
         "ONEX_SKILL_OVERLAY_ROOTS": str(overlay_root(tmp_path, block=block)),
