@@ -159,3 +159,27 @@ def test_cli_exit_code_is_three_on_a_refusal(
     monkeypatch.setattr("sys.stdin", io.StringIO(request.model_dump_json()))
     assert main() == 3
     assert '"contract_unreadable"' in capsys.readouterr().out
+
+
+def test_a_refusal_names_what_was_unreadable_and_the_terminal_event_is_declared(
+    tmp_path: Path,
+) -> None:
+    """Every refusal carries a non-empty detail, and the contract declares the one terminal topic the refusal is published on."""
+    result = _run(tmp_path / "no_contracts.yaml", TIERS, _valid_overlay(tmp_path))
+    assert result.detail != ""
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[3]
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_delegation_code_step_order_effect"
+            / "contract.yaml"
+        ).read_text()
+    )
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.code-step-order-resolved.v1"
+    )
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.code-step-order-resolved.v1"
+    ]
