@@ -49,7 +49,9 @@ from omnimarket.handlers.delegation_scenario_runtime import (
 )
 from omnimarket.handlers.delegation_scenario_settings import (
     ProtocolSettingStore,
+    SecretStoreSettingsReader,
     fill_overlay_settings,
+    load_store_overlay,
 )
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioTrigger,
@@ -343,6 +345,13 @@ LANE_BUILDERS: Mapping[
     "inmemory": _build_inmemory_lane,
     "http": _build_http_lane,
 }
+
+
+def r8_settings_store(
+    environ: Mapping[str, str] | None = None,
+) -> SecretStoreSettingsReader:
+    """The R8 key store reader: its store block is the R8 overlay document's when the deployment supplies one."""
+    return SecretStoreSettingsReader(overlay=load_store_overlay(NODE_NAME, environ))
 
 
 def build_runner(

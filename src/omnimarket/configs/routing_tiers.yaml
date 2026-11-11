@@ -316,13 +316,15 @@ tiers:
   # placement code_generation and refactor already had, so the free coder rung
   # historically carried the whole family. OMN-17427 now withholds code_review.
   #
-  # Free-only is ABSOLUTE (OMN-14225 / operator ruling R9-amended): only models
-  # OpenRouter serves at genuinely zero cost may sit here — never a paid model
-  # through the aggregator, and never the paid slug of a model whose free slug
-  # was retired. The live 2026-08-28 probe confirmed the pinned model still
-  # reports `"cost": 0, "is_byok": false` in the provider's OWN usage
-  # accounting, so `cost_type: free_local` below remains TRUE rather than
-  # asserted.
+  # Free models only HERE, because this tier's cost model is `free_local`
+  # below: a paid model placed in this tier would be booked at zero. The
+  # operator's free-only rule for OpenRouter itself (OMN-14225 / R9-amended) was
+  # LIFTED on 2026-11-11 (RULING 2026-11-11T12:33:37Z, OMN-23751); paid
+  # OpenRouter models enter as eval arms in the delegation routing overlay,
+  # pinned-only and booked at their own declared price, and reach this ladder
+  # only after the code eval scores them and a change gives them a metered tier.
+  # The live 2026-08-28 probe confirmed the pinned model still reports
+  # `"cost": 0, "is_byok": false` in the provider's OWN usage accounting.
   - name: cheap_frontier
     cost_per_1k_tokens: 0.0
     # OMN-13234: free_local-class cost — the OpenRouter Qwen3-Coder-480B entry is

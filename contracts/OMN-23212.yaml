@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23212"
+title: "onex dashboard serves the new OmniDash release: omnimarket's dashboard bundle pin moves to the new tag with its sha256"
+summary: "onex dashboard pins omnidash v1.1.12 with the sha256 of its published asset (ec9b3f16...), verified through the bundle code; the release carries the decisions walk past the newest 500 runs. AC2 is read after an omnimarket release candidate carries this pin."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dashboard-bundle-pin-v1-1-12"
+    statement: |-
+      onex dashboard serves omnidash v1.1.12, pinned by the digest of its published asset.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the pin's version and sha256 equal the new tag's asset computed from the downloaded bytes -- falsifier: the existing dashboard bundle pin test in omnimarket plus a lab `onex dashboard` start that serves the new version
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the pin is v1.1.12 with sha256 ec9b3f16...; the pinned asset, fetched and verified through ensure_bundle, carries the next_cursor walk; the release's .sha256 sidecar names that digest and asset. At the v1.1.11 pin all three fail."
+    command: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23212-ac1-bundle-pin-1-1-12"
+    description: "AC1: onex dashboard pins omnidash v1.1.12 with the sha256 of its published asset; the pinned asset, fetched and verified through ensure_bundle (the path onex dashboard serves from), carries the next_cursor walk, and the release's .sha256 sidecar names the pinned digest and asset. At the v1.1.11 pin all three cases fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

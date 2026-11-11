@@ -26,6 +26,8 @@ through with its own detail.
 The machine identity is read exactly as ``handler_house_model_key`` reads it:
 the machine's own ``secret_store`` block first, then, with no block, the store
 addressing and identity the host's own ``~/.omnibase/.env`` already carries.
+With an overlay document the store block is that document's and the host env
+file fallback never runs.
 """
 
 from __future__ import annotations
@@ -45,6 +47,9 @@ from omnimarket.models.secret_store.model_generate_key_request import (
 )
 from omnimarket.models.secret_store.model_generate_key_result import (
     ModelGenerateKeyResult,
+)
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
 )
 from omnimarket.models.secret_store.model_secret_store_request import (
     EnumSecretStoreOperation,
@@ -103,8 +108,11 @@ class HandlerGenerateKey:
     """EFFECT: generate one declared key and store it create-only, value unseen.
 
     Args:
-        store_handler: The secret store handler to ask. With none, the machine's
-            own overlay is tried first and the host env file second.
+        store_handler: The secret store handler to ask. With none, the overlay
+            document's store block when one is given, else the machine's own
+            overlay first and the host env file second.
+        overlay: The store block to store through; with it, the host env file
+            fallback never runs.
         onex_home: The ONEX home holding ``config.yaml``; defaults to the standard one.
         home: The user's home holding ``.omnibase/.env``; defaults to ``Path.home()``.
         contract_path: The node contract, for ``generated_keys``.
@@ -116,12 +124,14 @@ class HandlerGenerateKey:
         self,
         *,
         store_handler: HandlerSecretStore | None = None,
+        overlay: ModelSecretStoreOverlay | None = None,
         onex_home: Path | None = None,
         home: Path | None = None,
         contract_path: Path | None = None,
         token_source: Callable[[int], str] = secrets.token_urlsafe,
     ) -> None:
         self._store_handler = store_handler
+        self._overlay = overlay
         self._onex_home = onex_home
         self._home = home
         self._declared = _load_generated_keys(contract_path or _CONTRACT_PATH)
@@ -175,11 +185,14 @@ class HandlerGenerateKey:
             value=value,
             correlation_id=request.correlation_id,
         )
-        handler = self._store_handler or HandlerSecretStore(onex_home=self._onex_home)
+        handler = self._store_handler or HandlerSecretStore(
+            overlay=self._overlay, onex_home=self._onex_home
+        )
         store_result = await handler.handle(store_request)
         if (
             store_result.outcome is EnumSecretStoreOutcome.NOT_CONFIGURED
             and self._store_handler is None
+            and self._overlay is None
         ):
             home = self._home or Path.home()
             overlay = host_env_overlay(home)

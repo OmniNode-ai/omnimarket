@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Join J0 Effect (OMN-23022, J0: the floor's join, piece 17 to the code graph's piece 1)
+#
+# Reads the floor record the floor holds and writes the two chains of join J0 (piece 17, then piece 1) to the emission
+# journal under one correlation id: golden when the record draws a reading age for the piece the code graph draws, a
+# typed failure otherwise, with piece 1's typed upstream_ refusal when the record fails. The control feeds the reader
+# the overlay's deliberately corrupt record text and fails the run when the reader accepts it. It changes no verdict and no bound.
+name: node_join_j0_effect
+contract_name: node_join_j0_effect
+node_name: node_join_j0_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs join J0 once per publish cycle: piece 17, the floor, to piece 1, the code graph. A floor record that does not
+  read, is stale, or draws no reading age for the code graph's piece is piece 17's typed failure and piece 1's typed
+  upstream_ refusal, never a success; the control proves the record reader rejects the deliberately corrupt record the
+  overlay feeds it.
+
+handler:
+  module: omnimarket.nodes.node_join_j0_effect.handlers.handler_join_j0
+  class: HandlerJoinJ0
+  input_model: omnimarket.nodes.node_join_j0_effect.models.model_join_j0.ModelJoinJ0Command
+
+# HandlerJoinJ0 takes the overlay, the emission sink, the floor record path, the backend and the clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [emission-journal-append]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelJoinJ0Command
+  module: omnimarket.nodes.node_join_j0_effect.models.model_join_j0
+  description: Whether the run writes its chains.
+output_model:
+  name: ModelJoinJ0Result
+  module: omnimarket.nodes.node_join_j0_effect.models.model_join_j0
+  description: The join's outcome, its correlation id, the failure that ended it, and the control's verdict.
+
+terminal_event: onex.evt.omnimarket.join-zero-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  join_j0_requested: onex.cmd.omnimarket.join-zero-requested.v1
+  join_j0_run_completed: onex.evt.omnimarket.join-zero-run-completed.v1
+  join_j0_run_failed: onex.evt.omnimarket.join-zero-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.join-zero-run-completed.v1
+  - onex.evt.omnimarket.join-zero-run-failed.v1
+
+overlay:
+  node: node_join_j0_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23022
+  transport_type: inmemory

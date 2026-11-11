@@ -18,6 +18,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.models.work_ledger_query import (
     EnumWorkLedgerQueryKind,
     ModelWorkLedgerLaneActivity,
+    ModelWorkLedgerLatestEntry,
+    ModelWorkLedgerLatestPage,
+    ModelWorkLedgerLatestQuery,
     ModelWorkLedgerRowRecord,
     ModelWorkLedgerStateEntity,
     ModelWorkLedgerStatePage,
@@ -37,6 +40,11 @@ class ModelWorkLedgerQuerySource(BaseModel):
     # The entity table the point queries read (OMN-21948); a source without one
     # answers every point query as an error.
     state_relation: str | None = Field(
+        default=None, pattern=r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$"
+    )
+    # The newest-row-per-subject table the latest-state query reads (OMN-23606); a source without one
+    # answers latest-state as an error.
+    latest_relation: str | None = Field(
         default=None, pattern=r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$"
     )
     dsn_env: str = Field(min_length=1)
@@ -114,6 +122,15 @@ class ProtocolWorkLedgerStateReader(Protocol):
     def read_state_page(
         self, *, query: ModelWorkLedgerStateQuery
     ) -> ModelWorkLedgerStatePage: ...
+
+
+@runtime_checkable
+class ProtocolWorkLedgerLatestReader(Protocol):
+    """Read one keyset page of the newest row per lane or ticket and row type from ``work_ledger_latest`` (OMN-23694)."""
+
+    def read_latest_page(
+        self, *, query: ModelWorkLedgerLatestQuery
+    ) -> ModelWorkLedgerLatestPage: ...
 
 
 #: The ruling horizon of the ``open-rulings`` verb: a ruling older than this is
@@ -272,6 +289,55 @@ def format_database_error(exc: Exception, source: ModelWorkLedgerQuerySource) ->
     return f"{type(exc).__name__}: {message}"
 
 
+_LATEST_WATERMARK_SQL = "SELECT max(projected_at) FROM {latest}"
+
+#: Column order of the latest-state page statement.
+LATEST_PAGE_COLUMNS = (
+    "subject_kind",
+    "subject",
+    "row_type",
+    "row_id",
+    "at",
+    "lane",
+    "ticket",
+    "pr",
+    "outcome",
+    "to_cell",
+)
+
+
+def _latest_page_sql(query: ModelWorkLedgerLatestQuery) -> tuple[str, list[object]]:
+    """The page statement and its parameters: every value is bound, none is formatted into the text."""
+    clauses: list[str] = []
+    params: list[object] = []
+    if query.after is not None:
+        clauses.append("(subject_kind, subject, row_type) > (%s, %s, %s)")
+        params += [
+            query.after.subject_kind.value,
+            query.after.subject,
+            query.after.row_type,
+        ]
+    if query.subject_kind is not None:
+        clauses.append("subject_kind = %s")
+        params.append(query.subject_kind.value)
+    if query.subjects:
+        clauses.append("subject = ANY(%s)")
+        params.append(list(query.subjects))
+    if query.row_types:
+        clauses.append("row_type = ANY(%s)")
+        params.append(list(query.row_types))
+    if query.since is not None:
+        clauses.append("at >= %s")
+        params.append(query.since)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = (
+        f"SELECT {', '.join(LATEST_PAGE_COLUMNS)} FROM {{latest}}{where}"
+        " ORDER BY subject_kind, subject, row_type LIMIT %s"
+    )
+    params.append(query.limit + 1)
+    return sql, params
+
+
 class PostgresWorkLedgerQueryReader:
     """Read the contract-declared relation through a lazy read-only connection."""
 
@@ -304,6 +370,10 @@ class PostgresWorkLedgerQueryReader:
         if self._source.state_relation is not None:
             names["state"] = pgsql.Identifier(
                 *self._source.state_relation.split(".", 1)
+            )
+        if self._source.latest_relation is not None:
+            names["latest"] = pgsql.Identifier(
+                *self._source.latest_relation.split(".", 1)
             )
         query = pgsql.SQL(template).format(**names)
         try:
@@ -487,6 +557,31 @@ class PostgresWorkLedgerQueryReader:
             released=meta["released"],
             expired=meta["expired"],
             ledger_newest=meta["ledger_newest"],
+        )
+
+    def read_latest_page(
+        self, *, query: ModelWorkLedgerLatestQuery
+    ) -> ModelWorkLedgerLatestPage:
+        """One keyset page of ``work_ledger_latest`` and the table's watermark; one entry past the limit tells has_more."""
+        if self._source.latest_relation is None:
+            raise WorkLedgerReadError(
+                "contract work_ledger_query.ledger_source.latest_relation is not declared"
+            )
+        sql, params = _latest_page_sql(query)
+        marks = self._query(_LATEST_WATERMARK_SQL, ())
+        rows = self._query(sql, tuple(params))
+        entries = [
+            ModelWorkLedgerLatestEntry(
+                **dict(zip(LATEST_PAGE_COLUMNS[:-1], row[:-1], strict=True)),
+                to=row[-1],
+            )
+            for row in rows
+        ]
+        watermark = marks[0][0] if marks else None
+        return ModelWorkLedgerLatestPage(
+            entries=tuple(entries[: query.limit]),
+            watermark=watermark,
+            has_more=len(entries) > query.limit,
         )
 
     @staticmethod

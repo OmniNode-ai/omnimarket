@@ -1,0 +1,49 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23711
+title: "Refuse a unit install whose overlay root is not the declared clone"
+summary: >-
+  The schedule installers pin ONEX_SKILL_OVERLAY_ROOTS into the unit from the installing shell's own value, so three
+  units on a lab host (the code graph nightly, the code graph drill and the seam deadline drill) read a scratch clone
+  of the overlays repository 122 commits behind main. The code graph, seam deadline and overlay drift schedule
+  installers now refuse an install whose overlay root is not the overlays directory of the clone the lab host table
+  declares for the host, name the declared root, and exit 1. Eleven other installers that pin the root the same way
+  are named as follow-up in the pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23711-declared-root
+    statement: A schedule install of the three nodes refuses an overlay root the lab host table does not declare.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the schedule installers of the code graph, seam deadline and drift nodes refuse to render a unit whose pinned overlay root is not the overlays directory of the clone the lab host table declares for the host -- falsifier: uv run --frozen pytest tests/handlers/test_overlay_root_declared_refusal.py -q --no-cov'
+      - id: AC2
+        statement: 'AC2: installing from the declared clone still succeeds -- falsifier: the golden cases in tests/handlers/test_overlay_root_declared_refusal.py'
+      - id: AC3
+        statement: 'AC3: integrated: on h053 a schedule install dry-run with ONEX_SKILL_OVERLAY_ROOTS naming the stale scratch clone exits non-zero naming the declared clone, and the one naming the declared clone renders -- falsifier: the dry-run of the stale case exits 0'
+evidence_requirements:
+  - kind: tests
+    description: The refusal rule and the three installers' focused tests.
+    command: uv run --frozen pytest tests/handlers/test_overlay_root_declared_refusal.py tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23711-tests
+    description: The refusal tests pass, including the error cases that fail on the dev head without the change.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2, AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/handlers/test_overlay_root_declared_refusal.py -q --no-cov
+        cwd: .
+  - id: dod-omn23711-integration-proof
+    description: A dry-run install from the stale scratch clone on a lab host exits 1 naming the declared root; hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check, and the read is in the pull request comment that names the head.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23711 --kind test -- uv run --frozen pytest tests/handlers/test_overlay_root_declared_refusal.py -q --no-cov'
+        cwd: .

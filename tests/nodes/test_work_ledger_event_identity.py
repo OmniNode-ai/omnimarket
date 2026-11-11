@@ -121,10 +121,12 @@ async def source_database(monkeypatch):
     schema = "m3_" + uuid4().hex
     migration_root = Path(module.__file__).parents[1] / "migrations"
     await conn.execute(f'CREATE SCHEMA "{schema}"')
+    # OMN-23694: the writer also maintains work_ledger_latest (0011); its grant (0012) names the runtime role, so it is not applied.
     for name in (
         "0000_create_work_ledger.sql",
         "0002_work_ledger_typed_records.sql",
         "0003_work_ledger_seq.sql",
+        "0011_work_ledger_latest.sql",
     ):
         await conn.execute(
             (migration_root / name).read_text().replace("omninode_internal", schema)

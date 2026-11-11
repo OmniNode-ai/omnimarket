@@ -6,13 +6,14 @@
 ``systemctl cat`` prints each definition with its drop-ins, and the environment files a unit names
 are read as well. Nothing here guesses: a manager that cannot be asked, a command that fails or a
 required environment file that cannot be read raises :class:`UnitSnapshotError`, and the facts probe
-turns that into a probe error, which keeps every tree.
+turns that into a probe error, which keeps every tree. The one exception: a file the run user
+cannot open falls back to the paths the host overlay declared it holds.
 """
 
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from omnimarket.handlers.rules_unit_roots import (
@@ -47,13 +48,28 @@ def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
         raise UnitSnapshotError(f"{command[0]}: {type(exc).__name__}") from exc
 
 
-def _read_environment_file(path: str, optional: bool) -> frozenset[str]:
+def _read_environment_file(
+    path: str,
+    optional: bool,
+    declared: Mapping[str, Sequence[str]] | None = None,
+    read_file: Callable[[str], str] | None = None,
+) -> frozenset[str]:
     try:
-        return environment_file_paths(Path(path).read_text(encoding="utf-8"))
+        text = (
+            read_file(path)
+            if read_file is not None
+            else Path(path).read_text(encoding="utf-8")
+        )
+        return environment_file_paths(text)
     except FileNotFoundError:
         if optional:
             return frozenset()
         raise UnitSnapshotError(f"environment file {path} is missing") from None
+    except PermissionError:
+        # A file the run user cannot open: use the paths the host overlay declared it holds.
+        if declared is not None and path in declared:
+            return frozenset(p.rstrip("/") for p in declared[path])
+        raise UnitSnapshotError(f"environment file {path}: PermissionError") from None
     except (OSError, UnicodeDecodeError) as exc:
         raise UnitSnapshotError(
             f"environment file {path}: {type(exc).__name__}"
@@ -64,10 +80,17 @@ class SystemdUnitRootReader:
     """The absolute paths every installed service names, with one unit that names each."""
 
     def __init__(
-        self, *, run: Runner = run_command, scopes: Sequence[str] = SCOPES
+        self,
+        *,
+        run: Runner = run_command,
+        scopes: Sequence[str] = SCOPES,
+        declared_environment_files: Mapping[str, Sequence[str]] | None = None,
+        read_file: Callable[[str], str] | None = None,
     ) -> None:
         self._run = run
         self._scopes = tuple(scopes)
+        self._declared = declared_environment_files
+        self._read_file = read_file
 
     def read(self) -> UnitRoots:
         per_unit: dict[str, set[str]] = {}
@@ -103,5 +126,7 @@ class SystemdUnitRootReader:
                 paths = per_unit.setdefault(name, set())
                 paths |= unit_paths(text)
                 for file, optional in environment_files(text):
-                    paths |= _read_environment_file(file, optional)
+                    paths |= _read_environment_file(
+                        file, optional, self._declared, self._read_file
+                    )
         return UnitRoots.from_paths(per_unit)

@@ -254,6 +254,14 @@
     "runner": "lab hosts h201 and h051, serial focused runs; the next CI refresh replaces these entries",
     "base_sha": "87c92f204d38576ba05727ea1d905201543e9b71"
   },
+  "supplement_omn19184": {
+    "ticket": "OMN-19184",
+    "recorded_on": "2026-11-11",
+    "files_added": 59,
+    "basis": "Each test file the record did not hold at this branch's head, measured in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; entries built with the record command; existing entries left as they were.",
+    "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "5964561a28f2ee540a2736657cc5d48e584e03a9"
+  },
   "supplement_omn19998_scenarios_pass": {
     "recorded_on": "2026-11-10",
     "files_added": 47,
