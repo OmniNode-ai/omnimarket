@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23660
+title: Run the Cognee memory experiment once a day and write the result the experiment check reads
+summary: node_memory_pilot_effect gains a daily run that asks the frozen 36-question set of the baseline lookup and of Cognee on lab models only, measures the gains, planted-fact recall, ingest time, query p95 and outside connections, and writes the result to the file the pilot measurement node reads; a registry unit declares the daily timer.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- public_api
+requirements:
+- id: req-omn23660-daily-memory-pilot-run
+  statement: The memory pilot node runs the frozen question set of both arms once per request, names every metric in its overlay, and writes the measured result to the measurement node's result port; failures are typed and a lab model that is down leaves no result.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the memory experiment run asks the frozen question set of the baseline and of Cognee on lab models only and writes metrics named in its overlay to the result file the experiment check reads -- falsifier: uv run pytest tests/nodes/node_memory_pilot_effect/test_pilot_run.py -q fails at the merge base'
+  - id: AC2
+    statement: 'AC2: each typed failure ends in the failed event, a down lab model writes no result and a failed ingest writes a partial result the bar rejects -- falsifier: the error chain tests in tests/nodes/node_memory_pilot_effect/test_pilot_run.py fail when a refusal is removed'
+  - id: AC3
+    statement: 'AC3: the result file the run writes is read by the pilot measurement node as WORKING for a candidate within the frozen bar and NOT_WORKING otherwise -- falsifier: tests/nodes/node_memory_pilot_effect/test_pilot_run_seam.py fails when a metric name on either side changes'
+  - id: AC4
+    statement: 'AC4: integrated: the daily unit is installed on a lab host from the branch through the host installer and the run completes there -- falsifier: the lane STATUS row naming host, revision, the result event and the reading row'
+evidence_requirements:
+- kind: tests
+  description: The memory pilot node's tests and the daily unit's installer test pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_memory_pilot_effect tests/nodes/node_host_installer_registry_units/test_memory_pilot_daily_unit.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23660-tests
+  description: The run's golden chain, error chain, failing control and seam tests, and the daily unit's installer test.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_memory_pilot_effect tests/nodes/node_host_installer_registry_units/test_memory_pilot_daily_unit.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23660-integration-proof
+  description: Run the tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23660 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_memory_pilot_effect tests/nodes/node_host_installer_registry_units/test_memory_pilot_daily_unit.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
