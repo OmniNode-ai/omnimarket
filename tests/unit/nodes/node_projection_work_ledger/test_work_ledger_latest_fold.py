@@ -22,6 +22,7 @@ from omnimarket.models.model_work_ledger_fold_request import (
 from omnimarket.models.work_ledger_query.model_work_ledger_latest import (
     EnumWorkLedgerLatestSubject,
     ModelWorkLedgerLatestCursor,
+    ModelWorkLedgerLatestEntry,
     ModelWorkLedgerLatestQuery,
 )
 
@@ -95,14 +96,34 @@ def test_every_permutation_of_the_fixture_gives_the_same_state() -> None:
         assert _fold(list(perm)) == baseline
 
 
+CLAIM_LATER = "2026-09-28T11:00:00Z | CLAIM | lane=alpha | ticket=OMN-2 | repo=omnimarket | est ~1 lane-hours; displaces x; (OMN-2) | again"
+
+
 def test_an_older_row_delivered_after_a_newer_one_does_not_replace_it() -> None:
-    state: dict[tuple[str, str, str], object] = {}
+    """Failing control: with the guard reversed (older wins) this turns red."""
+    state: dict[tuple[str, str, str], ModelWorkLedgerLatestEntry] = {}
+    apply_latest(state, latest_entries_for_row(_row(CLAIM_LATER), TRACKED))
     apply_latest(state, latest_entries_for_row(_row(CLAIM), TRACKED))
-    apply_latest(state, latest_entries_for_row(_row(STATUS), TRACKED))
+    lane = state[("lane", "alpha", "CLAIM")]
+    assert lane.at == datetime(2026, 9, 28, 11, 0, tzinfo=UTC)
+    assert lane.ticket == "OMN-2"
+    assert lane.row_id == _row(CLAIM_LATER).row_id
+    # The older claim still owns its own ticket: a ticket key is not moved by another ticket's row.
+    assert state[("ticket", "OMN-1", "CLAIM")].row_id == _row(CLAIM).row_id
+
+
+def test_a_newer_row_delivered_after_an_older_one_replaces_it() -> None:
+    state: dict[tuple[str, str, str], ModelWorkLedgerLatestEntry] = {}
     apply_latest(state, latest_entries_for_row(_row(CLAIM), TRACKED))
-    key = entry_key(latest_entries_for_row(_row(CLAIM), TRACKED)[0])
-    assert state[key].at == datetime(2026, 9, 28, 10, 0, tzinfo=UTC)
-    assert state[key].row_id == _row(CLAIM).row_id
+    apply_latest(state, latest_entries_for_row(_row(CLAIM_LATER), TRACKED))
+    lane = state[("lane", "alpha", "CLAIM")]
+    assert lane.row_id == _row(CLAIM_LATER).row_id
+
+
+def test_two_claims_in_every_order_leave_the_newer_one() -> None:
+    for order in itertools.permutations([CLAIM, CLAIM_LATER, TERMINAL]):
+        state = _fold(list(order))
+        assert state[("lane", "alpha", "CLAIM")].ticket == "OMN-2"
 
 
 def test_paging_in_key_order_with_has_more_and_a_cursor() -> None:
