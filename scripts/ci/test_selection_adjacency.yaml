@@ -36,9 +36,14 @@ thresholds:
 # change to one node narrowed to that node's tests, the dev push skips the
 # suite (OMN-19998), and a cross-node import merged green and failed every PR
 # synced with dev afterwards.
+# OMN-23649: tests/ci/test_repo_evidence_caller_workflow.py reads every
+# contracts/OMN-*.yaml, so a change that adds one contract narrowed to its own
+# node's tests and merged a contract the repo-wide binding check refuses; the
+# dev suite then failed on every open change that took dev in.
 always_selected_paths:
   - tests/gates/
   - tests/test_no_cross_node_reach_in.py
+  - tests/ci/test_repo_evidence_caller_workflow.py
 
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:
