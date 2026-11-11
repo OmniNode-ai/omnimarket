@@ -1,9 +1,13 @@
-"""Compatibility re-export; the model lives in omnimarket.events.dod_verify_state."""
+"""Compatibility re-export; the model lives in omnimarket.models.model_dod_verify_state."""
 
 from omnimarket.delegated_test_loop.must_fail_models import ModelMustFailControl
 from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
 from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
-from omnimarket.events.dod_verify_state import (
+from omnimarket.models.model_criteria_drift import (
+    ModelCriteriaAmendment,
+    ModelCriterionDrift,
+)
+from omnimarket.models.model_dod_verify_state import (
     EnumCheckProofClass,
     EnumDodVerifyStatus,
     EnumDodVerifyUnresolvedCause,
@@ -16,10 +20,6 @@ from omnimarket.events.dod_verify_state import (
     ModelProductClonePin,
     ModelProductClonePinSet,
     ModelProductCloneResolution,
-)
-from omnimarket.models.model_criteria_drift import (
-    ModelCriteriaAmendment,
-    ModelCriterionDrift,
 )
 
 __all__: list[str] = [

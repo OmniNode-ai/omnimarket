@@ -60,7 +60,7 @@ handler_routing:
         module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
       event_model:
         name: ModelDodVerifyCompletedEvent
-        module: omnimarket.events.dod_verify_completed_event
+        module: omnimarket.models.model_dod_verify_completed_event
     - operation: sweep
       topic: onex.cmd.omnimarket.goal-verification-sweep.v1
       handler:

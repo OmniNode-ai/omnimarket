@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from omnimarket.events.dod_verify_start_command import (
+from omnimarket.models.model_dod_verify_start_command import (
     ModelDodVerifyStartCommand,
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification import (

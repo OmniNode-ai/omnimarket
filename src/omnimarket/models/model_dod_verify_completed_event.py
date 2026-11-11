@@ -13,13 +13,13 @@ from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
-from omnimarket.events.dod_verify_state import (
-    EnumDodVerifyStatus,
-    ModelEvidenceCheckResult,
-)
 from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
     ModelCriterionDrift,
+)
+from omnimarket.models.model_dod_verify_state import (
+    EnumDodVerifyStatus,
+    ModelEvidenceCheckResult,
 )
 
 

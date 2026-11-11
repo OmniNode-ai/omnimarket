@@ -30,10 +30,10 @@ from omnibase_core.models.events.work.model_work_result_recorded import (
     ModelWorkResultRecorded,
 )
 
-from omnimarket.events.dod_verify_completed_event import (
+from omnimarket.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
-from omnimarket.events.dod_verify_start_command import (
+from omnimarket.models.model_dod_verify_start_command import (
     ModelDodVerifyStartCommand,
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.handlers.store_goal_verification_inmemory import (
