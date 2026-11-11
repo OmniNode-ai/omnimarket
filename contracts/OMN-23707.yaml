@@ -31,7 +31,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q --no-cov -n 0 -p no:randomly -k 'ghost or heartbeat or probe or engine_failure'
+    check_value: uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q --no-cov -n 0 -p no:randomly -k 'ghost or heartbeat or probe or engine_failure'
     cwd: .
 - id: dod-omn-23707-ac2
   description: 'Error chain: an unreadable census, an undeclared census and a refused overlay each remove no container and exit non-zero.'
@@ -40,7 +40,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q --no-cov -n 0 -p no:randomly -k 'census or overlay_refused'
+    check_value: uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q --no-cov -n 0 -p no:randomly -k 'census or overlay_refused'
     cwd: .
 - id: dod-omn-23707-ac3
   description: The unit declaration renders the module, overlay root and tick arguments.
@@ -49,7 +49,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_lab_disk_hygiene_unit.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_lab_disk_hygiene_unit.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn-23707-integration-proof
   description: The pushed head's tick and unit tests ran on a lab host and exited 0, and the unit installed from the branch ran one tick.
