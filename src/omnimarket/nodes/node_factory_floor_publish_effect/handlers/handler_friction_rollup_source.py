@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import uuid
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -95,8 +96,15 @@ class HandlerFrictionRollupSource:
             since, now + timedelta(seconds=1), settings.ledger_chunk_hours
         ):
             for kind in settings.ledger_row_kinds:
+                # The read node's request requires a UUID correlation id, and the command route sends only the one a
+                # query carries (OMN-23606: the internal ledger source refused every id-less read with exit 2).
                 page = source.read(
-                    ModelLedgerQuery(since=low, until=high, row_type=kind)
+                    ModelLedgerQuery(
+                        since=low,
+                        until=high,
+                        row_type=kind,
+                        correlation_id=str(uuid.uuid4()),
+                    )
                 )
                 if page.error is not None:
                     raise PublishRefusedError(

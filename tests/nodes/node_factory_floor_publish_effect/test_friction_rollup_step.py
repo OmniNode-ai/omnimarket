@@ -41,11 +41,21 @@ OVERLAY_ENV = "ONEX_FRICTION_CLASS_OVERLAY"
 READ_ENV = "ONEX_LEDGER_BUS_READ_COMMAND"
 
 # A stand-in for the bus read command: one typed rows query on stdin, one JSON answer on stdout, from the rows in argv[1].
-# ``TRUNCATE`` in argv[2] answers with a cursor, as a bus read does when more rows matched than it returned.
+# ``TRUNCATE`` in argv[2] answers with a cursor, as a bus read does when more rows matched than it returned. ``STRICT`` in argv[2]
+# validates the request as the read node's own request model, the way the internal ledger source does, and exits 2 on a request
+# that model refuses (OMN-23606: a request with no correlation id).
 FAKE_READ = """
 import json, sys
 from datetime import datetime
-request = json.loads(sys.stdin.read())
+text = sys.stdin.read()
+if len(sys.argv) > 2 and sys.argv[2] == "STRICT":
+    from omnimarket.models.work_ledger_query import ModelWorkLedgerQueryRequest
+    try:
+        ModelWorkLedgerQueryRequest.model_validate_json(text)
+    except ValueError as exc:
+        print(f"the request is not a work ledger query: {exc}", file=sys.stderr)
+        sys.exit(2)
+request = json.loads(text)
 def when(text):
     return datetime.fromisoformat(text.replace("Z", "+00:00"))
 since, until = when(request["since"]), when(request["until"])
@@ -255,6 +265,17 @@ def test_error_a_failed_bus_read_refuses_and_keeps_the_previous_report(
     assert status == "failed"
     assert "read-command-exit-7" in detail
     assert previous.read_text(encoding="utf-8") == '{"classes": ["previous"]}'
+
+
+def test_golden_every_bus_read_carries_a_correlation_id_the_read_node_accepts(
+    tmp_path: Path,
+) -> None:
+    """OMN-23606: the internal ledger source validates each request as the read node's request model, which requires a UUID
+    correlation id. The step sent none, so every read exited 2 and the floor's friction step failed on every cycle; the
+    contract's default command mints an id itself and hid the gap."""
+    status, detail, path = run_step(tmp_path, environ(tmp_path, read_tail="STRICT"))
+    assert (status, detail) == ("ok", "")
+    assert classes_of(path)["tick-liveness"] == 1
 
 
 def test_error_a_truncated_bus_read_is_refused_never_rolled_short(
