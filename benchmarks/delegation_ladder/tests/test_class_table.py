@@ -723,3 +723,7 @@ def test_second_local_arm_names_its_declared_backend_and_sets_no_overlay_path() 
     assert arm.backend_id == "local-omnipc2-chat"
     assert arm.overlay is None
     assert arm.host_label == "qwen-host-b"
+
+
+def test_runner_names_no_per_run_overlay_file() -> None:
+    assert "bifrost_overrides.pc2" not in Path(runner.__file__).read_text()

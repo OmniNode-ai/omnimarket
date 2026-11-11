@@ -34,13 +34,13 @@ dod_evidence:
     check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k pins_only_when_requested -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23653-ac2-old-overlay-path-absent
-  description: The per-run overlay file path is absent from the runner's backend table.
+  description: The per-run overlay file path is absent from the runner source, read by a test.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: "! grep -q 'bifrost_overrides.pc2' benchmarks/delegation_ladder/run_ladder.py"
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k runner_names_no_per_run_overlay_file -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23653-ac3-hosted-proxy
   description: AC3 hosted proxy. The second local arm names its declared backend id and sets no overlay path, so a deployed-lane run pinned on it is answered by the second server; at the merge base the arm names local-coder and carries the overlay path, so the test fails there. The lab run is the local_done_gate item below.
