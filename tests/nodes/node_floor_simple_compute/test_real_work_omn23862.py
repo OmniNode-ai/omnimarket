@@ -20,7 +20,6 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
 from omnimarket.models.floor_17a import (
     ModelFloorReceipts,
@@ -215,14 +214,50 @@ def test_error_the_overlay_values_decide_the_result() -> None:
     assert ready(board(ov=overlay(real_origins=["probe"]))) == ready(board())
 
 
-@pytest.mark.parametrize("key", ["real_origins", "blocking_neighbour_statuses"])
-def test_error_a_readiness_block_without_either_key_is_refused(key: str) -> None:
+def overlay_without(*keys: str) -> ModelFloorSimpleOverlay:
+    """The overlay document of today's dev (OMN-23877): the readiness block without the named OMN-23862 keys."""
     from tests.nodes.node_floor_simple_effect.support import overlay_text
 
     raw: dict[str, Any] = overlay_text("node_floor_simple_compute")
-    del raw["readiness"][key]
-    with pytest.raises(ValidationError, match=key):
-        ModelFloorSimpleOverlay.model_validate(raw)
+    for key in keys:
+        del raw["readiness"][key]
+    return ModelFloorSimpleOverlay.model_validate(raw)
+
+
+@pytest.mark.parametrize("key", ["real_origins", "blocking_neighbour_statuses"])
+def test_error_a_readiness_block_without_either_key_is_accepted(key: str) -> None:
+    """The incident of 2026-11-11: the two keys and the code that reads them merged apart, and the board stopped publishing.
+
+    The document without either key must validate, so the code and the overlay values merge in either order.
+    """
+    assert overlay_without(key).readiness is not None
+
+
+def test_error_absent_keys_keep_the_old_rule_and_the_board_says_so_once() -> None:
+    """The old rule: a join that passes counts, probe chains included; no neighbour blocks; one typed line says so."""
+    old = overlay_without("real_origins", "blocking_neighbour_statuses")
+    assert not old.readiness.real_work_configured
+    # Probe-only chains and a NOT WORKING neighbour: READY on the old rule, as on the board before OMN-23862.
+    doc = board(set(), ov=old, working=(1, 2, 4, 5, 6, 8, 9, 17), not_working=(3,))
+    assert 2 in ready(doc)
+    assert doc.readiness is not None
+    assert doc.readiness.real_work_rule == "not_configured"
+    assert doc.readiness.probe_only_joins == ()
+    assert doc.readiness.probe_health_text == ""
+    assert doc.subline.count("Real-work rule not configured") == 1
+    assert not [
+        v for v in check_red_rule(doc, ()).violations if "saw no real work" in v
+    ]
+
+
+def test_error_configured_keys_still_refuse_probe_only_ready_control() -> None:
+    """The control of the test above: with the keys present the same inputs are not READY, so the test is not a probe."""
+    doc = board(set(), working=(1, 2, 4, 5, 6, 8, 9, 17), not_working=(3,))
+    assert ready(doc) == []
+    assert doc.readiness is not None
+    assert doc.readiness.real_work_rule == "configured"
+    assert doc.readiness.real_work_notice == ""
+    assert "Real-work rule not configured" not in doc.subline
 
 
 # --- probe health stays visible, apart --------------------------------------------------------------------------------

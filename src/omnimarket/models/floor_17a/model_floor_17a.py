@@ -607,6 +607,10 @@ class ModelFloorReadiness(_Frozen):
     probe_health_joins: tuple[str, ...] = ()
     probe_only_joins: tuple[str, ...] = ()
     probe_health_text: str = ""
+    # Whether the overlay names the real-work origins (OMN-23862). ``not_configured`` means the old rule applied (a join
+    # passes on its health alone) and ``real_work_notice`` says so in one line.
+    real_work_rule: Literal["configured", "not_configured"] = "configured"
+    real_work_notice: str = ""
 
 
 class ModelRebuild(_Frozen):
@@ -938,13 +942,20 @@ class ModelReadinessOverlay(_Frozen):
     passing_join_states: tuple[str, ...] = Field(min_length=1)
     finding_sides: dict[str, Literal["from", "to"]] = Field(default_factory=dict)
     # Real work (OMN-23862). A join counts toward READY only when its golden chain inside the window came from a chain whose
-    # origin is one of these; probe, twin, control, canary, drill and unknown origins are health only. No default: the overlay
-    # names them.
-    real_origins: tuple[ChainOrigin, ...] = Field(min_length=1)
+    # origin is one of these; probe, twin, control, canary, drill and unknown origins are health only. Empty (the key absent
+    # from the overlay) means the real-work rule is not configured: the old rule applies and the board says so in one line
+    # (``ModelFloorReadiness.real_work_rule``), so this code and the overlay values merge in either order.
+    real_origins: tuple[ChainOrigin, ...] = ()
     # A piece is not READY while a neighbour on a counted join has one of these piece statuses (a ``ModelFloorPieceRow.status``).
+    # Empty (the key absent) means the neighbour rule is not configured and is not applied.
     blocking_neighbour_statuses: tuple[
         Literal["not_started", "started", "working", "not_working", "unknown"], ...
-    ] = Field(min_length=1)
+    ] = ()
+
+    @property
+    def real_work_configured(self) -> bool:
+        """True when the overlay names the origins that count as real work."""
+        return bool(self.real_origins)
 
     @model_validator(mode="after")
     def _pieces_exist(self) -> ModelReadinessOverlay:
