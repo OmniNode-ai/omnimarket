@@ -69,7 +69,12 @@ def run_once(
         }
     if publisher is None:
         publisher = build_publisher(overlay, publisher_factory=publisher_factory)
-    source = build_snapshot_source(overlay, topic_reader_factory=topic_reader_factory)
+    try:
+        source = build_snapshot_source(
+            overlay, topic_reader_factory=topic_reader_factory
+        )
+    except ValueError as exc:  # no host identity: refused, never the shared group
+        return 3, {"status": "overlay_refused", "detail": str(exc)}
     sink, label = build_emission(overlay)
     handler = HandlerPrLandingTickOrchestrator(
         publisher=publisher,
@@ -83,7 +88,11 @@ def run_once(
     try:
         results = run_snapshots(handler, source, EnumTickMode.OBSERVE)
     except Exception as exc:  # the reader raised, or a record did not validate
-        return 3, {"status": "source_unread", "detail": type(exc).__name__}
+        return 3, {
+            "status": "source_unread",
+            "detail": type(exc).__name__,
+            "reason": str(exc)[:200],
+        }
     failed = sum(result.status is EnumTickStatus.FAILED for result in results)
     line: dict[str, object] = {
         "status": ("no_records" if not results else "failed" if failed else "compared"),

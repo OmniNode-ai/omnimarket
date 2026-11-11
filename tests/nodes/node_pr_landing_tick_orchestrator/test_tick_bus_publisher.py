@@ -17,6 +17,10 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.models.landing_controller_carry import (
+    ModelLandingControllerDecisions,
+    ModelLandingControllerLogged,
+)
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers import (
     tick_bus_publisher,
@@ -83,12 +87,28 @@ def _cutover() -> tuple[ModelTickSnapshot, str]:
     return snap, repos[0]
 
 
+def _controller(snap: ModelTickSnapshot) -> ModelLandingControllerDecisions:
+    """The old controller's finished tick as the record carries it: its decision rows, here the node path's own."""
+    return ModelLandingControllerDecisions(
+        controller_tick=1,
+        observed_at=snap.facts.observed_at,
+        decisions=tuple(
+            ModelLandingControllerLogged(
+                kind=action.kind, subject=action.subject, outcome="performed"
+            )
+            for action in NodePathDecider().decide(snap.facts, snap.fair_share).actions
+        ),
+        source="test",
+    )
+
+
 def _record(snap: ModelTickSnapshot) -> str:
     return ModelLandingTickRecord(
         correlation_id=uuid4(),
         tick=snap.facts.tick,
         facts=snap.facts,
         provenance="test",
+        controller=_controller(snap),
     ).model_dump_json()
 
 
@@ -106,6 +126,10 @@ def _overlay(
         "consumer_group": "landing-tick-cutover",
         "snapshot_topic": RECORD_TOPIC,
         "poll_timeout_s": 1.0,
+        "host_env": "ONEX_HOST_NAME",
+        "join_timeout_s": 5.0,
+        "run_limit_s": 60,
+        "run_margin_s": 5.0,
         "cutover_repository": repository,
         "script_out_of_scope_repositories": [repository] if repository else [],
     }
@@ -153,6 +177,10 @@ def test_publish_backend_redpanda_without_a_broker_is_refused() -> None:
         "consumer_group": "landing-tick-cutover",
         "snapshot_topic": RECORD_TOPIC,
         "poll_timeout_s": 1.0,
+        "host_env": "ONEX_HOST_NAME",
+        "join_timeout_s": 5.0,
+        "run_limit_s": 60,
+        "run_margin_s": 5.0,
         "publish_backend": "redpanda",
     }
     with pytest.raises(ValueError, match="publish_backend"):
@@ -183,7 +211,13 @@ def test_run_once_publishes_compared_events_through_the_selected_publisher(
     run_snapshots(
         handler,
         InMemorySnapshotSource(
-            [ModelTickSnapshot(facts=snap.facts, provenance="test")]
+            [
+                ModelTickSnapshot(
+                    facts=snap.facts,
+                    provenance="test",
+                    controller=_controller(snap),
+                )
+            ]
         ),
         EnumTickMode.OBSERVE,
     )

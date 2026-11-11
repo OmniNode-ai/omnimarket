@@ -149,6 +149,10 @@ def _tick_overlay(
             "consumer_group": group,
             "snapshot_topic": topic,
             "poll_timeout_s": 5.0,
+            "host_env": "ONEX_HOST_NAME",
+            "join_timeout_s": 5.0,
+            "run_limit_s": 60,
+            "run_margin_s": 5.0,
         }
     )
 
