@@ -188,7 +188,9 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlay store reader takes the list of overlays it keeps from the overlay store read under these
+      # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
@@ -265,7 +267,9 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlay store reader takes the list of overlays it keeps from the overlay store read under these
+      # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
