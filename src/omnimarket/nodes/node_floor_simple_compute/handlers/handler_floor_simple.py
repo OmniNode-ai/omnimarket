@@ -533,7 +533,16 @@ class HandlerFloorSimple:
         lines = tuple(self._lab_line(v, by_id) for v in lab)
         level = self._level(causes)
         sentence, subline = self._words(causes)
-        subline = f"{subline} {readiness.text} {readiness.probe_health_text}".strip()
+        subline = " ".join(
+            part
+            for part in (
+                subline,
+                readiness.text,
+                readiness.probe_health_text,
+                readiness.real_work_notice,
+            )
+            if part
+        )
         document = ModelFloorSimple.model_validate(
             {
                 "generated_at": now,
@@ -944,9 +953,13 @@ class HandlerFloorSimple:
                 ),
                 "last_run_age_s": last_run,
                 "real_golden_age_s": real_golden,
+                # Real work is not configured (the overlay names no real_origins): the old rule applies and a join that
+                # passes counts as it did before OMN-23862.
                 "real_passes": state in rd.passing_join_states
-                and real_golden is not None
-                and real_golden <= window_s,
+                and (
+                    not rd.real_work_configured
+                    or (real_golden is not None and real_golden <= window_s)
+                ),
             }
         )
 
@@ -1182,11 +1195,21 @@ class HandlerFloorSimple:
             sorted((i for i, j in counted_joins.items() if j.passes), key=_join_order)
         )
         probe_only = tuple(i for i in health if not counted_joins[i].real_passes)
+        configured = r.overlay.readiness.real_work_configured
         probe_text = (
             f"Probe health: {len(health)} of {len(counted_joins)} counted joins pass on probe chains"
             f"; {len(probe_only)} of them saw no real work in the window"
             + (f" ({', '.join(probe_only)})" if probe_only else "")
             + ". Probe chains never count toward ready."
+            if configured
+            else ""
+        )
+        # One typed line when the overlay carries no real_origins: the old rule applies (OMN-23862), never silence.
+        notice = (
+            ""
+            if configured
+            else "Real-work rule not configured (the readiness overlay names no real_origins): the old rule applies and a join "
+            "counts on its probe chains."
         )
         return ModelFloorReadiness(
             in_scope=scope,
@@ -1198,6 +1221,8 @@ class HandlerFloorSimple:
             probe_health_joins=health,
             probe_only_joins=probe_only,
             probe_health_text=probe_text,
+            real_work_rule="configured" if configured else "not_configured",
+            real_work_notice=notice,
         )
 
     # --- causes -------------------------------------------------------------------------------------------------------
