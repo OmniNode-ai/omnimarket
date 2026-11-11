@@ -21,6 +21,11 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: node_projection_local_alerts/contract.yaml has no consumers key and node_projection_delegation/contract.yaml declares consumers none with a reason on its daily exposure -- falsifier: uv run pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -p no:randomly --no-cov fails at the merge base'
+  - id: req-shard-bound-headroom
+    statement: The narrowed-selection shard bound is 2000 seconds (target 400 x 5 shards), so a change that touches tests/nodes no longer escalates to the full suite when the recorded tests/nodes seconds sit at 1696 and grow.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: the shipped selector policy bounds a narrowed selection at 2000 seconds and the narrowed-selection tests in test_detect_test_paths.py pass -- falsifier: uv run pytest tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_test_selection_selector_compute -q fails when policy.yaml is returned to 360 seconds and the recorded durations pass 1800'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -73,3 +78,11 @@ dod_evidence:
       - check_type: command
         check_value: |-
           sha="$(git rev-parse HEAD)"; base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$sha/src/omnimarket/nodes"; la="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_local_alerts/contract.yaml")" && dl="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_delegation/contract.yaml")" && ! printf '%s\n' "$la" | grep -q '^  consumers:' && printf '%s\n' "$dl" | grep -q '^      consumers: none$' && printf '%s\n' "$dl" | grep -q '^      consumers_reason:' && echo "OMN-20413 reader-coverage readback PASS"
+  - id: dod-omn20413-shard-bound-headroom
+    description: The shipped selector policy carries target 400 x max 5 shards (2000 seconds) and the narrowed-selection tests pass against it.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_test_selection_selector_compute -q -p no:randomly --no-cov
+    binds_ac:
+      - AC5

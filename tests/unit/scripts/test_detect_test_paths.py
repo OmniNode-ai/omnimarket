@@ -928,7 +928,7 @@ def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count
     assert selection.is_full_suite is False
     assert len(selection.selected_paths) < 5
     assert 3 <= selection.split_count <= 5
-    assert _shard_seconds(selection) <= 360
+    assert _shard_seconds(selection) <= 400
 
 
 def test_a_bounded_selection_with_no_durations_file_fails_closed(
