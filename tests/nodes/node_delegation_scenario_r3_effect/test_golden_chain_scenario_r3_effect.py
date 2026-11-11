@@ -19,6 +19,7 @@ import pytest
 import yaml
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.handlers.delegation_readiness_probe import (
     LoopbackStubServers,
@@ -221,6 +222,22 @@ class FakeOpenRouter:
         )
 
 
+class TruncatingOpenRouter(FakeOpenRouter):
+    """A paid model that cuts the answer off (finish_reason length) when it exceeds the cap."""
+
+    def __call__(
+        self, request: ModelLlmDelegationCallRequest
+    ) -> ModelLlmDelegationCallResult:
+        result = super().__call__(request)
+        truncated = len(self.content.split()) > request.max_tokens
+        finish = (
+            EnumProviderFinishReason.LENGTH
+            if truncated
+            else EnumProviderFinishReason.STOP
+        )
+        return result.model_copy(update={"finish_reason": finish})
+
+
 def test_golden_chain_inmemory_every_assertion_held(tmp_path: Path) -> None:
     handler, rows, events = build(tmp_path)
 
@@ -273,11 +290,39 @@ def test_golden_chain_loopback_stubs_with_the_real_paid_rung_rewritten_to_openro
     sent = paid.requests[0]
     assert sent.endpoint_ref == RUNTIME.openrouter_base_url
     assert sent.model_id == RUNTIME.openrouter_model_id
-    assert sent.max_tokens == RUNTIME.openrouter_max_tokens == 16
+    assert sent.max_tokens == RUNTIME.openrouter_max_tokens
     assert sent.provider == "openrouter"
     assert sent.extra_headers["Authorization"] == f"Bearer {KEY_VALUE}"
     assert len(rows.rows) == 1
     assert len(events.events) == 1
+
+
+def test_leg_b_cap_lets_the_real_paid_answer_finish(tmp_path: Path) -> None:
+    answer = load_inputs(INPUTS).answer
+    handler, _, _ = build(
+        tmp_path,
+        LoopbackStubServers,
+        paid_rung_effect=TruncatingOpenRouter(answer),
+    )
+    result = handler.run()
+    assert failed_assertions(result.assertions) == [], result.detail
+    assert result.conclusion is EnumScenarioConclusion.SUCCESS
+
+
+def test_leg_b_with_the_old_sixteen_token_cap_is_cut_off_and_refused(
+    tmp_path: Path,
+) -> None:
+    answer = load_inputs(INPUTS).answer
+    runtime = RUNTIME.model_copy(update={"openrouter_max_tokens": 16})
+    handler, _, _ = build(
+        tmp_path,
+        LoopbackStubServers,
+        runtime=runtime,
+        paid_rung_effect=TruncatingOpenRouter(answer),
+    )
+    result = handler.run()
+    assert "-leg_b_completed" in result.assertions
+    assert result.conclusion is EnumScenarioConclusion.FAILURE
 
 
 def test_the_probe_key_value_is_in_no_row_event_assertion_or_detail(

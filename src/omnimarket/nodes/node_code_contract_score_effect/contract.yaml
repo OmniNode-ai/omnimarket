@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Code draft scored by its ticket contract's own bound checks (OMN-23626)
+# Every value (timeouts, runnable check types, protected paths, environment sync command, scratch and clone roots)
+# travels on the request from the node's overlay (overlays/node_code_contract_score_effect/overlay.yaml; plan keys
+# code_eval.score.* and code_eval.protected_paths.<repo>); this contract holds none.
+name: node_code_contract_score_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Scores a code draft by the ticket contract's own bound checks. One request names a repository and base commit, the
+  draft as a diff, the ticket contract as (repository, path, revision, sha256), the check files to place and the try's
+  identity. On a lab host the node makes a scratch worktree at the base commit, refuses a draft that edits the
+  contract, a check file or a protected path (fail_tampered), applies the draft (fail_did_not_apply), places the check
+  files (each verified by sha256), syncs the environment (timed apart), and runs each bound dod_evidence check of type
+  test_passes or command that is not bound to the local Done gate. The verdict has a checks level (pass, fail_check,
+  fail_no_diff, fail_did_not_apply, fail_tampered, unscorable with a source) and a
+  runtime level. The delegation gate's text criteria are recorded beside it as gate_accepted and are never the score. A
+  check that does not fail at the base is an invalid falsifier (unscorable), never a pass. An infrastructure fault is
+  unscorable, never a fail and never a pass.
+
+input_model:
+  name: ModelCodeScoreRequest
+  module: omnimarket.nodes.node_code_contract_score_effect.models.model_code_score
+
+output_model:
+  name: ModelCodeScoreResult
+  module: omnimarket.nodes.node_code_contract_score_effect.models.model_code_score
+
+handler:
+  module: omnimarket.nodes.node_code_contract_score_effect.handlers.handler_code_contract_score
+  class: HandlerCodeContractScore
+  input_model: omnimarket.nodes.node_code_contract_score_effect.models.model_code_score.ModelCodeScoreRequest
+
+operations:
+  - name: read_pinned_files
+    description: "git show <revision>:<path> in the registry clone for the contract and each check file; sha256 verified."
+    transport: git
+  - name: make_scratch_worktree
+    description: "git worktree add --detach at the base commit under the overlay's scratch root, removed after the score."
+    transport: git
+  - name: run_bound_check
+    description: "bash -c <check command> in the scratch worktree under the overlay's per-check limit."
+    transport: process
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.code-contract-score-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.code-contract-scored.v1
+    failure: onex.evt.omnimarket.code-contract-score-failed.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles:
+    - effects
+
+runtime_profiles:
+  - effects
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.code-contract-score-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.code-contract-scored.v1
+    - onex.evt.omnimarket.code-contract-score-failed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.code-contract-score.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.code-contract-scored.v1
+  - onex.evt.omnimarket.code-contract-score-failed.v1
+
+published_events:
+  - event_type: "CodeContractScored"
+    topic: onex.evt.omnimarket.code-contract-scored.v1
+    description: "One draft was scored: the typed verdict (checks level, runtime level, source when unscorable), gate_accepted, the draft diff hash, the try's identity and the per-phase times."
+  - event_type: "CodeContractScoreFailed"
+    topic: onex.evt.omnimarket.code-contract-score-failed.v1
+    description: "A request was refused before any verdict (a sha256 that differs from the request, an unreadable check file, an internal error), with a typed code."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "code_contract.score"
+      message_category: "command"
+      handler:
+        name: "HandlerCodeContractScore"
+        module: "omnimarket.nodes.node_code_contract_score_effect.handlers.handler_code_contract_score"
+      event_model:
+        name: "ModelCodeScoreRequest"
+        module: "omnimarket.nodes.node_code_contract_score_effect.models.model_code_score"
+      topic: onex.cmd.omnimarket.code-contract-score-requested.v1
+      description: "One draft's score; answered by one scored event or one failed event."
+
+metadata:
+  transport_type: kafka

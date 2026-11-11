@@ -25,6 +25,9 @@ from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_tr
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
 )
+from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_availability import (
+    HostAvailability,
+)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_pool import (
     InMemoryLaneHostPool,
 )
@@ -82,6 +85,7 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "est_hours": 2,
         "priority": "other",
         "claim_text": "remote lane on {host} via node_remote_lane_start_orchestrator",
+        "start_mode": "act",
     }
     return ModelRemoteLaneStartSettings.model_validate(values | overrides)
 
@@ -182,6 +186,7 @@ class Rig:
         now: datetime = T0,
         login_labels: tuple[str | None, ...] | None = None,
         placement: HandlerRemoteLanePlacement | None = None,
+        host_availability: HostAvailability | None = None,
     ) -> None:
         self.calls: list[str] = calls if calls is not None else []
         self.ledger_path = tmp / "ledger.md"
@@ -214,6 +219,7 @@ class Rig:
             if login_labels is None
             else ScriptedLoginDraw(login_labels, self.calls),
             placement=placement,
+            host_availability=host_availability,
             receipts=self.receipts,
             echo=self.printed.append,
             clock=lambda: now,

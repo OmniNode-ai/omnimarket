@@ -17,6 +17,10 @@ Lineage (ruling 2026-11-10T16:53:27Z), when the overlay's rule allows it, widens
 * probe: a running sha that descends from the expected one passes when no runtime-affecting commit lies between
   them and the distance is inside the rule's bound.
 
+Deploy-agent rule (OMN-23655): when ``deploy_source`` is present, it judges the merges instead of the lab pass
+receipts: a queued merge reads UNKNOWN with its queue position, a failed roll reads NOT WORKING with its job id,
+and the lab pass receipt rule stands when ``deploy_source`` is absent.
+
 A failure of a readable source reads NOT_WORKING. A source that could not be read reads UNKNOWN only
 when nothing readable already fails.
 """
@@ -37,10 +41,25 @@ from omnimarket.models.model_dev_deploy_reading import (
 from omnimarket.models.model_reading import EnumReadingVerdict
 
 _SHORT = 12
-#: A pair the clone could not read is unread, not failed: the handler moves these out of the failures.
+#: Unread sources and pairs: the handler moves these prefixes out of the failures so they read UNKNOWN.
 RECEIPT_LINEAGE_UNREAD = "receipt-lineage-unread:"
 PROBE_LINEAGE_UNREAD = "probe-lineage-unread:"
-_UNREAD_PREFIXES = (RECEIPT_LINEAGE_UNREAD, PROBE_LINEAGE_UNREAD)
+DEPLOY_QUEUED = "deploy-queued:"
+DEPLOY_SETTLING = "deploy-settling:"
+DEPLOY_NOT_STARTED = "deploy-not-started:"
+DEPLOY_QUEUE_UNREAD = "deploy-queue-unread:"
+DEPLOY_SOURCE_UNREAD = "deploy-source-unread:"
+DEPLOY_LINEAGE_UNREAD = "deploy-lineage-unread:"
+_UNREAD_PREFIXES = (
+    RECEIPT_LINEAGE_UNREAD,
+    PROBE_LINEAGE_UNREAD,
+    DEPLOY_QUEUED,
+    DEPLOY_SETTLING,
+    DEPLOY_NOT_STARTED,
+    DEPLOY_QUEUE_UNREAD,
+    DEPLOY_SOURCE_UNREAD,
+    DEPLOY_LINEAGE_UNREAD,
+)
 _NOT_READ = "no lineage fact was read for the pair"
 
 
@@ -189,8 +208,9 @@ def _probe_sha_failures(
 
 def judge_probe(
     request: ModelDevDeployReadingRequest,
+    check_sha: bool = True,
 ) -> tuple[list[str], int | None]:
-    """The failures of the newest probe and its age, none when there is no probe to age."""
+    """The failures of the newest probe and its age; the sha is checked only when ``check_sha``."""
     if not request.probes:
         return ["probe-missing"], None
     newest: ModelRuntimeProbeFact = max(
@@ -209,9 +229,81 @@ def judge_probe(
         failures.append(f"probe-failed:{newest.probe_id}")
     if newest.observed_sha is None:
         failures.append(f"probe-sha-unobserved:{newest.probe_id}")
-    elif newest.observed_sha != newest.expected_sha:
+    elif check_sha and newest.observed_sha != newest.expected_sha:
         failures += _probe_sha_failures(request, newest, newest.observed_sha)
     return failures, int(exact_age.total_seconds())
+
+
+def judge_deploy_agent(
+    request: ModelDevDeployReadingRequest,
+) -> tuple[list[str], list[str], list[str], int, int]:
+    """The deploy-agent rule: the failures, the unread, the merges checked and the deployed."""
+    source = request.deploy_source
+    if source is None:
+        return [], [], [], 0, 0
+    if source.facts is None:
+        checked = sum(1 for merge in request.merges if merge.runtime_affecting)
+        return [], [f"{DEPLOY_SOURCE_UNREAD}{source.unread_reason}"], [], checked, 0
+    facts = source.facts
+    rule = source.rule
+    failures: list[str] = []
+    unread: list[str] = []
+    checked = deployed = 0
+    for merge in sorted(request.merges, key=lambda m: (m.merged_at, m.sha)):
+        if not merge.runtime_affecting:
+            continue
+        checked += 1
+        tag = _short(merge.sha)
+        age = request.now - merge.merged_at
+        if age < timedelta(0):
+            failures.append(f"merge-after-read:{tag}")
+            continue
+        fact = _lineage_fact(request, merge.sha, facts.running_sha)
+        if fact is None:
+            unread.append(f"{DEPLOY_LINEAGE_UNREAD}{tag}:{_NOT_READ}")
+            continue
+        if fact.relation == "unread":
+            unread.append(f"{DEPLOY_LINEAGE_UNREAD}{tag}:{fact.unread_reason}")
+            continue
+        contained = fact.relation == "ancestor"
+        if contained:
+            if (
+                facts.in_flight_job_id is not None
+                and facts.in_flight_started_at is not None
+                and facts.build_time >= facts.in_flight_started_at
+            ):
+                unread.append(f"{DEPLOY_SETTLING}{tag}:job-{facts.in_flight_job_id}")
+                continue
+            if facts.last_job_status == "failed":
+                failures.append(f"deploy-failed:{tag}:job-{facts.last_job_id}")
+                continue
+            if facts.last_job_status == "success":
+                deployed += 1
+                continue
+            unread.append(
+                f"{DEPLOY_SOURCE_UNREAD}{tag}:the deploy agent names no finished job"
+            )
+            continue
+        if facts.commands_ahead is None:
+            unread.append(
+                f"{DEPLOY_QUEUE_UNREAD}{tag}:{facts.commands_ahead_unread_reason}"
+            )
+            continue
+        if facts.commands_ahead > 0 or facts.in_flight_job_id is not None:
+            ahead = facts.commands_ahead if facts.commands_ahead > 0 else 1
+            unread.append(f"{DEPLOY_QUEUED}{tag}:ahead-{ahead}")
+            continue
+        if facts.last_job_status == "failed":
+            failures.append(f"deploy-failed:{tag}:job-{facts.last_job_id}")
+            continue
+        if age > timedelta(seconds=rule.idle_grace_seconds):
+            failures.append(
+                f"not-deployed:{tag}:idle-agent-age-{int(age.total_seconds())}s"
+                f"-over-{rule.idle_grace_seconds}s"
+            )
+            continue
+        unread.append(f"{DEPLOY_NOT_STARTED}{tag}:age-{int(age.total_seconds())}s")
+    return failures, unread, [], checked, deployed
 
 
 class HandlerDevDeployReading:
@@ -225,11 +317,20 @@ class HandlerDevDeployReading:
         probe_age: int | None = None
         if request.receipts_unread_reason is not None:
             unread.append(f"receipts-unreadable:{request.receipts_unread_reason}")
+        elif request.deploy_source is not None:
+            deploy_failures, deploy_unread, pending, checked, receipted = (
+                judge_deploy_agent(request)
+            )
+            failures += deploy_failures
+            unread += deploy_unread
         else:
             receipt_failures, pending, checked, receipted = judge_receipts(request)
             failures += receipt_failures
         if request.probes_unread_reason is not None:
             unread.append(f"probes-unreadable:{request.probes_unread_reason}")
+        elif request.deploy_source is not None:
+            probe_failures, probe_age = judge_probe(request, check_sha=False)
+            failures += probe_failures
         else:
             probe_failures, probe_age = judge_probe(request)
             failures += probe_failures
@@ -252,4 +353,9 @@ class HandlerDevDeployReading:
         )
 
 
-__all__: list[str] = ["HandlerDevDeployReading", "judge_probe", "judge_receipts"]
+__all__: list[str] = [
+    "HandlerDevDeployReading",
+    "judge_deploy_agent",
+    "judge_probe",
+    "judge_receipts",
+]
