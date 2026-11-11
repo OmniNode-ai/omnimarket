@@ -31,7 +31,6 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 
-import httpx
 from omnibase_core.models.delegation.wire import EnumTierCostType
 from omnibase_infra.errors import ProtocolConfigurationError
 
@@ -77,13 +76,18 @@ def read_provider_credits(
     if key is None:
         msg = f"secret_ref {source.secret_ref!r} resolved to nothing"
         raise ValueError(msg)
-    with httpx.Client(timeout=_CREDITS_TIMEOUT_SECONDS) as client:
-        response = client.get(
-            source.credits_url,
-            headers={"Authorization": f"Bearer {key.get_secret_value()}"},
-        )
-    response.raise_for_status()
-    data = response.json().get("data") or {}
+    # Through the delegation effect's contract transport, as the BYOK model
+    # discovery read is; imported here because that package imports routing.
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+        get_provider_json,
+    )
+
+    body = get_provider_json(
+        url=source.credits_url,
+        timeout_seconds=_CREDITS_TIMEOUT_SECONDS,
+        extra_headers={"Authorization": f"Bearer {key.get_secret_value()}"},
+    )
+    data = (body.get("data") if isinstance(body, dict) else None) or {}
     return ModelProviderCreditsReading(
         total_credits_usd=Decimal(str(data["total_credits"])),
         total_usage_usd=Decimal(str(data["total_usage"])),
