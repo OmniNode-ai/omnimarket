@@ -42,7 +42,7 @@ with open(ledger, "a", encoding="utf-8") as out:
 """
 
 
-class SpyHostRunner:
+class SpyHostCommands:
     """Record every command the ssh transport would run; answer each with a failure."""
 
     def __init__(self) -> None:
@@ -62,7 +62,7 @@ def _wired(
     tmp_path: Path,
     start_mode: str,
     out_of_service: dict[str, str] | None = None,
-) -> tuple[HandlerRemoteLaneStart, SpyHostRunner, Path, ModelRemoteLaneStartRequest]:
+) -> tuple[HandlerRemoteLaneStart, SpyHostCommands, Path, ModelRemoteLaneStartRequest]:
     writer = tmp_path / "writer.py"
     writer.write_text(WRITER, encoding="utf-8")
     ledger = tmp_path / "ledger.md"
@@ -72,7 +72,7 @@ def _wired(
         receipt_dir=str(tmp_path / "receipts"),
         start_mode=start_mode,
     )
-    spy = SpyHostRunner()
+    spy = SpyHostCommands()
     handler = build_real(
         cfg,
         InMemoryLaneHostPool(fx.snapshot()),
