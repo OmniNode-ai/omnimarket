@@ -40,6 +40,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exhaustion_owner import (
     ModelLandingExhaustionOwner,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
+    ModelLandingLivenessUnread,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -324,6 +327,10 @@ class ModelLandingRecordedOutcome(BaseModel):
     outcome: EnumLandingOutcome
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE
     blocker_fingerprint: str = ""
+    owner: str | None = Field(
+        default=None,
+        description="The change in another repository the outcome waits on (OMN-23345).",
+    )
 
 
 class ModelLandingDegraded(BaseModel):
@@ -383,11 +390,24 @@ class ModelLandingLandSkip(BaseModel):
     gate_reasons: tuple[EnumLandingGateReason, ...] = Field(
         default=(), description="The gates named, when the reason is gate."
     )
+    files: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "The undeclared installer sources named, when the reason is "
+            "liveness_undeclared (OMN-23529)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _gate_is_named(self) -> ModelLandingLandSkip:
         if (self.reason is EnumLandingLandSkipReason.GATE) != bool(self.gate_reasons):
             raise ValueError("a gate skip names its gates, and only a gate skip does")
+        if (self.reason is EnumLandingLandSkipReason.LIVENESS_UNDECLARED) != bool(
+            self.files
+        ):
+            raise ValueError(
+                "a liveness skip names its files, and only a liveness skip does"
+            )
         return self
 
 
@@ -419,6 +439,13 @@ class ModelLandingDecision(BaseModel):
             "with the one reason why; such a PR has a merge or a row, never neither. "
             "A PR that is not open, green and CLEAN is not a landing candidate this "
             "tick and gets no row (its CI or merge state is what holds it)."
+        ),
+    )
+    liveness_unread: tuple[ModelLandingLivenessUnread, ...] = Field(
+        default=(),
+        description=(
+            "Open PRs whose liveness read was not made this tick (OMN-23529): "
+            "unreadable, or absent where the policy expects it. None is held for it."
         ),
     )
     next_state: ModelLandingControllerState

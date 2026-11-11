@@ -15,7 +15,9 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from omnimarket.models.work_state_projection import (
+    ModelAncestorSource,
     ModelLaneReceiptSource,
+    ModelLinearRow,
     ModelPlanTaskSource,
     ModelPullRequestSource,
     ModelTicketSource,
@@ -93,6 +95,20 @@ def plan_tasks_from_text(
     return tasks
 
 
+def _assignee_of(issue: Mapping[str, Any], operator: object, alias: str) -> str | None:
+    """The assignee a snapshot issue names: ``assigneeId`` or ``assignee`` (a string, or a mapping with an id or a name).
+
+    The snapshot's own ``operator`` reads as the rules' alias, so a reader asks "is this the operator's" with one overlay
+    value and never with a user id.
+    """
+    raw = issue.get("assigneeId") or issue.get("assignee")
+    if isinstance(raw, Mapping):
+        raw = raw.get("id") or raw.get("name")
+    if not raw:
+        return None
+    return alias if operator and str(raw) == str(operator) else str(raw)
+
+
 def tickets_from_linear_snapshot(
     snapshot: Mapping[str, Any], rules: ModelWorkStateRules
 ) -> list[ModelTicketSource]:
@@ -111,11 +127,50 @@ def tickets_from_linear_snapshot(
                     issue.get("statusType") or issue.get("status_type") or ""
                 ),
                 project=str(issue.get("project") or ""),
-                parent=issue.get("parent") or None,
+                project_id=str(issue.get("projectId") or ""),
+                # Old snapshot files carry neither key; `parent` is the spelling the projection's own fixtures use.
+                parent=issue.get("parentId") or issue.get("parent") or None,
+                assignee=_assignee_of(
+                    issue, snapshot.get("operator"), rules.operator_assignee_alias
+                ),
                 requires=tuple(refs),
             )
         )
     return out
+
+
+def ancestors_from_linear_snapshot(
+    snapshot: Mapping[str, Any],
+) -> list[ModelAncestorSource]:
+    """The snapshot's `ancestors` rows (a ticket the open list does not hold, with its parent and project): lookup rows
+    for the scope walk, never work items. A file from before the key has none."""
+    out: list[ModelAncestorSource] = []
+    for row in snapshot.get("ancestors") or ():
+        ident = str(row.get("id") or "")
+        if not ident:
+            continue
+        out.append(
+            ModelAncestorSource(
+                ticket_id=ident,
+                parent=row.get("parentId") or None,
+                project=str(row.get("project") or ""),
+                project_id=str(row.get("projectId") or ""),
+            )
+        )
+    return out
+
+
+def linear_rows_from_snapshot(
+    snapshot: Mapping[str, Any], rules: ModelWorkStateRules
+) -> list[ModelLinearRow]:
+    """The Linear source's rows: each open issue, then each ancestor."""
+    return [
+        *(
+            ModelLinearRow(ticket=t)
+            for t in tickets_from_linear_snapshot(snapshot, rules)
+        ),
+        *(ModelLinearRow(ancestor=a) for a in ancestors_from_linear_snapshot(snapshot)),
+    ]
 
 
 def _required_contexts(
@@ -136,6 +191,7 @@ def pull_requests_from_watcher(
     """Every pull request of the PR watcher state, with the watcher's class as the controller's decision and the red
     checks the base branch requires. With no settings read for the base, every red check is kept."""
     ticket_re = re.compile(_unanchored(rules.ticket_id_pattern))
+    body_ticket_re = re.compile(rules.pr_body_ticket_pattern)
     out: list[ModelPullRequestSource] = []
     for record in (state.get("prs") or {}).values():
         facts = record.get("facts") or {}
@@ -150,6 +206,7 @@ def pull_requests_from_watcher(
             reds = [r for r in reds if r in required]
         title = str(facts.get("title") or "")
         found = ticket_re.search(title)
+        in_body = body_ticket_re.search(str(facts.get("body") or ""))
         state_text = str(facts.get("state") or "")
         if facts.get("merged_at"):
             state_text = "MERGED"
@@ -159,6 +216,8 @@ def pull_requests_from_watcher(
                 number=number,
                 title=title,
                 ticket=found.group(0) if found else None,
+                body_ticket=in_body["ticket"] if in_body else None,
+                author=str(facts.get("author") or ""),
                 head_sha=str(facts.get("head_sha") or ""),
                 state=state_text,
                 draft=bool(facts.get("draft")),
@@ -200,14 +259,28 @@ _SCOPE_KEYS = (
 )
 # The goal's ticket rule names its roots under this key: a root and every child of it is in scope.
 _TICKET_ROOTS_KEY = "ticket_roots"
+# The shared ticket_scope overlay names the goal's projects under these keys (ids, then names); its other keys are the
+# Linear reader's own.
+_TICKET_SCOPE_PROJECT_KEYS = ("project_ids", "project_names")
 
 
 def scope_from_declaration(
-    declaration: Mapping[str, Any], ticket_rule: Mapping[str, Any] | None = None
+    declaration: Mapping[str, Any],
+    ticket_rule: Mapping[str, Any] | None = None,
+    ticket_scope: Mapping[str, Any] | None = None,
 ) -> ModelWorkScope:
-    """The goal's scope declaration (the goal_scope overlay, and the goal_scope_ticket_rule overlay's roots) as the
-    projection's scope. Keys the projection does not read belong to other readers and are left alone."""
+    """The goal's scope declaration (the goal_scope overlay, the goal_scope_ticket_rule overlay's roots and the shared
+    ticket_scope overlay's projects) as the projection's scope. Keys the projection does not read belong to other
+    readers and are left alone; an absent ticket_scope overlay changes nothing."""
     fields = {k: tuple(str(v) for v in (declaration.get(k) or ())) for k in _SCOPE_KEYS}
+    ticket_scope_projects = tuple(
+        str(v)
+        for key in _TICKET_SCOPE_PROJECT_KEYS
+        for v in ((ticket_scope or {}).get(key) or ())
+    )
+    fields["in_scope_projects"] = tuple(
+        dict.fromkeys((*fields["in_scope_projects"], *ticket_scope_projects))
+    )
     roots = tuple(str(v) for v in ((ticket_rule or {}).get(_TICKET_ROOTS_KEY) or ()))
     fields["in_scope_tickets"] = tuple(
         dict.fromkeys((*fields["in_scope_tickets"], *roots))
@@ -216,6 +289,8 @@ def scope_from_declaration(
 
 
 __all__ = [
+    "ancestors_from_linear_snapshot",
+    "linear_rows_from_snapshot",
     "plan_tasks_from_text",
     "pull_requests_from_watcher",
     "receipts_from_documents",

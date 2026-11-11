@@ -1,7 +1,7 @@
 # overlay.yaml: the closeout sweep's scope ranking (OMN-20655). Every value the ranking and the
 # bundle read is here, never in the handler. The rank rules run in the order listed; a rule that
-# does not apply to a ticket ranks it last for that rule. Ties fall to the oldest closeout
-# comment, then the ticket id.
+# does not apply to a ticket ranks it last for that rule. Ties fall to the least recently examined
+# ticket (OMN-23282), then the ticket id.
 version: 1
 # A ticket in any other state is never examined.
 eligible_states:
@@ -20,10 +20,24 @@ rank_rules:
 # Of the selected slots, this many are kept for the oldest tickets with no contract, so the
 # binder can still author a contract for them and they are not starved by the rule above.
 no_contract_reserve: 2
+# A ticket with no contract cannot reach a verdict from dod_verify (VERIFY_COULD_NOT_RUN), so it is
+# not taken into a slot the ranking leaves free: the 2026-11-08 sweeps put 9 of 12 slots on such
+# tickets, flipped none and picked the same ones again each run. With this true they take only the
+# reserved slots above; a ticket that records a post-merge condition is still re-checked first.
+no_contract_only_by_reserve: true
 # The bundle is returned inline by an agent, so it stays small whatever the scope.
 bundle_max_bytes: 16384
 held_cap: 200
 waiting_cap: 40
+# OMN-23282: the closer ranks the tickets it may examine by when each was last examined (a ticket
+# never examined first), and holds a ticket whose rejection is unchanged. An unchanged rejection
+# posts no new closer comment, so the oldest-comment order kept picking the same unflippable
+# tickets each fire. The selection records each ticket it picks in the memory file below (a path
+# under the registry root); a ticket whose description, newest closer comment and contract state
+# read the same as at its last selection, for this many selections in a row, is held until one of
+# them changes. A ticket waiting on a post-merge condition is never held.
+hold_after_unchanged_selections: 1
+examined_memory_path: .onex_state/closeout_examined.json
 # Where a contract is looked for: every git clone directly under the registry root (and the
 # root itself) plus any extra clone root the caller names. A non-empty list restricts the
 # search to the clones whose directory names it lists.

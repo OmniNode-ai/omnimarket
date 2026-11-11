@@ -53,6 +53,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exha
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
     ModelLandingLabCheckFacts,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
+    ModelLandingLivenessFacts,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -212,6 +215,23 @@ class ModelLandingPrFacts(BaseModel):
         pattern=SHA_PATTERN,
         description="The head auto-merge is armed on, if armed.",
     )
+    pr_node_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The PR's GraphQL node id, which the GitHub landing effect's arm and "
+            "enqueue need (OMN-23405). Unread: the act-mode writer refuses the "
+            "merge as no_node_id. The decision never reads it."
+        ),
+    )
+    failed_run_ids: tuple[int, ...] = Field(
+        default=(),
+        description=(
+            "This head's failed workflow run ids, which the GitHub landing "
+            "effect's rerun needs (OMN-23405). Empty: the act-mode writer refuses "
+            "a rerun as no_run_ids. The decision never reads it."
+        ),
+    )
     red_annotations: dict[str, str] = Field(
         default_factory=dict,
         description=(
@@ -227,6 +247,15 @@ class ModelLandingPrFacts(BaseModel):
             "Only a run on this exact head carrying the current attempt's identity "
             "counts; a pass lets the head merge, a failing, running, missing or "
             "superseded one holds it with its own reason. Absent: decided as before."
+        ),
+    )
+    liveness: ModelLandingLivenessFacts | None = Field(
+        default=None,
+        description=(
+            "The automation-liveness read of this head (OMN-23529): a read that names "
+            "an undeclared installer source holds the head with the file named; an "
+            "unreadable read holds nothing and is listed as not made. Absent: decided "
+            "as before, and listed as not made when the policy expects the read."
         ),
     )
     gate_since: datetime | None = Field(
@@ -356,6 +385,21 @@ class ModelLandingCauseOwner(BaseModel):
         return self
 
 
+class ModelLandingCrossRepoCause(BaseModel):
+    """A red check the controller has named as caused by a change in another repository.
+
+    ``check`` is the red check's name as the PR watcher reads it; ``owner`` is the
+    change, as ``repo#n``, whose merge clears it. Read from the controller's own
+    earlier messages and the declared order of the change (OMN-23345): a worker
+    leased on a PR that is not the cause's repository cannot push the fix.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check: str = Field(..., min_length=1)
+    owner: str = Field(..., pattern=PR_KEY_PATTERN)
+
+
 class ModelLandingCauseRelease(BaseModel):
     """A RELEASE row naming a parked cause; it ends a park that began before it."""
 
@@ -469,6 +513,13 @@ class ModelLandingPolicy(BaseModel):
         default=600,
         ge=1,
         description="Backoff after an update-branch 422 no-new-commits response.",
+    )
+    liveness_read_expected: bool = Field(
+        default=False,
+        description=(
+            "OMN-23529: the snapshot step runs the liveness read for every PR, so a PR "
+            "with no liveness fact is listed as a read not made (it is never held)."
+        ),
     )
     lab_check_wait_seconds: int = Field(
         default=900,
@@ -597,6 +648,13 @@ class ModelLandingFacts(BaseModel):
         default=(), description="Repos under their landing floor (the floor alarm)."
     )
     cause_owners: tuple[ModelLandingCauseOwner, ...] = ()
+    cross_repo_causes: tuple[ModelLandingCrossRepoCause, ...] = Field(
+        default=(),
+        description=(
+            "Red checks already named as caused by an open change in another "
+            "repository: a PR red only on these gets no worker (OMN-23345)."
+        ),
+    )
     cause_releases: tuple[ModelLandingCauseRelease, ...] = ()
     cause_escalations: tuple[ModelLandingCauseEscalation, ...] = Field(
         default=(),
@@ -661,6 +719,7 @@ __all__: list[str] = [
     "ModelLandingCauseOwner",
     "ModelLandingCauseRelease",
     "ModelLandingCompanionFacts",
+    "ModelLandingCrossRepoCause",
     "ModelLandingFacts",
     "ModelLandingPolicy",
     "ModelLandingPrFacts",

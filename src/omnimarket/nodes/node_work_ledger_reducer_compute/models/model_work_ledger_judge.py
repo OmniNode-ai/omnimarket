@@ -86,6 +86,13 @@ class ModelGuardReplayRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     ledger_name: str = Field(min_length=1)
+    prior_accepted: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "The rows the live judge accepted before the first entry, in order. A window that begins "
+            "inside a HOLD supplies them so its rows are judged against the ledger as it stood."
+        ),
+    )
     entries: tuple[ModelRecordedRow, ...]
     preceding_ledger: str = Field(
         default="",

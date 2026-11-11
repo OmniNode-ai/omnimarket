@@ -22,10 +22,23 @@ requirements:
     statement: 'AC4: a clean group writes one WORKING row, a public-origin trigger writes a NOT_WORKING row on its own subject, a group that was not read writes an UNKNOWN row and fails the run, and an append that does not land fails the run -- falsifier: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py -k "golden or injected_break or error_chain" -q --no-cov -p no:cacheprovider'
   - id: AC5
     statement: 'AC5: schedule install writes the service and timer for a declared host and enables the timer, refuses a unit that names a worktree before writing anything, and uninstall removes both units -- falsifier: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py -k "install or uninstall or undeclared" -q --no-cov -p no:cacheprovider'
+- id: req-omn22860-bus-login-exposure
+  statement: What one broker login can see on the broker (topics and consumer groups) is measured by a node, and a topic or group beyond the overlay's allowed lists is reported as an exposure.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the probe reports the login''s visible topics and groups on the in-memory and Redpanda overlays, and a fixture granting one extra topic is reported as an exposure -- falsifier: uv run --frozen pytest tests/nodes/node_bus_login_exposure_effect -q --no-cov -p no:cacheprovider'
+- id: req-omn22860-fleet-projection-read
+  statement: The runner fleet file the floor row lab:runner_groups reads is refreshed from the runtime's HTTP projection first and over ssh only when that read fails.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: with a projection url and a timed-out ssh the runner fleet reads 50 runners with zero ssh calls, and with no url the same timed-out ssh reads unread -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_projection_read.py -q --no-cov -p no:cacheprovider'
 evidence_requirements:
 - kind: tests
   description: The compute node's tests and the effect node's golden chain, error chain and named failing controls on both overlays.
   command: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect tests/nodes/node_runner_group_exposure_compute -q --no-cov -p no:cacheprovider
+- kind: tests
+  description: The bus login exposure probe's golden chain, error chain and named failing controls on the in-memory and Redpanda overlays.
+  command: uv run --frozen pytest tests/nodes/node_bus_login_exposure_effect -q --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ''
@@ -76,11 +89,29 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py -k "install or uninstall or undeclared" -q --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn22860-bus-login-exposure
+  description: The bus login probe reports the visible topics and groups on both overlays and reports one extra topic as an exposure.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_bus_login_exposure_effect -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22860-fleet-projection-read
+  description: The runner fleet projection is read over HTTP before ssh, and a timed-out ssh without the url reads unread.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_projection_read.py -q --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn22860-integration-proof
   description: Run this pull request's own tests on a lab host at the pushed head (the probe node run on both overlays, the GitHub one against a local fixture server). Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22860 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect tests/nodes/node_runner_group_exposure_compute -q --no-cov -p no:cacheprovider
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22860 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect tests/nodes/node_runner_group_exposure_compute tests/nodes/node_bus_login_exposure_effect -q --no-cov -p no:cacheprovider
     cwd: .

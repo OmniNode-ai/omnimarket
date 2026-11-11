@@ -14,12 +14,13 @@ import tempfile
 from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.model_factory_floor_input import (
@@ -55,6 +56,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelLimitToken,
     ModelLimitTokenPool,
 )
+from omnimarket.models.model_floor_placement_reading import ModelFloorPlacementReading
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -62,6 +64,9 @@ from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetDeclaration,
     ModelLaneContainerBudgetRequest,
     ModelLaneContainerBudgetVerdict,
+)
+from omnimarket.models.model_unresolved_rows_record import (
+    ModelUnresolvedRowsRecord,
 )
 from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
     merge_task_links,
@@ -134,7 +139,8 @@ def _utc(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
-_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
+# The hour is 00..23: Python 3.14's fromisoformat reads T24:00:00 as the next midnight, strptime never did.
+_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}Z", re.ASCII)
 
 
 def _ledger_ts(value: str) -> datetime | None:
@@ -218,6 +224,12 @@ def parse_ledger_text(
             elif sep and key == "owns":
                 # An explicit owns= cell, the ledger MSG's routing rule: a comma list with no spaces in it.
                 fields.setdefault("owns", value.split()[0] if value.split() else "")
+            elif sep and key == "needs":
+                # The closing row's typed ask (OMN-23417): `<action>:<target>`, or `unparsed`; one token, no spaces.
+                fields.setdefault("needs", value.split()[0] if value.split() else "")
+            elif sep and key == "report":
+                # The lane's report text, one cell value written by the close node (OMN-23417).
+                fields.setdefault("report", value.strip())
             elif sep and key in {"reason", "blocker"}:
                 # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
                 fields.setdefault("reason", value.strip()[:300])
@@ -253,6 +265,8 @@ def parse_ledger_text(
             head=fields.get("head", ""),
             ruling=fields.get("ruling") or fields.get("cited-rulings", ""),
             mechanism=fields.get("mechanism-ticket", ""),
+            needs=fields.get("needs", ""),
+            report=fields.get("report", ""),
         )
         core = row.kind in kinds
         if core:
@@ -297,11 +311,17 @@ def _run_ledger_reader(
         return parse_ledger_text(result.stdout, kinds)
 
 
+def _source_args(source: str | None) -> list[str]:
+    """The reader's ``--source`` argument for the row source a deployment's overlay names; none named leaves the reader its own default."""
+    return [] if source is None else ["--source", source]
+
+
 def read_ledger_rows(
     *,
     window_days: int,
     cut_chars: int,
     timeout_seconds: int,
+    source: str | None,
     plugin_root: Path | None,
     plugin_root_env: str,
     ledger_rows_file: Path | None,
@@ -318,7 +338,7 @@ def read_ledger_rows(
             f"{plugin_root_env} is not set: export the plugin root or supply ledger_rows_file"
         )
     reader = plugin_root / "scripts" / "onex_ledger.py"
-    query = ["query", "--since", f"{window_days}d", "--archives"]
+    query = ["query", *_source_args(source), "--since", f"{window_days}d", "--archives"]
     query += ["--limit", "1000000", "--cut", str(cut_chars)]
     return _run_ledger_reader(reader, query, timeout_seconds, kinds)
 
@@ -328,17 +348,21 @@ def read_unresolved_rows(
     reads: tuple[tuple[str, str], ...],
     cut_chars: int,
     timeout_seconds: int,
+    source: str | None,
     plugin_root: Path | None,
     plugin_root_env: str,
     stand_in_file: Path | None,
     kinds: frozenset[str],
     older_than: datetime,
+    max_workers: int | None,
 ) -> tuple[ModelFloorLedgerRow, ...]:
     """Rows of the live ledger and every archive roll, with no age limit, that the window read did not bring.
 
     Each ``(kind, text)`` read is one query of the same ledger reader over the live ledger and the archive rolls. The
     window's own rows are already in the request; only rows older than ``older_than`` are returned, and a row is
     returned once however many reads match it. Which of them a later row resolved is the compute's call.
+    ``max_workers`` is how many reads run together (OMN-19998: four reads in series took 207 s of a 231 s step); ``None``
+    reads them one after the other.
     """
     if stand_in_file is not None:
         # A rows file stands in for the live ledger and the archive rolls (tests and replays): the same kind and text
@@ -357,19 +381,51 @@ def read_unresolved_rows(
             f"{plugin_root_env} is not set: export the plugin root or supply a rows file"
         )
     reader = plugin_root / "scripts" / "onex_ledger.py"
-    found: dict[tuple[datetime, str, str], ModelFloorLedgerRow] = {}
-    for kind, grep in reads:
-        query = ["query", "--archives", "--kind", kind, "--grep", grep]
+    all_kinds = kinds | {kind for kind, _ in reads}
+
+    def one(read: tuple[str, str]) -> tuple[ModelFloorLedgerRow, ...]:
+        kind, grep = read
+        query = ["query", *_source_args(source), "--archives"]
+        query += ["--kind", kind, "--grep", grep]
         query += ["--limit", "1000000", "--cut", str(cut_chars)]
-        for row in _run_ledger_reader(
-            reader, query, timeout_seconds, kinds | {kind for kind, _ in reads}
-        ):
+        return _run_ledger_reader(reader, query, timeout_seconds, all_kinds)
+
+    if max_workers is None:
+        answers = [one(read) for read in reads]
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            answers = list(pool.map(one, reads))
+    found: dict[tuple[datetime, str, str], ModelFloorLedgerRow] = {}
+    for rows in answers:
+        for row in rows:
             found.setdefault((row.ts, row.kind, row.lane), row)
     return tuple(
         row
         for _, row in sorted(found.items(), key=lambda pair: pair[0])
         if row.ts < older_than
     )
+
+
+def load_unresolved_rows(
+    path: Path, *, now: datetime, window_days: int, max_age_hours: int
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The unresolved rows the unresolved step wrote: those older than the window, from a record not older than its bound.
+
+    The step reads a margin of ``valid_hours`` past the window's edge, so the rows that cross the edge after it wrote are in the
+    file already; a row now inside the window is the window read's, never read twice. A record older than ``max_age_hours`` (or
+    than the margin it declares) is refused: a stop kept only in an archive roll is then unread, never reported absent.
+    """
+    with _source(path):
+        record = ModelUnresolvedRowsRecord.model_validate_json(
+            path.read_text(encoding="utf-8")
+        )
+    bound = timedelta(hours=min(max_age_hours, record.valid_hours))
+    if now - record.read_at > bound:
+        raise SourceRefusedError(
+            f"{path} was read at {record.read_at.isoformat()}, more than {bound} ago: rerun the unresolved step"
+        )
+    edge = now - timedelta(days=window_days)
+    return tuple(row for row in record.rows if row.ts < edge)
 
 
 def _ci_note(ci: dict[str, Any]) -> str:
@@ -492,6 +548,12 @@ def load_linear(path: Path | None) -> tuple[ModelFloorLinearIssue, ...]:
                             "",
                         ),
                         title=" ".join(str(issue.get("title") or "").split()),
+                        children=tuple(
+                            child
+                            for child in (issue.get("children") or ())
+                            if isinstance(child, str)
+                            and TICKET_RE.fullmatch(child) is not None
+                        ),
                     )
                 )
         return tuple(sorted(issues, key=lambda issue: issue.id))
@@ -503,8 +565,14 @@ def merge_linear_titles(
 ) -> tuple[ModelFloorLinearIssue, ...]:
     """The status text file gives each issue its status type; the JSON snapshot gives its title (and any issue only it holds)."""
     titles = {issue.id: issue.title for issue in titled if issue.title}
+    children = {issue.id: issue.children for issue in titled if issue.children}
     merged = {
-        issue.id: issue.model_copy(update={"title": titles.get(issue.id, issue.title)})
+        issue.id: issue.model_copy(
+            update={
+                "title": titles.get(issue.id, issue.title),
+                "children": children.get(issue.id, issue.children),
+            }
+        )
         for issue in issues
     }
     for issue in titled:
@@ -534,15 +602,45 @@ def newest_dated_file(directory: Path, filename: str) -> Path | None:
         return newest / filename if newest is not None else None
 
 
-def load_placement(path: Path) -> tuple[ModelHostCapacityAdvertisement, ...]:
+def read_placement(path: Path) -> ModelFloorPlacementReading:
+    """The host advertisements, read tolerantly: a field the model does not declare is ignored and named, a row that
+    still fails validation is skipped and named. The file being unreadable or not a list still refuses (OMN-23435)."""
     with _source(path):
         if not path.exists():
-            return ()
+            return ModelFloorPlacementReading()
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise ValueError("expected a JSON list of host advertisements")
-        hosts = (ModelHostCapacityAdvertisement.model_validate(value) for value in data)
-        return tuple(sorted(hosts, key=lambda host: host.host_name))
+        declared = set(ModelHostCapacityAdvertisement.model_fields)
+        hosts: list[ModelHostCapacityAdvertisement] = []
+        unknown: list[str] = []
+        unreadable: list[str] = []
+        for index, value in enumerate(data):
+            if not isinstance(value, dict):
+                unreadable.append(f"row {index}: not a JSON object")
+                continue
+            name = str(value.get("host_name") or f"row {index}")
+            unknown.extend(f"{name}.{key}" for key in sorted(set(value) - declared))
+            try:
+                hosts.append(
+                    ModelHostCapacityAdvertisement.model_validate(
+                        {key: val for key, val in value.items() if key in declared}
+                    )
+                )
+            except ValidationError as exc:
+                first = exc.errors()[0]
+                unreadable.append(
+                    f"{name}: {'.'.join(str(part) for part in first['loc'])} {first['msg']}"
+                )
+        return ModelFloorPlacementReading(
+            hosts=tuple(sorted(hosts, key=lambda host: host.host_name)),
+            unknown_fields=tuple(unknown),
+            unreadable_rows=tuple(unreadable),
+        )
+
+
+def load_placement(path: Path) -> tuple[ModelHostCapacityAdvertisement, ...]:
+    return read_placement(path).hosts
 
 
 def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:
@@ -558,6 +656,7 @@ def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:
                 recurring=value.get("recurring", False),
                 tickets=value.get("tickets", ()),
                 last_seen=value.get("last_seen", ""),
+                resolved_at=value.get("resolved_at", ""),
             )
             for value in data.get("classes", [])
             if "class" in value
@@ -1218,6 +1317,7 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
             ticket=str(data.get("ticket") or ""),
             placement=str(data.get("placement") or ""),
             account=str(cloud.get("account") or ""),
+            login=str(data.get("login") or ""),
             pr_heads=tuple(
                 str(h) for h in data.get("pr_heads") or () if isinstance(h, str)
             ),

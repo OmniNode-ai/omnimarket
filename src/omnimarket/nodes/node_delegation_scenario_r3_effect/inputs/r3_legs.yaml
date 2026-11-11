@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scenario R3 ladders (readiness plan 2.2, OMN-23182). Each leg is a rungs-mode probe ladder with a free first rung that
+# answers 503 on every call and a paid second rung. The prompt is an L (large) input: it carries more structural units than the
+# contract's medium ceiling. Leg a's paid rung is a stub that answers the fixed `answer`; leg b's paid rung is a real
+# OpenRouter model (named in the node contract) called through the delegation effect, capped at the contract's max_tokens.
+# A rung is paid when its tier is listed in `paid_tiers`; the scenario reads that list, not a name.
+answer_marker: R3-FIXED-ANSWER-9d2b
+answer: >-
+  ### ANSWER
+
+  According to Smith (2020) and the theorem in section 3, the tradeoff is significant because the evidence shows X;
+  therefore we conclude Y. See references [12] for the methodical analysis and the risk profile this approach carries in
+  practice. Marker R3-FIXED-ANSWER-9d2b.
+#: The text the run returns: the stub's answer after the dispatch port strips the `### ANSWER` header line. The scenario compares
+#: the returned bytes to this, whole.
+expected_returned: >-
+  According to Smith (2020) and the theorem in section 3, the tradeoff is significant because the evidence shows X;
+  therefore we conclude Y. See references [12] for the methodical analysis and the risk profile this approach carries in
+  practice. Marker R3-FIXED-ANSWER-9d2b.
+prompt: |-
+  Review the twelve items below and say in one sentence which one most needs escalation.
+  - item 1 the cache layer
+  - item 2 the retry policy
+  - item 3 the queue depth
+  - item 4 the schema change
+  - item 5 the rollout plan
+  - item 6 the alert rules
+  - item 7 the billing export
+  - item 8 the auth flow
+  - item 9 the backup job
+  - item 10 the index rebuild
+  - item 11 the feature flag
+  - item 12 the audit trail
+expect_size_band: large
+paid_tiers: [cheap_cloud]
+#: failure classes the closed list of K4a (omnimarket EnumDelegationEndOfLadderReason) allows on an all-down run.
+end_of_ladder_reasons: [every_rung_failed, every_rung_rate_limited, no_rung_reachable, escalation_limit_reached, quality_veto]
+#: What the free rung must show: its attempts (a transport failure on a house rung spends no same-rung retry, so one), the
+#: typed failure class of each, and the one move that follows.
+free_rung:
+  expect_attempts: 1
+  expect_failure_class: model_unavailable
+  expect_move: tier_climb
+leg_a:
+  name: free_503_then_paid_stub
+  rungs:
+    - {backend_id: r3-free, model_id: stub-free, behaviour: status, status_code: 503, tier: local, timeout_ms: 5000}
+    - {backend_id: r3-paid, model_id: stub-paid, behaviour: answer, tier: cheap_cloud, cost_class: paid, scripted_cost_usd: "0.0002", timeout_ms: 30000}
+leg_b:
+  name: free_503_then_real_paid
+  #: The rung the real-backend overlay sends to the paid model named in the node contract. In-memory runs script it as a
+  #: paid, measured reply (`scripted_cost_usd`).
+  real_backend_id: r3-openrouter
+  rungs:
+    - {backend_id: r3-free-b, model_id: stub-free, behaviour: status, status_code: 503, tier: local, timeout_ms: 5000}
+    - {backend_id: r3-openrouter, model_id: placeholder-replaced-by-overlay, behaviour: answer, tier: cheap_cloud, cost_class: paid, scripted_cost_usd: "0.0002", max_tokens: 256, timeout_ms: 60000}
+#: Falsifier control: the same ladder with the paid rung down too. The run must end `returned_to_caller`.
+all_down_leg:
+  name: free_and_paid_both_503
+  rungs:
+    - {backend_id: r3-down-free, model_id: stub-free, behaviour: status, status_code: 503, tier: local, timeout_ms: 5000}
+    - {backend_id: r3-down-paid, model_id: stub-paid, behaviour: status, status_code: 503, tier: cheap_cloud, cost_class: paid, timeout_ms: 5000}
+#: Skip control (the plan's falsifying input, after K3): the paid rung that answers an L input is a declared skip for this S
+#: input, with the cause the contract's `paid_from_size_band` rule gives. The dispatch port leaves a probe ladder out of that rule
+#: (a probe ladder decides the rung itself), so the control reads the rule's decision and the input's measured band.
+s_input:
+  name: small_input_paid_rung_skipped
+  prompt: Say hello in one sentence.
+  expect_size_band: S
+  expect_skip_cause: size_band_below_paid

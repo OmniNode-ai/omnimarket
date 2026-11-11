@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Snapshot sources of the landing tick orchestrator: in-memory, and Redpanda behind an injected reader.
+"""Snapshot sources of the landing tick orchestrator: in-memory, and Redpanda behind a topic reader.
 
-The overlay names the backend and its settings. The in-memory snapshots and the Redpanda topic
-reader factory are injected; this module holds no Kafka client.
+The overlay names the backend and its settings. The in-memory snapshots are injected; the Redpanda
+topic reader factory is injected in tests and defaults to the bus reader of tick_topic_reader
+(OMN-23458), which opens the overlay's declared bus lane. The overlay's publish_backend likewise
+selects the compared and compare-failed events' publisher (OMN-23539): the in-memory one by default,
+the bus publisher of tick_bus_publisher for redpanda. This module holds no Kafka client.
 """
 
 from __future__ import annotations
@@ -12,6 +15,8 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
+
+from pydantic import ValidationError
 
 from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
@@ -22,24 +27,34 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
+    InMemoryTickPublisher,
+    ProtocolTickPublisher,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickMode,
+    EnumTickSkipReason,
     ModelTickRequest,
     ModelTickResult,
+    ModelTickSkippedRecord,
     ModelTickSnapshot,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overlay import (
     OVERLAY_ID,
     EnumTickBackend,
     ModelTickOrchestratorOverlay,
+    ModelTickTopicSelection,
 )
 
 
 class ProtocolTickSnapshotSource(Protocol):
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]: ...
+
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]: ...
 
 
 class ProtocolTickTopicReader(Protocol):
@@ -48,7 +63,9 @@ class ProtocolTickTopicReader(Protocol):
     def read(self, max_records: int, timeout_s: float) -> Iterable[str]: ...
 
 
-TopicReaderFactory = Callable[[str, str, str], ProtocolTickTopicReader]
+TopicReaderFactory = Callable[[ModelTickTopicSelection], ProtocolTickTopicReader]
+
+PublisherFactory = Callable[[ModelTickOrchestratorOverlay], ProtocolTickPublisher]
 
 
 class InMemorySnapshotSource:
@@ -58,9 +75,18 @@ class InMemorySnapshotSource:
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]:
         return self._snapshots
 
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]:
+        return ()
+
 
 class RedpandaSnapshotSource:
-    """The script's tick records, read from the overlay's topic through the injected reader."""
+    """The landing snapshot step's tick records, read from the overlay's topic through the injected reader.
+
+    Each record is the shared ModelLandingTickRecord the snapshot step publishes on its record_topic
+    (OMN-23409); its facts become one snapshot with no recorded decision. The topic is shared, so a
+    record this reader cannot parse is skipped with a typed row (skipped()) and the read goes on
+    (OMN-23529); only the reader itself raising fails the read.
+    """
 
     def __init__(
         self,
@@ -72,18 +98,48 @@ class RedpandaSnapshotSource:
         self._reader = reader
         self._max = max_snapshots
         self._timeout = poll_timeout_s
+        self._skipped: tuple[ModelTickSkippedRecord, ...] = ()
 
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]:
-        return tuple(
-            ModelTickSnapshot.model_validate_json(raw)
-            for raw in self._reader.read(self._max, self._timeout)
-        )
+        out: list[ModelTickSnapshot] = []
+        skipped: list[ModelTickSkippedRecord] = []
+        for position, raw in enumerate(self._reader.read(self._max, self._timeout)):
+            try:
+                record = ModelLandingTickRecord.model_validate_json(raw)
+            except ValidationError as exc:
+                skipped.append(
+                    ModelTickSkippedRecord(
+                        position=position,
+                        reason=EnumTickSkipReason.UNPARSEABLE_RECORD,
+                        detail=_validation_detail(exc),
+                    )
+                )
+                continue
+            out.append(
+                ModelTickSnapshot(facts=record.facts, provenance=record.provenance)
+            )
+        self._skipped = tuple(skipped)
+        return tuple(out)
+
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]:
+        """The records the last snapshots() call skipped, each with its place and reason."""
+        return self._skipped
+
+
+_DETAIL_ERRORS = 3
+
+
+def _validation_detail(exc: ValidationError) -> str:
+    """The first errors as location: type, e.g. facts.prs.0.liveness: extra_forbidden."""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in error['loc']) or '<record>'}: {error['type']}"
+        for error in exc.errors()[:_DETAIL_ERRORS]
+    )
 
 
 _REQUIRED_FIELDS: dict[EnumTickBackend, tuple[str, ...]] = {
     EnumTickBackend.INMEMORY: (),
     EnumTickBackend.REDPANDA: (
-        "bootstrap_servers",
         "consumer_group",
         "snapshot_topic",
         "poll_timeout_s",
@@ -105,6 +161,12 @@ def load_tick_overlay(
     missing = [
         name for name in _REQUIRED_FIELDS[overlay.backend] if not getattr(overlay, name)
     ]
+    if (
+        overlay.backend is EnumTickBackend.REDPANDA
+        and not overlay.bus_lane
+        and not overlay.bootstrap_servers
+    ):
+        missing.append("bus_lane or bootstrap_servers")
     if missing:
         raise ValueError(
             f"backend {overlay.backend.value} needs overlay fields {missing}"
@@ -122,19 +184,28 @@ def build_snapshot_source(
         if inmemory is None:
             raise ValueError("backend inmemory needs the in-memory snapshots injected")
         return inmemory
-    if topic_reader_factory is None:
-        raise ValueError("backend redpanda needs a topic reader factory")
     if not (
-        overlay.bootstrap_servers
+        (overlay.bus_lane or overlay.bootstrap_servers)
         and overlay.snapshot_topic
         and overlay.consumer_group
         and overlay.poll_timeout_s
     ):
         raise ValueError("backend redpanda needs its overlay fields")
+    selection = ModelTickTopicSelection(
+        topic=overlay.snapshot_topic,
+        consumer_group=overlay.consumer_group,
+        bus_lane=overlay.bus_lane,
+        workspace_root=overlay.workspace_root,
+        bootstrap_servers=overlay.bootstrap_servers,
+    )
+    if topic_reader_factory is None:
+        from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_topic_reader import (
+            BusTickTopicReader,
+        )
+
+        topic_reader_factory = BusTickTopicReader
     return RedpandaSnapshotSource(
-        topic_reader_factory(
-            overlay.bootstrap_servers, overlay.snapshot_topic, overlay.consumer_group
-        ),
+        topic_reader_factory(selection),
         max_snapshots=overlay.max_snapshots,
         poll_timeout_s=overlay.poll_timeout_s,
     )
@@ -150,6 +221,27 @@ def build_emission(
         raise ValueError("backend redpanda needs overlay field emission_journal")
     path = Path(overlay.emission_journal)
     return JsonlEmissionSink(journal_root / path if journal_root else path), "real"
+
+
+def build_publisher(
+    overlay: ModelTickOrchestratorOverlay,
+    *,
+    publisher_factory: PublisherFactory | None = None,
+) -> ProtocolTickPublisher:
+    """The overlay's publish_backend (OMN-23539): in-memory by default, the bus publisher for redpanda."""
+    if overlay.publish_backend is EnumTickBackend.INMEMORY:
+        return InMemoryTickPublisher()
+    if publisher_factory is not None:
+        return publisher_factory(overlay)
+    from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_bus_publisher import (
+        BusTickPublisher,
+    )
+
+    return BusTickPublisher(
+        bus_lane=overlay.bus_lane,
+        workspace_root=overlay.workspace_root,
+        bootstrap_servers=overlay.bootstrap_servers,
+    )
 
 
 def run_snapshots(
@@ -176,8 +268,11 @@ __all__: list[str] = [
     "InMemorySnapshotSource",
     "ProtocolTickSnapshotSource",
     "ProtocolTickTopicReader",
+    "PublisherFactory",
     "RedpandaSnapshotSource",
+    "TopicReaderFactory",
     "build_emission",
+    "build_publisher",
     "build_snapshot_source",
     "load_tick_overlay",
     "run_snapshots",

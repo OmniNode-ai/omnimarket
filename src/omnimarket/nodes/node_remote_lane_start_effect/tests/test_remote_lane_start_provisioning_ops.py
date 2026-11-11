@@ -47,11 +47,31 @@ ENGINE_CALLS = frozenset(
     }
 )
 STAGE_OPS = frozenset({"stage_ledger_snapshot", "stage_file"})
+#: Steps the ssh transport now runs itself (OMN-23425): their parity with the runner is in
+#: test_remote_lane_start_provisioning_parity.py. resolve_registry_root stays here: with no candidates
+#: or marker configured it still answers "not run"; so does write_runtime_config with no runtime config text.
+MOVED_OPS = frozenset(
+    {
+        "prepare_run_dirs",
+        "read_ledger_outbox",
+        "read_lane_changes",
+        "hold_run_dir_guard",
+        "drain_guard_spool",
+        "stop_lane_guard",
+        "stage_ledger_snapshot",
+        "stage_file",
+        "mirror_ledger",
+        "relay_reports",
+        "closeout_worktrees",
+        "ship_plugin_trees",
+    }
+)
 PROVISIONING_OPS = tuple(
     name
     for name, _ in inspect.getmembers(ProtocolLaneHostTransport, inspect.isfunction)
     if not name.startswith("_") and name not in ENGINE_CALLS
 )
+UNMOVED_OPS = tuple(op for op in PROVISIONING_OPS if op not in MOVED_OPS)
 
 
 def _request(op: str) -> Any:
@@ -77,7 +97,9 @@ class _NoHostCommand:
     def __init__(self) -> None:
         self.argvs: list[Sequence[str]] = []
 
-    def run(self, argv: Sequence[str], timeout: float) -> ModelHostCommandResult:
+    def run(
+        self, argv: Sequence[str], timeout: float, stdin: bytes | None = None
+    ) -> ModelHostCommandResult:
         self.argvs.append(argv)
         raise AssertionError(
             "a provisioning step the ssh transport does not run issued a host command"
@@ -123,7 +145,7 @@ def test_scripted_provision_error_refuses_each_step_with_a_typed_result(
     assert _error_of(result) == "host refused"
 
 
-@pytest.mark.parametrize("op", PROVISIONING_OPS)
+@pytest.mark.parametrize("op", UNMOVED_OPS)
 def test_ssh_transport_refuses_each_unmoved_step_by_name_without_a_host_command(
     op: str, tmp_path: Path
 ) -> None:

@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_stop_drill_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that root. Every value is
+# synthetic; supply your deployment's facts. No key has a default.
+#
+#   drill_piece, control_piece  the two pieces of the test admission instance: a stop is opened on drill_piece, a
+#                               lane is sent above it, and a lane on control_piece must still be admitted
+#   store_limits                the test instance's admission limit per piece
+#   reservation_ttl_seconds     how long the test instance holds a reservation
+#   max_age_seconds             a reading older than this reads NOT WORKING
+#   replay_required             true once the replay over the recorded dispatch history produces a row
+#   emission                    the floor's journal, the chain identity and the ledger rows of the same events
+#   schedule_hosts              hosts that install the hourly systemd user timer
+#   unit_environment            environment the installed unit carries (the ledger's append command and host)
+overlay_revision: "example.1"
+drill_piece: drill_piece
+control_piece: control_piece
+store_limits:
+  drill_piece: 3
+  control_piece: 3
+reservation_ttl_seconds: 60
+max_age_seconds: 7200
+replay_required: false
+emission:
+  home_env: EXAMPLE_HOME
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  piece_number: 7
+  chain_node: "node_stop_drill_effect:run"
+  ledger:
+    lane: example-stop-drill
+    actor: node:node_stop_drill_effect
+    command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+    host_env: EXAMPLE_HOST_NAME
+    timeout_seconds: 90
+schedule_hosts:
+  - name: host-a
+    venv: example-venv
+unit_environment:
+  EXAMPLE_HOME: $OMNI_HOME
+  EXAMPLE_HOST_NAME: host-a
+  EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example

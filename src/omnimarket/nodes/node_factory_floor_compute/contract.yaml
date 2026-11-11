@@ -158,6 +158,9 @@ config:
     next_step_markers: ["next step", "next:", "what is left", "left to do", "still to do", "not yet", "not installed", "not proven", "follow-up", "follow up", "needs "]
     # A lane name ends in its start time (floor-reds-1300, asks-1220, runners-r2-0930); the name without it is the stem.
     lane_stem_suffix: '-\d{4}(?:-[a-z0-9]+)?$'
+    # Parent steps from a lane's ticket up to a ticket-rule root, read through the Linear snapshot's child ids; the same
+    # bound as max_depth in the goal_scope_ticket_rule overlay.
+    scope_max_depth: 6
     rows_kept: 4
     row_chars: 400
     report_path_template: .claude_scratch/reports/{lane}/result.md
@@ -190,6 +193,28 @@ config:
     advert_stale_minutes: 15
     docker_tool: docker
     landing_worker_kind: landing worker
+  # Line selection (OMN-22369, lean line board plan T4): six classes in order, each line once at its lowest class. A
+  # class is chosen from the sources named here; its coverage is the worst health among them (unread, stale, read-empty,
+  # read) and an unread class prints no count. The caller names the classes a run draws (selection.line_classes).
+  line_select:
+    classes:
+      - {line_class: declared, id_prefix: "", label: declared lines, sources: [plans_clone]}
+      - {line_class: plan, id_prefix: "", label: plan selection, sources: [plans_today]}
+      - {line_class: goal, id_prefix: "goal:", label: goal rows, sources: [goal_file]}
+      - {line_class: ruling, id_prefix: "ruling:", label: rulings, sources: [ledger]}
+      - {line_class: ticket, id_prefix: "ticket:", label: unplanned work, sources: [ledger, pr_watcher, linear_snapshot, running_evidence]}
+      - {line_class: process, id_prefix: "process:", label: factory processes, sources: []}
+    selection_window_days: 14
+    in_progress_statuses: [In Progress]
+    closed_status_types: [completed, canceled]
+    claim_kind: CLAIM
+    terminal_kind: TERMINAL
+    ruling_kind: RULING
+    stale_note: "UNREAD: {label} from {read_at}"
+    unread_note: "UNREAD: {label}, lines unknown"
+    missing_health_cause: no health entry for the source
+    bare_progress_note: Stages not computed for this class
+    ticket_line_note: unplanned work
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

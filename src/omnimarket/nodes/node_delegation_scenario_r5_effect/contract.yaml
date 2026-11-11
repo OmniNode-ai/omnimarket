@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Scenario R5 Effect (OMN-23183, readiness plan A7)
+#
+# Scenario R5, several OpenRouter models on one key, tried in the order they were added. One scheduled run registers two free
+# OpenRouter models A and B on one key in that order through the model registry (the handler `onex models add` drives), reads
+# the listing back (A then B), pins one delegation to each (each receipt names its model), and runs one delegation with a
+# faults-mode probe ladder that makes model A answer 429 (the history is A rate_limited, then B accepted). Two falsifiers run
+# in the same pass: an id the key does not list is refused by add and stores nothing, and after a reorder to B, A the same
+# faults file makes the run answer on B with no attempt on A. Every assertion is a typed field of a registry listing or a
+# delegation terminal; no model judges a pass.
+#
+# The market ingress does not yet accept a per-call `model` (OMN-20844 step 2), so the two pinned legs are red with
+# assertions named `pinned_model_accepted_a|b` until that ticket lands: a red scenario is the expected colour, never a skip.
+name: node_delegation_scenario_r5_effect
+contract_name: node_delegation_scenario_r5_effect
+node_name: node_delegation_scenario_r5_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs readiness scenario R5 once through the model registry and the delegation skill handler, publishes the result on the
+  bus and writes one ledger STATUS row. The node's own systemd user timer (`schedule install`) runs it hourly.
+
+handler:
+  module: omnimarket.nodes.node_delegation_scenario_r5_effect.handlers.handler_scenario_r5
+  class: HandlerScenarioR5
+  input_model: omnimarket.nodes.node_delegation_scenario_r5_effect.handlers.handler_scenario_r5.ModelScenarioR5RunCommand
+
+# Not a runtime-dispatched handler: HandlerScenarioR5 takes its contract runtime block, model registry, delegator, ledger
+# append route, event sink and clock as constructor parameters, so the node runs through its own CLI and schedule.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [network, file-write, ledger-append, bus-publish]
+  timeout_ms: 900000
+
+input_model:
+  name: ModelScenarioR5RunCommand
+  module: omnimarket.nodes.node_delegation_scenario_r5_effect.handlers.handler_scenario_r5
+  description: One run of scenario R5; it carries no value.
+output_model:
+  name: ModelScenarioResult
+  module: omnimarket.models.model_delegation_scenario
+  description: The slot, trigger, conclusion and each assertion that held or did not.
+
+terminal_event: onex.evt.omnimarket.delegation-scenario-result.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.delegation-scenario-result.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-scenario-result.v1
+
+runtime:
+  home_env: OMNI_HOME
+  ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  ledger_append_timeout_seconds: 60
+  host_env: ONEX_HOST_NAME
+  bus_emit_command_env: ONEX_BUS_EMIT_COMMAND
+  # Every event is journalled here; when the deployment names a bus produce command in bus_emit_command_env it also gets the event.
+  event_journal_relpath: .onex_state/delegation-scenario-r5/events.jsonl
+  bus_emit_timeout_seconds: 60
+  scenario_id: R5
+  cadence: hourly
+  ticket: OMN-23183
+  # The lane the green-days reader (node_delegation_scenario_days_effect) names for R5.
+  lane: node_delegation_scenario_r5
+  actor: script:node_delegation_scenario_r5_effect
+  # The real backend runs in a fresh home each time: this directory under the registry home is wiped first.
+  work_relpath: .onex_state/delegation-scenario-r5/work
+  # Scenario R5 runs no loopback transport; the shared key stays at its in-memory value.
+  leg_backend: inmemory
+  # inmemory: scripted registry and delegator, no network (the default profile). real: the model registry's own add and list
+  # handlers and the delegation skill handler against OpenRouter, on the paid probe key read from `openrouter_probe_key_env`.
+  model_backend: inmemory
+  # ONEX_SCENARIO_R5_MODEL_BACKEND, when set in the unit's environment file (`.config/onex/scenario-r5.env`) to `real` or
+  # `inmemory`, overrides model_backend for that one run; unset keeps the contract's value; any other value is a refusal
+  # (the scheduled tick exits 65 and records `refused`). The contract file itself stays at the scripted default.
+  model_backend_env: ONEX_SCENARIO_R5_MODEL_BACKEND
+  loopback_host: 127.0.0.1
+  probe_tenant_slug: readiness-probe
+  inputs_relpath: inputs/r5_legs.yaml
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
+  # The variable that carries the one paid OpenRouter probe key. The value is read at run time only and is never printed,
+  # logged, put in an event or a ledger row; an empty variable in the real backend makes the run red, never skipped.
+  openrouter_probe_key_env: ONEX_SCENARIO_R5_OPENROUTER_PROBE_KEY
+
+schedule:
+  unit_name: onex-delegation-scenario-r5
+  state_directory: .onex_state/delegation-scenario-r5
+  timeout_seconds: 900
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND]
+  # The key variable is loaded from this file under the home directory when it exists; it never sits in the unit.
+  environment_file: .config/onex/scenario-r5.env
+  cadence:
+    on_calendar: "*-*-* *:05:00"
+    time_zone: UTC
+    randomized_delay: 0s
+    persistent: false
+    description: delegation readiness scenario R5, hourly at minute 05 UTC
+
+metadata:
+  ticket: OMN-23183
+  transport_type: inmemory

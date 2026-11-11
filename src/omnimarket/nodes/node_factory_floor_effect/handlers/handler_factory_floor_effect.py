@@ -9,7 +9,8 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorLedgerRow,
     ModelFloorLimitsFacts,
     ModelFloorSelection,
+    ModelFloorSourceHealth,
     ModelFloorSourceReads,
     ModelGoalTicketRoots,
 )
@@ -66,7 +68,6 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_lane_processes,
     load_linear,
     load_placed,
-    load_placement,
     load_plans,
     load_pool,
     load_receipts,
@@ -74,12 +75,13 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_runner_fleet,
     load_stoppages,
     load_token_pools,
+    load_unresolved_rows,
     load_watcher,
     merge_linear_titles,
     newest_dated_file,
     newest_linear_snapshot,
     read_ledger_rows,
-    read_unresolved_rows,
+    read_placement,
     resolve_dir,
     resolve_home,
     resolve_host_table,
@@ -169,6 +171,15 @@ def _file_time(path: Path) -> datetime | None:
         return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     except OSError:
         return None
+
+
+def _degraded_reading(
+    health: ModelFloorSourceHealth, cause: str
+) -> ModelFloorSourceHealth:
+    """A source that was read but left something out keeps its state and names what it left out."""
+    if health.state != "read" or not cause:
+        return health
+    return health.model_copy(update={"cause": cause})
 
 
 class HandlerFactoryFloorEffect:
@@ -315,11 +326,24 @@ class HandlerFactoryFloorEffect:
         host_drift = load_host_drift(drift_path)
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
+        # The cloud account node is a subprocess of its own and waits on nothing the ledger read produces: the two
+        # run together (OMN-23081: sequential, the reads took 12 s of the step's 30 s bound).
+        # The window read of the ledger is the reader's subprocess, the step's longest wait (OMN-23606, measured on the
+        # publishing Mac 2026-11-10: 14.7 s of 24.1 s). It runs beside the cloud read while this thread reads the plans, the
+        # merged-and-running counts and the running evidence, which wait on nothing it produces; its answer, or its refusal,
+        # is taken where the first reader of the rows needs it.
+        cloud_pool = ThreadPoolExecutor(max_workers=2)
+        cloud_read = cloud_pool.submit(
+            read_cloud_account_source,
+            home,
+            rt.cloud_source,
+            overlay.cloud_accounts_node_command if overlay is not None else (),
+        )
         kinds = frozenset(rt.ledger_kinds)
-        # A rows file stands in for the archive reads too when no separate file names them (tests and replays).
-        stand_in = request.unresolved_rows_file or request.ledger_rows_file
-        ledger = read_ledger_rows(
+        ledger_read = cloud_pool.submit(
+            read_ledger_rows,
             window_days=rt.ledger_window_days,
+            source=overlay.ledger_source if overlay is not None else None,
             cut_chars=rt.ledger_cut_chars,
             timeout_seconds=rt.ledger_timeout_seconds,
             plugin_root=Path(plugin_root) if plugin_root else None,
@@ -330,16 +354,15 @@ class HandlerFactoryFloorEffect:
             kinds=kinds,
         )
         try:
+            # The four unresolved reads are the unresolved step's own (OMN-19998): this run reads the record it wrote.
             ledger_unresolved: tuple[ModelFloorLedgerRow, ...] | None = (
-                read_unresolved_rows(
-                    reads=tuple((read.kind, read.grep) for read in rt.unresolved_reads),
-                    cut_chars=rt.ledger_cut_chars,
-                    timeout_seconds=rt.ledger_timeout_seconds,
-                    plugin_root=Path(plugin_root) if plugin_root else None,
-                    plugin_root_env=rt.plugin_root_env,
-                    stand_in_file=Path(stand_in) if stand_in else None,
-                    kinds=kinds,
-                    older_than=now - timedelta(days=rt.ledger_window_days),
+                load_unresolved_rows(
+                    Path(request.unresolved_rows_file)
+                    if request.unresolved_rows_file
+                    else home / src.unresolved_rows_relpath,
+                    now=now,
+                    window_days=rt.ledger_window_days,
+                    max_age_hours=rt.unresolved_max_age_hours,
                 )
             )
             unresolved_cause = ""
@@ -359,11 +382,11 @@ class HandlerFactoryFloorEffect:
             ),
             linear_snapshot,
         )
-        cloud_accounts, cloud_cause = read_cloud_account_source(
-            home,
-            rt.cloud_source,
-            overlay.cloud_accounts_node_command if overlay is not None else (),
-        )
+        try:
+            cloud_accounts, cloud_cause = cloud_read.result()
+        finally:
+            # Starts no further read; the window read already running finishes and is taken below.
+            cloud_pool.shutdown(wait=False)
         plans = load_plans(
             kb=Path(kb_value),
             plans_relpath=rt.plans_relpath,
@@ -388,12 +411,16 @@ class HandlerFactoryFloorEffect:
         running_evidence, running_cause = self._read_running_evidence(
             now, host_table_path
         )
+        ledger = ledger_read.result()
         ledger_read_at = (
             _file_time(Path(request.ledger_rows_file))
             if request.ledger_rows_file
             else now
         )
         bars = rt.source_max_age_min
+        placement_path = home / src.placement_relpath
+        placement = read_placement(placement_path)
+        placement_read_at = _file_time(placement_path)
         health = (
             source_health(
                 source="plans",
@@ -461,6 +488,17 @@ class HandlerFactoryFloorEffect:
                 count=len(goal_rows) if goal_rows is not None else None,
                 cause=goal_cause,
             ),
+            # A field this revision does not know, or a row it cannot read, degrades this reading; it never refuses the run.
+            _degraded_reading(
+                source_health(
+                    source="placement",
+                    now=now,
+                    max_age_min=bars.placement,
+                    read_at=placement_read_at,
+                    count=len(placement.hosts) if placement_read_at else None,
+                ),
+                placement.cause,
+            ),
         )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
@@ -508,7 +546,7 @@ class HandlerFactoryFloorEffect:
                 else None,
                 running_evidence=now if running_evidence is not None else None,
             ),
-            placement=load_placement(home / src.placement_relpath),
+            placement=placement.hosts,
             stoppages=load_stoppages(home / src.friction_report_relpath),
             machines=machines,
             pool=load_pool(lane_dir / ls.pool_receipt),

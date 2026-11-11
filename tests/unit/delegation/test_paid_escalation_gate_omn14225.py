@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.handlers.routing.paid_gate import (
+    paid_escalation_allowed as _paid_escalation_allowed,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
-    _paid_escalation_allowed,
     _tier_allowed_by_contract,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier import (

@@ -3,8 +3,8 @@
 ---
 name: work_ledger_query_effect
 node_type: effect
-contract_version: {major: 1, minor: 2, patch: 0}
-node_version: {major: 1, minor: 2, patch: 0}
+contract_version: {major: 1, minor: 3, patch: 0}
+node_version: {major: 1, minor: 3, patch: 0}
 # The main runtime declares ONEX_RUNTIME_LANE and carries OMNINODE_INTERNAL_DB_URL;
 # effects lacks the lane, so lane-scoped discovery fails closed there (OMN-19408).
 runtime_profiles: [main]
@@ -31,6 +31,12 @@ description: >
   exactly when error is set), the page_size it was cut to and a watermark, the
   newest projected_at of the state table at the read; a page that has more
   carries next_cursor.
+  A rows query carrying page_size answers one keyset page, oldest first, with the
+  rows' lines and a next_cursor while more remain; its lanes are a union.
+  A rows query with no since (and no row_ref or history) is bounded (OMN-23541): it reads back only
+  the declared default window (the overlay's default_rows_window_days, else rows_default_window_days
+  below) from its until, and its answer says so (bounded, bounded_window_days; window_since is the
+  start it read from). A caller that wants more names a since.
   A rows query carrying history reads an explicit ledger_seq interval using an exclusive
   database-ingest cutoff. It retains raw rows and source names, checks source
   coverage before discovery filters, and binds cursors to the request and the
@@ -68,6 +74,10 @@ work_ledger_query:
   # An until=open HOLD with no RELEASE older than this is stale, not in force: holds lists it under
   # a stale heading with its age and inbox does not count it (cutover plan section 13, answer 2).
   hold_stale_after_days: 14
+  # A rows query with no since reads this many days back from its until (OMN-23541), not the whole
+  # table (326 thousand rows, 22.5 s). The node's overlay field default_rows_window_days, when an
+  # overlay supplies it, replaces this declared default.
+  rows_default_window_days: 3
   # Every answer travels as one record on the completed topic. The producer
   # refuses a record over its max_request_size (1,048,588 on the dev bus), and
   # an unbounded newest-per-lane answer measured 73 MB there (OMN-22478). An
@@ -110,8 +120,10 @@ dod_evidence:
     description: "Against real PostgreSQL the is_open column, not a fold of rows, selects the holds"
   - test: tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py::test_point_query_fault_answers_status_error_never_an_empty_page
     description: "A database fault answers status=error, never an empty page"
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_rows_default_window_omn23541.py::test_golden_no_since_rows_query_is_bounded_to_the_window
+    description: "A rows query with no start reads the declared window and says it was bounded"
   - test: tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py::test_page_and_watermark_ride_every_point_query_answer
     description: "Every point-query answer carries a page size and a watermark"
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-20738, OMN-19513, OMN-21948]
+  related_tickets: [OMN-20738, OMN-19513, OMN-21948, OMN-23541]

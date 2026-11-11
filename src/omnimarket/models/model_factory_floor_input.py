@@ -15,6 +15,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.models.floor_17a.model_floor_17a import ModelGoalScope
+from omnimarket.models.model_floor_line_select import (
+    LineClass,
+    ModelFloorLineGoal,
+    ModelFloorLineProcess,
+    ModelFloorLineSelectConfig,
+)
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -191,6 +197,10 @@ class ModelFloorLedgerRow(BaseModel):
     head: str = ""
     ruling: str = ""
     mechanism: str = ""
+    # The closing row's typed needs= cell as written (``<action>:<target>`` or ``unparsed``) and its report= cell: what
+    # the lane found and what it asks for next (OMN-23417).
+    needs: str = ""
+    report: str = ""
 
     _utc = field_validator("ts")(_aware)
 
@@ -204,6 +214,9 @@ class ModelFloorLinearIssue(BaseModel):
     status: str = ""
     status_type: str = ""
     title: str = ""
+    # The ids of the issue's children as the snapshot read them (empty when the snapshot did not read them): the floor
+    # walks them to tell whether a lane's ticket sits under a root of the goal's ticket rule (OMN-22934).
+    children: tuple[str, ...] = ()
 
 
 class ModelFloorStoppage(BaseModel):
@@ -217,6 +230,8 @@ class ModelFloorStoppage(BaseModel):
     recurring: bool = False
     tickets: tuple[str, ...] = ()
     last_seen: str = ""
+    # When a STATUS row reported the class resolved (the friction report's ``resolved_at``); empty when none did.
+    resolved_at: str = ""
 
 
 class ModelFloorSelection(BaseModel):
@@ -225,10 +240,14 @@ class ModelFloorSelection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = ()
+    # The plan files the newest readable plans-today output selected (class plan), in the output's order. None: no output was supplied, and
+    # a run that declares no line draws every plan it is given, as before.
+    plans_today_paths: tuple[str, ...] | None = None
+    # The line classes this run draws. Declared and plan lines are the floor's own; the other four are drawn only when
+    # the run names them, so a caller that does not forward their facts yet draws the record it always did.
+    line_classes: tuple[LineClass, ...] = ("declared", "plan")
     # The declared line (a plan_path_contains text) that shows each lane's application containers; empty shows none.
     container_read_line: str = ""
-    # The plan paths the plans-today output selected (its ``plans`` entries), in the output's order.
-    plans_today_paths: tuple[str, ...] = ()
 
 
 class ModelFloorMachineDecl(BaseModel):
@@ -340,6 +359,8 @@ class ModelFloorReceipt(BaseModel):
     ticket: str = ""
     placement: str = ""
     account: str = ""
+    # The Claude token pool label the lane started under, "" when the receipt names none.
+    login: str = ""
     pr_heads: tuple[str, ...] = ()
     result: str = ""
     session_detail: str = ""
@@ -565,6 +586,9 @@ class ModelFloorStoppedConfig(BaseModel):
     next_step_markers: tuple[str, ...] = Field(min_length=1)
     # A lane name with this regular expression removed is its stem: a later lane of the same stem is its successor.
     lane_stem_suffix: str = Field(min_length=1)
+    # Parent steps walked from a lane's ticket up to a root of the goal's ticket rule through the Linear snapshot's child
+    # ids (the rule's own bound is max_depth in the goal_scope_ticket_rule overlay).
+    scope_max_depth: int = Field(ge=1)
     # How many of the lane's last rows the record carries, and each row cut at this many characters.
     rows_kept: int = Field(ge=1)
     row_chars: int = Field(ge=40)
@@ -649,6 +673,7 @@ class ModelFactoryFloorConfig(BaseModel):
     limits: ModelFloorLimitsConfig
     host_status: ModelFloorHostStatusConfig
     stopped: ModelFloorStoppedConfig
+    line_select: ModelFloorLineSelectConfig
 
 
 class ModelFloorSourceReads(BaseModel):
@@ -772,7 +797,8 @@ class ModelFactoryFloorRequest(BaseModel):
     # never everything in scope).
     goal_scope: ModelGoalScope | None = None
     # The ticket roots of the goal's ticket rule (read with goal_scope): work on a root ticket is in scope. A child of a
-    # root is in scope only when goal_scope lists it; resolving children from Linear is not done here.
+    # root is in scope when the Linear snapshot's child ids (``linear``) lead from the root down to it, within the stopped
+    # config's scope_max_depth steps; with no snapshot read only the roots and goal_scope's own tickets are in scope.
     scope_ticket_roots: tuple[str, ...] = ()
     # Blocked, partial and handed-off TERMINAL rows and handed-off STATUS rows of the live ledger and every archive roll,
     # with no age limit, that are older than the ledger window (the window's own rows are in ``ledger``). None when the
@@ -787,6 +813,9 @@ class ModelFactoryFloorRequest(BaseModel):
     release_required_repos: tuple[str, ...] = ()
     held_gates: tuple[str, ...] = ()
     # How each source the board depends on was read.
+    # The goal rows and declared processes the line selection (classes goal and process) draws its lines from.
+    line_goals: tuple[ModelFloorLineGoal, ...] = ()
+    line_processes: tuple[ModelFloorLineProcess, ...] = ()
     source_health: tuple[ModelFloorSourceHealth, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)

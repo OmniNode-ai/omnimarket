@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Code Budget Compute (OMN-23434)
+#
+# Pure compute: handle(ModelCodeBudgetRequest) -> ModelCodeBudgetResult. The caller reads the measured drafts; the budgets per task
+# class, the sizing margin, the rounding step, the ceiling and the sample floor travel on the request from the node's overlay
+# (overlays/node_delegation_code_budget_compute/overlay.yaml); this contract holds none.
+name: node_delegation_code_budget_compute
+contract_name: node_delegation_code_budget_compute
+node_name: node_delegation_code_budget_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  The call budget of a delegated code draft. Operation resolve returns the overlay's budget for a task class and refuses a class the
+  overlay does not name. Operation size takes the drafts measured on the lab, keeps those that completed (a draft that timed out is
+  not a sample: its duration is the budget that cut it off), and returns the slowest completed duration times the overlay's margin,
+  rounded up to the overlay's step, refusing with too few completed samples or over the overlay's ceiling. Operation input_ceiling
+  (OMN-23631) returns the overlay's input ceiling, in grounding tokens, for a named backend and task class and refuses a pair the
+  overlay does not name; the routing handler reads every input ceiling through it, from the overlay key
+  delegation.code_budget.input_ceilings.<backend>.<task_class>. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_code_budget
+      handler:
+        name: HandlerDelegationCodeBudget
+        module: omnimarket.nodes.node_delegation_code_budget_compute.handlers.handler_delegation_code_budget
+
+handler:
+  module: omnimarket.nodes.node_delegation_code_budget_compute.handlers.handler_delegation_code_budget
+  class: HandlerDelegationCodeBudget
+  input_model: omnimarket.models.model_delegation_code_budget.ModelCodeBudgetRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 1000
+
+input_model:
+  name: ModelCodeBudgetRequest
+  module: omnimarket.models.model_delegation_code_budget
+  description: The operation, the task class, the backend (input_ceiling only), the drafts measured and the overlay.
+output_model:
+  name: ModelCodeBudgetResult
+  module: omnimarket.models.model_delegation_code_budget
+  description: The call budget in seconds or the input ceiling in tokens, or the typed refusal that says why there is none.
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.delegation-code-budget-requested.v1"
+    operation: "delegation_code_budget"
+
+terminal_event: onex.evt.omnimarket.delegation-code-budget-resolved.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-code-budget-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-code-budget-resolved.v1
+
+# The delegation step asks for a budget in process and calls the handler directly, so neither topic below is a bus hop yet.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.delegation-code-budget-requested.v1
+    producer: "the lane delegation step, which calls the handler directly"
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-code-budget-resolved.v1
+
+metadata:
+  description: "Call budget of a delegated code draft: an overlay value per task class, sized from measured drafts"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-10"
+  tags: [compute, delegation, budget, pure]
+  related_tickets: ["OMN-23434", "OMN-23631"]

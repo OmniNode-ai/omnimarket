@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23472
+title: The lane start parts read their lab settings from a settings file in the overlays repository
+summary: 'The lane start orchestrator''s overlay is one document model (both sections, every key, no extras) so the overlays repository can pin and load it.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-child-lane-start-overlay
+  statement: The lane start orchestrator's lab settings are one typed overlay document that the overlays repository loads through the node's own model.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lane start orchestrator''s lab settings file is loaded as a whole document (remote_lane_start and floor_fill, every key required) through the node''s own model -- falsifier: uv run pytest test_remote_lane_start_overlay_document.py, red when a required key is removed or a section is missing.'
+  - id: AC2
+    statement: 'AC2: the document refuses an unfillable engine_argv and an unknown key at load, so no value is written in the node code -- falsifier: the same file, red when engine_argv carries a field the request cannot fill.'
+  - id: AC3
+    statement: 'AC3: integrated: the lane start node loads the overlay from the overlays repository on a lab host and starts one real lane, read from that lane''s CLAIM row -- falsifier: the lane''s CLAIM row in the ledger.'
+evidence_requirements:
+- kind: tests
+  description: The overlay document model tests of the lane start orchestrator.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_overlay_document.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-OMN-23472-ac1
+  description: The example overlay loads as the whole document and a missing section or key is refused.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_overlay_document.py -q --no-cov --tb=line -k 'whole_document or missing or overlays_repository'
+    cwd: .
+- id: dod-OMN-23472-ac2
+  description: An unfillable engine_argv and an unknown key are refused at load.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_overlay_document.py -q --no-cov --tb=line -k 'unfillable or unknown'
+    cwd: .
+- id: dod-OMN-23472-integration-proof
+  description: The start node started one real lane on a lab host with the overlay from the overlays repository, read from the lane's CLAIM row.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query rows --kind CLAIM --term 'node_remote_lane_start_orchestrator' --since 2026-11-10T06:00:00Z | grep -q 'node_remote_lane_start_orchestrator'
+    cwd: .
+- id: dod-OMN-23472-ac3
+  description: The overlay the start node loads from the overlays repository is read through the node's own model; the live lane start is the integration-proof item.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_overlay_document.py -q --no-cov --tb=line -k 'overlays_repository'
+    cwd: .
