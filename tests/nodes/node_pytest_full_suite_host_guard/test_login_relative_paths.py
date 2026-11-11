@@ -132,6 +132,7 @@ def test_seam_request_fields_the_guard_script_fills() -> None:
         "login_overlay_text",
         "login",
         "login_home",
+        "legacy_override_by_label",
         "host",
         "env_overrides",
         "private_table_rel",

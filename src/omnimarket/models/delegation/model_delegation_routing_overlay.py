@@ -19,6 +19,9 @@ from omnimarket.models.delegation.model_class_escalation_chain import (
 from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
 from omnimarket.models.delegation.model_eval_arms_overlay import ModelEvalArmsOverlay
 from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
+from omnimarket.models.delegation.model_paid_rungs_overlay import (
+    ModelPaidRungsOverlay,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationBackendKind,
     ModelDelegationBackendConfig,
@@ -80,6 +83,10 @@ class ModelDelegationRoutingOverlay(BaseModel):
     before it has scored them, with their prices and the eval spend cap. Their
     backends are pinned-only and are appended to the loaded routing contract by
     the bifrost loaders, so a backend-id pin resolves them and nothing else does.
+
+    ``paid_rungs`` (OMN-23756) carries hosted models ordinary routing may select:
+    metered tiers inserted into the class ladders after a named tier, behind one
+    switch (off by default) and a spending cap.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -90,6 +97,7 @@ class ModelDelegationRoutingOverlay(BaseModel):
     escalation_chains: tuple[ModelTaskClassEscalationChain, ...] = ()
     registered_byok_tier: ModelRegisteredByokTier | None = None
     eval_arms: ModelEvalArmsOverlay | None = None
+    paid_rungs: ModelPaidRungsOverlay | None = None
 
     @model_validator(mode="after")
     def _validate_references(self) -> ModelDelegationRoutingOverlay:
@@ -128,6 +136,35 @@ class ModelDelegationRoutingOverlay(BaseModel):
                     problems.append(
                         f"task_class {chain.task_class!r} chain names eval tier {rung!r}; "
                         "eval arms are reached only by an explicit pin"
+                    )
+        if self.paid_rungs is not None:
+            eval_ids = (
+                {b.backend_id for b in self.eval_arms.backends}
+                if self.eval_arms is not None
+                else set()
+            )
+            for backend in self.paid_rungs.backends:
+                if backend.backend_id in backend_ids | eval_ids:
+                    problems.append(
+                        f"paid backend {backend.backend_id!r} reuses a harness or eval backend_id"
+                    )
+            harness_tier_names = {t.name for t in self.harness_tiers}
+            for name in sorted(self.paid_rungs.tier_names() & harness_tier_names):
+                problems.append(f"paid tier {name!r} reuses a harness tier name")
+            if (
+                self.registered_byok_tier is not None
+                and self.registered_byok_tier.name in self.paid_rungs.tier_names()
+            ):
+                problems.append(
+                    f"paid tier {self.registered_byok_tier.name!r} reuses the registered_byok_tier name"
+                )
+            for chain in self.escalation_chains:
+                for rung in sorted(
+                    self.paid_rungs.tier_names().intersection(chain.rungs)
+                ):
+                    problems.append(
+                        f"task_class {chain.task_class!r} chain names paid tier {rung!r}; "
+                        "paid tiers join the ladder through paid_rungs.after_tier"
                     )
         for chain in self.escalation_chains:
             for tier in self.harness_tiers:
@@ -170,6 +207,28 @@ class ModelDelegationRoutingOverlay(BaseModel):
             row.setdefault("endpoint_url", None)
             rows.append(row)
         return rows
+
+    def paid_rung_backend_rows(self) -> list[dict[str, object]]:
+        """The paid rungs' backends as contract rows; empty when absent or switched off."""
+        if self.paid_rungs is None:
+            return []
+        return self.paid_rungs.backend_rows()
+
+    def declared_price_per_1m(
+        self, endpoint_url: str | None, model_name: str
+    ) -> tuple[Decimal, Decimal] | None:
+        """The price this overlay declares for a hosted model, or ``None``.
+
+        A paid rung's price is read first, then an eval arm's. Both are facts
+        about the model, so the lookup does not depend on the paid switch: a
+        call on either is booked at the overlay's price for that endpoint and
+        model, never at the rate of the tier it ran in.
+        """
+        if self.paid_rungs is not None:
+            price = self.paid_rungs.price_per_1m(endpoint_url, model_name)
+            if price is not None:
+                return price
+        return self.eval_arm_price_per_1m(endpoint_url, model_name)
 
     def eval_arm_price_per_1m(
         self, endpoint_url: str | None, model_name: str
