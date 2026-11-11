@@ -22,6 +22,9 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: The tool_use rubric's turn budget (delegation_class_rubrics.v1.yaml).
@@ -170,6 +173,18 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         description="The ledger lane each onex delegate run is attributed to.",
     )
     ticket: str | None = Field(default=None, pattern=r"^OMN-[0-9]+$")
+    traffic_class: EnumDelegationTrafficClass | None = Field(
+        default=None,
+        description="Provenance of every delegate turn: put on each turn's argv "
+        "as --traffic-class (core ModelDelegationProvenance). Synthetic marks an "
+        "eval or probe run as not a user's run and requires source_surface.",
+    )
+    source_surface: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Named producer surface put on each turn's argv as "
+        "--source-surface.",
+    )
 
     @field_validator("correlation_id")
     @classmethod
@@ -191,6 +206,15 @@ class ModelDelegatedCodeEditRequest(BaseModel):
             if not item or item.startswith("/") or ".." in item.split("/"):
                 raise ValueError(f"{item!r} is not a worktree-relative path")
         return value
+
+    @model_validator(mode="after")
+    def _synthetic_names_its_surface(self) -> ModelDelegatedCodeEditRequest:
+        if (
+            self.traffic_class is EnumDelegationTrafficClass.SYNTHETIC
+            and not self.source_surface
+        ):
+            raise ValueError("synthetic traffic requires a source_surface")
+        return self
 
     @model_validator(mode="after")
     def _unique_checks(self) -> ModelDelegatedCodeEditRequest:
