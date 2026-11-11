@@ -11,13 +11,13 @@ requirements:
   statement: load_delegation_routing_overlay resolves the explicit path, then the overlay store root document, then DELEGATION_ROUTING_OVERLAY_PATH, then the empty overlay, and a broken selected source refuses with its key and path.
   acceptance:
   - id: AC1
-    statement: 'AC1: the overlays repository holds the delegation routing overlay with content equal to the plugin copy on its main branch, pinned to the omnimarket model and loaded through it by the existing pin check -- falsifier: edit one escalation rung in the overlays copy and pytest tests/test_delegation_routing_overlay.py -q in overlays fails'
+    statement: 'AC1: the overlays repository holds the delegation routing overlay with content equal to the plugin copy on its main branch, pinned to the omnimarket model and loaded through it by the existing pin check -- falsifier: edit one escalation rung in the overlays copy and `pytest tests/test_delegation_routing_overlay.py -q` in overlays fails'
   - id: AC2
-    statement: 'AC2: the overlay store loads and serves the document (loader list, reader list and pin agree) -- falsifier: remove the id from the loader list and pytest tests/test_overlay_store_load_list.py -q in overlays fails'
+    statement: 'AC2: the overlay store loads and serves the document (loader list, reader list and pin agree) -- falsifier: remove the id from the loader list and `pytest tests/test_overlay_store_load_list.py -q` in overlays fails'
   - id: AC3
-    statement: 'AC3: load_delegation_routing_overlay reads the document from the overlay roots first, then DELEGATION_ROUTING_OVERLAY_PATH, then the empty overlay -- falsifier: uv run pytest tests/unit/delegation/test_routing_overlay_store_first.py -q in omnimarket fails when the store lookup is removed'
+    statement: 'AC3: load_delegation_routing_overlay reads the document from the overlay roots first, then DELEGATION_ROUTING_OVERLAY_PATH, then the empty overlay -- falsifier: `uv run pytest tests/unit/delegation/test_routing_overlay_store_first.py -q` in omnimarket fails when the store lookup is removed'
   - id: AC4
-    statement: 'AC4: a broken store document refuses with the key and path and does not fall through to a lower source -- falsifier: uv run pytest tests/unit/delegation/test_routing_overlay_store_first.py -q -k broken in omnimarket'
+    statement: 'AC4: a broken store document refuses with the key and path and does not fall through to a lower source -- falsifier: `uv run pytest tests/unit/delegation/test_routing_overlay_store_first.py -q -k broken` in omnimarket'
   - id: AC5
     statement: 'AC5: integrated: on one lab host a delegation routing read with the plugin copy still present resolves its routing overlay path under the overlays store root -- falsifier: the lab receipt on this ticket names the host, the omnimarket revision and the resolved path, read back with onex ticket read'
 evidence_requirements:
