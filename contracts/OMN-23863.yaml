@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23863
+title: Registry units look in the settings store before the plugin folder
+summary: Five declared registry units (lane-ctx-ledger-dedupe, c32-auth-boundary-probe, lab-test-harness, job-log-filler, landing-join-j8) took ONEX_SKILL_OVERLAY_ROOTS from the plugin copy of the overlays alone, so a document that lives only in the overlays repository was invisible to them. Each now defaults to the overlays clone first and the plugin copy second, the form the overlay store refresh units and the factory floor publisher declare, and refuses a worktree path as a root. A new test fails for any unit that declares overlay roots without the clone first.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23863-roots-store-first
+  statement: Every registry unit that declares ONEX_SKILL_OVERLAY_ROOTS renders the overlays clone as its first root, keeps the plugin copy as the fallback, and refuses a worktree path.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every unit in node_host_installer_registry_units/contract.yaml that sets ONEX_SKILL_OVERLAY_ROOTS lists the overlays clone before the plugin copy -- falsifier: the new test file tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py names a unit whose first root is the plugin copy or that lists no clone'
+  - id: AC2
+    statement: 'AC2: the new test fails on the contract at origin/dev and passes after the change -- falsifier: running that file against the contract at origin/dev passes'
+  - id: AC3
+    statement: 'AC3: a golden test and an error test run the check through the installer''s dry run for one changed unit, the golden one rendering the clone first and the error one refusing a worktree path as a root -- falsifier: either test is absent from the file'
+  - id: AC4
+    statement: 'AC4: integrated: through the installer node''s dry run on one lab host, each changed unit renders with the overlays clone before the plugin copy, and the receipt names the host and revision -- falsifier: a rendered unit on that host names the plugin copy first'
+evidence_requirements:
+- kind: tests
+  description: The focused test file at the pushed head; its first-root, five-unit, golden and error tests fail at origin/dev where five units name the plugin copy alone.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23863-ac1-clone-first
+  description: Every unit that declares overlay roots lists the overlays clone first. Fails at origin/dev.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q -k every_unit
+    cwd: .
+- id: dod-omn23863-ac2-control
+  description: The control test shows the check naming a unit that lists the plugin copy first; the file as a whole fails at origin/dev.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q -k control
+    cwd: .
+- id: dod-omn23863-ac3-golden-error
+  description: The golden test renders the clone before the plugin copy for each changed unit; the error test refuses a worktree override for each.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q -k golden
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q -k error
+    cwd: .
+- id: dod-omn23863-ac4-integration-proof
+  description: The pushed head ran the focused tests on a lab host through the lab work runner and exited 0. The dry-run readback of each changed unit on a lab host is read from the lab receipt comment on the ticket.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23863 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
