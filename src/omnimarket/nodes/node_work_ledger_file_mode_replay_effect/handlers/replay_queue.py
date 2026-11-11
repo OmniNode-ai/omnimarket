@@ -43,6 +43,8 @@ class ProtocolReplayQueue(Protocol):
 
     def pending_row_ids(self) -> set[str]: ...
 
+    def replayed_row_ids(self) -> set[str]: ...
+
     def refused_reasons(self) -> dict[str, str]: ...
 
 
@@ -77,6 +79,9 @@ class InMemoryReplayQueue:
 
     def pending_row_ids(self) -> set[str]:
         return {r.row_id for r in self.pending()}
+
+    def replayed_row_ids(self) -> set[str]:
+        return {r.row_id for r in self._rows.values() if r.state == "replayed"}
 
     def refused_reasons(self) -> dict[str, str]:
         return {
