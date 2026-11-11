@@ -1117,6 +1117,10 @@ units:
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The consumer group carries this instance's host identity (OMN-22921): two orchestrators on one topic never share a group.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
@@ -1221,6 +1225,10 @@ units:
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The consumer group carries this instance's host identity (OMN-22921): two orchestrators on one topic never share a group.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
   silent-failure-alarm:

@@ -12,7 +12,7 @@
      ],
      "brief_class": "real_red",
      "deadline_at": "2026-09-28T01:05:00Z",
-     "engine": "codex_high",
+     "engine": "claude_sonnet",
      "head_sha": "c572d16160f002af10a1e53410980d7f6aa709e8",
      "instructions": "A check on this head is red for a product reason, or stayed red after its one whole-run rerun. Read the failing check-run's log, fix the cause on the branch, run the focused tests for the change, and push.",
      "lease_id": 1,
@@ -52,7 +52,7 @@
       "unit"
      ],
      "dispatched_at": "2026-09-28T00:05:00Z",
-     "engine": "codex_high",
+     "engine": "claude_sonnet",
      "kill_sent_tick": null,
      "last_seen_head": "c572d16160f002af10a1e53410980d7f6aa709e8",
      "lease_id": 1,
@@ -99,7 +99,7 @@
  },
  "facts": {
   "available_engines": [
-   "codex_high",
+   "claude_sonnet",
    "claude_sonnet",
    "claude_sonnet"
   ],
@@ -120,7 +120,7 @@
    "cause_attempt_budget": 2,
    "cause_diagnosis_engine": "claude_sonnet",
    "cause_engine_ladder": [
-    "codex_high",
+    "claude_sonnet",
     "claude_sonnet"
    ],
    "cause_lease_seconds": 5400,
@@ -136,7 +136,7 @@
    "cluster_min_members": 3,
    "cluster_min_members_floor": 2,
    "engine_ladder": [
-    "codex_high",
+    "claude_sonnet",
     "claude_sonnet",
     "claude_sonnet"
    ],
