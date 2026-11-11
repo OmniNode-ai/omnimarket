@@ -103,6 +103,14 @@ def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
     return tuple(sorted(found, key=lambda entry: entry.path))
 
 
+def display_path(path: Path) -> str:
+    """A folder under the user's home shown as ~/..., as terminals show it."""
+    try:
+        return "~/" + str(path.relative_to(Path.home()))
+    except ValueError:
+        return str(path)
+
+
 class OnexProcessRunner:
     """Runs the installed `onex` beside this interpreter, as a user would."""
 
@@ -189,7 +197,9 @@ async def load_status() -> ModelTuiStatus:
             gateway = bool(json.loads(line).get("enabled"))
         except ValueError:
             continue
-    return ModelTuiStatus(workspace=str(Path.cwd()), model=model, gateway=gateway)
+    return ModelTuiStatus(
+        workspace=display_path(Path.cwd()), model=model, gateway=gateway
+    )
 
 
 class OnexTui(App[int]):
@@ -226,7 +236,7 @@ class OnexTui(App[int]):
         self._commands = command_tree(root)
         self._runner: ProtocolTuiRunner = runner or OnexProcessRunner()
         self._load_status = load_status or globals()["load_status"]
-        self._status = ModelTuiStatus(workspace=str(Path.cwd()))
+        self._status = ModelTuiStatus(workspace=display_path(Path.cwd()))
         self._last_run = ""
         self._history: list[str] = []
         self._recall = 0

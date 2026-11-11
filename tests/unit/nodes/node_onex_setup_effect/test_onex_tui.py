@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 import click
 import pytest
@@ -281,3 +282,13 @@ async def test_up_and_down_recall_earlier_entries_when_the_palette_is_closed() -
         assert prompt.value == "second"
         await pilot.press("down")
         assert prompt.value == ""
+
+
+def test_a_folder_under_home_is_shown_with_a_tilde(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import display_path
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert display_path(tmp_path / "ws") == "~/ws"
+    assert display_path(Path("/opt/elsewhere")) == "/opt/elsewhere"
