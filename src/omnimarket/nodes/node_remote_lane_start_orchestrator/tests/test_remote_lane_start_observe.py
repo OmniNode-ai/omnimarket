@@ -155,6 +155,7 @@ def test_a_host_the_table_marks_out_is_refused_with_its_reason(tmp_path: Path) -
     )
     assert rig.host_calls() == []
     assert rig.ledger_rows() == []
+    assert rig.receipts.written == []
 
 
 def test_the_same_host_in_service_is_placed(tmp_path: Path) -> None:
@@ -217,6 +218,7 @@ def test_an_unreadable_host_table_refuses_the_start(tmp_path: Path) -> None:
     assert any("host-table-unreadable" in line for line in result.lines)
     assert rig.host_calls() == []
     assert rig.ledger_rows() == []
+    assert rig.receipts.written == []
 
 
 def test_the_settings_refuse_an_unknown_start_mode() -> None:

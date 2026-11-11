@@ -59,7 +59,9 @@ class SpyHostRunner:
 
 
 def _wired(
-    tmp_path: Path, start_mode: str
+    tmp_path: Path,
+    start_mode: str,
+    out_of_service: dict[str, str] | None = None,
 ) -> tuple[HandlerRemoteLaneStart, SpyHostRunner, Path, ModelRemoteLaneStartRequest]:
     writer = tmp_path / "writer.py"
     writer.write_text(WRITER, encoding="utf-8")
@@ -77,7 +79,7 @@ def _wired(
         stop_requested=lambda: False,
         sleep=lambda _s: None,
         echo=lambda _line: None,
-        host_availability=lambda: {},
+        host_availability=lambda: out_of_service or {},
         host_runner=spy,
     )
     return handler, spy, ledger, fx.request(ledger_path=str(ledger))
@@ -110,3 +112,34 @@ def test_control_act_reaches_the_ssh_transport_and_writes_the_claim(
     assert result.outcome is not EnumRemoteLaneStartOutcome.OBSERVED
     assert spy.argvs, "act mode ran no host command: the spy cannot see a call"
     assert " | CLAIM | " in ledger.read_text(encoding="utf-8")
+
+
+def test_observe_writes_no_receipt_even_when_no_host_takes_the_lane(
+    tmp_path: Path,
+) -> None:
+    """The only host is out of service: the start ends no-host, and in observe mode that ending leaves no receipt file."""
+    handler, spy, ledger, req = _wired(tmp_path, "observe", {"h106": "away"})
+    before = ledger.read_text(encoding="utf-8")
+
+    result = handler.handle(req)
+
+    assert result.outcome is EnumRemoteLaneStartOutcome.NO_HOST
+    assert result.exit_code == 75
+    assert spy.argvs == []
+    assert ledger.read_text(encoding="utf-8") == before
+    assert not (tmp_path / "receipts").exists(), "observe mode wrote a receipt"
+
+
+def test_control_act_writes_a_receipt_when_no_host_takes_the_lane(
+    tmp_path: Path,
+) -> None:
+    """Failing control for the case above: the same refusal in act mode writes its receipt file."""
+    handler, spy, _ledger, req = _wired(tmp_path, "act", {"h106": "away"})
+
+    result = handler.handle(req)
+
+    assert result.outcome is EnumRemoteLaneStartOutcome.NO_HOST
+    assert (tmp_path / "receipts").exists(), (
+        "the receipt file the control reads is missing"
+    )
+    assert spy.argvs == []

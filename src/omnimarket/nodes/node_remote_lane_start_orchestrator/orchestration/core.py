@@ -146,6 +146,13 @@ class InMemoryReceiptSink:
         self.written.append(receipt.model_copy(deep=True))
 
 
+class DiscardReceiptSink:
+    """Write nothing: the sink of an ``observe``-mode start, which leaves no receipt whatever way it ends."""
+
+    def write(self, receipt: ModelRemoteLaneStartReceipt) -> None:
+        return None
+
+
 class FileReceiptSink:
     """Write ``<receipt_dir>/<lane>/<run_id>.json`` atomically."""
 
@@ -210,7 +217,13 @@ class RemoteLaneStartOrchestrator:
         self._login = login
         self._placement = placement or HandlerRemoteLanePlacement()
         self._close = close or HandlerRemoteLaneResult()
-        self._receipts = receipts or InMemoryReceiptSink()
+        # An observe-mode start writes no receipt on any ending (no host, unsupported shape, observed): the sink it is
+        # given is replaced, so a file sink wired by the caller is never reached.
+        self._receipts: ProtocolReceiptSink = (
+            DiscardReceiptSink()
+            if settings.start_mode == "observe"
+            else (receipts or InMemoryReceiptSink())
+        )
         self._echo = echo
         self._clock = clock
         self._sleep = sleep or (lambda _s: None)
