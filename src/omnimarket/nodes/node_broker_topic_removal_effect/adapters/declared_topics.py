@@ -6,7 +6,11 @@ files under the registry root the overlay names.
 The file backend walks every contract file the overlay's glob finds in the overlay's repositories,
 skipping the path parts the overlay excludes, and records, for every string that fully matches the
 overlay's topic pattern, the contract that holds it. A contract declares a topic as published when
-some key on the path to the string carries one of the overlay's publish fragments.
+some key on the path to the string carries one of the overlay's publish fragments. It then scans the
+source files the overlay's reference globs name, skipping the excluded path parts and any file that
+is not valid utf-8 text, and records a topic a source file names under the name ``source:`` plus the
+file's path relative to the registry root; those names appear only in the declared map, never in the
+producer map.
 """
 
 from __future__ import annotations
@@ -98,6 +102,7 @@ class ContractFileDeclaredTopics:
             self._walk(document, pattern, path)
         if parsed == 0:
             raise DeclaredTopicsError("no-contract-parsed")
+        self._scan_references(pattern)
 
     def _walk(self, document: object, pattern: re.Pattern[str], path: Path) -> None:
         source = self._source
@@ -126,6 +131,30 @@ class ContractFileDeclaredTopics:
                     visit(value, keys)
 
         visit(document, [])
+
+    def _scan_references(self, pattern: re.Pattern[str]) -> None:
+        source = self._source
+        root = self._environ.get(source.registry_root_env, "").strip()
+        for repo in source.repositories:
+            base = Path(root) / repo
+            if not base.is_dir():
+                continue
+            for glob in source.reference_globs:
+                for path in sorted(base.glob(glob)):
+                    if not path.is_file():
+                        continue
+                    if any(part in source.excluded_parts for part in path.parts):
+                        continue
+                    try:
+                        text = path.read_text(encoding="utf-8")
+                    except (UnicodeDecodeError, OSError):
+                        continue
+                    for token in re.findall(r"[A-Za-z0-9_.\-]+", text):
+                        token = token.rstrip(".-")
+                        if token and pattern.fullmatch(token):
+                            self._declared.setdefault(token, set()).add(
+                                f"source:{path.relative_to(Path(root))}"
+                            )
 
 
 __all__ = ["ContractFileDeclaredTopics", "InMemoryDeclaredTopics"]
