@@ -42,6 +42,10 @@ SAVINGS_SQL = """
         (SELECT COUNT(*) FROM delegation_events
          WHERE tenant_id = %(tenant_uuid)s), 0
       )::bigint AS delegation_runs,
+      COALESCE(
+        (SELECT SUM(tokens_input + tokens_output) FROM delegation_events
+         WHERE tenant_id = %(tenant_uuid)s), 0
+      )::bigint AS total_tokens,
       (SELECT MAX(event_timestamp) FROM savings_estimates
        WHERE tenant_id = %(tenant_text)s) AS savings_latest,
       (SELECT MAX(timestamp) FROM delegation_events
@@ -60,6 +64,8 @@ RECENT_DELEGATIONS_SQL = """
       d.quality_gate_passed AS quality_gate_passed,
       d.cost_usd       AS cost_usd,
       COALESCE(s.savings_usd, d.cost_savings_usd) AS saved_usd,
+      (d.tokens_input + d.tokens_output) AS tokens,
+      d.data_source    AS data_source,
       d.timestamp      AS occurred_at
     FROM delegation_events d
     LEFT JOIN LATERAL (
@@ -85,6 +91,8 @@ RECENT_DELEGATIONS_FALLBACK_SQL = """
       d.quality_gate_passed AS quality_gate_passed,
       d.cost_usd       AS cost_usd,
       d.cost_savings_usd AS saved_usd,
+      (d.tokens_input + d.tokens_output) AS tokens,
+      d.data_source    AS data_source,
       d.timestamp      AS occurred_at
     FROM delegation_events d
     WHERE d.tenant_id = %(tenant_uuid)s
@@ -122,6 +130,7 @@ class AnalyticsTenantProjectionReader:
             total_saved_usd=float(row.get("total_saved_usd") or 0.0),
             total_spend_usd=float(row.get("total_spend_usd") or 0.0),
             delegation_runs=int(row.get("delegation_runs") or 0),
+            total_tokens=int(row.get("total_tokens") or 0),
             savings_latest=_when(row.get("savings_latest")),
             runs_latest=_when(row.get("runs_latest")),
         )
@@ -148,6 +157,8 @@ class AnalyticsTenantProjectionReader:
                 quality_gate_passed=bool(r.get("quality_gate_passed")),
                 cost_usd=float(r.get("cost_usd") or 0.0),
                 saved_usd=float(r.get("saved_usd") or 0.0),
+                tokens=int(r.get("tokens") or 0),
+                data_source=str(r.get("data_source") or "real"),
                 occurred_at=_when(r.get("occurred_at")),
             )
             for r in rows
