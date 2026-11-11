@@ -40,6 +40,12 @@ handler_routing:
     handler:
       name: HandlerFactoryFloorEffect
       module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect
+  - operation: read_ledger_pages
+    handler:
+      name: HandlerFloorLedgerPages
+      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_floor_ledger_pages
+    input_model: omnimarket.nodes.node_factory_floor_effect.models.model_floor_ledger_pages.ModelFloorLedgerPages
+    output_model: omnimarket.nodes.node_factory_floor_effect.models.model_floor_ledger_pages.ModelFloorLedgerPagesResult
   - operation: emit_seam_count
     handler:
       name: HandlerSeamEmitter
