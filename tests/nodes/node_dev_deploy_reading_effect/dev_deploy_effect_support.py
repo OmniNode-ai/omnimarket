@@ -86,6 +86,29 @@ def document(**changes: Any) -> dict[str, Any]:
             "sha_path": ["vcs_ref"],
             "timeout_seconds": 5,
         },
+        "source_rule": "lab_pass_receipt",
+        "deploy_agent": {
+            "health_url": "http://agent.test/health",
+            "queue_url": "http://agent.test/queue",
+            "timeout_seconds": 5,
+            "idle_grace_seconds": 7200,
+            "provenance_section": "build_context",
+            "source_repo": "repo-a",
+            "merge_repos": [
+                {
+                    "source_repo": "repo-a",
+                    "clone_path_env": "TEST_CLONE",
+                    "ref": "origin/dev",
+                    "provenance_section": "build_context",
+                },
+                {
+                    "source_repo": "repo-b",
+                    "clone_path_env": "TEST_CLONE",
+                    "ref": "origin/dev",
+                    "provenance_section": "siblings",
+                },
+            ],
+        },
         "drill_fault": {"synthetic_merge_sha": SHA_DRILL, "age_seconds": 7200},
         "schedule_units": {
             "unit_name": "test-reading",
