@@ -1600,6 +1600,7 @@
   "tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_seam_fill.py": 0.01,
   "tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_seam_start.py": 0.14,
   "tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_sources.py": 0.01,
+  "tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_wiring_roots.py": 2.83,
   "tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py": 0.17,
   "tests/nodes/node_lane_model_policy_compute/test_opus_escalation_reason.py": 0.17,
   "tests/nodes/node_lane_parent_notice_recovery_effect/test_notice_recovery.py": 0.17,

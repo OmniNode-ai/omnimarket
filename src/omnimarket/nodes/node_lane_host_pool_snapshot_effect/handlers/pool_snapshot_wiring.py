@@ -10,6 +10,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.nodes.node_host_capability_compute.handlers.handler_host_capability import (
+    registry_root_candidates,
+)
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
     FileSnapshotStore,
 )
@@ -126,6 +130,12 @@ def build_pool_snapshot_ports(
             raise ValueError(
                 "the redpanda backend names one of bus_lane or bootstrap_servers"
             )
+    registry_roots: tuple[str, ...] = ()
+    if any("{registry_roots}" in a for a in overlay.accounts.remote_argv):
+        try:
+            registry_roots = registry_root_candidates(environ)
+        except NodeOverlayError as exc:
+            raise ValueError(f"registry roots unreadable: {exc}") from None
     return PoolSnapshotPorts(
         advertisements=advertisements,
         host_table=LabHostTableSource(environ),
@@ -133,7 +143,9 @@ def build_pool_snapshot_ports(
             _row_source(overlay.ledger_read, environ),
             overlay.ledger_lookback_hours,
         ),
-        accounts=TokenPoolCommandAccountsSource(overlay.accounts, runner),
+        accounts=TokenPoolCommandAccountsSource(
+            overlay.accounts, runner, registry_roots=registry_roots
+        ),
         store=FileSnapshotStore(
             resolve_path(overlay.snapshot_path), overlay.record_suffix
         ),

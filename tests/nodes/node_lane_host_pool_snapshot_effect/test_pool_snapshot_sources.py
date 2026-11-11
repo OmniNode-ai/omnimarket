@@ -3,20 +3,24 @@
 """The real sources of the lane host pool snapshot writer, driven by scripted commands and files (OMN-23664).
 
 Golden: the advertisement list the owner node's model dumps parses back field for field; the ledger's live CLAIM rows count per host;
-the token pool's own status result splits into usable and limited labels; the lab host table file reads.
+the token pool's own status result splits into usable and limited labels; the lab host table file reads; the remote argv walks the declared
+registry roots on the far host.
 Error: a non-list, a failing or unlaunchable command, an unreadable ledger and an unreadable table end in PoolSnapshotSourceError (the
-accounts source names the cause per host instead of failing the pass); a CLAIM closed by a TERMINAL, or quiet past the window, is no lane.
+accounts source names the cause per host instead of failing the pass); a CLAIM closed by a TERMINAL, or quiet past the window, is no lane;
+a remote argv naming {registry_roots} with no root declared is never run.
 """
 
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
 import pytest
+import yaml
 
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
@@ -36,6 +40,8 @@ from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_erro
 )
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models import (
     ModelAccountsRoute,
+    ModelHostAccounts,
+    ModelPoolSnapshotOverlay,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
@@ -208,6 +214,17 @@ ROUTE = ModelAccountsRoute(
     timeout_seconds=20,
 )
 
+ROOTS_ROUTE = ModelAccountsRoute(
+    local_argv=("$OMNI_POOL_TEST_PY", "status"),
+    remote_argv=("ssh", "{target}", "for r in {registry_roots}; do :; done"),
+    timeout_seconds=20,
+)
+
+NODE_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_lane_host_pool_snapshot_effect"
+)
+
 
 def test_accounts_split_usable_from_limited_and_revoked_and_never_contact_an_away_row(
     monkeypatch: pytest.MonkeyPatch,
@@ -258,6 +275,89 @@ def test_error_accounts_name_the_cause_per_host_and_do_not_fail_the_pass() -> No
     assert got["h2"].unread_reason == "token pool output not JSON"
     assert "timed out" in (got["h3"].unread_reason or "")
     assert all(a.usable == () for a in got.values())
+
+
+def test_accounts_substitute_the_declared_registry_roots_into_the_remote_argv() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], timeout: int) -> tuple[int, str]:
+        calls.append(tuple(argv))
+        return 0, _status("h2", _entry("acct-a"))
+
+    source = TokenPoolCommandAccountsSource(
+        ROOTS_ROUTE,
+        runner,
+        registry_roots=("$HOME/Code/reg-a", "/srv/reg-b"),
+    )
+    accounts = source.read_accounts((host_row("h2"),))
+    # every declared root arrives double-quoted, so the remote shell expands $HOME there, never the local one
+    assert calls == [
+        (
+            "ssh",
+            "h2",
+            'for r in "$HOME/Code/reg-a" "/srv/reg-b"; do :; done',
+        )
+    ]
+    assert accounts[0].usable == ("acct-a",)
+
+
+def test_error_accounts_without_a_declared_registry_root_are_never_run() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], timeout: int) -> tuple[int, str]:
+        calls.append(tuple(argv))
+        return 0, _status("h2", _entry("acct-a"))
+
+    accounts = TokenPoolCommandAccountsSource(ROOTS_ROUTE, runner).read_accounts(
+        (host_row("h2"),)
+    )
+    assert accounts == (
+        ModelHostAccounts(host="h2", unread_reason="no registry root declared"),
+    )
+    assert calls == []
+
+
+def test_shipped_redpanda_example_remote_argv_walks_the_declared_registry_roots() -> (
+    None
+):
+    fields = yaml.safe_load(
+        (NODE_DIR / "overlay.redpanda.example.yaml").read_text(encoding="utf-8")
+    )
+    overlay = ModelPoolSnapshotOverlay.model_validate(fields)
+    assert overlay.accounts is not None
+    # the remote shell cannot expand the local $OMNIBASE_PATH; the loop walks the roots the wiring declares
+    assert any("{registry_roots}" in a for a in overlay.accounts.remote_argv)
+    assert not any("$OMNIBASE_PATH" in a for a in overlay.accounts.remote_argv)
+
+
+def test_accounts_read_every_host_at_once_and_keep_the_order_given() -> None:
+    # every run waits for the other two to have started: a read one host after another never gets past the barrier
+    barrier = threading.Barrier(3, timeout=5)
+
+    def runner(argv: Sequence[str], timeout: int) -> tuple[int, str]:
+        barrier.wait()
+        return 0, _status(argv[1], _entry(f"acct-{argv[1]}"))
+
+    got = TokenPoolCommandAccountsSource(ROUTE, runner).read_accounts(
+        (host_row("h1"), host_row("h2"), host_row("h3"))
+    )
+    assert [a.host for a in got] == ["h1", "h2", "h3"]
+    assert [a.usable for a in got] == [("acct-h1",), ("acct-h2",), ("acct-h3",)]
+
+
+def test_error_one_slow_host_does_not_hold_the_others_past_its_own_failure() -> None:
+    def runner(argv: Sequence[str], timeout: int) -> tuple[int, str]:
+        if argv[1] == "h2":
+            raise PoolSnapshotSourceError("command timed out after 20s: ssh")
+        return 0, _status(argv[1], _entry("acct-a"))
+
+    got = TokenPoolCommandAccountsSource(ROUTE, runner).read_accounts(
+        (host_row("h1"), host_row("h2"), host_row("h3"))
+    )
+    assert [a.host for a in got] == ["h1", "h2", "h3"]
+    assert got[0].usable == ("acct-a",)
+    assert "timed out" in (got[1].unread_reason or "")
+    assert got[2].usable == ("acct-a",)
 
 
 def test_lab_host_table_source_reads_the_pinned_table_and_refuses_an_unreadable_one(
