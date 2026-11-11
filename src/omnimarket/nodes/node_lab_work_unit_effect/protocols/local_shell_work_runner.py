@@ -162,7 +162,9 @@ class LocalShellLabWorkExecutor:
         )
         request_file = self._root / "requests" / f"{request.work_unit_id}.json"
         request_file.parent.mkdir(parents=True, exist_ok=True)
-        request_file.write_text(loop_request.model_dump_json(), encoding="utf-8")
+        request_file.write_text(
+            loop_request.model_dump_json(exclude_none=True), encoding="utf-8"
+        )
         state_dir.mkdir(parents=True, exist_ok=True)
         return [
             *request.argv,
