@@ -112,11 +112,11 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_real_work_omn23862.py -q -n 0 -p no:randomly --no-cov -k "probe_health"
         cwd: .
   - id: dod-omn23862-ac7
-    description: AC7 is this file; dod-verify reads it against the pull request.
+    description: AC7 is this contract read by dod-verify against the pull request; the check greps the changed floor compute source for the real work join reading, which the merge base lacks.
     source: manual
     binds_ac:
       - AC7
     checks:
       - check_type: command
-        check_value: test -s contracts/OMN-23862.yaml
+        check_value: grep -q real_golden_at src/omnimarket/nodes/node_floor_simple_compute/handlers/handler_floor_simple.py
         cwd: .
