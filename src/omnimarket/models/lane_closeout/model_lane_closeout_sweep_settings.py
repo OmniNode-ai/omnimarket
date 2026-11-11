@@ -52,3 +52,7 @@ class ModelLaneCloseoutSweepSettings(BaseModel):
     salvage_branch_prefix: str = Field(
         description="A dirty tree is committed to <prefix>/<tag> and pushed before it is removed."
     )
+    end_records_dir: str | None = Field(
+        default=None,
+        description="Absolute directory the lane guard writes its end records into (the guard overlay's record_dir); None reads no end records.",
+    )
