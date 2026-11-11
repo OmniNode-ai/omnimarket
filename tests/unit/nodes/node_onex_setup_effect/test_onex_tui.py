@@ -689,3 +689,60 @@ def test_config_providers_come_from_the_traits_file_sorted_by_label() -> None:
     assert cli_tui._default_url("ollama").endswith(":11434")
     assert cli_tui._default_url("openrouter") == ""
     assert "openrouter.ai/keys" in cli_tui._hint("openrouter")
+
+
+async def test_entering_a_key_loads_the_models_without_pressing_find() -> None:
+    """The list follows the key: no button, one read, only the latest key."""
+    list_models, seen = _hosted_listing()
+    app = OnexTui(
+        root=_root, runner=_Runner([]), load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        screen.query_one("#key").value = "sk-or"
+        await pilot.pause(1.2)
+        assert seen == []  # too short to be a key: nothing is sent
+        screen.query_one("#key").value = "sk-or-first-attempt"
+        await pilot.pause(0.2)
+        screen.query_one("#key").value = "sk-or-final-key-value"
+        await pilot.pause(1.5)
+        assert seen == [("openrouter", "sk-or-final-key-value")]
+        assert screen.query_one("#found").option_count == 2
+        assert "2 found" in str(screen.query_one("#note").render())
+
+
+async def test_enter_on_a_partial_command_runs_the_highlighted_entry() -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+
+    app = _app(_Runner([]))
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _type(pilot, "/conf")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, SetupScreen)
+        assert "no onex command matches" not in _log_text(app)
+
+
+async def test_every_model_is_listed_with_no_cap_and_any_number_can_be_ticked() -> None:
+    list_models, _ = _hosted_listing(count=466)
+    app = OnexTui(
+        root=_root, runner=_Runner([]), load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        screen.query_one("#key").value = "k"
+        await _press(pilot, app, "find")
+        await pilot.pause()
+        listing = screen.query_one("#found")
+        assert listing.option_count == 466
+        listing.select_all()
+        await pilot.pause()
+        await _press(pilot, app, "add")
+        basket = str(screen.query_one("#basket").render())
+        assert basket.count(",") == 465

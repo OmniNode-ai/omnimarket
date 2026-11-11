@@ -28,6 +28,7 @@ from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.timer import Timer
 from textual.widgets import (
     Button,
     Input,
@@ -65,6 +66,10 @@ _LOCAL_COMMANDS = {
     ("help",): "Show keys and how commands work.",
     ("quit",): "Leave the TUI.",
 }
+
+
+_AUTO_FIND_SECONDS = 0.8
+_MIN_KEY_LENGTH = 8
 
 
 def _picker() -> tuple[ModelSetupPickerProvider, ...]:
@@ -350,9 +355,9 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
 
     CSS = """
     SetupScreen { align: center middle; }
-    #form { width: 76; height: auto; max-height: 95%; border: round $accent; padding: 1 2; background: $panel; }
+    #form { width: 90%; max-width: 140; height: auto; max-height: 95%; border: round $accent; padding: 1 2; background: $panel; }
     #form Input, #form Select { margin-bottom: 1; }
-    #found { height: auto; max-height: 8; display: none; margin-bottom: 1; }
+    #found { height: auto; min-height: 6; max-height: 24; display: none; margin-bottom: 1; }
     #note { color: $text-muted; }
     #basket { color: $success; margin-bottom: 1; }
     #buttons { height: auto; align-horizontal: right; }
@@ -368,6 +373,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         self._basket: dict[str, ModelTuiSetupChoice] = {}
         self._rows: list[tuple[str, str]] = []
         self._ticked: set[str] = set()
+        self._find_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
@@ -387,7 +393,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             yield Input(placeholder="Filter models", id="filter")
             yield SelectionList[str](id="found")
             yield Input(placeholder="Or type a model id", id="model")
-            yield Static("Find models lists what this provider offers.", id="note")
+            yield Static("", id="note")
             yield Static("Selected: none yet (at least one is needed)", id="basket")
             with Horizontal(id="buttons"):
                 yield Button("Find models", id="find")
@@ -399,6 +405,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         self.query_one("#filter").display = False
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
+        self._schedule_find()
 
     def _provider(self) -> str:
         return str(self.query_one("#provider", Select).value)
@@ -418,10 +425,30 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._show_rows([])
+        self._schedule_find()
+
+    def _source(self) -> tuple[str, str]:
+        """What a model list depends on: the provider and its key or URL."""
+        provider = self._provider()
+        return provider, self._value("key" if _hosted(provider) else "url")
+
+    def _schedule_find(self) -> None:
+        """Fetch the list on its own once the key or URL stops changing."""
+        if self._find_timer is not None:
+            self._find_timer.stop()
+        self._find_timer = self.set_timer(_AUTO_FIND_SECONDS, self._auto_find)
+
+    def _auto_find(self) -> None:
+        provider, value = self._source()
+        if not value or (_hosted(provider) and len(value) < _MIN_KEY_LENGTH):
+            return
+        self.run_worker(self._find(), exclusive=True, group="find")
 
     async def _find(self) -> None:
         note = self.query_one("#note", Static)
         provider = self._provider()
+        wanted = self._source()
+        note.update(f"loading {_label(provider)} models…")
         if _hosted(provider):
             key = self._value("key")
             if not key:
@@ -436,6 +463,8 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             )
             message, found = _discovered_models(out or err)
             rows = [(model, model) for model in found]
+        if self._source() != wanted:  # the key, URL or provider changed meanwhile
+            return
         self._show_rows(rows)
         note.update(message or f"{len(rows)} found: tick any number, then Add")
 
@@ -457,12 +486,14 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         listing = self.query_one("#found", SelectionList)
         with listing.prevent(SelectionList.SelectedChanged):
             listing.clear_options()
-            listing.add_options(shown[:200])
+            listing.add_options(shown)
         listing.display = bool(self._rows)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "filter":
             self._render_rows()
+        elif event.input.id in ("key", "url"):
+            self._schedule_find()
 
     def on_selection_list_selected_changed(
         self, event: SelectionList.SelectedChanged[str]
@@ -899,6 +930,17 @@ class OnexTui(App[int]):
             prompt.value = f"/{option.id} "
             prompt.cursor_position = len(prompt.value)
 
+    def _palette_choice(self, text: str) -> str:
+        """Enter on a partly typed command runs the highlighted palette entry."""
+        palette = self.query_one("#palette", OptionList)
+        if not (text.startswith("/") and palette.display and " " not in text):
+            return text
+        words = text[1:].split()
+        exact = tuple(words) in _LOCAL_COMMANDS or self._resolve(words) is not None
+        if exact or palette.highlighted is None:
+            return text
+        return f"/{palette.get_option_at_index(palette.highlighted).id}"
+
     def _resolve(self, words: list[str]) -> ModelTuiCommand | None:
         known = {entry.path: entry for entry in self._commands}
         for size in range(len(words), 0, -1):
@@ -908,7 +950,7 @@ class OnexTui(App[int]):
         return None
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
+        text = self._palette_choice(event.value.strip())
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
         self.action_close_palette()
