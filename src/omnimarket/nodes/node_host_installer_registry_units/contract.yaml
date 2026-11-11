@@ -115,6 +115,11 @@ units:
       # friction rollup reads the ledger over the bus; both name the host that writes. The J5 overlay names this variable as
       # its ledger host_env. Required: a unit installed without it ran the J5 step to INDETERMINATE (exit 3) every tick.
       ONEX_LEDGER_HOST_NAME: ledger_host_name
+      # The ledger read command (OMN-23606): a request (or the installing shell) may name the command this host reads the
+      # ledger with, in place of the default under `environment` below. On the launching Mac the floor's window read took
+      # 23.5 s through that default and 15.9 s through the internal ledger source, which put the 30 s factory_floor step
+      # over its limit on every cycle. Not required: unset, the default stands.
+      ONEX_LEDGER_BUS_READ_COMMAND: ledger_read_command
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST, ONEX_LEDGER_HOST_NAME]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would

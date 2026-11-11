@@ -57,6 +57,10 @@ def _request(query: ModelPointQuery, correlation_id: str) -> dict[str, object]:
         request["lane"] = query.lane
     if query.since is not None:
         request["since"] = _stamp(query.since)
+    if query.until is not None:
+        request["until"] = _stamp(query.until)
+    if query.term:
+        request["term"] = query.term
     if query.kinds:
         request["kinds"] = list(query.kinds)
     if query.limit is not None:
