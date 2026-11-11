@@ -3,10 +3,9 @@
 """Golden and error chain of scenario R5 (OMN-23183): one run writes one STATUS row and emits one result on the bus.
 
 The default profile is in-memory: a scripted key lists the models, a scripted registry stores the ordered list, a scripted
-delegator walks it. Nothing opens a socket and no key is read. The delegation request's own admission of a pinned model is
-the production one, which refuses the ``model`` key until OMN-20844 step 2 lands, so the unmodified run is red for exactly the
-pinned legs (the expected colour); the green chain injects an admitting stand-in for that one check. The error chains are
-named injected breaks: each makes exactly one thing wrong and shows the scenario red for that reason.
+delegator walks it. Nothing opens a socket and no key is read. The delegation request admits the pinned ``model`` key
+(OMN-20844 step 2), so the unmodified production run is green; the error chains are named injected breaks: each makes exactly
+one thing wrong and shows the scenario red for that reason.
 """
 
 from __future__ import annotations
@@ -45,7 +44,6 @@ from omnimarket.nodes.node_delegation_scenario_r5_effect.handlers.handler_scenar
     ModelR5Runtime,
     ModelRegistryRefusedError,
     ModelScenarioR5RunCommand,
-    RealDelegator,
     ScriptedDelegator,
     ScriptedModelList,
     load_inputs,
@@ -77,16 +75,17 @@ class Rows:
         self.rows.append(row)
 
 
-def admit_every_model(inputs: ModelR5Inputs, model: str) -> None:
-    """Stand-in for the request model once OMN-20844 step 2 declares ``model``."""
+def refuse_model_key(inputs: ModelR5Inputs, model: str) -> None:
+    """The break that reproduces the old request model: it refuses the ``model`` key."""
     del inputs, model
+    raise ModelPinRefusedError("the request refuses the model key: ValidationError")
 
 
 def admitting_backend(inputs: ModelR5Inputs) -> ModelR5Backend:
     registry = ScriptedModelList(inputs.key_listed_models)
     return ModelR5Backend(
         registry=registry,
-        delegator=ScriptedDelegator(registry, inputs, admit=admit_every_model),
+        delegator=ScriptedDelegator(registry, inputs, admit=wire_pin_refusal),
     )
 
 
@@ -173,18 +172,16 @@ def test_golden_chain_every_assertion_held_and_one_row_and_one_event(
     ]
 
 
-def test_golden_chain_the_unmodified_run_is_red_for_the_pinned_legs_only_until_the_ingress_accepts_model(
+def test_golden_chain_the_production_run_is_green_pinned_legs_included(
     tmp_path: Path,
 ) -> None:
-    """The market ingress refuses ``model`` (OMN-20844 step 2): red with named assertions, not skipped, the rest held."""
+    """The request model admits the pinned ``model`` key (OMN-20844 step 2): the production run is green, pinned legs included."""
     handler, rows, _ = build(tmp_path, scripted_default())
     result = handler.run()
-    assert failed(result.assertions) == PINNED_RED
-    assert result.conclusion is EnumScenarioConclusion.FAILURE
-    assert "pinned_model_accepted_a" in result.detail
-    assert "+forced_second_attempt_b_accepted" in result.assertions
-    assert "+unlisted_id_refused_by_add" in result.assertions
-    assert "+reorder_no_attempt_on_a" in result.assertions
+    assert failed(result.assertions) == []
+    assert result.conclusion is EnumScenarioConclusion.SUCCESS
+    assert "+pinned_model_accepted_a" in result.assertions
+    assert "+pinned_receipt_names_model_b" in result.assertions
     assert len(rows.rows) == 1
 
 
@@ -194,6 +191,24 @@ def scripted_default() -> BackendFactory:
     )
 
     return scripted_backend
+
+
+def test_error_chain_a_request_that_refuses_the_model_key_turns_exactly_the_pinned_legs_red(
+    tmp_path: Path,
+) -> None:
+    """The failing control for the fix: the old request model refuses the model key, so exactly the pinned legs are red."""
+
+    def backend(inputs: ModelR5Inputs) -> ModelR5Backend:
+        registry = ScriptedModelList(inputs.key_listed_models)
+        return ModelR5Backend(
+            registry=registry,
+            delegator=ScriptedDelegator(registry, inputs, admit=refuse_model_key),
+        )
+
+    result = build(tmp_path, backend)[0].run()
+    assert failed(result.assertions) == PINNED_RED
+    assert result.conclusion is EnumScenarioConclusion.FAILURE
+    assert "pinned_model_accepted_a" in result.detail
 
 
 def test_golden_chain_manual_trigger_is_recorded_as_manual(tmp_path: Path) -> None:
@@ -252,7 +267,7 @@ def test_error_chain_an_add_that_takes_an_id_the_key_does_not_list(
         registry = AcceptsAnyId(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
-            delegator=ScriptedDelegator(registry, inputs, admit=admit_every_model),
+            delegator=ScriptedDelegator(registry, inputs, admit=wire_pin_refusal),
         )
 
     result = build(tmp_path, backend)[0].run()
@@ -289,7 +304,7 @@ def test_error_chain_a_run_that_ignores_the_reorder_still_attempts_a(
         registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
-            delegator=IgnoresReorder(registry, inputs, admit=admit_every_model),
+            delegator=IgnoresReorder(registry, inputs, admit=wire_pin_refusal),
         )
 
     result = build(tmp_path, backend)[0].run()
@@ -313,7 +328,7 @@ def test_error_chain_a_listing_in_the_wrong_order(tmp_path: Path) -> None:
         registry = StoresReversed(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
-            delegator=ScriptedDelegator(registry, inputs, admit=admit_every_model),
+            delegator=ScriptedDelegator(registry, inputs, admit=wire_pin_refusal),
         )
 
     result = build(tmp_path, backend)[0].run()
@@ -335,7 +350,7 @@ def test_error_chain_a_faults_file_that_is_not_applied(tmp_path: Path) -> None:
         registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
-            delegator=IgnoresFaults(registry, inputs, admit=admit_every_model),
+            delegator=IgnoresFaults(registry, inputs, admit=wire_pin_refusal),
         )
 
     result = build(tmp_path, backend)[0].run()
@@ -366,7 +381,7 @@ def test_error_chain_a_pinned_receipt_that_names_another_model(tmp_path: Path) -
         registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
-            delegator=PinnedAnswersOnA(registry, inputs, admit=admit_every_model),
+            delegator=PinnedAnswersOnA(registry, inputs, admit=wire_pin_refusal),
         )
 
     result = build(tmp_path, backend)[0].run()
@@ -391,7 +406,7 @@ def test_error_chain_a_wrong_answer_is_caught_by_the_byte_comparison(
         registry = ScriptedModelList(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
-            delegator=WrongBytes(registry, inputs, admit=admit_every_model),
+            delegator=WrongBytes(registry, inputs, admit=wire_pin_refusal),
         )
 
     result = build(tmp_path, backend)[0].run()
@@ -407,7 +422,7 @@ def test_error_chain_an_add_the_registry_refuses_is_a_red_run(tmp_path: Path) ->
         registry = RefusesAll(inputs.key_listed_models)
         return ModelR5Backend(
             registry=registry,
-            delegator=ScriptedDelegator(registry, inputs, admit=admit_every_model),
+            delegator=ScriptedDelegator(registry, inputs, admit=wire_pin_refusal),
         )
 
     result = build(tmp_path, backend)[0].run()
@@ -551,18 +566,16 @@ def test_the_real_registry_drives_the_add_and_list_functions_with_the_key_read_a
     assert os.environ.get("HOME") == before
 
 
-def test_the_real_delegator_pinned_leg_is_refused_by_the_request_until_the_ingress_accepts_model(
-    tmp_path: Path,
-) -> None:
+def test_the_production_request_admits_a_pinned_model() -> None:
     inputs = load_inputs(INPUTS)
-    delegator = RealDelegator(
-        inputs,
-        home=tmp_path / "home",
-        work_dir=tmp_path / "work",
-        tenant_slug="readiness-probe",
-    )
+    wire_pin_refusal(inputs, inputs.model_a)
+    wire_pin_refusal(inputs, inputs.model_b)
+
+
+def test_the_production_request_still_refuses_an_empty_model() -> None:
+    inputs = load_inputs(INPUTS)
     with pytest.raises(ModelPinRefusedError, match="refuses the model key"):
-        delegator.pinned(inputs.model_a)
+        wire_pin_refusal(inputs, "")
 
 
 def test_the_attempt_and_receipt_models_are_frozen_and_typed() -> None:
