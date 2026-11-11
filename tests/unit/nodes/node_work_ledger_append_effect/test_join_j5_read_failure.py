@@ -25,9 +25,13 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ModelLedgerRead,
+    ProtocolLedgerRowSource,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.adapters import (
     SourceProjectedRows,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_join_j5_run import (
+    HandlerWorkLedgerJoinJ5Run,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
     ProjectionReadFailedError,
@@ -63,9 +67,9 @@ class _ScriptedSource:
         return InMemoryLedger(list(step)).read(query)
 
 
-def _projected(source: object, attempts: int) -> SourceProjectedRows:
+def _projected(source: ProtocolLedgerRowSource, attempts: int) -> SourceProjectedRows:
     return SourceProjectedRows(
-        source,  # type: ignore[arg-type]
+        source,
         attempts=attempts,
         interval_seconds=0.1,
         slack_seconds=60,
@@ -74,7 +78,9 @@ def _projected(source: object, attempts: int) -> SourceProjectedRows:
     )
 
 
-def _runner_over(rig: _Rig, source: object, attempts: int = 3):
+def _runner_over(
+    rig: _Rig, source: ProtocolLedgerRowSource, attempts: int = 3
+) -> HandlerWorkLedgerJoinJ5Run:
     runner = rig.runner()
     runner._join._projection = _projected(source, attempts)
     return runner
