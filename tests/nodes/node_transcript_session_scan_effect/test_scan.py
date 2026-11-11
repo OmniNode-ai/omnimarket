@@ -298,7 +298,7 @@ def test_a_bucket_root_without_a_credential_reference_refuses_at_load_naming_the
 
 
 def test_no_overlay_and_a_root_or_algorithm_that_is_missing_refuse_at_load() -> None:
-    with pytest.raises(NodeOverlayError, match="transcript_roots"):
+    with pytest.raises(NodeOverlayError, match="overlay file"):
         load_scan_overlay({})
     with pytest.raises(NodeOverlayError, match="manifest_hash_algorithm"):
         load_scan_overlay(
