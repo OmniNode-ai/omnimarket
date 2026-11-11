@@ -41,6 +41,7 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors i
     SnapshotSourceError,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_sources import (
+    build_controller_source,
     build_snapshot_ports,
     resolve_path,
 )
@@ -72,6 +73,7 @@ def run_once(
     facts, write, recorder, publisher_ = build_snapshot_ports(
         overlay, now=now, publisher=publisher
     )
+    controller = build_controller_source(overlay, now=now)
     try:
         tick = facts.current_tick()
     except SnapshotSourceError as exc:
@@ -96,6 +98,7 @@ def run_once(
         write_source=write,
         recorder=recorder,
         publisher=publisher_,
+        controller_source=controller,
     ).handle(request)
     line: dict[str, object] = {
         "status": result.status.value,
@@ -104,6 +107,11 @@ def run_once(
         "prs": len(result.record.facts.prs) if result.record else 0,
         "node_ids_filled": result.node_ids_filled,
         "run_ids_filled": result.run_ids_filled,
+        "controller_tick": (
+            result.record.controller.controller_tick
+            if result.record and result.record.controller
+            else None
+        ),
     }
     if result.status is EnumSnapshotStatus.RECORDED:
         chain.success(

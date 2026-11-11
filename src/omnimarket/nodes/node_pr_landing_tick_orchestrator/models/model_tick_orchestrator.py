@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
 from omnimarket.models.landing_decision import ModelLandingDecision, ModelLandingFacts
 from omnimarket.models.landing_tick import (
     ModelTickDivergence,
@@ -33,6 +34,7 @@ class EnumTickFailureReason(StrEnum):
     ACT_NOT_ENABLED = "act_not_enabled"
     RECORDED_DECISION_MISSING = "recorded_decision_missing"
     DECISION_RAISED = "decision_raised"
+    CONTROLLER_DECISION_UNREPRODUCED = "controller_decision_unreproduced"
 
 
 class EnumTickSkipReason(StrEnum):
@@ -75,6 +77,13 @@ class ModelTickSnapshot(BaseModel):
         description="Whether the script shared free slots across repositories.",
     )
     provenance: str = Field(default="", description="Where the snapshot came from.")
+    controller: ModelLandingControllerCarry | None = Field(
+        default=None,
+        description=(
+            "The old controller's finished tick the record's state was carried from, with its "
+            "facts and logged actions; None outside the cutover period (OMN-23665)."
+        ),
+    )
 
 
 class ModelTickRequest(BaseModel):
@@ -87,6 +96,13 @@ class ModelTickRequest(BaseModel):
     facts: ModelLandingFacts
     recorded_decision: ModelLandingDecision | None = None
     fair_share: bool = True
+    controller: ModelLandingControllerCarry | None = Field(
+        default=None,
+        description=(
+            "The old controller's finished tick carried on the record; when set, the "
+            "comparison runs against that controller's decision (OMN-23665)."
+        ),
+    )
 
 
 class ModelTickResult(BaseModel):
@@ -115,6 +131,18 @@ class ModelTickResult(BaseModel):
             "comparison covers that repository's subjects only (OMN-23458)."
         ),
     )
+    controller_tick: int | None = Field(
+        default=None,
+        description="The controller's finished tick compared; None when the record carried no carry.",
+    )
+    compared_prs: tuple[str, ...] = Field(
+        default=(),
+        description="The pull requests of the compared scope, sorted (OMN-23665).",
+    )
+    agreed_prs: tuple[str, ...] = Field(
+        default=(),
+        description="The compared pull requests no divergence names (OMN-23665).",
+    )
     failure_reason: EnumTickFailureReason | None = None
     failure_detail: str = ""
 
@@ -132,6 +160,9 @@ class ModelTickComparedEvent(BaseModel):
     node_actions: int
     recorded_actions: int | None
     writes_performed: int
+    controller_tick: int | None = None
+    compared_prs: int = 0
+    agreed_prs: int = 0
 
 
 class ModelTickFailedEvent(BaseModel):

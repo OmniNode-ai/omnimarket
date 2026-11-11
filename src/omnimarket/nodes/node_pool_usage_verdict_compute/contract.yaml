@@ -71,7 +71,7 @@ seams:
     node: node_claude_token_pool_effect
     operation: resolve
     field: drain_labels
-    status: awaiting_peer
+    status: bound
 metadata:
   transport_type: inmemory
   description: Claude token pool usage verdict compute

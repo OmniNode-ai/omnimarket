@@ -93,6 +93,15 @@ def run_once(
         "failed": failed,
         "equal": sum(result.equal for result in results),
         "ticks": [result.tick for result in results],
+        "compared_prs": sum(len(result.compared_prs) for result in results),
+        "agreed_prs": sum(len(result.agreed_prs) for result in results),
+        "controller_ticks": sorted(
+            {
+                result.controller_tick
+                for result in results
+                if result.controller_tick is not None
+            }
+        ),
         "divergent": sorted(
             {d.subject for result in results for d in result.divergences}
         ),
