@@ -118,7 +118,7 @@ def test_error_unknown_host_identity_is_never_refused() -> None:
     ("overlay", "match"),
     [
         (
-            f"table: |\n  h051 {SECOND} relative/uv {SECOND_WORKROOT}\n",
+            f"table: |\n  h051 {SECOND} ~/uv {SECOND_WORKROOT}\n",
             "per-login host row",
         ),
         (f"table: |\n  h051 {SECOND} {SECOND_UV}\n", "per-login host row"),
@@ -139,7 +139,9 @@ def test_error_malformed_overlay_raises_instead_of_reading_as_absent(
 def test_injected_break_that_skips_the_login_rows_fails_the_golden_reading(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(handler_module, "apply_login_rows", lambda table, *_: table)
+    monkeypatch.setattr(
+        handler_module, "apply_login_rows", lambda table, *_, **__: table
+    )
     broken = HandlerPytestFullSuiteHostGuard().handle(ask())
     assert (broken.uv, broken.workroot) == (ROW_UV, ROW_WORKROOT)
     assert broken.uv != SECOND_UV, "the golden reading above would read red here"

@@ -6,7 +6,9 @@ Moved out of the guard script unchanged in behaviour: absence is neutral, presen
 refuses with a ValueError the guard turns into a refusal. The paths and names arrive as arguments.
 """
 
+import getpass
 import os
+import pwd
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -61,6 +63,25 @@ def legacy_override_by_label(env: Env) -> dict[str, str]:
     except NodeOverlayNotFoundError:
         return {}
     return dict(overlay.legacy_override_by_label)
+
+
+def local_login() -> str:
+    """The invoking account name, which ssh(1) also uses when no user is configured."""
+    try:
+        return getpass.getuser()
+    except (KeyError, OSError):
+        return ""
+
+
+def login_home(login: str) -> str:
+    """The home directory the host's account database gives the login, empty when the login
+    is empty or has no entry; it never falls back to a constant or to $HOME."""
+    if not login:
+        return ""
+    try:
+        return pwd.getpwnam(login).pw_dir
+    except KeyError:
+        return ""
 
 
 def shipped_table_text(repo_root: Path, host_table_rel: str) -> str:
@@ -153,6 +174,7 @@ def request(
     *,
     host: str,
     login: str,
+    login_home: str,
     private_table_rel: str,
     host_table_rel: str,
     overlay_name: str,
@@ -163,6 +185,7 @@ def request(
         table_text=table_text,
         login_overlay_text=login_overlay_text(env, overlay_name, roots_env),
         login=login,
+        login_home=login_home,
         host=host,
         env_overrides={k: v for k, v in env.items() if k.startswith("PREPUSH_")},
         legacy_override_by_label=legacy_override_by_label(env),

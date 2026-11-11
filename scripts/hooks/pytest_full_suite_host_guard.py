@@ -10,7 +10,6 @@ a single-use, repo/HEAD-scoped grant shared with the shell hook (OMN-16480)."""
 from __future__ import annotations
 
 import argparse
-import getpass
 import importlib
 import importlib.util
 import os
@@ -90,10 +89,7 @@ def full_suite_host_violation_message(**kwargs: Any) -> str | None:
 
 def resolve_local_login() -> str:
     """The invoking account name, which ssh(1) also uses when no user is configured."""
-    try:
-        return getpass.getuser()
-    except (KeyError, OSError):
-        return ""
+    return str(_io().local_login())
 
 
 def _raw_table_text(
@@ -115,6 +111,7 @@ def _decide(
     private_rel: str = PRIVATE_TABLE_REL,
 ) -> Any:
     """The node's answer for a host and login over the table as read (OMN-23367)."""
+    who = resolve_local_login() if login is None else login
     return (
         _node()
         .HandlerPytestFullSuiteHostGuard()
@@ -123,7 +120,8 @@ def _decide(
                 table_text,
                 env,
                 host=host,
-                login=resolve_local_login() if login is None else login,
+                login=who,
+                login_home=_io().login_home(who),
                 private_table_rel=private_rel,
                 host_table_rel=HOST_TABLE_REL,
                 overlay_name=LOGIN_OVERLAY_NAME,
