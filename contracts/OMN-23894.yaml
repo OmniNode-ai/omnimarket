@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23894
+title: The factory floor publish cycle runs the emissions projection step
+summary: The factory floor publish contract declares the floor_emissions step so one publish run calls the emissions projection node before the floor step; the step is not required and adds nothing past the declared longest path.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23894-ac1
+  statement: The contract declares the step.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the factory floor publish contract declares a non-required concurrent step floor_emissions that runs the emissions projection node with the registry home, and the input inventory names it on the emission journal row -- falsifier: uv run pytest of the floor emissions step test; the same file on the base commit fails because the step is not declared'
+- id: req-omn23894-ac2
+  statement: One publish run calls the node before the floor step.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: one publish run calls the node before the floor step, a node that exits 65 is recorded failed and the floor still reads, and the step adds nothing past the declared longest path -- falsifier: uv run pytest of the golden and error chain tests of the step; the control with the step removed fails the golden assertions'
+- id: req-omn23894-ac3
+  statement: The cycle publishes a fresh snapshot on the lab.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: a floor cycle run from the branch on a lab host calls the projection node and the dev broker holds a fresh snapshot of the floor emissions projection afterwards -- falsifier: the runtime read of the snapshot topic on the dev broker showing the chain count and its read time within one cycle of the run, with host and revision named in a comment on this ticket'
+evidence_requirements:
+- kind: tests
+  description: The step test and the publish cycle tests (AC1, AC2).
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_emissions_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23894-ac1
+  description: AC1 is the focused step test.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_emissions_step.py -q -n 0 -p no:randomly --no-cov -k golden_the_contract
+    cwd: .
+- id: dod-omn23894-ac2
+  description: AC2 is the golden and error chain tests of the step and the cycle tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_emissions_step.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23894-ac3
+  description: AC3 is the lab run of a floor cycle from the branch and the snapshot read back on the dev broker; host, revision and the read are a ticket comment, hosted CI cannot reach the lab broker, so the hosted part is the step tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_emissions_step.py -q -n 0 -p no:randomly --no-cov -k one_publish_run
+    cwd: .
+- id: dod-omn23894-integration-proof-step
+  description: 'AC3 on the running floor: the served board is read and its readiness block must be present while the cycle runs the emissions projection step; the lab run of a cycle from the branch (host, revision, snapshot read back on the dev broker) is a ticket comment.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: curl -sf -m 20 "${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['readiness']['probe_health_text'], d['readiness']"
+    cwd: .

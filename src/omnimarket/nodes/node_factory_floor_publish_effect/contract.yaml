@@ -374,6 +374,18 @@ runtime:
     timeout_seconds: 60
     module: omnimarket.nodes.node_floor_projection_read_effect
     args: ["--home", "{home}"]
+  # OMN-23877: the floor emissions projection. One pass folds the three floor emission topics into the floor emissions
+  # projection and publishes it on its snapshot topic; the floor_projections step reads that snapshot for the simple
+  # floor's readiness rule. Not required: when it fails or the node's overlay is absent (it exits 65) the previous
+  # snapshot stays and ages to unknown by its own bound. It joins the concurrent group and adds nothing past the
+  # slowest member.
+  - name: floor_emissions
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 60
+    module: omnimarket.nodes.node_floor_emissions_publish_effect
+    args: ["--home", "{home}"]
   # OMN-23122: join J16 (piece 16 to piece 17). One run per cycle reads the newest eval reading of piece 16 on the ledger and the
   # floor record, and writes piece 16's chain and piece 17's chain under one correlation id to the emission journal, before the
   # simple floor reads its receipts. With no step here the join was tested and never run: the served floor read J16 not_run

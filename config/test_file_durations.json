@@ -1097,6 +1097,7 @@
   "tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py": 4.16,
   "tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py": 0.31,
   "tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py": 1.4,
+  "tests/nodes/node_factory_floor_publish_effect/test_floor_emissions_step.py": 2.15,
   "tests/nodes/node_factory_floor_publish_effect/test_floor_failover.py": 0.17,
   "tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py": 0.17,
   "tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py": 0.03,
