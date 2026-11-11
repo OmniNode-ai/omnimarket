@@ -286,6 +286,8 @@ class TestFailingControls:
         assert not any(e.correlation_id.startswith("j0-control-") for e in events)
         assert _state(events) == ("golden_only", [])
 
+        # main() reads the wall clock, so the record the runtime accepts must be fresh against it, not against NOW.
+        accepted = _record(generated_at=datetime.now(UTC))
         data = _overlay_data()
         data["control"]["record_text"] = accepted  # type: ignore[index]
         root = tmp_path / "overlays" / "node_join_j0_effect"
