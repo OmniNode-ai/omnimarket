@@ -28,6 +28,13 @@ handler:
 # parameters, so the node runs through its own CLI, not handler_routing. HandlerPaidRungBurnRead (OMN-23756) is built the same
 # way and runs through that CLI too.
 
+# OMN-23756: the paid rung burn reading (credit balance, spend since switch-on, hours left), read only. It is bound here as a second
+# node handler without an operation route, because it takes constructor parameters like the handler above.
+paid_rung_burn_read:
+  handler:
+    module: omnimarket.nodes.node_delegation_completion_rate_effect.handlers.handler_paid_rung_burn_read
+    class: HandlerPaidRungBurnRead
+
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
