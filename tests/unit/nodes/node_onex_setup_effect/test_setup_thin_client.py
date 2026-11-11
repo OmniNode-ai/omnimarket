@@ -26,6 +26,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_machine_facts im
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 pytestmark = pytest.mark.unit
 
@@ -67,6 +68,7 @@ def test_default_workflow_reaches_model_configuration_without_source_acquisition
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
+    isolate_setup_shell(monkeypatch)
     commands: list[tuple[str, ...]] = []
 
     def refuse_command(_self: object, request: object) -> None:

@@ -172,6 +172,158 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn23413-ac1-legacy-disposition
+  description: 'Legacy inventory and opt-in completion mapping: omission controls fail when a surface
+    has no disposition.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_lab_setup_inventory.py tests/unit/nodes/node_onex_setup_effect/test_setup_completion.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac2-no-source-install
+  description: The default endpoint workflow reaches model configuration without any source acquisition
+    or provisioning subprocess. Fixture control; the clean-account packaged trace is the local installed-journey
+    item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac3-capability-requirements
+  description: A small client below the former floors configures an endpoint; selected-component requirements
+    refuse before dependent effects.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_machine_observation.py tests/e2e/test_setup_stack_requirements.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac4-dynamic-endpoint-models
+  description: Discovery lists unknown model ids, selection persists, named connections stay independent,
+    wrong auth and unreachable endpoints fail visibly. Protocol fixtures; the real receipt is the local
+    actual-model item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_model_setup_effect/test_endpoint_discovery.py tests/unit/test_named_endpoint_connections.py
+      tests/e2e/test_endpoint_catalog_cli.py tests/e2e/test_endpoint_catalog_bounds.py tests/e2e/test_named_connections_cli.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac5-dashboard-lifecycle
+  description: Loopback authenticated dashboard lifecycle and stale-tenant refusal. The same-run browser
+    join is the local installed-journey item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_dashboard_lifecycle.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac6-plugins-hooks
+  description: An unknown plugin loads without central edits; duplicate, incompatible, cyclic and failing
+    plugins are caught; hook reinstall does not duplicate rows and removal keeps user settings.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_plugins.py tests/unit/nodes/node_onex_setup_effect/test_setup_plugin_lifecycle.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_hooks.py tests/e2e/test_setup_plugin_lifecycle_cli.py
+      tests/e2e/test_claude_gateway_hook_install.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac7-optional-components
+  description: Selected local stack and tenant endpoint registration reconcile through their owners and
+    re-verify changed configuration on a healthy service.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_stack_requirements.py
+      tests/e2e/test_setup_tenant_endpoint_registration.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac8-migration-repair
+  description: One versioned journal, nonblocking lock, atomic checkpoints, one-time import, resume and
+    a no-write unchanged rerun.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py
+      tests/e2e/test_setup_configuration_cli.py tests/e2e/test_setup_workflow_cli.py -q --no-cov -n 0
+      -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac9-cli-behavior
+  description: Interactive and unattended share one engine; typed JSON, offline help and positive-control
+    secret scans over argv, output, plans and journals.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_setup_model_picker.py tests/unit/nodes/node_onex_setup_effect/test_setup_configuration.py
+      tests/e2e/test_setup_json_errors.py tests/e2e/test_setup_unattended_terminal.py tests/e2e/test_setup_model_probe_cli.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac10-close-evidence
+  description: The close-evidence and packaged-journey controls refuse missing or mismatched proof inputs.
+    The built-package run itself is the local installed-journey item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_close_evidence.py tests/e2e/test_setup_packaged_journey.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac11-claude-settings
+  description: 'Gateway enable/rerun/disable: atomic backup and merge, conflicts refused, no-op rerun,
+    disable restores only still-owned values and keeps later edits.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_code_binding_install_effect/test_gateway_settings.py
+      tests/unit/nodes/node_claude_code_binding_install_effect/test_gateway_probe.py tests/unit/cli/test_claude_gateway_command.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac12-claude-requests
+  description: Gateway protocol, streaming, outage, auth and bypass controls fail visibly without direct
+    fallback. Actual Claude captures are the local actual-claude item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_claude_gateway.py
+      tests/e2e/test_claude_gateway_hook.py tests/e2e/test_claude_gateway_evidence.py -q --no-cov -n 0
+      -p no:randomly
+    cwd: .
 - id: dod-omn23413-portable-controls
   description: Pure inventory/schema and isolated connection-store controls remain portable; they do not
     establish supported-macOS installed readiness.
@@ -185,11 +337,10 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-legacy
   description: Inventory omission controls and opt-in completion retain explicit legacy outcomes; unmatched
-    capabilities are not retired by this check.
+    capabilities are not retired by this check. Local supported-macOS proof only; the hosted items below
+    carry the criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cli/test_setup_step_inventory.py tests/unit/cli/test_lab_setup_inventory.py
@@ -197,37 +348,21 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-capabilities
   description: Low-resource endpoint client and actual CLI preflight controls enforce selected capabilities
-    without provisioning model software.
+    without provisioning model software. Local supported-macOS proof only; the hosted items below carry
+    the criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
-  - AC7
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py tests/e2e/test_setup_preflight_cli.py
       -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn23413-named-models
-  description: HTTP protocol fixtures verify unknown IDs, isolated authenticated endpoints, ordered fallback,
-    pinned refusal, authentication termination and secret output controls. Not actual model proof.
-  source: manual
-  execution_scope: hosted_and_local
-  binds_ac:
-  - AC4
-  - AC9
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/e2e/test_endpoint_catalog_cli.py tests/e2e/test_endpoint_catalog_bounds.py
-      tests/e2e/test_named_connections_cli.py -q --no-cov -n 0 -p no:randomly
-    cwd: .
 - id: dod-omn23413-plugins-hooks
   description: Unknown installed capability and plugin lifecycle execute real subprocesses; hook tests
-    exercise installed artifacts. Dependency, conflict and failure controls preserve user edits.
+    exercise installed artifacts. Dependency, conflict and failure controls preserve user edits. Local
+    supported-macOS proof only; the hosted items below carry the criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC6
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/e2e/test_setup_external_plugin_cli.py tests/e2e/test_setup_plugin_lifecycle_cli.py
@@ -236,12 +371,10 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-optional-components
   description: Selected stack and gateway isolated lifecycle fixtures reject changed routes, missing capability,
-    credentials and concurrent writers. Not operator account or actual model proof.
+    credentials and concurrent writers. Not operator account or actual model proof. Local supported-macOS
+    proof only; the hosted items below carry the criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC7
-  - AC11
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_gateway_lifecycle.py
@@ -249,12 +382,10 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-resume-config
   description: Migration, interrupted workflow retry, no-op, exported-profile intake and unattended terminal
-    controls use shared setup/config commands.
+    controls use shared setup/config commands. Local supported-macOS proof only; the hosted items below
+    carry the criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC8
-  - AC9
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/e2e/test_setup_workflow_cli.py tests/e2e/test_setup_configuration_cli.py
@@ -263,11 +394,10 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-dashboard
   description: Authenticated lifecycle and stale-tenant controls verify served behavior and preserve unrelated
-    processes. Installed same-run projection readback is separately required.
+    processes. Installed same-run projection readback is separately required. Local supported-macOS proof
+    only; the hosted items below carry the criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/e2e/test_setup_dashboard_lifecycle.py tests/e2e/test_setup_packaged_journey.py::test_dashboard_lifecycle_cli_preserves_profile_and_other_process
@@ -278,18 +408,10 @@ dod_evidence:
   description: 'Required installed-wheel suite, never all-skips: exact package bytes/hashes, clean/existing
     settings, local Claude assets, named receipts, authenticated same-run dashboard projection, config
     profile roundtrip, fallback, plugins, gateway fixture and no-op. Protocol fixtures are labeled. PATH
-    child tracing does not observe absolute executable paths. Missing inputs fail.'
+    child tracing does not observe absolute executable paths. Missing inputs fail. Local supported-macOS
+    proof only; the hosted items below carry the criterion bindings.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
-  - AC4
-  - AC5
-  - AC6
-  - AC7
-  - AC8
-  - AC9
-  - AC10
   checks:
   - check_type: command
     check_value: 'set -eu
@@ -309,12 +431,10 @@ dod_evidence:
 - id: dod-omn23413-actual-model-close
   description: Actual operator-selected model receipt must match the explicit endpoint/model. Missing
     proof fails. Protocol fixtures cannot substitute; operator account/browser readback remains separately
-    required by the approved report.
+    required by the approved report. Local supported-macOS proof only; the hosted items below carry the
+    criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
-  - AC10
   checks:
   - check_type: command
     check_value: env ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_close_evidence.py::test_required_customer_evidence_close_probe
@@ -324,11 +444,10 @@ dod_evidence:
   description: Actual installed Claude main/Read/Agent captures, settings preservation, bypass refusal
     and actual native model proof. Explicit endpoint/binary prerequisites prevent all-skips. Compaction/background
     capture and account evidence remain pending; this binding alone does not establish all AC12 clauses.
-    AC12 remains deliberately unbound until every required request category has executable proof.
+    AC12 remains deliberately unbound until every required request category has executable proof. Local
+    supported-macOS proof only; the hosted items below carry the criterion bindings.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC11
   checks:
   - check_type: command
     check_value: 'set -eu

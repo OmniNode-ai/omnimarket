@@ -116,7 +116,7 @@ MODEL_LABELS: dict[str, str] = {
     "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
 }
 OLLAMA_HOW = (
-    "Run Ollama separately; connect via onex setup --provider ollama --url URL. "
+    "Run Ollama yourself, then connect its endpoint: onex setup --provider ollama --url URL. "
     "ONEX never installs Ollama or downloads models."
 )
 LOCAL_HOW = (

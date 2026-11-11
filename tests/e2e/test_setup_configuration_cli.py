@@ -143,7 +143,9 @@ def test_exported_profile_is_accepted_by_setup_without_apply(tmp_path: Path) -> 
         cwd=home,
         env={
             "HOME": str(home),
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "PATH": str(Path(sys.executable).parent)
+            + os.pathsep
+            + os.environ.get("PATH", "/usr/bin:/bin"),
             "ONEX_STATE_DIR": str(tmp_path / "state"),
         },
         capture_output=True,

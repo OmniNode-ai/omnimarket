@@ -27,6 +27,7 @@ from omnimarket.models.delegation.model_claude_gateway import ModelClaudeGateway
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_gateway import (
     build_gateway_app,
 )
+from tests.helpers.setup_shell_environment import requires_supported_macos
 
 pytestmark = pytest.mark.e2e
 
@@ -93,6 +94,7 @@ async def test_protocol_readiness_checks_actual_selected_route(
     assert not calls, "Readiness made a billable request"
 
 
+@requires_supported_macos
 def test_setup_gateway_proves_route_reuses_process_and_preserves_user_edits(
     tmp_path: Path,
 ) -> None:

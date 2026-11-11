@@ -11,6 +11,8 @@ from threading import Thread
 
 import pytest
 
+from tests.helpers.setup_shell_environment import requires_supported_macos
+
 pytestmark = pytest.mark.e2e
 
 
@@ -61,6 +63,7 @@ def test_attribution_catalog_cache_isolates_credentials(tmp_path: Path) -> None:
         worker.join(timeout=5)
 
 
+@requires_supported_macos
 @pytest.mark.parametrize("saved_keys", [False, True])
 def test_unattended_setup_counts_only_keys_missing_from_saved_connections(
     tmp_path: Path, saved_keys: bool

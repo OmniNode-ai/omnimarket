@@ -47,6 +47,7 @@ from omnimarket.nodes.node_onex_setup_effect.models import (
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
 )
+from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 _UNSET_ENV: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
 # The model step has its own tests (tests/unit/nodes/node_onex_setup_effect); here it
@@ -78,6 +79,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    isolate_setup_shell(monkeypatch)
     assert Path.home() == fake_home
     assert Path.home() != real_home
     # Every prerequisite present by default; tests remove what they need to.

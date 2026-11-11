@@ -46,6 +46,7 @@ from omnimarket.nodes.node_onex_setup_effect.models import ModelOnexSetupRequest
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
 )
+from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 pytestmark = pytest.mark.unit
 
@@ -67,7 +68,34 @@ class _KeyServer(BaseHTTPRequestHandler):
         self._json(200, {"object": "list", "data": [{"id": MODEL}]})
 
     def do_POST(self) -> None:
-        self.send_error(404)
+        # The setup walk's one-token availability check (OMN-23413); delegation
+        # itself goes through the recorded subprocess, never this server.
+        if self.path != "/v1/chat/completions":
+            self.send_error(404)
+            return
+        if self.headers.get("Authorization") not in (None, f"Bearer {GOOD_KEY}"):
+            self._json(401, {"error": {"message": "invalid api key"}})
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        model = json.loads(self.rfile.read(length) or b"{}").get("model")
+        if model != MODEL:
+            self._json(404, {"error": {"message": "unknown model"}})
+            return
+        self._json(
+            200,
+            {
+                "object": "chat.completion",
+                "model": MODEL,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "length",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
 
     def _json(self, status: int, body: dict[str, Any]) -> None:
         data = json.dumps(body).encode()
@@ -139,6 +167,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    isolate_setup_shell(monkeypatch)
     # These isolate the model/store/receipt boundary. Native machine probes have
     # their own real-Mac E2E and refusal controls; the subprocess recorder must
     # not impersonate sysctl or disk evidence.
@@ -215,6 +244,7 @@ def test_model_step_proven_delegation(
     steps = re.findall(r"^\[success\] ([\w-]+)", result.output, re.MULTILINE)
     assert steps == [
         "preflight",
+        "shell-safety",
         "workspace",
         "user_config",
         "runtime_config",
@@ -381,7 +411,7 @@ def test_interactive_walk_asks_for_provider_url_and_model(
 ) -> None:
     result = _setup(
         ["--interactive", "--workspace", str(tmp_path / "ws")],
-        stdin=f"local\n{server}\n{MODEL}\n",
+        stdin=f"local\n{server}\ny\n{MODEL}\n",
     )
     assert result.exit_code == 0, result.output
     assert "Provider" in result.output

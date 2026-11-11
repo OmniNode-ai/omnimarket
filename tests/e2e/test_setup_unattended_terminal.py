@@ -37,7 +37,12 @@ def test_unattended_setup_never_opens_a_hidden_terminal_prompt(tmp_path: Path) -
         stdin=slave,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={"HOME": str(home), "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+        env={
+            "HOME": str(home),
+            "PATH": str(Path(sys.executable).parent)
+            + os.pathsep
+            + os.environ.get("PATH", "/usr/bin:/bin"),
+        },
         cwd=tmp_path,
         start_new_session=True,
     )

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.setup_shell_environment import requires_supported_macos
+
 pytestmark = pytest.mark.e2e
 
 
@@ -17,6 +19,7 @@ pytestmark = pytest.mark.e2e
     ("kind", "tool", "notice"),
     [("audio", "say", "system voice"), ("notification", "osascript", "notification")],
 )
+@requires_supported_macos
 def test_completion_review_and_once_only_cli(
     tmp_path: Path, kind: str, tool: str, notice: str
 ) -> None:

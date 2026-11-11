@@ -54,7 +54,9 @@ def test_ollama_verify_uses_the_same_engine_without_installing(tmp_path: Path) -
         ),
         env={
             "HOME": str(home),
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "PATH": str(Path(sys.executable).parent)
+            + os.pathsep
+            + os.environ.get("PATH", "/usr/bin:/bin"),
             "ONEX_STATE_DIR": str(tmp_path / "state"),
         },
         cwd=workspace,
@@ -109,7 +111,9 @@ def test_installed_verify_observes_empty_install_without_writes(
         argv,
         env={
             "HOME": str(home),
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "PATH": str(Path(sys.executable).parent)
+            + os.pathsep
+            + os.environ.get("PATH", "/usr/bin:/bin"),
             "ONEX_STATE_DIR": str(tmp_path / "state"),
             **(
                 {"OMNIBASE_PATH": str(tmp_path / "inherited-other-workspace")}
@@ -128,8 +132,18 @@ def test_installed_verify_observes_empty_install_without_writes(
     assert journal.schema_version == 2
     assert journal.workspace == workspace.resolve()
     observations = {item.step: item for item in journal.observations}
+    if plan_file:
+        # An inherited OMNIBASE_PATH naming another workspace would point every
+        # other tool in that shell elsewhere, so verify names it and stops there.
+        safety = observations["shell-safety"]
+        assert safety.status == "action_required"
+        assert "OMNIBASE_PATH" in safety.model_dump_json()
+        assert not any(item.changed for item in journal.observations)
+        assert _snapshot(tmp_path) == before
+        return
     assert {
         "preflight",
+        "shell-safety",
         "workspace",
         "user_config",
         "runtime_config",
@@ -173,7 +187,12 @@ def test_secret_bearing_plan_is_refused_before_writes(tmp_path: Path) -> None:
             "--json",
             "--no-interactive",
         ],
-        env={"HOME": str(home), "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+        env={
+            "HOME": str(home),
+            "PATH": str(Path(sys.executable).parent)
+            + os.pathsep
+            + os.environ.get("PATH", "/usr/bin:/bin"),
+        },
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -209,7 +228,9 @@ def test_default_setup_uses_the_same_versioned_engine(tmp_path: Path) -> None:
         ],
         env={
             "HOME": str(home),
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "PATH": str(Path(sys.executable).parent)
+            + os.pathsep
+            + os.environ.get("PATH", "/usr/bin:/bin"),
             "ONEX_STATE_DIR": str(tmp_path / "state"),
         },
         cwd=tmp_path,

@@ -9,6 +9,7 @@ provider credentials, model requests, or real user settings are involved.
 import os
 import subprocess
 import sys
+from importlib import metadata
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,12 @@ pytestmark = pytest.mark.e2e
 def test_hook_component_verifies_the_effective_mask_and_preserves_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The hook component verifies through the omninode-claude customer bundle,
+    # the same packaged dependency as test_setup_installed_legacy_hooks.
+    if not metadata.entry_points(group="onex.claude", name="customer_assets"):
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("Hook component journey requires the omninode-claude bundle")
+        pytest.skip("Hook component journey requires the omninode-claude bundle")
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))

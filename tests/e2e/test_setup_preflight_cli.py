@@ -55,7 +55,9 @@ def test_actual_preflight_is_readonly_and_never_prompts(
     env = {
         "HOME": str(home),
         "ONEX_STATE_DIR": str(tmp_path / "state"),
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin"),
+        "PATH": str(Path(sys.executable).parent)
+        + os.pathsep
+        + os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin"),
     }
     result = subprocess.run(
         argv,

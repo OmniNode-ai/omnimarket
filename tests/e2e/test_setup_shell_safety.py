@@ -27,6 +27,7 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow imp
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from tests.helpers.setup_shell_environment import requires_supported_macos
 
 pytestmark = pytest.mark.e2e
 
@@ -199,6 +200,7 @@ def test_concurrent_profile_change_is_not_overwritten(
     assert profile.read_text() == "# later user content\n"
 
 
+@requires_supported_macos
 def test_setup_cli_set_aside_is_explicit_and_verify_never_edits(tmp_path: Path) -> None:
     profile = tmp_path / ".bashrc"
     profile.write_text("alias onex='old-shell-command'\n")
