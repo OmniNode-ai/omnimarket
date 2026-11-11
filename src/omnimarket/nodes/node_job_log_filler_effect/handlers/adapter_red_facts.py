@@ -39,11 +39,9 @@ from omnimarket.nodes.node_job_log_filler_effect.models.model_red_facts import (
     ModelRedFactsAnswer,
     ModelRedFactsRecord,
 )
-from omnimarket.nodes.node_pytest_failure_digest_compute.handlers.handler_pytest_failure_digest import (
-    digest_pytest_run,
-)
-from omnimarket.nodes.node_pytest_failure_digest_compute.models.model_pytest_failure_digest import (
+from omnimarket.nodes.node_pytest_failure_digest_compute import (
     ModelPytestRunReport,
+    digest_pytest_run,
 )
 
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
