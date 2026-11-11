@@ -233,7 +233,7 @@ LANDING_CONTROLLER: Final[str] = (
 SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
     ModelScmRefusedVerb(verb=verb, handled_by=LANDING_CONTROLLER)
     for verb in (
-        *("pr-merge", "merge", "arm", "pr-arm", "rerun"),
+        *("pr-merge", "merge", "arm", "pr-arm"),
         *("run-rerun", "pr-rerun", "update-branch", "pr-update-branch"),
     )
 )
@@ -347,7 +347,14 @@ class ScmBusCaller:
                 if not isinstance(raw, dict):
                     return
                 payload = raw.get("payload")
-                payload_dict = payload if isinstance(payload, dict) else {}
+                # An event published with no envelope (the landing tick orchestrator's answers) is its own payload.
+                payload_dict = (
+                    payload
+                    if isinstance(payload, dict)
+                    else raw
+                    if "payload" not in raw and "envelope_id" not in raw
+                    else {}
+                )
                 names_it = (
                     _uuid_or_none(raw.get("parent_envelope_id")) == envelope.envelope_id
                     or _uuid_or_none(raw.get("correlation_id")) == correlation_id

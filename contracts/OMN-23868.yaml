@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23868
+title: A worker asks for one failed check to be re-run and the landing workflow answers
+summary: Any lane publishes a typed request (pull request, head, failed job, reason, requester) with onex scm rerun-request. The landing tick orchestrator reads open requests as facts of its tick, the new rerun request decision node answers each one (rerun, duplicate, limit_reached, head_moved, job_not_failed) with the per-head limit read from the tick overlay, and the answer goes out on a completed or a failed topic. In observe mode the tick records would_rerun and writes nothing; acting goes through the existing GitHub landing effect and waits on the write node serving re-runs for the landing principal and on the landing tick acting for the repository.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn23868-rerun-request-decision
+  statement: A rerun request is a typed fact of the landing tick and is answered once with a typed verdict; the per-head limit is the tick overlay's.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a request for a failed check on the current commit is answered re-run once, a second one duplicate, one past the declared per-commit limit limit_reached, one for an old commit head_moved, one for a check that is not failed job_not_failed -- falsifier: the new request decision test file fails at the merge base'
+  - id: AC2
+    statement: 'AC2: onex scm rerun-request publishes the typed request from any principal and prints the typed answer, with golden and error chain tests on the in-memory bus -- falsifier: the chain tests fail with the verb absent'
+  - id: AC3
+    statement: 'AC3: integrated: one real request from a lab lane is answered by the running landing tick orchestrator and the answer is read from the dev bus within one tick -- falsifier: no answer event on the dev bus within one tick of the request'
+evidence_requirements:
+- kind: tests
+  description: The rerun request tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator tests/nodes/node_pr_landing_rerun_request_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23868-ac1
+  description: The decision tests show each verdict, and fail at the merge base where no request fact, answer model or decision node exists (the limit control shows the refusal comes from the overlay's limit).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request.py tests/nodes/node_pr_landing_rerun_request_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23868-ac2
+  description: The verb chain tests read the completed and the failed answer through the orchestrator handler on the in-memory bus, and the verb is served while run-rerun and pr-rerun stay refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_cli_chain.py tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_runtime.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23868-integration-proof
+  description: Observed in the running runtime on a lab host from the branch, not by hosted CI; the receipt names the host, the revision and the answer read from the dev bus.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23868-rerun --kind test -- uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_runtime.py tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_cli_chain.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

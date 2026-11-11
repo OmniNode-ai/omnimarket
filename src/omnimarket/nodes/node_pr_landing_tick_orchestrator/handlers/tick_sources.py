@@ -19,6 +19,9 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
+)
 from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
     JsonlEmissionSink,
@@ -55,6 +58,14 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
 
 class ProtocolTickSnapshotSource(Protocol):
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]: ...
+
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]: ...
+
+
+class ProtocolRerunRequestSource(Protocol):
+    """The open rerun requests lanes made (OMN-23830): facts the newest tick of a pass answers."""
+
+    def requests(self) -> tuple[ModelLandingRerunRequest, ...]: ...
 
     def skipped(self) -> tuple[ModelTickSkippedRecord, ...]: ...
 
@@ -262,8 +273,15 @@ def run_snapshots(
     handler: HandlerPrLandingTickOrchestrator,
     source: ProtocolTickSnapshotSource,
     mode: EnumTickMode,
+    rerun_source: ProtocolRerunRequestSource | None = None,
 ) -> tuple[ModelTickResult, ...]:
-    """Run every snapshot of the source through the handler in the given mode."""
+    """Run every snapshot of the source through the handler in the given mode.
+
+    The rerun requests (OMN-23830) are read after the snapshots, only when there is one, and ride the
+    newest snapshot: the facts a request is answered against are the newest tick's.
+    """
+    snapshots = source.snapshots()
+    requests = rerun_source.requests() if rerun_source is not None and snapshots else ()
     return tuple(
         handler.handle(
             ModelTickRequest(
@@ -273,14 +291,16 @@ def run_snapshots(
                 recorded_decision=snapshot.decision,
                 fair_share=snapshot.fair_share,
                 controller=snapshot.controller,
+                rerun_requests=requests if position == len(snapshots) - 1 else (),
             )
         )
-        for snapshot in source.snapshots()
+        for position, snapshot in enumerate(snapshots)
     )
 
 
 __all__: list[str] = [
     "InMemorySnapshotSource",
+    "ProtocolRerunRequestSource",
     "ProtocolTickSnapshotSource",
     "ProtocolTickTopicReader",
     "PublisherFactory",
