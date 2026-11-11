@@ -60,25 +60,6 @@ def _base_sha(base: object) -> str | None:
     return value if isinstance(value, str) and _FULL_SHA.match(value) else None
 
 
-def _merged_by_login(body: dict[str, object]) -> str | None:
-    """The REST ``merged_by.login``; None for a PR not merged or a deleted account."""
-    merged_by = body.get("merged_by")
-    if not isinstance(merged_by, dict):
-        return None
-    login = merged_by.get("login")
-    return login if isinstance(login, str) and login else None
-
-
-def _merge_commit_sha(body: dict[str, object], context: str) -> str | None:
-    """The REST ``merge_commit_sha``; None when absent, an error when malformed."""
-    value = body.get("merge_commit_sha")
-    if value is None:
-        return None
-    if not isinstance(value, str) or not _FULL_SHA.match(value):
-        raise GithubPrStateParseError(f"{context} merge_commit_sha is not a full sha")
-    return value
-
-
 def _label_names(nodes: object, context: str) -> tuple[str, ...]:
     if not isinstance(nodes, list):
         raise GithubPrStateParseError(f"{context} labels is not a list")
@@ -141,18 +122,6 @@ class ModelGithubPrStateFact(BaseModel):
             "mergeStateStatus in lower case. None when GitHub reported none."
         ),
     )
-    merged_by: str | None = Field(
-        default=None,
-        description=(
-            "REST read only: the login of the account that merged the PR "
-            "(merged_by.login); None when not merged or not reported (OMN-23772)."
-        ),
-    )
-    merge_commit_sha: str | None = Field(
-        default=None,
-        pattern=r"^[0-9a-f]{40}$",
-        description="REST read only: the merge commit (OMN-23772).",
-    )
 
     @classmethod
     def from_rest_pull(cls, body: dict[str, object] | None) -> ModelGithubPrStateFact:
@@ -189,8 +158,6 @@ class ModelGithubPrStateFact(BaseModel):
             auto_merge_armed=isinstance(auto_merge, dict),
             auto_merge_method=method,
             mergeable_state=_optional_str(body, "mergeable_state"),
-            merged_by=_merged_by_login(body),
-            merge_commit_sha=_merge_commit_sha(body, ctx),
         )
 
     @classmethod

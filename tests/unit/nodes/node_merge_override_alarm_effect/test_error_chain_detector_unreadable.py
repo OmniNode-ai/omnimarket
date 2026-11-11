@@ -34,6 +34,7 @@ from tests.unit.nodes.node_merge_override_alarm_effect.support import (
     SETTINGS,
     SLACK_SUFFIX,
     Publisher,
+    Rig,
     drive_merge,
     make_rig,
     pr_merged_event,
@@ -44,7 +45,7 @@ pytestmark = pytest.mark.unit
 UNREADABLE = EnumMergeOverrideVerdict.DETECTOR_UNREADABLE
 
 
-def _one_alarm(rig, key_tail: str) -> None:  # type: ignore[no-untyped-def]
+def _one_alarm(rig: Rig, key_tail: str) -> None:
     [finding] = rig.publisher.on(FINDING_SUFFIX)
     assert finding["verdict"] == "detector_unreadable"
     assert finding["idempotency_key"] == f"merge-override:{REPO}#{PR}:{key_tail}"

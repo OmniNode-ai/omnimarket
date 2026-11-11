@@ -20,8 +20,8 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import (
     EnumPrLandingGithubOperation,
 )
-from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
-    ModelGithubPrStateFact,
+from omnimarket.events.pr_landing_github.model_github_pr_merge_state_fact import (
+    ModelGithubPrMergeStateFact,
 )
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
@@ -194,8 +194,8 @@ def pr_state(
     head: str = HEAD,
     merged: bool = True,
     merger: str | None = HAND,
-) -> ModelGithubPrStateFact:
-    return ModelGithubPrStateFact(
+) -> ModelGithubPrMergeStateFact:
+    return ModelGithubPrMergeStateFact(
         pr_node_id="PR_example",
         pr_number=pr,
         head_sha=head,
@@ -229,7 +229,7 @@ def completed(
     head: str | None = HEAD,
     pr: int = PR,
     correlation_id: UUID | None = None,
-    state: ModelGithubPrStateFact | None = None,
+    state: ModelGithubPrMergeStateFact | None = None,
     not_modified: bool = False,
 ) -> ModelPrLandingGithubCompleted:
     enforce = mode is EnumPrLandingGithubMode.ENFORCE
@@ -269,7 +269,7 @@ def arm_receipt(
 def read_answer(
     rig: Rig,
     *,
-    state: ModelGithubPrStateFact | None = None,
+    state: ModelGithubPrMergeStateFact | None = None,
     pr: int = PR,
     not_modified: bool = False,
 ) -> ModelPrLandingGithubCompleted:
@@ -291,7 +291,7 @@ def read_answer(
 def drive_merge(
     rig: Rig,
     *,
-    state: ModelGithubPrStateFact | None = None,
+    state: ModelGithubPrMergeStateFact | None = None,
     pr: int = PR,
 ) -> ModelMergeOverrideResult:
     """Send the merge event, answer its read, and return the verdict result."""

@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.events.pr_landing_github.model_github_pr_merge_state_fact import (
+    ModelGithubPrMergeStateFact,
+)
 from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
     GithubPrStateParseError,
-    ModelGithubPrStateFact,
 )
 
 pytestmark = pytest.mark.unit
@@ -34,7 +36,7 @@ def _pull(**extra: object) -> dict[str, object]:
 
 
 def test_rest_pull_carries_the_merger_and_the_merge_commit() -> None:
-    fact = ModelGithubPrStateFact.from_rest_pull(
+    fact = ModelGithubPrMergeStateFact.from_rest_pull(
         _pull(merged_by={"login": "example-landing-app"}, merge_commit_sha=MERGE)
     )
     assert fact.merged_by == "example-landing-app"
@@ -42,11 +44,11 @@ def test_rest_pull_carries_the_merger_and_the_merge_commit() -> None:
 
 
 def test_rest_pull_without_a_merger_leaves_none() -> None:
-    fact = ModelGithubPrStateFact.from_rest_pull(_pull(merged_by=None))
+    fact = ModelGithubPrMergeStateFact.from_rest_pull(_pull(merged_by=None))
     assert fact.merged_by is None
     assert fact.merge_commit_sha is None
 
 
 def test_rest_pull_with_a_malformed_merge_commit_is_refused() -> None:
     with pytest.raises(GithubPrStateParseError):
-        ModelGithubPrStateFact.from_rest_pull(_pull(merge_commit_sha="abc123"))
+        ModelGithubPrMergeStateFact.from_rest_pull(_pull(merge_commit_sha="abc123"))
