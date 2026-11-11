@@ -144,9 +144,9 @@ def test_a_read_of_a_legacy_oversized_journal_parses_only_the_declared_count(
     parsed: list[str] = []
     real = ModelLandingTickRecord.model_validate_json
 
-    def counting(data: str | bytes, **kwargs: object) -> ModelLandingTickRecord:
+    def counting(data: str | bytes) -> ModelLandingTickRecord:
         parsed.append("row")
-        return real(data, **kwargs)  # type: ignore[arg-type]
+        return real(data)
 
     monkeypatch.setattr(
         snapshot_sources.ModelLandingTickRecord, "model_validate_json", counting
