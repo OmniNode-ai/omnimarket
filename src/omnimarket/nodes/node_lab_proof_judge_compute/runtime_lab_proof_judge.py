@@ -24,9 +24,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ValidationError
 
-from omnimarket.handlers.adapter_lab_proof_receipt_store import (
+from omnimarket.adapters.lab_proof_receipt_store import (
     DirectoryReceiptStore,
-    receipt_store_from_env,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_changed_path_live import (
@@ -64,7 +63,7 @@ from omnimarket.nodes.node_lab_proof_judge_compute.overlay import (
 
 
 def _store(overlay: ModelLabProofJudgeOverlay) -> DirectoryReceiptStore:
-    return receipt_store_from_env(
+    return DirectoryReceiptStore.from_env(
         overlay.substitute_receipts.root_env, overlay.substitute_receipts.subdir
     )
 
