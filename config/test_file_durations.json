@@ -292,6 +292,7 @@
   "tests/handlers/ledger_row_grammar/test_ledger_terminal_undisposed_receipt_omn20015.py": 0.01,
   "tests/handlers/ledger_row_grammar/test_ledger_worktree_cell.py": 0.06,
   "tests/handlers/routing/test_customer_key_terminus.py": 34.45,
+  "tests/handlers/test_overlay_root_declared_refusal.py": 4.94,
   "tests/handlers/test_rules_unit_roots_plist_literal_paths.py": 0.02,
   "tests/handlers/test_runtime_proof_close.py": 0.17,
   "tests/handlers/test_schedule_installers_refuse_worktree_roots.py": 0.19,
