@@ -132,6 +132,8 @@ class ModelAttemptFact(BaseModel):
     acceptance_detail: str = ""
     http_status: int | None = None
     size_band: str | None = None
+    #: The host that served the attempt, from the attempt record's lineage; None when the record names none.
+    host: str | None = None
 
 
 class ModelLegOutcome(BaseModel):
@@ -485,6 +487,7 @@ def run_leg(
                     if attempt.size_band is not None
                     else None
                 ),
+                host=attempt.host,
             )
             for attempt in response.attempts
         ),

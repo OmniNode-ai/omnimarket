@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-23696
+title: 'Delegation check 7: assert the receipt names backend, host and cost over the bus'
+summary: 'The hosted workflow that graded scenario R7 reads the delegation receipt through the gateway''s HTTP interface, which is being removed, and fails before it measures anything because the stability lane variable is not declared. Scenario R7 becomes an omnimarket node, node_delegation_scenario_r7_effect, scheduled every six hours by the registry installer: one run drives the delegation skill handler with a two-rung probe ladder (one failing, one answering at a cost) and holds only when the terminal receipt names the answering backend, the serving host and the charged cost, and the terminal cost equals the attempts'' costs added.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23696-r7
+  statement: The delegation receipt and cost name the answering backend and host, read from the terminal the run produces and not through an HTTP interface.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: scenario R7 run in-process reads the delegation terminal receipt over the bus path and holds only when it names the answering backend, the serving host and the charged cost, and the terminal cost equals the sum of the attempts'' costs -- falsifier: uv run pytest tests/nodes/node_delegation_scenario_r7_effect/test_golden_chain_scenario_r7_effect.py -q'
+  - id: AC2
+    statement: 'AC2: a control whose receipt names a different backend than the one that answered, and a run whose every rung fails, each end the scenario red with the named assertion -- falsifier: uv run pytest tests/nodes/node_delegation_scenario_r7_effect/test_golden_chain_scenario_r7_effect.py -q -k "control or error"'
+  - id: AC3
+    statement: 'AC3: scenario R7 is a declared unit of the registry installer and renders a unit with its own tick module -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_scenario_r7_unit.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: on lab host h053, scenario R7 installed from the branch through the registry installer ran on its schedule and its result row is read from the running host and from the tracker -- falsifier: the last-run record under the scenario state directory on h053 names the branch revision and a conclusion, and the tracker''s R7 entry names the lab lane and its latest run'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of this change pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r7_effect tests/nodes/node_host_installer_registry_units/test_scenario_r7_unit.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23696-ac1
+  description: 'The golden chain: the scenario is green on the scripted transport and each named assertion is a typed field of the terminal.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r7_effect/test_golden_chain_scenario_r7_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23696-ac2
+  description: 'The controls: a mislabelled backend, a wrong host and a ladder whose every rung fails each turn the run red for their own assertion, with the same input green without the break.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r7_effect/test_golden_chain_scenario_r7_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23696-ac3
+  description: The unit declaration renders a systemd unit and timer with the scenario's own tick module, refuses an install with no host name and a checkout without the tick.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r7_unit.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23696-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the scheduled run on the lab host is read in the pull request's Lab comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23696 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r7_effect tests/nodes/node_host_installer_registry_units/test_scenario_r7_unit.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

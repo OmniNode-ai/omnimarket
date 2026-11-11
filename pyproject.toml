@@ -589,6 +589,7 @@ node_delegation_scenario_r3_effect = "omnimarket.nodes.node_delegation_scenario_
 node_delegation_scenario_r4_effect = "omnimarket.nodes.node_delegation_scenario_r4_effect"
 node_delegation_scenario_r5_effect = "omnimarket.nodes.node_delegation_scenario_r5_effect"
 node_delegation_scenario_r6_effect = "omnimarket.nodes.node_delegation_scenario_r6_effect"
+node_delegation_scenario_r7_effect = "omnimarket.nodes.node_delegation_scenario_r7_effect"
 node_delegation_scenario_r8_effect = "omnimarket.nodes.node_delegation_scenario_r8_effect"
 node_delegation_seam_measure_compute = "omnimarket.nodes.node_delegation_seam_measure_compute"
 node_delegation_seam_orchestrator = "omnimarket.nodes.node_delegation_seam_orchestrator"
