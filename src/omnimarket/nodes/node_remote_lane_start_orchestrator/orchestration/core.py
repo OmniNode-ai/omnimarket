@@ -87,6 +87,7 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_la
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     EXIT_CODES,
     EnumRemoteLaneStartOutcome,
+    LaneHostPoolUnreadableError,
     ModelRemoteLaneStartObserved,
     ModelRemoteLaneStartReceipt,
     ModelRemoteLaneStartRequest,
@@ -215,6 +216,7 @@ class RemoteLaneStartOrchestrator:
         self._reader = ledger_reader
         self._host = host
         self._login = login
+        self._login_refusal = ""
         self._placement = placement or HandlerRemoteLanePlacement()
         self._close = close or HandlerRemoteLaneResult()
         # An observe-mode start writes no receipt on any ending (no host, unsupported shape, observed): the sink it is
@@ -342,9 +344,13 @@ class RemoteLaneStartOrchestrator:
         labels skipped); the cell carries the label only, never a token value. A start with no draw wired
         (the in-memory default) writes no cell. The receipt names the drawn label (OMN-23550).
         """
+        self._login_refusal = ""
         if self._login is None:
             return []
         drawn = self._login.draw_login(host)
+        if drawn.state == "refused":
+            # The pool holds a usable token and refused this start (the lanes-per-label cap, OMN-23636).
+            self._login_refusal = drawn.refusal or "refused"
         receipt.login = drawn.label
         self._say(
             f"login host={host.name} label={drawn.label or 'none'}"
@@ -577,11 +583,21 @@ class RemoteLaneStartOrchestrator:
         # (2) Place.
         # The placement node's engine id is the host login a lane needs: <engine>_<model>.
         host_engine = f"{request.engine}_{request.model}"
-        snapshot = self._pool.read_pool(
-            ModelLaneHostPoolRequest(
-                engine=host_engine, pinned_host=request.pinned_host, lane=request.lane
+        try:
+            snapshot = self._pool.read_pool(
+                ModelLaneHostPoolRequest(
+                    engine=host_engine,
+                    pinned_host=request.pinned_host,
+                    lane=request.lane,
+                )
             )
-        )
+        except (LaneHostPoolUnreadableError, OSError, ValueError) as exc:
+            # A pool that cannot be read is not an empty pool and not a full one: refuse before any claim, with the reason.
+            self._say(
+                f"REMOTE-LANE-POOL-UNREADABLE lane={request.lane} engine={host_engine}: {exc}"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.POOL_UNREADABLE.value
+            return self._result(EnumRemoteLaneStartOutcome.POOL_UNREADABLE, receipt)
         targets = {r.name: r for r in snapshot.readings}
         try:
             out_of_service = dict(self._availability()) if self._availability else {}
@@ -659,6 +675,14 @@ class RemoteLaneStartOrchestrator:
             )
             self._state(receipt, EnumRemoteLaneStartOutcome.ALREADY_CLAIMED.value)
             return self._result(EnumRemoteLaneStartOutcome.ALREADY_CLAIMED, receipt)
+        login_cells = self._login_cells(host_ref, receipt)
+        if self._login_refusal:
+            self._say(
+                f"REMOTE-LANE-LOGIN-REFUSED lane={request.lane} host={host_ref.name} refusal={self._login_refusal}: "
+                "the token pool refused this start; nothing was claimed and no engine was started"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.LOGIN_REFUSED.value
+            return self._result(EnumRemoteLaneStartOutcome.LOGIN_REFUSED, receipt)
         claim_cells = [
             *self._cells(request, host_ref.name)[:2],
             f"actor={self._s.actor}",
@@ -667,7 +691,7 @@ class RemoteLaneStartOrchestrator:
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
             self._worktree_cell(request),
-            *self._login_cells(host_ref, receipt),
+            *login_cells,
         ]
         claim_row, appended = self._append(
             request,

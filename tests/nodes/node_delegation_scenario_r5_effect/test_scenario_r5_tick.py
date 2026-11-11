@@ -17,9 +17,15 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.delegation_scenario_runtime import InMemoryScenarioEventSink
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioConclusion,
     EnumScenarioTrigger,
+)
+from omnimarket.nodes.node_delegation_scenario_r5_effect.handlers.handler_scenario_r5 import (
+    HandlerScenarioR5,
+    load_runtime,
+    scripted_backend,
 )
 from omnimarket.nodes.node_delegation_scenario_r5_effect.runtime_scenario_r5_tick import (
     main,
@@ -87,6 +93,31 @@ def test_golden_tick_runs_and_writes_the_record(
     assert "ran_at" in record
     captured = capsys.readouterr()
     assert json.loads(captured.out)["conclusion"] == "success"
+
+
+def test_golden_tick_of_the_production_run_ends_success_with_the_pinned_legs(
+    tmp_path: Path,
+) -> None:
+    """The scheduled tick runs the scenario with the production admission of a pinned model and the record reads success."""
+    runtime = load_runtime()
+    rows: list[str] = []
+
+    def build(environment: Mapping[str, str], trigger: EnumScenarioTrigger) -> object:
+        return HandlerScenarioR5(
+            runtime,
+            home=tmp_path / "scenario-home",
+            environment=environment,
+            appender=rows.append,
+            sink=InMemoryScenarioEventSink(),
+            terminal_topic="onex.evt.omnimarket.delegation-scenario-result.v1",
+            backend_factory=scripted_backend,
+            trigger=trigger,
+        )
+
+    exit_code, state_dir = _tick(tmp_path, build)
+    assert exit_code == 0
+    assert json.loads(_record_text(state_dir))["conclusion"] == "success"
+    assert len(rows) == 1
 
 
 def test_tick_a_build_that_raises_refuses_with_65(

@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-23708
+title: The landing observe run reads only the controller's history tail, never picks Codex for a fix worker, and measures its run limit from the join
+summary: The controller carry reads the last bytes of the old controller's tick and decision logs, bounded by a snapshot overlay value; the decision node's worker ladder comes from the lane routing policy and never names Codex; the tick orchestrator's run limit and join bounds stay overlay values checked against the unit's run limit.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- topics
+- public_api
+requirements:
+- id: req-omn23708-observe-tail-engine-limit
+  statement: The snapshot overlay declares the bytes of each controller log a pass reads; the decision node's fix worker ladder is the lane routing policy's Claude models and never Codex; the orchestrator run limit stays checked against its join and poll bounds.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the controller carry reads only the tail of the controller''s tick and decision history files, up to a byte bound from the snapshot overlay, and never the whole file -- falsifier: uv run pytest tests/nodes/node_pr_landing_snapshot_effect/test_controller_tail_read.py -q, a large synthetic file asserting the bytes read'
+  - id: AC2
+    statement: 'AC2: the decision node never picks the Codex engine for a fix worker and takes its worker ladder from the lane routing policy, so the three recorded omnimemory 713 ticks choose the engine the old controller chose -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_worker_engine_routing.py -q'
+  - id: AC3
+    statement: 'AC3: the tick orchestrator''s run limit and join bound come from its overlay, with the limit measured from the join time, and the seam test fails when either side changes -- falsifier: uv run pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_unit_seam.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: on the launching Mac the cutover snapshot and tick orchestrator units run the merged revision, read only the bounded tail, and the orchestrator compares with exit 0 and omnimemory 713 agreeing on the engine -- falsifier: read the unit''s last-run.json on the Mac (status compared, failed 0) and the compared event on the dev bus'
+evidence_requirements:
+- kind: tests
+  description: The tail read, worker engine routing, and unit seam tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_controller_tail_read.py tests/unit/nodes/node_pr_landing_decision_compute/test_worker_engine_routing.py tests/nodes/node_pr_landing_tick_orchestrator/test_tick_unit_seam.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23708-tail-read
+  description: A large synthetic log is read by its tail only, with the bytes read asserted; a tail with no whole row or one inside the tick's decisions is unread.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_controller_tail_read.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23708-engine-routing
+  description: The three recorded omnimemory 713 ticks dispatch on Sonnet, a Codex rung is skipped, a Codex-only pool dispatches nothing, and the ladder follows the routing policy order.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_worker_engine_routing.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23708-unit-seam
+  description: The orchestrator registry unit and the tick overlay agree on host identity and run limit bounds.
+  source: manual
+  binds_ac:
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_unit_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23708-integration-proof
+  description: Run the tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23708 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_controller_tail_read.py tests/unit/nodes/node_pr_landing_decision_compute/test_worker_engine_routing.py tests/nodes/node_pr_landing_tick_orchestrator/test_tick_unit_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

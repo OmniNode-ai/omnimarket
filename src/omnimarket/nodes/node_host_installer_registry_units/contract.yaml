@@ -734,6 +734,40 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/delegation-scenario-r6/last-run.json
     state_directory: .onex_state/delegation-scenario-r6
+  # The R7 delegation scenario's tick: loopback stubs, so the unit holds no secret setting and no environment file.
+  scenario-r7-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r7
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 21600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r7_effect.runtime_scenario_r7_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r7_effect/runtime_scenario_r7_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r7/last-run.json
+    state_directory: .onex_state/delegation-scenario-r7
   # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
   # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
   # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
@@ -927,6 +961,50 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-snapshot/last-run.json
     state_directory: .onex_state/landing-snapshot
+  # The lane host pool snapshot writer on a Linux pool host (OMN-23664; node_lane_host_pool_snapshot_effect): every 60 s one pass
+  # reads the lab hosts' capacity advertisements, the lab host table, the open lane claims and each host's token pool, writes the
+  # snapshot file the lane start and the fill read with its read-time record, and publishes the record on the dev bus lane. The
+  # overlay (node_lane_host_pool_snapshot_effect in the overlays repository) names every path, route, bound and topic; this unit
+  # holds none of it.
+  lane-host-pool-snapshot-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-lane-host-pool-snapshot
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_host_pool_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_lane_host_pool_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
+      OMNIBASE_PATH: "{registry_root}"
+      # The advertisement command runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      # The open lane claims are read over the bus, never from the ledger file: the overlay's ledger_read names this variable.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/lane-host-pool-snapshot/last-run.json
+    state_directory: .onex_state/lane-host-pool-snapshot
   # The cutover repositories' landing facts (OMN-23514; node_pr_landing_watcher_facts_effect of OMN-23507): every 60 s
   # one pass reads the PR watcher state and writes the overlay's repositories' open pull requests (omnimemory only) to
   # the facts file the cutover snapshot unit reads. It reads and writes local files only: no GitHub call, no bus.
@@ -1039,6 +1117,10 @@ units:
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The consumer group carries this instance's host identity (OMN-22921): two orchestrators on one topic never share a group.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
@@ -1143,6 +1225,10 @@ units:
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The consumer group carries this instance's host identity (OMN-22921): two orchestrators on one topic never share a group.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
   silent-failure-alarm:

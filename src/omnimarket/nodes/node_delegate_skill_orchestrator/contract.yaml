@@ -270,6 +270,12 @@ inputs:
     description: >
       Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
       the backend via the normal cheapest-first tier_order selection.
+  model:
+    type: str
+    required: false
+    description: >
+      Optional per-call model name the customer's own provider key runs for
+      this one call (OMN-20844). Omit to run the stored model.
   no_escalation:
     type: bool
     required: false
