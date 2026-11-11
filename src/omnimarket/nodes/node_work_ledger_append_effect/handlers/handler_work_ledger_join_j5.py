@@ -8,7 +8,8 @@ emission contract, under the correlation id piece 5's chain carries:
 * the store gives no identity: a typed ``upstream_`` failure that never started, and no row anywhere;
 * the identity resolves: a start, the append under that principal, then the row read back from the projection at the
   receipt's position; a success only when both the durable row and the projected row are there, and a typed failure
-  with the start before it when the append is not accepted or the projection never heard the row.
+  with the start before it when the append is not accepted, when the projection never heard the row, or when the
+  projection could not be read at all (the failure carries the read error the row source gave).
 
 Everything it calls is injected: the append handler, the ledger reader, the store of identities, the projection, the
 emission sink and the clock. Its settings are the contract's ``join_j5`` section.
@@ -38,9 +39,11 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerReader,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
+    ProjectionReadFailedError,
     ProtocolJoinAppend,
     ProtocolProjectedRows,
     ProtocolStoreIdentities,
+    RunDeadlineExceededError,
     StoreIdentityUnresolvedError,
     durable_row,
 )
@@ -161,6 +164,49 @@ class HandlerWorkLedgerJoinJ5:
         )
         if not replay:
             chain.start()
+        try:
+            return self._after_start(
+                request, chain, replay, principal, append, ledger, projection
+            )
+        except BaseException as exc:
+            # Every chain this handler starts ends: a raise after the start (an unreadable file, a source that blew up, the
+            # run's deadline) closes it with a typed failure, so the floor never reads start_without_terminal. A replay
+            # belongs to the first run's chain and writes none. The cancel goes on after the chain is closed.
+            deadline = isinstance(exc, RunDeadlineExceededError)
+            code = (
+                policy.deadline_exceeded_failure_code
+                if deadline
+                else policy.interrupted_failure_code
+            )
+            detail = f"{type(exc).__name__}: the run ended before its chain did" + (
+                " (run deadline)" if deadline else ""
+            )
+            if chain.open and not replay:
+                chain.failure(code, detail)
+            if not isinstance(exc, Exception):
+                raise
+            return ModelJoinJ5Result(
+                outcome=(
+                    EnumJoinJ5Outcome.DEADLINE_EXCEEDED
+                    if deadline
+                    else EnumJoinJ5Outcome.INTERRUPTED
+                ),
+                correlation_id=request.correlation_id,
+                failure_code=code,
+                detail=detail,
+            )
+
+    def _after_start(
+        self,
+        request: ModelJoinJ5Request,
+        chain: ChainEmitter,
+        replay: bool,
+        principal: str,
+        append: ProtocolJoinAppend,
+        ledger: ProtocolLedgerReader,
+        projection: ProtocolProjectedRows,
+    ) -> ModelJoinJ5Result:
+        policy = self._policy
         receipt = append.handle(request.append, writer_principal=principal)
         if receipt.status not in _DURABLE or not receipt.ledger_lines:
             code = policy.append_not_accepted_failure_code
@@ -196,12 +242,26 @@ class HandlerWorkLedgerJoinJ5:
                     receipt=receipt,
                     ledger_seq=ledger_seq,
                 )
-            projected = projection.read_row(
-                ledger_id=request.append.ledger_id,
-                ledger_seq=seq,
-                raw_row=durable,
-                correlation_id=request.correlation_id,
-            )
+            try:
+                projected = projection.read_row(
+                    ledger_id=request.append.ledger_id,
+                    ledger_seq=seq,
+                    raw_row=durable,
+                    correlation_id=request.correlation_id,
+                )
+            except ProjectionReadFailedError as exc:
+                code = policy.projection_read_failed_failure_code
+                detail = str(exc)
+                if not replay:
+                    chain.failure(code, detail)
+                return ModelJoinJ5Result(
+                    outcome=EnumJoinJ5Outcome.PROJECTION_READ_FAILED,
+                    correlation_id=request.correlation_id,
+                    failure_code=code,
+                    detail=detail,
+                    receipt=receipt,
+                    ledger_seq=ledger_seq,
+                )
             if projected is None or projected.raw_row != durable:
                 code = policy.projected_row_missing_failure_code
                 detail = (

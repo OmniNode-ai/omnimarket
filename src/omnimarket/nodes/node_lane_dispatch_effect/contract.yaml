@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_dispatch_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+description: >
+  Build or validate a content-addressed lane instruction record against the declared overlay,
+  render its brief, require the existing brief checker to accept it, and derive every
+  runner argument from the spec. A receipt cites the same record hash and job identity.
+  A serialized list executes in order and returns placed, placing, refused or crashed
+  with a reason for each item; only a lane-matched placement acknowledgement counts as placed.
+input_model:
+  module: omnimarket.nodes.node_lane_dispatch_effect.models.model_lane_dispatch_effect
+  name: ModelLaneDispatchRequest
+output_model:
+  module: omnimarket.nodes.node_lane_dispatch_effect.models.model_lane_dispatch_effect
+  name: ModelLaneDispatchResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dispatch
+      handler:
+        name: HandlerLaneDispatch
+        module: omnimarket.nodes.node_lane_dispatch_effect.handlers.handler_lane_dispatch
+      input_model: omnimarket.nodes.node_lane_dispatch_effect.models.model_lane_dispatch_effect.ModelLaneDispatchRequest
+      output_model: omnimarket.nodes.node_lane_dispatch_effect.models.model_lane_dispatch_effect.ModelLaneDispatchResult
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.lane-dispatch-requested.v1]
+  publish_topics: [onex.evt.omnimarket.lane-dispatch-completed.v1]
+terminal_event: onex.evt.omnimarket.lane-dispatch-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-dispatch-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-dispatch-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  runtime_profiles: [effects]
+  side_effects:
+    - writes the canonical job record and generated brief to the request output directory
+    - invokes the existing brief checker and optionally the remote lane runner, waiting for placement for lists
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory
+# Deployment overlays supply actual hosts, umbrella tickets and repository names,
+# together with checker/runner argv. These defaults carry policy, never host paths.
+# Cloud kind membership reuses the runner's repo-only kind declaration. The existing
+# lane_kind_rules.json remains the effort/escalation authority in the brief checker.
+dispatch_policy:
+  schema_version: 1.0.0
+  lane_kinds: [ticket, conflict-fix, plan-draft, red-test-fix, review-only, small-code]
+  placements: [auto, lab, cloud]
+  models: [sonnet, opus, codex, glm, code-edit]
+  efforts: [low, medium, high, xhigh, max]
+  priority_classes: [mvp-landing, occ-retirement, process-fix, other]
+  cloud_placement: cloud
+  cloud_lane_kinds: [conflict-fix, plan-draft, red-test-fix, review-only, small-code]
+  cloud_models: [sonnet, opus]
+  umbrella_tickets: []
+  ack_states: [Done, Canceled, Cancelled]
+  merged_ack_state: merged
+  max_memory_bytes: 8589934592
+  max_time_box_min: 90
+  snapshot_max_age_s: 480
+  hosts: []
+  publish_steps: [stage, commit, push, pr, handoff]
+  forbidden_instruction_patterns:
+    - '\bgit(?:[ \t]+-[cC][ \t]+(?:"[^"]*"|\x27[^\x27]*\x27|\S+))*[ \t]+(?:(?:fetch|pull|ls-remote)\b|remote[ \t]+update\b)'
+  repository_reference_patterns:
+    - '\b(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/(?:src|tests|docs)/'
+    # Match the authority/path portion of repository URLs, independent of scheme.
+    # The deployment supplies repository policy; no endpoint is bound here.
+    - '//[^/]+/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:/|#|\b)'
+  repository_names: []
+  allow_cross_repo: false
+  allow_unmerged_dependencies: false
+  model_requirements:
+    - {model: opus, fields: [escalation_reason]}
+    - {model: glm, fields: [risk_class]}
+    - {model: code-edit, fields: [writable, checks]}
+  runner_backoff_s: 300
+  field_rules:
+    - {field: risk_class, models: [glm], allowed_values: [doc, test, lint, small-fix]}
+    - {field: escalation_reason, models: [opus]}
+    - {field: writable, models: [code-edit]}
+    - {field: checks, models: [code-edit]}
+    - {field: context, models: [code-edit]}
+    - {field: max_turns, models: [code-edit]}
+  pr_done_kinds: [pr_merged, check_passing]
+  context_done_kinds: [check_passing]
+  launching_actors: []
+  runner_effort_models: [sonnet, opus, codex]

@@ -84,6 +84,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.overlay_join_j5 import (
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
     InMemoryJoinLedger,
     InMemoryProjectedRows,
+    ProjectionReadFailedError,
     StoreIdentityUnresolvedError,
 )
 
@@ -483,7 +484,7 @@ def test_store_identities_resolve_only_when_the_store_resolves_the_key() -> None
         StoreProbeIdentities(store, (BINDING,)).resolve(BINDING.ref)
 
 
-def test_projected_rows_read_by_text_and_an_error_reads_as_no_row() -> None:
+def test_projected_rows_read_by_text_and_an_error_raises_the_read_failure() -> None:
     row = _reading_row(GOLDEN_AT, "WORKING")
     found = SourceProjectedRows(
         InMemoryLedger([row]),
@@ -497,7 +498,7 @@ def test_projected_rows_read_by_text_and_an_error_reads_as_no_row() -> None:
 
     broken = InMemoryLedger([row])
     broken.read_error = "read-command-exit-1"
-    assert (
+    with pytest.raises(ProjectionReadFailedError) as exc_info:
         SourceProjectedRows(
             broken,
             attempts=2,
@@ -506,8 +507,7 @@ def test_projected_rows_read_by_text_and_an_error_reads_as_no_row() -> None:
             sleep=lambda _s: None,
             clock=lambda: NOW,
         ).read_row(ledger_id=LEDGER_ID, ledger_seq=7, raw_row=row)
-        is None
-    )
+    assert (exc_info.value.error, exc_info.value.attempts) == ("read-command-exit-1", 2)
     assert (
         SourceProjectedRows(
             InMemoryLedger([row]),

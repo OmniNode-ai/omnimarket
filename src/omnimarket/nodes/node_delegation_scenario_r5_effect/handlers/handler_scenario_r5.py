@@ -12,8 +12,8 @@ One run, in a fresh home on the real backend:
 4. falsifier of the add: an id the key does not list is refused and stores nothing;
 5. falsifier of the order: after a reorder to B, A the same faults file makes the run answer on B with no attempt on A.
 
-The market ingress does not yet accept a per-call ``model`` (OMN-20844 step 2), so step 2 is red, with the assertions
-``pinned_model_accepted_a|b``, until that ticket lands: a red scenario is the expected colour, never a skip.
+The delegation request declares a per-call ``model`` (OMN-20844 step 2), so step 2 pins one delegation to each model and each
+receipt names its model.
 
 The model registry and the delegator are injected (``ProtocolModelRegistry``, ``ProtocolR5Delegator``): the in-memory default
 scripts both, the real backend drives the registry's own add and list functions and the delegation skill handler. The paid
@@ -58,6 +58,10 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     ModelScenarioSchedule,
     ProtocolScenarioEventSink,
 )
+from omnimarket.handlers.delegation_scenario_settings import (
+    ProtocolSettingStore,
+    fill_overlay_settings,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -101,6 +105,9 @@ class ModelR5Runtime(ModelReadinessRuntime):
     """The contract's ``runtime`` block: the shared keys, the leg backend of this scenario and the probe key's variable."""
 
     model_backend: Literal["real", "inmemory"]
+    #: The variable that, when set in the unit's environment file to ``real`` or ``inmemory``, overrides ``model_backend``
+    #: for that run; unset keeps the contract's value; any other value is a refusal. Read by ``build_runner`` only.
+    model_backend_env: str = Field(min_length=1)
     #: The variable that carries the paid OpenRouter probe key; its value is read at run time only.
     openrouter_probe_key_env: str = Field(min_length=1)
 
@@ -239,7 +246,7 @@ BackendFactory = Callable[[ModelR5Inputs], ModelR5Backend]
 
 
 def wire_pin_refusal(inputs: ModelR5Inputs, model: str) -> None:
-    """The request model's own admission of a pinned model: raises ``ModelPinRefusedError`` while the ingress refuses it."""
+    """The request model's own admission of a pinned model: raises ``ModelPinRefusedError`` when the request model refuses the pinned payload."""
     try:
         ModelDelegateSkillRequest.model_validate(inputs.pinned_payload(model))
     except ValueError as exc:
@@ -658,10 +665,27 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    settings_store: ProtocolSettingStore | None = None,
+    settings_home: Path | None = None,
 ) -> HandlerScenarioR5:
     """The production wiring: the registry home, the bus commands and the contract's backend profile."""
     runtime = load_runtime()
-    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
+    environment = fill_overlay_settings(
+        dict(os.environ if env is None else env),  # ONEX_FLAG_EXEMPT
+        runtime.settings_overlay_relpath,
+        node_dir=NODE_DIR,
+        store=settings_store,
+        home=settings_home,
+    )
+    # The unit's environment file may override the contract's model backend for this one run: `real` or `inmemory` is
+    # honoured, unset keeps the contract's value and any other value refuses the tick (exit 65, conclusion `refused`).
+    override = environment.get(runtime.model_backend_env, "").strip()
+    if override:
+        if override not in ("real", "inmemory"):
+            raise RuntimeError(
+                f"{runtime.model_backend_env} must be 'real' or 'inmemory', not {override!r}"
+            )
+        runtime = runtime.model_copy(update={"model_backend": override})
     home = Path(environment[runtime.home_env])
     work_dir = home / runtime.work_relpath
     fresh_home = work_dir / FRESH_HOME_DIRNAME

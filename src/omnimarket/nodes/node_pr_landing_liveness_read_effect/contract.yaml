@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Landing Liveness Read Effect (OMN-23529)
+#
+# For one PR head, runs the automation-liveness register completeness reader against a checkout of that head and returns the
+# liveness fact node_pr_landing_decision_compute reads: the undeclared installer sources the head adds, or that the read was not
+# made and why. It reads and publishes; it holds nothing itself and changes no verdict.
+name: node_pr_landing_liveness_read_effect
+contract_name: node_pr_landing_liveness_read_effect
+node_name: node_pr_landing_liveness_read_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads one PR head's automation liveness: proves the checkout is at the head, takes the paths the head changes against the
+  overlay's base ref, runs the register completeness reader and keeps the undeclared installer sources of the PR's repository
+  that the head changes. A made read publishes the completed event with the fact; a read that could not be made publishes the
+  failed event and returns an unreadable fact that names no file. The reader, the checkout and the timeouts come from the
+  overlay.
+
+handler:
+  module: omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.handler_pr_landing_liveness_read
+  class: HandlerPrLandingLivenessRead
+  input_model: omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read.ModelLivenessReadRequest
+
+# HandlerPrLandingLivenessRead takes the overlay, the reader and the publisher as constructor parameters, so the snapshot step
+# composes it, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [bus-publish]
+  timeout_ms: 180000
+
+input_model:
+  name: ModelLivenessReadRequest
+  module: omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read
+  description: The PR and the head to read.
+output_model:
+  name: ModelLivenessReadResult
+  module: omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read
+  description: The liveness fact for the head and the topic its event went to.
+
+terminal_event: onex.evt.omnimarket.pr-landing-liveness-read-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  liveness_read_completed: onex.evt.omnimarket.pr-landing-liveness-read-completed.v1
+  liveness_read_failed: onex.evt.omnimarket.pr-landing-liveness-read-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.pr-landing-liveness-read-completed.v1
+    - onex.evt.omnimarket.pr-landing-liveness-read-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.pr-landing-liveness-read-completed.v1
+  - onex.evt.omnimarket.pr-landing-liveness-read-failed.v1
+
+overlay:
+  node: node_pr_landing_liveness_read_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23529
+  transport_type: inmemory

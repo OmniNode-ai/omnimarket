@@ -29,6 +29,7 @@ from omnimarket.models.floor_fill import (
     ModelFloorFillCandidatesRequest,
     ModelFloorStartCriterion,
 )
+from omnimarket.models.model_factory_floor_input import ModelFloorLinearIssue
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
 )
@@ -38,6 +39,9 @@ from omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity impor
 )
 from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
     ModelFactoryBindingsOverlay,
+)
+from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
+    compute_factory_floor,
 )
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
@@ -56,6 +60,11 @@ from omnimarket.nodes.node_floor_fill_candidates_compute.tests.support import (
     reserved,
     usable,
 )
+from tests.nodes.node_factory_floor_compute.test_stopped_lane_child_tickets import (
+    CHILD,
+    ROOT,
+    floor_request,
+)
 
 PIECES_FIXTURE = (
     Path(__file__).resolve().parents[3]
@@ -73,6 +82,20 @@ OVERLAY = ModelFactoryBindingsOverlay.model_validate(
         "proof_bindings": ["inmemory", "redpanda"],
     }
 )
+
+
+STOPPED_NOW = "2026-11-10T02:05:00Z"
+STOPPED_LANE = "labrunpool-1050"
+
+
+def stopped_record(*, children: bool) -> str:
+    """The floor record of the 2026-11-09 ledger: the child-ticket lane is listed only when the snapshot links it."""
+    linear = (ModelFloorLinearIssue(id=ROOT, children=(CHILD,)),) if children else ()
+    return compute_factory_floor(floor_request(linear)).model_dump_json()
+
+
+def stopped_request(*, children: bool) -> ModelFloorFillCandidatesRequest:
+    return request(now=STOPPED_NOW, floor_record=stopped_record(children=children))
 
 
 def criterion_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
@@ -101,6 +124,33 @@ def criterion_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
     }
 
 
+def integrating_scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
+    """A record whose items are integrating (merged, being shown running) reads and does not unread the stopped lane."""
+    document = json.loads(
+        record(
+            [item("T1", "integrating"), item("T2")], generated_at="2026-11-02T10:40:00Z"
+        )
+    )
+    document["floor"]["stopped"] = [
+        {
+            "lane": "lane-a",
+            "ticket": "TCK-9",
+            "outcome": "partial",
+            "branch": "branch-a",
+            "rows": ["TERMINAL outcome=partial"],
+        }
+    ]
+    return {
+        "integrating:item": request(
+            floor_record=json.dumps(document),
+            ticket_verdicts=(usable(LINE, "T2", "TCK-2"),),
+        ),
+        "integrating:unknown-state": request(
+            floor_record=record([item("T1", "unheard-of")])
+        ),
+    }
+
+
 def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
     """The golden scenario (the 10:40Z record) under each ticket input, plus the unread and the held cases."""
     first_line = next(iter(READY_10_40))
@@ -116,7 +166,10 @@ def scenarios() -> dict[str, ModelFloorFillCandidatesRequest]:
             now=minutes_before(NOW, -120), ticket_verdicts=all_ready_tickets_usable()
         ),
         "fixture:absent": request(floor_record=None),
+        "stopped:child-ticket-lane": stopped_request(children=True),
+        "stopped:no-snapshot-children": stopped_request(children=False),
         **criterion_scenarios(),
+        **integrating_scenarios(),
     }
 
 
@@ -315,8 +368,24 @@ def test_floor_fill_candidates_parity_scenarios_decide_what_the_node_says() -> N
     unmet = decisions["criterion:unmet"]["lines"][0]
     assert unmet["candidates"] == []
     assert unmet["not_ready"][0]["unmet"] == ["piece 2 WORKING (reads NOT WORKING)"]
+    integrating = decisions["integrating:item"]
+    assert integrating["verdict"] == "READ"
+    assert integrating["lines"][0]["not_ready"][0]["cause"] == "integrating"
+    assert [s["lane"] for s in integrating["stopped"]] == ["lane-a"]
+    assert decisions["integrating:unknown-state"]["unread_cause"] == "malformed"
     unparseable = decisions["criterion:unparseable"]["lines"][0]
     assert unparseable["not_ready"][0]["cause"].startswith("start-when-unparseable:")
+
+
+def test_floor_fill_candidates_parity_the_child_ticket_lane_is_a_candidate_only_with_the_snapshot_children() -> (
+    None
+):
+    decisions = {k: json.loads(v) for k, v in in_process().items()}
+    listed = decisions["stopped:child-ticket-lane"]
+    assert listed["stopped_verdict"] == "STARTABLE"
+    assert [c["lane"] for c in listed["stopped"]] == [STOPPED_LANE]
+    assert listed["stopped"][0]["ticket"] == CHILD
+    assert decisions["stopped:no-snapshot-children"]["stopped"] == []
 
 
 def test_floor_fill_candidates_parity_in_memory_bus_matches_the_in_process_decisions() -> (

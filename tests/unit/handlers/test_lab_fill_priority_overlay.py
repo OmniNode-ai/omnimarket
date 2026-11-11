@@ -134,9 +134,13 @@ def test_lab_fill_priority_overlay_missing_file_refuses_naming_the_key(
     tmp_path: Path,
 ) -> None:
     env = {OVERLAY_ROOTS_ENV: str(tmp_path / "empty")}
-    with pytest.raises(NodeOverlayError, match=r"lab_fill_priority\.weights"):
+    with pytest.raises(
+        NodeOverlayError, match=r"lab_fill_priority: the overlay file is not configured"
+    ):
         load_priority_declaration(TODAY, env, load_rank_config(write(tmp_path)))
-    with pytest.raises(NodeOverlayError, match=r"lab_fill_rank\.mode"):
+    with pytest.raises(
+        NodeOverlayError, match=r"lab_fill_rank: the overlay file is not configured"
+    ):
         load_rank_config(env)
 
 
