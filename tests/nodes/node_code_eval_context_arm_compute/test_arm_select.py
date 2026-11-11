@@ -17,6 +17,13 @@ from omnimarket.models.context_profile_resolve.model_context_profile_resolve_req
 from omnimarket.models.context_profile_resolve.model_context_profile_resolve_result import (
     EnumContextProfileResolveStatus,
 )
+from omnimarket.models.model_factor_arm import (
+    EnumArmLabel,
+)
+from omnimarket.models.model_factor_matrix import (
+    arm_by_label,
+    build_code_eval_context_arms,
+)
 from omnimarket.nodes.node_code_eval_context_arm_compute.models.model_code_eval_context_arm import (
     EnumContextArmDecision,
     EnumContextArmReason,
@@ -24,13 +31,6 @@ from omnimarket.nodes.node_code_eval_context_arm_compute.models.model_code_eval_
 )
 from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
     HandlerContextProfileResolver,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
-    arm_by_label,
-    build_code_eval_context_arms,
 )
 
 from .helpers import backend, built, handler, load_overlay, request

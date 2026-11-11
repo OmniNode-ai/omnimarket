@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
+from omnimarket.models.model_factor_arm import (
     EnumArmLabel,
     ModelFactorArm,
 )

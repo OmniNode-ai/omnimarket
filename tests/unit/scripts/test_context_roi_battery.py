@@ -24,7 +24,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
+from omnimarket.models.model_factor_matrix import (
     build_canonical_factor_matrix,
 )
 from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request import (

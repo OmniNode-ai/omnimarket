@@ -20,6 +20,15 @@ import pytest
 import yaml
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
+from omnimarket.models.model_factor_arm import (
+    EnumArmLabel,
+    ModelFactorArm,
+)
+from omnimarket.models.model_factor_matrix import (
+    arm_by_label,
+    build_canonical_factor_matrix,
+    build_code_eval_context_arms,
+)
 from omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi import (
     HandlerContextRoi,
 )
@@ -30,15 +39,6 @@ from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_request 
 from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_result import (
     EnumProofClass,
     ModelContextRoiResult,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
-    ModelFactorArm,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
-    arm_by_label,
-    build_canonical_factor_matrix,
-    build_code_eval_context_arms,
 )
 from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import (
     EnumFailureStage,

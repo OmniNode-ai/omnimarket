@@ -14,11 +14,11 @@ from omnimarket.models.context_pack_orchestrator import (
     ModelContextPackBuilt,
     ModelContextPackRequest,
 )
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
+from omnimarket.models.model_factor_arm import (
     EnumArmLabel,
     ModelFactorArm,
 )
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
+from omnimarket.models.model_factor_matrix import (
     arm_by_label,
     build_code_eval_context_arms,
 )
