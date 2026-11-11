@@ -431,8 +431,9 @@ async def test_latest_keeps_the_newest_row_per_subject_and_type_in_any_order() -
         assert ("lane", "alpha", "CLAIM", "OMN-2", None) in got
         assert ("lane", "alpha", "TERMINAL", "OMN-1", "done") in got
         assert ("ticket", "OMN-1", "CLAIM", "OMN-1", None) in got
+        assert ("ticket", "OMN-1", "TERMINAL", "OMN-1", "done") in got
         assert ("ticket", "OMN-2", "CLAIM", "OMN-2", None) in got
-        assert len(got) == 4
+        assert len(got) == 5
 
 
 @pytest.mark.integration
