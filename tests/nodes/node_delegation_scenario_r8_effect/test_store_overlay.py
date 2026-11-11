@@ -85,19 +85,20 @@ def _overlay_root(tmp_path: Path, document: dict[str, object] | None) -> dict[st
     return {"ONEX_SKILL_OVERLAY_ROOTS": str(root)}
 
 
-def _store_block(address: str) -> dict[str, object]:
-    return {
-        "secret_store": {
-            "provider": "infisical",
-            "address": address,
-            "project_id": PROJECT,
-            "environment": "dev",
-            "identity_file": ".omnibase/.env",
-            "client_id_ref": "INFISICAL_CLIENT_ID",
-            "client_secret_ref": "INFISICAL_CLIENT_SECRET",
-            "root_folder": "/",
-        }
+def _store_block(address: str, omit: str | None = None) -> dict[str, object]:
+    block = {
+        "provider": "infisical",
+        "address": address,
+        "project_id": PROJECT,
+        "environment": "dev",
+        "identity_file": ".omnibase/.env",
+        "client_id_ref": "INFISICAL_CLIENT_ID",
+        "client_secret_ref": "INFISICAL_CLIENT_SECRET",
+        "root_folder": "/",
     }
+    if omit is not None:
+        del block[omit]
+    return {"secret_store": block}
 
 
 def _no_long_substring(value: str, text: str) -> bool:
@@ -198,8 +199,7 @@ async def test_no_overlay_document_keeps_the_env_file_path(
 
 
 def test_a_broken_overlay_document_refuses_loudly(tmp_path: Path) -> None:
-    broken = _store_block("http://127.0.0.1:1")
-    del broken["secret_store"]["provider"]  # type: ignore[attr-defined]
+    broken = _store_block("http://127.0.0.1:1", omit="provider")
     environ = _overlay_root(tmp_path, broken)
     with pytest.raises(NodeOverlayError) as raised:
         load_store_overlay(NODE_NAME, environ)
