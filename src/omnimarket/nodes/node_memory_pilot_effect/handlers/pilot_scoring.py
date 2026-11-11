@@ -32,6 +32,9 @@ class ModelPilotQuestionSet(BaseModel):
 
 
 HARD_CATEGORIES = frozenset({"multihop", "aggregate"})
+#: The frozen question set's own category names for the planted facts and the questions that should get no answer.
+PLANTED_CATEGORY = "planted"
+ABSTAIN_CATEGORY = "abstain"
 ABSTAIN_MAX_CHARS = 600
 
 

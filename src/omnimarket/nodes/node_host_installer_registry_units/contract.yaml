@@ -433,6 +433,43 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
     evidence_file: .local/state/omni/overlay-store-load/last-run.json
     state_directory: .onex_state/overlay-store-load
+  # The daily memory pilot run (node_memory_pilot_effect, OMN-23619): once a day one pass runs the pilot and writes
+  # the result file the pilot measurement node reads. The pilot's overlay (run settings, lab endpoints, frozen hash)
+  # is found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of it.
+  memory-pilot-daily-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-memory-pilot-daily
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      # The systemd handler has no calendar form: start_interval only, and run_at_load false renders OnActiveSec=<interval>, so the first fire comes one interval after the timer starts.
+      start_interval: 86400
+      # The run lasts up to about an hour; a hung run is ended at 3 h and exits 124, under the 86400 s interval.
+      run_timeout_s: 10800
+      run_at_load: false
+      description: every 86400 s
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_memory_pilot_effect.runtime_memory_pilot_run
+    entry_file: src/omnimarket/nodes/node_memory_pilot_effect/runtime_memory_pilot_run.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      # A lab host without a launchd marketplace keeps the overlays checkout under the registry root, as overlay-store-load-systemd does.
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/memory-pilot-daily/last-run.json
+    state_directory: .onex_state/memory-pilot-daily
   # The R2 delegation scenario's tick: the scenario's settings are not in the unit (the tick reads them from the
   # secret store through the host's machine identity), and the optional environment file may hold overrides.
   scenario-r2-systemd:

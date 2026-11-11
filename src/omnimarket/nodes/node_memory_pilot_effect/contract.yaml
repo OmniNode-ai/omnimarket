@@ -16,7 +16,10 @@ description: >
   self-hosted package. Each request publishes a started event and exactly one
   completed or failed event; a failure carries a typed error code, a failure row
   is recorded, and the reading is NOT_WORKING. A lab model that is down fails
-  fast as lab_model_unavailable; no answer is invented.
+  fast as lab_model_unavailable; no answer is invented. A run request (OMN-23619)
+  asks the whole frozen question set of the baseline and of Cognee once, measures
+  gains, recall, ingest time, query p95 and outside connections, and writes the
+  result the pilot measurement node holds against the pilot's frozen bar.
 descriptor:
   node_archetype: effect
   purity: impure
@@ -37,6 +40,13 @@ handler_routing:
       handler:
         name: HandlerMemoryPilot
         module: omnimarket.nodes.node_memory_pilot_effect.handlers.handler_memory_pilot
+    - operation: memory_pilot_run_requested
+      topic: onex.cmd.omnimarket.memory-pilot-run-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot_run.ModelMemoryPilotRunRequest
+      handler:
+        name: HandlerMemoryPilotRun
+        module: omnimarket.nodes.node_memory_pilot_effect.handlers.handler_memory_pilot_run
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.memory-pilot-requested.v1
   terminal_events:
@@ -44,15 +54,23 @@ runtime_dispatch:
     failure: onex.evt.omnimarket.memory-pilot-failed.v1
 terminal_event: onex.evt.omnimarket.memory-pilot-completed.v1
 event_bus:
-  subscribe_topics: [onex.cmd.omnimarket.memory-pilot-requested.v1]
+  subscribe_topics:
+    - onex.cmd.omnimarket.memory-pilot-requested.v1
+    - onex.cmd.omnimarket.memory-pilot-run-requested.v1
   publish_topics:
     - onex.evt.omnimarket.memory-pilot-started.v1
     - onex.evt.omnimarket.memory-pilot-completed.v1
     - onex.evt.omnimarket.memory-pilot-failed.v1
+    - onex.evt.omnimarket.memory-pilot-run-started.v1
+    - onex.evt.omnimarket.memory-pilot-run-completed.v1
+    - onex.evt.omnimarket.memory-pilot-run-failed.v1
 # The started event is a sink: no node contract subscribes to it; the pilot's readers
 # (a person or a reading of the bus) consume it outside the node graph.
 externally_consumed_topics:
   - onex.evt.omnimarket.memory-pilot-started.v1
+  - onex.evt.omnimarket.memory-pilot-run-started.v1
+  - onex.evt.omnimarket.memory-pilot-run-completed.v1
+  - onex.evt.omnimarket.memory-pilot-run-failed.v1
 metadata:
   ticket: OMN-19998
   transport_type: kafka
