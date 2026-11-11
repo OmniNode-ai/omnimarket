@@ -284,3 +284,10 @@ def test_connection_audit_counts_only_outside_connections_inside_a_run() -> None
     sys.audit("socket.connect", None, ("203.0.113.10", 1))
     audit.start(())
     assert audit.stop() == ()
+
+
+def test_the_contract_declares_the_run_topics() -> None:
+    """The run's events and command ride the topics the contract names (the state coverage gate reads these literals)."""
+    assert STARTED == "onex.evt.omnimarket.memory-pilot-run-started.v1"
+    assert COMPLETED == "onex.evt.omnimarket.memory-pilot-run-completed.v1"
+    assert FAILED == "onex.evt.omnimarket.memory-pilot-run-failed.v1"
