@@ -273,6 +273,7 @@
   "tests/formal/test_ledger_reducer_judge_model.py": 0.47,
   "tests/formal/test_ledger_reducer_judge_review.py": 0.01,
   "tests/formal/test_remote_lane_stop_model.py": 0.17,
+  "tests/formal/test_throughput_tick_model.py": 2.6,
   "tests/gates/test_consumer_group_contract_declaration_strip.py": 8.78,
   "tests/gates/test_contract_publish_parity.py": 33.8,
   "tests/gates/test_gitignore_does_not_swallow_packaged_source_omn18859.py": 0.06,
