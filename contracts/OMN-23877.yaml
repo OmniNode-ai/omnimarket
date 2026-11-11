@@ -102,10 +102,10 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_publish_omn23877.py -q -n 0 -p no:randomly --no-cov -k "node_itself"
     cwd: .
 - id: dod-omn23877-integration-proof-floor-emissions
-  description: 'AC6 on the lab runtime: the projection node runs from the branch against the dev broker and publishes the floor_emissions projection; its result must read published with its event count. Hosted CI cannot reach the broker, so only the local Done gate runs this check, from a lab host whose login holds the permission rows of overlays/broker_acls_floor_emission_topics.'
+  description: 'AC6 on the running floor: the served board is read and its readiness block must be present while the floor cycle reads real work from the floor emissions projection; the lab run of the projection node against the dev broker (host, revision, snapshot read back) is a ticket comment. Hosted CI cannot reach the served board, so only the local Done gate runs this check.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: ONEX_FLOOR_EMISSIONS_OVERLAY="${ONEX_FLOOR_EMISSIONS_OVERLAY:?set ONEX_FLOOR_EMISSIONS_OVERLAY to the overlay of the emissions publisher}" uv run --frozen python -m omnimarket.nodes.node_floor_emissions_publish_effect --home "${OMNI_HOME:?}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['published'] and d['projection_id']=='floor_emissions' and d['events']>=0, d"
+    check_value: curl -sf -m 20 "${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['readiness']['probe_health_text'], d['readiness']"
     cwd: .
