@@ -21,8 +21,9 @@ from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
 )
 
-#: How an eval arm's backend is attributed in refusals and provenance.
-EVAL_ARMS_OVERLAY_SOURCE = "DELEGATION_ROUTING_OVERLAY_PATH eval_arms"
+#: How an eval arm or paid rung backend is attributed in refusals and provenance
+#: (OMN-23751, OMN-23756).
+EVAL_ARMS_OVERLAY_SOURCE = "DELEGATION_ROUTING_OVERLAY_PATH eval_arms/paid_rungs"
 
 
 def append_eval_arm_backends(
@@ -36,6 +37,11 @@ def append_eval_arm_backends(
     ``backend_id`` raises naming the id. Each appended row is proven complete by
     ``validate_overlay_added_backends`` and its endpoint is held to the
     contract's declared provider surfaces. An unbound overlay appends nothing.
+
+    OMN-23756: the overlay's paid rungs (``paid_rungs``) are appended the same
+    way, but only while their switch is on, and they are selectable: the paid
+    tiers the routing authority inserts into the ladder name them. With the
+    switch off they are not appended, so neither a tier nor a pin reaches them.
     """
     # Imported here: the canonical bifrost loader imports this module, so a
     # module-level import back into it would be a cycle.
@@ -45,15 +51,16 @@ def append_eval_arm_backends(
     )
 
     merged = [dict(b) for b in backends]
-    rows = load_delegation_routing_overlay().eval_backend_rows()
+    overlay = load_delegation_routing_overlay()
+    rows = overlay.eval_backend_rows() + overlay.paid_rung_backend_rows()
     if not rows:
         return merged
     existing = {str(b.get("backend_id")) for b in merged}
     clash = sorted(str(r["backend_id"]) for r in rows if r["backend_id"] in existing)
     if clash:
         msg = (
-            f"{EVAL_ARMS_OVERLAY_SOURCE}: eval arm backend_id(s) {clash} collide with "
-            "a routing-contract backend; an eval arm never overrides one"
+            f"{EVAL_ARMS_OVERLAY_SOURCE}: eval arm or paid rung backend_id(s) {clash} "
+            "collide with a routing-contract backend; an overlay rung never overrides one"
         )
         raise ValueError(msg)
     merged.extend(

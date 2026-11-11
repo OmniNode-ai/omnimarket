@@ -12,7 +12,9 @@ One request, one verdict:
 3. a draft that edits the contract, a check file or a protected path is ``fail_tampered`` before anything is applied;
 4. a scratch worktree is made at the base commit, the draft is applied (``fail_did_not_apply``), the check files are
    placed over it and the environment is synced (timed apart from the checks);
-5. each bound check of type ``test_passes`` or ``command`` runs; any failure is ``fail_check``;
+5. each bound check of type ``test_passes`` or ``command`` runs; any failure is ``fail_check``, except a pytest run that
+   ended on exit 1 with an error and no failed test in its summary line (a fixture that cannot reach its service): that is
+   a fault at check setup and is ``unscorable(env)``. A collection error (pytest exit 2) stays a failure of the draft;
 6. a draft whose checks all pass is read again at the base with only the check files placed: a check that does not fail
    there is an invalid falsifier and the verdict is ``unscorable(falsifier_not_held)``, never a pass.
 
@@ -48,6 +50,10 @@ from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
     BashCheckExecution,
     GitWorkspace,
+)
+from omnimarket.nodes.node_code_contract_score_effect.handlers.parser_pytest_summary import (
+    is_setup_error_run,
+    parse_pytest_summary,
 )
 from omnimarket.nodes.node_code_contract_score_effect.models import (
     EnumCodeScoreCheckOutcome,
@@ -449,6 +455,13 @@ class HandlerCodeContractScore:
                 raise _UnscorableError(
                     EnumCodeScoreSource.HARNESS,
                     f"check {item_id} hit the {overlay.check_timeout_s} s limit",
+                )
+            if is_setup_error_run(ran.exit_code, ran.output_tail):
+                summary = parse_pytest_summary(ran.output_tail)
+                errors = summary.errors if summary else 0
+                raise _UnscorableError(
+                    EnumCodeScoreSource.ENV,
+                    f"check {item_id} ended in a pytest setup error with no failed test ({errors} error)",
                 )
             results.append(
                 ModelCodeScoreCheckResult(
