@@ -31,6 +31,7 @@ handler:
   module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_changed_path_live
   class: HandlerChangedPathLive
   input_model: omnimarket.nodes.node_lab_proof_judge_compute.models.model_changed_path_live.ModelChangedPathLiveRequest
+  output_model: omnimarket.nodes.node_lab_proof_judge_compute.models.model_changed_path_live.ModelChangedPathLiveResult
 
 # The handlers below take the overlay through their constructor, which the
 # runtime's auto-wiring cannot supply; they are bound here under
@@ -73,10 +74,7 @@ output_model:
   description: The verdict, the matched entries, the substitute proofs and the not-applicable use.
 
 runtime_dispatch:
-  external_trigger: true
-  external_trigger_prose: >
-    The pool driver calls `python -m omnimarket.nodes.node_lab_proof_judge_compute changed-path-live`
-    with one JSON request on stdin; the node answers with one JSON result on stdout.
+  external_trigger: "The pool driver calls `python -m omnimarket.nodes.node_lab_proof_judge_compute changed-path-live` with one JSON request on stdin; the node answers with one JSON result on stdout."
 
 topics:
   lab_proof_judge_requested: onex.cmd.omnimarket.lab-proof-judge-requested.v1
@@ -91,10 +89,13 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-proof-judge-decided.v1
   - onex.evt.omnimarket.lab-proof-judge-run-failed.v1
 
+dependency_ownership:
+  overlay: "Owned by the pool driver's CLI verbs, which load the node overlay from ONEX_SKILL_OVERLAY_ROOTS and construct the handler in process."
+
 overlay:
   node: node_lab_proof_judge_compute
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
 
 metadata:
   ticket: OMN-23642
-  transport_type: inmemory
+  transport_type: local
