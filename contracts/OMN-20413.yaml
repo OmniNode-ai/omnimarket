@@ -21,6 +21,11 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: node_projection_local_alerts/contract.yaml has no consumers key and node_projection_delegation/contract.yaml declares consumers none with a reason on its daily exposure -- falsifier: uv run pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -p no:randomly --no-cov fails at the merge base'
+  - id: req-narrowed-bound-headroom
+    statement: A one-node change narrows on dev again; the narrowed selection bound is 6 shards of 360 seconds.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: a one-node source change is narrowed, not the full suite, with tests/nodes plus the always-selected paths recorded at 1800.75 seconds -- falsifier: uv run pytest tests/ci/test_queue_run_once_omn19998.py tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_test_selection_selector_compute -q -p no:randomly fails at the merge base'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -73,3 +78,11 @@ dod_evidence:
       - check_type: command
         check_value: |-
           sha="$(git rev-parse HEAD)"; base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$sha/src/omnimarket/nodes"; la="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_local_alerts/contract.yaml")" && dl="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_delegation/contract.yaml")" && ! printf '%s\n' "$la" | grep -q '^  consumers:' && printf '%s\n' "$dl" | grep -q '^      consumers: none$' && printf '%s\n' "$dl" | grep -q '^      consumers_reason:' && echo "OMN-20413 reader-coverage readback PASS"
+  - id: dod-omn20413-narrowed-bound-headroom
+    description: A one-node change narrows and the selector tests pass with the shipped policy; all fail at the merge base.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_queue_run_once_omn19998.py tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_test_selection_selector_compute -q -p no:randomly --no-cov
+    binds_ac:
+      - AC5

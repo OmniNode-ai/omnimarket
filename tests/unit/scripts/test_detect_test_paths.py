@@ -841,7 +841,7 @@ def test_narrowed_selection_under_the_bound_stays_narrowed() -> None:
     assert selection.is_full_suite is False
     assert "tests/unit/" not in selection.selected_paths
     # The recorded durations move with every refresh; the bound is the claim.
-    assert 3 <= selection.split_count <= 5
+    assert 3 <= selection.split_count <= load_policy().max_narrowed_shards
 
 
 def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
@@ -927,7 +927,7 @@ def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count
     )
     assert selection.is_full_suite is False
     assert len(selection.selected_paths) < 5
-    assert 3 <= selection.split_count <= 5
+    assert 3 <= selection.split_count <= load_policy().max_narrowed_shards
     assert _shard_seconds(selection) <= 360
 
 

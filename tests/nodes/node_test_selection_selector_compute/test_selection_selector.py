@@ -127,7 +127,7 @@ def test_selection_selector_policy_refuses_a_ladder_over_the_narrowed_maximum() 
 
 def test_selection_selector_shipped_policy_loads() -> None:
     policy = load_policy()
-    assert policy.target_shard_seconds * policy.max_narrowed_shards == 1800
+    assert policy.target_shard_seconds * policy.max_narrowed_shards == 2160
 
 
 def test_selection_selector_durations_file_source_reads_and_fails_closed(
