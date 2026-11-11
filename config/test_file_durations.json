@@ -85,6 +85,7 @@
   "tests/ci/test_core_pin_compat_omn17427.py": 0.04,
   "tests/ci/test_core_pin_pair_2080333acfaf_omn21826.py": 0.17,
   "tests/ci/test_core_pin_pair_5bb91ae7e720_omn17427.py": 0.66,
+  "tests/ci/test_core_pin_pair_6cbe67b216fe_omn23755.py": 3.68,
   "tests/ci/test_core_validator_hooks_omn21940.py": 0.6,
   "tests/ci/test_coverage_artifact_metadata_roundtrip.py": 0.04,
   "tests/ci/test_coverage_census_cutover_wiring.py": 1.6,
