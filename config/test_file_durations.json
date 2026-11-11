@@ -1488,6 +1488,7 @@
   "tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_classes.py": 2.06,
   "tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_control.py": 1.76,
   "tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_overlay_only.py": 1.85,
+  "tests/nodes/node_lab_disk_watermark_effect/test_host_disk_topics_declared.py": 1.11,
   "tests/nodes/node_lab_disk_watermark_effect/test_lab_disk_watermark.py": 3.63,
   "tests/nodes/node_lab_fill_effect/test_cycle_chain_lab_fill.py": 0.02,
   "tests/nodes/node_lab_fill_effect/test_enumerate_approved_work_lab_fill.py": 0.17,

@@ -58,6 +58,8 @@ externally_consumed_topics:
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.host-disk-read-requested.v1
     producer: "the host disk orchestrator of the next ticket"
+runtime_dispatch:
+  external_trigger: "The onex-disk-watermark systemd timer on each pool host runs the node every 300 s, with its first reading at install."
 descriptor:
   node_archetype: effect
   purity: effectful
