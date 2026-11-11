@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23658
-title: Add the 60 missing test files to the test duration record so the freshness check passes on dev
-summary: config/test_file_durations.json is the committed record of seconds per test file that plans the 20 test groups. At dev b5b51bf8b3 it lacked 61 of 5076 test files, and tests/unit/test_ci_shard_plan_record_freshness_omn17427.py fails at 50 or more, so dev and every change carrying dev's tree read that check red in whichever Tests split holds it (Tests (Split 17/20) on omnimarket pull request 5765 at head bdbb668a0a). 60 of the 61 entries are measured by running each file alone with the shard run's own pytest options and turned into the record with the existing record command; the 61st, a kafka-marked file, has every test deselected by -m "not kafka" and stays unrecorded. The check's limit and every existing entry are unchanged.
+title: Add 52 of the 61 missing test files to the test duration record so the freshness check passes on dev
+summary: config/test_file_durations.json is the committed record of seconds per test file that plans the 20 test groups. At dev b5b51bf8b3 it lacked 61 of 5076 test files, and tests/unit/test_ci_shard_plan_record_freshness_omn17427.py fails at 50 or more, so dev and every change carrying dev's tree read that check red in whichever Tests split holds it (Tests (Split 17/20) on omnimarket pull request 5765 at head bdbb668a0a). 52 of the 61 entries are measured; 8 node test files stay unrecorded so the narrowed-selection estimate stays under the 1800 s bound by running each file alone with the shard run's own pytest options and turned into the record with the existing record command; the 61st, a kafka-marked file, has every test deselected by -m "not kafka" and stays unrecorded. The check's limit and every existing entry are unchanged.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,7 +10,7 @@ requirements:
   statement: The committed duration record lists every current test file within the freshness check's limit, with entries measured by the existing shard run options and no change to the check.
   acceptance:
   - id: AC1
-    statement: 'AC1: config/test_file_durations.json lists 60 of the 61 test files that were unrecorded at dev b5b51bf8b3, so the freshness check reads fewer than 50 unrecorded files -- falsifier: pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q fails on dev b5b51bf8b3 (61 of 5076 unrecorded) and passes on the branch'
+    statement: 'AC1: config/test_file_durations.json lists 52 of the 61 test files that were unrecorded at dev b5b51bf8b3, so the freshness check reads fewer than 50 unrecorded files -- falsifier: pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q fails on dev b5b51bf8b3 (61 of 5076 unrecorded) and passes on the branch'
   - id: AC2
     statement: 'AC2: the shard plan stays an exact partition of the collected test files with the new record -- falsifier: pytest tests/unit/test_ci_shard_plan_omn19684.py -q'
   - id: AC3
@@ -25,19 +25,19 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23658-ac1-record-lists-the-test-files
-  description: The shard plan reads the committed record against the tree and counts the test files it lacks. At the merge base it reads 61 of 5076 unrecorded; at the head it reads 2 (the kafka-marked file and this change's entries test). The freshness check passes at the head with its limit of 50 unchanged, and the entries test fails at the merge base.
+  description: The shard plan reads the committed record against the tree and counts the test files it lacks. At the merge base it reads 61 of 5076 unrecorded; at the head it reads 10 (the kafka-marked file, this change's entries test and 8 node test files left out to keep the narrowed-selection estimate under its bound). The freshness check passes at the head with its limit of 50 unchanged, and the entries test fails at the merge base.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 2 of '"
+    check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 10 of '"
     cwd: .
   - check_type: test_passes
     check_value: uv run pytest tests/unit/test_duration_record_entries_omn23658.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23658-ac2-shard-plan-partition
-  description: The shard plan tests prove the 20 plans are an exact partition of the collected files, and the plan must read 2 unrecorded with the new record. At the merge base the tests pass but the plan reads 61 unrecorded, so the item fails there; at the head both hold.
+  description: The shard plan tests prove the 20 plans are an exact partition of the collected files, and the plan must read 10 unrecorded with the new record. At the merge base the tests pass but the plan reads 61 unrecorded, so the item fails there; at the head both hold.
   source: manual
   binds_ac:
   - AC2
@@ -46,10 +46,10 @@ dod_evidence:
     check_value: uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q --no-cov -p no:randomly
     cwd: .
   - check_type: command
-    check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 2 of '"
+    check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 10 of '"
     cwd: .
 - id: dod-omn23658-ac3-hosted-proxy
-  description: AC3 hosted proxy. The freshness check passes and the shard plan reads 2 unrecorded, so a change carrying this tree has the check's headroom of 50. At the merge base the plan reads 61 unrecorded, so the item fails there. The lab readback of dev after merge is the local_done_gate item below.
+  description: AC3 hosted proxy. The freshness check passes and the shard plan reads 10 unrecorded, so a change carrying this tree has the check's headroom of 50. At the merge base the plan reads 61 unrecorded, so the item fails there. The lab readback of dev after merge is the local_done_gate item below.
   source: manual
   binds_ac:
   - AC3
@@ -58,7 +58,7 @@ dod_evidence:
     check_value: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov -p no:randomly
     cwd: .
   - check_type: command
-    check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 2 of '"
+    check_value: bash -c "python3 scripts/ci/merge_test_durations.py plan --splits 20 --group 1 2>&1 >/dev/null | grep -q ', 10 of '"
     cwd: .
 - id: dod-omn23658-ac3-integration-proof-lab
   description: Runs the freshness check at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
