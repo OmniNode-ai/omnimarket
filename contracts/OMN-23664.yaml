@@ -66,12 +66,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: 'uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_seam_start.py -q --no-cov -p no:randomly'
     cwd: .
+- id: dod-omn23664-runtime-proxy
+  description: 'Hosted proxy for AC5: the unit''s main runs one pass on the in-memory ports, accepts the arguments the installed unit passes (--omni-home, --state-dir), writes the snapshot, the record and the heartbeat file, ends a refused overlay with exit 3 and a heartbeat, and prints the observed rows without writing. Hosted CI cannot reach the lab, so the installed unit, the event on the broker and the runner comparison are recorded in the pull request.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_runtime.py -q --no-cov -p no:randomly'
+    cwd: .
 - id: dod-omn23664-integration-proof-lab
   description: 'Runs the pool snapshot node''s tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23664 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect -q --no-cov -p no:randomly'
