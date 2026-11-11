@@ -69,7 +69,7 @@ def test_golden_an_added_test_file_that_is_recorded_is_admitted(tmp_path: Path) 
     assert "1 added test file(s), all recorded" in result.output_lines[0]
 
 
-def test_failing_control_an_added_test_file_that_is_not_recorded_is_refused_with_the_command(
+def test_failing_control_added_file_without_entry_is_refused_with_the_command(
     tmp_path: Path,
 ) -> None:
     root = _checkout(tmp_path, {OLD_FILE: 2.0}, (NEW_FILE,))

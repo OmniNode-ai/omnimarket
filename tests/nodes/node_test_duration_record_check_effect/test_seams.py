@@ -188,7 +188,7 @@ def test_seam_git_the_real_source_reads_staged_and_base_ref_additions(
     assert source.added_files(str(tmp_path), "no-such-ref") is None
 
 
-def test_seam_git_a_merge_commit_reads_only_the_additions_this_change_made(
+def test_seam_git_untouched_change_a_merge_commit_reads_only_the_additions_this_change_made(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A hook exports these and they override `git -C`; the adapter under test must read tmp_path.

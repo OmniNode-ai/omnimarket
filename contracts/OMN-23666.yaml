@@ -33,7 +33,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect/test_check_and_record.py -k added_test_file_that_is_not_recorded -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect/test_check_and_record.py -k added_file_without_entry -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23666-ac2-admitted
   description: The same diff with the entry present is admitted, and a merge commit reads only the additions this change made, so other people's merges never fail an untouched change.
@@ -42,7 +42,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect/test_check_and_record.py tests/nodes/node_test_duration_record_check_effect/test_seams.py -k "recorded_is_admitted or merge_commit_reads_only" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect/test_check_and_record.py tests/nodes/node_test_duration_record_check_effect/test_seams.py -k "recorded_is_admitted or untouched_change" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23666-ac3-overlay-and-chains
   description: The settings are in policy.yaml, the wiring seam test finds the hook and the CI step, and the golden and error chain tests pass.
