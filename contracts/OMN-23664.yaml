@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+ticket_id: OMN-23664
+title: Write the host pool snapshot the lane start and the fill read
+summary: node_lane_host_pool_snapshot_effect reads the lab hosts' capacity advertisements, the lab host table, the open lane claims and each host's token pool, writes the pool snapshot file the lane start node reads (a ModelLaneHostPoolSnapshot) with a read-time record beside it (per host declared slots, running lanes, free slots, usable and limited accounts, away state), and publishes the record. The fill's free-slots seam reads the same snapshot and both readers refuse a snapshot older than the overlay bound.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- protocols
+- topics
+requirements:
+- id: req-omn23664-pool-snapshot
+  statement: One node writes the pool snapshot and its read-time record from live host readings with every bound an overlay value, and the lane start node and the fill read it, refusing a stale one.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a node with a contract and an overlay writes the pool snapshot file (a ModelLaneHostPoolSnapshot) and a read-time record from live host readings, and the snapshot-file pool adapter reads the file back -- falsifier: the node''s test fails when the read time is missing or when the file does not validate as a ModelLaneHostPoolSnapshot'
+  - id: AC2
+    statement: 'AC2: the record carries per host the declared slots, running lanes, free slots, usable and limited account labels and away state, with free slots zero for an away, limited-out or refused host -- falsifier: a test with an away host and a host with every account limited fails when either shows a free slot'
+  - id: AC3
+    statement: 'AC3: the fill''s pool seam reads free slots from the written snapshot and refuses a stale or unreadable snapshot instead of reading it as zero or as full -- falsifier: the seam test with the fill tick fails when the snapshot is older than the overlay bound and the pool still answers a number'
+  - id: AC4
+    statement: 'AC4: the start node places a lane from the written snapshot and never on an away host -- falsifier: the seam test with the start node fails when the away host is named as the chosen host'
+  - id: AC5
+    statement: 'AC5: integrated: on a lab host the installed unit writes the snapshot, the snapshot event and file are read back, and the host numbers are compared with the remote-lane runner''s pool reading for the same minute -- falsifier: no snapshot event or file after the unit''s run, or a host number that differs from the runner''s reading with no named reason'
+evidence_requirements:
+- kind: tests
+  description: The pool snapshot node's tests (golden and error chains, the failing controls, the seam tests with the lane start node and the fill's free slots)
+  command: uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23664-writer
+  description: 'Runs the handler''s tests: the written snapshot file validates as a ModelLaneHostPoolSnapshot, the record carries a timezone-aware read time and per host declared slots, running lanes, free slots, accounts and away state; an away host and a host with every account limited show no free slot; a record with no read time or a snapshot file with an extra key is refused. The node does not exist at the merge base, so the command fails there.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_handler.py tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_file.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23664-record
+  description: 'Runs the handler''s per host rows test: free slots are zero for the away host, the limited-out host, the host with a stale advertisement and the host with a capacity refusal.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_handler.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23664-seam-fill
+  description: 'Runs the seam test with the fill: the fill''s pool seam answers the written snapshot''s free slots and raises instead of answering when the record is older than the bound.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_seam_fill.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23664-seam-start
+  description: 'Runs the seam test with the lane start node: the start places a lane on a host named in the written snapshot, never on the away host, and ends no host when only the away host is in the snapshot.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_seam_start.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23664-integration-proof-lab
+  description: 'Runs the pool snapshot node''s tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23664 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect -q --no-cov -p no:randomly'
+    cwd: .

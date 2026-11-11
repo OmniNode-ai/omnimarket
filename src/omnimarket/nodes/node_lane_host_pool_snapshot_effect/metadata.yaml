@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_host_pool_snapshot_effect
+version: "0.1.0"
+description: "The lane host pool snapshot writer: the lab hosts' capacity, lane claims and accounts written as the snapshot the lane start and the fill read, with its read-time record (OMN-23664)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_host_pool_snapshot_effect: "omnimarket.nodes.node_lane_host_pool_snapshot_effect"
+capabilities:
+  standalone: false
+  # false until the unit is installed on the lab and the dev broker rows are applied: the pass still runs.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+- omnibase_core>=0.39.0
+- pyyaml>=6.0
+- aiokafka>=0.10.0
+- omnibase-infra>=0.1.0
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "lane-start", "floor-fill", "pool-snapshot", "OMN-23664"]
+pack: "pr_lifecycle"
+display_name: "Lane Host Pool Snapshot Effect"
+node_role: "effect"
