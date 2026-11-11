@@ -202,7 +202,7 @@ def test_main_observe_prints_the_rows_and_writes_no_file(
     assert parsed["rows"][0]["host"] == "h1"
     assert not (tmp_path / "pool.json").exists()
     assert not (tmp_path / "emissions.jsonl").exists()
-    assert ports.store.read_record() is None  # type: ignore[attr-defined]
+    assert ports.store.read_record() is None
 
 
 def test_main_without_a_declared_overlay_is_refused_with_exit_three(

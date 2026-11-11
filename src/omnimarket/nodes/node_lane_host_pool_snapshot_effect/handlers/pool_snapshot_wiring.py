@@ -107,7 +107,7 @@ def build_pool_snapshot_ports(
     ):
         raise ValueError("the redpanda backend needs its overlay fields")
     advertisements: ProtocolHostAdvertisementSource
-    if route.route == "file" and route.path:
+    if route.path:
         advertisements = AdvertisementFileSource(resolve_path(route.path))
     elif route.argv:
         advertisements = AdvertisementCommandSource(

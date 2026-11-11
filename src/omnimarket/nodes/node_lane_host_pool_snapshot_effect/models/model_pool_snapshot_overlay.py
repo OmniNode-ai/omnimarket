@@ -58,10 +58,10 @@ class ModelAdvertisementRoute(BaseModel):
 
     @model_validator(mode="after")
     def _route_needs_its_field(self) -> ModelAdvertisementRoute:
-        if self.route == "file" and not self.path:
-            raise ValueError("the file route needs path")
-        if self.route == "command" and not self.argv:
-            raise ValueError("the command route needs argv")
+        needed = {"file": self.path, "command": self.argv}
+        if not needed[self.route]:
+            field_name = {"file": "path", "command": "argv"}[self.route]
+            raise ValueError(f"the {self.route} route needs {field_name}")
         return self
 
 

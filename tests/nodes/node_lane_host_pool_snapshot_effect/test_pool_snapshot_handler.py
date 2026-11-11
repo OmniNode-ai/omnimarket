@@ -129,6 +129,10 @@ def test_golden_four_hosts_project_their_refusals_and_the_snapshot_file_validate
     assert parsed.limited_hosts == ("h3",)
     assert [topic for topic, _ in publisher.published] == [overlay().snapshot_topic]
     assert isinstance(publisher.published[0][1], ModelPoolSnapshotRecord)
+    assert (
+        publisher.published[0][0]
+        == "onex.evt.omnimarket.lane-host-pool-snapshot-recorded.v1"
+    )
 
 
 def test_error_each_source_error_ends_failed_with_the_matching_reason() -> None:
@@ -180,6 +184,7 @@ def test_error_each_source_error_ends_failed_with_the_matching_reason() -> None:
         assert len(publisher.published) == 1
         topic, event = publisher.published[0]
         assert topic == overlay().failed_topic
+        assert topic == "onex.evt.omnimarket.lane-host-pool-snapshot-failed.v1"
         assert isinstance(event, ModelPoolSnapshotFailedEvent)
         assert event.reason is reason
 
