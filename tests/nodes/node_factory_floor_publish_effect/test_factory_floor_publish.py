@@ -362,15 +362,25 @@ def _refresh_request(tmp_path: Path) -> ModelFactoryFloorPublishRequest:
 PLUGIN = {"CLAUDE_PLUGIN_ROOT": "/plugin-root"}
 
 
+def _without_step_environment(argv: Sequence[str]) -> list[str]:
+    """The program's own argv: a step that names variables runs through env(1) with them first (OMN-23606)."""
+    words = list(argv)
+    if words and words[0] == "/usr/bin/env":
+        words = words[1:]
+        while words and "=" in words[0] and not words[0].startswith("/"):
+            words = words[1:]
+    return words
+
+
 def _program_calls(runner: LocalSsh) -> list[str]:
+    calls = [_without_step_environment(c[0]) for c in runner.calls if c[0][0] != "ssh"]
     return [
-        c[0][2]
-        if c[0][1] == "-m"
+        argv[2]
+        if argv[1] == "-m"
         else "pool"
-        if any("onex_lab_run.py" in word for word in c[0])
+        if any("onex_lab_run.py" in word for word in argv)
         else "hosts"
-        for c in runner.calls
-        if c[0][0] != "ssh"
+        for argv in calls
     ]
 
 
