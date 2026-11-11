@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23746
+title: 'Delegation check 8: read the secret store from the R8 settings document and create the probe key through the node'
+summary: 'Scenario R8 reads its secret store block (address and allowed host) from its own overlay document through the existing overlay loader, and the key generator uses the same block. With no document both behave as before. The generate entry prints the typed result only, never the key. The R8 unit pins the overlays root the document is found under.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23746-r8-store-overlay
+  statement: The R8 tick and the key generator reach the secret store through the store block of the R8 overlay document, found under the overlays root the R8 unit pins, and fall back to the host environment file only when no document exists.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: R8 reads its store block (address and allowed host) from its own overlay document through the existing overlay loader, and the key generator uses it -- falsifier: uv run pytest tests/nodes/node_delegation_scenario_r8_effect/test_store_overlay.py -q fails when the overlay-loading line is reverted'
+  - id: AC2
+    statement: 'AC2: with no overlay document the reader and the generator behave exactly as before (host env file fallback) -- falsifier: the no-document test in the same file fails when the fallback is removed'
+  - id: AC3
+    statement: 'AC3: generating the declared tenant key through the node returns the word created, stores it once, and an undeclared name stores nothing; the key value appears in no output -- falsifier: the golden and error tests of the generate entry fail when the value is printed or an undeclared name is stored'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of this change pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect tests/unit/nodes/node_secret_store_effect/test_generate_key_cli.py tests/nodes/node_host_installer_registry_units/test_scenario_r8_overlay_root.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23746-store-overlay
+  description: 'The overlay tests: the reader and the generator resolve through the overlay block when the home env file points at a refused address (failing control: without the overlay the store cannot be reached), a missing document keeps the old path, a broken document refuses, an undeclared name stores nothing, and the generated key and the key R8 reads agree.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_store_overlay.py tests/nodes/node_delegation_scenario_r8_effect/test_seam_generated_key_name.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23746-generate-cli
+  description: 'The generate entry: created and exists exit 0 with the typed result and no key in stdout or stderr, an undeclared name and an unreachable store exit 3 with nothing stored.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_generate_key_cli.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23746-unit-root
+  description: The R8 unit declares the overlays root, accepts an override and refuses a worktree root.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r8_overlay_root.py tests/nodes/node_host_installer_registry_units/test_scenario_r3_r5_r8_units.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23746-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the unit run on h053 is read in the pull request's Lab comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23746 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect tests/unit/nodes/node_secret_store_effect/test_generate_key_cli.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
