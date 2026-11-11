@@ -91,6 +91,10 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_clone_path,
     default_watcher_state_path,
 )
+from omnimarket.handlers.scm.handler_scm_red_facts import (
+    RED_FACTS_VERB,
+    HandlerScmRedFacts,
+)
 from omnimarket.handlers.scm.scm_duplicate_guard import (
     duplicate_check_command,
     refuse_or_continue,
@@ -704,7 +708,7 @@ def _local_command(spec: ModelScmLocalVerb) -> click.Command:
             )
         except ValidationError as exc:
             raise click.UsageError(str(exc)) from exc
-        local = HandlerScmLocalState().handle(request)
+        local = HandlerScmRedFacts().handle(request)
         if not local.answered or local.source is None:
             click.echo(
                 f"local: {local.unanswered_reason} ({spec.verb} has no bus or "
@@ -1107,7 +1111,7 @@ for _spec in SCM_VERBS:
         if _spec.node is EnumScmNode.WRITE
         else _read_command(_spec)
     )
-for _local in SCM_LOCAL_VERBS:
+for _local in (*SCM_LOCAL_VERBS, RED_FACTS_VERB):
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
 scm_group.add_command(git_credential_command)

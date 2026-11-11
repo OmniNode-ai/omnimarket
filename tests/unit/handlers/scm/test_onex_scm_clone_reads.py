@@ -159,13 +159,7 @@ def _answer(result: Result) -> dict[str, Any]:
 
 def test_clone_only_verbs_are_distinct_from_node_verbs_and_refusals() -> None:
     local = {v.verb for v in SCM_LOCAL_VERBS}
-    assert local == {
-        "pr-commits",
-        "file-read",
-        "commit-view",
-        "commit-checks",
-        "red-facts",
-    }
+    assert local == {"pr-commits", "file-read", "commit-view", "commit-checks"}
     assert local.isdisjoint({v.verb for v in SCM_VERBS})
     assert local.isdisjoint({v.verb for v in SCM_REFUSED_VERBS})
     assert len({v.read for v in SCM_LOCAL_VERBS}) == len(SCM_LOCAL_VERBS)

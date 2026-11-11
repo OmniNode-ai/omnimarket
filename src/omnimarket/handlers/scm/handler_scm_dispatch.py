@@ -222,11 +222,6 @@ SCM_LOCAL_VERBS: Final[tuple[ModelScmLocalVerb, ...]] = (
         read=EnumScmLocalRead.COMMIT_CHECKS,
         replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
     ),
-    ModelScmLocalVerb(
-        verb="red-facts",
-        read=EnumScmLocalRead.RED_FACTS,
-        replaces="onex scm job-log / job-log-cached raw log reads for the failing line",
-    ),
 )
 
 LANDING_CONTROLLER: Final[str] = (

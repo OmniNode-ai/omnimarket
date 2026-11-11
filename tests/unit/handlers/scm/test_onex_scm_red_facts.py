@@ -20,7 +20,7 @@ import yaml
 from click.testing import CliRunner
 
 from omnimarket.handlers.scm import scm_cli
-from omnimarket.handlers.scm.handler_scm_dispatch import SCM_LOCAL_VERBS
+from omnimarket.handlers.scm.handler_scm_red_facts import RED_FACTS_VERB
 from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
     RedFactsStore,
 )
@@ -117,7 +117,8 @@ def _run(lane: dict[str, Any], head: str):
 
 
 def test_red_facts_is_a_local_verb_with_no_node_operation() -> None:
-    assert "red-facts" in {v.verb for v in SCM_LOCAL_VERBS}
+    assert RED_FACTS_VERB.verb == "red-facts"
+    assert "red-facts" in scm_cli.scm_group.commands
 
 
 def test_red_facts_answers_from_the_record_and_opens_no_bus(lane) -> None:
