@@ -13,6 +13,11 @@
 # through node_remote_lane_start_effect; (5) supervise its log and exit; (6) close through
 # node_remote_lane_close_compute with one TERMINAL, or a STATUS when the lane closed itself.
 #
+# OBSERVE MODE (OMN-22847). The overlay's remote_lane_start.start_mode is act (the default) or observe. Observe places the lane,
+# computes the whole start and publishes it as ModelRemoteLaneStartObserved on onex.evt.omnimarket.remote-lane-start-observed.v1,
+# and writes nothing else: no CLAIM, no receipt file, no host call (no ssh, no login draw, no process). Host choice honours the
+# lab host table's available: false on both modes (an unreadable table refuses the start).
+#
 # WHAT THE FILL RELIES ON. The CLAIM is appended by the leader process itself, after placement
 # and before any host call that starts the engine, and carries the lane name and key=<key> it was
 # given; the engine is not in the leader's process group; the leader's exit code is diagnostic
@@ -82,6 +87,10 @@ published_events:
   - event_type: ModelRemoteLaneStartResult
     topic: onex.evt.omnimarket.remote-lane-start-completed.v1
     description: "The outcome of one lane start, answered whatever happened."
+  # OMN-22847: start_mode observe publishes the whole start it would make and writes nothing else.
+  - event_type: ModelRemoteLaneStartObserved
+    topic: onex.evt.omnimarket.remote-lane-start-observed.v1
+    description: "The start the node would make (host, CLAIM cells, engine command, brief reference), published by an observe-mode start; no CLAIM, receipt, host call or process."
 metadata:
   transport_type: kafka
   ticket: OMN-22848
