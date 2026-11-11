@@ -210,7 +210,8 @@ def test_golden_the_control_chains_share_one_id_that_is_the_controls_own() -> No
 
     ids = {e["correlation_id"] for e in emissions}
     assert len(ids) == 1
-    assert ids.pop().startswith(OVERLAY.control.id_prefix)
+    (control_id,) = ids
+    assert control_id.startswith(OVERLAY.control.id_prefix)
 
 
 def test_error_a_control_the_stop_gate_still_refuses_writes_no_chain(
