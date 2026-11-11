@@ -13,3 +13,24 @@ registers_as:
   ollama:
     keyed: openai_compatible
     keyless: local
+# What the TUI's /config offers. Labels are sorted on load. A provider in
+# url_required asks for its server (default_port on this machine); any other
+# asks for its key. Each hint comes from the provider's own docs
+# (aistudio.google.com/docs/api-key, docs.ollama.com/faq, openrouter.ai/docs).
+picker:
+  - provider: gemini
+    label: Google Gemini
+    hint: Create a key at aistudio.google.com/apikey.
+  - provider: ollama
+    label: Ollama
+    default_port: 11434
+    selected: true
+    hint: >-
+      Ollama listens on port 11434 of its machine. For a server elsewhere, set
+      OLLAMA_HOST=0.0.0.0:11434 there and use its address.
+  - provider: openai
+    label: OpenAI
+    hint: Create a key under API keys in your OpenAI dashboard.
+  - provider: openrouter
+    label: OpenRouter
+    hint: Create a key at openrouter.ai/keys.

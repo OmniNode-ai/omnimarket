@@ -46,6 +46,13 @@ from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokModelListing,
     list_byok_models,
 )
+from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
+    loopback_url,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    ModelSetupPickerProvider,
+    setup_provider_traits,
+)
 
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
 # Shortcuts first, as coding-agent TUIs list them; every CLI command follows.
@@ -58,30 +65,34 @@ _LOCAL_COMMANDS = {
     ("help",): "Show keys and how commands work.",
     ("quit",): "Leave the TUI.",
 }
-_PROVIDERS = (  # alphabetical; Ollama is selected first in the form
-    ("Google Gemini", "gemini"),
-    ("Ollama", "ollama"),
-    ("OpenAI", "openai"),
-    ("OpenRouter", "openrouter"),
-)
-_HOSTED = frozenset(("openrouter", "gemini", "openai"))
-# From each provider's own docs (docs.ollama.com/faq, openrouter.ai/docs,
-# aistudio.google.com/docs/api-key).
-_PROVIDER_HINTS = {
-    "ollama": "Ollama listens on http://localhost:11434. For a server on another "
-    "machine, set OLLAMA_HOST=0.0.0.0:11434 there and use its address.",
-    "openrouter": "Create a key at openrouter.ai/keys.",
-    "gemini": "Create a key at aistudio.google.com/apikey.",
-    "openai": "Create a key under API keys in your OpenAI dashboard.",
-}
-_LABELS = {value: label for label, value in _PROVIDERS}
+
+
+def _picker() -> tuple[ModelSetupPickerProvider, ...]:
+    """What /config offers, read from setup_provider_traits.yaml at call time."""
+    return setup_provider_traits().picker_providers()
+
+
+def _entry(provider: str) -> ModelSetupPickerProvider | None:
+    return next((e for e in _picker() if e.provider == provider), None)
 
 
 def _label(provider: str) -> str:
-    return _LABELS.get(provider, provider)
+    entry = _entry(provider)
+    return entry.label if entry else provider
 
 
-_DEFAULT_URL = "http://localhost:11434"
+def _hint(provider: str) -> str:
+    entry = _entry(provider)
+    return entry.hint if entry else ""
+
+
+def _hosted(provider: str) -> bool:
+    return not setup_provider_traits().needs_url(provider)
+
+
+def _default_url(provider: str) -> str:
+    entry = _entry(provider)
+    return loopback_url(entry.default_port) if entry and entry.default_port else ""
 
 
 class ModelTuiCommand(BaseModel):
@@ -361,9 +372,18 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
             yield Label("Models for delegation: provider, key or URL, then models")
-            yield Select(_PROVIDERS, value="ollama", allow_blank=False, id="provider")
+            choices = _picker()
+            first = next((e for e in choices if e.selected), choices[0])
+            yield Select(
+                [(e.label, e.provider) for e in choices],
+                value=first.provider,
+                allow_blank=False,
+                id="provider",
+            )
             yield Input(placeholder="API key", password=True, id="key")
-            yield Input(value=_DEFAULT_URL, placeholder="Server URL", id="url")
+            yield Input(
+                value=_default_url(first.provider), placeholder="Server URL", id="url"
+            )
             yield Input(placeholder="Filter models", id="filter")
             yield SelectionList[str](id="found")
             yield Input(placeholder="Or type a model id", id="model")
@@ -378,7 +398,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     def on_mount(self) -> None:
         self.query_one("#filter").display = False
         self._show_fields()
-        self.query_one("#note", Static).update(_PROVIDER_HINTS[self._provider()])
+        self.query_one("#note", Static).update(_hint(self._provider()))
 
     def _provider(self) -> str:
         return str(self.query_one("#provider", Select).value)
@@ -387,19 +407,22 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         return self.query_one(f"#{widget_id}", Input).value.strip()
 
     def _show_fields(self) -> None:
-        hosted = self._provider() in _HOSTED
+        hosted = _hosted(self._provider())
+        url = self.query_one("#url", Input)
+        if not hosted and not url.value.strip():
+            url.value = _default_url(self._provider())
         self.query_one("#key").display = hosted
         self.query_one("#url").display = not hosted
 
     def on_select_changed(self, event: Select.Changed) -> None:
         self._show_fields()
-        self.query_one("#note", Static).update(_PROVIDER_HINTS[self._provider()])
+        self.query_one("#note", Static).update(_hint(self._provider()))
         self._show_rows([])
 
     async def _find(self) -> None:
         note = self.query_one("#note", Static)
         provider = self._provider()
-        if provider in _HOSTED:
+        if _hosted(provider):
             key = self._value("key")
             if not key:
                 note.update(f"enter your {_label(provider)} API key first")
@@ -460,7 +483,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         if not chosen:
             return False
         key = self._value("key")
-        if provider in _HOSTED and not key:
+        if _hosted(provider) and not key:
             self.query_one("#note", Static).update(
                 f"{_label(provider)} needs an API key"
             )
@@ -469,7 +492,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         models = tuple(dict.fromkeys((*(earlier.models if earlier else ()), *chosen)))
         self._basket[provider] = ModelTuiSetupChoice(
             provider=provider,
-            url=None if provider in _HOSTED else self._value("url") or None,
+            url=None if _hosted(provider) else self._value("url") or None,
             models=models,
             key=SecretStr(key) if key else None,
         )

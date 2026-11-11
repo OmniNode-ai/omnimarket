@@ -28,8 +28,13 @@ from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     OnexTui,
     command_tree,
 )
+from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
+    loopback_url,
+)
 
 pytestmark = pytest.mark.unit
+
+_OLLAMA_DEFAULT = loopback_url(11434)
 
 
 @click.group()
@@ -355,7 +360,7 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         assert not app.screen.query_one("#key").display
         await _press(pilot, app, "find")
         await pilot.pause()
-        assert ("models", "discover", "--url", "http://localhost:11434", "--json") in (
+        assert ("models", "discover", "--url", _OLLAMA_DEFAULT, "--json") in (
             runner.calls
         )
         listing = app.screen.query_one("#found")
@@ -376,7 +381,7 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
             "--model",
             "llama3.2",
             "--url",
-            "http://localhost:11434",
+            _OLLAMA_DEFAULT,
         )
         assert runner.calls[-1] == (
             "models",
@@ -661,17 +666,26 @@ async def test_clear_empties_the_output() -> None:
         assert _log_text(app).strip() == ""
 
 
-def test_config_offers_ollama_openrouter_gemini_and_openai_with_their_hints() -> None:
+def test_config_providers_come_from_the_traits_file_sorted_by_label() -> None:
+    """Nothing hard-coded: the choices, labels, hints and ports are data."""
     from omnimarket.nodes.node_onex_setup_effect import cli_tui
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+        setup_provider_traits,
+    )
 
-    labels = [label for label, _ in cli_tui._PROVIDERS]
-    assert labels == sorted(labels)
-    assert [value for _, value in cli_tui._PROVIDERS] == [
+    traits = setup_provider_traits()
+    choices = cli_tui._picker()
+    labels = [entry.label for entry in choices]
+    assert labels == sorted(labels, key=str.lower)
+    assert [entry.provider for entry in choices] == [
         "gemini",
         "ollama",
         "openai",
         "openrouter",
     ]
-    assert set(cli_tui._PROVIDER_HINTS) == {"ollama", "openrouter", "gemini", "openai"}
-    assert "openrouter.ai/keys" in cli_tui._PROVIDER_HINTS["openrouter"]
-    assert "aistudio.google.com/apikey" in cli_tui._PROVIDER_HINTS["gemini"]
+    assert all(entry.hint for entry in choices)
+    for entry in choices:
+        assert cli_tui._hosted(entry.provider) is not traits.needs_url(entry.provider)
+    assert cli_tui._default_url("ollama").endswith(":11434")
+    assert cli_tui._default_url("openrouter") == ""
+    assert "openrouter.ai/keys" in cli_tui._hint("openrouter")
