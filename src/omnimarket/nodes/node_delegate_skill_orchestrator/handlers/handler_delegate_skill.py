@@ -281,6 +281,29 @@ def _probe_ladder_dispatch_kwargs(
     return {}
 
 
+class _ModelDispatchKwargs(TypedDict, total=False):
+    """The per-call model name, passed only when the request names one
+    (OMN-20844 step 2).
+
+    A port that predates the keyword must keep working for every request that
+    names no model, so an unnamed model calls the port exactly as before. A
+    request that names a model is never run on the stored model when it asked
+    for another: a port that does not declare ``model`` raises ``TypeError``
+    on the keyword, which fails the call loudly instead of running a model
+    the caller did not name.
+    """
+
+    model: str
+
+
+def _model_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _ModelDispatchKwargs:
+    if request.model is not None:
+        return {"model": request.model}
+    return {}
+
+
 class _AttributionDispatchKwargs(TypedDict, total=False):
     """Who issued a delegation and what it follows, for the port (OMN-20606).
 
@@ -1832,6 +1855,8 @@ class HandlerDelegateSkill:
                     **_no_escalation_dispatch_kwargs(request),
                     # OMN-20606: only when named -- see _AttributionDispatchKwargs.
                     **_attribution_dispatch_kwargs(request),
+                    # OMN-20844 step 2: only when named.
+                    **_model_dispatch_kwargs(request),
                     # OMN-23162: only when carried -- see _ProbeLadderDispatchKwargs.
                     **_probe_ladder_dispatch_kwargs(request),
                     # OMN-21077: only when named -- see _NamedTestsDispatchKwargs.
