@@ -120,3 +120,6 @@ dod_evidence:
       - check_type: command
         check_value: grep -q real_golden_at src/omnimarket/nodes/node_floor_simple_compute/handlers/handler_floor_simple.py
         cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_real_work_omn23862.py -q -n 0 -p no:randomly --no-cov -k "real_golden_chain"
+        cwd: .
