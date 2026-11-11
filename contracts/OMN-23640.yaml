@@ -70,3 +70,10 @@ dod_evidence:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23640 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r3_r5_r8_units.py tests/nodes/node_delegation_scenario_r3_effect/test_scenario_r3_tick.py -q --no-cov -n 0 -p no:randomly'
     cwd: .
+- id: dod-omn23640-narrow-test-hermetic
+  description: The narrowed-selection test in tests/ci/test_queue_run_once_omn19998.py reads a small durations record under tmp_path, so it no longer flips to a full suite when the real durations record grows past the narrowing ceiling.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_queue_run_once_omn19998.py -k test_pr_code_change_is_narrowed -q --no-cov -n 0 -p no:randomly
+    cwd: .

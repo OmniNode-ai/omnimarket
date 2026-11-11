@@ -242,9 +242,20 @@ def test_heavy_job_event_admission(event, ref, docs, expected):
         ), key
 
 
-def test_pr_code_change_is_narrowed():
+def test_pr_code_change_is_narrowed(tmp_path):
+    # Hermetic: the shard-weight decision reads recorded durations, and the real
+    # record grows with every new node test until tests/nodes/ alone crosses the
+    # narrowing ceiling. A small record under tmp_path pins the narrowing rule.
+    (tmp_path / "tests" / "nodes").mkdir(parents=True)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "test_file_durations.json").write_text(
+        json.dumps({"tests/nodes/test_example.py": 1.0})
+    )
     selection = compute_selection(
-        ["src/omnimarket/nodes/node_example/handler.py"], ADJACENCY, "feature"
+        ["src/omnimarket/nodes/node_example/handler.py"],
+        ADJACENCY,
+        "feature",
+        repo_root=tmp_path,
     )
     assert not selection.is_full_suite
     assert "tests/nodes/" in selection.selected_paths
