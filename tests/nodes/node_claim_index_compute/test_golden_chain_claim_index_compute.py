@@ -162,11 +162,11 @@ def test_an_index_path_caches_the_derived_index(ledger: Path, tmp_path: Path) ->
     assert ask(config, operation="holder", ticket="OMN-1", now=NOW) == first
 
 
-def test_an_absent_overlay_is_refused_naming_the_key(
+def test_an_absent_overlay_is_refused_naming_the_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
-    with pytest.raises(NodeOverlayError, match=r"claim_index\.ledger_path"):
+    with pytest.raises(NodeOverlayError, match=r"claim_index/overlay\.yaml"):
         HandlerClaimIndex().handle(ModelClaimIndexRequest(operation="live_holders"))
 
 
