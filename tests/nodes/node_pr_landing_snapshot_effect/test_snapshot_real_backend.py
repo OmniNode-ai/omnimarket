@@ -136,6 +136,7 @@ def _real_overlay(tmp: Path) -> ModelSnapshotOverlay:
             "owner": OWNER,
             "record_journal": str(tmp / "records.jsonl"),
             "emission_journal": str(tmp / "emissions.jsonl"),
+            "record_max_bytes": 1_000_000,
         }
     )
 
@@ -298,7 +299,7 @@ def test_the_redpanda_overlay_names_every_field_it_needs() -> None:
     base = overlay().model_dump()
     with pytest.raises(
         ValueError,
-        match="facts_path, watcher_state_path, watcher_max_age_seconds, owner, record_journal, emission_journal",
+        match="facts_path, watcher_state_path, watcher_max_age_seconds, owner, record_journal, emission_journal, record_max_bytes",
     ):
         ModelSnapshotOverlay.model_validate(
             {**base, "backend": "redpanda", "bootstrap_servers": "b:1"}
