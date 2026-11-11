@@ -66,6 +66,7 @@ OVERLAY: dict[str, Any] = {
         "--attempt",
         "{attempt}",
     ],
+    "line_brief_text": "Work task {task_id} of line {line_id} on {ticket} as {lane}.",
     "reserved_timeout_seconds": 600,
     "sent_window_minutes": 120,
     "command_timeout_seconds": 60,

@@ -7,6 +7,9 @@ remote_lane_start:
   # The one shape the node runs; the runner script keeps every other one.
   supported_engines: [claude]
   supported_placements: [lab]
+  # Required. act makes the start. observe places the lane, computes the whole start and
+  # publishes it as an event, and writes nothing else: no CLAIM, no receipt, no ssh, no login draw, no process (OMN-22847).
+  start_mode: act
   # The engine command; {model}, {brief} and {lane} are filled from the request.
   engine_argv: [claude, -p, "{brief}", --model, "{model}", --output-format, stream-json, --verbose]
   engine_environment:
