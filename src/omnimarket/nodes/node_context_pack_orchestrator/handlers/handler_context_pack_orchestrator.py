@@ -589,7 +589,7 @@ class HandlerContextPackOrchestrator:
         pack = built.context_pack
         assembly_hash = _assembly_hash(pack)
 
-        refs = self._chunk_refs(entries_by_factor)
+        refs = self._chunk_refs(entries_by_factor, pack)
         unrecorded = entries_by_factor.get(
             EnumContextFactor.OPERATOR_WORDS_UNRECORDED, ()
         )
@@ -664,11 +664,19 @@ class HandlerContextPackOrchestrator:
         entries_by_factor: Mapping[
             EnumContextFactor, tuple[ModelContextSourceEntry, ...]
         ],
+        pack: ModelContextPack,
     ) -> tuple[ModelContextPackRenderChunkRef, ...]:
+        # The pack builder drops a content duplicate (OMN-21125), so a ref for a dropped
+        # chunk names no chunk of the pack and fails the render UNKNOWN_CHUNK_REF. Keep
+        # only the refs of the chunks the built pack holds, in the order the entries
+        # produced them.
+        held = {chunk.chunk_id for chunk in pack.chunks}
         refs: dict[str, ModelContextPackRenderChunkRef] = {}
         for factor, entries in entries_by_factor.items():
             for entry in entries:
                 chunk_id = compute_chunk_id(factor, entry.text)
+                if chunk_id not in held:
+                    continue
                 timestamp, lane = (
                     _ruling_ref(entry)
                     if factor is EnumContextFactor.OPERATOR_RULINGS
