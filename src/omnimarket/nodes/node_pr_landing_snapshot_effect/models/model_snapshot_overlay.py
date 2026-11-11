@@ -25,6 +25,7 @@ _CONTROLLER_FIELDS = (
     "controller_facts_path",
     "controller_ticks_path",
     "controller_decisions_path",
+    "controller_tail_bytes",
     "controller_max_age_seconds",
     "controller_sidecar_path",
     "external_blocker_kinds",
@@ -137,6 +138,17 @@ class ModelSnapshotOverlay(BaseModel):
             "Cutover only: the controller's decision log; a missing file is an empty log, "
             "and its rows for the facts file's tick ride on the carry (OMN-23665); set with "
             "its three companions, never alone."
+        ),
+    )
+    controller_tail_bytes: int | None = Field(
+        default=None,
+        ge=1024,
+        description=(
+            "Cutover only: how many bytes from the end of the controller's tick log and of its decision log "
+            "the pass may read (OMN-23708); the logs reach hundreds of megabytes, and only the newest finished "
+            "tick and that tick's decisions are needed. A tail with no whole row, or one that does not reach "
+            "back before the tick's decisions, is an unread controller state, never a partial one; set with "
+            "its companions, never alone."
         ),
     )
     controller_max_age_seconds: int | None = Field(

@@ -483,14 +483,16 @@ class ModelLandingRebuildAck(BaseModel):
 
 
 def _worker_ladder(attempts: int = 3) -> tuple[EnumLandingEngine, ...]:
-    adapters = {
-        "codex": EnumLandingEngine.CODEX_HIGH,
-        "sonnet": EnumLandingEngine.CLAUDE_SONNET,
-    }
+    """The fix worker's rungs, from the lane routing policy's order (Sonnet; Opus only on a declared reason).
+
+    The delegated models (the lab models and GLM) draft inside a Claude worker and Codex is a reviewer, never a lane-work
+    engine (operator ruling 2026-11-05), so only the policy's Claude models are rungs here.
+    """
+    policy = load_policy()
     allowed = tuple(
-        adapters[model]
-        for model in load_policy().order
-        if model in adapters
+        EnumLandingEngine(f"claude_{model}")
+        for model in policy.order
+        if policy.engines[model] == "claude"
         and lane_model_refusal(model, lane_kind="landing-worker") is None
     )
     # Keep the controller's existing attempt budget; the ceiling applies on each attempt.
@@ -679,7 +681,6 @@ class ModelLandingFacts(BaseModel):
     available_engines: tuple[EnumLandingEngine, ...] = (
         EnumLandingEngine.CLAUDE_SONNET,
         EnumLandingEngine.CLAUDE_OPUS,
-        EnumLandingEngine.CODEX_HIGH,
     )
     fixer_hold: tuple[str, ...] = Field(
         default=(),

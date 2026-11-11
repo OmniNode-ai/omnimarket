@@ -678,16 +678,14 @@ def _eligibility_reruns(t: _Tick) -> None:
 def _allowed_worker_engine(
     requested: EnumLandingEngine, available: set[EnumLandingEngine]
 ) -> EnumLandingEngine | None:
+    if requested is EnumLandingEngine.CODEX_HIGH:
+        return None  # Codex reviews and never works a lane (operator ruling 2026-11-05); a recorded rung of it is skipped
     decision = resolve_lane_model(
         requested_engine=requested.value, lane_kind="landing-worker"
     )
-    if decision.model is None:
+    if decision.model is None or decision.engine != "claude":
         return None
-    engine = (
-        EnumLandingEngine.CODEX_HIGH
-        if decision.engine == "codex"
-        else EnumLandingEngine(f"claude_{decision.model}")
-    )
+    engine = EnumLandingEngine(f"claude_{decision.model}")
     return engine if engine in available else None
 
 

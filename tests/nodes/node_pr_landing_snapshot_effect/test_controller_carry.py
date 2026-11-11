@@ -151,6 +151,7 @@ def test_the_controller_state_dir_source_reads_the_finished_tick(
         decisions,
         sidecar_path=facts.parent / "sidecar.json",
         max_age_seconds=900,
+        tail_bytes=65536,
         now=lambda: T + timedelta(seconds=60),
     )
     got = source.read_carry()
@@ -170,6 +171,7 @@ def test_error_chain_a_controller_tick_still_open_is_refused(tmp_path: Path) -> 
         decisions,
         sidecar_path=facts.parent / "sidecar.json",
         max_age_seconds=900,
+        tail_bytes=65536,
         now=lambda: T,
     )
     with pytest.raises(ControllerTickOpenError, match=r"tick 5.*finished tick is 4"):
@@ -184,6 +186,7 @@ def test_error_chain_a_stale_controller_tick_is_refused(tmp_path: Path) -> None:
         decisions,
         sidecar_path=facts.parent / "sidecar.json",
         max_age_seconds=900,
+        tail_bytes=65536,
         now=lambda: T + timedelta(seconds=901),
     )
     with pytest.raises(ControllerStateStaleError, match="past its bound of 900s"):
@@ -198,6 +201,7 @@ def test_error_chain_a_missing_facts_file_is_unread(tmp_path: Path) -> None:
         decisions,
         sidecar_path=tmp_path / "sidecar.json",
         max_age_seconds=900,
+        tail_bytes=65536,
         now=lambda: T,
     )
     with pytest.raises(SnapshotSourceError, match="unreadable"):
@@ -294,6 +298,7 @@ def test_the_controller_overlay_fields_come_as_a_set() -> None:
         "controller_facts_path": "$HOME/f.json",
         "controller_ticks_path": "$HOME/t.jsonl",
         "controller_decisions_path": "$HOME/d.jsonl",
+        "controller_tail_bytes": 4194304,
         "controller_max_age_seconds": 900,
         "controller_sidecar_path": "$HOME/s.json",
         "external_blocker_kinds": ("upstream_open",),
@@ -331,6 +336,7 @@ def test_the_sidecars_judged_external_blockers_are_read_and_filled_onto_the_matc
         decisions,
         sidecar_path=tmp_path / "sidecar.json",
         max_age_seconds=900,
+        tail_bytes=65536,
         now=lambda: T + timedelta(seconds=60),
     )
     got = source.read_carry()
@@ -378,6 +384,7 @@ def test_error_chain_an_unreadable_sidecar_is_an_unread_controller_state_never_a
             decisions,
             sidecar_path=sidecar,
             max_age_seconds=900,
+            tail_bytes=65536,
             now=lambda: T + timedelta(seconds=60),
         )
         with pytest.raises(SnapshotSourceError, match=r"sidecar\.json"):

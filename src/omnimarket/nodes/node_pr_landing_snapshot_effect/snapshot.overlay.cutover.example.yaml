@@ -30,4 +30,7 @@ controller_sidecar_path: $HOME/.local/state/omni/landing/sidecar.json
 external_blocker_kinds: [upstream_open, operator_decision, production_gate, collaborator, hold_row]
 external_blocker_unbounded_kinds: [upstream_open]
 external_gate_hours: 1.0
+# how many bytes from the end of the tick log and of the decision log one pass reads (OMN-23708); the logs are hundreds
+# of megabytes, a pass needs the newest tick and that tick's decisions
+controller_tail_bytes: 4194304
 controller_max_age_seconds: 900

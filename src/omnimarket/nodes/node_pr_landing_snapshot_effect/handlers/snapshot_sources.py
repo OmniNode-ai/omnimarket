@@ -177,16 +177,38 @@ _ACTION_KINDS = frozenset(kind.value for kind in EnumLandingActionKind)
 _STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 
-def _jsonl_rows(path: Path, *, missing_ok: bool) -> list[dict[str, object]]:
-    """The JSON objects of a jsonl file, one per line; a line that is not an object is skipped."""
+def _tail_text(path: Path, max_bytes: int, *, missing_ok: bool) -> tuple[str, bool]:
+    """The last ``max_bytes`` of a file as text and whether that is the whole file; never reads more.
+
+    A tail that starts inside a line drops that partial line, so every returned line is whole.
+    """
     try:
-        text = path.read_text(encoding="utf-8")
+        with path.open("rb") as fh:
+            size = fh.seek(0, 2)
+            start = max(0, size - max_bytes)
+            fh.seek(start)
+            data = fh.read(size - start)
     except FileNotFoundError:
         if missing_ok:
-            return []
+            return "", True
         raise SnapshotSourceError(f"{path} unreadable: FileNotFoundError") from None
     except OSError as exc:
         raise SnapshotSourceError(f"{path} unreadable: {type(exc).__name__}") from None
+    whole = start == 0
+    if not whole:
+        newline = data.find(b"\n")
+        data = b"" if newline < 0 else data[newline + 1 :]
+    return data.decode("utf-8", errors="replace"), whole
+
+
+def _jsonl_tail_rows(
+    path: Path, max_bytes: int, *, missing_ok: bool
+) -> tuple[list[dict[str, object]], bool]:
+    """The JSON objects in a jsonl file's last ``max_bytes``, one per line, and whether they are the whole file.
+
+    A line that is not an object is skipped.
+    """
+    text, whole = _tail_text(path, max_bytes, missing_ok=missing_ok)
     rows: list[dict[str, object]] = []
     for line in text.splitlines():
         if not line.strip():
@@ -197,7 +219,7 @@ def _jsonl_rows(path: Path, *, missing_ok: bool) -> list[dict[str, object]]:
             continue
         if isinstance(row, dict):
             rows.append(row)
-    return rows
+    return rows, whole
 
 
 def _reason_of(row: dict[str, Any]) -> str:
@@ -222,8 +244,10 @@ class LandingCarryStateDirSource:
         *,
         sidecar_path: Path,
         max_age_seconds: int,
+        tail_bytes: int,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        self._tail_bytes = tail_bytes
         self._facts = LandingFactsFileSource(facts_path)
         self._ticks = ticks_path
         self._decisions = decisions_path
@@ -233,9 +257,11 @@ class LandingCarryStateDirSource:
 
     def read_carry(self) -> ModelLandingControllerCarry:
         facts = self._facts.read_current()
-        ticks = _jsonl_rows(self._ticks, missing_ok=False)
+        ticks, _ = _jsonl_tail_rows(self._ticks, self._tail_bytes, missing_ok=False)
         if not ticks:
-            raise SnapshotSourceError(f"{self._ticks} holds no finished tick")
+            raise SnapshotSourceError(
+                f"{self._ticks} holds no finished tick in its last {self._tail_bytes} bytes"
+            )
         last = ticks[-1]
         if last.get("tick") != facts.tick:
             raise ControllerTickOpenError(
@@ -252,6 +278,22 @@ class LandingCarryStateDirSource:
             raise ControllerStateStaleError(
                 f"the controller's last finished tick is {int(age)}s old, past its bound of {self._max_age}s"
             )
+        decision_rows, decisions_whole = _jsonl_tail_rows(
+            self._decisions, self._tail_bytes, missing_ok=True
+        )
+        if (
+            not decisions_whole
+            and decision_rows
+            and decision_rows[0].get("tick") == facts.tick
+        ):
+            # the tail starts inside the tick's own rows: rows of the tick may lie before it
+            raise SnapshotSourceError(
+                f"{self._decisions} last {self._tail_bytes} bytes do not reach back before tick {facts.tick}"
+            )
+        if not decisions_whole and not decision_rows:
+            raise SnapshotSourceError(
+                f"{self._decisions} last {self._tail_bytes} bytes hold no whole row"
+            )
         logged = tuple(
             ModelLandingControllerLogged(
                 kind=EnumLandingActionKind(str(row["kind"])),
@@ -259,7 +301,7 @@ class LandingCarryStateDirSource:
                 outcome=str(row["outcome"]),
                 reason=_reason_of(row),
             )
-            for row in _jsonl_rows(self._decisions, missing_ok=True)
+            for row in decision_rows
             if row.get("tick") == facts.tick
             and row.get("kind") in _ACTION_KINDS
             and isinstance(row.get("subject"), str)
@@ -390,6 +432,7 @@ def build_controller_source(
         and overlay.controller_decisions_path
         and overlay.controller_sidecar_path
         and overlay.controller_max_age_seconds
+        and overlay.controller_tail_bytes
     ):
         return None
     return LandingCarryStateDirSource(
@@ -398,6 +441,7 @@ def build_controller_source(
         resolve_path(overlay.controller_decisions_path),
         sidecar_path=resolve_path(overlay.controller_sidecar_path),
         max_age_seconds=overlay.controller_max_age_seconds,
+        tail_bytes=overlay.controller_tail_bytes,
         now=now,
     )
 
