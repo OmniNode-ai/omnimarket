@@ -62,6 +62,7 @@ async def _execute(
 async def test_installed_claude_uses_actual_native_local_model(tmp_path: Path) -> None:
     endpoint = os.environ.get("ONEX_NATIVE_MESSAGES_ENDPOINT")
     model = os.environ.get("ONEX_NATIVE_MESSAGES_MODEL")
+    effort = os.environ.get("ONEX_NATIVE_MESSAGES_EFFORT")
     if not endpoint or not model:
         pytest.skip(
             "Set ONEX_NATIVE_MESSAGES_ENDPOINT and ONEX_NATIVE_MESSAGES_MODEL for the explicit local proof"
@@ -198,6 +199,10 @@ async def test_installed_claude_uses_actual_native_local_model(tmp_path: Path) -
                 "--tools",
                 "",
                 "--no-session-persistence",
+                # A backend may accept only some reasoning efforts (the lab vLLM
+                # Qwen build refuses "high"); the gateway never rewrites Claude's
+                # fields, so the proof asks Claude for one the backend serves.
+                *(("--effort", effort) if effort else ()),
             ],
             env,
             workspace,

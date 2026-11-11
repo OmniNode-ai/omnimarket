@@ -338,3 +338,46 @@ async def test_incompatible_route_refused_before_inference() -> None:
             await client.invoke("POST", "/v1/messages", json=BODY, headers=AUTH)
         ).status_code == 503
     assert seen == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "status", "reason"),
+    [
+        ("refused", 400, "maximum context length is 32768 tokens"),
+        ("outage", None, "ConnectError"),
+    ],
+)
+async def test_a_refused_request_records_why_in_its_receipt_only(
+    failure: str, status: int | None, reason: str
+) -> None:
+    """The 502 tells the user to inspect the run receipt; the receipt must say why.
+
+    The client still sees only the generic 502 (no upstream text), and a
+    key-shaped string in the upstream message is scrubbed from the receipt.
+    """
+
+    def respond(req: httpx.Request) -> httpx.Response:
+        if failure == "outage":
+            raise httpx.ConnectError("SENTINEL-private", request=req)
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "maximum context length is 32768 tokens; "
+                    "key sk-ant-SENTINEL0123456789abcdef0123"
+                }
+            },
+        )
+
+    receipts: list[ModelClaudeGatewayReceipt] = []
+    async with AsgiIngress(application(respond, receipts)) as client:
+        response = await client.invoke("POST", "/v1/messages", json=BODY, headers=AUTH)
+    assert response.status_code == 502
+    assert "SENTINEL" not in response.text
+    assert "context length" not in response.text
+    assert len(receipts) == 1
+    assert receipts[0].status == "failed"
+    assert receipts[0].upstream_status == status
+    assert reason in (receipts[0].failure_reason or "")
+    assert "SENTINEL" not in (receipts[0].failure_reason or "")

@@ -29,6 +29,7 @@ from pydantic import JsonValue
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.inference.provider_response_error import provider_message_from_text
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_claude_gateway import (
     ModelClaudeGatewayConfig,
     ModelClaudeGatewayReceipt,
@@ -303,6 +304,7 @@ def build_gateway_app(
         backend = ladder[0][0]
         observation = _Observation(model=backend.model_id, limit=config.max_event_bytes)
         output = hashlib.sha256()
+        failure: dict[str, int | str] = {}
 
         async def receipt(status: Literal["completed", "failed", "cancelled"]) -> None:
             await record(
@@ -323,6 +325,12 @@ def build_gateway_app(
                     prompt_hash=prompt_hash,
                     output_hash=output.hexdigest(),
                     stop_reason=observation.stop_reason,
+                    upstream_status=(
+                        int(failure["status"]) if "status" in failure else None
+                    ),
+                    failure_reason=(
+                        str(failure["reason"])[:500] if "reason" in failure else None
+                    ),
                 )
             )
 
@@ -356,7 +364,9 @@ def build_gateway_app(
                         ),
                         stream=True,
                     )
-                except httpx.TransportError:
+                except httpx.TransportError as error:
+                    failure.clear()
+                    failure["reason"] = type(error).__name__
                     if last:
                         raise
                     await client.aclose()
@@ -364,6 +374,13 @@ def build_gateway_app(
                 if response.status_code == 200:
                     break
                 if last or not _fallback_eligible(response.status_code):
+                    failure["status"] = response.status_code
+                    message = provider_message_from_text(
+                        (await _bounded_response(response, 4096)).decode(
+                            errors="replace"
+                        )
+                    )
+                    failure["reason"] = message or f"HTTP {response.status_code}"
                     raise ValueError("Upstream request refused")
                 await response.aclose()
                 await client.aclose()

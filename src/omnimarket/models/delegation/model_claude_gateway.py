@@ -49,3 +49,9 @@ class ModelClaudeGatewayReceipt(BaseModel):
     output_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     cost_usd: Decimal | None = Field(default=None, ge=0)
     stop_reason: str | None = None
+    #: Why a failed run failed: the upstream status code when the backend
+    #: answered, and the provider's own message (credential shapes scrubbed) or
+    #: the transport error's class name. Kept in this local receipt only; the
+    #: client sees the generic gateway error.
+    upstream_status: int | None = Field(default=None, ge=100, le=599)
+    failure_reason: str | None = Field(default=None, max_length=500)
