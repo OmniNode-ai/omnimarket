@@ -264,9 +264,9 @@
   "supplement_omn23666": {
     "ticket": "OMN-23666",
     "recorded_on": "2026-11-11",
-    "files_added": 11,
-    "basis": "files the record did not hold on dev 366791312e15, 8 from other merges and 3 this change's own node tests, each the sum of its measured pytest setup, call and teardown durations from a focused run with --store-durations --no-cov -p no:randomly, written by the record command of node_test_duration_record_check_effect; existing entries left as they were",
+    "files_added": 12,
+    "basis": "files the record did not hold on dev 0fdc86022e87, 9 from other merges and 3 this change's own node tests, each the sum of its measured pytest setup, call and teardown durations from a focused run with --store-durations --no-cov -p no:randomly, written by the record command of node_test_duration_record_check_effect; existing entries left as they were",
     "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
-    "base_sha": "366791312e152a0fbc39daa5494452a8d88a6af4"
+    "base_sha": "0fdc86022e879ef9381cfde61defdf66bc114ffd"
   }
 }
