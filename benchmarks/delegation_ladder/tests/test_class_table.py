@@ -153,24 +153,16 @@ def test_onex_command_pins_only_when_requested(
         assert argv[argv.index("--ticket") + 1] == "OMN-20844"
         assert "--json" in argv
         assert kwargs["check"] is False
-        if backend == "local-omnipc2-chat":
-            assert argv[argv.index("--bus") + 1] == "inmemory"
-            assert env["BIFROST_OVERLAY_PATH"] == str(
-                Path.home() / ".omninode/delegation/bifrost_overrides.pc2.yaml"
-            )
-            assert "--lane" not in argv
-            assert argv[argv.index("--locus") + 1] == "in-process"
-        else:
-            assert argv[argv.index("--bus") + 1] == "kafka"
-            assert argv[argv.index("--lane") + 1] == "dev"
-            assert argv[argv.index("--locus") + 1] == "deployed-lane"
-            assert argv[argv.index("--state-root") + 1] == str(tmp_path / ".onex_state")
+        assert "BIFROST_OVERLAY_PATH" not in env
+        assert argv[argv.index("--bus") + 1] == "kafka"
+        assert argv[argv.index("--lane") + 1] == "dev"
+        assert argv[argv.index("--locus") + 1] == "deployed-lane"
+        assert argv[argv.index("--state-root") + 1] == str(tmp_path / ".onex_state")
         if backend == "unpinned":
             assert "--backend-id" not in argv
         else:
-            # The overlay repoints local-coder itself at the second lab host.
-            pinned = "local-coder" if backend == "local-omnipc2-chat" else backend
-            assert argv[argv.index("--backend-id") + 1] == pinned
+            # The second lab host's rung is its own declared backend id on the lane.
+            assert argv[argv.index("--backend-id") + 1] == backend
         return subprocess.CompletedProcess(
             argv, 0, "human line\n" + json.dumps(receipt()) + "\n", ""
         )
@@ -724,3 +716,14 @@ def test_a_gate_veto_with_no_answer_is_counted_apart_from_a_wrong_answer() -> No
     row = tables.class_rows(vetoed + wrong)[0]
     assert row["gate_no_answer"] == 2
     assert row["failed"] == 3
+
+
+def test_second_local_arm_names_its_declared_backend_and_sets_no_overlay_path() -> None:
+    arm = runner.BACKENDS["local-omnipc2-chat"]
+    assert arm.backend_id == "local-omnipc2-chat"
+    assert arm.overlay is None
+    assert arm.host_label == "qwen-host-b"
+
+
+def test_runner_names_no_per_run_overlay_file() -> None:
+    assert "bifrost_overrides.pc2" not in Path(runner.__file__).read_text()
