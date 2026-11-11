@@ -17,6 +17,8 @@ requirements:
     statement: 'AC3: the Tests (Split 12/20) check is green on the open changes that took dev in after this landed -- falsifier: read the check on each such change head through the pull request watcher'
   - id: AC4
     statement: 'AC4: integrated: the selector picks the binding test on a real narrowed selection at the pushed head on a lab host -- falsifier: run the selector over a one-node change there and read the binding test in its selected paths'
+  - id: AC5
+    statement: 'AC5: the durations record leaves fewer than 50 test files unrecorded -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q, red with 56 unrecorded before the change'
 evidence_requirements:
 - kind: tests
   description: The binding test and the selector tests pass.
@@ -61,4 +63,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly -k node_change_still_selects_the_contract_binding_test
+    cwd: .
+- id: dod-omn23649-ac5-duration-record-fresh
+  description: The 56 test files dev left out of config/test_file_durations.json are recorded, timed by running them on a lab host.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q -n 0 --no-cov -p no:randomly
     cwd: .
