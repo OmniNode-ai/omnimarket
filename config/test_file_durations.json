@@ -3918,6 +3918,7 @@
   "tests/unit/experiments/test_qwen_tool_call_report.py": 0.06,
   "tests/unit/github_landing/test_github_landing_transport.py": 0.06,
   "tests/unit/github_landing/test_legacy_landing_nodes_share_the_transport.py": 0.08,
+  "tests/unit/handlers/routing/test_byok_model_listing.py": 0.7,
   "tests/unit/handlers/scm/test_handler_gateway_ci_reader.py": 0.03,
   "tests/unit/handlers/scm/test_handler_gateway_read_client.py": 0.32,
   "tests/unit/handlers/scm/test_onex_scm_clone_reads.py": 2.71,

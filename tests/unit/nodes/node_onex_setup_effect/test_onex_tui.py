@@ -138,11 +138,12 @@ class _Runner:
         return 0
 
 
-def _app(runner: _Runner) -> OnexTui:
-    async def status() -> ModelTuiStatus:
-        return ModelTuiStatus(workspace="~/ws", model="Qwen3.8-27B", gateway=False)
+async def _status() -> ModelTuiStatus:
+    return ModelTuiStatus(workspace="~/ws", model="Qwen3.8-27B", gateway=False)
 
-    return OnexTui(root=_root, runner=runner, load_status=status)
+
+def _app(runner: _Runner) -> OnexTui:
+    return OnexTui(root=_root, runner=runner, load_status=_status)
 
 
 def _log_text(app: OnexTui) -> str:
@@ -387,46 +388,165 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         assert "ollama: llama3.2, qwen3:8b set up." in _log_text(app)
 
 
+def _hosted_listing(
+    count: int = 2, outcome: str = "listed", message: str | None = None
+):
+    from omnimarket.handlers.routing.byok_model_listing import (
+        ModelByokListedModel,
+        ModelByokModelListing,
+    )
+
+    seen: list[tuple[str, str]] = []
+    models = [
+        ModelByokListedModel(
+            id="qwen/qwen3.8-27b",
+            name="Qwen: Qwen3.8 27B",
+            context_tokens=131072,
+            input_usd_per_million=0.15,
+            output_usd_per_million=0.6,
+        ),
+        ModelByokListedModel(
+            id="openrouter/free", name="Free", input_usd_per_million=0.0
+        ),
+    ] + [
+        ModelByokListedModel(id=f"vendor/model-{i:02d}", name=f"M{i}")
+        for i in range(count - 2)
+    ]
+
+    def list_models(provider: str, key: str) -> ModelByokModelListing:
+        seen.append((provider, key))
+        return ModelByokModelListing(
+            provider=provider,
+            outcome=outcome,
+            models=tuple(models) if outcome == "listed" else (),
+            message=message,
+        )
+
+    return list_models, seen
+
+
 async def test_config_takes_several_providers_and_keeps_keys_out_of_argv_and_log(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Hosted provider: key first, then its model; a second provider is added too."""
+    """Hosted provider: key first, then its models with details; a second provider too."""
     monkeypatch.chdir(tmp_path)
-    runner = _Runner(["qwen/qwen3.8-27b"])
-    app = _app(runner)
-    async with app.run_test(size=(100, 44)) as pilot:
+    list_models, seen = _hosted_listing()
+    runner = _Runner([])
+    app = OnexTui(
+        root=_root, runner=runner, load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
         await _open_config(pilot, app)
         screen = app.screen
         screen.query_one("#provider").value = "openrouter"
         await pilot.pause()
         assert screen.query_one("#key").display
         assert not screen.query_one("#url").display
+        await _press(pilot, app, "find")
+        assert "enter your OpenRouter API key first" in str(
+            screen.query_one("#note").render()
+        )
+        assert seen == []
         screen.query_one("#key").value = "sk-or-secret-value"
         await _press(pilot, app, "find")
         await pilot.pause()
-        assert runner.calls[-1] == ("models", "default-model", "openrouter")
-        assert runner.stdins[-1] == "sk-or-secret-value\n"
-        screen.query_one("#found").select("qwen/qwen3.8-27b")
-        await _press(pilot, app, "add")
+        assert seen == [("openrouter", "sk-or-secret-value")]
+        listing = screen.query_one("#found")
+        rows = [str(listing.get_option_at_index(i).prompt) for i in range(2)]
+        assert rows[1] == "openrouter/free   Free   free"
+        assert rows[0] == (
+            "qwen/qwen3.8-27b   Qwen: Qwen3.8 27B   131K ctx   $0.15 in / $0.60 out per 1M"
+        )
+        listing.select("qwen/qwen3.8-27b")
         await pilot.pause()
+        await _press(pilot, app, "add")
         screen.query_one("#provider").value = "ollama"
         await pilot.pause()
         screen.query_one("#model").value = "llama3.2"
         await _press(pilot, app, "add")
-        await pilot.pause()
         basket = str(screen.query_one("#basket").render())
         assert "openrouter: qwen/qwen3.8-27b" in basket
         assert "ollama: llama3.2" in basket
         await _press(pilot, app, "save")
-        await pilot.pause()
         await pilot.pause()
         setups = [call for call in runner.calls if call[0] == "setup"]
         assert [call[call.index("--provider") + 1] for call in setups] == [
             "openrouter",
             "ollama",
         ]
+        assert runner.stdins[runner.calls.index(setups[0])] == "sk-or-secret-value\n"
         assert all("sk-or-secret-value" not in " ".join(call) for call in runner.calls)
         assert "sk-or-secret-value" not in _log_text(app)
+
+
+async def test_a_long_list_gets_a_filter_and_ticks_survive_filtering() -> None:
+    list_models, _ = _hosted_listing(count=30)
+    app = OnexTui(
+        root=_root, runner=_Runner([]), load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        screen.query_one("#key").value = "k"
+        await _press(pilot, app, "find")
+        await pilot.pause()
+        listing = screen.query_one("#found")
+        assert screen.query_one("#filter").display
+        assert listing.option_count == 30
+        listing.select("vendor/model-07")
+        await pilot.pause()
+        screen.query_one("#filter").value = "qwen"
+        await pilot.pause()
+        assert listing.option_count == 1
+        listing.select("qwen/qwen3.8-27b")
+        await pilot.pause()
+        screen.query_one("#filter").value = ""
+        await pilot.pause()
+        assert set(listing.selected) == {"vendor/model-07", "qwen/qwen3.8-27b"}
+        await _press(pilot, app, "add")
+        assert "openrouter: qwen/qwen3.8-27b, vendor/model-07" in str(
+            screen.query_one("#basket").render()
+        )
+
+
+async def test_a_refused_key_shows_the_provider_message_and_lists_nothing() -> None:
+    list_models, _ = _hosted_listing(outcome="rejected", message="Invalid API key")
+    app = OnexTui(
+        root=_root, runner=_Runner([]), load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openai"
+        await pilot.pause()
+        screen.query_one("#key").value = "bad"
+        await _press(pilot, app, "find")
+        await pilot.pause()
+        assert "Invalid API key" in str(screen.query_one("#note").render())
+        assert not screen.query_one("#found").display
+
+
+async def test_switching_provider_clears_the_previous_list_and_ticks() -> None:
+    list_models, _ = _hosted_listing()
+    app = OnexTui(
+        root=_root, runner=_Runner([]), load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        screen.query_one("#key").value = "k"
+        await _press(pilot, app, "find")
+        await pilot.pause()
+        screen.query_one("#found").select("openrouter/free")
+        screen.query_one("#provider").value = "gemini"
+        await pilot.pause()
+        assert not screen.query_one("#found").display
+        await _press(pilot, app, "save")
+        assert "at least one model" in str(screen.query_one("#note").render())
 
 
 async def test_config_refuses_to_save_with_no_model_selected() -> None:

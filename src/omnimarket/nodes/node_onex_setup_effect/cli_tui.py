@@ -41,6 +41,12 @@ from textual.widgets import (
 )
 from textual.widgets.option_list import Option
 
+from omnimarket.handlers.routing.byok_model_listing import (
+    ModelByokListedModel,
+    ModelByokModelListing,
+    list_byok_models,
+)
+
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
 # Shortcuts first, as coding-agent TUIs list them; every CLI command follows.
 _LOCAL_COMMANDS = {
@@ -68,6 +74,13 @@ _PROVIDER_HINTS = {
     "gemini": "Create a key at aistudio.google.com/apikey.",
     "openai": "Create a key under API keys in your OpenAI dashboard.",
 }
+_LABELS = {value: label for label, value in _PROVIDERS}
+
+
+def _label(provider: str) -> str:
+    return _LABELS.get(provider, provider)
+
+
 _DEFAULT_URL = "http://localhost:11434"
 
 
@@ -293,6 +306,34 @@ def _discovered_models(text: str) -> tuple[str | None, list[str]]:
     return (None if found else str(message or "no models found")), found
 
 
+def model_row_label(model: ModelByokListedModel) -> str:
+    """One picker row: id, then whatever the provider published about the model."""
+    parts = [model.id]
+    if model.name != model.id:
+        parts.append(model.name)
+    if model.context_tokens:
+        tokens = model.context_tokens
+        parts.append(
+            f"{tokens // 1_000_000}M ctx"
+            if tokens >= 1_000_000
+            else f"{tokens // 1000}K ctx"
+        )
+    if model.input_usd_per_million is not None:
+        if model.input_usd_per_million == 0 and not model.output_usd_per_million:
+            parts.append("free")
+        else:
+            out = model.output_usd_per_million
+            parts.append(
+                f"${model.input_usd_per_million:.2f} in"
+                + (f" / ${out:.2f} out" if out is not None else "")
+                + " per 1M"
+            )
+    return "   ".join(parts)
+
+
+ListModels = Callable[[str, str], ModelByokModelListing]
+
+
 class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     """Provider, then its key or URL, then any number of its models; repeat per provider."""
 
@@ -307,10 +348,15 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     """
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
-    def __init__(self, runner: ProtocolTuiRunner) -> None:
+    def __init__(
+        self, runner: ProtocolTuiRunner, list_models: ListModels | None = None
+    ) -> None:
         super().__init__()
         self._runner = runner
+        self._list_models: ListModels = list_models or list_byok_models
         self._basket: dict[str, ModelTuiSetupChoice] = {}
+        self._rows: list[tuple[str, str]] = []
+        self._ticked: set[str] = set()
 
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
@@ -318,6 +364,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             yield Select(_PROVIDERS, value="ollama", allow_blank=False, id="provider")
             yield Input(placeholder="API key", password=True, id="key")
             yield Input(value=_DEFAULT_URL, placeholder="Server URL", id="url")
+            yield Input(placeholder="Filter models", id="filter")
             yield SelectionList[str](id="found")
             yield Input(placeholder="Or type a model id", id="model")
             yield Static("Find models lists what this provider offers.", id="note")
@@ -329,6 +376,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
                 yield Button("Cancel", id="cancel")
 
     def on_mount(self) -> None:
+        self.query_one("#filter").display = False
         self._show_fields()
         self.query_one("#note", Static).update(_PROVIDER_HINTS[self._provider()])
 
@@ -346,9 +394,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     def on_select_changed(self, event: Select.Changed) -> None:
         self._show_fields()
         self.query_one("#note", Static).update(_PROVIDER_HINTS[self._provider()])
-        found = self.query_one("#found", SelectionList)
-        found.clear_options()
-        found.display = False
+        self._show_rows([])
 
     async def _find(self) -> None:
         note = self.query_one("#note", Static)
@@ -356,28 +402,58 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         if provider in _HOSTED:
             key = self._value("key")
             if not key:
-                note.update(f"enter your {provider} key first")
+                note.update(f"enter your {_label(provider)} API key first")
                 return
-            lines: list[str] = []
-            await self._runner.stream(
-                ("models", "default-model", provider), lines.append, stdin=key + "\n"
-            )
-            found = [ln.strip() for ln in lines if ln.strip() and " " not in ln.strip()]
-            message = None if found else (lines[-1] if lines else "no models found")
+            listing = await asyncio.to_thread(self._list_models, provider, key)
+            rows = [(m.id, model_row_label(m)) for m in listing.models]
+            message = listing.message
         else:
             _, out, err = await self._runner.capture(
                 ("models", "discover", "--url", self._value("url"), "--json")
             )
             message, found = _discovered_models(out or err)
+            rows = [(model, model) for model in found]
+        self._show_rows(rows)
+        note.update(message or f"{len(rows)} found: tick any number, then Add")
+
+    def _show_rows(self, rows: list[tuple[str, str]]) -> None:
+        """New results: forget earlier ticks, show the filter for a long list."""
+        self._rows = rows
+        self._ticked = set()
+        self.query_one("#filter", Input).value = ""
+        self.query_one("#filter").display = len(rows) > 10
+        self._render_rows()
+
+    def _render_rows(self) -> None:
+        words = self._value("filter").lower().split()
+        shown = [
+            (label, model_id, model_id in self._ticked)
+            for model_id, label in self._rows
+            if all(word in label.lower() for word in words)
+        ]
         listing = self.query_one("#found", SelectionList)
-        listing.clear_options()
-        listing.add_options([(model, model) for model in found])
-        listing.display = bool(found)
-        note.update(message or f"{len(found)} found: tick any number, then Add")
+        with listing.prevent(SelectionList.SelectedChanged):
+            listing.clear_options()
+            listing.add_options(shown[:200])
+        listing.display = bool(self._rows)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "filter":
+            self._render_rows()
+
+    def on_selection_list_selected_changed(
+        self, event: SelectionList.SelectedChanged[str]
+    ) -> None:
+        listing = event.selection_list
+        visible = {
+            str(listing.get_option_at_index(i).value)
+            for i in range(listing.option_count)
+        }
+        self._ticked = (self._ticked - visible) | {str(v) for v in listing.selected}
 
     def _add_current(self) -> bool:
         provider = self._provider()
-        chosen = [str(m) for m in self.query_one("#found", SelectionList).selected]
+        chosen = [model_id for model_id, _ in self._rows if model_id in self._ticked]
         typed = self._value("model")
         if typed and typed not in chosen:
             chosen.append(typed)
@@ -385,7 +461,9 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             return False
         key = self._value("key")
         if provider in _HOSTED and not key:
-            self.query_one("#note", Static).update(f"{provider} needs an API key")
+            self.query_one("#note", Static).update(
+                f"{_label(provider)} needs an API key"
+            )
             return False
         earlier = self._basket.get(provider)
         models = tuple(dict.fromkeys((*(earlier.models if earlier else ()), *chosen)))
@@ -395,7 +473,8 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             models=models,
             key=SecretStr(key) if key else None,
         )
-        self.query_one("#found", SelectionList).deselect_all()
+        self._ticked = set()
+        self._render_rows()
         self.query_one("#model", Input).value = ""
         self.query_one("#basket", Static).update(
             "Selected: "
@@ -656,6 +735,7 @@ class OnexTui(App[int]):
         root: click.Group | None = None,
         runner: ProtocolTuiRunner | None = None,
         load_status: Callable[[], Awaitable[ModelTuiStatus]] | None = None,
+        list_models: ListModels | None = None,
     ) -> None:
         super().__init__()
         if root is None:
@@ -664,6 +744,7 @@ class OnexTui(App[int]):
             root = cli
         self._commands = command_tree(root)
         self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
+        self._list_models = list_models
         self._load_status = load_status or globals()["load_status"]
         self._status = ModelTuiStatus(workspace=display_path(Path.cwd()))
         self._last_run = ""
@@ -835,7 +916,9 @@ class OnexTui(App[int]):
             self.query_one("#output", RichLog).clear()
             return
         if words in (["setup"], ["config"]):
-            self.push_screen(SetupScreen(self._runner), self._apply_setup)
+            self.push_screen(
+                SetupScreen(self._runner, self._list_models), self._apply_setup
+            )
             return
         if words == ["model"]:
             await self._pick_model()
