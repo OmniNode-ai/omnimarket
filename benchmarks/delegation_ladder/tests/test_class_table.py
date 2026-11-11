@@ -716,3 +716,10 @@ def test_a_gate_veto_with_no_answer_is_counted_apart_from_a_wrong_answer() -> No
     row = tables.class_rows(vetoed + wrong)[0]
     assert row["gate_no_answer"] == 2
     assert row["failed"] == 3
+
+
+def test_second_local_arm_names_its_declared_backend_and_sets_no_overlay_path() -> None:
+    arm = runner.BACKENDS["local-omnipc2-chat"]
+    assert arm.backend_id == "local-omnipc2-chat"
+    assert arm.overlay is None
+    assert arm.host_label == "qwen-host-b"
