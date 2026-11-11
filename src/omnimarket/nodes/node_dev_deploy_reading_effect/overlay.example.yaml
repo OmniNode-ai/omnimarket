@@ -33,6 +33,24 @@ lineage:
 receipts:
   projection_url: http://store.example.invalid/projection-api/projection/example-topic
   timeout_seconds: 10
+# The deploy source of the reading: the lane's lab pass receipts, or the deploy agent itself.
+source_rule: deploy_agent
+deploy_agent:
+  health_url: http://127.0.0.1:8098/health
+  queue_url: http://127.0.0.1:8098/queue
+  timeout_seconds: 10
+  idle_grace_seconds: 7200
+  provenance_section: build_context
+  source_repo: omnibase_infra
+  merge_repos:
+    - source_repo: omnibase_infra
+      clone_path_env: EXAMPLE_INFRA_CLONE
+      ref: origin/dev
+      provenance_section: build_context
+    - source_repo: omnimarket
+      clone_path_env: EXAMPLE_MARKET_CLONE
+      ref: origin/dev
+      provenance_section: siblings
 probe:
   health_url: http://runtime.example.invalid/health
   health_ok_path: [details, healthy]
