@@ -34,14 +34,14 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors i
     SnapshotSourceError,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_ports import (
-    InMemoryLandingControllerSource,
+    InMemoryLandingCarrySource,
     InMemoryLandingFactsSource,
     InMemoryLandingSnapshotPublisher,
     InMemoryLandingTickRecorder,
     InMemoryLandingWriteFactsSource,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_sources import (
-    ControllerStateDirSource,
+    LandingCarryStateDirSource,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
     EnumSnapshotFailureReason,
@@ -142,7 +142,7 @@ def test_the_controller_state_dir_source_reads_the_finished_tick(
     tmp_path: Path,
 ) -> None:
     facts, ticks, decisions = write_controller_state(tmp_path)
-    source = ControllerStateDirSource(
+    source = LandingCarryStateDirSource(
         facts,
         ticks,
         decisions,
@@ -160,7 +160,7 @@ def test_the_controller_state_dir_source_reads_the_finished_tick(
 
 def test_error_chain_a_controller_tick_still_open_is_refused(tmp_path: Path) -> None:
     facts, ticks, decisions = write_controller_state(tmp_path, last_finished_tick=4)
-    source = ControllerStateDirSource(
+    source = LandingCarryStateDirSource(
         facts, ticks, decisions, max_age_seconds=900, now=lambda: T
     )
     with pytest.raises(ControllerTickOpenError, match=r"tick 5.*finished tick is 4"):
@@ -169,7 +169,7 @@ def test_error_chain_a_controller_tick_still_open_is_refused(tmp_path: Path) -> 
 
 def test_error_chain_a_stale_controller_tick_is_refused(tmp_path: Path) -> None:
     facts, ticks, decisions = write_controller_state(tmp_path)
-    source = ControllerStateDirSource(
+    source = LandingCarryStateDirSource(
         facts,
         ticks,
         decisions,
@@ -182,7 +182,7 @@ def test_error_chain_a_stale_controller_tick_is_refused(tmp_path: Path) -> None:
 
 def test_error_chain_a_missing_facts_file_is_unread(tmp_path: Path) -> None:
     _, ticks, decisions = write_controller_state(tmp_path)
-    source = ControllerStateDirSource(
+    source = LandingCarryStateDirSource(
         tmp_path / "absent.json", ticks, decisions, max_age_seconds=900, now=lambda: T
     )
     with pytest.raises(SnapshotSourceError, match="unreadable"):
@@ -216,9 +216,9 @@ def _handler(
 
 def test_golden_chain_the_record_carries_the_controller_tick_and_the_gate() -> None:
     recorder = InMemoryLandingTickRecorder()
-    result = _handler(
-        InMemoryLandingControllerSource(carry()), recorder=recorder
-    ).handle(ModelLandingSnapshotRequest(correlation_id=uuid4(), tick=NODE_TICK))
+    result = _handler(InMemoryLandingCarrySource(carry()), recorder=recorder).handle(
+        ModelLandingSnapshotRequest(correlation_id=uuid4(), tick=NODE_TICK)
+    )
     assert result.status is EnumSnapshotStatus.RECORDED
     assert result.record is not None
     assert result.record.controller == carry()

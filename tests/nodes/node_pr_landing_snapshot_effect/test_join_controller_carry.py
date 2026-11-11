@@ -38,7 +38,7 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landin
     HandlerPrLandingSnapshot,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_ports import (
-    InMemoryLandingControllerSource,
+    InMemoryLandingCarrySource,
     InMemoryLandingFactsSource,
     InMemoryLandingTickRecorder,
     InMemoryLandingWriteFactsSource,
@@ -94,7 +94,7 @@ def _record(publisher: Any, topic: str, run: str = "") -> ModelLandingTickRecord
         write_source=InMemoryLandingWriteFactsSource(()),
         recorder=InMemoryLandingTickRecorder(),
         publisher=publisher,
-        controller_source=InMemoryLandingControllerSource(carry()),
+        controller_source=InMemoryLandingCarrySource(carry()),
     ).handle(ModelLandingSnapshotRequest(correlation_id=uuid4(), tick=NODE_TICK))
     assert result.status is EnumSnapshotStatus.RECORDED, result.failure_detail
     assert result.record is not None

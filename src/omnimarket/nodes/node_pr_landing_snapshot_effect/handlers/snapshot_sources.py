@@ -9,7 +9,7 @@
 - WatcherStateWriteFactsSource: each PR's GraphQL node id and its head's failed run ids, read from
   the PR watcher's state (a projection of GitHub; no GitHub read here). A PR whose watcher head or
   CI head differs from the facts' head fills nothing; a state older than its bound is refused.
-- ControllerStateDirSource: the old controller's last finished tick during the cutover period (OMN-23665):
+- LandingCarryStateDirSource: the old controller's last finished tick during the cutover period (OMN-23665):
   its facts file, its tick log (the tick is finished when the log's last row names it) and its decision
   log's action rows for that tick. The controller keeps no copy of its decision, only the facts it decided
   from and the actions it took, so the carry holds those two.
@@ -196,7 +196,7 @@ def _jsonl_rows(path: Path, *, missing_ok: bool) -> list[dict[str, object]]:
     return rows
 
 
-class ControllerStateDirSource:
+class LandingCarryStateDirSource:
     """The old landing controller's last finished tick: its facts file, tick log and decision log."""
 
     name = "controller-state"
@@ -324,7 +324,7 @@ def build_controller_source(
     overlay: ModelSnapshotOverlay,
     *,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
-) -> ControllerStateDirSource | None:
+) -> LandingCarryStateDirSource | None:
     """The controller's state source when the overlay names it (the cutover instance), else None (OMN-23665)."""
     if not (
         overlay.controller_facts_path
@@ -333,7 +333,7 @@ def build_controller_source(
         and overlay.controller_max_age_seconds
     ):
         return None
-    return ControllerStateDirSource(
+    return LandingCarryStateDirSource(
         resolve_path(overlay.controller_facts_path),
         resolve_path(overlay.controller_ticks_path),
         resolve_path(overlay.controller_decisions_path),
@@ -353,8 +353,8 @@ def _publisher(overlay: ModelSnapshotOverlay) -> ProtocolLandingSnapshotPublishe
 
 
 __all__: list[str] = [
-    "ControllerStateDirSource",
     "JsonlLandingTickRecorder",
+    "LandingCarryStateDirSource",
     "LandingFactsFileSource",
     "SnapshotSourceError",
     "WatcherStateWriteFactsSource",

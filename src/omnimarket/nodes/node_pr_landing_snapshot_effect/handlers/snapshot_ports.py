@@ -47,7 +47,7 @@ class InMemoryLandingWriteFactsSource:
         }
 
 
-class InMemoryLandingControllerSource:
+class InMemoryLandingCarrySource:
     """The controller's finished tick, as given; unread when none is."""
 
     name = "inmemory-controller-state"
@@ -85,7 +85,7 @@ class InMemoryLandingSnapshotPublisher:
 
 
 __all__: list[str] = [
-    "InMemoryLandingControllerSource",
+    "InMemoryLandingCarrySource",
     "InMemoryLandingFactsSource",
     "InMemoryLandingSnapshotPublisher",
     "InMemoryLandingTickRecorder",
