@@ -155,6 +155,8 @@ not_routing_resolution_sites:
     reason: the publisher identity, verifier endpoint and bus transport of the node that decides whether a verified agent receipt replaces lost review voters; it decides one gate attempt and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_prompt_cost_estimate_compute/handlers/contract_config.py:find_node_overlay(OVERLAY_ID)"
     reason: reads the typed savings uncertainty spreads for pricing confidence and token estimation methods; the overlay changes only savings ranges and contains no backend, model, tier or provider selection
+  - site: "src/omnimarket/nodes/node_claude_token_pool_effect/handlers/handler_pool_steering.py:find_node_overlay(NODE_NAME)"
+    reason: the pool steering block of the token pool overlay, read to steer a new lane start off a draining login label and to cap lanes per label; it chooses a subscription login label and no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_branch_prune_effect/handlers/handler_branch_prune.py:find_node_overlay(NODE_NAME)"
     reason: the keep policy of a remote-branch prune (repositories in scope, protected names, age floor); it decides which branches are kept and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/handlers/handler_contract_policy_source.py:find_node_overlay(NODE_NAME)"
