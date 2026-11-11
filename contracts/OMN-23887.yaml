@@ -50,6 +50,6 @@ dod_evidence:
   binds_ac:
   - AC3
   checks:
-  - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23887-pool --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py -q --no-cov -n 0 -p no:randomly
     cwd: .
