@@ -125,6 +125,8 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/handlers/delegation_scenario_settings.py:find_node_overlay(overlay_id)"
+    reason: finds the overlay document of a readiness scenario to read its secret store block (the store address, project, environment and identity file); it names where a probe key is read and generated and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_work_state_projection_effect/runtime_work_state.py:find_node_overlay(overlay_id)"
     reason: finds the overlay files of the work-state projection (its rules, the goal scope and the goal scope ticket rule); they hold plan patterns, state rules and the in-scope ticket list and choose no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_host_tree_install_effect/handlers/handler_tree_install.py:resolve_overlay_file(NODE_DIR.name)"
@@ -211,7 +213,7 @@ not_routing_resolution_sites:
     reason: locates the start-path drill overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the start-path census, the drill gate and the schedule host and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
     reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
-  - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(NODE_NAME)"
+  - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(overlay_id())"
     reason: locates the secret reading overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and declared consumers and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work

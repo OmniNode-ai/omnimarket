@@ -51,6 +51,7 @@ from omnimarket.nodes.node_secret_reading_effect.overlay import (
     NODE_NAME,
     ModelSecretReadingOverlay,
     load_overlay,
+    overlay_id,
 )
 from omnimarket.nodes.node_secret_reading_effect.protocols import (
     ProtocolSecretProbeStore,
@@ -124,7 +125,7 @@ def _schedule(arguments: Sequence[str]) -> int:
     elif args.verb == "install":
         if not args.workspace_root:
             raise ValueError("OMNI_HOME is not set and --workspace-root was not passed")
-        found = find_node_overlay(NODE_NAME)
+        found = find_node_overlay(overlay_id())
         if found is None:
             raise NodeOverlayError(
                 "the overlay file cannot be found to pin its root in the unit"
@@ -133,6 +134,7 @@ def _schedule(arguments: Sequence[str]) -> int:
             args.host,
             omni_root=Path(args.workspace_root),
             overlay_root=found.parent.parent,
+            overlay_id=overlay_id(),
             dry_run=args.dry_run,
         )
     elif args.verb == "uninstall":

@@ -1,0 +1,88 @@
+ThroughputTick: the model's send keys against the keys the live tick writes
+===========================================================================
+
+Read 2026-11-11 from the tick source on the default branch of the orchestrator plugin repository
+(throughput_tick.py, loops_check.py, node_idle_slot_fill_effect/handler.py) and from the rolling ledger copy the
+lane ran with (taken 2026-11-11T13:32:07Z). The tick runs as the launchd unit
+ai.omninode.throughput-tick on the orchestrator host; this lane runs on h053, which keeps no
+tick state directory, so the state files themselves were not read (see UNMEASURED).
+
+Model name        Live name (file, key, value)                                   Locked?   Reading
+----------------  -------------------------------------------------------------  --------  -------------------------------
+store             lab-fill.sent.json in ~/.local/state/omni/throughput-tick      flock     shape: tests fixture
+                  (OMNI_LAB_FILL_STATE_DIR); key -> {at, kind, lane, model,      lab-fill  lab-fill-sent-repairs-2026-11-06.json
+                  pool?}; replaced whole by write_sent (pid-named tmp, replace)  .lock
+store             dispatch-replaced.json; run_id -> {lane, at, exit, output};    no        source only (replace_no_host)
+                  replaced whole by _write_json_atomic after the send
+store             green-unlanded.json; "dispatched": "<pr>@<head>" -> {at,      no        source only (green_unlanded_check)
+                  lane[, grouped]}; replaced whole by write_history (fixed
+                  <name>.tmp), written after the dispatch
+store             floor-escalation.json; "dispatched": <repo> -> {at, lane};     no        source only (escalate)
+                  replaced whole by write_history, written after the dispatch
+store             the stuck-owner state (stuck.STATE_FILE), per cause and base   no        UNMEASURED (not read)
+key k (fill)      the sent.json key. Live kinds read in the ledger rows:         flock     ledger rows below
+                  repair:running-vs-merged:plugin:<host>
+                  repair:running-vs-merged:dispatch-venv:<host>:<path>
+                  repair:running-vs-merged:launchd-lib:<host>:<unit>
+                  repo-status:<repo>   (kind cause-red)
+                  other kinds in source: <repo>#<n> (process-fix), dev-red:<repo>,
+                  exp:<slug>, ticket keys
+key k (relaunch)  run_id of the no-host receipt                                  no        source only
+key k (green)     <pr>@<head>                                                    no        source only
+key k (floor)     <repo>                                                         no        source only
+Lock              fill_lock: fcntl.flock LOCK_EX|LOCK_NB on lab-fill.lock;       --        source; fail-open on OSError
+                  waits 120 s (detached tick 2 s); False -> nothing is sent;     --        (yield True), see VERDICT
+                  a lock file that cannot be opened yields True and the fill
+                  goes on WITHOUT the lock (LockFailOpen)
+Decide            candidates() + HandlerLabFill decision: skips a key whose      --        source
+                  record is inside window_hours (3.0)
+Reread            worker_main: read_sent under the lock, then                    flock     source (OMN-22743)
+                  recorded_inside_window drops what is recorded
+Send              fill_argv -> onex_remote_lane.py run --detach (the runner)     --        source
+Record            the detached worker calls write_sent after each send; the      --        source
+                  in-tick _fill calls it once after all sends; the other three
+                  stores are written once after the dispatch
+Consumer          the remote-lane runner. Lane name = fill-<kind>-<name>-        --        ledger rows: every name ends
+                  <YYYYMMDDTHHMM>Z, so a second call at another minute is a                -2026...Z
+                  second lane (ConsumerDedupe = FALSE); the runner refuses
+                  only a repeated lane name (exit 74)
+Crash             a worker or tick killed between Send and Record (the code      --        source comment: "a killed
+                  comments on it); the flock dies with the process                         worker must not leave a sent
+                                                                                           lane unrecorded"
+Foreign writer    a second tick (launchd and a session), or any process that     --        source (the 2026-10-19 record
+                  replaces the whole store from an earlier read                            split: two ticks, two state
+                                                                                           directories, one item sent twice)
+
+Live send records: one tick's lab-fill sends, as the ledger rows the tick itself appends
+(STATUS, actor=script:throughput-tick, action=lab-fill, subject=<lane>). 11 such rows are in
+the ledger copy, all lab-fill, 2026-11-11T07:41:51Z to 2026-11-11T12:09:41Z. The tick of
+2026-11-11T12:04Z:
+
+  ledger row (subject = lane name)                                          model key k (sent.json key)
+  fill-repair-running-vs-merged-plugin-h105-20261111T1202Z                  repair:running-vs-merged:plugin:h105
+  fill-repair-running-vs-merged-dispatch-venv-h105-<path>-8ecc53-...    repair:running-vs-merged:dispatch-venv:h105:<path>
+  (12:04:25Z and 12:04:30Z; the row text is cut at 200 characters)
+
+Every one of the 11 rows names one key once inside its 3 h window. Keys that appear twice
+across the day (dispatch-venv on h105 at 07:41Z and at 12:04Z; dispatch-venv on h201 at
+07:52Z and 10:57Z) are 4 h 22 m and 3 h 05 m apart, outside the 3 h window: the model's
+one-window abstraction holds. The lane name of the 12:04Z and 12:09Z h105 dispatch-venv
+sends carries the same digest (8ecc53) and different keys (the cut row text differs after
+the first 60 slug characters): lane_name hashes the body AFTER _slug cut it to 60 characters,
+so two keys that agree in their first 60 slug characters get one lane-name digest.
+
+UNMEASURED
+  - the content of lab-fill.sent.json, dispatch-replaced.json, green-unlanded.json and
+    floor-escalation.json on the tick host (not reachable from h053; the key shapes above are
+    from the source and the 2026-11-06 fixture, not from a read of a live file);
+  - any live send record of the relaunch, green and floor paths (none in the ledger window);
+  - whether a lane-name collision (same digest, same minute) has lost a send in a live tick.
+
+Two more readings from the source, kept with the table:
+  - read_sent returns an empty record for an absent or unreadable file (the model's ReadFailOpen,
+    config M7): a tick that cannot read the store sends every key again, with the lock held.
+  - write_sent resolves the path before its atomic replace (an atomic replace on a symlink's own
+    path splits the record in two); write_history, which writes green-unlanded.json and
+    floor-escalation.json, does not. A symlinked state file of those two stores splits, the
+    recorded key is lost and the key is sent again. The model's foreign writer (a whole-record
+    replace from an earlier read) covers the effect; the symlink cause is not a knob.
