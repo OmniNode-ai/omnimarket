@@ -21,11 +21,9 @@ import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 from pydantic import SecretStr, ValidationError
 
-from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    append_eval_arm_backends,
-)
 from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
 from omnimarket.handlers.routing import paid_rungs as paid_mod
+from omnimarket.handlers.routing.eval_arm_backends import append_eval_arm_backends
 from omnimarket.models.delegation.model_delegation_routing_overlay import (
     ModelDelegationRoutingOverlay,
 )
