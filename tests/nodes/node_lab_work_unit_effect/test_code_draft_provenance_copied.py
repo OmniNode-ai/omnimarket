@@ -129,3 +129,33 @@ def test_synthetic_traffic_must_name_its_surface() -> None:
             checks=(ModelDeclaredCheck(name="c", argv=("true",)),),
             traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
         )
+
+
+def test_a_draft_without_provenance_writes_no_null_fields_for_an_older_loop(
+    tmp_path: Path,
+) -> None:
+    """A loop already installed on a pool host rejects unknown keys (extra forbid),
+    so a draft that names no provenance must not put the two keys in the file."""
+    from omnimarket.nodes.node_lab_work_unit_effect.models import (
+        ModelLabWorkUnitRequest,
+    )
+
+    unit = ModelLabWorkUnitRequest.model_validate(
+        {
+            "work_unit_id": "lw-prov-0002",
+            "target_host": "h202",
+            "repo": "OmniNode-ai/demo",
+            "commit_sha": "0" * 40,
+            "argv": ["onex", "code-edit", "run"],
+            "kind": "code_draft",
+            "lane": "test-lane",
+            "code_draft": _draft(traffic_class=None, source_surface=None),
+        }
+    )
+    argv = LocalShellLabWorkExecutor(tmp_path / "work")._draft_argv(
+        unit, tmp_path / "tree", tmp_path / "state"
+    )
+    written = json.loads(Path(argv[argv.index("--request") + 1]).read_text())
+    assert "traffic_class" not in written
+    assert "source_surface" not in written
+    assert "ticket" not in written
