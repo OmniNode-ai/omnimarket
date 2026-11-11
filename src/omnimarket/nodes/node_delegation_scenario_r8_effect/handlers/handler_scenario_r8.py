@@ -356,7 +356,6 @@ def _build_bus_lane(
     tenant_read: ModelScenarioTenantReadOverlay | None,
 ) -> ProtocolR8Lane:
     """The tenant reads over the event bus; the bus, lane and probe tenant come from the R8 overlay document."""
-    del environment
     if tenant_read is None:
         raise LaneReadError("the R8 overlay document has no tenant_read block")
     if settings.bus is None:
@@ -369,6 +368,7 @@ def _build_bus_lane(
             savings_node=settings.bus.savings_node,
             delegations_node=settings.bus.delegations_node,
             workspace_env=settings.bus.workspace_env,
+            environment=environment,
         ),
     )
 

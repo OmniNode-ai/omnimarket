@@ -37,8 +37,12 @@ from omnimarket.models.model_tenant_read_bus import (
     ModelTenantReadCommand,
     ModelTenantReadCompleted,
 )
+from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers import (
+    adapter_r8_bus_request,
+)
 from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_bus_request import (
     _load_topics,
+    build_bus_request,
 )
 from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_lane import (
     BusLane,
@@ -351,3 +355,40 @@ def test_seam_the_overlay_document_model_carries_the_tenant_read_block() -> None
     )
     assert Decimal("0") == Decimal(0)
     assert CONTRACT_PATH.name == "contract.yaml"
+
+
+def test_the_bus_request_takes_the_workspace_root_from_the_environment_it_is_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workspace root is read from the mapping the lane was built with, never from the process environment."""
+    seen: list[dict[str, object]] = []
+
+    class _StopError(Exception):
+        pass
+
+    def fake_open_bus(bus_opts: dict[str, object]) -> object:
+        seen.append(dict(bus_opts))
+        raise _StopError
+
+    monkeypatch.setattr(adapter_r8_bus_request, "_open_bus", fake_open_bus)
+    monkeypatch.setenv("WS", "/from/the/process")
+    settings = load_lane_settings(CONTRACT_PATH)
+    assert settings.bus is not None
+    command = ModelTenantReadCommand(
+        correlation_id=UUID(int=1), kind=EnumTenantReadKind.SAVINGS, tenant_id=TENANT
+    )
+    for environment, expected in (
+        ({"WS": "/from/the/mapping"}, "/from/the/mapping"),
+        ({}, None),
+    ):
+        seen.clear()
+        request = build_bus_request(
+            OVERLAY,
+            savings_node=settings.bus.savings_node,
+            delegations_node=settings.bus.delegations_node,
+            workspace_env="WS",
+            environment=environment,
+        )
+        with pytest.raises(_StopError):
+            request(command, 1.0)
+        assert seen[0].get("omnibase_path") == expected

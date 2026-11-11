@@ -11,7 +11,7 @@ the environment variable the contract names.
 from __future__ import annotations
 
 import asyncio
-import os
+from collections.abc import Mapping
 from importlib import resources
 from typing import Any
 
@@ -51,6 +51,7 @@ def build_bus_request(
     savings_node: str,
     delegations_node: str,
     workspace_env: str,
+    environment: Mapping[str, str],
 ) -> BusRequest:
     """The callable the lane injects: it opens the bus and publishes one tenant read command."""
     topics = {
@@ -65,7 +66,7 @@ def build_bus_request(
             "bus": overlay.bus,
             "bus_lane": overlay.bus_lane,
         }
-        omnibase_path = os.environ.get(workspace_env, "").strip()
+        omnibase_path = environment.get(workspace_env, "").strip()
         if omnibase_path:
             bus_opts["omnibase_path"] = omnibase_path
 
