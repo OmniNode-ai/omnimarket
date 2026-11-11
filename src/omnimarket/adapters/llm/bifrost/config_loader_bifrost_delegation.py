@@ -436,6 +436,59 @@ def _render(value: Any) -> str | None:
     return str(value)
 
 
+#: How an eval arm's backend is attributed in refusals and provenance (OMN-23751).
+EVAL_ARMS_OVERLAY_SOURCE = "DELEGATION_ROUTING_OVERLAY_PATH eval_arms"
+
+
+def append_eval_arm_backends(
+    backends: Sequence[Mapping[str, Any]],
+    *,
+    provider_rules: Sequence[Mapping[str, Any]] = (),
+) -> list[dict[str, Any]]:
+    """Append the routing overlay's eval arm backends to a resolved backend list.
+
+    OMN-23751. The code eval pins hosted models by backend id before it has
+    scored them. Their declarations live in the delegation routing overlay
+    (``eval_arms``), the one place the deployment's ladder additions are read
+    from, and every one is ``explicit_pin_only``; this appends them so a
+    backend-id pin resolves them through the same contract every other backend
+    resolves through. Nothing else selects them: the tier ladder names none of
+    them and the capability fallback skips pinned-only backends.
+
+    An eval arm never overrides a contract or overlay backend: a colliding
+    ``backend_id`` raises naming the id. Each appended row is proven complete by
+    :func:`validate_overlay_added_backends` and its endpoint is held to the
+    contract's declared provider surfaces. An unbound overlay appends nothing.
+    """
+    # Imported here: the routing overlay loader imports the wire models this
+    # module's callers already hold, and a module-level import would make the
+    # canonical bifrost loader depend on the routing package at import time.
+    from omnimarket.handlers.routing.routing_tiers_path import (
+        load_delegation_routing_overlay,
+    )
+
+    merged = [dict(b) for b in backends]
+    rows = load_delegation_routing_overlay().eval_backend_rows()
+    if not rows:
+        return merged
+    existing = {str(b.get("backend_id")) for b in merged}
+    clash = sorted(str(r["backend_id"]) for r in rows if r["backend_id"] in existing)
+    if clash:
+        msg = (
+            f"{EVAL_ARMS_OVERLAY_SOURCE}: eval arm backend_id(s) {clash} collide with "
+            "a routing-contract backend; an eval arm never overrides one"
+        )
+        raise ValueError(msg)
+    added = validate_overlay_added_backends(
+        merged, rows, overlay_source=EVAL_ARMS_OVERLAY_SOURCE
+    )
+    merged.extend(added)
+    reject_backends_off_a_declared_provider_surface(
+        merged, provider_rules, source=EVAL_ARMS_OVERLAY_SOURCE
+    )
+    return merged
+
+
 def load_bifrost_delegation_config(
     config_path: Path | None = None,
     overlay_path: Path | None = None,
@@ -622,6 +675,11 @@ def _load_merged_bifrost_data(
         )
         data = deep_merge_bifrost_delegation_config(data, overlay_data)
 
+    # OMN-23751: the routing overlay's pinned-only eval arms, appended last.
+    data["backends"] = append_eval_arm_backends(
+        data.get("backends") or [],
+        provider_rules=(data.get("provider_quota_policy") or {}).get("providers") or [],
+    )
     return data, str(resolved)
 
 
@@ -987,9 +1045,11 @@ def _list_identity_key(
 
 __all__: list[str] = [
     "AUTHORITATIVE_BACKEND_FIELDS",
+    "EVAL_ARMS_OVERLAY_SOURCE",
     "OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS",
     "OverlayBackendIncompleteError",
     "ProviderSurfaceMismatchError",
+    "append_eval_arm_backends",
     "build_overlay_field_provenance",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_backend_placements",

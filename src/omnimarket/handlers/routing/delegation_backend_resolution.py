@@ -45,6 +45,7 @@ from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    append_eval_arm_backends,
     build_overlay_field_provenance,
     reject_backends_off_a_declared_provider_surface,
     validate_overlay_added_backends,
@@ -502,7 +503,7 @@ def load_bifrost_backends(
                 overlay_source=store_source,
                 sink=provenance_sink,
             )
-            return backends
+            return append_eval_arm_backends(backends, provider_rules=provider_rules)
         # Store is configured but has no overlay key → fall through to file with
         # a deprecation warning.
         logger.warning(
@@ -542,7 +543,7 @@ def load_bifrost_backends(
             overlay_source=str(overlay_path),
             sink=provenance_sink,
         )
-        return backends
+        return append_eval_arm_backends(backends, provider_rules=provider_rules)
 
     _record_overlay_provenance(
         committed_backends,
@@ -551,7 +552,7 @@ def load_bifrost_backends(
         overlay_source=None,
         sink=provenance_sink,
     )
-    return backends
+    return append_eval_arm_backends(backends, provider_rules=provider_rules)
 
 
 def _record_overlay_provenance(
