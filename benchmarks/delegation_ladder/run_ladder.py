@@ -141,11 +141,10 @@ BACKENDS = {
     "local-coder": BackendSpec(
         "onex_delegate", "qwen-host-a", backend_id="local-coder"
     ),
+    # The second lab host's rung is declared by the dev lane overlay under its own
+    # backend id, so the deployed lane answers a pin on it; no per-run overlay file.
     "local-omnipc2-chat": BackendSpec(
-        "onex_delegate",
-        "qwen-host-b",
-        backend_id="local-coder",
-        overlay=str(Path.home() / ".omninode/delegation/bifrost_overrides.pc2.yaml"),
+        "onex_delegate", "qwen-host-b", backend_id="local-omnipc2-chat"
     ),
     "openrouter-nemotron-ultra": BackendSpec(
         "onex_delegate", "openrouter-free", backend_id="openrouter-nemotron-ultra"

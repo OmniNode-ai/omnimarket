@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-23653
+title: Second local-model benchmark arm runs from the lab's declared settings
+summary: The delegation ladder runner's local-omnipc2-chat arm named the first local backend and a per-run overlay file that only one machine held, so it could not run on a lab host. It now pins the backend id the dev lane overlay declares for the second lab server, on the deployed lane, with no overlay path. No bound, check or setting is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23653-pc2-arm-declared-backend
+  statement: The runner's local-omnipc2-chat arm pins the declared backend id on the deployed lane and sets no per-run overlay path.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the runner''s second local arm pins the declared backend id on the deployed lane and sets no per-run overlay path -- falsifier: the focused test test_onex_command_pins_only_when_requested for local-omnipc2-chat fails when the old overlay path is restored'
+  - id: AC2
+    statement: 'AC2: the arm''s recorded answers name the second server''s backend id -- falsifier: the result rows of one run of the arm for R4 and R6 bundles, read for backend_id, with none naming local-coder'
+  - id: AC3
+    statement: 'AC3: integrated: one bundle run by the arm on the lab dev lane is answered by the second server -- falsifier: the delegation receipt of that run names backend local-omnipc2-chat with the pin honoured, read from the lab record'
+evidence_requirements:
+- kind: tests
+  description: The runner command-shape test passes for all three backends.
+  command: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k pins_only_when_requested -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23653-ac1-command-shape
+  description: Runs the command-shape test for local-coder, local-omnipc2-chat and unpinned.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k pins_only_when_requested -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23653-ac2-old-overlay-path-absent
+  description: The per-run overlay file path is absent from the runner's backend table.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: "! grep -q 'bifrost_overrides.pc2' benchmarks/delegation_ladder/run_ladder.py"
+    cwd: .
+- id: dod-omn23653-integration-proof
+  description: Run the command-shape test on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23653 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k pins_only_when_requested -q -n 0 --no-cov -p no:randomly
+    cwd: .
