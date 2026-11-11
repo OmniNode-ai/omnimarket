@@ -271,6 +271,39 @@ def without_paid_tiers(
     return tuple(tier for tier in tiers if tier.name not in names)
 
 
+def with_registered_byok_tier(
+    tiers: tuple[ModelRoutingTier, ...],
+) -> tuple[ModelRoutingTier, ...]:
+    """Insert the overlay-declared registered-key tier without widening other ladders."""
+    policy = load_delegation_routing_overlay().registered_byok_tier
+    names = tuple(tier.name for tier in tiers)
+    if policy is None or policy.after_tier not in names:
+        return tiers
+    if policy.name in names:
+        raise ProtocolConfigurationError(
+            "registered_byok_tier name collides with an existing routing tier",
+            tier_name=policy.name,
+        )
+    position = names.index(policy.after_tier) + 1
+    return (*tiers[:position], policy, *tiers[position:])
+
+
+def overlay_tiers(
+    config: ModelDelegationConfig,
+    tiers: tuple[ModelRoutingTier, ...],
+) -> tuple[ModelRoutingTier, ...]:
+    """Insert the overlay's paid tiers, then its registered-key tier."""
+    paid = load_delegation_routing_overlay().paid_rungs
+    return with_registered_byok_tier(with_paid_tiers(tiers, config, paid))
+
+
+def packaged_tiers(config: ModelDelegationConfig) -> tuple[ModelRoutingTier, ...]:
+    """The ladder without the overlay's paid tiers."""
+    return without_paid_tiers(
+        config.tiers, load_delegation_routing_overlay().paid_rungs
+    )
+
+
 def build_paid_rung_burn_reading(
     paid: ModelPaidRungsOverlay,
     credits: ModelProviderCreditsReading,

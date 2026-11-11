@@ -103,9 +103,10 @@ from omnimarket.handlers.routing.paid_gate import (
 from omnimarket.handlers.routing.paid_gate import paid_gate_closed_for
 from omnimarket.handlers.routing.paid_rungs import (
     apply_paid_rungs,
+    overlay_tiers,
+    packaged_tiers,
     paid_rung_gate_reason,
-    with_paid_tiers,
-    without_paid_tiers,
+    with_registered_byok_tier,
 )
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
@@ -1283,39 +1284,6 @@ def _tier_allowed_by_contract(
     return True
 
 
-def _with_registered_byok_tier(
-    tiers: tuple[ModelRoutingTier, ...],
-) -> tuple[ModelRoutingTier, ...]:
-    """Insert the overlay-declared registered-key tier without widening other ladders."""
-    policy = load_delegation_routing_overlay().registered_byok_tier
-    names = tuple(tier.name for tier in tiers)
-    if policy is None or policy.after_tier not in names:
-        return tiers
-    if policy.name in names:
-        raise ProtocolConfigurationError(
-            "registered_byok_tier name collides with an existing routing tier",
-            tier_name=policy.name,
-        )
-    position = names.index(policy.after_tier) + 1
-    return (*tiers[:position], policy, *tiers[position:])
-
-
-def _with_overlay_tiers(
-    config: ModelDelegationConfig,
-    tiers: tuple[ModelRoutingTier, ...],
-) -> tuple[ModelRoutingTier, ...]:
-    """Insert the overlay's paid tiers (OMN-23756), then its registered-key tier."""
-    paid = load_delegation_routing_overlay().paid_rungs
-    return _with_registered_byok_tier(with_paid_tiers(tiers, config, paid))
-
-
-def _packaged_tiers(config: ModelDelegationConfig) -> tuple[ModelRoutingTier, ...]:
-    """The ladder without the overlay's paid tiers."""
-    return without_paid_tiers(
-        config.tiers, load_delegation_routing_overlay().paid_rungs
-    )
-
-
 def _tier_order_from_contract(
     config: ModelDelegationConfig,
     entry: dict[str, object] | None,
@@ -1342,26 +1310,13 @@ def _tier_order_from_contract(
     When the task-class entry declares no tier_order, the config declaration
     order is used before that explicit overlay insertion.
     """
-    if entry is None:
-        return (
-            _with_overlay_tiers(config, config.tiers)
-            if include_registered
-            else _packaged_tiers(config)
-        )
-
-    escalation = entry.get("escalation_policy")
-    if not isinstance(escalation, dict):
-        return (
-            _with_overlay_tiers(config, config.tiers)
-            if include_registered
-            else _packaged_tiers(config)
-        )
-    tier_order = escalation.get("tier_order")
+    escalation = entry.get("escalation_policy") if entry is not None else None
+    tier_order = escalation.get("tier_order") if isinstance(escalation, dict) else None
     if not isinstance(tier_order, list) or not tier_order:
         return (
-            _with_overlay_tiers(config, config.tiers)
+            overlay_tiers(config, config.tiers)
             if include_registered
-            else _packaged_tiers(config)
+            else packaged_tiers(config)
         )
 
     tier_by_name = {t.name: t for t in config.tiers}
@@ -1381,9 +1336,7 @@ def _tier_order_from_contract(
             seen.add(name)
 
     return (
-        _with_overlay_tiers(config, tuple(ordered))
-        if include_registered
-        else tuple(ordered)
+        overlay_tiers(config, tuple(ordered)) if include_registered else tuple(ordered)
     )
 
 
@@ -2257,7 +2210,7 @@ def backend_id_for_tier(
     """
     config = _get_config()
     registered_policy = load_delegation_routing_overlay().registered_byok_tier
-    available_tiers = _with_registered_byok_tier(config.tiers)
+    available_tiers = with_registered_byok_tier(config.tiers)
     matching_tier = next(
         (tier for tier in available_tiers if tier.name == tier_name),
         None,
