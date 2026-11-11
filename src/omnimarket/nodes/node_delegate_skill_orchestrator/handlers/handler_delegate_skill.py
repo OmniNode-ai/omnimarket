@@ -102,6 +102,9 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
+from omnimarket.models.delegation.wire.model_probe_credential_ladder import (
+    ModelProbeCredentialLadder,
+)
 from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
 from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
@@ -235,7 +238,10 @@ class ProtocolDelegationDispatchPort(Protocol):
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
-        probe_ladder: ModelProbeLadder | ModelProbeFaults | None = None,
+        probe_ladder: ModelProbeLadder
+        | ModelProbeCredentialLadder
+        | ModelProbeFaults
+        | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -270,7 +276,7 @@ class _ProbeLadderDispatchKwargs(TypedDict, total=False):
     running it as an ordinary delegation.
     """
 
-    probe_ladder: ModelProbeLadder | ModelProbeFaults
+    probe_ladder: ModelProbeLadder | ModelProbeCredentialLadder | ModelProbeFaults
 
 
 def _probe_ladder_dispatch_kwargs(

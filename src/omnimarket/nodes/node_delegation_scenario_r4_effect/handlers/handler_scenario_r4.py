@@ -10,8 +10,8 @@ One run drives the delegation skill handler with synthetic requests and rungs-mo
    inside the class ceiling, and the returned bytes carry the fixed answer;
 2. a ladder with every rung down: the run ends ``failed``, cause ``returned_to_caller``, a reason from the closed list
    (OMN-23165) and ``savings_usd`` 0;
-3. a slowed rung, then a rung with no credential, then a healthy one: not expressible as a probe ladder today (a probe rung
-   has no credential setting), so it is a named failing assertion, never a skip.
+3. a slowed rung, then a rung whose credential is absent, then a healthy one: the absent rung is never selected and holds no
+   share of the run's time (OMN-23170), so the walk is the slow rung then the healthy one, and the third rung answers.
 
 Every assertion compares typed fields or bytes of the terminal; no model judges a pass. The result goes to the ledger first (one
 STATUS row, the row the green-days reading counts) and then to the bus.
@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.delegation_readiness_probe import (
     LegTransportScope,
@@ -85,13 +85,6 @@ class ModelAllDownLeg(BaseModel):
     rungs: tuple[ModelRungScript, ...] = Field(min_length=2)
 
 
-class ModelCredentialAbsentLeg(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    runnable: bool
-    gap: str = ""
-
-
 class ModelR4Inputs(BaseModel):
     """The committed ladder file of scenario R4."""
 
@@ -104,7 +97,21 @@ class ModelR4Inputs(BaseModel):
     end_of_ladder_reasons: tuple[str, ...] = Field(min_length=1)
     recover_legs: tuple[ModelRecoverLeg, ...] = Field(min_length=3)
     all_down_leg: ModelAllDownLeg
-    credential_absent_leg: ModelCredentialAbsentLeg
+    credential_absent_leg: ModelRecoverLeg
+
+    @model_validator(mode="after")
+    def _credential_absent_leg_shape(self) -> ModelR4Inputs:
+        """The leg must declare an absent rung and end on a rung whose credential resolves (the one that answers)."""
+        rungs = self.credential_absent_leg.rungs
+        if all(rung.credential_resolved for rung in rungs):
+            raise ValueError(
+                "credential_absent_leg declares no rung with an absent credential"
+            )
+        if not rungs[-1].credential_resolved:
+            raise ValueError(
+                "credential_absent_leg must end on a rung whose credential resolves"
+            )
+        return self
 
     def leg_spec(self, name: str, rungs: tuple[ModelRungScript, ...]) -> ModelLegSpec:
         return ModelLegSpec(
@@ -190,7 +197,7 @@ class HandlerScenarioR4(ReadinessScenarioBase):
         assertions.append("+inputs_readable")
         marker = inputs.answer_marker
 
-        for leg in inputs.recover_legs:
+        for leg in (*inputs.recover_legs, inputs.credential_absent_leg):
             outcome = self._run_leg(inputs.leg_spec(leg.name, leg.rungs))
             healthy = leg.rungs[-1].backend_id
             first = outcome.attempts[0] if outcome.attempts else None
@@ -200,8 +207,11 @@ class HandlerScenarioR4(ReadinessScenarioBase):
                 f"status {outcome.status}, cause {outcome.terminal_failure_cause}",
             )
             check(
-                f"{leg.name}_walked_both",
-                outcome.walked == tuple(rung.backend_id for rung in leg.rungs),
+                f"{leg.name}_walked_the_reachable_rungs",
+                outcome.walked
+                == tuple(
+                    rung.backend_id for rung in leg.rungs if rung.credential_resolved
+                ),
                 f"walked {outcome.walked}",
             )
             check(
@@ -228,6 +238,15 @@ class HandlerScenarioR4(ReadinessScenarioBase):
                 marker in outcome.final_answer,
                 "the returned bytes do not carry the fixed answer",
             )
+            absent_rungs = tuple(
+                rung.backend_id for rung in leg.rungs if not rung.credential_resolved
+            )
+            if absent_rungs:
+                check(
+                    f"{leg.name}_absent_rung_not_attempted",
+                    not set(absent_rungs) & set(outcome.walked),
+                    f"an attempt was made on a rung whose credential is absent: {outcome.walked}",
+                )
 
         down = inputs.all_down_leg
         ended = self._run_leg(inputs.leg_spec(down.name, down.rungs))
@@ -252,13 +271,6 @@ class HandlerScenarioR4(ReadinessScenarioBase):
             bool(ended.attempts)
             and all(a.failure_class not in (None, "unknown") for a in ended.attempts),
             f"attempt classes {[a.failure_class for a in ended.attempts]}",
-        )
-
-        absent = inputs.credential_absent_leg
-        check(
-            "credential_absent_leg",
-            absent.runnable,
-            absent.gap or "the credential-absent leg is not runnable",
         )
         return "; ".join(problems) or "every assertion held"
 

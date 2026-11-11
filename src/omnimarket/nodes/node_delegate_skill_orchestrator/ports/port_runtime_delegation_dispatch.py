@@ -36,6 +36,9 @@ from omnimarket.handlers.execution_budget_overlay import largest_execution_budge
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
+from omnimarket.models.delegation.wire.model_probe_credential_ladder import (
+    ModelProbeCredentialLadder,
+)
 from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
 from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
@@ -142,7 +145,10 @@ class RuntimeDelegationDispatchPort:
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
-        probe_ladder: ModelProbeLadder | ModelProbeFaults | None = None,
+        probe_ladder: ModelProbeLadder
+        | ModelProbeCredentialLadder
+        | ModelProbeFaults
+        | None = None,
     ) -> dict[str, object]:
         # OMN-23162: a probe ladder is admitted and run only by the in-process
         # port, whose provider calls it can name or fault. Refused rather than

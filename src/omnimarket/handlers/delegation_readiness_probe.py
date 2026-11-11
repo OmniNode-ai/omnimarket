@@ -53,6 +53,10 @@ from omnimarket.models.delegation.model_execution_budget_overlay import (
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.delegation.wire.model_probe_credential_ladder import (
+    ModelProbeCredentialLadder,
+    ModelProbeCredentialRung,
+)
 from omnimarket.models.delegation.wire.model_probe_ladder import (
     READINESS_PROBE_SOURCE_SURFACE,
     ModelProbeLadder,
@@ -93,6 +97,8 @@ class ModelRungScript(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1)
     #: What the in-memory backend books for an answered call on this rung (a paid rung's scripted, measured cost).
     scripted_cost_usd: Decimal = Field(default=Decimal("0"), ge=0)
+    #: ``False``: the key this rung would need resolves to nothing, so the walk never selects it and makes no attempt on it.
+    credential_resolved: bool = True
 
 
 class ModelLegSpec(BaseModel):
@@ -408,19 +414,36 @@ def run_leg(
     db_path = work_dir / f"{leg.name}.sqlite"
     seed_probe_tenant(db_path, tenant_slug)
     urls = transport.endpoints(leg)
-    ladder = ModelProbeLadder(
-        rungs=tuple(
-            ModelProbeRung(
-                backend_id=rung.backend_id,
-                model_id=rung.model_id,
-                endpoint_ref=urls[rung.backend_id],
-                tier=rung.tier,
-                timeout_ms=rung.timeout_ms,
-                **({"max_tokens": rung.max_tokens} if rung.max_tokens else {}),
+    ladder: ModelProbeLadder | ModelProbeCredentialLadder
+    if not all(rung.credential_resolved for rung in leg.rungs):
+        ladder = ModelProbeCredentialLadder(
+            rungs=tuple(
+                ModelProbeCredentialRung(
+                    backend_id=rung.backend_id,
+                    model_id=rung.model_id,
+                    endpoint_ref=urls[rung.backend_id],
+                    tier=rung.tier,
+                    timeout_ms=rung.timeout_ms,
+                    credential_resolved=rung.credential_resolved,
+                    **({"max_tokens": rung.max_tokens} if rung.max_tokens else {}),
+                )
+                for rung in leg.rungs
             )
-            for rung in leg.rungs
         )
-    )
+    else:
+        ladder = ModelProbeLadder(
+            rungs=tuple(
+                ModelProbeRung(
+                    backend_id=rung.backend_id,
+                    model_id=rung.model_id,
+                    endpoint_ref=urls[rung.backend_id],
+                    tier=rung.tier,
+                    timeout_ms=rung.timeout_ms,
+                    **({"max_tokens": rung.max_tokens} if rung.max_tokens else {}),
+                )
+                for rung in leg.rungs
+            )
+        )
     port = LocalDelegationDispatchPort(
         effect_handler=transport.effect(),
         evidence_db_path=db_path,

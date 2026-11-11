@@ -28,10 +28,17 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     JournalScenarioEventSink,
     render_systemd,
 )
+from omnimarket.models.delegation.wire.model_probe_ladder import (
+    ModelProbeLadder,
+    ModelProbeRung,
+)
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioConclusion,
     EnumScenarioTrigger,
     from_status_row,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    port_local_delegation_dispatch as port_module,
 )
 from omnimarket.nodes.node_delegation_scenario_r4_effect.handlers.handler_scenario_r4 import (
     CONTRACT_PATH,
@@ -52,8 +59,7 @@ TERMINAL = "onex.evt.omnimarket.delegation-scenario-result.v1"
 NOW = datetime(2026, 11, 9, 13, 6, 30, tzinfo=UTC)
 RUNTIME = load_runtime()
 INPUTS = NODE_DIR / RUNTIME.inputs_relpath
-#: the one assertion that stays red until a probe rung can declare an absent credential (named gap, never a skip)
-NAMED_GAP = "-credential_absent_leg"
+ABSENT_LEG = "slow_then_absent_then_healthy"
 
 
 class Rows:
@@ -138,16 +144,18 @@ def failed_assertions(assertions: tuple[str, ...]) -> list[str]:
     return [item for item in assertions if item.startswith("-")]
 
 
-def test_golden_chain_inmemory_every_assertion_held_but_the_named_gap(
+def test_golden_chain_inmemory_every_assertion_held(
     tmp_path: Path,
 ) -> None:
     handler, rows, events = build(tmp_path, ScriptedLegTransport)
 
     result = handler.handle(ModelScenarioR4RunCommand())
 
-    assert failed_assertions(result.assertions) == [NAMED_GAP]
-    assert result.conclusion is EnumScenarioConclusion.FAILURE
+    assert failed_assertions(result.assertions) == []
+    assert result.conclusion is EnumScenarioConclusion.SUCCESS
     assert "+stopped_then_healthy_typed" in result.assertions
+    assert f"+{ABSENT_LEG}_walked_the_reachable_rungs" in result.assertions
+    assert f"+{ABSENT_LEG}_absent_rung_not_attempted" in result.assertions
     assert "+every_down_reason_in_closed_list" in result.assertions
     assert len(rows.rows) == 1
     parsed = from_status_row(rows.rows[0])
@@ -170,11 +178,16 @@ def test_golden_chain_real_loopback_stubs_classify_stopped_killed_and_slow_rungs
 
     result = handler.run()
 
-    assert failed_assertions(result.assertions) == [NAMED_GAP], result.detail
-    for leg in ("stopped_then_healthy", "killed_then_healthy", "slow_then_healthy"):
+    assert failed_assertions(result.assertions) == [], result.detail
+    for leg in (
+        "stopped_then_healthy",
+        "killed_then_healthy",
+        "slow_then_healthy",
+        ABSENT_LEG,
+    ):
         for check in (
             "completed",
-            "walked_both",
+            "walked_the_reachable_rungs",
             "typed",
             "healthy_accepted",
             "inside_ceiling",
@@ -262,7 +275,7 @@ def test_error_chain_a_ceiling_the_run_cannot_meet_turns_the_ceiling_assertion_r
     assert "+stopped_then_healthy_completed" in result.assertions
 
 
-def test_error_chain_a_ladder_where_a_rung_is_wrong_for_the_leg_turns_walked_both_red(
+def test_error_chain_a_ladder_where_a_rung_is_wrong_for_the_leg_turns_walked_the_reachable_rungs_red(
     tmp_path: Path,
 ) -> None:
     raw = yaml.safe_load(INPUTS.read_text(encoding="utf-8"))
@@ -271,7 +284,7 @@ def test_error_chain_a_ladder_where_a_rung_is_wrong_for_the_leg_turns_walked_bot
     broken.write_text(yaml.safe_dump(raw), encoding="utf-8")
     handler, _, _ = build(tmp_path, ScriptedLegTransport, inputs_path=broken)
     result = handler.run()
-    assert "-stopped_then_healthy_walked_both" in result.assertions
+    assert "-stopped_then_healthy_walked_the_reachable_rungs" in result.assertions
     assert "-stopped_then_healthy_typed" in result.assertions
 
 
@@ -288,13 +301,44 @@ def test_error_chain_unreadable_inputs_is_a_failure_and_still_writes_one_row(
     assert len(events.events) == 1
 
 
-def test_error_chain_the_credential_absent_leg_is_never_skipped_or_passed(
-    tmp_path: Path,
+def test_error_chain_a_walk_that_ignores_the_declaration_attempts_the_absent_rung(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Break: the walk hands out every rung, declared credential or not; the absent rung would answer, so the leg is red."""
+    real_walk = port_module._ProbeLadderWalk
+
+    class IgnoresDeclaration(real_walk):  # type: ignore[misc, valid-type]
+        def __init__(self, ladder: object) -> None:
+            plain = ModelProbeLadder(
+                rungs=tuple(
+                    ModelProbeRung.model_validate(
+                        rung.model_dump(exclude={"credential_resolved"})
+                    )
+                    for rung in ladder.rungs  # type: ignore[attr-defined]
+                )
+            )
+            super().__init__(plain)
+
+    monkeypatch.setattr(port_module, "_ProbeLadderWalk", IgnoresDeclaration)
     handler, _, _ = build(tmp_path, ScriptedLegTransport)
     result = handler.run()
-    assert NAMED_GAP in result.assertions
-    assert "no credential setting" in result.detail
+    assert f"-{ABSENT_LEG}_healthy_accepted" in result.assertions
+    assert f"-{ABSENT_LEG}_walked_the_reachable_rungs" in result.assertions
+    assert result.conclusion is EnumScenarioConclusion.FAILURE
+
+
+def test_error_chain_an_absent_rung_that_the_walk_attempts_names_itself(
+    tmp_path: Path,
+) -> None:
+    """A leg whose declared absent rung is flagged resolved is walked in full: no absent-rung assertion is made at all."""
+    raw = yaml.safe_load(INPUTS.read_text(encoding="utf-8"))
+    for rung in raw["credential_absent_leg"]["rungs"]:
+        rung.pop("credential_resolved", None)
+    broken = tmp_path / "all_resolved.yaml"
+    broken.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    handler, _, _ = build(tmp_path, ScriptedLegTransport, inputs_path=broken)
+    result = handler.run()
+    assert result.assertions == ("-inputs_readable",)
 
 
 def test_error_chain_a_ledger_append_that_fails_raises_and_emits_nothing(
