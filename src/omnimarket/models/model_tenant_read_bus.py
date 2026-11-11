@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EnumTenantReadKind(StrEnum):
@@ -50,7 +50,16 @@ class ModelTenantReadFailed(BaseModel):
     kind: EnumTenantReadKind
     tenant_id: UUID | None
     reason: str = Field(min_length=1)
+    #: The field the runtime's failure-terminal guard reads; always equals ``reason``.
+    terminal_failure_cause: str | None = None
     detail: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _cause_is_the_reason(cls, data: object) -> object:
+        if isinstance(data, dict) and data.get("terminal_failure_cause") is None:
+            return {**data, "terminal_failure_cause": data.get("reason")}
+        return data
 
 
 #: The delegation projection's ``data_source`` column is the source of a run's

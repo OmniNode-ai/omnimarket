@@ -74,6 +74,7 @@ handler_routing:
       description: "Bus entry for the tenant savings read; the command carries the tenant and limit, the answer is the same JSON body the HTTP route answers."
   execution_mode: "single"
   max_timeout_seconds: 30
+terminal_event: onex.evt.omnimarket.tenant-savings-read-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.tenant-savings-read-requested.v1
   terminal_events:

@@ -138,5 +138,6 @@ class HandlerTenantDelegationsReadBus:
             kind=request.kind,
             tenant_id=request.tenant_id,
             reason=reason,
+            terminal_failure_cause=reason,
             detail=detail,
         )
