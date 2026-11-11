@@ -29,12 +29,6 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 
 
 def test_ollama_verify_uses_the_same_engine_without_installing(tmp_path: Path) -> None:
-    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-        load_ollama_config,
-    )
-
-    config = load_ollama_config()
-    assert config is not None
     home, workspace = tmp_path / "home", tmp_path / "workspace"
     home.mkdir()
     workspace.mkdir()
@@ -54,7 +48,9 @@ def test_ollama_verify_uses_the_same_engine_without_installing(tmp_path: Path) -
             "--provider",
             "ollama",
             "--model",
-            config.models[-1].model,
+            "user-managed-model:custom",
+            "--url",
+            "http://127.0.0.1:11434/v1",
         ),
         env={
             "HOME": str(home),
@@ -69,7 +65,7 @@ def test_ollama_verify_uses_the_same_engine_without_installing(tmp_path: Path) -
     )
     assert result.stdout.startswith("{"), result.stdout + result.stderr
     journal = ModelSetupJournal.model_validate_json(result.stdout)
-    assert "ollama" in {item.step for item in journal.observations}
+    assert "models" in {item.step for item in journal.observations}
     assert all(not item.changed for item in journal.observations)
     assert _snapshot(tmp_path) == before
 
@@ -135,7 +131,6 @@ def test_installed_verify_observes_empty_install_without_writes(
     assert {
         "preflight",
         "workspace",
-        "workspace-repositories",
         "user_config",
         "runtime_config",
         "identity",
@@ -144,6 +139,8 @@ def test_installed_verify_observes_empty_install_without_writes(
     assert observations["workspace"].status == "unavailable"
     assert observations["identity"].status == "unavailable"
     assert observations["models"].status == "action_required"
+    assert "workspace-repositories" not in observations
+    assert "base-tools" not in observations
     assert all(not item.changed for item in journal.observations)
     assert _snapshot(tmp_path) == before
 

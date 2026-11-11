@@ -144,6 +144,10 @@ lab_onboarding:
   source_repository: OmniNode-ai/omniclaude
   source_revision: 628da25322e1b1635c0b54fe9dbfbbf7357115b2
   audit_scope: Surface coverage only. Planned entries are not runtime integration evidence.
+  external_runtime_policy: >-
+    Ollama is optional and connection-only. Users install and run Ollama and
+    prepare their models separately. ONEX accepts endpoint, model and optional
+    authentication; it never installs, launches, serves or downloads Ollama models.
   sources:
   - id: walk
     fixture: lab_onboarding_8c1b3e5e.txt
@@ -188,14 +192,14 @@ lab_onboarding:
     kind: function
     identifier: anchor_time
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: preflight
     kind: function
     identifier: anchored_commit
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: preflight
     kind: function
     identifier: ask_keys
@@ -212,8 +216,8 @@ lab_onboarding:
     kind: function
     identifier: ask_ollama_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: preflight
     kind: function
     identifier: ask_url
@@ -230,8 +234,8 @@ lab_onboarding:
     kind: function
     identifier: checkout_anchored
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: preflight
     kind: function
     identifier: choose_models
@@ -248,8 +252,8 @@ lab_onboarding:
     kind: function
     identifier: clone_at_anchor
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: preflight
     kind: function
     identifier: comma_list
@@ -530,8 +534,8 @@ lab_onboarding:
     kind: function
     identifier: proven_pin
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: preflight
     kind: function
     identifier: put_first
@@ -794,8 +798,8 @@ lab_onboarding:
     kind: artifact
     identifier: proven-floor-stamp
     owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: artifact
     identifier: routing_overlay.yaml
@@ -830,14 +834,14 @@ lab_onboarding:
     kind: artifact
     identifier: stack.anchor
     owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: artifact
     identifier: workspace-config-git
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: flag
     identifier: --compat-url
@@ -1016,38 +1020,38 @@ lab_onboarding:
     kind: function
     identifier: clone_behind_note
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: clone_default_branch
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: clone_fix
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: clone_problem
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: clone_state
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: clone_where
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: commit_workspace_runtime_config
@@ -1172,8 +1176,8 @@ lab_onboarding:
     kind: function
     identifier: foreign_clones
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: has_model
@@ -1214,8 +1218,8 @@ lab_onboarding:
     kind: function
     identifier: install_ollama
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: internal_plugins_reachable
@@ -1292,8 +1296,8 @@ lab_onboarding:
     kind: function
     identifier: load_ollama_config
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: load_onboarding_preflight
@@ -1358,14 +1362,14 @@ lab_onboarding:
     kind: function
     identifier: ollama_bin
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: ollama_has_model
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: ollama_overrides_ours
@@ -1376,8 +1380,8 @@ lab_onboarding:
     kind: function
     identifier: ollama_up
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: onex_run
@@ -1628,14 +1632,14 @@ lab_onboarding:
     kind: function
     identifier: settle_ollama
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: setup_ollama
     owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: size_docker
@@ -1664,14 +1668,14 @@ lab_onboarding:
     kind: function
     identifier: stamp_proven_floor
     owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: start_ollama
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: step
@@ -1688,8 +1692,8 @@ lab_onboarding:
     kind: function
     identifier: sync_clone
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: usage
@@ -1724,14 +1728,14 @@ lab_onboarding:
     kind: function
     identifier: workspace_floor
     owner: 'onex setup: verify'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: workspace_runtime_config_anchored
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
   - source: walk
     kind: function
     identifier: workspace_runtime_config_present

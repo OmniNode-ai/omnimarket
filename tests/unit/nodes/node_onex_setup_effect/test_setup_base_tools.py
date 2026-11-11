@@ -154,12 +154,11 @@ def test_no_clt_update_cleans_only_its_own_marker(tmp_path: Path) -> None:
     assert not (tmp_path / "clt-marker").exists()
 
 
-def test_installable_missing_tools_do_not_bypass_disk_floor(tmp_path: Path) -> None:
+def test_native_client_has_no_blanket_disk_floor(tmp_path: Path) -> None:
     result = HandlerSetupPreflight(
         collect=lambda _: facts(disk=9), require_tools=False
     ).handle(ModelSetupPlan(workspace=tmp_path))
-    assert result.status != "success"
-    assert "10 GiB" in (result.fix or "")
+    assert result.status == "success"
 
 
 def test_probe_timeout_is_typed_without_echoing_probe_output(tmp_path: Path) -> None:

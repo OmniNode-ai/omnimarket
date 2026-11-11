@@ -23,6 +23,9 @@ from pathlib import Path
 from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins import (
+    HandlerSetupPlugins,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup import (
     ModelOnexSetupReceipt,
     ModelOnexSetupRequest,
@@ -113,7 +116,7 @@ class HandlerSetupWorkflow:
     @staticmethod
     def supported_components() -> frozenset[str]:
         """Selections with an actual adapter in the installed default workflow."""
-        return frozenset(("delegation", "dashboard", "claude-plugin", "claude-hooks"))
+        return HandlerSetupPlugins().components()
 
     @staticmethod
     def saved_plan(onex_home: Path) -> ModelSetupPlan | None:
@@ -126,6 +129,7 @@ class HandlerSetupWorkflow:
         *,
         onex_home: Path | None = None,
         steps: tuple[ProtocolSetupStep, ...] | None = None,
+        plugins: HandlerSetupPlugins | None = None,
         legacy_onboarding: Path | None = None,
         read_legacy: Callable[[Path], ModelSetupLegacyHints | None] | None = None,
         credentials: dict[str, SecretStr] | None = None,
@@ -134,66 +138,27 @@ class HandlerSetupWorkflow:
     ) -> None:
         onex_home = onex_home or user_config_path().parent
         self._default_steps = steps is None
+        if plugins is not None and steps is not None:
+            raise ValueError("Choose plugin composition or explicit steps, not both")
+        self._plugins = plugins or (HandlerSetupPlugins() if steps is None else None)
+        self._context: dict[str, object] = {
+            "onex_home": onex_home,
+            "credentials": credentials,
+            "model_step": model_step,
+        }
         if steps is None:
-            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_base_tools import (
-                HandlerSetupBaseTools,
-            )
-            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
-                HandlerSetupClaude,
-            )
-            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_dashboard import (
-                HandlerSetupDashboard,
-            )
-            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
-                HandlerSetupEnvironment,
-            )
             from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_legacy_import import (
                 HandlerSetupLegacyImport,
             )
-            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_runtime import (
-                HandlerSetupLocalRuntime,
-            )
-            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
-                HandlerSetupPreflight,
-            )
-            from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workspace import (
-                HandlerSetupWorkspace,
-            )
 
-            steps = (
-                HandlerSetupPreflight(require_tools=False),
-                HandlerSetupBaseTools(secrets=tuple((credentials or {}).values())),
-                HandlerSetupEnvironment(name="workspace", onex_home=onex_home),
-                HandlerSetupWorkspace(),
-                *(
-                    HandlerSetupEnvironment(
-                        name=name,
-                        onex_home=onex_home,
-                        credentials=credentials,
-                        model_step=model_step,
-                    )
-                    for name in (
-                        "user_config",
-                        "runtime_config",
-                        "identity",
-                    )
-                ),
-                HandlerSetupLocalRuntime(),
-                HandlerSetupEnvironment(
-                    name="models",
-                    onex_home=onex_home,
-                    credentials=credentials,
-                    model_step=model_step,
-                ),
-                HandlerSetupDashboard(onex_home=onex_home),
-                HandlerSetupClaude(name="claude-plugin"),
-                HandlerSetupClaude(name="claude-hooks"),
-            )
+            steps = ()
             if legacy_onboarding is None:
                 legacy_onboarding = Path.home() / ".omninode" / "onboarding"
                 read_legacy = HandlerSetupLegacyImport().handle
         names = [step.name for step in steps]
-        if not names or any(not name.strip() for name in names):
+        if (not self._default_steps and not names) or any(
+            not name.strip() for name in names
+        ):
             raise ValueError("Setup requires named steps")
         if len(set(names)) != len(names):
             raise ValueError("Setup requires unique step names")
@@ -243,15 +208,6 @@ class HandlerSetupWorkflow:
         )
         checkpoint_needed = previous is None or previous.desired_digest != digest
         for step in self._steps:
-            if self._default_steps and (
-                (step.name == "dashboard" and "dashboard" not in plan.components)
-                or (step.name == "models" and "delegation" not in plan.components)
-                or (
-                    step.name in ("claude-plugin", "claude-hooks")
-                    and step.name not in plan.components
-                )
-            ):
-                continue
             observation = self._observe(step, plan)
             if (
                 persist
@@ -325,12 +281,8 @@ class HandlerSetupWorkflow:
 
     def handle(self, plan: ModelSetupPlan) -> ModelSetupJournal:
         """Verify without writes, or reconcile with atomic per-step checkpoints."""
-        unsupported = set(plan.components) - self.supported_components()
-        if self._default_steps and unsupported:
-            raise ValueError(
-                "Setup component adapters are unavailable: "
-                + ", ".join(sorted(unsupported))
-            )
+        if self._plugins is not None:
+            self._steps = self._plugins.steps(plan.components, context=self._context)
         state = self._home / "setup.json"
         lock = self._home / "setup.lock"
         _check_file(state)

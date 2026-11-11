@@ -19,10 +19,7 @@ class ModelSetupPlan(BaseModel):
 
     workspace: Path
     action: Literal["install", "verify", "repair", "configure", "upgrade"] = "install"
-    components: tuple[
-        Literal["delegation", "dashboard", "claude-plugin", "claude-hooks", "docker"],
-        ...,
-    ] = ("delegation",)
+    components: tuple[str, ...] = ("delegation",)
     providers: tuple[ModelSetupProvider, ...] = ()
     developer: bool = False
 
@@ -38,8 +35,10 @@ class ModelSetupPlan(BaseModel):
             raise ValueError("components must be non-empty")
         if len(set(v)) != len(v):
             raise ValueError("components must be unique")
-        if "claude-hooks" in v and "claude-plugin" not in v:
-            raise ValueError("claude-hooks requires claude-plugin")
+        if any(not name.strip() or name != name.strip() for name in v):
+            raise ValueError(
+                "components must have nonempty names without surrounding whitespace"
+            )
         return v
 
     @field_validator("providers")
@@ -50,4 +49,9 @@ class ModelSetupPlan(BaseModel):
         names = [p.provider for p in v]
         if len(set(names)) != len(names):
             raise ValueError("providers must be unique")
+        credential_owners = [p.registration_provider for p in v if p.needs_key]
+        if len(set(credential_owners)) != len(credential_owners):
+            raise ValueError(
+                "selected providers share a credential slot; use separate profiles"
+            )
         return v

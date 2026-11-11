@@ -23,6 +23,7 @@ class ModelSetupProvider(BaseModel):
     ]
     models: tuple[str, ...]
     url: str | None = None
+    api_key_required: bool = False
 
     @field_validator("models")
     @classmethod
@@ -59,5 +60,23 @@ class ModelSetupProvider(BaseModel):
         return v
 
     def model_post_init(self, __context: object) -> None:
-        if self.provider in ("local", "openai_compatible") and self.url is None:
+        if (
+            self.provider in ("local", "openai_compatible", "ollama")
+            and self.url is None
+        ):
             raise ValueError(f"provider {self.provider} requires url")
+
+    @property
+    def registration_provider(
+        self,
+    ) -> Literal[
+        "gemini", "openrouter", "openai", "openai_compatible", "local", "ollama"
+    ]:
+        """Canonical credential/endpoint owner for this logical selection."""
+        if self.provider == "ollama":
+            return "openai_compatible" if self.api_key_required else "local"
+        return self.provider
+
+    @property
+    def needs_key(self) -> bool:
+        return self.registration_provider != "local"

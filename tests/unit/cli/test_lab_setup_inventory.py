@@ -164,7 +164,12 @@ def test_every_real_surface_has_one_owner() -> None:
     _assert_coverage(_sources(), _entries())
     for entry in _entries():
         assert entry["owner"].startswith("onex setup:"), entry
-        assert entry["disposition"] in {"planned", "integrated"}, entry
+        assert entry["disposition"] in {
+            "planned",
+            "integrated",
+            "external",
+            "retired",
+        }, entry
         assert len(entry["reason"].strip()) >= 20, entry
 
 

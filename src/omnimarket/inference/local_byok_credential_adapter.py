@@ -199,6 +199,13 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _read_connect(db_path: Path) -> sqlite3.Connection:
+    """Read existing credential metadata without creating, migrating or chmodding it."""
+    conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def _normalize_models(
     model: str | None, models: Sequence[str] | None
 ) -> tuple[str, ...]:
@@ -456,7 +463,7 @@ def resolve_local_byok_credential_plan(
 
 
 def resolve_local_byok_credential_models(
-    provider: str, *, db_path: Path | None = None
+    provider: str, *, db_path: Path | None = None, read_only: bool = False
 ) -> tuple[str, ...]:
     """Return the ordered models stored with the credential for ``provider``.
 
@@ -472,8 +479,20 @@ def resolve_local_byok_credential_models(
     resolved_path = db_path if db_path is not None else default_evidence_db_path()
     if not resolved_path.is_file():
         return ()
-    conn = _connect(resolved_path)
+    conn = _read_connect(resolved_path) if read_only else _connect(resolved_path)
     try:
+        if (
+            read_only
+            and not conn.execute(
+                f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})"
+            ).fetchall()
+        ):
+            return ()
+        if read_only and "model" not in {
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})")
+        }:
+            return ()
         row = conn.execute(
             f"SELECT secret_ref, model FROM {LOCAL_CREDENTIAL_TABLE} "
             "WHERE provider = ? ORDER BY registered_at DESC LIMIT 1",
@@ -481,11 +500,18 @@ def resolve_local_byok_credential_models(
         ).fetchone()
         if row is None:
             return ()
-        listed = conn.execute(
-            f"SELECT model FROM {LOCAL_CREDENTIAL_MODEL_TABLE} "
-            "WHERE secret_ref = ? ORDER BY position",
-            (row["secret_ref"],),
-        ).fetchall()
+        listed = []
+        if (
+            not read_only
+            or conn.execute(
+                f"PRAGMA table_info({LOCAL_CREDENTIAL_MODEL_TABLE})"
+            ).fetchall()
+        ):
+            listed = conn.execute(
+                f"SELECT model FROM {LOCAL_CREDENTIAL_MODEL_TABLE} "
+                "WHERE secret_ref = ? ORDER BY position",
+                (row["secret_ref"],),
+            ).fetchall()
     finally:
         conn.close()
     if listed:
@@ -569,7 +595,10 @@ def record_local_byok_model(
 
 
 def registered_local_byok_providers(
-    *, db_path: Path | None = None, registration_order: bool = False
+    *,
+    db_path: Path | None = None,
+    registration_order: bool = False,
+    read_only: bool = False,
 ) -> tuple[str, ...]:
     """Return registered providers, sorted or in registration order.
 
@@ -579,8 +608,15 @@ def registered_local_byok_providers(
     resolved_path = db_path if db_path is not None else default_evidence_db_path()
     if not resolved_path.is_file():
         return ()
-    conn = _connect(resolved_path)
+    conn = _read_connect(resolved_path) if read_only else _connect(resolved_path)
     try:
+        if (
+            read_only
+            and not conn.execute(
+                f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})"
+            ).fetchall()
+        ):
+            return ()
         rows = conn.execute(
             f"SELECT provider FROM {LOCAL_CREDENTIAL_TABLE} ORDER BY registered_at, rowid"
         ).fetchall()

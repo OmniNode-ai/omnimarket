@@ -396,14 +396,25 @@ class HandlerModelSetup:
         run_delegation: DelegateRunner | None = None,
         write_model_list: ModelListWriter | None = None,
         probe_url: LocalUrlProbe | None = None,
+        *,
+        read_only: bool = False,
     ) -> None:
         self._run_delegation = run_delegation or run_pinned_delegation
         self._write_model_list = write_model_list
         self._probe_url = probe_url or probe_local_url
+        self._read_only = read_only
 
     def handle(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
+        if self._read_only and request.operation != "status":
+            raise ModelSetupRefusedError(
+                "Read-only model observation accepts status only"
+            )
         if request.operation == "status":
-            statuses = [self._status(p) for p in PROVIDERS]
+            selected = (request.provider,) if request.provider else PROVIDERS
+            statuses = [
+                self._status(p, url=request.url, models=request.models)
+                for p in selected
+            ]
             # OMN-21346: the provider tried first is listed first.
             statuses.sort(key=lambda status: not status.tried_first)
             return ModelModelSetupResult(
@@ -683,7 +694,7 @@ class HandlerModelSetup:
             named.append(entry)
         existed = self.overrides_path().exists()
         text, before = self._overlay_text()
-        earlier_test = self._read_results().get(LOCAL_URL_PROVIDER)
+        earlier_results = self._read_results()
         self._write_overlay(
             before, _with_local_urls(_without_local_url(text), entries), entries
         )
@@ -700,11 +711,7 @@ class HandlerModelSetup:
         failed = next((r for r in results if r.status != "passed"), None)
         if models_reason is not None and failed is not None:
             self._restore_overlay(text if existed else None)
-            stored = self._read_results()
-            stored.pop(LOCAL_URL_PROVIDER, None)
-            if earlier_test is not None:
-                stored[LOCAL_URL_PROVIDER] = earlier_test
-            self._write_results(stored)
+            self._write_results(earlier_results)
             raise LocalModelUrlRefusedError(
                 f"{base} does not answer an OpenAI-compatible models or chat "
                 f"request ({models_reason}; chat, by one delegation pinned to "
@@ -863,7 +870,7 @@ class HandlerModelSetup:
             return self._ollama_routes_configured()
         if provider == LOCAL_URL_PROVIDER:
             return self._local_url_entry() is not None
-        return provider in registered_local_byok_providers()
+        return provider in registered_local_byok_providers(read_only=self._read_only)
 
     def _ollama_routes_configured(self) -> bool:
         try:
@@ -913,20 +920,53 @@ class HandlerModelSetup:
         if results.pop(provider, None) is not None:
             self._write_results(results)
 
-    def _status(self, provider: ModelProvider) -> ModelModelStatus:
+    def _status(
+        self,
+        provider: ModelProvider,
+        *,
+        url: str | None = None,
+        models: tuple[str, ...] = (),
+    ) -> ModelModelStatus:
         set_up = self.is_set_up(provider)
-        recorded = self._read_results().get(provider) if set_up else None
+        result_key = str(provider)
+        local_entries = (
+            self._local_url_entries() if provider == LOCAL_URL_PROVIDER else []
+        )
+        if provider == LOCAL_URL_PROVIDER and url:
+            endpoint = f"{local_base_url(url)}/v1/chat/completions"
+            local_entries = [
+                entry
+                for entry in local_entries
+                if entry.get("endpoint_url") == endpoint
+            ]
+            set_up = bool(local_entries)
+            wanted = next(
+                (
+                    entry
+                    for entry in local_entries
+                    if not models or entry.get("model_name") == models[0]
+                ),
+                None,
+            )
+            if wanted:
+                result_key = f"local:{wanted['backend_id']}"
+        recorded = self._read_results().get(result_key) if set_up else None
         last = None
         if isinstance(recorded, dict):
             try:
                 last = ModelModelTestResult.model_validate(recorded)
             except ValueError:
                 last = None
-        models: tuple[str, ...]
         if provider == LOCAL_URL_PROVIDER:
-            models = tuple(str(e["model_name"]) for e in self._local_url_entries())
+            models = tuple(str(e["model_name"]) for e in local_entries)
         else:
-            models = resolve_local_byok_credential_models(provider) if set_up else ()
+            models = (
+                resolve_local_byok_credential_models(
+                    provider, read_only=self._read_only
+                )
+                if set_up
+                else ()
+            )
         # OMN-21346: the choice counts only while it still routes: its model is
         # still in the list, and a key's last test did not fail.
         choice = read_first_choice()
@@ -935,7 +975,7 @@ class HandlerModelSetup:
             and choice[0] == provider
             and choice[1] in models
             and not (
-                provider in registered_local_byok_providers()
+                provider not in (LOCAL_URL_PROVIDER, "ollama")
                 and local_byok_key_test_failed(provider)
             )
         )
@@ -1092,10 +1132,12 @@ class HandlerModelSetup:
         is_first_local = provider == LOCAL_URL_PROVIDER and (
             first or backend_id == self.backend_for_first_local()
         )
+        results = self._read_results()
+        if provider == LOCAL_URL_PROVIDER:
+            results[f"local:{backend_id}"] = result.model_dump(mode="json")
         if provider != LOCAL_URL_PROVIDER or is_first_local:
-            results = self._read_results()
             results[provider] = result.model_dump(mode="json")
-            self._write_results(results)
+        self._write_results(results)
         return result
 
     def backend_for_first_local(self) -> str | None:

@@ -7,8 +7,8 @@ AC1  a key on stdin, on a fresh HOME against a stub key server, ends with a
 AC2  each missing input is refused before any step runs, naming its flag.
 AC3  a wrong key fails the model step with exit 1, the step and the retry
      command named, the earlier steps kept; the retry with the right key ends.
-AC4  ``--provider local --url`` ends with a receipt naming local; ``ollama``
-     is refused unattended, naming ``--provider local --url``.
+AC4  ``local`` and optional ``ollama`` use the supplied endpoint without
+     installing, starting or downloading a runtime or models.
 AC5  the key is in no argv, stdout, stderr, log, state file or receipt.
 
 The servers are real HTTP servers on 127.0.0.1. The one thing stubbed is the
@@ -223,7 +223,6 @@ def test_model_step_proven_delegation(
     steps = re.findall(r"^\[success\] ([\w-]+)", result.output, re.MULTILINE)
     assert steps == [
         "preflight",
-        "base-tools",
         "workspace",
         "user_config",
         "runtime_config",
@@ -398,7 +397,7 @@ def test_interactive_walk_asks_for_provider_url_and_model(
     assert len(recorder.delegations()) == 1
 
 
-def test_unknown_ollama_model_refused_before_installation(
+def test_ollama_requires_an_explicit_endpoint_before_installation(
     home: Path, tmp_path: Path, server: str, recorder: Recorder
 ) -> None:
     result = _setup(
@@ -406,10 +405,95 @@ def test_unknown_ollama_model_refused_before_installation(
         stdin="",
     )
     assert result.exit_code != 0, result.output
-    assert "declared" in result.output
+    assert "--url" in result.output
     assert "[done]" not in result.output
     assert not (home / ".onex").exists()
     assert recorder.argv == []
+
+
+@pytest.mark.parametrize("authenticated", [False, True])
+def test_ollama_uses_supplied_endpoint_without_managing_runtime(
+    home: Path, tmp_path: Path, server: str, recorder: Recorder, authenticated: bool
+) -> None:
+    """Catch model allowlists, implicit localhost, and install/start/pull effects."""
+    args = _unattended(
+        tmp_path / "ws", "--provider", "ollama", "--model", MODEL, "--url", server
+    )
+    if authenticated:
+        args += ["--endpoint-auth", "api-key"]
+    result = _setup(args, stdin=f"{GOOD_KEY}\n" if authenticated else "")
+    assert result.exit_code == 0, result.output
+    assert _receipt_line(result)["provider"] == "ollama"
+    assert len(recorder.delegations()) == 1
+    assert all("delegate" in argv for argv in recorder.argv), recorder.argv
+    assert GOOD_KEY not in result.output
+    state = home / ".onex" / "setup.json"
+    assert GOOD_KEY not in state.read_text()
+    before = state.read_bytes()
+    database = tmp_path / "delegation" / "delegation.sqlite"
+    database_before = (database.read_bytes(), database.stat().st_mtime_ns)
+    again = _setup([*args, "--action", "verify"], stdin="")
+    assert again.exit_code == 0, again.output
+    assert len(recorder.delegations()) == 1
+    assert state.read_bytes() == before
+    assert (database.read_bytes(), database.stat().st_mtime_ns) == database_before
+
+
+def test_ollama_preserves_an_existing_local_endpoint(
+    home: Path, tmp_path: Path, server: str, recorder: Recorder
+) -> None:
+    from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
+        ModelModelSetupRequest,
+    )
+
+    owner = handler_model_setup.HandlerModelSetup()
+    owner.handle(
+        ModelModelSetupRequest(operation="add_local", url=server, models=(MODEL,))
+    )
+    original = owner.overrides_path().read_text()
+    second = server + "/separate-server"
+    recorder.endpoint = second + "/v1/chat/completions"
+    result = _setup(
+        _unattended(
+            tmp_path / "ws", "--provider", "ollama", "--model", MODEL, "--url", second
+        ),
+        stdin="",
+    )
+    assert result.exit_code == 0, result.output
+    rows = handler_model_setup.local_url_entries(owner.overrides_path())
+    assert len(rows) == 2
+    assert rows[0]["endpoint_url"] == server + "/v1/chat/completions"
+    assert rows[1]["endpoint_url"] == recorder.endpoint
+    assert original != owner.overrides_path().read_text()
+    assert _receipt_line(result)["backend"] == rows[1]["backend_id"]
+
+
+def test_ollama_authentication_cannot_share_a_credential_slot_in_one_plan(
+    tmp_path: Path,
+) -> None:
+    from pydantic import ValidationError
+
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
+        ModelSetupPlan,
+    )
+
+    with pytest.raises(ValidationError, match="credential"):
+        ModelSetupPlan(
+            workspace=tmp_path,
+            providers=(
+                {
+                    "provider": "ollama",
+                    "models": [MODEL],
+                    "url": "http://localhost:11434",
+                    "api_key_required": True,
+                },
+                {
+                    "provider": "openai_compatible",
+                    "models": [MODEL],
+                    "url": "https://example.com/v1",
+                },
+            ),
+        )
 
 
 def test_unattended_keyed_provider_without_a_key_is_refused(

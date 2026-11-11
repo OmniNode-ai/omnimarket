@@ -306,10 +306,9 @@ def test_plan_rejects_credentials_in_urls(tmp_path: Path, url: str) -> None:
 
 def test_plan_rejects_incomplete_and_conflicting_choices(tmp_path: Path) -> None:
     for fields in (
-        {"components": ("invented",)},
         {"providers": ({"provider": "local", "models": ("m1",)},)},
         {"providers": ({"provider": "openai", "models": ()},)},
-        {"components": ("claude-hooks",)},
+        {"components": (" ",)},
         {"components": ("delegation", "delegation")},
     ):
         with pytest.raises(ValidationError):

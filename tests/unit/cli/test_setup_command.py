@@ -102,7 +102,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         lambda: fake_home / ".model-store" / "delegation.sqlite",
     )
 
-    def fixture_statuses() -> tuple[ModelModelStatus, ...]:
+    def fixture_statuses(**_selection: object) -> tuple[ModelModelStatus, ...]:
         path = fake_home / ".onex" / ".model-fixture.json"
         if not path.exists():
             return ()

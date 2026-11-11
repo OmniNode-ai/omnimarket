@@ -1,0 +1,61 @@
+plugins:
+  - id: client
+    api_version: 1
+    version: 1.0.0
+    automatic: true
+    steps:
+      - name: preflight
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight:HandlerSetupPreflight
+      - name: workspace
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment:HandlerSetupEnvironment
+        options: {name: workspace}
+        context: [onex_home]
+      - name: user_config
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment:HandlerSetupEnvironment
+        options: {name: user_config}
+        context: [onex_home]
+      - name: runtime_config
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment:HandlerSetupEnvironment
+        options: {name: runtime_config}
+        context: [onex_home]
+      - name: identity
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment:HandlerSetupEnvironment
+        options: {name: identity}
+        context: [onex_home]
+  - id: delegation
+    api_version: 1
+    version: 1.0.0
+    components: [delegation]
+    requires: [client]
+    steps:
+      - name: models
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment:HandlerSetupEnvironment
+        options: {name: models}
+        context: [onex_home, credentials, model_step]
+  - id: dashboard
+    api_version: 1
+    version: 1.0.0
+    components: [dashboard]
+    requires: [client]
+    steps:
+      - name: dashboard
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_dashboard:HandlerSetupDashboard
+        context: [onex_home]
+  - id: claude-plugin
+    api_version: 1
+    version: 1.0.0
+    components: [claude-plugin]
+    requires: [client]
+    steps:
+      - name: claude-plugin
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude:HandlerSetupClaude
+        options: {name: claude-plugin}
+  - id: claude-hooks
+    api_version: 1
+    version: 1.0.0
+    components: [claude-hooks]
+    requires: [claude-plugin]
+    steps:
+      - name: claude-hooks
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude:HandlerSetupClaude
+        options: {name: claude-hooks}

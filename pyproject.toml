@@ -1494,7 +1494,7 @@ bus-binding = "omnimarket.handlers.bus_binding.cli:bus_binding_group"
 secret = "omnimarket.cli.cli_secret:secret_group"
 # OMN-20817: `onex models` -- set up the models delegation can use (a key stored
 # and tested with one pinned delegation), at onboarding or any time after.
-models = "omnimarket.cli.cli_secret:models_group"
+models = "omnimarket.nodes.node_model_setup_effect.cli_model_group:models_group"
 # OMN-19970: `onex seed` -- labelled fixture delegations through the real
 # delegation projection, for dev and demo dashboards. Registered here for the
 # same reason as the others: the CLI discovers this group over installed
@@ -1526,6 +1526,9 @@ lab = "omnimarket.nodes.node_lab_claude_token_effect.cli:lab_group"
 # commands by hand (node_trajectory_evaluation_effect). Discovered over installed
 # distributions like the groups above.
 trajectory-eval = "omnimarket.nodes.node_trajectory_evaluation_effect.cli:trajectory_eval_group"
+
+[project.entry-points."onex.models"]
+discover = "omnimarket.nodes.node_model_setup_effect.cli_catalog:discover_command"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry

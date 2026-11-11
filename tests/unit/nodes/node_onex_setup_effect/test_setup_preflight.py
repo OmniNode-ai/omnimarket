@@ -47,10 +47,6 @@ def facts(**changes: object) -> ModelSetupMachineFacts:
         ({"platform": "Linux"}, "macOS"),
         ({"macos_version": "13.6"}, "14"),
         ({"architecture": "aarch32"}, "architecture"),
-        ({"cpus": 2}, "CPU"),
-        ({"ram_bytes": 4 * GIB}, "RAM"),
-        ({"free_disk_bytes": 9 * GIB}, "disk"),
-        ({"administrator": False}, "administrator"),
         ({"rosetta": True}, "native"),
     ],
 )
@@ -102,11 +98,11 @@ def test_existing_stack_owns_its_ports_and_smaller_disk_floor(tmp_path: Path) ->
     assert result.status == "success"
 
 
-def test_missing_tools_are_named_before_install(tmp_path: Path) -> None:
+def test_endpoint_client_does_not_require_developer_tools(tmp_path: Path) -> None:
     result = HandlerSetupPreflight(
         collect=lambda _: facts(missing_tools=["gh", "uv"])
     ).handle(ModelSetupPlan(workspace=tmp_path))
-    assert result.status == "unavailable"
+    assert result.status == "success"
     assert result.evidence["missing_tools"] == "gh,uv"
 
 

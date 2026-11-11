@@ -52,6 +52,13 @@ handler:
 
 handler_routing:
   default_handler: omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup:HandlerModelSetup
+  handlers:
+    - operation: model_setup.discover
+      handler:
+        name: HandlerEndpointModels
+        module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models
+      handler_module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models
+      event_model: omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models.ModelEndpointModelsRequest
 
 descriptor:
   node_archetype: effect

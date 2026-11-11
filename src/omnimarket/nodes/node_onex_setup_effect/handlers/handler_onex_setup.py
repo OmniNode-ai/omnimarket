@@ -64,7 +64,7 @@ SETUP_PROVIDERS: tuple[str, ...] = (
 )
 #: Providers setup refuses, each with its problem and the way to reach it instead.
 REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {}
-URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible")
+URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible", "ollama")
 KEYLESS_PROVIDERS: tuple[str, ...] = ("local", "ollama")
 ARGUMENTS_STEP = "arguments"
 SETUP_MARKER = "# generated-by: onex setup"
@@ -512,6 +512,8 @@ class HandlerOnexSetup:
                             "provider": request.provider.lower(),
                             "models": [request.model],
                             "url": request.url,
+                            "api_key_required": request.provider.lower() == "ollama"
+                            and request.key is not None,
                         }
                     ],
                 }

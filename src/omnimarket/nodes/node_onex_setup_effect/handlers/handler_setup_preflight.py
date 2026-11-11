@@ -1,10 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Read this Mac before onboarding can provision anything.
-
-Floors preserve lab-onboarding's native and optional Docker requirements.
-No environment test overrides, profile writes, installation or credentials.
-"""
+"""Check the selected client without requiring a local infrastructure host."""
 
 from __future__ import annotations
 
@@ -45,6 +41,20 @@ def _command(argv: list[str], *, optional_oid: bool = False) -> str:
 
 
 def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
+    """Observe the package client without starting tools or probing stack ports."""
+    ancestor = workspace
+    while not ancestor.exists():
+        ancestor = ancestor.parent
+    return ModelSetupMachineFacts(
+        platform=platform.system(),
+        architecture=platform.machine(),
+        macos_version=platform.mac_ver()[0],
+        free_disk_bytes=shutil.disk_usage(ancestor).free,
+    )
+
+
+def collect_stack_facts(workspace: Path) -> ModelSetupMachineFacts:
+    """The optional local stack owns its additional machine observations."""
     ancestor = workspace
     while not ancestor.exists():
         ancestor = ancestor.parent
@@ -125,12 +135,16 @@ class HandlerSetupPreflight:
         collect: Callable[[Path], ModelSetupMachineFacts] | None = None,
         require_tools: bool = True,
     ) -> None:
-        self._collect = collect or collect_machine_facts
+        self._collect = collect
         self._require_tools = require_tools
 
     def handle(self, plan: ModelSetupPlan) -> ModelSetupObservation:
         try:
-            facts = self._collect(plan.workspace)
+            docker = "docker" in plan.components
+            collect = self._collect or (
+                collect_stack_facts if docker else collect_machine_facts
+            )
+            facts = collect(plan.workspace)
             evidence = {
                 key: str(value)
                 for key, value in facts.model_dump().items()
@@ -138,6 +152,10 @@ class HandlerSetupPreflight:
             }
             evidence["occupied_ports"] = ",".join(map(str, facts.occupied_ports))
             evidence["missing_tools"] = ",".join(facts.missing_tools)
+            if not docker:
+                # Disk capacity is not an endpoint-client requirement. Persisting
+                # this volatile reading would rewrite an otherwise unchanged setup.
+                evidence.pop("free_disk_bytes", None)
             reasons: list[str] = []
             if facts.platform != "Darwin":
                 reasons.append("Run onboarding on macOS 14 or newer.")
@@ -148,24 +166,20 @@ class HandlerSetupPreflight:
                     reasons.append("Use a supported arm64 or x86_64 Mac architecture.")
                 if facts.rosetta:
                     reasons.append("Open a native arm64 terminal instead of Rosetta.")
-                if not facts.administrator:
+                if docker and not facts.administrator:
                     reasons.append("Run from an administrator account.")
-                docker = "docker" in plan.components
-                cpus, ram, disk = (
-                    (8, 16, 20 if facts.docker_installed else 30)
-                    if docker
-                    else (4, 8, 10)
-                )
-                if facts.cpus is None or facts.ram_bytes is None:
-                    raise ValueError("Missing hardware reading")
-                if facts.cpus < cpus:
-                    reasons.append(f"Use a Mac with at least {cpus} CPU cores.")
-                if facts.ram_bytes < ram * _GIB:
-                    reasons.append(f"Use a Mac with at least {ram} GiB RAM.")
-                if facts.free_disk_bytes < disk * _GIB:
-                    reasons.append(
-                        f"Free disk space: {facts.free_disk_bytes / _GIB:.1f} GiB available; at least {disk} GiB required."
-                    )
+                if docker:
+                    cpus, ram, disk = (8, 16, 20 if facts.docker_installed else 30)
+                    if facts.cpus is None or facts.ram_bytes is None:
+                        raise ValueError("Missing hardware reading")
+                    if facts.cpus < cpus:
+                        reasons.append(f"Use a Mac with at least {cpus} CPU cores.")
+                    if facts.ram_bytes < ram * _GIB:
+                        reasons.append(f"Use a Mac with at least {ram} GiB RAM.")
+                    if facts.free_disk_bytes < disk * _GIB:
+                        reasons.append(
+                            f"Free disk space: {facts.free_disk_bytes / _GIB:.1f} GiB available; at least {disk} GiB required."
+                        )
                 if docker and facts.virtual_machine:
                     reasons.append(
                         "Docker Desktop requires a physical Mac; use --no-containers in a macOS VM."
@@ -180,12 +194,12 @@ class HandlerSetupPreflight:
                 return ModelSetupObservation(
                     step=self.name,
                     status="action_required"
-                    if facts.rosetta or facts.administrator is False
+                    if facts.rosetta or (docker and facts.administrator is False)
                     else "unavailable",
                     evidence=evidence,
                     fix=" ".join(reasons),
                 )
-            if facts.missing_tools and self._require_tools:
+            if docker and facts.missing_tools and self._require_tools:
                 return ModelSetupObservation(
                     step=self.name,
                     status="unavailable",

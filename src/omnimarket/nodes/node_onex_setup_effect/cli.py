@@ -21,6 +21,7 @@ from click.core import ParameterSource
 from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.handlers.handler_endpoint_catalog import discover_models
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
     SETUP_PROVIDERS,
@@ -56,6 +57,8 @@ def _workflow_cli(
     interactive: bool,
     developer: bool,
     saved: ModelSetupPlan | None,
+    endpoint_auth: str | None,
+    prepared_credentials: dict[str, SecretStr] | None = None,
 ) -> None:
     if plan_file is None:
         if provider and not model:
@@ -78,6 +81,7 @@ def _workflow_cli(
                 or model
                 or url
                 or developer
+                or endpoint_auth
             ):
                 raise ValueError("Plan and inline selections conflict")
             fd = os.open(plan_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -97,6 +101,7 @@ def _workflow_cli(
                         if item.strip()
                     ),
                     "url": url,
+                    "api_key_required": endpoint_auth == "api-key",
                 }
                 for name in (provider or "").split(",")
                 if name.strip()
@@ -135,16 +140,7 @@ def _workflow_cli(
         raise click.ClickException(
             "Invalid or conflicting setup selections. Use a bounded secret-free JSON plan with supported components; inline flags cannot override --plan."
         ) from None
-    if any(item.provider == "ollama" for item in plan.providers):
-        from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_runtime import (
-            HandlerSetupLocalRuntime,
-        )
-
-        try:
-            HandlerSetupLocalRuntime().validate_selection(plan)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from None
-    credentials: dict[str, SecretStr] = {}
+    credentials: dict[str, SecretStr] = dict(prepared_credentials or {})
     if plan.action != "verify":
         if "delegation" in plan.components and not plan.providers:
             raise click.ClickException(
@@ -155,16 +151,18 @@ def _workflow_cli(
                 "Review the setup destination, selected models and unknown/API billing costs, then repeat with --yes."
             )
         keyed = [
-            selection.provider
-            for selection in plan.providers
-            if selection.provider not in ("local", "ollama")
+            selection.provider for selection in plan.providers if selection.needs_key
         ]
         if not sys.stdin.isatty() and len(keyed) > 1:
             raise click.ClickException(
                 "Multiple provider keys require hidden terminal prompts or preconfigured canonical store references."
             )
         for name in keyed:
-            key = _read_key(name, interactive)
+            if name in credentials:
+                continue
+            key = _read_key(
+                "openai_compatible" if name == "ollama" else name, interactive
+            )
             if key is None:
                 raise click.ClickException(
                     "A selected provider needs a credential on hidden input or stdin. Nothing was installed."
@@ -236,7 +234,12 @@ def _read_key(provider: str | None, interactive: bool) -> SecretStr | None:
 
 
 def _ask_choices(
-    provider: str | None, model: str | None, url: str | None
+    provider: str | None,
+    model: str | None,
+    url: str | None,
+    *,
+    endpoint_auth: str | None = None,
+    credentials: dict[str, SecretStr] | None = None,
 ) -> tuple[str | None, str | None, str | None]:
     """Prompt for the provider, model and URL a terminal run was not given."""
     if provider is None:
@@ -249,6 +252,52 @@ def _ask_choices(
         )
     if provider in URL_PROVIDERS and url is None:
         url = str(click.prompt("Server base URL (http://<host>:<port>)", type=str))
+    if model is None and provider in URL_PROVIDERS and url is not None:
+        key = None
+        if provider not in KEYLESS_PROVIDERS or endpoint_auth == "api-key":
+            key = _read_key(
+                "openai_compatible" if provider == "ollama" else provider, True
+            )
+            if key is None:
+                raise click.ClickException(
+                    "This endpoint requires a key on hidden input or stdin."
+                )
+            if credentials is not None:
+                credentials[provider] = key
+        try:
+            catalog = discover_models(url=url, key=key)
+        except (ValueError, OSError):
+            raise click.ClickException(
+                "The endpoint could not be read. Check its URL and retry."
+            ) from None
+        if catalog.status == "unsupported":
+            click.echo(catalog.message)
+        elif catalog.status != "ready":
+            raise click.ClickException(catalog.message or "Model discovery failed.")
+        elif not catalog.models:
+            raise click.ClickException(
+                "The endpoint exposes no models. Prepare a model on your server, then retry."
+            )
+        else:
+            for name in catalog.models:
+                click.echo(name)
+            selected = tuple(
+                item.strip()
+                for item in str(
+                    click.prompt(
+                        "Models in preference order (comma-separated IDs)", type=str
+                    )
+                ).split(",")
+            )
+            if (
+                not all(selected)
+                or len(set(selected)) != len(selected)
+                or any(name not in catalog.models for name in selected)
+            ):
+                raise click.ClickException(
+                    "Choose unique model IDs from this endpoint's catalog."
+                )
+            model = ",".join(selected)
     if model is None:
         model = str(click.prompt("Model", type=str)).strip()
     return provider, model, url
@@ -280,14 +329,20 @@ def _ask_choices(
 @click.option(
     "--provider",
     default=None,
-    help="Model provider: gemini, openrouter, openai, openai_compatible or local. "
-    "Ollama is reached as --provider local --url.",
+    help="Model provider: gemini, openrouter, openai, openai_compatible, local or ollama. "
+    "Ollama is optional and externally managed.",
 )
 @click.option("--model", default=None, help="The model the key, or the server, runs.")
 @click.option(
     "--url",
     default=None,
-    help="Base URL of the server; required for local and openai_compatible.",
+    help="Base URL of an already running server; required for local, ollama and openai_compatible.",
+)
+@click.option(
+    "--endpoint-auth",
+    type=click.Choice(["none", "api-key"]),
+    default=None,
+    help="Ollama endpoint authentication (default: none); keys use hidden input or stdin.",
 )
 @click.option(
     "--preflight-only",
@@ -305,9 +360,8 @@ def _ask_choices(
     "--component",
     "components",
     multiple=True,
-    type=click.Choice(
-        ["delegation", "dashboard", "claude-plugin", "claude-hooks", "docker"]
-    ),
+    type=str,
+    help="Select an installed setup capability; repeat to select several.",
 )
 @click.option(
     "--plan",
@@ -341,6 +395,7 @@ def setup_command(
     plan_file: Path | None,
     yes: bool,
     developer: bool,
+    endpoint_auth: str | None,
 ) -> None:
     """Set up this machine for ONEX: the first command for a new developer.
 
@@ -355,6 +410,8 @@ def setup_command(
     Setup rechecks each effect before skipping it. A failed component retains the
     completed steps and reports its fix; --action repair reconciles it on retry.
     """
+    if endpoint_auth is not None and provider != "ollama":
+        raise click.ClickException("--endpoint-auth is for --provider ollama.")
     if not json_output:
         click.echo(
             ModelSetupBanner.build(
@@ -419,6 +476,7 @@ def setup_command(
             raise click.ClickException(
                 "--workspace is missing. Pass --workspace DIR or export OMNIBASE_PATH=DIR."
             )
+    prepared_credentials: dict[str, SecretStr] = {}
     if plan_file is None:
         if install_path == "docker":
             components = tuple(
@@ -461,7 +519,13 @@ def setup_command(
                 and action != "verify"
                 and (provider is not None or saved is None)
             ):
-                provider, model, url = _ask_choices(provider, model, url)
+                provider, model, url = _ask_choices(
+                    provider,
+                    model,
+                    url,
+                    endpoint_auth=endpoint_auth,
+                    credentials=prepared_credentials,
+                )
     _workflow_cli(
         ctx,
         workspace=workspace,
@@ -476,6 +540,8 @@ def setup_command(
         interactive=interactive,
         developer=developer,
         saved=saved,
+        endpoint_auth=endpoint_auth,
+        prepared_credentials=prepared_credentials,
     )
 
 

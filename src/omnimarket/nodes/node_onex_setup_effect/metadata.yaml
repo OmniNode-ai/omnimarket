@@ -1,6 +1,6 @@
 name: node_onex_setup_effect
 version: "1.0.0"
-description: "Native onboarding reconciliation: Mac preflight and base tools, workspace/runtime configuration, identity/model proofs, dashboard lifecycle and Claude plugin/hook components"
+description: "Package client onboarding through versioned setup plugins, endpoint model discovery, selected-component preflight, identity/model proofs, dashboard lifecycle and Claude integration"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -18,6 +18,7 @@ dependencies:
   - "pydantic>=2.0"
   - "click>=8.0"
   - "httpx>=0.27.0"
+  - "PyYAML>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "onboarding", "setup", "cli"]
