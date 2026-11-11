@@ -1594,7 +1594,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-23839: infra#5894 (OMN-23838) moves infra to the core tag below, which carries
 # the delegation routing order models (omnibase_core#2309); this infra tag also
 # carries the coding-trial result columns migration (infra#5893, OMN-23750).
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261111190933-a349fbf4478e" }
+# df3f14f5e6b9: omnibase_infra#5896 (OMN-23858) grants the runtime account the four merge override tables; core is unchanged.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261111211012-df3f14f5e6b9" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.

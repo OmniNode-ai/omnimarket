@@ -81,6 +81,7 @@ dod_evidence:
 - id: dod-omn23836-ac5
   description: The checked-in readback names the dev-lane host and revision, the day's verdict counts and the hand check of every merge_without_override.
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC5
   checks:
