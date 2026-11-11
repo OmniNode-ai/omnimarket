@@ -198,6 +198,9 @@ class ModelFloorCompareRuntime(_Frozen):
         description="Stoppage ids whose logged cost is an estimate of idle capacity, not lost work anything measured; the floor leaves it out, so the history does too.",
     )
     backfill: tuple[ModelBackfillSource, ...] = ()
+    repository_names_overlay_relpath: str = Field(
+        description="A host's own repository names overlay under the registry home; read when it exists and no env var names one (OMN-23134).",
+    )
     history: ModelHistorySources
     cycle_deadline_seconds: int = Field(
         gt=0,

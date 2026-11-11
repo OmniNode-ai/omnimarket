@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_landing_liveness_read_effect
+version: 0.1.0
+description: Runs the automation-liveness register completeness reader against one PR head and returns the liveness fact the landing decision reads, publishing a completed event for a made read and a failed event for a read that could not be made (OMN-23529).
+pack: operator_tooling
+node_role: effect
+display_name: PR Landing Liveness Read Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pr_landing_liveness_read_effect: omnimarket.nodes.node_pr_landing_liveness_read_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- landing
+- liveness

@@ -343,6 +343,8 @@ FLOOR_DELEGATION = "omnimarket.nodes.node_floor_delegation_effect"
 BETA_BOARD = "omnimarket.nodes.node_beta_board_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
 FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
+JOIN_J16 = "omnimarket.nodes.node_join_j16_effect"
+UNRESOLVED = "omnimarket.nodes.node_factory_floor_unresolved_effect"
 JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 JOIN_J5 = "omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5"
@@ -360,15 +362,25 @@ def _refresh_request(tmp_path: Path) -> ModelFactoryFloorPublishRequest:
 PLUGIN = {"CLAUDE_PLUGIN_ROOT": "/plugin-root"}
 
 
+def _without_step_environment(argv: Sequence[str]) -> list[str]:
+    """The program's own argv: a step that names variables runs through env(1) with them first (OMN-23606)."""
+    words = list(argv)
+    if words and words[0] == "/usr/bin/env":
+        words = words[1:]
+        while words and "=" in words[0] and not words[0].startswith("/"):
+            words = words[1:]
+    return words
+
+
 def _program_calls(runner: LocalSsh) -> list[str]:
+    calls = [_without_step_environment(c[0]) for c in runner.calls if c[0][0] != "ssh"]
     return [
-        c[0][2]
-        if c[0][1] == "-m"
+        argv[2]
+        if argv[1] == "-m"
         else "pool"
-        if any("onex_lab_run.py" in word for word in c[0])
+        if any("onex_lab_run.py" in word for word in argv)
         else "hosts"
-        for c in runner.calls
-        if c[0][0] != "ssh"
+        for argv in calls
     ]
 
 
@@ -399,6 +411,8 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             FLOOR_PROJECTIONS,
             BETA_BOARD,
             FLOOR_SIMPLE,
+            JOIN_J16,
+            UNRESOLVED,
         ]
     )
     assert calls[-2] == FACTORY
@@ -442,6 +456,8 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "beta_board",
         "mvp_launch_reads",
         "floor_projections",
+        "join_j16",
+        "factory_floor_unresolved",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -465,11 +481,13 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and FLOOR_DELEGATION not in argv
                 and BETA_BOARD not in argv
                 and JOIN_REFUSAL not in argv
+                and JOIN_J16 not in argv
                 and JOIN_J2 not in argv
                 and JOIN_J5 not in argv
                 and FLOOR_PROJECTIONS not in argv
                 and JOIN_J6 not in argv
                 and JOIN_J7 not in argv
+                and UNRESOLVED not in argv
             ):
                 barrier.wait()
             return super().__call__(argv, stdin, timeout)

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -11,8 +12,13 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
+import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
+)
+
+from omnimarket.handlers.adapter_test_selection_policy_file import (
+    load_policy,
 )
 
 ADJACENCY_PATH = (
@@ -28,10 +34,14 @@ def _scripts_on_path(tmp_path: Path) -> None:
 
 
 from scripts.ci.detect_test_paths import (  # noqa: E402
+    REPO_ROOT,
     compute_selection,
     resolve_test_paths,
 )
-from scripts.ci.test_selection_models import EnumFullSuiteReason  # noqa: E402
+from scripts.ci.test_selection_models import (  # noqa: E402
+    EnumFullSuiteReason,
+    ModelTestSelection,
+)
 
 
 def test_adjacency_yaml_loads() -> None:
@@ -493,6 +503,33 @@ def test_node_change_still_selects_the_cross_node_reach_in_test() -> None:
     ).is_file()
 
 
+def test_node_change_still_selects_the_contract_binding_test() -> None:
+    """OMN-23649: the repo-wide contract binding test reads every
+    contracts/OMN-*.yaml; a change that adds one contract narrowed to its own
+    node's tests and merged a contract that test refuses, so dev went red on
+    every open change.
+    """
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    assert "tests/ci/test_repo_evidence_caller_workflow.py" in sel.selected_paths, (
+        f"the contract binding test was narrowed away. selected={sel.selected_paths}"
+    )
+    assert (
+        ADJACENCY_PATH.parents[2] / "tests/ci/test_repo_evidence_caller_workflow.py"
+    ).is_file()
+
+
 def test_always_selected_paths_reject_a_non_test_entry() -> None:
     from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 
@@ -594,6 +631,7 @@ def test_non_delegation_node_still_narrows(tracked_paths: list[str]) -> None:
     assert sel.is_full_suite is False
     assert sel.full_suite_reason is None
     assert sel.selected_paths == [
+        "tests/ci/test_repo_evidence_caller_workflow.py",
         "tests/gates/",
         "tests/nodes/",
         "tests/test_no_cross_node_reach_in.py",
@@ -660,18 +698,24 @@ def test_existing_full_suite_checks_precede_protected_and_unmapped_checks(
     assert sel.full_suite_reason == reason
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "tests/unit/delegation/test_something.py",
-        "tests/delegation_golden/test_something.py",
-    ],
-)
-def test_delegation_test_directory_change_still_narrows(path: str) -> None:
+def test_delegation_test_directory_change_still_narrows() -> None:
+    path = "tests/delegation_golden/test_something.py"
     sel = compute_selection([path], ADJACENCY_PATH, ref_name="jonah/feature")
     assert sel.is_full_suite is False
     assert sel.full_suite_reason is None
     assert path.startswith(tuple(sel.selected_paths))
+
+
+def test_delegation_unit_test_change_is_not_a_protected_surface() -> None:
+    # tests/unit/ is too heavy to narrow (OMN-22868), so this change takes the
+    # full-suite matrix for its weight, not as a protected surface.
+    sel = compute_selection(
+        ["tests/unit/delegation/test_something.py"],
+        ADJACENCY_PATH,
+        ref_name="jonah/feature",
+    )
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY
 
 
 def _assert_globs_match_tracked_paths(globs: list[str], paths: list[str]) -> None:
@@ -767,3 +811,138 @@ def test_workflow_only_diff_cli_emits_twenty_splits(tmp_path: Path) -> None:
     assert data["is_full_suite"] is True
     assert data["split_count"] == 20
     assert len(data["matrix"]) == 20
+
+
+_HEAVY_CHANGE = [
+    "src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml",
+    "tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py",
+]
+_LIGHT_CHANGE = [
+    "src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml",
+]
+
+
+def test_narrowed_selection_with_the_unit_tree_takes_the_full_suite_matrix() -> None:
+    selection = compute_selection(
+        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is True
+    assert (
+        selection.full_suite_reason == EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY
+    )
+    assert selection.split_count == 20
+    assert selection.selected_paths == ["tests/"]
+
+
+def test_narrowed_selection_under_the_bound_stays_narrowed() -> None:
+    selection = compute_selection(
+        _LIGHT_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is False
+    assert "tests/unit/" not in selection.selected_paths
+    # The recorded durations move with every refresh; the bound is the claim.
+    assert 3 <= selection.split_count <= 5
+
+
+def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Failing control (OMN-23296): a policy that sizes by path count alone, as the
+    # old script did, gives tests/nodes/ with tests/unit/ two shards of about 2,000
+    # recorded seconds each.
+    from omnimarket.nodes.node_test_selection_selector_compute.handlers import (
+        handler_test_selection_selector as selector,
+    )
+
+    loose = load_policy().model_copy(
+        update={"target_shard_seconds": 10**9, "max_narrowed_shards": 5}
+    )
+    monkeypatch.setattr(
+        sys.modules["scripts.ci.detect_test_paths"],
+        "HandlerTestSelectionSelector",
+        lambda _source, _policy: selector.HandlerTestSelectionSelector(None, loose),
+    )
+    selection = compute_selection(
+        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is False
+    assert selection.split_count == 2
+    assert "tests/unit/" in selection.selected_paths
+    assert _shard_seconds(selection) > 1000
+
+
+def _shard_seconds(selection: ModelTestSelection) -> float:
+    """Recorded seconds one shard of a narrowed selection carries, read from the durations file."""
+    durations = json.loads((REPO_ROOT / "config/test_file_durations.json").read_text())
+    covered = sum(
+        seconds
+        for test_file, seconds in durations.items()
+        if any(
+            test_file == path or (path.endswith("/") and test_file.startswith(path))
+            for path in selection.selected_paths
+        )
+    )
+    return covered / selection.split_count
+
+
+def _every_single_module_change() -> list[list[str]]:
+    adjacency = yaml.safe_load(ADJACENCY_PATH.read_text())["adjacency"]
+    return [
+        [f"src/omnimarket/{module}/x.py", extra]
+        for module in sorted(adjacency)
+        for extra in ("tests/unit/test_x.py", "tests/nodes/test_x.py", "docs/x.md")
+    ]
+
+
+def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> None:
+    target = load_policy().target_shard_seconds
+    narrowed = 0
+    for changed in [_HEAVY_CHANGE, _LIGHT_CHANGE, *_every_single_module_change()]:
+        selection = compute_selection(
+            changed, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+        )
+        if selection.is_full_suite:
+            assert selection.split_count == 20
+            continue
+        narrowed += 1
+        assert _shard_seconds(selection) <= target, (changed, selection)
+    assert narrowed > 0
+
+
+def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() -> None:
+    selection = compute_selection(
+        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is True
+    assert selection.split_count == 20
+    assert selection.matrix == list(range(1, 21))
+
+
+def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
+    None
+):
+    # tests/nodes/ alone is over 900 recorded seconds: one path, at least three shards.
+    selection = compute_selection(
+        _LIGHT_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+    )
+    assert selection.is_full_suite is False
+    assert len(selection.selected_paths) < 5
+    assert 3 <= selection.split_count <= 5
+    assert _shard_seconds(selection) <= 360
+
+
+def test_a_bounded_selection_with_no_durations_file_fails_closed(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "tests" / "nodes").mkdir(parents=True)
+    selection = compute_selection(
+        _LIGHT_CHANGE,
+        ADJACENCY_PATH,
+        ref_name="omn-22868-x",
+        event_name="pull_request",
+        repo_root=tmp_path,
+    )
+    assert selection.is_full_suite is True
+    assert (
+        selection.full_suite_reason == EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY
+    )

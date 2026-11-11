@@ -57,6 +57,7 @@ from omnimarket.models.model_local_environment_status import (
 )
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment import (
     HandlerProjectionLocalEnvironment,
+    plan_local_environment_retirement,
 )
 from omnimarket.nodes.node_projection_local_environment.models.model_local_environment_plan import (
     ModelLocalEnvironmentPlanRequest,
@@ -114,6 +115,11 @@ _SELECT_MODE_ROWS = f"""
     FROM public.local_environment
     WHERE tenant_id = $1 AND mode = $2
     FOR UPDATE
+"""
+
+_DELETE_ROW = """
+    DELETE FROM public.local_environment
+    WHERE tenant_id = $1 AND mode = $2 AND service = $3
 """
 
 _UPSERT_ROW = (
@@ -315,6 +321,27 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
             )
             stored = await conn.fetch(_SELECT_MODE_ROWS, tenant, report.mode.value)
             stored_rows = [dict(r) for r in stored]
+            removed = plan_local_environment_retirement(report, stored_rows)
+            if removed is not None:
+                await conn.execute(
+                    _DELETE_ROW, tenant, report.mode.value, report.service
+                )
+                # The service is gone, so its open alert has no later report to
+                # clear it: clear it with the removal, in the same transaction.
+                await self._publish_alert_transitions(
+                    derive_local_alert_transitions(
+                        [removed],
+                        [
+                            {
+                                **removed,
+                                "alert_code": None,
+                                "alert_severity": None,
+                                "alert_since": None,
+                                "last_seen": report.observed_at,
+                            }
+                        ],
+                    )
+                )
             planned = list(
                 self._plan.handle(
                     ModelLocalEnvironmentPlanRequest(
@@ -348,6 +375,27 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
                 await self._publish_alert_transitions(
                     derive_local_alert_transitions(stored_rows, written)
                 )
+        if self._snapshot_exposure is not None and removed is not None:
+            # A genuine tombstone: the compacted snapshot topic reclaims the key,
+            # so the page stops serving the retired service. Like a clear, it is
+            # not recovered by a redelivery (the row is already gone).
+            await self.publish_snapshot_delta(
+                self._snapshot_exposure,
+                op="delete",
+                row=None,
+                key={
+                    "tenant_id": tenant,
+                    "mode": report.mode.value,
+                    "service": report.service,
+                },
+                source_event_id=(
+                    f"{tenant}:{report.mode.value}:{report.service}:{report.report_id}"
+                ),
+                source_topic=meta.topic,
+                source_partition=meta.partition,
+                source_offset=meta.offset,
+                tenant_id=tenant,
+            )
         if self._snapshot_exposure is not None:
             for row in written or replayed:
                 await self.publish_snapshot_delta(

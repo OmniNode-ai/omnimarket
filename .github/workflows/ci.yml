@@ -161,6 +161,7 @@ jobs:
           # new verifier run id therefore restarts the clock (OMN-17427).
           deadline=2580
           seen_run=""
+          waits=0
 
           while [ "$elapsed" -lt "$deadline" ]; do
             # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
@@ -220,6 +221,25 @@ jobs:
                 ;;
               "")
                 echo "Waiting for repo-evidence / dod-verify to post for ${HEAD_SHA}..."
+                # OMN-23087: dod-verify posts only once the Repo Evidence Gate run has started. A run
+                # that ended startup_failure has no jobs, so it never posts and this wait would burn the
+                # whole window (43 minutes of polling per workflow file, which also fed the rate limit
+                # this step then reported). Read the gate's own run for this head every third poll and
+                # refuse at once, naming the real cause. A failed read, no run yet, or a run still going
+                # keeps waiting exactly as before, so nothing here admits or hides a verdict.
+                waits=$((waits + 1))
+                if [ $(( (waits - 1) % 3 )) -eq 0 ]; then
+                  gate_run="" gate_status="" gate_conclusion=""
+                  if gate="$(gh api "repos/${REPO}/actions/workflows/call-repo-evidence-gate.yml/runs?head_sha=${HEAD_SHA}&event=pull_request_target&per_page=20" --jq '[.workflow_runs[]] | sort_by(.created_at) | last | "\(.id // "-") \(.status // "-") \(.conclusion // "-")"' 2>&1)"; then
+                    read -r gate_run gate_status gate_conclusion <<< "$gate" || true
+                  else
+                    echo "::notice::Repo Evidence Gate run read failed; still waiting: ${gate}"
+                  fi
+                  if [ "$gate_status" = "completed" ] && [ "$gate_conclusion" = "startup_failure" ]; then
+                    echo "::error::The Repo Evidence Gate run ${gate_run} for ${HEAD_SHA} ended startup_failure, so repo-evidence / dod-verify will never post. This is the gate failing to start, not a timeout or a rate limit; fix its startup, then re-run."
+                    exit 1
+                  fi
+                fi
                 ;;
               *)
                 echo "Repo evidence is ${conclusion}; waiting."
@@ -1233,6 +1253,9 @@ jobs:
         id: detect
         env:
           FLAG: "on"
+          # OMN-23296: the selector calls node_test_selection_selector_compute, which
+          # imports only pydantic and pyyaml; src/ holds it without installing the package.
+          PYTHONPATH: src
         run: |
           . .venv/bin/activate
           python -m scripts.ci.detect_test_paths \
@@ -1426,7 +1449,11 @@ jobs:
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
           OMN20025_POSTGRES_BACKEND: ci
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
+          set -o pipefail
+          rc=0
           paths=$(echo '${{ needs.detect-changes.outputs.selected_paths }}' | python -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
           uv run pytest $paths \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
@@ -1434,7 +1461,9 @@ jobs:
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
-            --junitxml=junit-${{ matrix.split }}.xml
+            --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
+            | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          exit "$rc"
 
       # OMN-19684: the full-suite shards are planned, not split by pytest-split.
       # Live PR runs after the first duration-cache fix still spread 1.75-2.10x
@@ -1461,7 +1490,11 @@ jobs:
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
           OMN20025_POSTGRES_BACKEND: ci
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
+          set -o pipefail
+          rc=0
           mapfile -t shard_files < .shard_test_files
           test "${#shard_files[@]}" -gt 0
           uv run pytest "${shard_files[@]}" \
@@ -1471,7 +1504,46 @@ jobs:
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
-            --junitxml=junit-${{ matrix.split }}.xml
+            --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
+            | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          exit "$rc"
+
+      # OMN-23625: DIAGNOSTIC ONLY. Some shards die with exit 139 (or exit 1)
+      # mid-test and print no pytest summary, so no log names the faulting frame
+      # (omnimarket cause-omnimarket-exit139 reading, 2026-11-10: 8 of 26 failed
+      # Tests splits). The two pytest steps above now run with Python's fault
+      # handler on and keep their output in $RUNNER_TEMP while still printing it
+      # and still exiting with pytest's own status. This step runs only after a
+      # failure, reads that log, and when it holds no pytest summary line prints
+      # the last test started, any Python fatal-error block with every thread's
+      # stack, and the kernel's own segfault/OOM lines (which name the shared
+      # library). It changes no test, drops no check and always exits 0; the
+      # failed pytest step stays the job's failure.
+      - name: Name the crashed test (OMN-23625)
+        if: failure()
+        env:
+          SPLIT: ${{ matrix.split }}
+        run: |
+          log="$RUNNER_TEMP/pytest-${SPLIT}.log"
+          if ! test -s "$log"; then
+            echo "no pytest log for split ${SPLIT}: pytest did not start or an earlier step failed"
+            exit 0
+          fi
+          if grep -aEq '^=+ .* in [0-9.]+s' "$log"; then
+            echo "pytest printed a summary for split ${SPLIT}: an ordinary test failure, not a crash"
+            exit 0
+          fi
+          echo "::group::split ${SPLIT}: pytest ended with no summary line"
+          echo "last test started: $(grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 1 | awk '{print $1}')"
+          echo "last three test lines:"
+          grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 3 || true
+          echo "--- Python fatal-error block (every thread's stack), if printed ---"
+          grep -an -A60 -E 'Fatal Python error|^Timeout \(' "$log" | head -n 120 || true
+          echo "--- kernel log: segfault, oom and kill lines ---"
+          sudo -n dmesg 2>&1 | grep -aEi 'segfault|general protection|out of memory|oom-kill|killed process' | tail -n 20 || true
+          echo "--- memory ---"
+          free -m || true
+          echo "::endgroup::"
 
       # OMN-14680: stamp a versioned metadata sidecar (head SHA, environment,
       # test-scope, schema) so the shadow aggregator can validate the artifact
@@ -4423,12 +4495,36 @@ jobs:
             scripts/ci/ci_summary_external_producers.json
             scripts/ci/ci_summary_sweep_non_pr_events.json
             scripts/ci/ci_summary_sweep_exclusions.json
+            scripts/ci/ci_summary_external_check_modes.contract.json
+            scripts/ci/ci_summary_external_check_modes.json
             scripts/ci/ci_summary_rules.json
+            src/omnimarket/__init__.py
+            src/omnimarket/nodes/__init__.py
+            src/omnimarket/nodes/node_ci_summary_registry_compute/
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Restore head gate script
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json .ci-summary-head/scripts/ci/ci_summary_sweep_exclusions.json .ci-summary-head/scripts/ci/ci_summary_rules.json scripts/ci/
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json .ci-summary-head/scripts/ci/ci_summary_sweep_exclusions.json .ci-summary-head/scripts/ci/ci_summary_rules.json .ci-summary-head/scripts/ci/ci_summary_external_check_modes.contract.json .ci-summary-head/scripts/ci/ci_summary_external_check_modes.json scripts/ci/
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+      # OMN-23505: the sweep-exclusion and check-mode registries are resolved by
+      # node_ci_summary_registry_compute; the gate reads its answer and holds no loader.
+      # A missing or unparsable registry file stops this step, and the gate then finds
+      # no resolved registry and refuses.
+      - name: Resolve the registries through node_ci_summary_registry_compute (OMN-23505)
+        run: |
+          set -euo pipefail
+          src=src
+          if [ -d .ci-summary-head/src ]; then src=.ci-summary-head/src; fi
+          jq -n \
+            --slurpfile ex scripts/ci/ci_summary_sweep_exclusions.json \
+            --slurpfile ct scripts/ci/ci_summary_external_check_modes.contract.json \
+            --slurpfile ov scripts/ci/ci_summary_external_check_modes.json \
+            '{sweep_exclusions: $ex[0], check_modes_contract: $ct[0], check_modes_overlay: $ov[0]}' \
+            | PYTHONPATH="$src" uv run --no-project --with "pydantic==2.13.5" \
+                python -m omnimarket.nodes.node_ci_summary_registry_compute.runtime_ci_summary_registry \
+                > scripts/ci/ci_summary_registry.resolved.json
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:
