@@ -152,11 +152,13 @@ async def test_missing_projection_answers_insufficient_data() -> None:
 
 def test_invalid_tenant_id_refused_by_model() -> None:
     with pytest.raises(ValidationError):
-        ModelTenantReadCommand(
-            correlation_id=CORRELATION,
-            tenant_id="not-a-uuid",  # type: ignore[arg-type]
-            kind=EnumTenantReadKind.SAVINGS,
-            limit=5,
+        ModelTenantReadCommand.model_validate(
+            {
+                "correlation_id": CORRELATION,
+                "tenant_id": "not-a-uuid",
+                "kind": EnumTenantReadKind.SAVINGS,
+                "limit": 5,
+            }
         )
 
 
@@ -194,3 +196,18 @@ async def test_failing_control_drops_total_tokens() -> None:
     assert "total_tokens" not in result.body
     with pytest.raises((AssertionError, KeyError)):
         assert result.body["total_tokens"] == 1200
+
+
+def test_terminal_topics_of_the_contract_are_the_completed_and_failed_events() -> None:
+    """The output states the bus handler answers with are the contract's two terminal topics."""
+    from tests.nodes.tenant_read_support import contract_of
+
+    dispatch = contract_of("node_tenant_savings_read_effect")["runtime_dispatch"]
+    assert (
+        dispatch["command_topic"]
+        == "onex.cmd.omnimarket.tenant-savings-read-requested.v1"
+    )
+    assert dispatch["terminal_events"] == {
+        "success": "onex.evt.omnimarket.tenant-savings-read-completed.v1",
+        "failure": "onex.evt.omnimarket.tenant-savings-read-failed.v1",
+    }

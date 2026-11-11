@@ -60,6 +60,7 @@ handler_routing:
         - "tenant_savings.read"
       description: "Serve GET /v1/tenants/me/savings: the caller tenant's delegation savings headline from the savings and delegation projections, keyed by the canonical tenant UUID."
     - operation: "tenant_savings.read_bus"
+      topic: "onex.cmd.omnimarket.tenant-savings-read-requested.v1"
       event_model:
         name: "ModelTenantReadCommand"
         module: "omnimarket.models.model_tenant_read_bus"
