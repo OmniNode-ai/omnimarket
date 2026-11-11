@@ -21,6 +21,8 @@ Each refusal comes before placement, remote provisioning and CLAIM, with exit 2 
 - ``wip-refused``: a lane that may open a PR is new work, and the started-but-unlanded count is at the repository's or
   the fleet's limit (RULING 2026-10-30T00:03:58Z). A lane that works a named PR, or whose name carries a fix-forward
   prefix, is never refused; the limits are the ``wip_admission`` overlay's, and a host with no overlay judges nothing.
+- ``gate-failed``: the dispatch names a gate the task waits for, and that gate reads anything but ``pass`` (``fail``,
+  or no reading at all). Wave 1 tasks were dispatched at 2026-11-02T15:41Z while gate G0 read fail.
 
 The driver and brief refusals were made by a session's own dispatch helper (RULING 2026-10-18T13:45:42Z: hand fixes become part of
 the permanent process); here they hold for every route to the runner. The brief's prose is read with lane-brief's own
@@ -77,6 +79,7 @@ BRIEF_REPO_RE = re.compile(
     r"(?im)^\s*(?:[-*]\s*)?(?:repo(?:sitory)?|target repo):\s*\S|\| repo=\S+|--repo(?:=|\s+)\S"
 )
 DRIVER_PREFIX = "pf-drive-"
+GATE_PASS = "pass"
 DRIVER_RE = re.compile(
     r"^pf-drive-(?P<repo>[A-Za-z0-9_.-]+?)-(?P<number>[0-9]+)(?:-[0-9]{4})?$"
 )
@@ -200,6 +203,22 @@ def umbrella_problem(
         "launching session; creating a ticket is never refused by count. A lane that cannot mint carries "
         "`Umbrella evidence: <reason>` in the brief and adds its own requirement and "
         f"dod_evidence item to contracts/{umbrella}.yaml with a test-side path that fails at the merge base"
+    )
+
+
+def gate_problem(request: ModelDispatchBriefShapeRequest) -> str | None:
+    """Why a lane is refused: a gate its task waits for reads anything but ``pass``."""
+    readings = {gate: value.strip().lower() for gate, value in request.gate_readings}
+    shut = [
+        f"{gate}={readings.get(gate) or 'unread'}"
+        for gate in request.required_gates
+        if readings.get(gate) != GATE_PASS
+    ]
+    if not shut:
+        return None
+    return (
+        f"gate {', '.join(shut)}: a task waiting on a gate starts only once every gate it names reads {GATE_PASS}; "
+        "re-read the gate and dispatch after it passes"
     )
 
 
@@ -389,6 +408,9 @@ class HandlerDispatchBriefShape:
             refusals.append(
                 ("umbrella-refused", f"REMOTE-LANE-UMBRELLA-REFUSED {umbrella}")
             )
+        gate = gate_problem(request)
+        if gate:
+            refusals.append(("gate-failed", f"REMOTE-LANE-GATE-FAILED {gate}"))
         gh_read = gh_read_problem(request.brief, lane_brief)
         if gh_read:
             refusals.append(
