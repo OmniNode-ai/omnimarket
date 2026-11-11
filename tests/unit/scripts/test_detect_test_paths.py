@@ -503,6 +503,33 @@ def test_node_change_still_selects_the_cross_node_reach_in_test() -> None:
     ).is_file()
 
 
+def test_node_change_still_selects_the_contract_binding_test() -> None:
+    """OMN-23649: the repo-wide contract binding test reads every
+    contracts/OMN-*.yaml; a change that adds one contract narrowed to its own
+    node's tests and merged a contract that test refuses, so dev went red on
+    every open change.
+    """
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    assert "tests/ci/test_repo_evidence_caller_workflow.py" in sel.selected_paths, (
+        f"the contract binding test was narrowed away. selected={sel.selected_paths}"
+    )
+    assert (
+        ADJACENCY_PATH.parents[2] / "tests/ci/test_repo_evidence_caller_workflow.py"
+    ).is_file()
+
+
 def test_always_selected_paths_reject_a_non_test_entry() -> None:
     from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 
@@ -604,6 +631,7 @@ def test_non_delegation_node_still_narrows(tracked_paths: list[str]) -> None:
     assert sel.is_full_suite is False
     assert sel.full_suite_reason is None
     assert sel.selected_paths == [
+        "tests/ci/test_repo_evidence_caller_workflow.py",
         "tests/gates/",
         "tests/nodes/",
         "tests/test_no_cross_node_reach_in.py",
