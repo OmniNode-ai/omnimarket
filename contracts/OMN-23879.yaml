@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-23879
+title: A guarded delete step removes unused broker topics a plan names
+summary: node_broker_topic_delete_effect executes a typed command that names broker topics (the candidates of the removal plan) and reports a typed result per topic. For every named topic it re-reads the broker's live evidence and refuses a topic with a consumer group, committed offsets, records, a producer inside the overlay's window, a protected prefix, or a contract declaration the command does not clear. Enforce mode is an overlay value and is off by default; with it off the node only reports what it would delete.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn23879-guarded-delete
+  statement: The effect deletes exactly the topics a typed command names, only when the overlay enforces, and only those that pass every live check; every other topic gets a typed refusal.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a typed delete command names the topics to remove and the effect deletes exactly those, refusing any topic with a consumer group, committed offsets, a producer inside the overlay''s window, or a contract declaration the command does not clear, and reports a typed result per topic -- falsifier: the effect''s tests with the guard removed turn red'
+  - id: AC2
+    statement: 'AC2: enforce mode is off unless the overlay turns it on, and with it off no delete is issued -- falsifier: a test with the overlay''s default shows zero deletes'
+  - id: AC3
+    statement: 'AC3: a golden chain and an error chain event test pass, with a named break that turns the golden one red -- falsifier: the named-break test'
+  - id: AC4
+    statement: 'AC4: integrated: the effect, run on the lab against the running dev broker in report-only mode, reads the consumer-group list through its granted principal and reports a per-topic result -- falsifier: the printed per-topic results and the run receipt read on the lab host'
+evidence_requirements:
+- kind: tests
+  description: The handler, adapter, chain event and seam tests at the pushed head. With a guard removed from the handler, the matching refusal test fails.
+  command: env -u PYTHONPATH uv run pytest tests/nodes/node_broker_topic_delete_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23879-ac1-guards
+  description: The guard and per-topic result tests pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_broker_topic_delete_effect/test_topic_delete.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23879-ac2-enforce-off
+  description: The report-only default test shows zero deletes at the pushed head.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_broker_topic_delete_effect/test_topic_delete.py -q --no-cov -n 0 -p no:randomly -k report_only
+    cwd: .
+- id: dod-omn23879-ac3-chain-and-seam
+  description: The chain event tests, the named break and the seam test pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_broker_topic_delete_effect/test_delete_chain_events.py tests/nodes/node_broker_topic_delete_effect/test_seam_removal_plan.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23879-integration-proof
+  description: The pushed head ran the delete effect tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23879 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_broker_topic_delete_effect -q --no-cov'
+    cwd: .
