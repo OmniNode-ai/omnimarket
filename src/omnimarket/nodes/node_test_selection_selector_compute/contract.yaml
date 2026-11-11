@@ -31,6 +31,12 @@ handler_routing:
       handler:
         name: HandlerTestSelectionSelector
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector
+    - operation: resolve_test_paths
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution.ModelPathResolutionRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution.ModelPathResolutionResult
+      handler:
+        name: HandlerTestPathResolution
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution
 descriptor:
   node_archetype: compute
   purity: pure
