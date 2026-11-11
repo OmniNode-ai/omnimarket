@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
@@ -73,6 +73,22 @@ class ModelJoinJ5Overlay(BaseModel):
     #: Whether this overlay may run a named injected break (the join's failing control).
     allow_injected_break: bool
     injected_fault: str = Field(min_length=1)
+
+    @property
+    def projection_wait_seconds(self) -> float:
+        """The time the poll spends waiting between reads: the reads themselves come on top of it."""
+        return (self.projection.attempts - 1) * self.projection.interval_seconds
+
+    @model_validator(mode="after")
+    def _poll_fits_the_deadline(self) -> ModelJoinJ5Overlay:
+        # A poll that waits longer than the run's own time limit is cut by the limit, so its attempts would only be
+        # a promise the run cannot keep (OMN-23717): the overlay is refused and the two numbers are named.
+        if self.projection_wait_seconds >= self.run_deadline_seconds:
+            raise ValueError(
+                f"the projection poll waits {self.projection_wait_seconds:g} s between its "
+                f"{self.projection.attempts} reads, not inside run_deadline_seconds={self.run_deadline_seconds}"
+            )
+        return self
 
 
 def load_join_overlay(environ: Mapping[str, str] | None = None) -> ModelJoinJ5Overlay:

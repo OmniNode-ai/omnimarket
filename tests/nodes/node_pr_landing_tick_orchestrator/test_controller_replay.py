@@ -16,12 +16,17 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
+from omnimarket.models.landing_controller_carry import (
+    ModelLandingControllerCarry,
+    ModelLandingControllerLogged,
+    decisions_of,
+)
 from omnimarket.models.landing_decision import (
     EnumLandingCi,
     EnumLandingRedClass,
     ModelLandingFacts,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute import decide_landing
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingControllerState,
 )
@@ -85,10 +90,19 @@ def _watcher_shaped(facts: ModelLandingFacts) -> ModelLandingFacts:
 def _compare(path: Path, *, carried: bool) -> tuple[ModelTickResult, str]:
     facts = _controller_facts(path)
     scope = facts.prs[0].pr.partition("#")[0]
+    # the controller's real decision is its logged rows: the actions the decision node returns
+    # for the controller's own facts, which is the node the controller calls on them
+    logged = tuple(
+        ModelLandingControllerLogged(
+            kind=action.kind, subject=action.subject, outcome="performed"
+        )
+        for action in decide_landing(facts).actions
+    )
     carry = ModelLandingControllerCarry(
         controller_tick=facts.tick,
         observed_at=facts.observed_at,
         facts=facts,
+        logged=logged,
         source="replay",
     )
     node = _watcher_shaped(facts)
@@ -99,7 +113,7 @@ def _compare(path: Path, *, carried: bool) -> tuple[ModelTickResult, str]:
             correlation_id=uuid4(),
             mode=EnumTickMode.OBSERVE,
             facts=node,
-            controller=carry,
+            controller=decisions_of(carry),
         )
     )
     return result, scope

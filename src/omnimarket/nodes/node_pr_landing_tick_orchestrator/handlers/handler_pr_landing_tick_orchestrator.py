@@ -12,8 +12,10 @@ A landing snapshot step record carries no recorded decision. For a cutover repos
 controller rules out of scope (it reads no facts and decides nothing for it), act mode writes that
 record itself, no action, and compares that repository's subjects only; any other tick with no
 recorded decision is refused RECORDED_DECISION_MISSING (OMN-23458). When the record instead
-carries the old controller's finished tick, the compare step uses that controller's real decision
-for the tick, in scope, instead of a synthetic no action (OMN-23665).
+carries the old controller's finished tick (its decision rows, never its facts), the compare step
+uses that controller's real decision for the tick, in scope, instead of a synthetic no action
+(OMN-23665). An observe-mode record with neither is unread, CONTROLLER_TICK_MISSING: observe mode
+never assumes a decision (OMN-22921).
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import yaml
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.landing_decision import (
+    ModelLandingAction,
     ModelLandingControllerState,
     ModelLandingDecision,
 )
@@ -185,9 +188,6 @@ class HandlerPrLandingTickOrchestrator:
             EnumTickMode.ACT,
         ):
             try:
-                controller_decision = self._decider.decide(
-                    request.controller.facts, request.fair_share
-                )
                 decision = self._decider.decide(request.facts, request.fair_share)
             except Exception as exc:
                 return self._failed(
@@ -195,30 +195,19 @@ class HandlerPrLandingTickOrchestrator:
                 )
             scope = self._cutover_repository
             node_projected = self._projected(decision, scope, request.facts.tick)
-            controller_projected = self._projected(
-                controller_decision, scope, request.facts.tick
-            )
-            # the node cannot reproduce what the controller did: a logged row in scope the
-            # recomputed decision does not name would make the comparison unreal
-            missing = sorted(
-                {
-                    (row.kind, row.subject)
-                    for row in request.controller.logged
-                    if scope is None or row.subject.partition("#")[0] == scope
-                }
-                - {
-                    (action.kind, action.subject)
-                    for action in controller_projected.actions
+            # the controller's real decision for the tick: its decision rows, in scope, as the
+            # carry holds them (it carries no facts to recompute them from)
+            controller_projected = node_projected.model_copy(
+                update={
+                    "actions": tuple(
+                        ModelLandingAction.model_construct(
+                            kind=row.kind, subject=row.subject
+                        )
+                        for row in request.controller.decisions
+                        if scope is None or row.subject.partition("#")[0] == scope
+                    )
                 }
             )
-            if missing:
-                kind, subject = missing[0]
-                return self._failed(
-                    request,
-                    EnumTickFailureReason.CONTROLLER_DECISION_UNREPRODUCED,
-                    f"the decision log names {kind} on {subject}, "
-                    "which the recomputed decision does not",
-                )
             reduced = self._reducer.handle(
                 ModelTickReduceInput(
                     decision=node_projected, recorded=controller_projected
@@ -278,7 +267,9 @@ class HandlerPrLandingTickOrchestrator:
             if only is None:
                 return self._failed(
                     request,
-                    EnumTickFailureReason.RECORDED_DECISION_MISSING,
+                    EnumTickFailureReason.CONTROLLER_TICK_MISSING
+                    if request.mode is EnumTickMode.OBSERVE
+                    else EnumTickFailureReason.RECORDED_DECISION_MISSING,
                     self._missing_detail(request),
                 )
         try:
@@ -380,15 +371,16 @@ class HandlerPrLandingTickOrchestrator:
         )
 
     def _written_record_repository(self, request: ModelTickRequest) -> str | None:
-        """The repository whose recorded decision the tick writes, or None when it may not.
+        """The repository whose recorded decision act mode writes, or None when it may not.
 
-        Act mode and observe mode both write it (OMN-23514): the snapshot step's records carry no
-        recorded decision, so observe mode for the cutover repository refused every record. The
-        record is the old controller's no action for a repository it rules out of scope; observe
-        mode still performs nothing.
+        Only act mode writes it (OMN-23458): the snapshot step's records carry no recorded decision,
+        and the old controller's decision for a repository it rules out of scope is no action. Observe
+        mode never assumes a decision: a record with no controller tick is unread
+        (controller_tick_missing, OMN-22921), because the controller does decide the cutover
+        repository, so an assumed no action there compared the node with a decision nobody made.
         """
         if (
-            request.mode in (EnumTickMode.ACT, EnumTickMode.OBSERVE)
+            request.mode is EnumTickMode.ACT
             and self._cutover_repository is not None
             and self._cutover_repository in self._script_out_of_scope
         ):
@@ -396,6 +388,11 @@ class HandlerPrLandingTickOrchestrator:
         return None
 
     def _missing_detail(self, request: ModelTickRequest) -> str:
+        if request.mode is EnumTickMode.OBSERVE:
+            return (
+                "the record carries no controller tick, so there is no decision of the old "
+                "controller to compare with; none is assumed"
+            )
         if request.mode is not EnumTickMode.ACT:
             return "no recorded decision to compare with"
         if self._cutover_repository is None:

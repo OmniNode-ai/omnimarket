@@ -1473,6 +1473,7 @@ jobs:
             --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
             | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          echo "$rc" > "$RUNNER_TEMP/pytest-${{ matrix.split }}.rc"
           exit "$rc"
 
       # OMN-19684: the full-suite shards are planned, not split by pytest-split.
@@ -1516,6 +1517,7 @@ jobs:
             --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
             | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          echo "$rc" > "$RUNNER_TEMP/pytest-${{ matrix.split }}.rc"
           exit "$rc"
 
       # OMN-23625: DIAGNOSTIC ONLY. Some shards die with exit 139 (or exit 1)
@@ -1544,13 +1546,54 @@ jobs:
             exit 0
           fi
           echo "::group::split ${SPLIT}: pytest ended with no summary line"
+          echo "--- how the pytest process ended ---"
+          rcfile="$RUNNER_TEMP/pytest-${SPLIT}.rc"
+          if test -s "$rcfile"; then
+            rc=$(cat "$rcfile")
+            echo "exit status: $rc"
+            case "$rc" in
+              '' | *[!0-9]*)
+                ;;
+              *)
+                if test "$rc" -gt 128; then
+                  sig=$((rc - 128))
+                  name=$(kill -l "$sig" 2>/dev/null) || name=""
+                  echo "ended by signal $sig (${name:-unknown})"
+                elif test "$rc" -eq 1; then
+                  echo "exit 1 is not a signal: the process ended itself (an _exit, a sys.exit, or a process-ending timer such as faulthandler dump_traceback_later with exit=True); a timer's stack dump goes to pytest's captured stderr and is not in this log"
+                else
+                  echo "exit status is not 1 and not a signal"
+                fi
+                ;;
+            esac
+          else
+            echo "exit status: unknown"
+          fi
+          cg="${CGROUP_DIR:-/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)}"
+          if test -r "$cg/memory.peak"; then
+            echo "memory high-water: $(( $(cat "$cg/memory.peak") / 1048576 )) MB"
+            if test -r "$cg/memory.events"; then
+              echo "memory kill events: $(awk '$1 == "oom_kill" { print $2 }' "$cg/memory.events")"
+            fi
+          else
+            echo "memory high-water: unavailable (no readable cgroup v2 memory.peak)"
+          fi
           echo "last test started: $(grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 1 | awk '{print $1}')"
           echo "last three test lines:"
           grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 3 || true
           echo "--- Python fatal-error block (every thread's stack), if printed ---"
           grep -an -A60 -E 'Fatal Python error|^Timeout \(' "$log" | head -n 120 || true
           echo "--- kernel log: segfault, oom and kill lines ---"
-          sudo -n dmesg 2>&1 | grep -aEi 'segfault|general protection|out of memory|oom-kill|killed process' | tail -n 20 || true
+          if kernel=$(sudo -n dmesg 2>&1); then
+            matches=$(echo "$kernel" | grep -aEi 'segfault|general protection|out of memory|oom-kill|killed process' | tail -n 20)
+            if test -n "$matches"; then
+              echo "$matches"
+            else
+              echo "kernel log read: no segfault, oom or kill line"
+            fi
+          else
+            echo "kernel log not readable without privilege: $(echo "$kernel" | head -n 1)"
+          fi
           echo "--- memory ---"
           free -m || true
           echo "::endgroup::"
@@ -1748,26 +1791,54 @@ jobs:
       # softly and trying again. The artifact service flakes, but a gate whose
       # input fetch is allowed to fail softly is a gate that passes when it
       # could not read anything -- the whole failure class this job refuses.
-      # Three attempts, then red. This job carries no advisory setting at job
-      # or step level, deliberately and by test.
+      # OMN-23527: six attempts spanning 450 seconds (30+60+90+120+150), then red.
+      # The earlier three attempts inside two minutes were all spent within one
+      # 6.5 minute GitHub rate-limit burst (2026-11-10 10:50Z to 10:56Z). A download
+      # that is still refused by a rate limit or a 5xx is named as such in the job
+      # summary, because that red is not a finding about the tests. The step stays
+      # blocking: it exits 0 only when the reports were downloaded. This job carries
+      # no advisory setting at job or step level, deliberately and by test.
       - name: Download this run's JUnit reports
         if: steps.decide.outputs.ratchet == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          DOWNLOAD_ATTEMPTS: "6"
+          DOWNLOAD_BACKOFF_SECONDS: "30"
         run: |
-          for attempt in 1 2 3; do
-            if gh run download "${{ github.run_id }}" \
-                 --repo "${{ github.repository }}" \
+          set -uo pipefail
+          attempt=1
+          while :; do
+            log="$(mktemp)"
+            if gh run download "$RUN_ID" \
+                 --repo "$REPO" \
                  --pattern 'test-results-*' \
-                 --dir junit-reports; then
+                 --dir junit-reports >"$log" 2>&1; then
               echo "JUnit reports downloaded on attempt ${attempt}."
               exit 0
             fi
-            echo "Artifact download attempt ${attempt} failed."
+            cat "$log"
             rm -rf junit-reports
-            sleep $((attempt * 10))
+            if [ "$attempt" -ge "$DOWNLOAD_ATTEMPTS" ]; then
+              break
+            fi
+            wait_seconds=$((DOWNLOAD_BACKOFF_SECONDS * attempt))
+            echo "::warning::artifact download attempt ${attempt}/${DOWNLOAD_ATTEMPTS} failed; retrying in ${wait_seconds}s"
+            sleep "$wait_seconds"
+            attempt=$((attempt + 1))
           done
-          echo "::error::could not download this run's JUnit reports after 3 attempts."
+          if grep -qiE 'rate limit|HTTP (429|5[0-9][0-9])|error: (429|5[0-9][0-9])' "$log"; then
+            {
+              echo "### Skip Count Ratchet did not run: GitHub rate limit or server error"
+              echo
+              echo "The JUnit reports could not be downloaded after ${attempt} attempts."
+              echo "The ratchet did not run. This red is NOT a finding about the tests in this pull request; rerun the check once GitHub accepts requests again."
+            } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            echo "::error::could not download this run's JUnit reports after ${attempt} attempts: still refused by a GitHub rate limit or server error; the ratchet did not run (not a finding about the tests)."
+          else
+            echo "::error::could not download this run's JUnit reports after ${attempt} attempts."
+          fi
           echo "Failing closed: a gate that cannot read its input has not passed."
           exit 1
 

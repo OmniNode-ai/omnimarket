@@ -17,3 +17,5 @@ watcher_max_age_seconds: 900
 owner: OmniNode-ai
 record_journal: $OMNIBASE_PATH/.onex_state/landing-snapshot/records.jsonl
 emission_journal: $OMNIBASE_PATH/.onex_state/floor-simple/emissions.jsonl
+# below the dev broker's payload limit of 1,048,588 bytes
+record_max_bytes: 1000000
