@@ -865,6 +865,7 @@ node_lane_github_budget_effect = "omnimarket.nodes.node_lane_github_budget_effec
 node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
 node_lane_guard_unit_effect = "omnimarket.nodes.node_lane_guard_unit_effect"
 node_lane_host_discovery_compute = "omnimarket.nodes.node_lane_host_discovery_compute"
+node_lane_host_pool_snapshot_effect = "omnimarket.nodes.node_lane_host_pool_snapshot_effect"
 node_lane_liveness_compute = "omnimarket.nodes.node_lane_liveness_compute"
 node_lane_model_policy_compute = "omnimarket.nodes.node_lane_model_policy_compute"
 node_lane_parent_notice_recovery_effect = "omnimarket.nodes.node_lane_parent_notice_recovery_effect"
