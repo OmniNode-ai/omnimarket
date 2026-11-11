@@ -26,15 +26,19 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
 from omnimarket.models.landing_controller_carry import (
+    REASON_MAX_LENGTH,
     ModelLandingControllerCarry,
+    ModelLandingControllerJudged,
     ModelLandingControllerLogged,
 )
 from omnimarket.models.landing_decision import (
     EnumLandingActionKind,
+    ModelLandingExternalJudged,
     ModelLandingFacts,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.adapter_publisher import (
@@ -196,6 +200,15 @@ def _jsonl_rows(path: Path, *, missing_ok: bool) -> list[dict[str, object]]:
     return rows
 
 
+def _reason_of(row: dict[str, Any]) -> str:
+    """The decision log row's own reason, else its detail, cut to the carry's bound; empty when it names neither."""
+    for key in ("reason", "detail"):
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value[:REASON_MAX_LENGTH]
+    return ""
+
+
 class LandingCarryStateDirSource:
     """The old landing controller's last finished tick: its facts file, tick log and decision log."""
 
@@ -207,12 +220,14 @@ class LandingCarryStateDirSource:
         ticks_path: Path,
         decisions_path: Path,
         *,
+        sidecar_path: Path,
         max_age_seconds: int,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._facts = LandingFactsFileSource(facts_path)
         self._ticks = ticks_path
         self._decisions = decisions_path
+        self._sidecar = sidecar_path
         self._max_age = max_age_seconds
         self._now = now
 
@@ -242,6 +257,7 @@ class LandingCarryStateDirSource:
                 kind=EnumLandingActionKind(str(row["kind"])),
                 subject=str(row["subject"]),
                 outcome=str(row["outcome"]),
+                reason=_reason_of(row),
             )
             for row in _jsonl_rows(self._decisions, missing_ok=True)
             if row.get("tick") == facts.tick
@@ -256,8 +272,50 @@ class LandingCarryStateDirSource:
             observed_at=facts.observed_at,
             facts=facts,
             logged=logged,
+            judged=self._read_judged(),
             source=self.name,
         )
+
+    def _read_judged(self) -> tuple[ModelLandingControllerJudged, ...]:
+        """The sidecar's external_judged: per pull request, each ref a worker judged at a head (OMN-22921).
+
+        A sidecar that is missing or not an object is unread, never an empty memory: an empty one
+        would make every judged pull request read as free of its blocker. A row that does not parse
+        (no head, an unread stamp) is skipped, as the controller reads it.
+        """
+        try:
+            sidecar = json.loads(self._sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SnapshotSourceError(
+                f"{self._sidecar} unreadable: {type(exc).__name__}"
+            ) from None
+        if not isinstance(sidecar, dict):
+            raise SnapshotSourceError(f"{self._sidecar} is not a JSON object")
+        rows: list[ModelLandingControllerJudged] = []
+        per_pr = sidecar.get("external_judged") or {}
+        if not isinstance(per_pr, dict):
+            raise SnapshotSourceError(
+                f"{self._sidecar} external_judged is not an object"
+            )
+        for short, refs in sorted(per_pr.items()):
+            if not isinstance(refs, dict):
+                continue
+            for ref, entry in sorted(refs.items()):
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    judged = ModelLandingExternalJudged(
+                        ref=ref,
+                        kind=str(entry.get("kind") or ""),
+                        head_sha=str(entry.get("head") or ""),
+                        judged_at=datetime.strptime(
+                            str(entry.get("at")), _STAMP
+                        ).replace(tzinfo=UTC),
+                    )
+                except (ValueError, ValidationError):
+                    continue
+                rows.append(ModelLandingControllerJudged(pr=short, judged=judged))
+        return tuple(rows)
 
 
 class JsonlLandingTickRecorder:
@@ -330,6 +388,7 @@ def build_controller_source(
         overlay.controller_facts_path
         and overlay.controller_ticks_path
         and overlay.controller_decisions_path
+        and overlay.controller_sidecar_path
         and overlay.controller_max_age_seconds
     ):
         return None
@@ -337,6 +396,7 @@ def build_controller_source(
         resolve_path(overlay.controller_facts_path),
         resolve_path(overlay.controller_ticks_path),
         resolve_path(overlay.controller_decisions_path),
+        sidecar_path=resolve_path(overlay.controller_sidecar_path),
         max_age_seconds=overlay.controller_max_age_seconds,
         now=now,
     )

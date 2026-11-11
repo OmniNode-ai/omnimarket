@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23703
+title: The landing workflow's observe run - records fit the bus, send before log, one consumer group per host, no assumed decisions, 713 held
+summary: The landing snapshot step carries only the old controller's decision rows on a record bounded under the broker limit and journals only what the broker accepted; the tick orchestrator joins a consumer group named for its host, reads inside bounds checked against its unit's run limit and ends a record with no controller tick unread; the decision node holds a pull request from a worker while a judged external blocker stands.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- topics
+- public_api
+requirements:
+- id: req-omn23703-observe-run-fixes
+  statement: The shared tick record carries the controller's decision rows and no facts, bounded by the snapshot overlay; the consumer group, join bound and run limit come from the tick overlay; the decision node reads the judged external blocker as a fact and holds the pull request by policy values.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a tick record carries only the controller decision rows (kind, subject, outcome, reason) and stays under the broker limit of 1,048,588 bytes with thousands of controller state records -- falsifier: uv run pytest tests/nodes/node_pr_landing_snapshot_effect/test_record_bounds_and_publish_order.py -q fails at the merge base'
+  - id: AC2
+    statement: 'AC2: the snapshot step publishes first and journals only what the broker accepted, and a refused publish is the typed failure publish_failed with no journal row -- falsifier: the publish tests in test_record_bounds_and_publish_order.py fail when the journal write moves before the publish'
+  - id: AC3
+    statement: 'AC3: the consumer group carries the host identity from the overlay, the pass refuses without it, and the join and read bounds fit the unit run limit -- falsifier: tests/nodes/node_pr_landing_tick_orchestrator/test_tick_overlay_identity_and_bounds.py and test_tick_unit_seam.py fail when either side changes'
+  - id: AC4
+    statement: 'AC4: an observe record with no controller tick ends unread (controller_tick_missing), never an assumed no-action decision -- falsifier: the unread test in tests/nodes/node_pr_landing_tick_orchestrator/test_controller_compare.py fails when the assumption returns'
+  - id: AC5
+    statement: 'AC5: a worker-judged external blocker that still stands holds the pull request from a worker, and the three recorded omnimemory 713 ticks dispatch without the fact and hold with it -- falsifier: tests/unit/nodes/node_pr_landing_decision_compute/test_external_judgement_gate.py fails without the rule'
+  - id: AC6
+    statement: 'AC6: integrated: on the launching Mac the cutover snapshot and tick orchestrator units run the merged revision, a record is published under the limit and the orchestrator compares it with exit 0 -- falsifier: the unit last-run.json on the Mac and the compared event on the dev bus'
+evidence_requirements:
+- kind: tests
+  description: The snapshot step, tick orchestrator, decision rule and registry unit tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect tests/nodes/node_pr_landing_tick_orchestrator tests/unit/nodes/node_pr_landing_decision_compute/test_external_judgement_gate.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23703-tests
+  description: The bounded record, publish order, host identity, unread and external judgement tests, golden and error chains, and the seam tests.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect tests/nodes/node_pr_landing_tick_orchestrator tests/unit/nodes/node_pr_landing_decision_compute/test_external_judgement_gate.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23703-integration-proof
+  description: Run the tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23703 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect tests/nodes/node_pr_landing_tick_orchestrator tests/unit/nodes/node_pr_landing_decision_compute/test_external_judgement_gate.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

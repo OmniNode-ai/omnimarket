@@ -17,8 +17,17 @@ watcher_max_age_seconds: 900
 owner: OmniNode-ai
 record_journal: $OMNIBASE_PATH/.onex_state/landing-snapshot/records.jsonl
 emission_journal: $OMNIBASE_PATH/.onex_state/floor-simple/emissions.jsonl
+# below the dev broker's payload limit of 1,048,588 bytes
+record_max_bytes: 1000000
 # The cutover instance (OMN-23665): also carries the old controller's finished tick onto each record.
 controller_facts_path: $HOME/.local/state/omni/landing/last-facts.json
 controller_ticks_path: $HOME/.local/state/omni/landing/ticks.jsonl
 controller_decisions_path: $HOME/.local/state/omni/landing/decisions.jsonl
+# the controller's sidecar: its external_judged memory, filled onto the pull requests' facts (OMN-22921)
+controller_sidecar_path: $HOME/.local/state/omni/landing/sidecar.json
+# the controller's declared external blocker kinds and the hours a bounded one holds (its KNOWN_EXTERNAL_KINDS,
+# UNBOUNDED_KINDS and WORKER_GATE_HOURS), filled into the facts' policy
+external_blocker_kinds: [upstream_open, operator_decision, production_gate, collaborator, hold_row]
+external_blocker_unbounded_kinds: [upstream_open]
+external_gate_hours: 1.0
 controller_max_age_seconds: 900

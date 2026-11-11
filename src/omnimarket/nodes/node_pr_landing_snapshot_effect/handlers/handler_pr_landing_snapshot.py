@@ -8,6 +8,14 @@ the PR facts the act-mode writer reads (pr_node_id, failed_run_ids), and record 
 the tick, appended to the recorder and published on the overlay's record topic. A write fact read
 at another head than the facts' fills nothing. A tick that is unread, mismatched or already
 recorded ends in the typed failed event and replaces no earlier record.
+
+The record is published first and journaled only once the broker accepted it: a publish that
+fails ends in the typed failed event publish_failed and leaves no journal row, so the next pass
+takes the tick again (the journal grew 5.7 MB a tick on 2026-11-11 while every publish failed).
+A record over the overlay's record_max_bytes is never offered to the broker: it ends in the
+typed failed event record_too_large. The record carries the controller's decision rows only,
+never its facts; the controller state carried onto the record's own facts keeps only the
+pull-request records of the pull requests in the tick's facts.
 """
 
 from __future__ import annotations
@@ -16,10 +24,17 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
+from omnimarket.models.landing_controller_carry import (
+    ModelLandingControllerCarry,
+    decisions_of,
+)
 from omnimarket.models.landing_decision import (
+    ModelLandingExternalJudged,
     ModelLandingFacts,
     ModelLandingPrFacts,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
+    ModelLandingControllerState,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
     ControllerStateStaleError,
@@ -133,16 +148,36 @@ CARRIED_PR_FIELDS: tuple[str, ...] = (
 )
 
 
+def _bounded_state(
+    state: ModelLandingControllerState, held: set[str]
+) -> ModelLandingControllerState:
+    """The controller's state with the pull-request records of pull requests the tick does not hold dropped.
+
+    A record of a pull request that is not in the tick's facts cannot change this tick's decision, and
+    the records of every pull request the controller ever saw are most of its state's size.
+    """
+    return state.model_copy(
+        update={"records": tuple(r for r in state.records if r.pr in held)}
+    )
+
+
 def carry_controller_state(
-    facts: ModelLandingFacts, carry: ModelLandingControllerCarry
+    facts: ModelLandingFacts,
+    carry: ModelLandingControllerCarry,
+    overlay: ModelSnapshotOverlay | None = None,
 ) -> ModelLandingFacts:
     """The facts with the controller's state carried onto them (OMN-23665).
 
     Every CARRIED_FACT_FIELDS value is the controller's. A pull request that is in the controller's
     facts at the same head takes the controller's CARRIED_PR_FIELDS values; one the controller does
     not hold, or holds at another head, keeps its own. The node's own prs, tick and observed_at stay.
+    The external blockers the controller's sidecar holds as judged are filled onto the matching pull
+    requests, and the overlay's external blocker values onto the policy (OMN-22921).
     """
     held = {pr.pr: pr for pr in carry.facts.prs}
+    judged: dict[str, list[ModelLandingExternalJudged]] = {}
+    for row in carry.judged:
+        judged.setdefault(row.pr, []).append(row.judged)
     prs: list[ModelLandingPrFacts] = []
     for pr in facts.prs:
         controller = held.get(pr.pr)
@@ -151,7 +186,14 @@ def carry_controller_state(
             continue
         prs.append(
             pr.model_copy(
-                update={name: getattr(controller, name) for name in CARRIED_PR_FIELDS}
+                update={
+                    **{name: getattr(controller, name) for name in CARRIED_PR_FIELDS},
+                    "external_judged": tuple(
+                        j
+                        for j in judged.get(pr.pr.rpartition("/")[2], ())
+                        if j.head_sha == pr.head_sha
+                    ),
+                }
             )
         )
     values: dict[str, object] = {
@@ -159,6 +201,16 @@ def carry_controller_state(
     }
     values.update({name: getattr(carry.facts, name) for name in CARRIED_FACT_FIELDS})
     values["prs"] = tuple(prs)
+    values["state"] = _bounded_state(carry.facts.state, {pr.pr for pr in prs})
+    if overlay is not None and overlay.external_blocker_kinds is not None:
+        values["policy"] = carry.facts.policy.model_copy(
+            update={
+                "external_blocker_kinds": overlay.external_blocker_kinds,
+                "external_blocker_unbounded_kinds": overlay.external_blocker_unbounded_kinds
+                or (),
+                "external_gate_hours": overlay.external_gate_hours,
+            }
+        )
     return ModelLandingFacts.model_validate(values)
 
 
@@ -245,7 +297,7 @@ class HandlerPrLandingSnapshot:
                 return self._fail(
                     request, EnumSnapshotFailureReason.CONTROLLER_STATE_UNREAD, str(exc)
                 )
-            filled = carry_controller_state(filled, carry)
+            filled = carry_controller_state(filled, carry, self._overlay)
         provenance = f"{self._facts_source.name}+{self._write_source.name}"
         if carry is not None and self._controller_source is not None:
             provenance += f"+{self._controller_source.name}"
@@ -254,10 +306,27 @@ class HandlerPrLandingSnapshot:
             tick=request.tick,
             facts=filled,
             provenance=provenance,
-            controller=carry,
+            controller=decisions_of(carry) if carry is not None else None,
         )
+        limit = self._overlay.record_max_bytes
+        size = len(record.model_dump_json().encode())
+        if limit is not None and size > limit:
+            return self._fail(
+                request,
+                EnumSnapshotFailureReason.RECORD_TOO_LARGE,
+                f"tick {request.tick}'s record is {size} bytes, over the overlay's record_max_bytes {limit}",
+            )
+        try:
+            self._publisher.publish(self._overlay.record_topic, record)
+        except (
+            Exception
+        ) as exc:  # the broker refused or the bus was unreachable: nothing is recorded
+            return self._fail(
+                request,
+                EnumSnapshotFailureReason.PUBLISH_FAILED,
+                f"{type(exc).__name__}: {str(exc)[:200]}",
+            )
         self._recorder.record(record)
-        self._publisher.publish(self._overlay.record_topic, record)
         return ModelLandingSnapshotResult(
             correlation_id=request.correlation_id,
             tick=request.tick,
@@ -273,15 +342,22 @@ class HandlerPrLandingSnapshot:
         reason: EnumSnapshotFailureReason,
         detail: str,
     ) -> ModelLandingSnapshotResult:
-        self._publisher.publish(
-            self._overlay.failed_topic,
-            ModelLandingSnapshotFailedEvent(
-                correlation_id=request.correlation_id,
-                tick=request.tick,
-                reason=reason,
-                detail=detail,
-            ),
-        )
+        try:
+            self._publisher.publish(
+                self._overlay.failed_topic,
+                ModelLandingSnapshotFailedEvent(
+                    correlation_id=request.correlation_id,
+                    tick=request.tick,
+                    reason=reason,
+                    detail=detail,
+                ),
+            )
+        except (
+            Exception
+        ) as exc:  # the bus that refused the record may refuse the failed event too
+            detail = (
+                f"{detail}; the failed event was not published: {type(exc).__name__}"
+            )
         return ModelLandingSnapshotResult(
             correlation_id=request.correlation_id,
             tick=request.tick,
