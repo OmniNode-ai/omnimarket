@@ -22,9 +22,7 @@ from typing import Final, cast
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
-from omnimarket.models.github_landing.model_github_transport_error import (
-    GitHubTransportError,
-)
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_gateway_node_skew import GatewayReadError, failure_error
 from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,

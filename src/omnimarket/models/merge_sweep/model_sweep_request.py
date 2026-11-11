@@ -6,9 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.merge_sweep.model_failure_history_entry import (
-    ModelFailureHistoryEntry,
-)
+from omnimarket.models.merge_sweep.model_history_entry import ModelFailureHistoryEntry
 from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 
 

@@ -32,9 +32,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
-from omnimarket.models.github_landing.model_github_transport_error import (
-    GitHubTransportError,
-)
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.nodes.node_github_repo_gateway_effect import (
     token_resolver,
 )

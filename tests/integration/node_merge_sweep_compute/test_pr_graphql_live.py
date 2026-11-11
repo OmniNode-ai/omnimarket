@@ -13,9 +13,7 @@ import os
 
 import pytest
 
-from omnimarket.models.github_landing.model_github_transport_error import (
-    GitHubTransportError,
-)
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
     GitHubHttpClient,
 )

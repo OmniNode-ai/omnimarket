@@ -65,7 +65,7 @@ def test_the_walk_sees_an_importer_when_one_exists(tmp_path: Path) -> None:
 
 
 def test_new_homes_carry_the_moved_names() -> None:
-    from omnimarket.models.github_landing.model_github_transport_error import (
+    from omnimarket.models.github_landing.model_transport_error import (
         GitHubTransportError,
     )
     from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo

@@ -47,9 +47,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
-from omnimarket.models.github_landing.model_github_transport_error import (
-    GitHubTransportError,
-)
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_github_gateway_io import (
     DEFAULT_LOG_TAIL_BYTES,
     MAX_TEXT_CHARS,

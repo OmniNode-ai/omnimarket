@@ -26,19 +26,13 @@ from typing import TYPE_CHECKING
 from omnimarket.models.merge_sweep.enum_failure_category import EnumFailureCategory
 from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
 from omnimarket.models.merge_sweep.model_classified_pr import ModelClassifiedPR
-from omnimarket.models.merge_sweep.model_failure_history_entry import (
-    ModelFailureHistoryEntry,
-)
 from omnimarket.models.merge_sweep.model_failure_history_summary import (
     ModelFailureHistorySummary,
 )
-from omnimarket.models.merge_sweep.model_merge_sweep_request import (
-    ModelMergeSweepRequest,
-)
-from omnimarket.models.merge_sweep.model_merge_sweep_result import (
-    ModelMergeSweepResult,
-)
+from omnimarket.models.merge_sweep.model_history_entry import ModelFailureHistoryEntry
+from omnimarket.models.merge_sweep.model_merge_sweep_result import ModelMergeSweepResult
 from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
+from omnimarket.models.merge_sweep.model_sweep_request import ModelMergeSweepRequest
 from omnimarket.nodes.contract_topics import contract_topic
 
 if TYPE_CHECKING:

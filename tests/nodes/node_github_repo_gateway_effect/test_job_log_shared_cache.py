@@ -177,7 +177,7 @@ def test_unreadable_cache_fails_closed_without_network(tmp_path, damage):
     import os
     import time
 
-    from omnimarket.models.github_landing.model_github_transport_error import (
+    from omnimarket.models.github_landing.model_transport_error import (
         GitHubTransportError,
     )
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
@@ -251,7 +251,7 @@ def test_completed_step_metadata_is_reused_with_cached_bytes(tmp_path):
 def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
     import json
 
-    from omnimarket.models.github_landing.model_github_transport_error import (
+    from omnimarket.models.github_landing.model_transport_error import (
         GitHubTransportError,
     )
     from omnimarket.models.model_github_gateway_io import ModelJobLogTailResult
@@ -302,7 +302,7 @@ def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
 
 
 def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
-    from omnimarket.models.github_landing.model_github_transport_error import (
+    from omnimarket.models.github_landing.model_transport_error import (
         GitHubTransportError,
     )
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
@@ -327,7 +327,7 @@ def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
 
 def test_stream_ceiling_never_publishes_an_incomplete_cache(tmp_path, monkeypatch):
     from omnimarket.github_landing import github_landing_transport
-    from omnimarket.models.github_landing.model_github_transport_error import (
+    from omnimarket.models.github_landing.model_transport_error import (
         GitHubTransportError,
     )
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers import (

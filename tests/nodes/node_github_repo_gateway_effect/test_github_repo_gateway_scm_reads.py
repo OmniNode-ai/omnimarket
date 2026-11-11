@@ -31,9 +31,7 @@ from omnimarket.github_landing.github_landing_transport import (
     _read_window,
     step_second,
 )
-from omnimarket.models.github_landing.model_github_transport_error import (
-    GitHubTransportError,
-)
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.nodes.node_github_repo_gateway_effect import __main__ as gateway_cli
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (

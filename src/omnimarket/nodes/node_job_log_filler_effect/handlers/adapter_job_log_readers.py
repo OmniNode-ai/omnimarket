@@ -19,9 +19,7 @@ from omnimarket.handlers.scm.handler_gateway_read_client import (
     GATEWAY_BUS_LANE_ENV,
     read_over_bus,
 )
-from omnimarket.models.github_landing.model_github_transport_error import (
-    GitHubTransportError,
-)
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_gateway_node_skew import GatewayReadError
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,

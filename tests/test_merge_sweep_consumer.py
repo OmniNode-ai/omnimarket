@@ -89,7 +89,7 @@ class TestBuildRequest:
         assert github.fetch_open_prs.call_count == 2
 
     def test_transport_error_skips_repo(self, tmp_path: pathlib.Path) -> None:
-        from omnimarket.models.github_landing.model_github_transport_error import (
+        from omnimarket.models.github_landing.model_transport_error import (
             GitHubTransportError,
         )
         from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request

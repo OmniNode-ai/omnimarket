@@ -39,9 +39,7 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
-from omnimarket.models.github_landing.model_github_transport_error import (
-    GitHubTransportError,
-)
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_github_gateway_io import (
     DEFAULT_LOG_TAIL_BYTES,
     EnumGithubGatewayOperation,

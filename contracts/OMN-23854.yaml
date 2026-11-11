@@ -55,7 +55,14 @@ dod_evidence:
       - AC3
     checks:
       - check_type: command
-        check_value: grep -q 'omnimarket.models.github_landing.model_github_transport_error' src/omnimarket/nodes/node_job_log_filler_effect/handlers/adapter_job_log_readers.py
+        check_value: grep -q 'omnimarket.models.github_landing.model_transport_error' src/omnimarket/nodes/node_job_log_filler_effect/handlers/adapter_job_log_readers.py
+        cwd: .
+  - id: dod-omn23854-deploy-readback
+    description: Deploy probe. The shared GitHub transport error is present in its new module in the tree this change ships, read through gh api at the checked-out commit so hosted CI can run it before merge. It fails at a base that has no such module.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/github_landing/model_transport_error.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^class GitHubTransportError' > /dev/null
         cwd: .
   - id: dod-omn23854-integration-proof
     description: The pushed head ran the import-graph test and the gateway, job-log filler, health monitor, snapshot effect and overnight test directories on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

@@ -19,9 +19,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.models.merge_sweep.model_merge_sweep_result import (
-    ModelMergeSweepResult,
-)
+from omnimarket.models.merge_sweep.model_merge_sweep_result import ModelMergeSweepResult
 
 
 class ModelTriageRequest(BaseModel):
