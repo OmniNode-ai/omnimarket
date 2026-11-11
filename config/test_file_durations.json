@@ -1866,6 +1866,7 @@
   "tests/nodes/node_projection_context_roi/test_chains_code_edit_rows.py": 1.48,
   "tests/nodes/node_projection_context_roi/test_no_second_result_store.py": 4.46,
   "tests/nodes/node_projection_context_roi/test_row_backcompat.py": 1.46,
+  "tests/nodes/node_projection_context_roi/test_seam_trial_columns_bus.py": 1.71,
   "tests/nodes/node_projection_delegation/test_delegation_runtime_writer.py": 0.17,
   "tests/nodes/node_projection_delegation_inference_response/test_golden_chain_projection_delegation_inference_response.py": 0.03,
   "tests/nodes/node_projection_delegation_inference_response/test_node_projection_delegation_inference_response_contract.py": 0.02,
