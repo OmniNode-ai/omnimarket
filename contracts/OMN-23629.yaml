@@ -70,7 +70,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_code_eval_context_arm_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "node_name: node_code_eval_context_arm_compute" > /dev/null && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/delegation_payload_exemplar.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "exemplar" > /dev/null'
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_code_eval_context_arm_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "name: node_code_eval_context_arm_compute" > /dev/null && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/delegation_payload_exemplar.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "exemplar" > /dev/null'
 - id: dod-omn23629-ac5-integration-hosted
   description: Hosted proxy for the integrated criterion. The golden chains build the exemplar arm and the full-pack arm through the real pack orchestrator at the task's base commit and the selector judges them. The three arms read on the dev lane (tier lists and hashes from the pack receipts) wait for the merge and the dev redeploy through the deploy agent, and the pack-fix ticket OMN-23644 must be merged first.
   source: manual
