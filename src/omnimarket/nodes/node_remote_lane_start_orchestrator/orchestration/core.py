@@ -200,6 +200,7 @@ class RemoteLaneStartOrchestrator:
         self._reader = ledger_reader
         self._host = host
         self._login = login
+        self._login_refusal = ""
         self._placement = placement or HandlerRemoteLanePlacement()
         self._close = close or HandlerRemoteLaneResult()
         self._receipts = receipts or InMemoryReceiptSink()
@@ -321,9 +322,13 @@ class RemoteLaneStartOrchestrator:
         labels skipped); the cell carries the label only, never a token value. A start with no draw wired
         (the in-memory default) writes no cell. The receipt names the drawn label (OMN-23550).
         """
+        self._login_refusal = ""
         if self._login is None:
             return []
         drawn = self._login.draw_login(host)
+        if drawn.state == "refused":
+            # The pool holds a usable token and refused this start (the lanes-per-label cap, OMN-23636).
+            self._login_refusal = drawn.refusal or "refused"
         receipt.login = drawn.label
         self._say(
             f"login host={host.name} label={drawn.label or 'none'}"
@@ -536,6 +541,14 @@ class RemoteLaneStartOrchestrator:
             )
             self._state(receipt, EnumRemoteLaneStartOutcome.ALREADY_CLAIMED.value)
             return self._result(EnumRemoteLaneStartOutcome.ALREADY_CLAIMED, receipt)
+        login_cells = self._login_cells(host_ref, receipt)
+        if self._login_refusal:
+            self._say(
+                f"REMOTE-LANE-LOGIN-REFUSED lane={request.lane} host={host_ref.name} refusal={self._login_refusal}: "
+                "the token pool refused this start; nothing was claimed and no engine was started"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.LOGIN_REFUSED.value
+            return self._result(EnumRemoteLaneStartOutcome.LOGIN_REFUSED, receipt)
         claim_cells = [
             *self._cells(request, host_ref.name)[:2],
             f"actor={self._s.actor}",
@@ -544,7 +557,7 @@ class RemoteLaneStartOrchestrator:
             *self._cells(request, host_ref.name)[2:],
             f"priority={self._s.priority}",
             self._worktree_cell(request),
-            *self._login_cells(host_ref, receipt),
+            *login_cells,
         ]
         claim_row, appended = self._append(
             request,
