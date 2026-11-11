@@ -104,6 +104,10 @@ def _hosted(provider: str) -> bool:
     return not setup_provider_traits().needs_url(provider)
 
 
+def _server_defaults() -> set[str]:
+    return {_default_url(e.provider) for e in _picker() if e.default_port}
+
+
 def _default_url(provider: str) -> str:
     entry = _entry(provider)
     return loopback_url(entry.default_port) if entry and entry.default_port else ""
@@ -151,9 +155,20 @@ class ModelTuiSetupChoice(BaseModel):
         return argv + (("--url", self.url) if self.url else ())
 
     def more_models_argv(self) -> tuple[str, ...] | None:
-        """`models add-model` for every model after the first, in the order chosen."""
+        """The command that adds every model after the first, in the order chosen.
+
+        A keyed provider extends its stored key with `models add-model`. A server
+        with no key (Ollama, a local server) has no key to extend: it declares all
+        of its models, in order, under the endpoint owner setup registered it as,
+        with `models add <owner> --url URL --model ...`.
+        """
         if len(self.models) < 2:
             return None
+        traits = setup_provider_traits()
+        if self.url and self.key is None and traits.needs_url(self.provider):
+            owner = traits.registration(self.provider, keyed=False)
+            every = tuple(part for m in self.models for part in ("--model", m))
+            return ("models", "add", owner, "--url", self.url, *every)
         extra = tuple(part for m in self.models[1:] for part in ("--model", m))
         return ("models", "add-model", self.provider, *extra)
 
@@ -434,6 +449,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         self._rows: list[tuple[str, str]] = []
         self._ticked: set[str] = set()
         self._find_timer: Timer | None = None
+        self._loading = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
@@ -481,7 +497,8 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     def _show_fields(self) -> None:
         hosted = _hosted(self._provider())
         url = self.query_one("#url", Input)
-        if not hosted and not url.value.strip():
+        # A default the user has not edited follows the provider; a typed URL stays.
+        if not hosted and url.value.strip() in {"", *_server_defaults()}:
             url.value = _default_url(self._provider())
         self.query_one("#key").display = hosted
         self.query_one("#url").display = not hosted
@@ -518,6 +535,15 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         provider = self._provider()
         wanted = self._source()
         note.update(f"loading {_label(provider)} models…")
+        self._loading = True
+        try:
+            await self._fetch(note, provider, wanted)
+        finally:
+            self._loading = False
+
+    async def _fetch(
+        self, note: Static, provider: str, wanted: tuple[str, str]
+    ) -> None:
         if _hosted(provider):
             key = self._value("key")
             if not key:
@@ -615,7 +641,9 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             note.update("finding models…")
             await self._find()
         elif event.button.id == "add":
-            if self._add_current():
+            if self._loading:
+                note.update("still loading models… tick them once they appear")
+            elif self._add_current():
                 note.update("added; pick another provider, or Save")
             else:
                 note.update("tick or type a model first")
@@ -1199,6 +1227,7 @@ class OnexTui(App[int]):
                 (*choice.argv(Path.cwd()), "--json"), stdin=stdin
             )
             ok = self._write_setup_report(_setup_report(out), code, err)
+            ready = list(choice.models[:1])
             more = choice.more_models_argv()
             if ok and more:
                 code, out, err = await self._runner.capture(more)
@@ -1214,10 +1243,12 @@ class OnexTui(App[int]):
                         style=_style("error"),
                     )
                 )
+                if not code:
+                    ready = list(choice.models)
             if ok:
                 self._write(
                     Text(
-                        f"Ready: {_label(choice.provider)} · {models}. "
+                        f"Ready: {_label(choice.provider)} · {', '.join(ready)}. "
                         "Type a task to try it, or /model to choose which goes first.",
                         style=_style("success", "bold"),
                     )

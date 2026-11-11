@@ -423,8 +423,12 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         )
         assert runner.calls[-1] == (
             "models",
-            "add-model",
-            "ollama",
+            "add",
+            "local",
+            "--url",
+            _OLLAMA_DEFAULT,
+            "--model",
+            "llama3.2",
             "--model",
             "qwen3:8b",
         )
@@ -735,7 +739,9 @@ def test_config_providers_come_from_the_traits_file_sorted_by_label() -> None:
         "ollama",
         "openai",
         "openrouter",
+        "local",
     ]
+    assert cli_tui._default_url("local").endswith(":8000")
     assert all(entry.hint for entry in choices)
     for entry in choices:
         assert cli_tui._hosted(entry.provider) is not traits.needs_url(entry.provider)
@@ -908,3 +914,61 @@ async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
         await pilot.pause()
         await pilot.pause()
         assert any(call[0] == "setup" for call in runner.calls)
+
+
+async def test_models_that_fail_to_add_are_not_called_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ready names only what was set up; a failed extra shows its error."""
+    monkeypatch.chdir(tmp_path)
+    found = json.dumps({"status": "ready", "models": ["big-27b", "small-1b"]})
+
+    class _AddFails(_Runner):
+        async def capture(
+            self, argv: tuple[str, ...], stdin: str | None = None
+        ) -> tuple[int, str, str]:
+            if argv[:2] == ("models", "add"):
+                self.calls.append(argv)
+                return 1, "", "Error: small-1b did not answer"
+            return await super().capture(argv, stdin)
+
+    runner = _AddFails(
+        [],
+        by_command={
+            ("models", "discover"): found,
+            ("setup", "--no-interactive"): _SETUP_REPORT,
+        },
+    )
+    app = _app(runner)
+    async with app.run_test(size=(100, 44)) as pilot:
+        await _open_config(pilot, app)
+        await _press(pilot, app, "find")
+        app.screen.query_one("#found").select("big-27b")
+        app.screen.query_one("#found").select("small-1b")
+        await pilot.pause()
+        await _press(pilot, app, "save")
+        await pilot.pause()
+        await pilot.pause()
+        text = _log_text(app)
+        assert "adding small-1b: Error: small-1b did not answer" in text
+        assert "Ready: Ollama · big-27b." in text
+        assert "Ready: Ollama · big-27b, small-1b" not in text
+
+
+async def test_switching_server_provider_moves_an_unedited_default_but_keeps_a_typed_url() -> (
+    None
+):
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import _default_url
+
+    app = _app(_Runner([]))
+    async with app.run_test(size=(120, 44)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        assert screen.query_one("#url").value == _default_url("ollama")
+        screen.query_one("#provider").value = "local"
+        await pilot.pause()
+        assert screen.query_one("#url").value == _default_url("local")
+        screen.query_one("#url").value = "http://gpu-box:8000"
+        screen.query_one("#provider").value = "ollama"
+        await pilot.pause()
+        assert screen.query_one("#url").value == "http://gpu-box:8000"

@@ -34,3 +34,9 @@ picker:
   - provider: openrouter
     label: OpenRouter
     hint: Create a key at openrouter.ai/keys.
+  - provider: local
+    label: vLLM
+    default_port: 8000
+    hint: >-
+      A vLLM server you run, or any OpenAI-compatible one (LM Studio, llama.cpp, MLX).
+      Enter its address, for example http://<host>:8000.
