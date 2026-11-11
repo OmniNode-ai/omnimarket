@@ -27,7 +27,7 @@ class ModelGithubHttpRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    method: Literal["GET", "POST", "PUT", "PATCH"]
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
     path: str = Field(
         min_length=2,
         description="Path from the API root, with any query string; /graphql for GraphQL.",

@@ -198,6 +198,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="check_run_create",
         replaces="gh api --method POST /repos/{o}/{r}/check-runs",
     ),
+    ModelScmVerb(
+        verb="pr-label",
+        node=_W,
+        operation="pr_label",
+        replaces="gh api --method POST /repos/{o}/{r}/issues/{n}/labels",
+    ),
 )
 
 LANDING_CONTROLLER: Final[str] = (

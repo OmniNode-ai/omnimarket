@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-23821
+title: The GitHub write node adds and removes a label on a pull request
+summary: The GitHub write node had no label operation, so a lane could not add the ready-for-CI label to a draft pull request and the raw command-line write is refused to lanes. The node now serves a pr_label operation (add and remove on one pull request, pinned to the expected head, limited to the labels its overlay names, writing nothing twice on a repeated key) and onex scm serves it as the pr-label verb.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- events
+- public_api
+requirements:
+- id: req-omn23821-pr-label
+  statement: The GitHub write node serves a head-pinned pr_label operation whose allowed labels come from its overlay, and onex scm serves it as pr-label.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the GitHub write node accepts a pr_label operation with add and remove on one pull request, refuses any label not named in its declared overlay setting, refuses a moved head like pr_edit, and writes nothing twice on a repeated idempotency key -- falsifier: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_label.py -q --no-cov -n 0 -p no:randomly fails at the base because the operation does not exist'
+  - id: AC2
+    statement: 'AC2: the onex scm CLI serves a pr-label verb on the write node, and a golden chain event test and an error chain event test (label not allowed, head moved) read the typed completed and failed events on the in-memory bus and on the real broker -- falsifier: the same chain test run with the contract operation removed fails with an unknown operation refusal'
+  - id: AC3
+    statement: 'AC3: integrated: after the change is installed on the dev runtime through the deploy agent, onex scm pr-label adds the ci:ready label to a draft pull request that a lane owns and removes it again, and the pull request watcher reads the label set both times -- falsifier: the verb prints no_consumer_for_topic or the watcher label set does not change'
+evidence_requirements:
+- kind: tests
+  description: The focused test files at the pushed head; the pr_label handler tests, the chain tests, the scm verb tests and the operation table cases fail at origin/dev where the operation does not exist.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_label.py tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_onex_scm_command.py tests/ci/test_scm_operation_table_omn20912.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23821-ac1-handler
+  description: The pr_label handler tests (add, remove, label not allowed, head moved, repeated key writes once). Fail at origin/dev, where the overlay module and the operation do not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_label.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23821-ac2-chain-and-verb
+  description: The golden chain and error chain legs for pr_label on the in-memory bus, the onex scm pr-label verb tests and the operation table cases (including the pr_label dropped plant). The real-broker reading is taken on the dev lane after the deploy agent installs the change and is recorded on the ticket.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_onex_scm_command.py tests/ci/test_scm_operation_table_omn20912.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23821-ac3-integration-proof
+  description: The pushed head ran the focused tests on a lab host through the lab work runner and exited 0. The dev runtime reading (onex scm pr-label adds and removes the label on a draft pull request a lane owns, the watcher label set read before and after) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23821 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_label.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

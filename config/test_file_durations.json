@@ -4419,6 +4419,7 @@
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py": 6.84,
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_idempotency_conflict.py": 0.3,
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_lease_fence_omn21425.py": 0.97,
+  "tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_label.py": 0.6,
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_review_post.py": 0.16,
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_reply.py": 0.44,
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py": 0.42,
