@@ -153,6 +153,7 @@ class EnumLandingLandSkipReason(StrEnum):
     LAB_CHECK_SUPERSEDED = "lab_check_superseded"
     LAB_CHECK_FAILED = "lab_check_failed"
     LAB_CHECK_PENDING = "lab_check_pending"
+    LIVENESS_UNDECLARED = "liveness_undeclared"
 
 
 # A person's hold, a draft and do-not-land keep a PR out of every shared cause;

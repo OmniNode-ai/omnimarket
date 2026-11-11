@@ -9,11 +9,16 @@ Steps, in order (``SETUP_STEPS``):
 ``user_config``     write ``<onex_home>/config.yaml`` when it does not exist
 ``runtime_config``  write the workspace runtime configuration, then record the
                     workspace and path in ``<onex_home>/setup.json``
+``model``           store the user's key through the handler ``onex models add``
+                    uses, run one delegation pinned to it and read its receipt
+                    back; the walk ends only when that delegation answered on the
+                    provider and model named
 
-Every step is idempotent and every write is atomic (a temporary file renamed
+Every step but ``model`` is idempotent and every write is atomic (a temporary file renamed
 into place), so a walk that stops at a failed step leaves nothing half-written
 and the next run resumes from that step. A second run on a configured machine
-writes nothing. Which omnibase install.sh step went where is recorded in
+writes nothing; ``model`` stores the key again and proves the delegation again, which
+is what a retry with a corrected key needs. Which omnibase install.sh step went where is recorded in
 ``setup_step_inventory.yaml`` beside this node's contract.
 """
 
@@ -24,6 +29,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
@@ -32,6 +38,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupFailure,
+    ModelOnexSetupReceipt,
     ModelOnexSetupRequest,
     ModelOnexSetupResult,
     ModelOnexSetupState,
@@ -43,7 +50,28 @@ SETUP_STEPS: tuple[str, ...] = (
     "prerequisites",
     "user_config",
     "runtime_config",
+    "model",
 )
+#: The providers setup offers. Ollama is not one: a user who runs it names it as
+#: ``--provider local --url <its OpenAI-compatible base URL>``.
+SETUP_PROVIDERS: tuple[str, ...] = (
+    "gemini",
+    "openrouter",
+    "openai",
+    "openai_compatible",
+    "local",
+)
+#: Providers setup refuses, each with its problem and the way to reach it instead.
+REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {
+    "ollama": (
+        "ollama is not a setup provider",
+        "reach Ollama by its OpenAI-compatible URL: "
+        "--provider local --url http://localhost:11434/v1 --model <a model it runs>",
+    ),
+}
+URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible")
+KEYLESS_PROVIDERS: tuple[str, ...] = ("local",)
+ARGUMENTS_STEP = "arguments"
 SETUP_MARKER = "# generated-by: onex setup"
 INSTALL_SH_MARKER = "# generated-by: omnibase install.sh"
 INSTALL_PATHS: tuple[str, ...] = ("local", "docker")
@@ -164,11 +192,111 @@ def _recorded_path(runtime_config: Path) -> str | None:
     return None
 
 
-def retry_command(workspace: Path | None, install_path: str | None) -> str:
-    args = ["onex", "setup", "--workspace", str(workspace) if workspace else "DIR"]
+def retry_command(
+    workspace: Path | None,
+    install_path: str | None,
+    request: ModelOnexSetupRequest | None = None,
+) -> str:
+    """The full command that resumes the walk. It never carries a key: that is stdin's."""
+    args = ["onex", "setup"]
+    if request is not None and request.unattended:
+        args.append("--no-interactive")
+    args += ["--workspace", str(workspace) if workspace else "DIR"]
     if install_path in INSTALL_PATHS:
         args += ["--path", str(install_path)]
+    if request is not None:
+        if request.provider:
+            args += ["--provider", request.provider]
+        if request.model:
+            args += ["--model", request.model]
+        if request.url:
+            args += ["--url", request.url]
     return shlex.join(args)
+
+
+def _refuse(
+    request: ModelOnexSetupRequest,
+    problem: str,
+    fix: str,
+    *,
+    retry_request: ModelOnexSetupRequest | None = None,
+) -> ModelOnexSetupResult:
+    retry_with = retry_request or request
+    return ModelOnexSetupResult(
+        workspace=request.workspace,
+        install_path=request.install_path,
+        steps=(),
+        failure=ModelOnexSetupFailure(
+            step=ARGUMENTS_STEP,
+            problem=problem,
+            fix=fix,
+            retry=retry_command(request.workspace, request.install_path, retry_with),
+        ),
+    )
+
+
+def refused_before_any_step(
+    request: ModelOnexSetupRequest,
+) -> ModelOnexSetupResult | None:
+    """The refusal for a request that cannot complete, raised before any step runs.
+
+    A provider setup does not offer is refused in every mode. In the unattended
+    form every choice must be named, so the first missing one is refused here,
+    naming its flag, with nothing written.
+    """
+    provider = request.provider.lower() if request.provider else None
+    if provider in REFUSED_PROVIDERS:
+        problem, fix = REFUSED_PROVIDERS[provider]
+        return _refuse(
+            request,
+            problem,
+            fix,
+            retry_request=request.model_copy(update={"provider": None}),
+        )
+    if provider is not None and provider not in SETUP_PROVIDERS:
+        return _refuse(
+            request,
+            f"unknown provider '{request.provider}'",
+            f"use --provider with one of: {', '.join(SETUP_PROVIDERS)}",
+        )
+    if not request.unattended:
+        return None
+    if request.workspace is None:
+        return _refuse(
+            request,
+            "--workspace is missing: no workspace root is named, and there is no "
+            "terminal to ask in",
+            "pass --workspace DIR, or export OMNIBASE_PATH=DIR",
+        )
+    if provider is None:
+        return _refuse(
+            request,
+            "--provider is missing",
+            f"pass --provider with one of: {', '.join(SETUP_PROVIDERS)}",
+        )
+    if not request.model:
+        return _refuse(
+            request,
+            "--model is missing: nothing is chosen for you",
+            f"pass --model with a model your {provider} "
+            + ("server runs" if provider in KEYLESS_PROVIDERS else "key can run"),
+        )
+    if provider in URL_PROVIDERS and not request.url:
+        return _refuse(
+            request,
+            f"--url is missing: --provider {provider} needs the server's base URL",
+            f"pass --url http://<host>:<port> with --provider {provider}",
+        )
+    if provider not in KEYLESS_PROVIDERS and (
+        request.key is None or not request.key.get_secret_value().strip()
+    ):
+        return _refuse(
+            request,
+            f"no {provider} key was given on stdin",
+            "pipe the key in on stdin, for example from your secret manager's "
+            "read command; it is never accepted as an argument",
+        )
+    return None
 
 
 def _step_workspace(workspace: Path | None) -> tuple[Path, bool]:
@@ -283,10 +411,78 @@ def _step_runtime_config(
     return runtime_config, written or recorded
 
 
+def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
+    """Store the key through the handler ``onex models add`` uses, then read one delegation's receipt.
+
+    The delegation is the pinned test ``onex models add`` runs (one ``onex delegate``
+    pinned to the provider's backend). The step passes only when it answered, on the
+    provider and the model named; nothing is passed to it but the backend id.
+    """
+    from omnimarket.handlers import handler_model_keys as model_keys
+    from omnimarket.handlers.handler_local_model_setup import (
+        HandlerLocalModelSetup,
+        ModelLocalModelSetupRequest,
+    )
+    from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+        ModelSetupRefusedError,
+    )
+
+    provider = (request.provider or "").lower()
+    model = request.model or ""
+    try:
+        if provider in KEYLESS_PROVIDERS:
+            result = HandlerLocalModelSetup().handle(
+                ModelLocalModelSetupRequest(url=request.url, model=model)
+            )
+        else:
+            key = request.key.get_secret_value() if request.key is not None else ""
+            result = model_keys.add_key(provider, key, (model,), url=request.url)
+    except (model_keys.ModelKeyRefusedError, ModelSetupRefusedError) as refusal:
+        raise _StepFailedError(
+            "model",
+            str(refusal),
+            "check the key and the model against the provider's own pages"
+            if provider not in KEYLESS_PROVIDERS
+            else "check that the server is up at --url and runs that model",
+        ) from None
+    if result is None or result.status != "passed":
+        reason = (result.reason if result is not None else None) or "no delegation ran"
+        throttled = result is not None and result.status == "throttled"
+        raise _StepFailedError(
+            "model",
+            f"the test delegation did not answer on {provider}/{model}: {reason}",
+            "the provider is throttling; run the retry command again shortly"
+            if throttled
+            else "fix the key or the server, then run the retry command again",
+        )
+    if result.model != model:
+        raise _StepFailedError(
+            "model",
+            f"the delegation answered on model '{result.model}', not the '{model}' named",
+            f"check which models {provider} offers your key, then name one with --model",
+        )
+    return ModelOnexSetupReceipt(
+        provider=provider,
+        model=result.model,
+        backend_id=result.backend_id,
+        endpoint=result.endpoint,
+        tested_at=result.tested_at,
+    )
+
+
+ModelStep = Callable[[ModelOnexSetupRequest], ModelOnexSetupReceipt]
+
+
 class HandlerOnexSetup:
     """Run every step in order; stop at the first that fails and name its fix."""
 
+    def __init__(self, model_step: ModelStep | None = None) -> None:
+        self._model_step: ModelStep = model_step or prove_model
+
     def handle(self, request: ModelOnexSetupRequest) -> ModelOnexSetupResult:
+        refused = refused_before_any_step(request)
+        if refused is not None:
+            return refused
         steps: list[ModelOnexSetupStepOutcome] = []
         workspace: Path | None = request.workspace
         install_path: str | None = request.install_path
@@ -322,6 +518,14 @@ class HandlerOnexSetup:
                     step="runtime_config", changed=changed, detail=str(runtime_config)
                 )
             )
+            receipt = self._prove_model(request)
+            steps.append(
+                ModelOnexSetupStepOutcome(
+                    step="model",
+                    changed=True,
+                    detail=f"{receipt.provider} {receipt.model} answered one delegation",
+                )
+            )
         except _StepFailedError as failed:
             return ModelOnexSetupResult(
                 workspace=workspace,
@@ -331,23 +535,41 @@ class HandlerOnexSetup:
                     step=failed.step,
                     problem=failed.problem,
                     fix=failed.fix,
-                    retry=retry_command(workspace, install_path),
+                    retry=retry_command(workspace, install_path, request),
                 ),
             )
         return ModelOnexSetupResult(
-            workspace=workspace, install_path=install_path, steps=tuple(steps)
+            workspace=workspace,
+            install_path=install_path,
+            steps=tuple(steps),
+            receipt=receipt,
         )
+
+    def _prove_model(self, request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
+        if not request.provider or not request.model:
+            raise _StepFailedError(
+                "model",
+                "no provider and model are named",
+                "pass --provider and --model (onex setup asks for them in a terminal)",
+            )
+        return self._model_step(request)
 
 
 __all__ = [
     "INSTALL_PATHS",
     "INSTALL_SH_MARKER",
+    "KEYLESS_PROVIDERS",
+    "REFUSED_PROVIDERS",
     "RUNTIME_CONFIG_RELPATH",
     "SETUP_MARKER",
+    "SETUP_PROVIDERS",
     "SETUP_STEPS",
+    "URL_PROVIDERS",
     "HandlerOnexSetup",
     "compose_available",
+    "prove_model",
     "recorded_state",
+    "refused_before_any_step",
     "retry_command",
     "which",
 ]
