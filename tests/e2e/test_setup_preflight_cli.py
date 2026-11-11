@@ -78,7 +78,13 @@ def test_actual_preflight_is_readonly_and_never_prompts(
         )
         assert observation.evidence["platform"] == platform.system()
         assert "Welcome" not in result.stdout
-        assert observation.evidence.get("free_disk_bytes", "").isdigit()
+        assert set(observation.evidence) == {
+            "platform",
+            "architecture",
+            "macos_version",
+            "rosetta",
+            "virtual_machine",
+        }
     else:
         assert "Welcome To OmniNode Delegation Onboarding" in result.stdout
         assert "preflight" in result.stdout.lower()

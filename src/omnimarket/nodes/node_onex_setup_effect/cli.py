@@ -9,24 +9,30 @@ input or stdin and are never included in a saved plan.
 
 from __future__ import annotations
 
-import os
-import stat
 import sys
+from collections.abc import Callable
+from functools import wraps
 from getpass import getpass
 from pathlib import Path
 from shutil import get_terminal_size
+from typing import Any
 
 import click
 from click.core import ParameterSource
 from omnibase_core.cli.cli_user_config import user_config_path
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
 
-from omnimarket.handlers.handler_endpoint_catalog import discover_models
+from omnimarket.handlers.handler_endpoint_catalog import HandlerEndpointCatalog
+from omnimarket.handlers.handler_endpoint_probe import HandlerModelProbe
+from omnimarket.handlers.routing import byok_provider_backends
+from omnimarket.nodes.node_onex_setup_effect.cli_choices import ask_choices
+from omnimarket.nodes.node_onex_setup_effect.cli_workflow import run_workflow_cli
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
-    SETUP_PROVIDERS,
-    URL_PROVIDERS,
     recorded_state,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins import (
+    HandlerSetupPlugins,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
     HandlerSetupPreflight,
@@ -37,181 +43,42 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow imp
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_banner import (
     ModelSetupBanner,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_cli_failure import (
+    ModelSetupCliFailure,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
 
+discover_models = HandlerEndpointCatalog().discover
+probe_models = HandlerModelProbe().probe
 
-def _workflow_cli(
-    ctx: click.Context,
-    *,
-    workspace: Path | None,
-    action: str | None,
-    components: tuple[str, ...],
-    plan_file: Path | None,
-    provider: str | None,
-    model: str | None,
-    url: str | None,
-    json_output: bool,
-    yes: bool,
-    interactive: bool,
-    developer: bool,
-    saved: ModelSetupPlan | None,
-    endpoint_auth: str | None,
-    prepared_credentials: dict[str, SecretStr] | None = None,
-) -> None:
-    if plan_file is None:
-        if provider and not model:
-            raise click.ClickException(
-                "--model is missing. Name the selected provider's ordered models."
-            )
-        if not provider and (model or url):
-            raise click.ClickException(
-                "--provider is missing. Name the provider for these model selections."
-            )
-        if provider in URL_PROVIDERS and not url:
-            raise click.ClickException(f"--url is missing for --provider {provider}.")
-    try:
-        if plan_file is not None:
-            if (
-                workspace is not None
-                or action is not None
-                or components
-                or provider
-                or model
-                or url
-                or developer
-                or endpoint_auth
-            ):
-                raise ValueError("Plan and inline selections conflict")
-            fd = os.open(plan_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-            with os.fdopen(fd, "rb") as source:
-                info = os.fstat(source.fileno())
-                if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
-                    raise ValueError("Invalid plan file")
-                raw = source.read(1024 * 1024 + 1)
-            plan = ModelSetupPlan.model_validate_json(raw)
-        else:
-            providers = [
-                {
-                    "provider": name.strip(),
-                    "models": tuple(
-                        item.strip()
-                        for item in (model or "").split(",")
-                        if item.strip()
-                    ),
-                    "url": url,
-                    "api_key_required": endpoint_auth == "api-key",
-                }
-                for name in (provider or "").split(",")
-                if name.strip()
-            ]
-            if not provider and (model or url):
-                raise ValueError("Name the provider for inline model selections")
-            reuse = saved is not None and workspace == saved.workspace
-            plan = ModelSetupPlan.model_validate(
-                {
-                    "workspace": workspace or Path.home() / "Code" / "omnibase",
-                    "action": action or "install",
-                    "components": components
-                    or (
-                        saved.components
-                        if saved is not None and reuse
-                        else ("delegation",)
-                    ),
-                    "providers": providers
-                    or (
-                        saved.providers
-                        if saved is not None and reuse and provider is None
-                        else ()
-                    ),
-                    "developer": developer
-                    or (saved.developer if saved is not None and reuse else False),
-                }
-            )
-        unsupported = set(plan.components) - HandlerSetupWorkflow.supported_components()
-        if unsupported:
-            raise click.ClickException(
-                "Setup adapters are not integrated yet for: "
-                + ", ".join(sorted(unsupported))
-                + ". Nothing was installed."
-            )
-    except (OSError, ValueError, ValidationError):
-        raise click.ClickException(
-            "Invalid or conflicting setup selections. Use a bounded secret-free JSON plan with supported components; inline flags cannot override --plan."
-        ) from None
-    credentials: dict[str, SecretStr] = dict(prepared_credentials or {})
-    if plan.action != "verify":
-        if "delegation" in plan.components and not plan.providers:
-            raise click.ClickException(
-                "Choose provider models before installation using --provider/--model or --plan."
-            )
-        if not yes and not interactive:
-            raise click.ClickException(
-                "Review the setup destination, selected models and unknown/API billing costs, then repeat with --yes."
-            )
-        keyed = [
-            selection.provider for selection in plan.providers if selection.needs_key
-        ]
-        if not sys.stdin.isatty() and len(keyed) > 1:
-            raise click.ClickException(
-                "Multiple provider keys require hidden terminal prompts or preconfigured canonical store references."
-            )
-        for name in keyed:
-            if name in credentials:
-                continue
-            key = _read_key(
-                "openai_compatible" if name == "ollama" else name, interactive
-            )
-            if key is None:
-                raise click.ClickException(
-                    "A selected provider needs a credential on hidden input or stdin. Nothing was installed."
-                )
-            credentials[name] = key
-        if not yes:
-            click.echo(
-                f"Workspace: {plan.workspace}\nAction: {plan.action}\nComponents: {', '.join(plan.components)}"
-            )
-            for selection in plan.providers:
+
+def _json_failures[**P, R](function: Callable[P, R]) -> Callable[P, R]:
+    @wraps(function)
+    def invoke(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return function(*args, **kwargs)
+        except click.ClickException as error:
+            if kwargs.get("json_output"):
                 click.echo(
-                    f"Models: {selection.provider}: {', '.join(selection.models)}; price: unknown"
+                    ModelSetupCliFailure(
+                        message=error.format_message()
+                    ).model_dump_json()
                 )
-            if not click.confirm(
-                "Apply this setup and run its selected model proofs, accepting any provider API charges?",
-                default=False,
-            ):
-                raise click.Abort()
-    journal = HandlerSetupWorkflow(
-        onex_home=user_config_path().parent, credentials=credentials
-    ).handle(plan)
-    if json_output:
-        click.echo(journal.model_dump_json())
-    else:
-        for item in journal.observations:
-            click.echo(
-                f"[{item.status}] {item.step} ({'changed' if item.changed else 'unchanged'})"
-            )
-            for label, value in item.evidence.items():
-                click.echo(f"  {label}: {value}")
-            for receipt in item.receipts:
-                click.echo(
-                    f"Receipt: provider={receipt.provider} model={receipt.model} backend={receipt.backend_id or '-'} tested_at={receipt.tested_at}"
-                )
-            if item.fix:
-                click.echo(f"Fix: {item.fix}", err=True)
-            if item.retry:
-                click.echo(f"Retry: {item.retry}", err=True)
-                if credentials:
-                    click.echo(
-                        "Provide the required key again via hidden input or stdin; it is not saved in the retry command.",
-                        err=True,
-                    )
-        if all(item.status in ("success", "skipped") for item in journal.observations):
-            click.echo("Setup complete.")
-    ctx.exit(
-        0
-        if all(item.status in ("success", "skipped") for item in journal.observations)
-        else 1
+                raise click.exceptions.Exit(error.exit_code) from None
+            raise
+
+    return invoke
+
+
+def _workflow_cli(ctx: click.Context, **kwargs: Any) -> None:
+    run_workflow_cli(
+        ctx,
+        workflow_factory=HandlerSetupWorkflow,
+        onex_home=user_config_path().parent,
+        read_key=_read_key,
+        **kwargs,
     )
 
 
@@ -226,10 +93,18 @@ def _read_key(provider: str | None, interactive: bool) -> SecretStr | None:
     if sys.stdin.isatty():
         if not interactive:
             return None
+        backend = byok_provider_backends.load_byok_provider_catalog().get(provider)
+        if backend and backend.key_page:
+            click.echo(f"Create or manage this provider's key: {backend.key_page}")
         value = getpass(f"Paste your {provider} API key (input hidden): ")
     else:
         value = sys.stdin.read()
     value = value.strip()
+    hint = byok_provider_backends.key_provider_hint(value, provider)
+    if hint is not None and hint != provider:
+        raise click.ClickException(
+            f"This key looks like {hint}, but {provider} was selected. Select the matching provider or enter its key. Nothing was stored."
+        )
     return SecretStr(value) if value else None
 
 
@@ -240,70 +115,41 @@ def _ask_choices(
     *,
     endpoint_auth: str | None = None,
     credentials: dict[str, SecretStr] | None = None,
+    connection_id: str | None = None,
 ) -> tuple[str | None, str | None, str | None]:
-    """Prompt for the provider, model and URL a terminal run was not given."""
-    if provider is None:
-        provider = str(
-            click.prompt(
-                "Provider",
-                type=click.Choice(SETUP_PROVIDERS),
-                default="openrouter",
-            )
-        )
-    if provider in URL_PROVIDERS and url is None:
-        url = str(click.prompt("Server base URL (http://<host>:<port>)", type=str))
-    if model is None and provider in URL_PROVIDERS and url is not None:
-        key = None
-        if provider not in KEYLESS_PROVIDERS or endpoint_auth == "api-key":
-            key = _read_key(
-                "openai_compatible" if provider == "ollama" else provider, True
-            )
-            if key is None:
-                raise click.ClickException(
-                    "This endpoint requires a key on hidden input or stdin."
-                )
-            if credentials is not None:
-                credentials[provider] = key
+    return ask_choices(
+        provider,
+        model,
+        url,
+        endpoint_auth=endpoint_auth,
+        credentials=credentials,
+        connection_id=connection_id,
+        discover=discover_models,
+        read_key=_read_key,
+        probe=probe_models,
+    )
+
+
+class _SetupCommand(click.Command):
+    """Keep parser failures typed before the setup callback can run."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        options = args[: args.index("--")] if "--" in args else args
+        typed = "--json" in options and "--help" not in options
         try:
-            catalog = discover_models(url=url, key=key)
-        except (ValueError, OSError):
-            raise click.ClickException(
-                "The endpoint could not be read. Check its URL and retry."
-            ) from None
-        if catalog.status == "unsupported":
-            click.echo(catalog.message)
-        elif catalog.status != "ready":
-            raise click.ClickException(catalog.message or "Model discovery failed.")
-        elif not catalog.models:
-            raise click.ClickException(
-                "The endpoint exposes no models. Prepare a model on your server, then retry."
+            return super().parse_args(ctx, args)
+        except click.ClickException as error:
+            if not typed:
+                raise
+            click.echo(
+                ModelSetupCliFailure(
+                    message="Invalid setup arguments. Review onex setup --help and provide the required option values."
+                ).model_dump_json()
             )
-        else:
-            for name in catalog.models:
-                click.echo(name)
-            selected = tuple(
-                item.strip()
-                for item in str(
-                    click.prompt(
-                        "Models in preference order (comma-separated IDs)", type=str
-                    )
-                ).split(",")
-            )
-            if (
-                not all(selected)
-                or len(set(selected)) != len(selected)
-                or any(name not in catalog.models for name in selected)
-            ):
-                raise click.ClickException(
-                    "Choose unique model IDs from this endpoint's catalog."
-                )
-            model = ",".join(selected)
-    if model is None:
-        model = str(click.prompt("Model", type=str)).strip()
-    return provider, model, url
+            ctx.exit(error.exit_code)
 
 
-@click.command("setup")
+@click.command("setup", cls=_SetupCommand)
 @click.option(
     "--workspace",
     type=click.Path(path_type=Path),
@@ -329,10 +175,44 @@ def _ask_choices(
 @click.option(
     "--provider",
     default=None,
-    help="Model provider: gemini, openrouter, openai, openai_compatible, local or ollama. "
-    "Ollama is optional and externally managed.",
+    help="Choose a registered provider or an externally managed local/Ollama endpoint.",
 )
 @click.option("--model", default=None, help="The model the key, or the server, runs.")
+@click.option(
+    "--connection",
+    "connection_id",
+    default=None,
+    help="Named server connection; keeps its endpoint, key and model order independent.",
+)
+@click.option(
+    "--native-messages/--no-native-messages",
+    default=None,
+    help="Explicitly declare Anthropic Messages support for this named endpoint.",
+)
+@click.option(
+    "--gateway-connection",
+    default=None,
+    help="Named connection with explicitly declared native Messages support.",
+)
+@click.option(
+    "--gateway-model", default=None, help="Model for Claude gateway requests."
+)
+@click.option(
+    "--gateway-port",
+    type=click.IntRange(0, 65535),
+    default=None,
+    help="Loopback gateway port; 0 allocates an available port.",
+)
+@click.option(
+    "--compose-file",
+    type=click.Path(path_type=Path),
+    help="Existing Compose file for optional local stack.",
+)
+@click.option(
+    "--topology-file",
+    type=click.Path(path_type=Path),
+    help="Matching local stack topology file.",
+)
 @click.option(
     "--url",
     default=None,
@@ -370,6 +250,11 @@ def _ask_choices(
     help="Secret-free typed JSON plan; cannot be combined with inline selections.",
 )
 @click.option(
+    "--completion-name",
+    default=None,
+    help="Optional name for selected completion audio or notification.",
+)
+@click.option(
     "--developer",
     is_flag=True,
     help="Use the developer ONEX plugin profile from the selected workspace.",
@@ -379,7 +264,13 @@ def _ask_choices(
     is_flag=True,
     help="Accept the reviewed setup changes and selected model proof costs.",
 )
+@click.option(
+    "--set-aside",
+    is_flag=True,
+    help="Back up and disable safe conflicting profile lines for this invocation only.",
+)
 @click.pass_context
+@_json_failures
 def setup_command(
     ctx: click.Context,
     workspace: Path | None,
@@ -396,6 +287,15 @@ def setup_command(
     yes: bool,
     developer: bool,
     endpoint_auth: str | None,
+    connection_id: str | None,
+    native_messages: bool | None,
+    gateway_connection: str | None,
+    gateway_model: str | None,
+    gateway_port: int | None,
+    compose_file: Path | None,
+    topology_file: Path | None,
+    completion_name: str | None,
+    set_aside: bool,
 ) -> None:
     """Set up this machine for ONEX: the first command for a new developer.
 
@@ -412,6 +312,12 @@ def setup_command(
     """
     if endpoint_auth is not None and provider != "ollama":
         raise click.ClickException("--endpoint-auth is for --provider ollama.")
+    if connection_id and provider and "," in provider:
+        raise click.ClickException(
+            "One named connection addresses one server. Use a plan for multiple connections."
+        )
+    if native_messages is not None and not connection_id:
+        raise click.ClickException("--native-messages requires a named --connection.")
     if not json_output:
         click.echo(
             ModelSetupBanner.build(
@@ -478,6 +384,24 @@ def setup_command(
             )
     prepared_credentials: dict[str, SecretStr] = {}
     if plan_file is None:
+        if compose_file is not None or topology_file is not None:
+            if compose_file is None or topology_file is None:
+                raise click.ClickException(
+                    "Supply both --compose-file and --topology-file."
+                )
+            components = tuple(
+                dict.fromkeys((*(components or ("delegation",)), "local-stack"))
+            )
+        if gateway_connection or gateway_model or gateway_port is not None:
+            if not gateway_connection or not gateway_model:
+                raise click.ClickException(
+                    "Supply both --gateway-connection and --gateway-model."
+                )
+            components = tuple(
+                dict.fromkeys(
+                    (*(components or ("delegation", "dashboard")), "claude-gateway")
+                )
+            )
         if install_path == "docker":
             components = tuple(
                 dict.fromkeys((*(components or ("delegation",)), "docker"))
@@ -502,12 +426,9 @@ def setup_command(
                         default=",".join(
                             saved.components
                             if saved is not None
-                            else (
-                                "delegation",
-                                "dashboard",
-                                "claude-plugin",
-                                "claude-hooks",
-                            )
+                            else HandlerSetupPlugins(
+                                onex_home=onex_home
+                            ).default_components()
                         ),
                     )
                 )
@@ -525,6 +446,7 @@ def setup_command(
                     url,
                     endpoint_auth=endpoint_auth,
                     credentials=prepared_credentials,
+                    connection_id=connection_id,
                 )
     _workflow_cli(
         ctx,
@@ -542,6 +464,15 @@ def setup_command(
         saved=saved,
         endpoint_auth=endpoint_auth,
         prepared_credentials=prepared_credentials,
+        connection_id=connection_id,
+        native_messages=native_messages,
+        gateway_connection=gateway_connection,
+        gateway_model=gateway_model,
+        gateway_port=gateway_port,
+        compose_file=compose_file,
+        topology_file=topology_file,
+        completion_name=completion_name,
+        set_aside=set_aside,
     )
 
 

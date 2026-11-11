@@ -25,6 +25,7 @@ from pydantic import SecretStr, ValidationError
 
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins import (
     HandlerSetupPlugins,
+    SetupPluginConfigurationError,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup import (
     ModelOnexSetupReceipt,
@@ -140,7 +141,9 @@ class HandlerSetupWorkflow:
         self._default_steps = steps is None
         if plugins is not None and steps is not None:
             raise ValueError("Choose plugin composition or explicit steps, not both")
-        self._plugins = plugins or (HandlerSetupPlugins() if steps is None else None)
+        self._plugins = plugins or (
+            HandlerSetupPlugins(onex_home=onex_home) if steps is None else None
+        )
         self._context: dict[str, object] = {
             "onex_home": onex_home,
             "credentials": credentials,
@@ -282,7 +285,36 @@ class HandlerSetupWorkflow:
     def handle(self, plan: ModelSetupPlan) -> ModelSetupJournal:
         """Verify without writes, or reconcile with atomic per-step checkpoints."""
         if self._plugins is not None:
-            self._steps = self._plugins.steps(plan.components, context=self._context)
+            try:
+                self._steps = self._plugins.steps(
+                    plan.components, context=self._context
+                )
+            except SetupPluginConfigurationError:
+                return ModelSetupJournal(
+                    workspace=plan.workspace,
+                    install_path="docker" if "docker" in plan.components else "local",
+                    desired_digest=hashlib.sha256(
+                        plan.model_dump_json().encode()
+                    ).hexdigest(),
+                    plan=plan,
+                    observations=(
+                        ModelSetupObservation(
+                            step="user_config",
+                            status="failure",
+                            fix="Review config.yaml and its setup_plugins section; configuration was preserved.",
+                            retry=shlex.join(
+                                [
+                                    "onex",
+                                    "setup",
+                                    "--workspace",
+                                    str(plan.workspace),
+                                    "--action",
+                                    "repair",
+                                ]
+                            ),
+                        ),
+                    ),
+                )
         state = self._home / "setup.json"
         lock = self._home / "setup.lock"
         _check_file(state)

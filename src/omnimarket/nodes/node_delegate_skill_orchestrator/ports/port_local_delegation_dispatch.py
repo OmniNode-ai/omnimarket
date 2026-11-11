@@ -127,7 +127,10 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
-from omnimarket.handlers.delegation_first_choice import first_choice_route
+from omnimarket.handlers.delegation_first_choice import (
+    first_choice_route,
+    first_choice_routes,
+)
 from omnimarket.handlers.delegation_model_scope import (
     is_free_model,
     model_scope_refusal,
@@ -167,6 +170,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
 from omnimarket.handlers.routing.local_byok_route import (
+    is_registered_named_connection_route,
     next_chosen_model_byok_route,
     next_registered_byok_route,
     registered_byok_routes,
@@ -1075,7 +1079,9 @@ def _is_customer_byok_route(backend: ModelResolvedDelegationBackend) -> bool:
     (``byok-gemini``, ``byok-openrouter``, ...), the same key the bus path's
     retry budget is read by.
     """
-    return resolve_byok_backend_by_id(backend.backend_id) is not None
+    return resolve_byok_backend_by_id(
+        backend.backend_id
+    ) is not None or is_registered_named_connection_route(backend)
 
 
 # OMN-13597: hard ceiling buffer (seconds) added to the contract-resolved
@@ -2131,6 +2137,8 @@ class LocalDelegationDispatchPort:
         # instead. An explicit pin is the caller's own choice and is left to
         # the terminus. OMN-21212: so is a probe ladder's rung.
         probe_walk = _ACTIVE_PROBE_LADDER.get()
+        chosen_first: ModelResolvedDelegationBackend | None = None
+        ladder_fallback: ModelResolvedDelegationBackend | None = None
         if backend_id is None and probe_walk is None:
             # OMN-19442: a customer's one declared local model answers a class
             # whose own local rung they did not declare, where the terminus
@@ -2148,6 +2156,14 @@ class LocalDelegationDispatchPort:
             # key for any catalogue provider, that provider answers.
             if is_customer_attributed(resolved_tenant_id):
                 backend = substitute_any_registered_byok_route(backend)
+            # A configured first choice is the candidate the customer guard
+            # must inspect. A clean install may have no legacy local/house rung
+            # even though its named endpoint is fully configured.
+            if model is None:
+                chosen_first = first_choice_route(task_type)
+                if chosen_first is not None:
+                    ladder_fallback = backend
+                    backend = chosen_first
             try:
                 refuse_undeclared_local_model(
                     tenant_id=resolved_tenant_id,
@@ -2206,20 +2222,19 @@ class LocalDelegationDispatchPort:
         # OMN-21211: the customer's own local models answer first, in the order
         # they set, then the run takes its ladder, where any key is reached. A
         # pin, a named model and a probe ladder each decide the rung themselves.
-        ladder_entry = backend
+        ladder_entry = ladder_fallback or backend
         local_rungs: tuple[ModelResolvedDelegationBackend, ...] = ()
         if backend_id is None and model is None and probe_walk is None:
             local_rungs = registered_local_model_routes(task_type)
             # OMN-21346: the model the developer chose with ``onex models
             # first`` answers before everything else; a failure carries on in
             # the order the run would have taken without a choice.
-            chosen_first = first_choice_route(task_type)
             if chosen_first is not None:
                 local_rungs = (
                     chosen_first,
                     *(
                         rung
-                        for rung in local_rungs
+                        for rung in (*first_choice_routes(task_type), *local_rungs)
                         if (rung.backend_id, rung.model_id)
                         != (chosen_first.backend_id, chosen_first.model_id)
                     ),

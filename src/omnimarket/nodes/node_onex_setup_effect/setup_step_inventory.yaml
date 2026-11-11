@@ -143,18 +143,26 @@ entries:
 lab_onboarding:
   source_repository: OmniNode-ai/omniclaude
   source_revision: 628da25322e1b1635c0b54fe9dbfbbf7357115b2
-  audit_scope: Surface coverage only. Planned entries are not runtime integration evidence.
-  external_runtime_policy: >-
-    Ollama is optional and connection-only. Users install and run Ollama and
-    prepare their models separately. ONEX accepts endpoint, model and optional
-    authentication; it never installs, launches, serves or downloads Ollama models.
+  audit_scope: All audited functions, flags, phases and artifacts are individually mapped. Integrated
+    means the stated replacement and named controls exist, not that final release or actual model/Docker/Claude
+    evidence is complete. Planned includes partial outcomes and explicitly names the remaining gap.
+  external_runtime_policy: Ollama is optional and connection-only. Users install and run Ollama and prepare
+    their models separately. ONEX accepts endpoint, model and optional authentication; it never installs,
+    launches, serves or downloads Ollama models.
   sources:
   - id: walk
     fixture: lab_onboarding_8c1b3e5e.txt
     git_blob: 8c1b3e5e60f7f124fc5d1fb10e7bc6affcaa038e
     fixture_sha256: 3c1e0c64eb256f6567e0e432262fa9183fab66768ce0bc4b580a6a2639364d7a
-    redacted_lines: [1208, 1820, 1858, 1859, 1866, 1869]
-    redaction: Private repository references are replaced in the public audit copy. All 273 inventoried capabilities are preserved; git_blob identifies the original audited source.
+    redacted_lines:
+    - 1208
+    - 1820
+    - 1858
+    - 1859
+    - 1866
+    - 1869
+    redaction: Private repository references are replaced in the public audit copy. All 273 inventoried
+      capabilities are preserved; git_blob identifies the original audited source.
   - id: preflight
     fixture: onboarding_preflight_caf4b1a8.txt
     git_blob: caf4b1a8fa85fea42c4db0644539f5dc954bba3f
@@ -167,1638 +175,2597 @@ lab_onboarding:
   - source: model-config
     kind: function
     identifier: _ollama_config
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: model-config
     kind: function
     identifier: _place_local_url
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: model-config
     kind: function
     identifier: handle
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: add_model_res
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: anchor_time
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: preflight
     kind: function
     identifier: anchored_commit
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: preflight
     kind: function
     identifier: ask_keys
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: ask_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: ask_ollama_models
     owner: 'onex setup: model selection'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: preflight
     kind: function
     identifier: ask_url
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: catalogue_row
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: model recommendations'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: provider registry endpoints and dynamic model discovery are integrated. The old
+      preference-pattern projection and full-match recommendation helper are not used in the modern picker;
+      readiness sorting alone does not preserve the recommendation outcome.'
   - source: preflight
     kind: function
     identifier: checkout_anchored
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: preflight
     kind: function
     identifier: choose_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: chosen_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: clone_at_anchor
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: preflight
     kind: function
     identifier: comma_list
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: confirm_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: docker_url
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: stack model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: the local-stack adapter accepts existing compose/topology only. It does not translate
+      localhost to a container-reachable host or write the selected endpoint/model into the stack bundle.
+      Endpoint delegation on the Mac is implemented independently.'
   - source: preflight
     kind: function
     identifier: drop_unlisted
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: ensure_local_url_onex
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: finish_name
     owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The approved modern completion behavior uses an optional explicit user-entered completion_name
+      and the installed system voice once after consent. Automatic account-name guessing, generic-name
+      matching and prerecorded clip selection are not reproduced. tests/e2e/test_setup_completion_cli.py
+      verifies explicit naming and once-only orchestration with a controlled audio executable, not audible
+      playback.
   - source: preflight
     kind: function
     identifier: finish_name_like
     owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The approved modern completion behavior uses an optional explicit user-entered completion_name
+      and the installed system voice once after consent. Automatic account-name guessing, generic-name
+      matching and prerecorded clip selection are not reproduced. tests/e2e/test_setup_completion_cli.py
+      verifies explicit naming and once-only orchestration with a controlled audio executable, not audible
+      playback.
   - source: preflight
     kind: function
     identifier: finish_sound
     owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The optional completion-audio plugin and completion_name use the installed system voice once
+      after reviewed consent. Declining, verify and unchanged reruns play nothing. tests/e2e/test_setup_completion_cli.py
+      proves CLI orchestration with a controlled audio executable, not audible playback.
   - source: preflight
     kind: function
     identifier: finish_sound_consent
     owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The optional completion-audio plugin and completion_name use the installed system voice once
+      after reviewed consent. Declining, verify and unchanged reruns play nothing. tests/e2e/test_setup_completion_cli.py
+      proves CLI orchestration with a controlled audio executable, not audible playback.
   - source: preflight
     kind: function
     identifier: in_user_shell
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: is_workspace_onex
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: key_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: leftover
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: leftovers_interfering
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: list_in_order
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: list_recommended_first
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: model recommendations'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: current dynamic picker orders observed ready models before throttled models and
+      preserves user preference. It does not reproduce catalog wildcard/latest-version recommendations
+      or their published basis; endpoint-only policy removes automatic RAM-based local-model selection,
+      not all recommendation behavior.'
   - source: preflight
     kind: function
     identifier: local_url_add_args
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: local_url_answers
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: local_url_base
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: local_url_endpoint
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: local_url_supported
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: local_url_unreachable
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: local_url_valid
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: mark_local_url_overrides
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: masked
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: model_config
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: model_result
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: offered_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: ollama_config
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: ollama_models
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: omnimarket_file
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: package resources'
+    disposition: integrated
+    reason: The installed package provider registry and resource loader supply model/provider metadata;
+      setup no longer retrieves Python/metadata from a source checkout or raw GitHub HEAD. Hosted catalog
+      fixture tests exercise registry-derived protocols and endpoints.
+    verification:
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: onex_order
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: parse_model_choice
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: parse_ordered_choice
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: pipx_home
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: place_local_url_on_ladder
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: point_bundle_at_local_url
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: stack model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: the local-stack adapter accepts existing compose/topology only. It does not translate
+      localhost to a container-reachable host or write the selected endpoint/model into the stack bundle.
+      Endpoint delegation on the Mac is implemented independently.'
   - source: preflight
     kind: function
     identifier: point_stack_at_local_url
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: stack model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: the local-stack adapter accepts existing compose/topology only. It does not translate
+      localhost to a container-reachable host or write the selected endpoint/model into the stack bundle.
+      Endpoint delegation on the Mac is implemented independently.'
   - source: preflight
     kind: function
     identifier: prepare_local_url
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: prepare_profile_edits
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: probe_listed
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: probe_model
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: profile_comment_out
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: profile_leftover_lines
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: profile_set_aside
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: profile_syntax_ok
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: proven_pin
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: preflight
     kind: function
     identifier: put_first
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: real_path
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell resolves PATH executable targets for shadow detection without invoking the
+      target. The controlled shadow executable test proves it is named and preserved, not run or removed.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: recommended_basis
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: model recommendations'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: current dynamic picker orders observed ready models before throttled models and
+      preserves user preference. It does not reproduce catalog wildcard/latest-version recommendations
+      or their published basis; endpoint-only policy removes automatic RAM-based local-model selection,
+      not all recommendation behavior.'
   - source: preflight
     kind: function
     identifier: recommended_order
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: model recommendations'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: current dynamic picker orders observed ready models before throttled models and
+      preserves user preference. It does not reproduce catalog wildcard/latest-version recommendations
+      or their published basis; endpoint-only policy removes automatic RAM-based local-model selection,
+      not all recommendation behavior.'
   - source: preflight
     kind: function
     identifier: report_leftovers
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: result_line
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: resume_banner
     owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
   - source: preflight
     kind: function
     identifier: retire_lab_model_overrides
-    owner: 'onex setup: completion'
+    owner: 'onex setup: legacy routing recovery'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: named connections preserve foreign overlay rows and refuse ownership conflicts.
+      The CLI does not automatically move aside legacy script-owned routing files, so this migration behavior
+      remains distinct from new routing setup.'
   - source: preflight
     kind: function
     identifier: routing_overlay_in_place
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: row
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: Typed CLI observations and plan display represent paths/platform/status without relying on
+      shell table/path-formatting helpers. Preflight human output and typed JSON controls cover actual
+      installed rendering; exact old column spacing is not a separate behavior.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
   - source: preflight
     kind: function
     identifier: save_choices
     owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
   - source: preflight
     kind: function
     identifier: saved_choice
     owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
   - source: preflight
     kind: function
     identifier: set_aside_leftovers
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: legacy recovery'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: safe standalone profile recovery is implemented and tested, but the old helper also
+      handles nonprofile binaries/routing files/other leftovers. Those relocations are not implemented;
+      no compound parity claim.'
   - source: preflight
     kind: function
     identifier: set_aside_one
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: legacy recovery'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: safe standalone profile recovery is implemented and tested, but the old helper also
+      handles nonprofile binaries/routing files/other leftovers. Those relocations are not implemented;
+      no compound parity claim.'
   - source: preflight
     kind: function
     identifier: set_chosen_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: settle_leftovers
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: settle_local_url
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: settle_models
     owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: preflight
     kind: function
     identifier: setup_model
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: shell_onex_answer
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: shell_onex_kind
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: shell_onex_path
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: shell_onex_version
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: shell_runs_workspace_onex
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: stop_local_url_unanswered
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: preflight
     kind: function
     identifier: survey_leftovers
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: preflight
     kind: function
     identifier: tilde
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: Typed CLI observations and plan display represent paths/platform/status without relying on
+      shell table/path-formatting helpers. Preflight human output and typed JSON controls cover actual
+      installed rendering; exact old column spacing is not a separate behavior.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
   - source: preflight
     kind: function
     identifier: to_ere
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: model recommendations'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: provider registry endpoints and dynamic model discovery are integrated. The old
+      preference-pattern projection and full-match recommendation helper are not used in the modern picker;
+      readiness sorting alone does not preserve the recommendation outcome.'
   - source: preflight
     kind: function
     identifier: user_shell
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: uv_tool_dir
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: shell executable resolution'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
+      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
+      executables. These legacy outcomes are not implied by a safe static survey.'
   - source: preflight
     kind: function
     identifier: vm_notice
-    owner: 'onex setup: model selection'
+    owner: 'onex setup: machine detection'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: production preflight does not establish VM detection or display the legacy VM-specific
+      Docker/model warning. No universal hardware requirement is introduced.'
   - source: preflight
     kind: function
     identifier: write_routing_overlay
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: artifact
     identifier: .omninode-dev-setup
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: legacy import'
+    disposition: integrated
+    reason: HandlerSetupLegacyImport reads the legacy directory once as inert choices and marks; HandlerSetupWorkflow
+      persists the translated nonsecret plan and re-observes all effects. Existing legacy files are preserved
+      and cannot establish a successful effect.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py
   - source: walk
     kind: artifact
     identifier: .onex-dispatch-venv
-    owner: 'onex setup: delegation'
+    owner: 'onex setup: package acquisition'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: The installed package interpreter and console entry point replace the workspace dispatch venv
+      and wrapper symlink. Companion thin-bootstrap controls exist; the final installed wheel/bootstrap
+      journey and upgrade provenance must complete before this acquisition outcome is closed.
   - source: walk
     kind: artifact
     identifier: bifrost_overrides.yaml
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: artifact
     identifier: choices
     owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
   - source: walk
     kind: artifact
     identifier: claude-plugin-registration
-    owner: 'onex setup: claude integration'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: The packaged customer-assets entry point supplies the local marketplace to HandlerSetupClaude;
+      its registry-based observation preserves unrelated user settings and refuses conflicts. Installed
+      wheel/client provenance and actual authenticated Claude execution remain separate required evidence.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_packaged_journey.py
   - source: walk
     kind: artifact
     identifier: delegation.sqlite
-    owner: 'onex setup: verify'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: canonical usage'
+    disposition: integrated
+    reason: The canonical delegation runtime writes receipts/usage and HandlerSetupDashboard reads the
+      existing served dashboard projection. The packaged journey joins the same run ID without direct
+      database queries; fixture controls are distinct from the pending actual model receipt.
+    verification:
+    - tests/e2e/test_setup_dashboard_lifecycle.py
+    - tests/e2e/test_setup_packaged_journey.py
   - source: walk
     kind: artifact
     identifier: docker-local-env
-    owner: 'onex setup: docker'
+    owner: 'onex setup: stack tenant and model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: no setup owner generates stack environment/tenant credentials or registers the selected
+      model key with stack services. Explicit user-supplied compose/topology and canonical host credential
+      storage do not establish this outcome.'
   - source: walk
     kind: artifact
     identifier: docker-settings
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: setup does not read or mutate Docker Desktop resource settings or accept its terms.
+      The absence of universal host resource floors is not evidence of optional Docker Desktop lifecycle
+      parity.'
   - source: walk
     kind: artifact
     identifier: model-credential-store
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: artifact
     identifier: onex-symlink
-    owner: 'onex setup: delegation'
+    owner: 'onex setup: package acquisition'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: The installed package interpreter and console entry point replace the workspace dispatch venv
+      and wrapper symlink. Companion thin-bootstrap controls exist; the final installed wheel/bootstrap
+      journey and upgrade provenance must complete before this acquisition outcome is closed.
   - source: walk
     kind: artifact
     identifier: phases.v2.done
     owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
   - source: walk
     kind: artifact
     identifier: proven-floor-stamp
     owner: 'onex setup: delegation'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: artifact
     identifier: routing_overlay.yaml
-    owner: 'onex setup: workspace'
+    owner: 'onex setup: legacy routing recovery'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: New named endpoint overlays use the canonical routing owner. Migration/preservation of the
+      separate legacy workspace routing_overlay.yaml has not been implemented or proved; the named bifrost
+      overlay is not a substitute.
   - source: walk
     kind: artifact
     identifier: run-log-status
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: The versioned setup journal records typed step status, sanitized evidence and actionable failure
+      boundaries. Interrupted effects resume by re-observation, and read-only verification does not write
+      state. This replaces mutable shell status strings rather than reproducing every legacy log line.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: artifact
     identifier: runtime_config.yaml
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: HandlerSetupEnvironment observes and reconciles runtime configuration through the existing
+      owner and selected install path. It preserves a conflicting user file. The versioned plan/config
+      profile separately records selected choices.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
   - source: walk
     kind: artifact
     identifier: shell-profile
-    owner: 'onex setup: workspace'
+    owner: 'onex setup: shell environment compatibility'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: static conflict survey and explicit safe profile backup/recovery are implemented
+      with scratch-home controls. New profile export blocks and interactive user-shell resolution are
+      not implemented; existing profiles are never executed.'
   - source: walk
     kind: artifact
     identifier: stack-tenant-and-secrets
-    owner: 'onex setup: docker'
+    owner: 'onex setup: stack tenant and model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: no setup owner generates stack environment/tenant credentials or registers the selected
+      model key with stack services. Explicit user-supplied compose/topology and canonical host credential
+      storage do not establish this outcome.'
   - source: walk
     kind: artifact
     identifier: stack.anchor
     owner: 'onex setup: state and resume'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: artifact
     identifier: workspace-config-git
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: flag
     identifier: --compat-url
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: flag
     identifier: --containers
-    owner: 'onex setup: docker'
+    owner: 'onex setup: local stack'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: The new CLI explicitly selects local-stack with user-supplied compose/topology files; the
+      old boolean flag alone cannot supply a stack definition. The compatibility outcome needs an actionable
+      input path plus complete model/tenant/health reconciliation.
   - source: walk
     kind: flag
     identifier: --developer
-    owner: 'onex setup: claude integration'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: The shared setup developer flag selects an already prepared developer marketplace resolved
+      by its owner manifest, preserving the customer profile distinction and refusing ambiguous/conflicting
+      registrations. It does not clone developer repositories.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
   - source: walk
     kind: flag
     identifier: --help
     owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The thin bootstrap and installed onex setup provide help, ASCII human banner and banner-free
+      JSON. Verified by omniclaude tests/skills/test_thin_onboarding_bootstrap.py and omnimarket tests/unit/cli/test_setup_banner_command.py.
   - source: walk
     kind: flag
     identifier: --local-model
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: flag
     identifier: --local-url
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: flag
     identifier: --no-containers
-    owner: 'onex setup: docker'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: local stack'
+    disposition: integrated
+    reason: The thin bootstrap excludes the optional local-stack component. Local endpoint delegation
+      and dashboard do not require containers; the stack owner is invoked only with an explicit component
+      and supplied compose/topology inputs.
+    verification:
+    - tests/e2e/test_setup_local_stack.py
   - source: walk
     kind: flag
     identifier: --ollama-model
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: flag
     identifier: --preflight-only
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The installed setup preflight runs before prompts and returns typed platform facts without
+      creating the workspace, journal or profiles. Unsupported macOS/platform reports unavailable; it
+      does not impose universal RAM, SSD, CPU or developer-tool requirements.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
   - source: walk
     kind: flag
     identifier: --provider
-    owner: 'onex setup: model selection'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: flag
     identifier: --restart
     owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The thin bootstrap maps --restart to onex setup --action repair. The shared workflow re-observes
+      rather than erases state. omniclaude test_thin_onboarding_bootstrap.py proves forwarding; omnimarket
+      test_setup_workflow.py proves resumable effects.
   - source: walk
     kind: flag
     identifier: --set-aside
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: The invocation-only --set-aside option reaches HandlerSetupShell; scratch-home CLI tests prove
+      review, exact private backup, preservation and no replay of permission on a later saved-plan run.
+      Binary, routing-file and clone relocation are not implemented by this option.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: walk
     kind: flag
     identifier: --workspace
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: ModelSetupPlan canonicalizes the selected workspace; HandlerSetupEnvironment persists the
+      chosen configuration and the versioned profile owner exports/imports only validated nonsecret plans.
+      This does not clone a source workspace.
+    verification:
+    - tests/e2e/test_setup_configuration_cli.py
   - source: walk
     kind: function
     identifier: a_an
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
   - source: walk
     kind: function
     identifier: accept_docker_terms
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: accepted_backend
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: arch
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupPreflight reports the client platform and architecture and supports macOS 14+
+      on arm64/x86_64. Actual CLI tests check typed evidence and no state or profile writes; controlled
+      machine-fact tests check unsupported platforms.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
   - source: walk
     kind: function
     identifier: ask_docker
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: ask_docker_terms
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: avail_mem_gb
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: bind_workspace_env
-    owner: 'onex setup: workspace'
+    owner: 'onex setup: shell environment compatibility'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: setup persists explicit workspace/configuration and statically surveys legacy conflicts,
+      but does not write a new shell export block or bind variables into the invoking user shell.'
   - source: walk
     kind: function
     identifier: boot_resources_ok
     owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: brew_bin
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal Homebrew and Xcode provisioning is retired from customer onboarding; versioned package
+      acquisition owns CLI installation.
   - source: walk
     kind: function
     identifier: brew_install
     owner: 'onex setup: prerequisites'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal Homebrew and Xcode provisioning is retired from customer onboarding; versioned package
+      acquisition owns CLI installation.
   - source: walk
     kind: function
     identifier: cause_of
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: check
-    owner: 'onex setup: verify'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: claude_bin
-    owner: 'onex setup: claude integration'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: HandlerSetupClaude locates the installed Claude CLI, checks its on-disk user registry and
+      resolves the packaged ONEX marketplace assets. It uses vendor plugin installation and canonical
+      hook installation while preserving unrelated settings. Controlled CLI/settings tests cover orchestration;
+      actual Claude account proof is a separate close gate.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_claude_hook_component.py
   - source: walk
     kind: function
     identifier: cleanup
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: lifecycle cleanup'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: canonical credential intake and component handlers scope their resources and redact
+      output. Full cancellation/exit cleanup across all selected components has not been exercised as
+      one installed journey; no sudo keepalive exists in the normal client path.'
   - source: walk
     kind: function
     identifier: clear_keys
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
   - source: walk
     kind: function
     identifier: clone_behind_note
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: clone_default_branch
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: clone_fix
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: clone_problem
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: clone_state
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: clone_where
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: commit_workspace_runtime_config
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Cloning and pin bookkeeping are no longer part of customer setup; source checkouts and their
+      Git configuration remain untouched.
   - source: walk
     kind: function
     identifier: commits_behind
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Cloning and pin bookkeeping are no longer part of customer setup; source checkouts and their
+      Git configuration remain untouched.
   - source: walk
     kind: function
     identifier: compose_ok
-    owner: 'onex setup: docker'
+    owner: 'onex setup: local stack'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: HandlerSetupLocalStack delegates explicit compose/topology reconciliation to infra
+      owners and verifies selected services are running. It does not yet establish the complete old health/tenant/model
+      outcome or actual Docker execution. tests/e2e/test_setup_local_stack.py supplies isolated owner
+      controls only.'
   - source: walk
     kind: function
     identifier: config_git
     owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Cloning and pin bookkeeping are no longer part of customer setup; source checkouts and their
+      Git configuration remain untouched.
   - source: walk
     kind: function
     identifier: count_words
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
   - source: walk
     kind: function
     identifier: cpu_count
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: delegate_hello
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: disk_free_gb
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: dispatch_venv_current
-    owner: 'onex setup: delegation'
+    owner: 'onex setup: package acquisition'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
+      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
+      exist in the companion repository; full built-package acquisition and upgrade evidence is still
+      pending.
   - source: walk
     kind: function
     identifier: docker_awaits_terms
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: docker_has_resources
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: docker_installed
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: docker_ready
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: docker_settings_file
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: docker_state
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: download
-    owner: 'onex setup: prerequisites'
+    owner: 'onex setup: package acquisition'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
+      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
+      exist in the companion repository; full built-package acquisition and upgrade evidence is still
+      pending.
   - source: walk
     kind: function
     identifier: drop_model
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: elapsed
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: ensure_stack_tenant
-    owner: 'onex setup: docker'
+    owner: 'onex setup: stack tenant and model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
+      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
+      and host-side inference are not substitutes.'
   - source: walk
     kind: function
     identifier: ensure_sudo
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: foreign_clones
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: has_model
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: hr
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
   - source: walk
     kind: function
     identifier: in_list
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
   - source: walk
     kind: function
     identifier: in_menu_order
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
   - source: walk
     kind: function
     identifier: install_claude_code
-    owner: 'onex setup: claude integration'
+    owner: 'onex setup: Claude installation'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: HandlerSetupClaude implements vendor-script download/installation when the selected Claude
+      plugin lacks its CLI. Current tests prove packaged marketplace orchestration and conflicts, not
+      the missing-client vendor acquisition path; full installation behavior needs a controlled failure/success
+      proof.
   - source: walk
     kind: function
     identifier: install_clt
     owner: 'onex setup: prerequisites'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal Homebrew and Xcode provisioning is retired from customer onboarding; versioned package
+      acquisition owns CLI installation.
   - source: walk
     kind: function
     identifier: install_ollama
     owner: 'onex setup: preflight'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: internal_plugins_reachable
-    owner: 'onex setup: claude integration'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: HandlerSetupClaude locates the installed Claude CLI, checks its on-disk user registry and
+      resolves the packaged ONEX marketplace assets. It uses vendor plugin installation and canonical
+      hook installation while preserving unrelated settings. Controlled CLI/settings tests cover orchestration;
+      actual Claude account proof is a separate close gate.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_claude_hook_component.py
   - source: walk
     kind: function
     identifier: is_admin
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: is_done
-    owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: is_rosetta
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: machine detection'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: the preflight model can represent Rosetta/VM facts, but its production collector
+      currently reads platform, architecture, version and disk only. Synthetic supplied facts do not prove
+      real Rosetta/VM detection.'
   - source: walk
     kind: function
     identifier: is_stored
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
   - source: walk
     kind: function
     identifier: is_vm
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: machine detection'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: the preflight model can represent Rosetta/VM facts, but its production collector
+      currently reads platform, architecture, version and disk only. Synthetic supplied facts do not prove
+      real Rosetta/VM detection.'
   - source: walk
     kind: function
     identifier: key_looks_like
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: provider key guidance'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: Hidden/stdin canonical key intake and actual authentication failures are implemented. Provider-specific
+      key-page guidance and likely wrong-provider key-prefix diagnostics from the old walk have not been
+      migrated; secret-safe authentication alone is not this UX outcome.
   - source: walk
     kind: function
     identifier: key_page
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: provider key guidance'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: Hidden/stdin canonical key intake and actual authentication failures are implemented. Provider-specific
+      key-page guidance and likely wrong-provider key-prefix diagnostics from the old walk have not been
+      migrated; secret-safe authentication alone is not this UX outcome.
   - source: walk
     kind: function
     identifier: keyed_models
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: walk
     kind: function
     identifier: labels
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: walk
     kind: function
     identifier: last_log_lines
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: link_onex
-    owner: 'onex setup: delegation'
+    owner: 'onex setup: package acquisition'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
+      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
+      exist in the companion repository; full built-package acquisition and upgrade evidence is still
+      pending.
   - source: walk
     kind: function
     identifier: load_ollama_config
     owner: 'onex setup: preflight'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: load_onboarding_preflight
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: package resources'
+    disposition: integrated
+    reason: The installed CLI imports its packaged preflight effect and does not download/source the old
+      shell helper. Actual preflight CLI tests execute this owner with a temporary HOME and verify no
+      prompt or mutation.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
   - source: walk
     kind: function
     identifier: local_stack_running
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: local stack'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: HandlerSetupLocalStack delegates explicit compose/topology reconciliation to infra
+      owners and verifies selected services are running. It does not yet establish the complete old health/tenant/model
+      outcome or actual Docker execution. tests/e2e/test_setup_local_stack.py supplies isolated owner
+      controls only.'
   - source: walk
     kind: function
     identifier: log
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: macos_version
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupPreflight reports the client platform and architecture and supports macOS 14+
+      on arm64/x86_64. Actual CLI tests check typed evidence and no state or profile writes; controlled
+      machine-fact tests check unsupported platforms.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
   - source: walk
     kind: function
     identifier: main
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: mark_done
-    owner: 'onex setup: state and resume'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: models_cmd
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: needs_admin
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: no_shadow
-    owner: 'onex setup: verify'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell detects PATH executable shadowing and legacy profile/environment conflicts
+      without executing a user shell. It refuses unresolved conflicts rather than replacing a binary or
+      sourcing profiles; static profile recovery is separately explicit.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: walk
     kind: function
     identifier: notify
-    owner: 'onex setup: completion'
+    owner: 'onex setup: completion notification'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional completion-audio implements a once-only system voice. The legacy OS notification
+      effect is not implemented and is not claimed by the audio test.'
   - source: walk
     kind: function
     identifier: ollama_bin
     owner: 'onex setup: preflight'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: ollama_has_model
     owner: 'onex setup: preflight'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: ollama_overrides_ours
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: legacy routing recovery'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: Named connections write and own exact canonical overlay rows and refuse conflicts, but legacy
+      script marker recognition/migration for existing Ollama overrides is not implemented. Ollama remains
+      endpoint-only; no runtime management is reintroduced.
   - source: walk
     kind: function
     identifier: ollama_up
     owner: 'onex setup: preflight'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: onex_run
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: os_name
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: HandlerSetupPreflight reports the client platform and architecture and supports macOS 14+
+      on arm64/x86_64. Actual CLI tests check typed evidence and no state or profile writes; controlled
+      machine-fact tests check unsupported platforms.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
   - source: walk
     kind: function
     identifier: passed_models
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: pending_key
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
   - source: walk
     kind: function
     identifier: phase0
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: modern platform-only preflight, static shell survey, dynamic model picker and explicit
+      review are implemented. Actual VM/Rosetta detection and selected Docker Desktop requirements/terms
+      remain separate open outcomes; universal hardware floors are approved retirements.'
   - source: walk
     kind: function
     identifier: phase1
-    owner: 'onex setup: prerequisites'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: universal tools'
+    disposition: retired
+    reason: Approved spec AC2/AC3 removes the universal Xcode, Homebrew, GitHub CLI, jq and source-build
+      Python tool phase. The installed package has its own runtime requirement; selected components check
+      their genuine dependencies individually.
   - source: walk
     kind: function
     identifier: phase1_verified
-    owner: 'onex setup: prerequisites'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: universal tools'
+    disposition: retired
+    reason: Approved spec AC2/AC3 removes the universal Xcode, Homebrew, GitHub CLI, jq and source-build
+      Python tool phase. The installed package has its own runtime requirement; selected components check
+      their genuine dependencies individually.
   - source: walk
     kind: function
     identifier: phase2
-    owner: 'onex setup: workspace'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: package-based workspace/configuration and foreign-file preservation replace source
+      acquisition. Shell export/profile binding and legacy routing-file recovery remain open; source clones,
+      pin anchors and configuration Git operations are approved retirements.'
   - source: walk
     kind: function
     identifier: phase2_verified
-    owner: 'onex setup: workspace'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: the shared workflow re-observes owned workspace and runtime configuration. Old clone/pin
+      checks are retired, but new-shell export behavior and legacy routing overlay compatibility are not
+      fully implemented; a saved phase mark never proves those effects.'
   - source: walk
     kind: function
     identifier: phase3
-    owner: 'onex setup: delegation'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: canonical local identity, independent endpoint credentials, ordered model selection
+      and actual protocol receipts are implemented. Full built-package acquisition and legacy routing
+      migration still need completion; user-provided actual inference proof remains pending. Ollama management
+      is explicitly external.'
   - source: walk
     kind: function
     identifier: phase4
-    owner: 'onex setup: docker'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: optional explicit compose/topology reconciliation uses infra owners. Docker Desktop
+      requirements/terms, tenant/selected model/key configuration and true service health verification
+      remain open. No local Docker was executed for implementation tests.'
   - source: walk
     kind: function
     identifier: phase5
-    owner: 'onex setup: claude integration'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: packaged customer/developer marketplace, canonical legacy/gateway hooks and registry
+      conflict handling are implemented. Vendor Claude acquisition controls and installed full dependency-closure/client
+      proof must complete before this compound phase is closed.'
   - source: walk
     kind: function
     identifier: phase6
-    owner: 'onex setup: verify'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: shared read-only verification, fixture model receipts, dashboard joins and selected-component
+      observations are implemented. Actual operator model/Claude evidence, complete optional stack health/tenant/model
+      reconciliation and unresolved shell compatibility outcomes remain open.'
   - source: walk
     kind: function
     identifier: phase_fail
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: phase_pass
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: phase_skip
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: phase_start
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: plugin_installed
-    owner: 'onex setup: claude integration'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: HandlerSetupClaude locates the installed Claude CLI, checks its on-disk user registry and
+      resolves the packaged ONEX marketplace assets. It uses vendor plugin installation and canonical
+      hook installation while preserving unrelated settings. Controlled CLI/settings tests cover orchestration;
+      actual Claude account proof is a separate close gate.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_claude_hook_component.py
   - source: walk
     kind: function
     identifier: point_bundle_model
-    owner: 'onex setup: docker'
+    owner: 'onex setup: stack tenant and model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
+      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
+      and host-side inference are not substitutes.'
   - source: walk
     kind: function
     identifier: port_busy
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: component port checks'
+    disposition: integrated
+    reason: Dashboard and Claude gateway lifecycle owners bind explicit loopback listeners and return
+      actionable collision/start failures while preserving unrelated services. Ports are selected component
+      inputs, not universal port assumptions.
+    verification:
+    - tests/e2e/test_setup_gateway_lifecycle.py
+    - tests/e2e/test_setup_dashboard_lifecycle.py
   - source: walk
     kind: function
     identifier: print_ladder
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: profile_block_names_legacy_home
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell detects PATH executable shadowing and legacy profile/environment conflicts
+      without executing a user shell. It refuses unresolved conflicts rather than replacing a binary or
+      sourcing profiles; static profile recovery is separately explicit.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
   - source: walk
     kind: function
     identifier: provider_label
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: walk
     kind: function
     identifier: quit_setup
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: ram_gb
     owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
   - source: walk
     kind: function
     identifier: read_secret
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
   - source: walk
     kind: function
     identifier: receipt_field
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: record_model_status
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: refuse_foreign_workspace
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workspace ownership'
+    disposition: integrated
+    reason: HandlerSetupEnvironment accepts the exact legacy marker or its own new marker, refuses foreign
+      nonempty directories and preserves foreign files before creating its marker. Existing setup workflow
+      and thin-client controls exercise preservation.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
   - source: walk
     kind: function
     identifier: register_key_in_stack
-    owner: 'onex setup: docker'
+    owner: 'onex setup: stack tenant and model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
+      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
+      and host-side inference are not substitutes.'
   - source: walk
     kind: function
     identifier: rerun_note
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: restart_docker
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: result_of
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: retry
-    owner: 'onex setup: completion'
+    owner: 'onex setup: retry and timeout'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: Component owners have bounded request timeouts and selected retry policies, and the shared
+      journal supports explicit repair. A full audit of legacy transient-failure retry/captured-output
+      semantics across acquisition, Claude, Docker and models remains pending; no generic automatic replay
+      is claimed.
   - source: walk
     kind: function
     identifier: retry_capture
-    owner: 'onex setup: completion'
+    owner: 'onex setup: retry and timeout'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: Component owners have bounded request timeouts and selected retry policies, and the shared
+      journal supports explicit repair. A full audit of legacy transient-failure retry/captured-output
+      semantics across acquisition, Claude, Docker and models remains pending; no generic automatic replay
+      is claimed.
   - source: walk
     kind: function
     identifier: run_logged
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: say
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: sed_inplace
-    owner: 'onex setup: docker'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: owned edits'
+    disposition: integrated
+    reason: Owned configuration changes use typed atomic checkpoint/backup and conflict-aware settings/profile
+      owners instead of blind in-place substitutions. Tests exercise atomic-write failure, later user
+      edits and preservation of unrelated profile bytes.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_shell_safety.py
   - source: walk
     kind: function
     identifier: set_pending_key
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
   - source: walk
     kind: function
     identifier: set_result
-    owner: 'onex setup: delegation'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: settle_models_unattended
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
   - source: walk
     kind: function
     identifier: settle_ollama
     owner: 'onex setup: preflight'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: setup_ollama
     owner: 'onex setup: delegation'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: size_docker
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: sqlite_rows
-    owner: 'onex setup: verify'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: canonical usage'
+    disposition: integrated
+    reason: Canonical receipt and served usage readback replace direct SQL row-count verification. Dashboard
+      protocol controls join actual runtime run IDs; actual user-model proof remains required separately.
+    verification:
+    - tests/e2e/test_setup_dashboard_lifecycle.py
+    - tests/e2e/test_setup_packaged_journey.py
   - source: walk
     kind: function
     identifier: stack_delegate
-    owner: 'onex setup: docker'
+    owner: 'onex setup: stack tenant and model wiring'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
+      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
+      and host-side inference are not substitutes.'
   - source: walk
     kind: function
     identifier: stack_healthy
-    owner: 'onex setup: docker'
+    owner: 'onex setup: local stack'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: HandlerSetupLocalStack delegates explicit compose/topology reconciliation to infra
+      owners and verifies selected services are running. It does not yet establish the complete old health/tenant/model
+      outcome or actual Docker execution. tests/e2e/test_setup_local_stack.py supplies isolated owner
+      controls only.'
   - source: walk
     kind: function
     identifier: stamp_proven_floor
     owner: 'onex setup: delegation'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: start_ollama
     owner: 'onex setup: preflight'
     disposition: external
-    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures the supplied endpoint and proves inference.
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
   - source: walk
     kind: function
     identifier: step
-    owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
   - source: walk
     kind: function
     identifier: stored_key_providers
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
   - source: walk
     kind: function
     identifier: sync_clone
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: usage
     owner: 'onex setup: completion'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    disposition: integrated
+    reason: The thin bootstrap and installed onex setup provide help, ASCII human banner and banner-free
+      JSON. Verified by omniclaude tests/skills/test_thin_onboarding_bootstrap.py and omnimarket tests/unit/cli/test_setup_banner_command.py.
   - source: walk
     kind: function
     identifier: uses_key
-    owner: 'onex setup: preflight'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
   - source: walk
     kind: function
     identifier: uv_bin
-    owner: 'onex setup: prerequisites'
+    owner: 'onex setup: package acquisition'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
+      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
+      exist in the companion repository; full built-package acquisition and upgrade evidence is still
+      pending.
   - source: walk
     kind: function
     identifier: wait_for_docker
-    owner: 'onex setup: docker'
+    owner: 'onex setup: Docker Desktop lifecycle'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
+      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
+      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
   - source: walk
     kind: function
     identifier: wait_until
-    owner: 'onex setup: completion'
+    owner: 'onex setup: retry and timeout'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: Component owners have bounded request timeouts and selected retry policies, and the shared
+      journal supports explicit repair. A full audit of legacy transient-failure retry/captured-output
+      semantics across acquisition, Claude, Docker and models remains pending; no generic automatic replay
+      is claimed.
   - source: walk
     kind: function
     identifier: workspace_floor
     owner: 'onex setup: verify'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: workspace_runtime_config_anchored
     owner: 'onex setup: workspace'
     disposition: retired
-    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own installation.
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
   - source: walk
     kind: function
     identifier: workspace_runtime_config_present
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: HandlerSetupEnvironment uses the existing runtime configuration owner, observes the selected
+      native/Docker configuration and refuses conflicting bytes rather than overwriting a user file. No
+      configuration Git commit or source checkout is acquired.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
   - source: walk
     kind: function
     identifier: write_ollama_overrides
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: legacy routing recovery'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: Named connections write and own exact canonical overlay rows and refuse conflicts, but legacy
+      script marker recognition/migration for existing Ollama overrides is not implemented. Ollama remains
+      endpoint-only; no runtime management is reintroduced.
   - source: walk
     kind: function
     identifier: write_profile_block
-    owner: 'onex setup: workspace'
+    owner: 'onex setup: shell environment compatibility'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Pending: setup persists explicit workspace/configuration and statically surveys legacy conflicts,
+      but does not write a new shell export block or bind variables into the invoking user shell.'
   - source: walk
     kind: function
     identifier: write_workspace_runtime_config
-    owner: 'onex setup: workspace'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: HandlerSetupEnvironment uses the existing runtime configuration owner, observes the selected
+      native/Docker configuration and refuses conflicting bytes rather than overwriting a user file. No
+      configuration Git commit or source checkout is acquired.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
   - source: walk
     kind: phase
     identifier: phase0
-    owner: 'onex setup: preflight'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: modern platform-only preflight, static shell survey, dynamic model picker and explicit
+      review are implemented. Actual VM/Rosetta detection and selected Docker Desktop requirements/terms
+      remain separate open outcomes; universal hardware floors are approved retirements.'
   - source: walk
     kind: phase
     identifier: phase1
-    owner: 'onex setup: prerequisites'
-    disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    owner: 'onex setup: universal tools'
+    disposition: retired
+    reason: Approved spec AC2/AC3 removes the universal Xcode, Homebrew, GitHub CLI, jq and source-build
+      Python tool phase; selected components retain genuine dependency checks.
   - source: walk
     kind: phase
     identifier: phase2
-    owner: 'onex setup: workspace'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: package-based workspace/configuration and foreign-file preservation replace source
+      acquisition. Shell export/profile binding and legacy routing-file recovery remain open; source clones,
+      pin anchors and configuration Git operations are approved retirements.'
   - source: walk
     kind: phase
     identifier: phase3
-    owner: 'onex setup: delegation'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: canonical local identity, independent endpoint credentials, ordered model selection
+      and actual protocol receipts are implemented. Full built-package acquisition and legacy routing
+      migration still need completion; user-provided actual inference proof remains pending. Ollama management
+      is explicitly external.'
   - source: walk
     kind: phase
     identifier: phase4
-    owner: 'onex setup: docker'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: optional explicit compose/topology reconciliation uses infra owners. Docker Desktop
+      requirements/terms, tenant/selected model/key configuration and true service health verification
+      remain open. No local Docker was executed for implementation tests.'
   - source: walk
     kind: phase
     identifier: phase5
-    owner: 'onex setup: claude integration'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: packaged customer/developer marketplace, canonical legacy/gateway hooks and registry
+      conflict handling are implemented. Vendor Claude acquisition controls and installed full dependency-closure/client
+      proof must complete before this compound phase is closed.'
   - source: walk
     kind: phase
     identifier: phase6
-    owner: 'onex setup: verify'
+    owner: 'onex setup: compound legacy phase'
     disposition: planned
-    reason: Behavior migration and real proof are required before integration.
+    reason: 'Partial: shared read-only verification, fixture model receipts, dashboard joins and selected-component
+      observations are implemented. Actual operator model/Claude evidence, complete optional stack health/tenant/model
+      reconciliation and unresolved shell compatibility outcomes remain open.'

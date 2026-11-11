@@ -54,13 +54,21 @@ def test_endpoint_picker_uses_catalog_and_fails_closed(
         )
 
     monkeypatch.setattr(setup, "discover_models", discover_models, raising=False)
+    monkeypatch.setattr(
+        setup,
+        "probe_models",
+        lambda **_: SimpleNamespace(models=models, probes=(), all_throttled=False),
+        raising=False,
+    )
 
     @click.command()
     def choose() -> None:
         _, selected, _ = setup._ask_choices("ollama", None, "http://server.test:11434")
         click.echo(json.dumps((selected or "").split(",")))
 
-    result = CliRunner().invoke(choose, input=answer)
+    result = CliRunner().invoke(
+        choose, input=("y\n" if status == "ready" and models else "") + answer
+    )
     assert calls == [("http://server.test:11434", None)]
     if expected is None:
         assert result.exit_code != 0
@@ -90,6 +98,14 @@ def test_authenticated_picker_reuses_one_hidden_key(
 
     monkeypatch.setattr(setup, "getpass", hidden)
     monkeypatch.setattr(setup, "discover_models", discover_models, raising=False)
+    monkeypatch.setattr(
+        setup,
+        "probe_models",
+        lambda **_: SimpleNamespace(
+            models=("private-model",), probes=(), all_throttled=False
+        ),
+        raising=False,
+    )
 
     @click.command()
     def choose() -> None:
@@ -102,7 +118,7 @@ def test_authenticated_picker_reuses_one_hidden_key(
             credentials=credentials,
         )
 
-    result = CliRunner().invoke(choose, input="private-model\n")
+    result = CliRunner().invoke(choose, input="y\nprivate-model\n")
     assert result.exit_code == 0, result.output
     assert len(reads) == 1
     assert calls[0] is credentials["ollama"]

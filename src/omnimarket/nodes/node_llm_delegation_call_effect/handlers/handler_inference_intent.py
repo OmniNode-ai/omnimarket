@@ -1060,6 +1060,17 @@ class HandlerInferenceIntent:
                 "URL (OMN-13215)."
             )
 
+        headers: dict[str, str] = {}
+        # OMN-18196: the key was resolved once by ``handle`` and passed in, so
+        # the value this header is built from and the credential class stamped
+        # on the response come from the SAME resolution. Resolving again here
+        # would allow the two to disagree, which is exactly the failure the
+        # stamped field exists to make impossible.
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        if intent.extra_headers:
+            headers.update(intent.extra_headers)
+
         # OMN-17098: fail-closed model-attribution guard, the same one OMN-16419
         # put on ``HandlerLlmDelegationCall`` and the one this handler -- the path
         # the orchestrator actually dispatches to -- never had. The served-model
@@ -1067,10 +1078,13 @@ class HandlerInferenceIntent:
         # echoed ``model`` is not evidence (SGLang echoes whatever was requested).
         # ``None`` is "no evidence either way" (most cloud backends expose no
         # ``/v1/models`` at this origin) and leaves behaviour unchanged.
-        served_ids = transport.get_served_model_ids(base_url)
+        served_ids = transport.get_served_model_ids(base_url, extra_headers=headers)
         if served_ids is not None and intent.model not in served_ids:
             served_ids = (
-                transport.get_served_model_ids(base_url, refresh=True) or served_ids
+                transport.get_served_model_ids(
+                    base_url, refresh=True, extra_headers=headers
+                )
+                or served_ids
             )
         if served_ids is not None and intent.model not in served_ids:
             raise ModelAttributionMismatchError(
@@ -1098,16 +1112,6 @@ class HandlerInferenceIntent:
             provider_request_options,
         )
 
-        headers: dict[str, str] = {}
-        # OMN-18196: the key was resolved once by ``handle`` and passed in, so
-        # the value this header is built from and the credential class stamped
-        # on the response come from the SAME resolution. Resolving again here
-        # would allow the two to disagree, which is exactly the failure the
-        # stamped field exists to make impossible.
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        if intent.extra_headers:
-            headers.update(intent.extra_headers)
         params: dict[str, str] | None = None
         if _is_self_hosted_endpoint(intent.base_url):
             correlation_id = str(intent.correlation_id)

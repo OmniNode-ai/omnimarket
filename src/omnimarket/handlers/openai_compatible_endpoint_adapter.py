@@ -70,9 +70,15 @@ def read_base_url(
         return None
     conn = _connect(path)
     try:
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({_TABLE})")}
+        scope = (
+            "AND connection_id IS NULL "
+            if column == "provider" and "connection_id" in columns
+            else ""
+        )
         row = conn.execute(
             f"SELECT provider, base_url FROM {_TABLE} WHERE {column} = ? "
-            "ORDER BY registered_at DESC LIMIT 1",
+            f"{scope}ORDER BY registered_at DESC LIMIT 1",
             (value,),
         ).fetchone()
     except sqlite3.OperationalError:

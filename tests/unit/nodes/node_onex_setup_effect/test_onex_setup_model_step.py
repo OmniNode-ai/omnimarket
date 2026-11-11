@@ -39,9 +39,6 @@ from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setu
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     HandlerOnexSetup,
 )
-from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_base_tools import (
-    HandlerSetupBaseTools,
-)
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
     HandlerSetupPreflight,
 )
@@ -149,11 +146,6 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         HandlerSetupPreflight,
         "observe",
         lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
-    )
-    monkeypatch.setattr(
-        HandlerSetupBaseTools,
-        "observe",
-        lambda _self, _plan: ModelSetupObservation(step="base-tools", status="success"),
     )
     store = tmp_path / "delegation" / "delegation.sqlite"
     store.parent.mkdir()

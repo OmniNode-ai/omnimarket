@@ -58,6 +58,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.handlers.routing.byok_model_discovery import get_models_json
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_declared_price_per_1m,
+    key_provider_hint,
     resolve_byok_provider_backend,
 )
 from omnimarket.handlers.routing.local_byok_route import (
@@ -107,15 +108,6 @@ _LOCAL_URL_DEFAULTS: dict[str, object] = {
 }
 _PROBE_TIMEOUT_S = 15
 _LOCAL_ADD_HOW = "Add one with: onex models add local --url <base url> --model <name>"
-
-#: Leading characters of each provider's keys, most specific first: an
-#: OpenRouter or Anthropic key also starts with ``sk-``.
-_KEY_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("sk-or-", "openrouter"),
-    ("sk-ant-", "anthropic"),
-    ("AIza", "gemini"),
-    ("sk-", "openai"),
-)
 
 #: The node whose overlay (``<root>/node_model_setup_effect/overlay.yaml``) declares
 #: the model onboarding registers (OMN-20844). No model id is written in code: the
@@ -220,13 +212,7 @@ def key_looks_like(value: str, for_provider: str | None = None) -> str | None:
     endpoint at registration: an endpoint the developer chose takes keys of any
     shape, so a key there is never refused for looking like another provider's.
     """
-    row = resolve_byok_provider_backend(for_provider) if for_provider else None
-    if row is not None and row.endpoint_from_registration:
-        return None
-    for prefix, provider in _KEY_PREFIXES:
-        if value.startswith(prefix):
-            return provider
-    return None
+    return key_provider_hint(value, for_provider)
 
 
 def _onex_executable() -> str:
@@ -914,6 +900,96 @@ class HandlerModelSetup:
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(results, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(path)
+
+    @staticmethod
+    def connection_tests(
+        connection_id: str, *, db_path: Path | None = None
+    ) -> tuple[ModelModelTestResult, ...]:
+        """Read named endpoint proofs through the existing model-test record."""
+        try:
+            data = json.loads(local_model_tests_path(db_path).read_text())
+            rows = data.get("connection:" + connection_id, [])
+            return tuple(ModelModelTestResult.model_validate(row) for row in rows)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return ()
+
+    def test_backend(
+        self,
+        connection_id: str,
+        backend_id: str,
+        model: str,
+        endpoint: str,
+        *,
+        db_path: Path | None = None,
+    ) -> ModelModelTestResult:
+        """Run the same pinned delegation and verify its actual route and receipt."""
+        from omnimarket.inference.local_byok_credential_adapter import (
+            read_named_connections,
+        )
+        from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
+            ModelEndpointConnection,
+        )
+
+        configured = next(
+            (
+                row
+                for row in read_named_connections(db_path=db_path)
+                if row["connection_id"] == connection_id
+            ),
+            None,
+        )
+        if configured is None:
+            raise ValueError("The named connection is not configured")
+        connection = ModelEndpointConnection.model_validate(configured)
+        if (
+            model not in connection.models
+            or backend_id != connection.backend_id(model)
+            or endpoint != connection.url + "/v1/chat/completions"
+        ):
+            raise ValueError("The pinned test does not match the named connection")
+        code, stdout, stderr = self._run_delegation(backend_id)
+        receipt = _receipt(stderr)
+        passed = (
+            code == 0
+            and receipt.get("status") == "success"
+            and receipt.get("backend_id") == backend_id
+            and receipt.get("model") == model
+            and receipt.get("endpoint") == endpoint
+        )
+        result = ModelModelTestResult(
+            provider="openai_compatible" if connection.secret_ref else "local",
+            status="passed" if passed else "failed",
+            tested_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            backend_id=backend_id,
+            model=model,
+            endpoint=endpoint,
+            reason=None
+            if passed
+            else (
+                "The receipt does not match the selected backend, model and endpoint"
+                if code == 0
+                else _failure_reason(stdout, stderr, code)
+            ),
+        )
+        path = local_model_tests_path(db_path)
+        try:
+            data = json.loads(path.read_text())
+            if not isinstance(data, dict):
+                raise ValueError("Invalid model proof record")
+        except FileNotFoundError:
+            data = {}
+        key = "connection:" + connection_id
+        rows = [
+            row
+            for row in data.get(key, [])
+            if isinstance(row, dict) and row.get("backend_id") != backend_id
+        ]
+        data[key] = [*rows, result.model_dump(mode="json")]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(data, indent=2, sort_keys=True))
+        temporary.replace(path)
+        return result
 
     def _forget(self, provider: ModelProvider) -> None:
         results = self._read_results()

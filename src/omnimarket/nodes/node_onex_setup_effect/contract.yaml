@@ -39,6 +39,72 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
+    - operation: onex_setup.shell_safety
+      handler:
+        name: HandlerSetupShell
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_shell
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_shell
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.probe_models
+      handler:
+        name: HandlerModelProbe
+        module: omnimarket.handlers.handler_endpoint_probe
+      handler_module: omnimarket.handlers.handler_endpoint_probe
+      event_model: omnimarket.handlers.handler_endpoint_probe.ModelEndpointProbeRequest
+    - operation: onex_setup.configuration
+      handler:
+        name: HandlerSetupConfiguration
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_configuration
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_configuration
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_configuration.ModelSetupConfigurationRequest
+    - operation: onex_setup.completion
+      handler:
+        name: HandlerSetupCompletion
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_completion
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_completion
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.stack_requirements
+      handler:
+        name: HandlerSetupStackRequirements
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_stack_requirements
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_stack_requirements
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_stack_requirements.ModelSetupStackRequirementsRequest
+    - operation: onex_setup.local_stack
+      handler:
+        name: HandlerSetupLocalStack
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_stack
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_stack
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.plugin_lifecycle
+      handler:
+        name: HandlerSetupPluginLifecycle
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plugin.ModelSetupPluginAction
+    - operation: onex_setup.gateway
+      handler:
+        name: HandlerSetupGateway
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.connections
+      handler:
+        name: HandlerModelConnections
+        module: omnimarket.handlers.handler_endpoint_connections
+      handler_module: omnimarket.handlers.handler_endpoint_connections
+      event_model: omnimarket.handlers.handler_endpoint_connections.ModelEndpointConnectionRequest
+    - operation: onex_setup.resolve_plugins
+      handler:
+        name: HandlerSetupPlugins
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan.ModelSetupPlan
+    - operation: onex_setup.discover_endpoint
+      handler:
+        name: HandlerEndpointCatalog
+        module: omnimarket.handlers.handler_endpoint_catalog
+      handler_module: omnimarket.handlers.handler_endpoint_catalog
+      event_model: omnimarket.handlers.handler_endpoint_catalog.ModelEndpointModelsRequest
     - operation: onex_setup.claude_component
       handler:
         name: HandlerSetupClaude

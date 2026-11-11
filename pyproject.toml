@@ -1517,6 +1517,7 @@ lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_co
 # onboarding walk a CLI user needs from omnibase install.sh. omnibase_core names it as the root
 # quickstart. Discovered over installed distributions like the groups above.
 setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"
+plugins = "omnimarket.nodes.node_onex_setup_effect.cli_plugins:plugins_group"
 claude = "omnimarket.nodes.node_claude_code_binding_install_effect.cli_gateway:claude_group"
 # OMN-19998: `onex lab claude-token` -- store, deploy, probe and rotate a lab
 # host's Claude token by reference (node_lab_claude_token_effect). Discovered
@@ -1527,7 +1528,20 @@ lab = "omnimarket.nodes.node_lab_claude_token_effect.cli:lab_group"
 # distributions like the groups above.
 trajectory-eval = "omnimarket.nodes.node_trajectory_evaluation_effect.cli:trajectory_eval_group"
 
+[project.entry-points."onex.config"]
+validate = "omnimarket.nodes.node_onex_setup_effect.cli_configuration:validate_command"
+export = "omnimarket.nodes.node_onex_setup_effect.cli_configuration:export_command"
+import = "omnimarket.nodes.node_onex_setup_effect.cli_configuration:import_command"
+profiles = "omnimarket.nodes.node_onex_setup_effect.cli_configuration:profiles_group"
+effective = "omnimarket.nodes.node_onex_setup_effect.cli_configuration:effective_command"
+
 [project.entry-points."onex.models"]
+connect = "omnimarket.nodes.node_model_setup_effect.cli_connections:connect_command"
+connections = "omnimarket.nodes.node_model_setup_effect.cli_connections:connections_command"
+refresh-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:refresh_connection_command"
+select-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:select_connection_command"
+remove-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:remove_connection_command"
+test-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:test_connection_command"
 discover = "omnimarket.nodes.node_model_setup_effect.cli_catalog:discover_command"
 
 [project.entry-points."onex.contracts"]

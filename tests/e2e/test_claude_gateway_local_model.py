@@ -24,6 +24,9 @@ import httpx
 import pytest
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    post_chat_completion,
+)
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
@@ -151,17 +154,19 @@ async def test_installed_claude_uses_actual_native_local_model(tmp_path: Path) -
                     except httpx.TransportError:
                         pass
                     await asyncio.sleep(0.1)
-            response = await client.post(
-                url + "/v1/messages",
-                headers={"authorization": "Bearer " + key},
-                json={
+            response = await asyncio.to_thread(
+                post_chat_completion,
+                endpoint_url=url + "/v1/messages",
+                extra_headers={"authorization": "Bearer " + key},
+                payload={
                     "model": model,
                     "messages": [{"role": "user", "content": "Say ready"}],
                     "max_tokens": 32,
                 },
-                timeout=120,
+                timeout_seconds=120,
+                runtime_profile="main",
             )
-            assert response.status_code == 200, response.text
+            assert response.status_code == 200, response.json_body
         code, stdout, stderr = await _execute(
             [
                 onex,

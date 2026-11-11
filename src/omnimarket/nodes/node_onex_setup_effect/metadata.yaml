@@ -1,6 +1,6 @@
 name: node_onex_setup_effect
 version: "1.0.0"
-description: "Package client onboarding through versioned setup plugins, endpoint model discovery, selected-component preflight, identity/model proofs, dashboard lifecycle and Claude integration"
+description: "Package client onboarding through versioned setup plugins and portable configuration profiles, endpoint discovery, selected-component preflight, model proofs, dashboard lifecycle and Claude integration"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -19,6 +19,7 @@ dependencies:
   - "click>=8.0"
   - "httpx>=0.27.0"
   - "PyYAML>=6.0"
+  - "packaging>=24.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "onboarding", "setup", "cli"]

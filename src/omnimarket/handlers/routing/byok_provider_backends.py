@@ -362,6 +362,10 @@ class ModelByokProviderBackend(BaseModel):
     default_models: tuple[str, ...] = ()
     #: OMN-21215. The key a new developer adds first. Exactly one row sets it.
     first_key: bool = False
+    #: Onboarding guidance only; never a credential destination.
+    key_page: str | None = Field(default=None, pattern=r"^https://[^\s\x00-\x1f\x7f]+$")
+    #: Recognizable prefixes are hints, not a requirement on accepted keys.
+    key_prefixes: tuple[str, ...] = ()
     #: OMN-21263. ``true`` declares the generic OpenAI-compatible row: the
     #: developer names the endpoint's base URL when they register the key, and
     #: ``endpoint_url`` and ``models_url`` here are placeholders that never route
@@ -867,6 +871,25 @@ def first_key_backend() -> ModelByokProviderBackend:
     )
 
 
+def key_provider_hint(value: str, for_provider: str | None = None) -> str | None:
+    """Longest declared prefix hint; unknown or ambiguous key shapes stay valid."""
+    catalog = load_byok_provider_catalog()
+    selected = catalog.get(for_provider) if for_provider is not None else None
+    if selected is not None and selected.endpoint_from_registration:
+        return None
+    matches = [
+        (len(prefix), row.provider)
+        for row in catalog.values()
+        for prefix in row.key_prefixes
+        if prefix and value.startswith(prefix)
+    ]
+    if not matches:
+        return None
+    longest = max(length for length, _ in matches)
+    providers = {provider for length, provider in matches if length == longest}
+    return next(iter(providers)) if len(providers) == 1 else None
+
+
 def customer_provider_catalogue() -> tuple[str, ...]:
     """The customer-facing provider catalogue: every provider id a customer
     may register a key for, sorted.
@@ -1273,6 +1296,7 @@ __all__: list[str] = [
     "catalogue_prefers_model",
     "customer_provider_catalogue",
     "house_keyed_provider_slugs",
+    "key_provider_hint",
     "load_byok_not_offered_providers",
     "load_byok_plan_catalog",
     "load_byok_provider_catalog",

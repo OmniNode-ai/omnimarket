@@ -30,6 +30,15 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models.model_gatew
     ModelGatewayHookInstallResult,
 )
 
+__all__ = [
+    "HandlerClaudeGatewaySettings",
+    "ModelClaudeGatewaySettingsRequest",
+    "check_gateway_hook_binding",
+    "gateway_hook_enabled",
+    "manage_gateway_hooks",
+    "probe_gateway",
+]
+
 
 def manage_gateway_hooks(
     action: Literal["install", "status", "uninstall"],

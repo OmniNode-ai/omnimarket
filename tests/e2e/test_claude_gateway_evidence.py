@@ -18,6 +18,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.local_deployment.tenant_identity import mint_local_tenant_identity
 from omnimarket.models.delegation.model_claude_gateway import ModelClaudeGatewayConfig
+from tests.helpers.asgi_ingress import AsgiIngress
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
@@ -92,10 +93,9 @@ async def test_gateway_joins_actual_receipt_and_projection(
         store=store,
         transport=httpx.MockTransport(respond),
     )
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app), base_url="http://localhost"
-    ) as client:
-        response = await client.post(
+    async with AsgiIngress(app) as client:
+        response = await client.invoke(
+            "POST",
             "/v1/messages",
             json={
                 "model": "claude-fixture",

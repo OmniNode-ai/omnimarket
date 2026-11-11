@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import httpx
 import pytest
 
@@ -71,11 +73,48 @@ def test_probe_requires_authenticated_protocol_and_model(failure: str) -> None:
         credential_ref="gateway.fixture",
         credential_helper="safe-helper",
     )
-    with httpx.Client(
-        transport=httpx.MockTransport(respond), follow_redirects=False
-    ) as client:
-        result = probe_gateway(request, read_secret=secret, client=client)
+
+    def get(*, url, timeout_seconds, extra_headers, trust_env):
+        assert trust_env is False
+        assert timeout_seconds == 10
+        req = httpx.Request("GET", url, headers=extra_headers)
+        response = respond(req)
+        response.request = req
+        response.raise_for_status()
+        return response.json()
+
+    result = probe_gateway(request, read_secret=secret, get=get)
     assert result is (failure == "none")
     if failure == "secret":
         assert calls == []
     assert all("SENTINEL" not in url for url in calls)
+
+
+def test_canonical_json_transport_can_refuse_ambient_proxies(monkeypatch):
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+
+    options = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            options.append(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        @contextmanager
+        def stream(self, method, url, headers):
+            yield httpx.Response(
+                200,
+                json={"data": []},
+                request=httpx.Request(method, url, headers=headers),
+            )
+
+    monkeypatch.setattr(transport.httpx, "Client", Client)
+    assert transport.get_provider_json(
+        url="https://fixture.test/catalog", timeout_seconds=1, trust_env=False
+    ) == {"data": []}
+    assert options == [{"timeout": 1, "trust_env": False, "follow_redirects": False}]

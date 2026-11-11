@@ -7,11 +7,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
-import httpx
-
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_code_binding_install_effect.models.model_claude_gateway_settings import (
     ModelClaudeGatewaySettingsRequest,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    get_provider_json,
 )
 
 
@@ -19,10 +20,10 @@ def probe_gateway(
     request: ModelClaudeGatewaySettingsRequest,
     *,
     read_secret: Callable[[str], Awaitable[str | None]] | None = None,
-    client: httpx.Client | None = None,
+    get: Callable[..., object] | None = None,
 ) -> bool:
     """No model inference, redirects, proxy inheritance, logging or secret-bearing URLs."""
-    owned_client = client is None
+    fetch = get or get_provider_json
     try:
         if (
             request.gateway_url is None
@@ -38,15 +39,13 @@ def probe_gateway(
         secret = asyncio.run(read_value())
         if not secret or any(ord(c) < 32 or ord(c) == 127 for c in secret):
             return False
-        if client is None:
-            client = httpx.Client(timeout=10, follow_redirects=False, trust_env=False)
         headers = {"Authorization": f"Bearer {secret}"}
-        protocol = client.get(
-            request.gateway_url + "/onex/gateway/protocol", headers=headers
+        declared = fetch(
+            url=request.gateway_url + "/onex/gateway/protocol",
+            extra_headers=headers,
+            timeout_seconds=10,
+            trust_env=False,
         )
-        if protocol.status_code != 200:
-            return False
-        declared = protocol.json()
         if (
             not isinstance(declared, dict)
             or declared.get("protocol") != "onex-claude-gateway.v1"
@@ -56,16 +55,15 @@ def probe_gateway(
             )
         ):
             return False
-        models = client.get(request.gateway_url + "/v1/models", headers=headers)
-        if models.status_code != 200:
-            return False
-        body = models.json()
+        body = fetch(
+            url=request.gateway_url + "/v1/models",
+            extra_headers=headers,
+            timeout_seconds=10,
+            trust_env=False,
+        )
         data = body.get("data") if isinstance(body, dict) else None
         return isinstance(data, list) and any(
             isinstance(item, dict) and item.get("id") == request.model for item in data
         )
     except Exception:
         return False
-    finally:
-        if owned_client and client is not None:
-            client.close()

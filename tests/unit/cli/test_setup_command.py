@@ -37,9 +37,6 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
     ModelModelTestResult,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
-from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_base_tools import (
-    HandlerSetupBaseTools,
-)
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
     HandlerSetupPreflight,
 )
@@ -91,11 +88,6 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         HandlerSetupPreflight,
         "observe",
         lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
-    )
-    monkeypatch.setattr(
-        HandlerSetupBaseTools,
-        "observe",
-        lambda _self, _plan: ModelSetupObservation(step="base-tools", status="success"),
     )
     monkeypatch.setattr(
         "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",

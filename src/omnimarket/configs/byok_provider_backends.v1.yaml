@@ -191,6 +191,8 @@ providers:
   # string that is baked into the minted ref
   # (`cred_<tenant>_openrouter_<uuid>`).
   - provider: openrouter
+    key_page: https://openrouter.ai/keys
+    key_prefixes: ["sk-or-"]
     plan: free_tier
     # NOT one of the platform's own backend_ids. A tenant-overlay decision
     # namespaces this by tenant_id before deriving the selected_backend_id
@@ -307,6 +309,7 @@ providers:
   # A stale z.ai key on the same surface returns 401 code 1000, which is the
   # signature OMN-17987 recorded and mis-read as "the GLM rung cannot be bound".
   - provider: glm
+    key_page: https://z.ai/manage-apikey/apikey-list
     plan: coding_plan
     # OMN-20157: DETECTION-ONLY. Never routed for a customer; see "DETECTION-ONLY
     # PLANS" above and knowledge-base-internal
@@ -404,6 +407,7 @@ providers:
   # key, which is a Coding Plan key that ALSO answers on this surface today. No
   # key that belongs to the general API only exists on this platform.
   - provider: glm
+    key_page: https://z.ai/manage-apikey/apikey-list
     plan: general_api
     # OMN-20157: the customer default. A caller that names no plan, and an event
     # published before plans existed, resolve this row.
@@ -473,6 +477,8 @@ providers:
   # the dispatch adapter already sends. The endpoint and budgets mirror the
   # platform rung `cloud-gemini-flash`.
   - provider: gemini
+    key_page: https://aistudio.google.com/apikey
+    key_prefixes: ["AIza"]
     plan: ai_studio
     backend_id: byok-gemini
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
@@ -531,6 +537,8 @@ providers:
   # gpt-6 and o-series models refuse `max_tokens` with HTTP 400, so a model the
   # customer chooses from those families answers like any other.
   - provider: openai
+    key_page: https://platform.openai.com/api-keys
+    key_prefixes: ["sk-"]
     plan: api
     mirrors_house_rung: false
     backend_id: byok-openai
@@ -636,6 +644,8 @@ providers:
   # customer who wants another model names it with --model, checked against the
   # same list.
   - provider: anthropic
+    key_page: https://platform.claude.com/settings/keys
+    key_prefixes: ["sk-ant-"]
     plan: api
     # OMN-20910: a provider with two rows has exactly one default. A caller that
     # names no plan keeps the OpenAI-compatible endpoint it always had.
@@ -692,6 +702,8 @@ providers:
   # declares: key in `x-api-key`, `anthropic-version` header, system and message
   # content blocks with cache breakpoints, a forced tool for schema output.
   - provider: anthropic
+    key_page: https://platform.claude.com/settings/keys
+    key_prefixes: ["sk-ant-"]
     plan: api_native
     auto_detect_plan: false
     inference_protocol: anthropic_messages

@@ -36,6 +36,9 @@ from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_co
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import ValidationError
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    customer_provider_catalogue,
+)
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupFailure,
     ModelOnexSetupReceipt,
@@ -52,15 +55,10 @@ SETUP_STEPS: tuple[str, ...] = (
     "runtime_config",
     "model",
 )
-#: The providers setup offers. Ollama is not one: a user who runs it names it as
-#: ``--provider local --url <its OpenAI-compatible base URL>``.
-SETUP_PROVIDERS: tuple[str, ...] = (
-    "gemini",
-    "openrouter",
-    "openai",
-    "openai_compatible",
-    "local",
-    "ollama",
+#: Hosted choices come from the canonical provider registry. Local and Ollama
+#: are endpoint-only setup modes; neither provisions model software.
+SETUP_PROVIDERS: tuple[str, ...] = tuple(
+    dict.fromkeys((*customer_provider_catalogue(), "local", "ollama"))
 )
 #: Providers setup refuses, each with its problem and the way to reach it instead.
 REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {}

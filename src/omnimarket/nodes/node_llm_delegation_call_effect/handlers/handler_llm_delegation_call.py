@@ -954,64 +954,6 @@ class HandlerLlmDelegationCall:
             if request.response_format is not None:
                 payload["response_format"] = request.response_format
 
-        # OMN-16419: fail-closed model-attribution guard. A live GET
-        # /v1/models reconciliation runs BEFORE the chat-completion POST —
-        # never after — because the response body's echoed ``model`` field is
-        # not trustworthy evidence (SGLang echoes whatever was requested,
-        # served or not; see transport.probe_served_models). ``served_ids`` is
-        # None when the endpoint offers no evidence either way (most cloud
-        # backends don't expose this path), in which case the guard is a
-        # no-op and behavior is unchanged from before this ticket. When
-        # ``served_ids`` IS available and does not contain the configured
-        # model_id, the call never reaches the network — this repo's own
-        # config no longer silently attributes to a model that isn't running.
-        # The native endpoint has no GET /v1/models next to ``/v1/messages`` to
-        # reconcile against; its reply names the model that served it instead,
-        # read below.
-        served_ids = None if native else _get_served_model_ids(endpoint_url)
-        if served_ids is not None and request.model_id not in served_ids:
-            # Reconcile a possible model replacement before refusing the call.
-            # An unreadable refresh retains the known mismatch evidence.
-            served_ids = (
-                transport.get_served_model_ids(endpoint_url, refresh=True) or served_ids
-            )
-        served_model_id: str | None = None
-        if served_ids is not None:
-            if request.model_id not in served_ids:
-                # OMN-18670: name the SOURCE of the configured literal, not
-                # only the literal. The 2026-09-18 outage was caused by an
-                # untracked ``~/.omninode/delegation/bifrost_overrides.yaml``
-                # that still pinned a retired model four days after every
-                # committed surface had been repointed; this message named the
-                # value and the endpoint, so three lanes re-derived the
-                # resolution path by hand to find a file no repo grep can see.
-                # ``model_id_source`` is empty when the caller resolved the
-                # backend outside the routing authority — the refusal still
-                # fires, it just cannot attribute what it was never told.
-                attribution = (
-                    f" The configured value came from: {request.model_id_source}."
-                    if request.model_id_source
-                    else (
-                        " The caller supplied no config provenance for this "
-                        "model_id, so this refusal cannot name the file that "
-                        "supplied it; resolve the backend through the routing "
-                        "authority (resolve_delegation_backend) to get one, or "
-                        "run `python -m omnimarket.cli.cli_explain_routing` to "
-                        "print the merged routing with a per-key source."
-                    )
-                )
-                return self._failure_result(
-                    request,
-                    EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH,
-                    f"model_attribution_mismatch: configured model_name="
-                    f"{request.model_id!r} is not in the served ids "
-                    f"{sorted(served_ids)!r} reported by "
-                    f"{transport.served_models_url(endpoint_url)} (OMN-16419 "
-                    "fail-closed guard — refusing to silently attribute this "
-                    f"call to a model that is not running).{attribution}",
-                )
-            served_model_id = request.model_id
-
         secret_source: EnumSecretSource | None = None
         request_left_at: float | None = None
         try:
@@ -1023,6 +965,76 @@ class HandlerLlmDelegationCall:
             # ref that cannot be resolved fails closed (raises → caught below as a
             # transport failure), never a silent unauthenticated call.
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
+
+            # OMN-16419: fail-closed model-attribution guard. A live GET
+            # /v1/models reconciliation runs BEFORE the chat-completion POST —
+            # never after — because the response body's echoed ``model`` field is
+            # not trustworthy evidence (SGLang echoes whatever was requested,
+            # served or not; see transport.probe_served_models). ``served_ids`` is
+            # None when the endpoint offers no evidence either way (most cloud
+            # backends don't expose this path), in which case the guard is a
+            # no-op and behavior is unchanged from before this ticket. When
+            # ``served_ids`` IS available and does not contain the configured
+            # model_id, the call never reaches the network — this repo's own
+            # config no longer silently attributes to a model that isn't running.
+            # The native endpoint has no GET /v1/models next to ``/v1/messages`` to
+            # reconcile against; its reply names the model that served it instead,
+            # read below.
+            served_ids = (
+                None
+                if native
+                else transport.get_served_model_ids(
+                    endpoint_url, extra_headers=outbound_headers
+                )
+                if outbound_headers
+                else _get_served_model_ids(endpoint_url)
+            )
+            if served_ids is not None and request.model_id not in served_ids:
+                # Reconcile a possible model replacement before refusing the call.
+                # An unreadable refresh retains the known mismatch evidence.
+                served_ids = (
+                    transport.get_served_model_ids(
+                        endpoint_url, refresh=True, extra_headers=outbound_headers
+                    )
+                    or served_ids
+                )
+            served_model_id: str | None = None
+            if served_ids is not None:
+                if request.model_id not in served_ids:
+                    # OMN-18670: name the SOURCE of the configured literal, not
+                    # only the literal. The 2026-09-18 outage was caused by an
+                    # untracked ``~/.omninode/delegation/bifrost_overrides.yaml``
+                    # that still pinned a retired model four days after every
+                    # committed surface had been repointed; this message named the
+                    # value and the endpoint, so three lanes re-derived the
+                    # resolution path by hand to find a file no repo grep can see.
+                    # ``model_id_source`` is empty when the caller resolved the
+                    # backend outside the routing authority — the refusal still
+                    # fires, it just cannot attribute what it was never told.
+                    attribution = (
+                        f" The configured value came from: {request.model_id_source}."
+                        if request.model_id_source
+                        else (
+                            " The caller supplied no config provenance for this "
+                            "model_id, so this refusal cannot name the file that "
+                            "supplied it; resolve the backend through the routing "
+                            "authority (resolve_delegation_backend) to get one, or "
+                            "run `python -m omnimarket.cli.cli_explain_routing` to "
+                            "print the merged routing with a per-key source."
+                        )
+                    )
+                    return self._failure_result(
+                        request,
+                        EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH,
+                        f"model_attribution_mismatch: configured model_name="
+                        f"{request.model_id!r} is not in the served ids "
+                        f"{sorted(served_ids)!r} reported by "
+                        f"{transport.served_models_url(endpoint_url)} (OMN-16419 "
+                        "fail-closed guard — refusing to silently attribute this "
+                        f"call to a model that is not running).{attribution}",
+                    )
+                served_model_id = request.model_id
+
             _report_call(
                 ModelLlmDelegationCallObservation(
                     phase="started",

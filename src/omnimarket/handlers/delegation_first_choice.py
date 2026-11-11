@@ -24,6 +24,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
 )
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+    resolve_delegation_backend,
 )
 from omnimarket.handlers.routing.local_byok_route import (
     registered_local_model_routes,
@@ -32,9 +33,13 @@ from omnimarket.handlers.routing.local_byok_route import (
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     local_model_tests_path,
+    read_named_connections,
     registered_local_byok_providers,
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
+)
+from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
+    ModelEndpointConnection,
 )
 
 FIRST_CHOICE_FILE: Final = "delegation_first_choice.json"
@@ -90,6 +95,38 @@ def first_choice_route(
     if choice is None:
         return None
     provider, model = choice
+    if provider.startswith("connection:"):
+        name = provider.removeprefix("connection:")
+        found = next(
+            (
+                row
+                for row in read_named_connections(db_path=db_path)
+                if row["connection_id"] == name
+            ),
+            None,
+        )
+        if found is None:
+            return None
+        connection = ModelEndpointConnection.model_validate(found)
+        if model not in connection.models:
+            return None
+        try:
+            named_route = resolve_delegation_backend(
+                task_type,
+                backend_id=connection.backend_id(model),
+                overlay_path=local_model_tests_path(db_path).with_name(
+                    "bifrost_overrides.yaml"
+                ),
+            )
+        except (OSError, ValueError):
+            return None
+        if (
+            named_route.model_id != model
+            or named_route.endpoint_ref != connection.url + "/v1/chat/completions"
+            or named_route.secret_ref != connection.secret_ref
+        ):
+            return None
+        return named_route
     if provider == _LOCAL_URL_PROVIDER:
         local = registered_local_model_routes(task_type)
         return next((route for route in local if route.model_id == model), None)
@@ -111,11 +148,60 @@ def first_choice_route(
     return route.model_copy(update={"model_id": model})
 
 
+def first_choice_routes(
+    task_type: str, *, db_path: Path | None = None
+) -> tuple[ModelResolvedDelegationBackend, ...]:
+    """Selected named model followed by that connection's remaining ordered models.
+
+    Each route must still match its canonical endpoint, model and credential.
+    Legacy selections remain one route; pins never call this enumeration.
+    """
+    first = first_choice_route(task_type, db_path=db_path)
+    if first is None:
+        return ()
+    choice = read_first_choice(db_path=db_path)
+    if choice is None or not choice[0].startswith("connection:"):
+        return (first,)
+    row = next(
+        (
+            item
+            for item in read_named_connections(db_path=db_path)
+            if item["connection_id"] == choice[0].removeprefix("connection:")
+        ),
+        None,
+    )
+    if row is None:
+        return ()
+    connection = ModelEndpointConnection.model_validate(row)
+    routes = [first]
+    for model in connection.models:
+        if model == first.model_id:
+            continue
+        route = resolve_delegation_backend(
+            task_type,
+            backend_id=connection.backend_id(model),
+            overlay_path=local_model_tests_path(db_path).with_name(
+                "bifrost_overrides.yaml"
+            ),
+        )
+        if (
+            route.model_id != model
+            or route.endpoint_ref != first.endpoint_ref
+            or route.secret_ref != connection.secret_ref
+        ):
+            raise ValueError(
+                "A named connection route no longer matches its registration"
+            )
+        routes.append(route)
+    return tuple(routes)
+
+
 __all__: list[str] = [
     "FIRST_CHOICE_FILE",
     "clear_first_choice",
     "first_choice_path",
     "first_choice_route",
+    "first_choice_routes",
     "read_first_choice",
     "write_first_choice",
 ]

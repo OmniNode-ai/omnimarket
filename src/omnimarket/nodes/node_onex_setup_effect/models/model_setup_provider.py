@@ -6,9 +6,12 @@ from __future__ import annotations
 
 import re
 import urllib.parse
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
+    ModelProvider,
+)
 
 _URL_RE = re.compile(r"^[^\s\x00-\x1f\x7f-\x9f]*$")
 
@@ -18,12 +21,13 @@ class ModelSetupProvider(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    provider: Literal[
-        "gemini", "openrouter", "openai", "openai_compatible", "local", "ollama"
-    ]
+    provider: ModelProvider
     models: tuple[str, ...]
     url: str | None = None
     api_key_required: bool = False
+    connection_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    native_messages: bool | None = None
+    make_default: bool = False
 
     @field_validator("models")
     @classmethod
@@ -60,6 +64,8 @@ class ModelSetupProvider(BaseModel):
         return v
 
     def model_post_init(self, __context: object) -> None:
+        if self.connection_id is not None and self.url is None:
+            raise ValueError("Named connections require an explicit endpoint URL")
         if (
             self.provider in ("local", "openai_compatible", "ollama")
             and self.url is None
@@ -67,11 +73,13 @@ class ModelSetupProvider(BaseModel):
             raise ValueError(f"provider {self.provider} requires url")
 
     @property
-    def registration_provider(
-        self,
-    ) -> Literal[
-        "gemini", "openrouter", "openai", "openai_compatible", "local", "ollama"
-    ]:
+    def credential_identity(self) -> str:
+        return (
+            "connection:" + self.connection_id if self.connection_id else self.provider
+        )
+
+    @property
+    def registration_provider(self) -> ModelProvider:
         """Canonical credential/endpoint owner for this logical selection."""
         if self.provider == "ollama":
             return "openai_compatible" if self.api_key_required else "local"

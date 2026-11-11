@@ -200,19 +200,31 @@ def build_gateway_app(
         except Exception:
             raise HTTPException(401, "Gateway authentication failed") from None
 
+    async def ready_route() -> None:
+        try:
+            backend = resolve_backend()
+            _endpoint(backend, config)
+            if backend.secret_ref and not await read_secret(backend.secret_ref):
+                raise ValueError("Upstream credential absent")
+        except Exception:
+            raise HTTPException(503, "Native gateway route is unavailable") from None
+
     @app.get("/onex/gateway/protocol")
     async def protocol(request: Request) -> dict[str, JsonValue]:
         await authenticate(request)
+        await ready_route()
         return {
             "protocol": "onex-claude-gateway.v1",
             "streaming": True,
             "tool_use": True,
             "receipts": True,
+            "backend_compatibility": "declared; inference proof required",
         }
 
     @app.get("/v1/models")
     async def models(request: Request) -> dict[str, JsonValue]:
         await authenticate(request)
+        await ready_route()
         return {
             "data": [
                 {"type": "model", "id": config.model, "display_name": config.model}

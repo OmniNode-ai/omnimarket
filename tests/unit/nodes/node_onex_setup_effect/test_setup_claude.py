@@ -10,6 +10,7 @@ user configuration must never become a completed Claude component.
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,6 +22,57 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_customer_install_uses_packaged_marketplace_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from importlib import metadata
+
+    claude, _, binary = fixture(tmp_path)
+    marketplace = tmp_path / "installed customer bundle"
+    marketplace.mkdir()
+    entry = SimpleNamespace(
+        load=lambda: (
+            lambda: {
+                "marketplace": str(marketplace),
+                "installer": str(tmp_path / "installer"),
+                "package_version": "fixture",
+            }
+        )
+    )
+    monkeypatch.setattr(metadata, "entry_points", lambda **_: [entry])
+    commands: list[tuple[str, ...]] = []
+
+    def run(
+        _self: HandlerSetupClaude, argv: tuple[str, ...], *, network: bool = False
+    ) -> str:
+        commands.append(argv)
+        return ""
+
+    monkeypatch.setattr(HandlerSetupClaude, "_run", run)
+    HandlerSetupClaude(claude_home=claude, executable=binary).apply(
+        ModelSetupPlan(workspace=tmp_path, components=("claude-plugin",))
+    )
+    assert commands == [
+        (str(binary), "plugin", "marketplace", "add", str(marketplace)),
+        (str(binary), "plugin", "install", "onex@omninode-tools"),
+    ]
+
+
+def test_missing_bundle_refuses_before_vendor_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from importlib import metadata
+
+    claude, _, binary = fixture(tmp_path)
+    monkeypatch.setattr(metadata, "entry_points", lambda **_: [])
+    result = HandlerSetupClaude(claude_home=claude, executable=binary).apply(
+        ModelSetupPlan(workspace=tmp_path, components=("claude-plugin",))
+    )
+    assert result is not None
+    assert result.status == "action_required"
+    assert "onex install omninode-claude" in (result.fix or "")
 
 
 def fixture(tmp_path: Path, *, logged_in: bool = True) -> tuple[Path, Path, Path]:
@@ -173,3 +225,40 @@ def test_developer_marketplace_uses_its_owner_manifest_and_refuses_ambiguity(
     with pytest.raises(ValueError, match="ambiguous"):
         handler.apply(plan)
     assert commands == []
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_plugin_toggle_uses_only_owned_user_scope(
+    tmp_path: Path, enabled: bool
+) -> None:
+    """A lifecycle toggle must not use --all or mutate unrelated JSON directly."""
+    claude, _, binary = fixture(tmp_path)
+    record = tmp_path / "argv.json"
+    binary.write_text(
+        f"#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\nPath({str(record)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+    )
+    settings = claude / "settings.json"
+    settings.write_text('{"unrelated":"later-user-value"}')
+    HandlerSetupClaude(claude_home=claude, executable=binary).set_enabled(enabled)
+    assert json.loads(record.read_text()) == [
+        "plugin",
+        "enable" if enabled else "disable",
+        "onex@omninode-tools",
+        "--scope",
+        "user",
+    ]
+    assert settings.read_text() == '{"unrelated":"later-user-value"}'
+
+
+def test_plugin_toggle_refuses_ambiguous_profiles_before_command(
+    tmp_path: Path,
+) -> None:
+    claude, cache, binary = fixture(tmp_path)
+    registry = claude / "plugins" / "installed_plugins.json"
+    data = json.loads(registry.read_text())
+    data["plugins"]["onex@omninode-tools-dev"] = [
+        {"scope": "user", "installPath": str(cache)}
+    ]
+    registry.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="conflicting"):
+        HandlerSetupClaude(claude_home=claude, executable=binary).set_enabled(False)

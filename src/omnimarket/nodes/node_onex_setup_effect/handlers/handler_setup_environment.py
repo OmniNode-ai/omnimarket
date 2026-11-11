@@ -8,6 +8,7 @@ model-PR implementation with its legacy state writer explicitly disabled.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import stat
 from pathlib import Path
@@ -17,6 +18,11 @@ from omnibase_core.cli.cli_user_config import read_user_config, user_config_path
 from pydantic import SecretStr
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers.delegation_first_choice import read_first_choice
+from omnimarket.handlers.handler_endpoint_connections import (
+    HandlerModelConnections,
+    ModelEndpointConnectionRequest,
+)
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.local_deployment.tenant_identity import (
     mint_local_tenant_identity,
@@ -160,6 +166,88 @@ class HandlerSetupEnvironment:
         evidence: dict[str, str] = {}
         receipts: list[ModelOnexSetupReceipt] = []
         for desired in plan.providers:
+            if desired.connection_id:
+                status = HandlerModelConnections().handle(
+                    ModelEndpointConnectionRequest(
+                        operation="list", connection_id=desired.connection_id
+                    )
+                )
+                current_connection = (
+                    status.connections[0] if status.connections else None
+                )
+                expected_url = (desired.url or "").rstrip("/").removesuffix("/v1")
+                if (
+                    current_connection is None
+                    or current_connection.url != expected_url
+                    or current_connection.models != desired.models
+                    or (
+                        desired.native_messages is not None
+                        and current_connection.native_messages
+                        != desired.native_messages
+                    )
+                ):
+                    return self._result(
+                        False,
+                        fix=f"Configure and prove connection {desired.connection_id}.",
+                    )
+                supplied_key = self._credentials.get(desired.credential_identity)
+                if supplied_key is not None:
+                    stored_key = (
+                        asyncio.run(
+                            LocalByokCredentialStore().get_secret(
+                                current_connection.secret_ref
+                            )
+                        )
+                        if current_connection.secret_ref
+                        else None
+                    )
+                    if stored_key != supplied_key.get_secret_value():
+                        return self._result(
+                            False,
+                            fix="Update and prove the changed connection credential.",
+                        )
+                if desired.make_default and read_first_choice() != (
+                    desired.credential_identity,
+                    desired.models[0],
+                ):
+                    return self._result(
+                        False,
+                        fix="Select the requested named model as the default route.",
+                    )
+                for model, backend in zip(
+                    current_connection.models,
+                    current_connection.backend_ids,
+                    strict=True,
+                ):
+                    test = next(
+                        (
+                            item
+                            for item in status.tests
+                            if item.backend_id == backend
+                            and item.model == model
+                            and item.endpoint == expected_url + "/v1/chat/completions"
+                            and item.status == "passed"
+                        ),
+                        None,
+                    )
+                    if test is None:
+                        return self._result(
+                            False,
+                            fix=f"Prove every model selected for connection {desired.connection_id}.",
+                        )
+                    evidence[f"{desired.credential_identity}:{model}"] = (
+                        f"backend={backend}; tested_at={test.tested_at}"
+                    )
+                    receipts.append(
+                        ModelOnexSetupReceipt(
+                            provider=desired.provider,
+                            model=model,
+                            backend_id=backend,
+                            endpoint=test.endpoint,
+                            tested_at=test.tested_at,
+                        )
+                    )
+                continue
             statuses = model_keys.list_providers(
                 provider=desired.registration_provider,
                 url=desired.url,
@@ -235,6 +323,37 @@ class HandlerSetupEnvironment:
             mint_local_tenant_identity(db_path=LocalByokCredentialStore().db_path)
         else:
             for desired in plan.providers:
+                if desired.connection_id:
+                    owner = HandlerModelConnections()
+                    result = owner.handle(
+                        ModelEndpointConnectionRequest(
+                            operation="connect",
+                            connection_id=desired.connection_id,
+                            url=desired.url,
+                            models=desired.models,
+                            key=self._credentials.get(desired.credential_identity),
+                            native_messages=desired.native_messages,
+                        )
+                    )
+                    if result.status != "ready":
+                        raise ValueError(
+                            result.message
+                            or "The named connection did not pass pinned delegation"
+                        )
+                    if desired.make_default or read_first_choice() is None:
+                        selected = owner.handle(
+                            ModelEndpointConnectionRequest(
+                                operation="select",
+                                connection_id=desired.connection_id,
+                                models=desired.models[:1],
+                            )
+                        )
+                        if selected.status != "ready":
+                            raise ValueError(
+                                selected.message
+                                or "The connection could not be selected"
+                            )
+                    continue
                 if desired.provider == "ollama" and desired.api_key_required:
                     from omnimarket.handlers.openai_compatible_endpoint import (
                         base_url_of,

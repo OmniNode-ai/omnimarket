@@ -6,7 +6,10 @@ from collections.abc import Callable
 
 import httpx
 
-from omnimarket.handlers.routing.byok_model_discovery import get_models_json
+from omnimarket.handlers.routing.byok_model_discovery import (
+    get_models_json,
+    models_request_headers,
+)
 from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
     ModelEndpointModelsRequest,
     ModelEndpointModelsResult,
@@ -21,10 +24,15 @@ class HandlerEndpointModels:
 
     def handle(self, request: ModelEndpointModelsRequest) -> ModelEndpointModelsResult:
         secret = request.key.get_secret_value() if request.key else None
-        headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+        backend = request.backend
+        headers = (
+            models_request_headers(backend, secret or "")
+            if backend
+            else ({"Authorization": f"Bearer {secret}"} if secret else {})
+        )
         try:
             body = self._get(
-                url=f"{request.url}/v1/models",
+                url=backend.models_url if backend else f"{request.url}/v1/models",
                 timeout_seconds=request.timeout_seconds,
                 extra_headers=headers,
             )
@@ -54,10 +62,20 @@ class HandlerEndpointModels:
                 message="The endpoint could not be read. Check its URL and availability.",
             )
         rows = body.get("data") if isinstance(body, dict) else None
+        if (
+            backend is not None
+            and not isinstance(rows, list)
+            and isinstance(body, dict)
+        ):
+            rows = body.get("models")
         models: list[str] = []
         if isinstance(rows, list):
             for row in rows:
                 model = row.get("id") if isinstance(row, dict) else None
+                if backend is not None and isinstance(row, dict) and model is None:
+                    model = row.get("name")
+                    if isinstance(model, str):
+                        model = model.removeprefix("models/")
                 if (
                     not isinstance(model, str)
                     or not model.strip()

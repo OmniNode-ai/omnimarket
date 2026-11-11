@@ -1,4 +1,36 @@
 plugins:
+  - id: completion-notification
+    api_version: 1
+    version: 1.0.0
+    components: [completion-notification]
+    consent_notice: "Completion notification asks the installed operating-system notification service to show one notice after setup. Your system may hide or refuse notifications; a command failure leaves an action-required result. It never repeats automatically and plays no sound."
+    requires: [client]
+    steps:
+      - name: completion-notification
+        stage: completion
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_completion:HandlerSetupCompletion
+        options: {name: completion-notification, kind: notification}
+        context: [onex_home]
+  - id: completion-audio
+    api_version: 1
+    version: 1.0.0
+    components: [completion-audio]
+    consent_notice: "Completion audio uses the installed system voice once after setup. Your operating system may request audio permission; declining leaves a named action-required result. No audio or model is downloaded."
+    requires: [client]
+    steps:
+      - name: completion-audio
+        stage: completion
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_completion:HandlerSetupCompletion
+        context: [onex_home]
+  - id: local-stack
+    api_version: 1
+    version: 1.0.0
+    components: [local-stack]
+    requires: [client]
+    steps:
+      - name: local-stack
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_local_stack:HandlerSetupLocalStack
+        context: [onex_home]
   - id: client
     api_version: 1
     version: 1.0.0
@@ -6,6 +38,9 @@ plugins:
     steps:
       - name: preflight
         factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight:HandlerSetupPreflight
+      - name: shell-safety
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_shell:HandlerSetupShell
+        context: [onex_home]
       - name: workspace
         factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment:HandlerSetupEnvironment
         options: {name: workspace}
@@ -25,6 +60,7 @@ plugins:
   - id: delegation
     api_version: 1
     version: 1.0.0
+    recommended: true
     components: [delegation]
     requires: [client]
     steps:
@@ -35,6 +71,10 @@ plugins:
   - id: dashboard
     api_version: 1
     version: 1.0.0
+    recommended: true
+    lifecycle:
+      enable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:start_dashboard
+      disable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:stop_dashboard
     components: [dashboard]
     requires: [client]
     steps:
@@ -44,6 +84,10 @@ plugins:
   - id: claude-plugin
     api_version: 1
     version: 1.0.0
+    recommended: true
+    lifecycle:
+      enable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:enable_claude_plugin
+      disable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:disable_claude_plugin
     components: [claude-plugin]
     requires: [client]
     steps:
@@ -53,9 +97,26 @@ plugins:
   - id: claude-hooks
     api_version: 1
     version: 1.0.0
+    recommended: true
+    lifecycle:
+      enable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:install_gateway_hooks
+      disable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:remove_gateway_hooks
     components: [claude-hooks]
     requires: [claude-plugin]
     steps:
       - name: claude-hooks
         factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude:HandlerSetupClaude
         options: {name: claude-hooks}
+  - id: claude-gateway
+    api_version: 1
+    version: 1.0.0
+    components: [claude-gateway]
+    requires: [client]
+    lifecycle:
+      enable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway:start_gateway
+      disable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway:stop_gateway
+      timeout_seconds: 60
+    steps:
+      - name: claude-gateway
+        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway:HandlerSetupGateway
+        context: [onex_home]

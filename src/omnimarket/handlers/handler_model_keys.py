@@ -116,8 +116,8 @@ MODEL_LABELS: dict[str, str] = {
     "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
 }
 OLLAMA_HOW = (
-    "Ollama is installed by onboarding, which downloads a model sized to this "
-    "Mac: run onboarding again with --provider ollama."
+    "Run Ollama separately; connect via onex setup --provider ollama --url URL. "
+    "ONEX never installs Ollama or downloads models."
 )
 LOCAL_HOW = (
     "Declare a model server on an OpenAI-compatible URL (LM Studio, llama.cpp, "

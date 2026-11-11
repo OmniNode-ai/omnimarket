@@ -21,6 +21,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_claude_gatewa
     ModelClaudeGatewayConfig,
     ModelClaudeGatewayReceipt,
 )
+from tests.helpers.asgi_ingress import AsgiIngress
 
 pytestmark = pytest.mark.unit
 AUTH = {"authorization": "Bearer gateway-SENTINEL"}
@@ -97,22 +98,25 @@ async def test_authentication_precedes_all_upstream_io() -> None:
     app = application(
         lambda req: calls.append(req) or httpx.Response(200, json=REPLY), []
     )
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app), base_url="http://localhost"
-    ) as client:
+    async with AsgiIngress(app) as client:
         for route in ("/onex/gateway/protocol", "/v1/models"):
-            assert (await client.get(route)).status_code == 401
-        assert (await client.post("/v1/messages", json=BODY)).status_code == 401
-        protocol = (await client.get("/onex/gateway/protocol", headers=AUTH)).json()
+            assert (await client.invoke("GET", route)).status_code == 401
+        assert (
+            await client.invoke("POST", "/v1/messages", json=BODY)
+        ).status_code == 401
+        protocol = (
+            await client.invoke("GET", "/onex/gateway/protocol", headers=AUTH)
+        ).json()
         assert protocol == {
             "protocol": "onex-claude-gateway.v1",
             "streaming": True,
             "tool_use": True,
             "receipts": True,
+            "backend_compatibility": "declared; inference proof required",
         }
-        assert (await client.get("/v1/models", headers=AUTH)).json()["data"][0][
-            "id"
-        ] == "claude-fixture"
+        assert (await client.invoke("GET", "/v1/models", headers=AUTH)).json()["data"][
+            0
+        ]["id"] == "claude-fixture"
     assert calls == []
 
 
@@ -159,11 +163,9 @@ async def test_complete_native_payload_headers_and_result_are_preserved() -> Non
         return httpx.Response(200, json=REPLY)
 
     receipts: list[ModelClaudeGatewayReceipt] = []
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(application(respond, receipts)),
-        base_url="http://localhost",
-    ) as client:
-        response = await client.post(
+    async with AsgiIngress(application(respond, receipts)) as client:
+        response = await client.invoke(
+            "POST",
             "/v1/messages",
             json=full,
             headers={
@@ -248,11 +250,9 @@ async def test_sse_preserves_bytes_and_requires_message_stop(complete: bool) -> 
         ),
         receipts,
     )
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app), base_url="http://localhost"
-    ) as client:
-        response = await client.post(
-            "/v1/messages", json={**BODY, "stream": True}, headers=AUTH
+    async with AsgiIngress(app) as client:
+        response = await client.invoke(
+            "POST", "/v1/messages", json={**BODY, "stream": True}, headers=AUTH
         )
     assert response.status_code == 200
     assert response.content.startswith(wire)
@@ -278,10 +278,8 @@ async def test_failure_does_not_bypass_or_leak(failure: str) -> None:
         return httpx.Response(200, json=REPLY)
 
     app = application(respond, [], fail_record=failure == "receipt")
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app), base_url="http://localhost"
-    ) as client:
-        response = await client.post("/v1/messages", json=BODY, headers=AUTH)
+    async with AsgiIngress(app) as client:
+        response = await client.invoke("POST", "/v1/messages", json=BODY, headers=AUTH)
     assert response.status_code == 502
     assert "SENTINEL" not in response.text
     assert seen == ["https://upstream.example/v1/messages"]
@@ -296,17 +294,16 @@ async def test_unknown_model_refused_and_count_tokens_is_not_inference() -> None
         return httpx.Response(200, json={"input_tokens": 3})
 
     receipts: list[ModelClaudeGatewayReceipt] = []
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(application(respond, receipts)),
-        base_url="http://localhost",
-    ) as client:
+    async with AsgiIngress(application(respond, receipts)) as client:
         assert (
-            await client.post(
-                "/v1/messages", json={**BODY, "model": "other"}, headers=AUTH
+            await client.invoke(
+                "POST", "/v1/messages", json={**BODY, "model": "other"}, headers=AUTH
             )
         ).status_code == 400
         assert (
-            await client.post("/v1/messages/count_tokens", json=BODY, headers=AUTH)
+            await client.invoke(
+                "POST", "/v1/messages/count_tokens", json=BODY, headers=AUTH
+            )
         ).json() == {"input_tokens": 3}
     assert seen == ["/v1/messages/count_tokens"]
     assert receipts == []
@@ -336,10 +333,8 @@ async def test_incompatible_route_refused_before_inference() -> None:
             lambda req: seen.append(str(req.url)) or httpx.Response(200)
         ),
     )
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app), base_url="http://localhost"
-    ) as client:
+    async with AsgiIngress(app) as client:
         assert (
-            await client.post("/v1/messages", json=BODY, headers=AUTH)
+            await client.invoke("POST", "/v1/messages", json=BODY, headers=AUTH)
         ).status_code == 503
     assert seen == []

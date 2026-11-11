@@ -89,6 +89,9 @@ class HandlerSetupDashboard:
             temporary.unlink(missing_ok=True)
 
     def _ready(self, record: ModelSetupDashboardProcess) -> bool:
+        identity = read_local_tenant_identity(db_path=self._store.db_path)
+        if identity is None or str(identity.tenant_uuid) != record.tenant_id:
+            return False
         if _stamp(record.pid) != record.process_stamp:
             return False
         token = asyncio.run(self._store.get_secret(record.credential_ref))

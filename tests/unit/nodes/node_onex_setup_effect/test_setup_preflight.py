@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Resource, privilege, virtualization and probe failures before provisioning."""
+"""Platform support is shared; selected capability owners check real requirements."""
 
 from pathlib import Path
 
@@ -75,18 +75,27 @@ def test_native_vm_needs_no_docker_or_free_ports(tmp_path: Path) -> None:
         {"ram_bytes": 8 * GIB},
         {"free_disk_bytes": 29 * GIB},
         {"occupied_ports": [5436]},
+        {"administrator": False, "missing_tools": ["git", "brew", "gh"]},
     ],
 )
-def test_explicit_docker_refuses_shortfall(
-    changes: dict[str, object], tmp_path: Path
+@pytest.mark.parametrize("component", ["local-stack", "docker"])
+def test_component_name_never_activates_retired_blanket_floors(
+    changes: dict[str, object], tmp_path: Path, component: str
 ) -> None:
     result = HandlerSetupPreflight(collect=lambda _: facts(**changes)).handle(
-        ModelSetupPlan(workspace=tmp_path, components=("delegation", "docker"))
+        ModelSetupPlan(workspace=tmp_path, components=(component,))
     )
-    assert result.status != "success"
+    assert result.status == "success", result.fix
+    assert set(result.evidence) == {
+        "platform",
+        "architecture",
+        "macos_version",
+        "rosetta",
+        "virtual_machine",
+    }
 
 
-def test_existing_stack_owns_its_ports_and_smaller_disk_floor(tmp_path: Path) -> None:
+def test_selected_stack_owns_its_ports_and_allocation_checks(tmp_path: Path) -> None:
     result = HandlerSetupPreflight(
         collect=lambda _: facts(
             docker_installed=True,
@@ -94,7 +103,7 @@ def test_existing_stack_owns_its_ports_and_smaller_disk_floor(tmp_path: Path) ->
             free_disk_bytes=20 * GIB,
             occupied_ports=[5436],
         )
-    ).handle(ModelSetupPlan(workspace=tmp_path, components=("delegation", "docker")))
+    ).handle(ModelSetupPlan(workspace=tmp_path, components=("local-stack",)))
     assert result.status == "success"
 
 
@@ -103,7 +112,7 @@ def test_endpoint_client_does_not_require_developer_tools(tmp_path: Path) -> Non
         collect=lambda _: facts(missing_tools=["gh", "uv"])
     ).handle(ModelSetupPlan(workspace=tmp_path))
     assert result.status == "success"
-    assert result.evidence["missing_tools"] == "gh,uv"
+    assert "missing_tools" not in result.evidence
 
 
 def test_probe_error_is_not_a_success_or_zero_measurement(tmp_path: Path) -> None:
