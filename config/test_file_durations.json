@@ -689,6 +689,7 @@
   "tests/nodes/node_code_eval_trial_orchestrator/test_orchestrator_close_rule.py": 2.5,
   "tests/nodes/node_code_eval_trial_orchestrator/test_orchestrator_failing_controls.py": 2.5,
   "tests/nodes/node_code_eval_trial_orchestrator/test_orchestrator_golden_chain.py": 2.5,
+  "tests/nodes/node_code_eval_trial_orchestrator/test_orchestrator_lane_prefix.py": 2.59,
   "tests/nodes/node_code_eval_trial_orchestrator/test_orchestrator_seams.py": 2.5,
   "tests/nodes/node_code_eval_trial_orchestrator/test_orchestrator_unit_end_classification.py": 2.5,
   "tests/nodes/node_code_eval_trial_orchestrator/test_unit_end_classification.py": 2.33,

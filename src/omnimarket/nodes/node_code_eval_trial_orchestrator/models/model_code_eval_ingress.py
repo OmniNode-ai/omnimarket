@@ -50,6 +50,9 @@ CodeEvalOrchestratorInput = (
 )
 
 
+_UUID_CHARS = 36
+
+
 def run_id_of(request: object) -> UUID | None:
     """The run a message belongs to, or None when it names none (capacity, tick)."""
     if isinstance(request, ModelLabWorkUnitReceipt):
@@ -68,10 +71,13 @@ def run_id_of(request: object) -> UUID | None:
 
 
 def _uuid(value: str) -> UUID | None:
-    try:
-        return UUID(value)
-    except ValueError:
-        return None
+    """The run id a unit lane holds: the lane is the overlay's prefix followed by the run id."""
+    for candidate in (value, value[-_UUID_CHARS:]):
+        try:
+            return UUID(candidate)
+        except ValueError:
+            continue
+    return None
 
 
 __all__ = ["CodeEvalOrchestratorInput", "run_id_of"]
