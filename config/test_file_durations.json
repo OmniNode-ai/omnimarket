@@ -2232,7 +2232,6 @@
   "tests/nodes/node_work_state_projection_scheduled_effect/test_bus_roundtrip_work_state_projected.py": 0.0,
   "tests/nodes/node_work_state_projection_scheduled_effect/test_contract_topics.py": 7.84,
   "tests/nodes/node_work_state_projection_scheduled_effect/test_golden_chain_work_state_projection_scheduled.py": 0.05,
-  "tests/nodes/node_work_state_projection_scheduled_effect/test_ledger_route_chain.py": 2.72,
   "tests/nodes/node_work_state_projection_scheduled_effect/test_seam_projection_file_floor_and_fill.py": 4.92,
   "tests/nodes/node_worker_memory_admission_compute/test_golden_chain_worker_memory_admission_compute.py": 0.18,
   "tests/nodes/node_workflow_baseline_compare_compute/test_error_chain_workflow_baseline_compare.py": 0.05,
