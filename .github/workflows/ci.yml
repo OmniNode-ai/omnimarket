@@ -396,6 +396,8 @@ jobs:
           uv sync --locked
           uv pip install 'omnibase-compat==0.5.7'
       # OMN-22156: strict lint gates CI Summary even for docs-only changes.
+      - name: R-B premise and atomic batch admission
+        run: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov
       - name: Morning phase tools guard and wiring
         run: uv run pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
       - name: Ruff check

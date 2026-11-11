@@ -26,6 +26,7 @@ capabilities:
   requires_docker: true
   side_effect_class: write
 dependencies:
+- omnimarket.nodes.node_rule_premise_effect
 - PyYAML>=6.0
 - omnimarket.nodes.node_ruling_mechanism_owed_compute
 authors:

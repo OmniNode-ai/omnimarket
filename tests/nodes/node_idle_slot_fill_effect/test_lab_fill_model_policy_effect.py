@@ -19,6 +19,8 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers import (
 from omnimarket.nodes.node_lane_model_policy_compute.models.model_lane_model_policy import (
     ModelLaneModelPolicy,
 )
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
+from tests.nodes.test_rule_premise import policy as premise_policy
 
 
 @pytest.mark.parametrize("ceiling", ["sonnet", "codex"])
@@ -49,7 +51,7 @@ def test_tick_effect_obeys_policy_before_dispatch_and_recording(
     calls: list[list[str]] = []
     rows: list[tuple[str, str, str]] = []
 
-    def send(argv: list[str]) -> tuple[bool, str]:
+    def send(argv: list[str], **_kwargs: object) -> tuple[bool, str]:
         calls.append(argv)
         return True, "DETACHED"
 
@@ -58,7 +60,9 @@ def test_tick_effect_obeys_policy_before_dispatch_and_recording(
 
     monkeypatch.setattr(fill, "_send", send)
     state = tmp_path / "state"
-    result = fill.HandlerLabFill().handle(
+    result = fill.HandlerLabFill(
+        premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+    ).handle(
         ModelLabFillRequest(
             now="2026-10-26T19:59:00Z",
             request={
@@ -82,7 +86,7 @@ def test_tick_effect_obeys_policy_before_dispatch_and_recording(
         assert not (state / fill.SENT_FILE).exists()
         assert note == (
             "lab-fill | sent=0 (claude=0 codex=0) free=1+0 sweep_planned=0 "
-            "idle_after=1: nothing to send"
+            "idle_after=1: nothing to send refused=0 tickets=none"
         )
         return
 
@@ -92,7 +96,15 @@ def test_tick_effect_obeys_policy_before_dispatch_and_recording(
     assert argv[argv.index("--model") + 1] == "sonnet"
     brief = Path(argv[argv.index("--brief") + 1]).read_text()
     assert "ROUTE: model=sonnet effort=high\n" in brief
-    assert rows == [("lab-fill", lane, "ticket policy-probe, sonnet")]
+    from omnimarket.nodes.node_rule_premise_effect import brief_receipt
+
+    assert rows == [
+        (
+            "lab-fill",
+            lane,
+            f"{brief_receipt(brief)} ticket policy-probe, sonnet slot=batch@fixture#1 attempt=1",
+        )
+    ]
     assert json.loads((state / fill.SENT_FILE).read_text())["policy-probe"] == {
         "lane": lane,
         "at": "2026-10-26T19:59:00Z",
@@ -101,5 +113,5 @@ def test_tick_effect_obeys_policy_before_dispatch_and_recording(
     }
     assert note == (
         "lab-fill | sent=1 (claude=1 codex=0) free=1+0 sweep_planned=0 "
-        f"idle_after=0: {lane} (ticket policy-probe, sonnet)"
+        f"idle_after=0: {lane} (ticket policy-probe, sonnet) refused=0 tickets=none"
     )

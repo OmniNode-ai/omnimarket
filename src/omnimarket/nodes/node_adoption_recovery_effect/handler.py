@@ -154,6 +154,12 @@ def fold_findings(
     """Fold (level, loop, why, fix) findings into the tick's result: a MISSING or UNKNOWN changes the status line."""
     if not found:
         return result
+    refused = set(result.get("refused_tickets") or [])
+    refused.update(
+        loop.removeprefix("dispatch-refused:")
+        for _, loop, _, _ in found
+        if loop.startswith("dispatch-refused:")
+    )
     rep = report_type(
         lines=list(result["lines"]),
         missing=list(result.get("missing") or []),
@@ -168,15 +174,24 @@ def fold_findings(
                 f"NOTE {why}" if level == "note" else f"SKIP {loop} | {why}"
             )
     if not rep.missing and not rep.unknown:
-        return {**result, "lines": rep.lines}
-    return {
-        "lines": rep.lines,
-        "status_line": rep.status("THROUGHPUT", "STALL"),
-        "exit_code": 1,
-        "missing": rep.missing,
-        "unknown": rep.unknown,
-        "checked": rep.checked,
-    }
+        folded = {**result, "lines": rep.lines}
+    else:
+        folded = {
+            **result,
+            "lines": rep.lines,
+            "status_line": rep.status("THROUGHPUT", "STALL"),
+            "exit_code": 1,
+            "missing": rep.missing,
+            "unknown": rep.unknown,
+            "checked": rep.checked,
+        }
+    if refused:
+        status = str(folded["status_line"]).split(" | refused=", 1)[0]
+        folded["status_line"] = (
+            status + f" | refused={len(refused)} tickets={','.join(sorted(refused))}"
+        )
+        folded["refused_tickets"] = sorted(refused)
+    return folded
 
 
 class HandlerAdoptionRecovery:

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+probe: 3
+blocked_threshold: 2
+window_s: 900
+step: 3
+lease_s: 900
+max_attempts: 2
+park_after: 2
+park_s: 86400

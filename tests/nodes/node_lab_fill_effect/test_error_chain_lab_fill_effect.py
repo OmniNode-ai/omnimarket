@@ -47,6 +47,7 @@ from omnimarket.nodes.node_lab_fill_effect.protocols import (
     ProtocolLabFillResultWriter,
     ProtocolLabFillStatusAppender,
 )
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
 
 from .fakes import (
     START,
@@ -240,6 +241,7 @@ def _launcher(
     runner: ProtocolLabFillLaneLauncher | None = None,
 ) -> HandlerLabFillLaunch:
     return HandlerLabFillLaunch(
+        premise_gate=FakePremiseGate(),
         merged=FakeMerged(),
         checks=checks if checks is not None else FakeChecks(),
         approved=approved if approved is not None else FakeApproved(),

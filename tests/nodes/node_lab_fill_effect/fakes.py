@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
+from omnimarket.models.model_rule_premise import (
+    ModelBriefCheckRequest,
+    ModelBriefCheckResult,
+)
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -19,8 +23,19 @@ from omnimarket.nodes.node_lab_fill_effect.protocols import (
     LabFillCommandOutcome,
     LabFillPortError,
 )
+from omnimarket.nodes.node_rule_premise_effect import brief_receipt
 
 START = 1_790_000_000.0  # 2026-09-21T14:13:20Z
+
+
+class FakePremiseGate:
+    def handle(self, request: ModelBriefCheckRequest) -> ModelBriefCheckResult:
+        return ModelBriefCheckResult(
+            verdict="pass",
+            receipt=brief_receipt(request.brief),
+            slot="batch@fixture#1",
+            attempt=1,
+        )
 
 
 class FakeClock:

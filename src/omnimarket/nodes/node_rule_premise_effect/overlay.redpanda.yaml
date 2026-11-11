@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+dependencies:
+- protocol: omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+  implementation: memory_overlay_documents
+  config:
+    rule_premise: "policy:\n  blocked_threshold: 2\n  lease_s: 900\n  max_attempts:\
+      \ 2\n  park_after: 2\n  park_s: 86400\n  probe: 3\n  step: 3\n  window_s: 900\n"
+- protocol: omnimarket.protocols.protocol_rule_premise.ProtocolPremiseReader
+  implementation: part_a_premise_reader
+  config:
+    profile: redpanda
+- protocol: omnimarket.protocols.protocol_rule_premise.ProtocolPremiseValidator
+  implementation: core_premise_validator
+  config:
+    profile: redpanda
+- protocol: omnimarket.protocols.protocol_rule_premise.ProtocolBatchClaimStore
+  implementation: part_a_batch_claim_store
+  config:
+    profile: redpanda
+- protocol: omnimarket.protocols.protocol_rule_premise.ProtocolRulePremiseGate
+  implementation: rule_premise_bus_gate
+  config:
+    profile: redpanda
+    contract_package: omnimarket.nodes.node_rule_premise_effect
+announcer_bus:
+  protocol: announcer_bus
+  implementation: unbuilt_announcer_bus
+catalog_store:
+  protocol: catalog_store
+  implementation: unbuilt_catalog_store
+lazy_start_budget_seconds: 30
