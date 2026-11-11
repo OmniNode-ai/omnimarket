@@ -26,7 +26,10 @@ description: >
   the declared write-facts source in one batched read, fills pr_node_id and
   failed_run_ids into the tick's facts (a read at another head fills nothing),
   and records the filled facts of that tick: appended to the recorder and
-  published on the overlay's record topic. An unread, mismatched or already
+  published on the overlay's record topic. During the cutover period it also carries the old
+  controller's finished tick (its facts, state and logged actions) onto the facts and the
+  record, so the tick orchestrator compares with the controller's real decision (OMN-23665); a
+  controller tick still open or stale records nothing. An unread, mismatched or already
   recorded tick ends in the typed failed event and replaces no earlier record.
 runtime_profiles:
   - effects
@@ -52,6 +55,10 @@ dependencies:
     dependency_type: protocol
     description: "the per-PR node id and failed run ids, one batched read per tick; in memory by default; the redpanda profile reads the PR watcher's state (overlay watcher_state_path, refused past watcher_max_age_seconds)."
     required: true
+  - name: ProtocolLandingControllerSource
+    dependency_type: protocol
+    description: "the old controller's last finished tick during the cutover period (its facts file, tick log and decision log); absent unless the overlay names the four controller_* fields, so the controller's own instance is untouched. Carries the controller's state onto the node's facts and publishes the finished tick on the record (OMN-23665)."
+    required: false
   - name: ProtocolLandingTickRecorder
     dependency_type: protocol
     description: "keeps every tick's record; a later tick never replaces an earlier one; the redpanda profile appends to the overlay's record_journal."

@@ -44,6 +44,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
     PR_KEY_PATTERN,
     REPO_PATTERN,
     SHA_PATTERN,
+    ModelLandingControllerState,
 )
 
 __all__ = [
@@ -60,6 +61,7 @@ __all__ = [
     "ModelLandingAction",
     "ModelLandingCauseOwner",
     "ModelLandingCauseRelease",
+    "ModelLandingControllerState",
     "ModelLandingDecision",
     "ModelLandingFacts",
     "ModelLandingLivenessFacts",

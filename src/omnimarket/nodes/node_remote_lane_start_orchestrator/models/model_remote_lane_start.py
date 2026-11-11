@@ -31,6 +31,7 @@ class EnumRemoteLaneStartOutcome(StrEnum):
 
     UNSUPPORTED_SHAPE = "unsupported-shape"
     NO_HOST = "no-host"
+    LOGIN_REFUSED = "login-refused"
     CLAIM_REFUSED = "claim-refused"
     ALREADY_CLAIMED = "already-claimed"
     START_FAILED = "start-failed"
@@ -46,6 +47,8 @@ class EnumRemoteLaneStartOutcome(StrEnum):
 EXIT_CODES: dict[EnumRemoteLaneStartOutcome, int] = {
     EnumRemoteLaneStartOutcome.UNSUPPORTED_SHAPE: 64,
     EnumRemoteLaneStartOutcome.NO_HOST: 75,
+    # The token pool refused the start (the lanes-per-label cap): a later start may be served, as with no host.
+    EnumRemoteLaneStartOutcome.LOGIN_REFUSED: 75,
     EnumRemoteLaneStartOutcome.CLAIM_REFUSED: 70,
     EnumRemoteLaneStartOutcome.ALREADY_CLAIMED: 70,
     EnumRemoteLaneStartOutcome.START_FAILED: 1,
