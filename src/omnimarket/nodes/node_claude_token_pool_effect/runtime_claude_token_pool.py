@@ -65,6 +65,7 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.models.engine_login import ModelEngineLoginSteer
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_ports import (
     FileTokenFile,
     MirrorMarksSource,
@@ -76,6 +77,10 @@ from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_toke
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick import (
     HandlerClaudeTokenAssign,
     HandlerClaudeTokenRotation,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_steering import (
+    HandlerPoolSteering,
+    ProtocolLedgerText,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.schedule import (
     NODE_NAME,
@@ -181,6 +186,11 @@ def _pasted() -> str:
 
 def load_overlay() -> ModelRotationOverlay:
     return load_structured_overlay(NODE_NAME, ModelRotationOverlay)
+
+
+def run_steer(ledger: ProtocolLedgerText) -> ModelEngineLoginSteer | None:
+    """The steer of one lane start from the deployed overlay; ``None`` when steering is off."""
+    return HandlerPoolSteering(steering=load_overlay().steering, ledger=ledger).handle()
 
 
 def parse_lane_counts(text: str | None) -> tuple[ModelPoolLabelLanes, ...] | None:
