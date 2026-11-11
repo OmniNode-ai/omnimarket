@@ -95,6 +95,13 @@ class HandlerSetupPreflight:
                     reasons.append("Use a supported arm64 or x86_64 Mac architecture.")
                 if facts.rosetta:
                     reasons.append("Open a native arm64 terminal instead of Rosetta.")
+                # A macOS virtual machine gives Docker no nested virtualization, so
+                # only the selected local stack is refused; endpoint use still works.
+                if facts.virtual_machine and plan.local_stack is not None:
+                    reasons.append(
+                        "This Mac is a virtual machine, which cannot run the Docker local stack; "
+                        "deselect the local stack and use a model endpoint, or run setup on a physical Mac."
+                    )
             if reasons:
                 return ModelSetupObservation(
                     step=self.name,

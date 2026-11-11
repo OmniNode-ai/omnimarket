@@ -125,3 +125,97 @@ def test_probe_error_is_not_a_success_or_zero_measurement(tmp_path: Path) -> Non
     assert result.status == "failure"
     assert "SENTINEL" not in result.model_dump_json()
     assert "free_disk_bytes" not in result.evidence
+
+
+def _stack_plan(tmp_path: Path) -> ModelSetupPlan:
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_local_stack import (
+        ModelSetupLocalStackSelection,
+    )
+
+    return ModelSetupPlan(
+        workspace=tmp_path,
+        local_stack=ModelSetupLocalStackSelection(
+            compose_file=tmp_path / "compose.yaml",
+            topology_file=tmp_path / "topology.yaml",
+        ),
+    )
+
+
+def test_vm_notice_stops_only_the_local_stack(tmp_path: Path) -> None:
+    """OMN-23413 inventory row vm_notice: a macOS VM cannot give Docker the
+    nested virtualization the local stack needs, so selecting the stack in a VM
+    is refused with that reason, while endpoint-only setup in the same VM runs."""
+    handler = HandlerSetupPreflight(collect=lambda _: facts(virtual_machine=True))
+    stack = handler.handle(_stack_plan(tmp_path))
+    assert stack.status == "unavailable"
+    assert "virtual machine" in (stack.fix or "")
+    endpoint_only = handler.handle(ModelSetupPlan(workspace=tmp_path))
+    assert endpoint_only.status == "success"
+    assert endpoint_only.evidence["virtual_machine"] == "true"
+    physical = HandlerSetupPreflight(collect=lambda _: facts()).handle(
+        _stack_plan(tmp_path)
+    )
+    assert physical.status == "success"
+
+
+@pytest.mark.parametrize(
+    ("answers", "rosetta", "vm"),
+    [
+        (
+            {"sysctl.proc_translated": (0, "1"), "kern.hv_vmm_present": (0, "0")},
+            True,
+            False,
+        ),
+        (
+            {"sysctl.proc_translated": (0, "0"), "kern.hv_vmm_present": (0, "1")},
+            False,
+            True,
+        ),
+        (
+            {"sysctl.proc_translated": (1, ""), "kern.hv_vmm_present": (0, "garbage")},
+            None,
+            None,
+        ),
+    ],
+)
+def test_collector_reads_rosetta_and_vm_from_sysctl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    answers: dict[str, tuple[int, str]],
+    rosetta: bool | None,
+    vm: bool | None,
+) -> None:
+    """Inventory rows is_rosetta and is_vm: the production collector, not
+    supplied facts, asks sysctl; an error or an unexpected answer stays unknown."""
+    from types import SimpleNamespace
+
+    from omnimarket.nodes.node_onex_setup_effect.handlers import (
+        handler_setup_preflight as preflight,
+    )
+
+    asked: list[tuple[str, ...]] = []
+
+    def answer(_self: object, request: object) -> SimpleNamespace:
+        argv = request.argv  # type: ignore[attr-defined]
+        asked.append(argv)
+        code, out = answers[argv[-1]]
+        return SimpleNamespace(returncode=code, stdout=out)
+
+    monkeypatch.setattr(preflight.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(preflight.HandlerSetupCommand, "handle", answer)
+    collected = preflight.collect_machine_facts(tmp_path)
+    assert (collected.rosetta, collected.virtual_machine) == (rosetta, vm)
+    assert {argv[-1] for argv in asked} == set(answers)
+
+
+@pytest.mark.skipif(
+    __import__("platform").system() != "Darwin", reason="reads this Mac's sysctl"
+)
+def test_collector_answers_on_a_real_mac(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
+        collect_machine_facts,
+    )
+
+    collected = collect_machine_facts(tmp_path)
+    assert isinstance(collected.virtual_machine, bool)
+    assert collected.rosetta in (True, False, None)

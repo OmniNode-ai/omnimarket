@@ -1109,9 +1109,12 @@ lab_onboarding:
     kind: function
     identifier: vm_notice
     owner: 'onex setup: machine detection'
-    disposition: planned
-    reason: 'Pending: production preflight does not establish VM detection or display the legacy VM-specific
-      Docker/model warning. No universal hardware requirement is introduced.'
+    disposition: integrated
+    reason: 'Preflight refuses the selected local stack in a macOS virtual machine, naming the VM and the
+      endpoint alternative, because Docker gets no nested virtualization there; endpoint-only setup in the
+      same VM proceeds. No universal hardware requirement is introduced.'
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
   - source: preflight
     kind: function
     identifier: write_routing_overlay
@@ -1879,10 +1882,12 @@ lab_onboarding:
     kind: function
     identifier: is_rosetta
     owner: 'onex setup: machine detection'
-    disposition: planned
-    reason: 'Pending: the preflight model can represent Rosetta/VM facts, but its production collector
-      currently reads platform, architecture, version and disk only. Synthetic supplied facts do not prove
-      real Rosetta/VM detection.'
+    disposition: integrated
+    reason: 'The production collector asks sysctl (sysctl.proc_translated, kern.hv_vmm_present); an error
+      or unexpected answer stays unknown rather than guessed. Rosetta is refused with the native-terminal fix;
+      a VM refuses only the local stack.'
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
   - source: walk
     kind: function
     identifier: is_stored
@@ -1899,10 +1904,12 @@ lab_onboarding:
     kind: function
     identifier: is_vm
     owner: 'onex setup: machine detection'
-    disposition: planned
-    reason: 'Pending: the preflight model can represent Rosetta/VM facts, but its production collector
-      currently reads platform, architecture, version and disk only. Synthetic supplied facts do not prove
-      real Rosetta/VM detection.'
+    disposition: integrated
+    reason: 'The production collector asks sysctl (sysctl.proc_translated, kern.hv_vmm_present); an error
+      or unexpected answer stays unknown rather than guessed. Rosetta is refused with the native-terminal fix;
+      a VM refuses only the local stack.'
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
   - source: walk
     kind: function
     identifier: key_looks_like
