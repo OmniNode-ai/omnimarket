@@ -33,6 +33,9 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
 )
 from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
 from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeLadderCredentialed,
+)
 
 # OMN-15482: the closed set of ``response_format`` directives this delegation
 # path genuinely threads end-to-end (onto the outbound chat-completions
@@ -183,7 +186,9 @@ class ModelDelegateSkillRequest(BaseModel):
     # publish. The handler copies both onto every terminal it builds so the
     # delegation_events row joins to the trace. ``exclude_if`` keeps a command
     # that carries no ids byte-identical on the wire to today's.
-    probe_ladder: ModelProbeLadder | ModelProbeFaults | None = Field(
+    probe_ladder: (
+        ModelProbeLadder | ModelProbeLadderCredentialed | ModelProbeFaults | None
+    ) = Field(
         default=None,
         exclude_if=lambda value: value is None,
         description=(
