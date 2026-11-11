@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from omnimarket.models.code_eval_suite.model_suite_census_request import (
     ModelCodeEvalSuiteCensusRequest,
@@ -26,6 +29,17 @@ from tests.nodes.node_code_eval_suite_census_compute.support import (
 )
 
 pytestmark = pytest.mark.unit
+
+CONTRACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_code_eval_suite_census_compute"
+    / "contract.yaml"
+)
+COMMAND_TOPIC = "onex.cmd.omnimarket.code-eval-suite-census-requested.v1"
+MEASURED_TOPIC = "onex.evt.omnimarket.code-eval-suite-census-measured.v1"
 
 S = EnumSizeBand.S
 M = EnumSizeBand.M
@@ -125,3 +139,11 @@ def test_golden_chain_is_deterministic_and_digests_match() -> None:
     assert first == second
     assert first.suite_digest == second.suite_digest
     assert first.suite_digest
+
+
+def test_contract_declares_the_measured_topic_as_terminal_and_published() -> None:
+    contract = yaml.safe_load(CONTRACT_PATH.read_text())
+    assert contract["terminal_event"] == MEASURED_TOPIC
+    assert contract["event_bus"]["publish_topics"] == [MEASURED_TOPIC]
+    assert contract["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]
+    assert contract["runtime_dispatch"]["command_topic"] == COMMAND_TOPIC
