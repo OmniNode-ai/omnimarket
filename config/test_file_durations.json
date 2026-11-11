@@ -1295,6 +1295,7 @@
   "tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold_red_checks.py": 0.11,
   "tests/nodes/node_goal_run_stop_compute/test_goal_run_stop_decision.py": 0.31,
   "tests/nodes/node_goal_run_stop_compute/test_golden_chain_goal_run_stop_compute.py": 0.04,
+  "tests/nodes/node_goal_scope_admission_compute/test_goal_scope_admission_states.py": 1.66,
   "tests/nodes/node_goal_verification_orchestrator/test_failing_controls.py": 1.77,
   "tests/nodes/node_goal_verification_orchestrator/test_goal_verification_orchestrator.py": 0.18,
   "tests/nodes/node_goal_verification_orchestrator/test_golden_chain_goal_verification_orchestrator.py": 0.08,
