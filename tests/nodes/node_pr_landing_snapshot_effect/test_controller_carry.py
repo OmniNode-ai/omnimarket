@@ -16,7 +16,10 @@ from uuid import uuid4
 import pytest
 import yaml
 
-from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
+from omnimarket.models.landing_controller_carry import (
+    ModelLandingControllerCarry,
+    decisions_of,
+)
 from omnimarket.models.landing_decision import (
     EnumLandingActionKind,
     ModelLandingFacts,
@@ -146,7 +149,9 @@ def test_the_controller_state_dir_source_reads_the_finished_tick(
         facts,
         ticks,
         decisions,
+        sidecar_path=facts.parent / "sidecar.json",
         max_age_seconds=900,
+        tail_bytes=65536,
         now=lambda: T + timedelta(seconds=60),
     )
     got = source.read_carry()
@@ -161,7 +166,13 @@ def test_the_controller_state_dir_source_reads_the_finished_tick(
 def test_error_chain_a_controller_tick_still_open_is_refused(tmp_path: Path) -> None:
     facts, ticks, decisions = write_controller_state(tmp_path, last_finished_tick=4)
     source = LandingCarryStateDirSource(
-        facts, ticks, decisions, max_age_seconds=900, now=lambda: T
+        facts,
+        ticks,
+        decisions,
+        sidecar_path=facts.parent / "sidecar.json",
+        max_age_seconds=900,
+        tail_bytes=65536,
+        now=lambda: T,
     )
     with pytest.raises(ControllerTickOpenError, match=r"tick 5.*finished tick is 4"):
         source.read_carry()
@@ -173,7 +184,9 @@ def test_error_chain_a_stale_controller_tick_is_refused(tmp_path: Path) -> None:
         facts,
         ticks,
         decisions,
+        sidecar_path=facts.parent / "sidecar.json",
         max_age_seconds=900,
+        tail_bytes=65536,
         now=lambda: T + timedelta(seconds=901),
     )
     with pytest.raises(ControllerStateStaleError, match="past its bound of 900s"):
@@ -183,7 +196,13 @@ def test_error_chain_a_stale_controller_tick_is_refused(tmp_path: Path) -> None:
 def test_error_chain_a_missing_facts_file_is_unread(tmp_path: Path) -> None:
     _, ticks, decisions = write_controller_state(tmp_path)
     source = LandingCarryStateDirSource(
-        tmp_path / "absent.json", ticks, decisions, max_age_seconds=900, now=lambda: T
+        tmp_path / "absent.json",
+        ticks,
+        decisions,
+        sidecar_path=tmp_path / "sidecar.json",
+        max_age_seconds=900,
+        tail_bytes=65536,
+        now=lambda: T,
     )
     with pytest.raises(SnapshotSourceError, match="unreadable"):
         source.read_carry()
@@ -221,7 +240,7 @@ def test_golden_chain_the_record_carries_the_controller_tick_and_the_gate() -> N
     )
     assert result.status is EnumSnapshotStatus.RECORDED
     assert result.record is not None
-    assert result.record.controller == carry()
+    assert result.record.controller == decisions_of(carry())
     assert result.record.provenance.endswith("+inmemory-controller-state")
     held = {p.pr: p for p in result.record.facts.prs}[HELD_PR]
     assert held.gate_reasons
@@ -279,7 +298,12 @@ def test_the_controller_overlay_fields_come_as_a_set() -> None:
         "controller_facts_path": "$HOME/f.json",
         "controller_ticks_path": "$HOME/t.jsonl",
         "controller_decisions_path": "$HOME/d.jsonl",
+        "controller_tail_bytes": 4194304,
         "controller_max_age_seconds": 900,
+        "controller_sidecar_path": "$HOME/s.json",
+        "external_blocker_kinds": ("upstream_open",),
+        "external_blocker_unbounded_kinds": ("upstream_open",),
+        "external_gate_hours": 1.0,
     }
     ModelSnapshotOverlay.model_validate({**base, **fields})
     for name in fields:
@@ -299,3 +323,69 @@ def test_the_shipped_cutover_example_overlay_validates_and_names_the_controller_
     assert loaded.controller_ticks_path
     assert loaded.controller_decisions_path
     assert loaded.controller_max_age_seconds == loaded.watcher_max_age_seconds
+
+
+def test_the_sidecars_judged_external_blockers_are_read_and_filled_onto_the_matching_head(
+    tmp_path: Path,
+) -> None:
+    """OMN-22921: the controller's worker gate external:<ref> comes from its sidecar; the carry brings it as a fact."""
+    facts, ticks, decisions = write_controller_state(tmp_path)
+    source = LandingCarryStateDirSource(
+        facts,
+        ticks,
+        decisions,
+        sidecar_path=tmp_path / "sidecar.json",
+        max_age_seconds=900,
+        tail_bytes=65536,
+        now=lambda: T + timedelta(seconds=60),
+    )
+    got = source.read_carry()
+    ((row,),) = [(r,) for r in got.judged]
+    assert (row.pr, row.judged.ref, row.judged.kind) == (
+        "omnimemory#713",
+        "omnimemory#725",
+        "upstream_open",
+    )
+    cutover = overlay().model_copy(
+        update={
+            "external_blocker_kinds": ("upstream_open", "operator_decision"),
+            "external_blocker_unbounded_kinds": ("upstream_open",),
+            "external_gate_hours": 2.0,
+        }
+    )
+    carried = carry_controller_state(node_facts_bare(), got, cutover)
+    by_pr = {p.pr: p for p in carried.prs}
+    assert [j.ref for j in by_pr[HELD_PR].external_judged] == ["omnimemory#725"]
+    assert by_pr[NEW_RED_PR].external_judged == ()
+    assert carried.policy.external_gate_hours == 2.0
+    assert carried.policy.external_blocker_kinds == (
+        "upstream_open",
+        "operator_decision",
+    )
+    # failing control: a pull request now at another head takes no judgement made at the old one
+    moved = node_facts_bare().model_copy(update={"prs": (pr(713, "c"), pr(714, "b"))})
+    assert all(
+        not p.external_judged for p in carry_controller_state(moved, got, cutover).prs
+    )
+
+
+def test_error_chain_an_unreadable_sidecar_is_an_unread_controller_state_never_an_empty_memory(
+    tmp_path: Path,
+) -> None:
+    facts, ticks, decisions = write_controller_state(tmp_path)
+    for text in (None, "not json", "[1]"):
+        sidecar = tmp_path / "sidecar.json"
+        sidecar.unlink(missing_ok=True)
+        if text is not None:
+            sidecar.write_text(text, encoding="utf-8")
+        source = LandingCarryStateDirSource(
+            facts,
+            ticks,
+            decisions,
+            sidecar_path=sidecar,
+            max_age_seconds=900,
+            tail_bytes=65536,
+            now=lambda: T + timedelta(seconds=60),
+        )
+        with pytest.raises(SnapshotSourceError, match=r"sidecar\.json"):
+            source.read_carry()

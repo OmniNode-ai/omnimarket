@@ -8,7 +8,8 @@ emission contract, under the correlation id piece 5's chain carries:
 * the store gives no identity: a typed ``upstream_`` failure that never started, and no row anywhere;
 * the identity resolves: a start, the append under that principal, then the row read back from the projection at the
   receipt's position; a success only when both the durable row and the projected row are there, and a typed failure
-  with the start before it when the append is not accepted or the projection never heard the row.
+  with the start before it when the append is not accepted, when the projection never heard the row, or when the
+  projection could not be read at all (the failure carries the read error the row source gave).
 
 Everything it calls is injected: the append handler, the ledger reader, the store of identities, the projection, the
 emission sink and the clock. Its settings are the contract's ``join_j5`` section.
@@ -38,6 +39,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerReader,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
+    ProjectionReadFailedError,
     ProtocolJoinAppend,
     ProtocolProjectedRows,
     ProtocolStoreIdentities,
@@ -240,12 +242,26 @@ class HandlerWorkLedgerJoinJ5:
                     receipt=receipt,
                     ledger_seq=ledger_seq,
                 )
-            projected = projection.read_row(
-                ledger_id=request.append.ledger_id,
-                ledger_seq=seq,
-                raw_row=durable,
-                correlation_id=request.correlation_id,
-            )
+            try:
+                projected = projection.read_row(
+                    ledger_id=request.append.ledger_id,
+                    ledger_seq=seq,
+                    raw_row=durable,
+                    correlation_id=request.correlation_id,
+                )
+            except ProjectionReadFailedError as exc:
+                code = policy.projection_read_failed_failure_code
+                detail = str(exc)
+                if not replay:
+                    chain.failure(code, detail)
+                return ModelJoinJ5Result(
+                    outcome=EnumJoinJ5Outcome.PROJECTION_READ_FAILED,
+                    correlation_id=request.correlation_id,
+                    failure_code=code,
+                    detail=detail,
+                    receipt=receipt,
+                    ledger_seq=ledger_seq,
+                )
             if projected is None or projected.raw_row != durable:
                 code = policy.projected_row_missing_failure_code
                 detail = (

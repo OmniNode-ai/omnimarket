@@ -17,8 +17,12 @@ from omnimarket.nodes.node_secret_reading_effect.handlers.schedule import (
     render_units,
 )
 from omnimarket.nodes.node_secret_reading_effect.overlay import (
+    NODE_NAME,
+    OVERLAY_ID_ENV,
     ModelSecretReadingOverlay,
     ModelSecretReadingScheduleHost,
+    load_overlay,
+    overlay_id,
 )
 
 pytestmark = pytest.mark.unit
@@ -429,3 +433,195 @@ def test_run_now_refuses_the_drill_and_the_j4_unit_together(tmp_path: Path) -> N
     result = _scheduler(home, runner).run_now("h-test", drill=True, join_j4=True)
     assert result.exit_code == 1
     assert runner.commands == []
+
+
+# --- the overlay id a unit pins (OMN-23713) ---------------------------------------------------------------------------------
+
+
+def test_overlay_id_env_names_the_document_or_falls_back_to_the_node_name() -> None:
+    assert overlay_id({}) == NODE_NAME
+    assert (
+        overlay_id({OVERLAY_ID_ENV: "  node_secret_reading_effect_htest  "})
+        == "node_secret_reading_effect_htest"
+    )
+    assert overlay_id({OVERLAY_ID_ENV: "   "}) == NODE_NAME
+
+
+def test_load_overlay_reads_the_document_the_overlay_id_env_names(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "overlays"
+    document = root / "node_secret_reading_effect_htest" / "overlay.yaml"
+    document.parent.mkdir(parents=True)
+    document.write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    overlay = load_overlay(
+        environ={
+            "ONEX_SKILL_OVERLAY_ROOTS": str(root),
+            OVERLAY_ID_ENV: "node_secret_reading_effect_htest",
+        }
+    )
+    assert overlay == ModelSecretReadingOverlay.model_validate(
+        yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    )
+
+
+def test_rendered_units_pin_the_overlay_id_env_only_when_it_is_not_the_nodes_own(
+    tmp_path: Path,
+) -> None:
+    root, home, overlays = _layout(tmp_path)
+    pinned, _ = render_units(
+        load_schedule(),
+        _overlay(),
+        omni_root=root,
+        venv=root / "venv",
+        home=home,
+        overlay_root=overlays,
+        overlay_id="node_secret_reading_effect_htest",
+    )
+    assert f'Environment="{OVERLAY_ID_ENV}=node_secret_reading_effect_htest"' in pinned
+    own, _ = render_units(
+        load_schedule(),
+        _overlay(),
+        omni_root=root,
+        venv=root / "venv",
+        home=home,
+        overlay_root=overlays,
+    )
+    assert OVERLAY_ID_ENV not in own
+
+
+@pytest.mark.parametrize("identifier", ["node-secret-reading", "Node_Secret_Reading"])
+def test_render_units_refuse_an_overlay_id_that_is_not_a_plain_identifier(
+    tmp_path: Path, identifier: str
+) -> None:
+    root, home, overlays = _layout(tmp_path)
+    with pytest.raises(ValueError, match="is not a plain identifier"):
+        render_units(
+            load_schedule(),
+            _overlay(),
+            omni_root=root,
+            venv=root / "venv",
+            home=home,
+            overlay_root=overlays,
+            overlay_id=identifier,
+        )
+
+
+def _drill_id_overlay() -> ModelSecretReadingOverlay:
+    """The example overlay with the drill named by id: a clone under the same root."""
+    return _overlay().model_copy(
+        update={"drill_overlay_id": "node_secret_reading_effect_htest_drill"}
+    )
+
+
+def _drill_id_document(overlay_root: Path) -> Path:
+    """The drill's overlay document, cloned under the same root the hourly unit reads."""
+    document = overlay_root / "node_secret_reading_effect_htest_drill" / "overlay.yaml"
+    document.parent.mkdir(parents=True)
+    document.write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    return document
+
+
+def test_install_with_a_drill_overlay_id_writes_the_drill_pair_from_the_same_root(
+    tmp_path: Path,
+) -> None:
+    root, home, overlay_root = _layout(tmp_path)
+    _drill_id_document(overlay_root)
+    runner = _Recorder()
+    scheduler = SecretReadingScheduler(
+        schedule=load_schedule(),
+        overlay=_drill_id_overlay(),
+        home=home,
+        run=runner,
+    )
+    result = scheduler.install(
+        "h-test",
+        omni_root=root,
+        overlay_root=overlay_root,
+        overlay_id="node_secret_reading_effect_htest",
+    )
+    assert result.exit_code == 0, result.stderr
+    units = home / ".config/systemd/user"
+    hourly = (units / "onex-secret-reading-hourly.service").read_text(encoding="utf-8")
+    assert f"ONEX_SKILL_OVERLAY_ROOTS={overlay_root}" in hourly
+    assert f"{OVERLAY_ID_ENV}=node_secret_reading_effect_htest" in hourly
+    drill_service = (units / "onex-secret-reading-drill-daily.service").read_text(
+        encoding="utf-8"
+    )
+    assert f"ONEX_SKILL_OVERLAY_ROOTS={overlay_root}" in drill_service
+    assert f"{OVERLAY_ID_ENV}=node_secret_reading_effect_htest_drill" in drill_service
+    enabled = [
+        c[-1]
+        for c in runner.commands
+        if c[:4] == ["systemctl", "--user", "enable", "--now"]
+    ]
+    assert enabled == [
+        "onex-secret-reading-hourly.timer",
+        "onex-secret-reading-drill-daily.timer",
+    ]
+
+
+def test_install_refuses_a_drill_overlay_id_without_its_overlay_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    root, home, overlay_root = _layout(tmp_path)
+    runner = _Recorder()
+    scheduler = SecretReadingScheduler(
+        schedule=load_schedule(),
+        overlay=_drill_id_overlay(),
+        home=home,
+        run=runner,
+    )
+    result = scheduler.install(
+        "h-test",
+        omni_root=root,
+        overlay_root=overlay_root,
+        overlay_id="node_secret_reading_effect_htest",
+    )
+    assert result.exit_code == 1
+    assert "no drill overlay at" in result.stderr
+    assert not (home / ".config").exists()
+    assert runner.commands == []
+
+
+def test_the_overlay_refuses_a_drill_overlay_root_together_with_a_drill_overlay_id() -> (
+    None
+):
+    document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    with pytest.raises(ValueError, match="both an overlay root and an overlay id"):
+        ModelSecretReadingOverlay.model_validate(
+            {**document, "drill_overlay_root": "x", "drill_overlay_id": "y"}
+        )
+
+
+def test_schedule_install_verb_pins_the_overlay_root_and_overlay_id_it_loaded_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The verb finds the document by the id the process is told, so the unit it renders reads the same one."""
+    from omnimarket.nodes.node_secret_reading_effect.runtime_secret_reading import (
+        main,
+    )
+
+    root = tmp_path / "overlays"
+    document = root / "node_secret_reading_effect_htest" / "overlay.yaml"
+    document.parent.mkdir(parents=True)
+    document.write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    monkeypatch.setenv(OVERLAY_ID_ENV, "node_secret_reading_effect_htest")
+    code = main(
+        [
+            "schedule",
+            "install",
+            "--host",
+            "example-host",
+            "--workspace-root",
+            str(tmp_path / "omni"),
+            "--dry-run",
+        ]
+    )
+    rendered = capsys.readouterr().out
+    assert code == 0
+    assert f'Environment="ONEX_SKILL_OVERLAY_ROOTS={root}"' in rendered
+    assert (
+        f'Environment="{OVERLAY_ID_ENV}=node_secret_reading_effect_htest"' in rendered
+    )
