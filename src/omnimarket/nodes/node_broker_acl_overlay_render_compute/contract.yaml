@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_broker_acl_overlay_render_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Render the desired broker permission rows of one scoped overlay (the overlays
+  repository, one directory per scope) as sorted rows plus the operator's dry-run
+  and apply commands, without I/O. A row the apply tool would refuse (a wildcard
+  resource, DELETE on a topic, a read of the write node's commands, a duplicate)
+  refuses the whole scope with finding codes and renders nothing. The apply stays an
+  operator-run command; node_broker_acl_reconcile_effect is the node that drives
+  the broker admin path.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: render_broker_acl_overlay
+    handler:
+      name: HandlerBrokerAclOverlayRender
+      module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render
+    input_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay.ModelBrokerAclRenderRequest
+    output_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay.ModelBrokerAclRenderResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.broker-acl-overlay-render-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.broker-acl-overlay-rendered.v1
+terminal_event: onex.evt.omnimarket.broker-acl-overlay-rendered.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.broker-acl-overlay-render-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.broker-acl-overlay-rendered.v1
+metadata:
+  ticket: OMN-23589
+  transport_type: kafka
+lifecycle: experimental
+config:
+  # The refusals of the broker permission apply tool's declaration loader. The write node's command topics may not be
+  # read, nor its terminal topics written, by a lab login: that would read other lanes' commands or forge an answer.
+  principal_prefix: "User:"
+  principal_wildcard: "User:*"
+  cluster_resource_name: kafka-cluster
+  delete_allowed_resource_types: [GROUP]
+  scm_command_topics:
+  - onex.cmd.omnimarket.github-repo-write-requested.v1
+  - onex.cmd.omnimarket.github-git-credential-requested.v1
+  scm_terminal_topics:
+  - onex.evt.omnimarket.github-repo-write-completed.v1
+  - onex.evt.omnimarket.github-repo-write-failed.v1
+  - onex.evt.omnimarket.github-git-credential-issued.v1
+  - onex.evt.omnimarket.github-git-credential-failed.v1
