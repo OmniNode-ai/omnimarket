@@ -25,6 +25,11 @@ chains of its piece that are not the pipeline a join reads, such as one chain pe
 chain still counts toward the piece's own receipt and still gets its findings, and no join demands a typed upstream
 refusal for it. This narrows what a join reads to what it was specified to read; it relaxes no verdict.
 
+Every chain carries the typed origin its events set (OMN-23862); events that set none are ``unknown``, and events that disagree
+make the chain ``unknown``. A join keeps two readings: ``golden_at`` is the health reading, probe chains included, and
+``real_golden_at`` is the newest golden chain whose chains on both sides have an origin the input declares real
+(``real_origins``, the readiness overlay's value). With none declared no chain is real work.
+
 A join may also be declared to end at a node of its own from piece (``join_ends``), where no node of its to piece can emit a
 typed refusal: it is judged on that node's chain ending in a success or a typed failure within the deadline, and asks the to
 piece for nothing. Every other join still ends at its to piece.
@@ -46,7 +51,7 @@ from omnimarket.models.floor_17a import (
     ModelNodeEmission,
     ModelPieceReceipt,
 )
-from omnimarket.models.floor_17a.model_floor_17a import ChainKind
+from omnimarket.models.floor_17a.model_floor_17a import ChainKind, ChainOrigin
 
 UPSTREAM_PREFIX = "upstream_"
 
@@ -139,6 +144,9 @@ class _ChainReading:
                 self.counters[k] = max(self.counters.get(k, 0), v)
         self.backend = last.backend
         self.drill = any(e.drill for e in events)
+        # One origin for the chain: the one every event carries. Events that disagree leave it unknown, never real.
+        origins = {e.origin for e in events}
+        self.origin: ChainOrigin = origins.pop() if len(origins) == 1 else "unknown"
 
     def chain(self) -> ModelChain:
         return ModelChain.model_validate(
@@ -151,6 +159,7 @@ class _ChainReading:
                 "ended_at": self.ended_at,
                 "backend": self.backend,
                 "drill": self.drill,
+                "origin": self.origin,
                 "counters": self.counters,
             }
         )
@@ -165,7 +174,9 @@ class _PieceView:
     others, so which node a join judged depended on the order the chains were read in.
     """
 
-    def __init__(self, readings: list[_ChainReading]) -> None:
+    def __init__(
+        self, readings: list[_ChainReading], real_origins: frozenset[str]
+    ) -> None:
         self.events = sorted(
             (e for r in readings for e in r.events), key=lambda e: e.emitted_at
         )
@@ -183,6 +194,8 @@ class _PieceView:
         else:
             self.kind = "open"
         self.drill = any(r.drill for r in readings)
+        # Real work (OMN-23862): every chain of the piece under this id came from an origin the overlay counts as real.
+        self.real = bool(readings) and all(r.origin in real_origins for r in readings)
         # A piece that only refused (typed upstream_ failure, no start) did not fail itself: its cause was answered at the
         # join that wrote the refusal, so the next join asks nothing of the piece after it.
         self.refused = bool(readings) and all(r.refusal for r in readings)
@@ -210,7 +223,11 @@ class HandlerFloorReceipt:
             nodes = declared.get(reading.piece)
             if nodes is None or reading.node in nodes:
                 grouped_views[(reading.cid, reading.piece)].append(reading)
-        by_cid = {key: _PieceView(chains) for key, chains in grouped_views.items()}
+        real_origins = frozenset(request.real_origins)
+        by_cid = {
+            key: _PieceView(chains, real_origins)
+            for key, chains in grouped_views.items()
+        }
 
         pieces: list[ModelPieceReceipt] = []
         for definition in sorted(request.pieces, key=lambda p: p.piece):
@@ -293,9 +310,11 @@ class HandlerFloorReceipt:
         join adds none. A chain whose terminal came after the deadline is well formed on its own, so the join names it.
         """
         golden_at: datetime | None = None
+        real_golden_at: datetime | None = None
         error_at: datetime | None = None
         broken = False
         found: list[ModelChainFinding] = []
+        real_origins = frozenset(request.real_origins)
         judged = request.judged_to_pieces
         if judged is None or jdef.to_piece in judged:
             for (_cid, piece, node), chain in sorted(by_chain.items()):
@@ -323,6 +342,10 @@ class HandlerFloorReceipt:
                     )
                 elif chain.ended_at is not None and chain.kind == "golden":
                     golden_at = max(filter(None, (golden_at, chain.ended_at)))
+                    if chain.origin in real_origins:
+                        real_golden_at = max(
+                            filter(None, (real_golden_at, chain.ended_at))
+                        )
                 elif chain.ended_at is not None and chain.kind == "error":
                     error_at = max(filter(None, (error_at, chain.ended_at)))
         if broken:
@@ -344,6 +367,7 @@ class HandlerFloorReceipt:
                     "golden_at": golden_at,
                     "error_at": error_at,
                     "state": state,
+                    "real_golden_at": real_golden_at,
                 }
             ),
             found,
@@ -358,6 +382,7 @@ class HandlerFloorReceipt:
     ) -> tuple[ModelJoinReceipt, list[ModelChainFinding]]:
         found: list[ModelChainFinding] = []
         golden_at: datetime | None = None
+        real_golden_at: datetime | None = None
         error_at: datetime | None = None
         cids = {c for (c, p) in by_cid if p == jdef.from_piece}
         subject = f"{jdef.id} piece {jdef.from_piece} to {jdef.to_piece}"
@@ -400,6 +425,9 @@ class HandlerFloorReceipt:
                     )
                 elif b.kind == "golden" and b.ended_at is not None:
                     golden_at = max(filter(None, (golden_at, b.ended_at)))
+                    # The join's golden counts as real work only when the chains on both sides came from real work.
+                    if a.real and b.real:
+                        real_golden_at = max(filter(None, (real_golden_at, b.ended_at)))
                 elif (
                     jdef.names_failed_answers
                     and b.kind == "error"
@@ -455,6 +483,7 @@ class HandlerFloorReceipt:
                     "golden_at": golden_at,
                     "error_at": error_at,
                     "state": state,
+                    "real_golden_at": real_golden_at,
                 }
             ),
             found,
