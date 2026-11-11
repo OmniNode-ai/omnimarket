@@ -21,6 +21,11 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: node_projection_local_alerts/contract.yaml has no consumers key and node_projection_delegation/contract.yaml declares consumers none with a reason on its daily exposure -- falsifier: uv run pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -p no:randomly --no-cov fails at the merge base'
+  - id: req-selector-weight-headroom
+    statement: The narrowed-selection weight bound keeps headroom over tests/nodes/ so a refresh of the recorded test durations does not send every narrowing test to the full suite.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: target_shard_seconds is 400 (bound 2000 seconds over 5 shards) and the narrowing tests in test_detect_test_paths.py and test_queue_run_once_omn19998.py stay narrowed on the recorded durations -- falsifier: uv run pytest tests/unit/scripts/test_detect_test_paths.py tests/ci/test_queue_run_once_omn19998.py tests/nodes/node_test_selection_selector_compute -q -p no:randomly --no-cov fails at the merge base'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -73,3 +78,11 @@ dod_evidence:
       - check_type: command
         check_value: |-
           sha="$(git rev-parse HEAD)"; base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$sha/src/omnimarket/nodes"; la="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_local_alerts/contract.yaml")" && dl="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_delegation/contract.yaml")" && ! printf '%s\n' "$la" | grep -q '^  consumers:' && printf '%s\n' "$dl" | grep -q '^      consumers: none$' && printf '%s\n' "$dl" | grep -q '^      consumers_reason:' && echo "OMN-20413 reader-coverage readback PASS"
+  - id: dod-omn20413-selector-weight-headroom
+    description: The selector policy bound is 400 x 5 = 2000 seconds; the narrowing tests pass on the recorded durations, where tests/nodes/ with the always-selected paths weighs about 1801 seconds and the old 1800 bound refused them.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_detect_test_paths.py tests/ci/test_queue_run_once_omn19998.py tests/nodes/node_test_selection_selector_compute -q -p no:randomly --no-cov
+    binds_ac:
+      - AC5
