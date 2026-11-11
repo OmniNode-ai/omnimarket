@@ -111,7 +111,7 @@ def display_path(path: Path) -> str:
         return str(path)
 
 
-class OnexProcessRunner:
+class HandlerOnexCommand:
     """Runs the installed `onex` beside this interpreter, as a user would."""
 
     def __init__(self) -> None:
@@ -176,7 +176,7 @@ def _failure_reason(document: dict[str, object]) -> str | None:
 
 async def load_status() -> ModelTuiStatus:
     """Default model and gateway state, read through the CLI's own JSON output."""
-    runner = OnexProcessRunner()
+    runner = HandlerOnexCommand()
     model: str | None = None
     gateway = False
     models: list[str] = []
@@ -234,7 +234,7 @@ class OnexTui(App[int]):
 
             root = cli
         self._commands = command_tree(root)
-        self._runner: ProtocolTuiRunner = runner or OnexProcessRunner()
+        self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
         self._load_status = load_status or globals()["load_status"]
         self._status = ModelTuiStatus(workspace=display_path(Path.cwd()))
         self._last_run = ""
