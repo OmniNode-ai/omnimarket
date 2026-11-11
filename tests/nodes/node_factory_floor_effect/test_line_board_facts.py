@@ -57,6 +57,7 @@ from omnimarket.nodes.node_factory_floor_unresolved_effect.models.model_factory_
 )
 
 from .test_runtime_factory_floor import CONTRACT, NOW, _write, world
+from .window_port import RecordedWindowPort
 
 pytestmark = pytest.mark.unit
 
@@ -285,30 +286,15 @@ def test_facts_reach_the_request_and_the_health_reaches_the_record(
     assert {entry.state for entry in request.source_health} == {"read"}
 
 
-def _reader_plugin(tmp_path: Path, files: dict[str, Path]) -> tuple[Path, Path]:
-    """A plugin tree whose ledger reader logs every query it is asked and answers the window read from the window file."""
-    plugin = tmp_path / "plugin"
-    (plugin / "scripts").mkdir(parents=True)
-    calls = tmp_path / "reader-calls.txt"
-    (plugin / "scripts/onex_ledger.py").write_text(
-        "import sys\n"
-        f"open({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
-        f"print(open({str(files['window'])!r}).read())\n",
-        encoding="utf-8",
-    )
-    return plugin, calls
-
-
 def test_a_stop_kept_only_in_an_archive_roll_comes_from_the_unresolved_steps_record(
-    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The floor reads the ledger once, for the window; the four unresolved reads are the unresolved step's (OMN-19998).
 
-    Break: the floor reading the four unresolved reads itself again (the base) shows four ``--kind`` queries here, and 231 s.
+    Break: the floor reading the four unresolved reads itself again (the base) reads more than the window's declared page reads, and took 231 s.
     """
     files = _prepare(world, monkeypatch)
-    plugin, calls = _reader_plugin(tmp_path, files)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
+    port = RecordedWindowPort(WINDOW_ROWS)
     record = (
         world["home"] / load_contract(CONTRACT).runtime.sources.unresolved_rows_relpath
     )
@@ -322,14 +308,18 @@ def test_a_stop_kept_only_in_an_archive_roll_comes_from_the_unresolved_steps_rec
             return super().handle(request)
 
     monkeypatch.setattr(effect_module, "HandlerFactoryFloor", Recording)
-    HandlerFactoryFloorEffect(merged_running=_Reader(EVIDENCE)).handle(
+    HandlerFactoryFloorEffect(
+        merged_running=_Reader(EVIDENCE), ledger_source=port
+    ).handle(
         ModelFactoryFloorRunRequest(
             now=NOW, home=str(world["home"]), kb=str(world["kb"])
         )
     )
-    queries = calls.read_text().splitlines()
-    assert len(queries) == 1
-    assert "--kind" not in queries[0]
+    # Every request is one of the window's declared page reads; none asks for the history older than the window.
+    declared = {r.name for r in load_contract(CONTRACT).runtime.ledger_pages.reads}
+    assert port.requests
+    assert len(declared) > 1
+    assert all(q.query == "rows" and q.since is not None for q in port.requests)
     unresolved = seen[0].ledger_unresolved
     assert unresolved is not None
     assert {row.lane for row in unresolved} == {"old-blocked", "old-hand"}
@@ -339,12 +329,10 @@ def test_a_stop_kept_only_in_an_archive_roll_comes_from_the_unresolved_steps_rec
 def test_an_unreadable_unresolved_record_makes_the_ledger_unread_never_empty(
     world: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
     cause: str,
 ) -> None:
     files = _prepare(world, monkeypatch)
-    plugin, _ = _reader_plugin(tmp_path, files)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
+    port = RecordedWindowPort(WINDOW_ROWS)
     runtime = load_contract(CONTRACT).runtime
     if cause == "stale":
         record = world["home"] / runtime.sources.unresolved_rows_relpath
@@ -363,7 +351,9 @@ def test_an_unreadable_unresolved_record_makes_the_ledger_unread_never_empty(
             return super().handle(request)
 
     monkeypatch.setattr(effect_module, "HandlerFactoryFloor", Recording)
-    HandlerFactoryFloorEffect(merged_running=_Reader(EVIDENCE)).handle(
+    HandlerFactoryFloorEffect(
+        merged_running=_Reader(EVIDENCE), ledger_source=port
+    ).handle(
         ModelFactoryFloorRunRequest(
             now=NOW, home=str(world["home"]), kb=str(world["kb"])
         )

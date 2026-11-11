@@ -316,31 +316,12 @@ def _source_args(source: str | None) -> list[str]:
     return [] if source is None else ["--source", source]
 
 
-def read_ledger_rows(
-    *,
-    window_days: int,
-    cut_chars: int,
-    timeout_seconds: int,
-    source: str | None,
-    plugin_root: Path | None,
-    plugin_root_env: str,
-    ledger_rows_file: Path | None,
-    kinds: frozenset[str] | None = None,
+def read_ledger_rows_file(
+    path: Path, kinds: frozenset[str]
 ) -> tuple[ModelFloorLedgerRow, ...]:
-    kinds = contract_ledger_kinds() if kinds is None else kinds
-    if ledger_rows_file is not None:
-        with _source(ledger_rows_file):
-            return parse_ledger_text(
-                ledger_rows_file.read_text(encoding="utf-8"), kinds
-            )
-    if plugin_root is None:
-        raise SourceRefusedError(
-            f"{plugin_root_env} is not set: export the plugin root or supply ledger_rows_file"
-        )
-    reader = plugin_root / "scripts" / "onex_ledger.py"
-    query = ["query", *_source_args(source), "--since", f"{window_days}d", "--archives"]
-    query += ["--limit", "1000000", "--cut", str(cut_chars)]
-    return _run_ledger_reader(reader, query, timeout_seconds, kinds)
+    """The rows of a ledger text file that stands in for the window read (tests and replays); no run of the publisher names one."""
+    with _source(path):
+        return parse_ledger_text(path.read_text(encoding="utf-8"), kinds)
 
 
 def read_unresolved_rows(

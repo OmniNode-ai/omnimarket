@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""A publish step can run with its own variables, and the floor step reads the ledger file (OMN-23606).
+"""A publish step can run with its own variables, and the floor step names none (OMN-23669).
 
-The unit carries one ledger read command for every step. The tracker and friction steps need the bus read command, but the floor's
-14-day window read is never answered by the bus source (the answer is far past the read node's bound), so on a host whose ledger
-record is the bus each floor read first spent 5 to 14 s on that refusal and then fell back to the file. With the bus read command
-installed, the 30 s floor step took 25 s and then passed its limit (measured on the publishing Mac 2026-11-11).
+The unit carries one ledger read command for every step. The floor step used to carry ``ONEX_LEDGER_RECORD: file`` (OMN-23606)
+because its 14-day window read was never answered by the bus source (the answer is far past the read node's bound) and the reader
+fell back to the ledger file after a 5 to 14 s refusal. The floor effect now reads the window from the read node page by page
+(OMN-23669), so the step needs no ledger record of its own and the value is gone from the contract.
 
-Golden chain: the contract's floor step declares the file as its ledger record, and a step that names a variable runs its
-program with it. Error chain (the failing controls): the same step without the variable runs without it; a lower-case name and
-a variable on a step that runs no program are refused by the model.
+Golden chain: the contract's floor step declares no variable, and a step that names a variable runs its program with it. Error
+chain (the failing controls): the same step without the variable runs without it; a lower-case name and a variable on a step that
+runs no program are refused by the model.
 """
 
 from __future__ import annotations
@@ -66,10 +66,10 @@ def check_step(**kw: object) -> ModelPublishStep:
     )
 
 
-def test_golden_the_floor_step_reads_the_ledger_file() -> None:
+def test_golden_the_floor_step_names_no_ledger_record() -> None:
     floor = next(s for s in load_runtime().steps if s.name == "factory_floor")
     assert floor.required
-    assert floor.environment == {"ONEX_LEDGER_RECORD": "file"}
+    assert floor.environment == {}
 
 
 def test_golden_a_step_runs_its_program_with_the_variables_it_names(
@@ -89,9 +89,9 @@ def test_error_control_without_the_variable_the_step_runs_with_the_units(
     assert run(tmp_path, check_step()) == ("failed", "exit 3")
 
 
-def test_error_only_the_floor_step_changes_its_ledger_record() -> None:
+def test_error_no_step_changes_its_ledger_record() -> None:
     named = [s.name for s in load_runtime().steps if s.environment]
-    assert named == ["factory_floor"]
+    assert named == []
 
 
 def test_error_a_lower_case_variable_name_is_refused() -> None:
