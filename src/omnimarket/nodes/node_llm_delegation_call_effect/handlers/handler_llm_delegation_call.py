@@ -327,6 +327,23 @@ def _extract_usage(response_json: dict[str, Any]) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
+def _provider_reported_cost(response_json: dict[str, Any]) -> Decimal | None:
+    """The cost the provider reported in its own usage accounting, or ``None``.
+
+    OMN-23756: OpenRouter states each call's charge as ``usage.cost`` (USD).
+    A missing, non-numeric or negative figure is ``None``, never zero.
+    """
+    usage = response_json.get("usage") or {}
+    raw = usage.get("cost") if isinstance(usage, dict) else None
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = Decimal(str(raw))
+    except InvalidOperation:
+        return None
+    return value if value.is_finite() and value >= 0 else None
+
+
 def _compute_cost(
     model_id: str,
     tokens_in: int,
@@ -347,8 +364,8 @@ def _compute_cost(
       0. a price the BYOK catalogue declares for this endpoint and model (OMN-20154:
          a free model inside a metered tier is booked at its own zero, never at
          the tier's rate)
-      0b. the price the routing overlay declares for an eval arm on this endpoint
-         and model (OMN-23751)
+      0b. the price the routing overlay declares for a paid rung (OMN-23756) or an
+         eval arm (OMN-23751) on this endpoint and model
       1. routing_tiers.yaml registry lookup by tier name (authoritative)
       2. _FALLBACK_PRICE_PER_1M[tier_name] (hardcoded mirror of registry values)
       3. _FALLBACK_PRICE_PER_1M["default"] (generic catch-all)
@@ -370,9 +387,9 @@ def _compute_cost(
     else:
         declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
         if declared_price is None:
-            # OMN-23751: an eval arm is booked at its own declared price, never at
-            # the rate of the ladder tier it is labelled with.
-            declared_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
+            # OMN-23751 / OMN-23756: a paid rung or an eval arm is booked at its own
+            # declared price, never at the rate of the ladder tier it ran in.
+            declared_price = load_delegation_routing_overlay().declared_price_per_1m(
                 endpoint_url, model_id
             )
     registry_price = (
@@ -1378,6 +1395,7 @@ class HandlerLlmDelegationCall:
             savings_usd=savings,
             usage_source=_cost_usage_source(cost_basis),
             cost_basis=cost_basis,
+            provider_reported_cost_usd=_provider_reported_cost(response_json),
             quality_gate_passed=True,
             endpoint_healthy=True,
             served_model_id=served_model_id,
@@ -1517,6 +1535,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=result.actual_cost_usd,
             opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
             savings_usd=result.savings_usd,
+            provider_reported_cost_usd=result.provider_reported_cost_usd,
             usage_source=result.usage_source,
             cost_basis=result.cost_basis,
             pricing_manifest_version=request.pricing_manifest_version,
