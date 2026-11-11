@@ -39,7 +39,7 @@ from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_reader
     BusJobLogReader,
     InMemoryJobLogReader,
 )
-from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_red_facts import (
+from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
     RedFactsStore,
     build_record,
 )

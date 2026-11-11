@@ -52,7 +52,7 @@ from omnimarket.models.scm import (
 if TYPE_CHECKING:
     # Imported lazily in HandlerScmLocalState._red_facts: the filler node's
     # handlers import this module, so a top-level import would be a cycle.
-    from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_red_facts import (
+    from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
         RedFactsStore,
     )
 
@@ -391,7 +391,7 @@ class HandlerScmLocalState:
     ) -> ModelScmLocalReadResult:
         """The filler's red-facts records of the PR's current head; no gateway, no GitHub."""
         # Imported here: the filler node's handlers import this package.
-        from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_red_facts import (
+        from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
             RedFactsStore,
             answer_red_facts,
             load_red_facts_overlay,
