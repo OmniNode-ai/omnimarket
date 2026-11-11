@@ -22,10 +22,13 @@ theme:
 gradients:
   cool: ["#00d2ff", "#3a9bff", "#6a7bff", "#9a5cf5", "#c64cec", "#ff4fa3"]
   warm: ["#ffd166", "#ffb347", "#ff8c5a", "#ff6b81", "#ff4fa3"]
+  fresh: ["#3ddc97", "#2fd4c4", "#22c3ee", "#3a9bff"]
 
 # Three-row block letters for the banner words.
 font:
+  " ": ["  ", "  ", "  "]
   A: ["▄▀▀▄", "█▀▀█", "▀  ▀"]
+  C: ["▄▀▀▀", "█   ", " ▀▀▀"]
   D: ["█▀▀▄", "█  █", "▀▀▀ "]
   E: ["█▀▀▀", "█▀▀ ", "▀▀▀▀"]
   G: ["▄▀▀▀", "█ ▀█", " ▀▀▀"]
@@ -35,10 +38,12 @@ font:
   N: ["█▄  █", "█ ▀▄█", "▀   ▀"]
   O: ["▄▀▀▄", "█  █", " ▀▀ "]
   T: ["▀█▀", " █ ", " ▀ "]
+  W: ["█   █", "█ █ █", " ▀ ▀ "]
 
 banner:
-  greeting: Welcome to
+  greeting: ""
   words:
+    - {text: WELCOME TO, gradient: fresh}
     - {text: OMNINODE, gradient: cool}
     - {text: DELEGATION, gradient: warm}
   tagline: "Your tasks, your models: run them where it costs least."

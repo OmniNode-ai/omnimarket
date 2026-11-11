@@ -80,7 +80,7 @@ class ModelTuiTip(BaseModel):
 class ModelTuiBanner(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    greeting: str
+    greeting: str = ""  # small italic line above the words; empty for none
     words: tuple[ModelTuiBannerWord, ...] = Field(min_length=1)
     tagline: str
     tips: tuple[ModelTuiTip, ...]

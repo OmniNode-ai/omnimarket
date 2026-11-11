@@ -815,7 +815,11 @@ def _big_word(word: str, gradient: tuple[str, ...]) -> Text:
 def welcome_sections() -> list[Text]:
     """Greeting, banner words, tagline and tips, each its own block."""
     design = tui_design()
-    sections = [Text(design.banner.greeting, style=_style("muted", "italic"))]
+    sections = (
+        [Text(design.banner.greeting, style=_style("muted", "italic"))]
+        if design.banner.greeting
+        else []
+    )
     sections += [
         _big_word(word.text, design.gradients[word.gradient])
         for word in design.banner.words

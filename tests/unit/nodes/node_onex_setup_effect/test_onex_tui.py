@@ -657,7 +657,14 @@ def test_welcome_banner_names_omninode_delegation_and_the_main_commands() -> Non
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import welcome_banner
 
     text = welcome_banner().plain
-    assert "Welcome to" in text
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    design = tui_design()
+    for word in ("WELCOME TO", "OMNINODE", "DELEGATION"):
+        first_row = "  ".join(design.font[c][0] for c in word)
+        assert first_row in text, word  # every banner word drawn big
     assert "█" in text
     for command in ("/config", "/model", "/delegation"):
         assert command in text
