@@ -16,6 +16,12 @@ pass away and leaves the head reading SUPERSEDED. When it holds, it is written o
 typed failure; when it does not hold, nothing is written and the result says so, so the floor never reads an error receipt
 the check-run handler did not earn.
 
+The join's error side is the failing control (the way join J1 gets its own): a real piece 7 failure the run produces on purpose.
+The stop gate is asked about a lane the open stop must refuse with the stop class in an observing mode, so it admits that lane:
+piece 7 fails typed under the control's own id (a chain that is no drill), piece 8 is not asked, posts nothing and answers with the
+typed refusal ``upstream_<code>``. A gate that still refuses in that mode means the control did not break the join: the run turns
+red and writes nothing. It is written once per overlay window.
+
 An unreadable ledger is never an empty answer: nothing is owed or written, and the result says so. A probe reads what is
 owed and writes nothing. The twin is the in-memory gate store and check-run API; chains are written with that backend.
 """
@@ -27,7 +33,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
+from omnimarket.handlers.emission_sink import (
+    UPSTREAM_PREFIX,
+    ChainEmitter,
+    ProtocolEmissionSink,
+)
 from omnimarket.handlers.rules_stop_gate import (
     fold_stop_event,
     load_andon_stop_contract,
@@ -83,6 +93,7 @@ from omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run impor
     ModelLabCheckRunResult,
 )
 from omnimarket.nodes.node_lab_check_run_effect.overlay_join_j7 import (
+    ModelJoinJ7Control,
     ModelJoinJ7Overlay,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
@@ -164,6 +175,15 @@ class HandlerLabCheckRunJoinJ7Run:
             and e.emitted_at >= drill_since
             for e in journal
         )
+        control = self._overlay.control
+        control_owed = control is not None and not any(
+            e.piece == self._rule.piece
+            and e.node == control.upstream_node
+            and not e.drill
+            and e.phase == "failure"
+            and e.emitted_at >= now - timedelta(hours=control.window_hours)
+            for e in journal
+        )
         seen: set[str] = set()
         owed: list[str] = []
         answered = 0
@@ -178,9 +198,16 @@ class HandlerLabCheckRunJoinJ7Run:
                 owed.append(cid)
         if request.probe:
             return ModelJoinJ7RunResult(
-                read_ok=True, owed=len(owed), answered=answered, drill_owed=drill_owed
+                read_ok=True,
+                owed=len(owed),
+                answered=answered,
+                drill_owed=drill_owed,
+                control_owed=control_owed,
+                control_configured=control is not None,
             )
         items = [self._answer(cid) for cid in owed[: self._overlay.max_chains_per_run]]
+        if control is not None and control_owed:
+            items.append(self._failing_control(control))
         if drill_owed:
             items.append(self._error_drill())
         return ModelJoinJ7RunResult(
@@ -188,6 +215,8 @@ class HandlerLabCheckRunJoinJ7Run:
             owed=len(owed),
             answered=answered,
             drill_owed=drill_owed,
+            control_owed=control_owed,
+            control_configured=control is not None,
             items=tuple(items),
         )
 
@@ -286,14 +315,19 @@ class HandlerLabCheckRunJoinJ7Run:
             self._config,
         ).stop
 
-    def _gate(self, record: ModelStopRecord, lane: str) -> ModelStopGateResult:
+    def _gate(
+        self,
+        record: ModelStopRecord,
+        lane: str,
+        mode: EnumStopMode = EnumStopMode.ENFORCE,
+    ) -> ModelStopGateResult:
         ov = self._overlay
         return stop_gate(
             ModelStopGateRequest(
                 scope=ModelStopScope(kind="piece", key=ov.stopped_piece),
                 stops=(record,),
                 policy=ModelStopPolicy(
-                    modes={ov.stop_class: EnumStopMode.ENFORCE},
+                    modes={ov.stop_class: mode},
                 ),
                 now=self._clock(),
                 lane_id=lane,
@@ -463,6 +497,80 @@ class HandlerLabCheckRunJoinJ7Run:
             )
         finally:
             rig.release()
+
+    def _failing_control(self, control: ModelJoinJ7Control) -> ModelJoinJ7RunItem:
+        """The join's error side: piece 7 fails typed on purpose, piece 8 is not asked and refuses with ``upstream_<code>``.
+
+        The stop is opened in the twin exactly as the golden run opens it, then the stop gate is asked about the lane the stop
+        must refuse with the stop class in the control's mode, which only observes: the gate admits the lane, which is piece 7's
+        stop not holding. Piece 8 starts only after a piece 7 success, so its handler is not called, the check-run API holds no run
+        and the test head still reads no PASS. A gate that refuses even in that mode means the control broke nothing: the item says
+        so and no chain is written.
+        """
+        ov = self._overlay
+        cid = f"{control.id_prefix}{uuid4().hex}"
+        rig = self._golden_rig()
+        try:
+            cause_lane, other_lane = self._lanes()
+            stop = rig.join.handle(
+                self._join_request(
+                    cid, EnumJoinJ6Operation.STOP, ov.stopped_piece, "stop"
+                )
+            )
+            record = self._open_stop(cid, cause_lane)
+            admitted = self._gate(record, other_lane, control.mode)
+            verdict = self._read_head(
+                rig, cid, ov.current_attempt_id, ov.head_sha
+            ).verdict
+            untouched = not rig.api.runs
+        finally:
+            rig.release()
+        broken = (
+            stop.outcome is EnumJoinJ6Outcome.STOP_COMMITTED
+            and admitted.outcome is EnumStopGateOutcome.ADMIT
+            and admitted.reason is EnumStopGateReason.OBSERVED
+            and verdict is not EnumLabCheckVerdict.PASS
+            and untouched
+        )
+        if not broken:
+            return ModelJoinJ7RunItem(
+                correlation_id=cid,
+                outcome=EnumJoinJ7RunOutcome.CONTROL_NOT_BROKEN,
+                control=True,
+                failure_code=EnumJoinJ7RunOutcome.CONTROL_NOT_BROKEN.value,
+                detail=(
+                    f"stop {stop.outcome.value}; the stop gate in mode {control.mode.value} read"
+                    f" {admitted.outcome.value} / {admitted.reason.value} for another lane; the head reads {verdict}"
+                ),
+            )
+        detail = (
+            f"the stop gate admitted a lane the stop on {ov.stopped_piece} must refuse"
+        )
+        upstream = ChainEmitter(
+            self._sink,
+            node=control.upstream_node,
+            piece=self._rule.piece,
+            clock=self._clock,
+            correlation_id=cid,
+            backend=self._backend,
+        )
+        upstream.start()
+        upstream.failure(control.failure_code, detail)
+        ChainEmitter(
+            self._sink,
+            node=ov.emission_node,
+            piece=self._to_piece,
+            clock=self._clock,
+            correlation_id=cid,
+            backend=self._backend,
+        ).refuse(f"{UPSTREAM_PREFIX}{control.failure_code}", detail)
+        return ModelJoinJ7RunItem(
+            correlation_id=cid,
+            outcome=EnumJoinJ7RunOutcome.CONTROL_RECORDED,
+            control=True,
+            failure_code=control.failure_code,
+            detail=detail,
+        )
 
     def _error_drill(self) -> ModelJoinJ7RunItem:
         """A late post of a superseded attempt: it posts nothing, and takes the earlier attempt's pass away."""
