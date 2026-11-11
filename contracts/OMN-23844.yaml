@@ -33,7 +33,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly -k default
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k default
     cwd: .
 - id: dod-omn23844-ac2-same-clone
   description: The refresh unit and the loader unit name the same overlays clone as their first root. Fails at origin/dev.
@@ -42,7 +42,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly -k same_clone
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k same_clone
     cwd: .
 - id: dod-omn23844-ac3-ac4-rendered
   description: The installed Linux unit text carries the overlays clone before the plugin directory in its environment line, so the tick reads the current read overlay on the host. Fails at origin/dev. The running-host half of AC4 (the snapshot file on a lab host after an install from this branch) is the local Done gate item below.
@@ -52,7 +52,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly -k rendered
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k rendered
     cwd: .
 - id: dod-omn23844-ac4-integration-proof
   description: The pushed head ran the focused tests on a lab host through the lab work runner and exited 0. The snapshot readback on the installed host is read from the lab receipt comment on the ticket.
