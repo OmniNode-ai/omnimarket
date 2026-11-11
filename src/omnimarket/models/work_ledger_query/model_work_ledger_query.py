@@ -302,6 +302,12 @@ class ModelWorkLedgerQueryResult(BaseModel):
     page_size: int | None = None
     watermark: AwareDatetime | None = None
     lines: tuple[str, ...] = ()
+    # A rows query with no since reads a bounded window (OMN-23541): ``bounded``
+    # is True exactly when the answer was cut to ``until - window`` and
+    # ``bounded_window_days`` is the window's days (the overlay's or the
+    # contract's), so a caller can see the answer is not the whole table.
+    bounded: bool = False
+    bounded_window_days: int | None = None
 
 
 __all__ = [

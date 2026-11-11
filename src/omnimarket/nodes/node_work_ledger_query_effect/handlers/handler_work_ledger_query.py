@@ -46,6 +46,10 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
     WorkLedgerReadError,
     load_work_ledger_query_source,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_bound import (
+    bounded_since,
+    load_rows_window,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_page import (
     rows_page,
 )
@@ -80,6 +84,7 @@ class HandlerWorkLedgerQuery:
         self.terminal_event = contract_publish_topics(self._contract_path)[0]
         self._answer_bound = load_work_ledger_answer_bound(self._contract_path)
         self._hold_stale_after = load_hold_stale_after(self._contract_path)
+        self._rows_window = load_rows_window(self._contract_path)
         self._now = now if now is not None else lambda: datetime.now(UTC)
         self._reader = (
             reader
@@ -102,11 +107,17 @@ class HandlerWorkLedgerQuery:
     ) -> ModelWorkLedgerQueryResult:
         now = request.now or self._now()
         until = request.until or now
+        bounded_start = bounded_since(request, until, self._rows_window)
+        effective_since = bounded_start if bounded_start is not None else request.since
         base = ModelWorkLedgerQueryResult(
             correlation_id=request.correlation_id,
             query=request.query,
-            window_since=request.since,
+            window_since=effective_since,
             window_until=until,
+            bounded=bounded_start is not None,
+            bounded_window_days=(
+                self._rows_window.days if bounded_start is not None else None
+            ),
         )
         if request.history is not None:
             try:
@@ -132,9 +143,9 @@ class HandlerWorkLedgerQuery:
                     base, "open-rulings needs a reader backed by work_ledger_state"
                 )
         try:
-            records = self._read_rows(request, until)
+            records = self._read_rows(request, until, effective_since)
             newest_ts, newest_projected = self._reader.freshness(until=until)
-            first = request.since
+            first = effective_since
             if first is None:
                 oldest = self._reader
                 first = (
@@ -176,7 +187,7 @@ class HandlerWorkLedgerQuery:
                     page_size=request.page_size,
                     cursor=request.cursor,
                     kinds=request.kinds,
-                    since=request.since,
+                    since=effective_since,
                     ticket=request.ticket,
                     pr=request.pr,
                     row_ref=request.row_ref,
@@ -206,19 +217,25 @@ class HandlerWorkLedgerQuery:
         )
 
     def _read_rows(
-        self, request: ModelWorkLedgerQueryRequest, until: datetime
+        self,
+        request: ModelWorkLedgerQueryRequest,
+        until: datetime,
+        since: datetime | None,
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         """The window's rows, narrowed in the store when the read can be (OMN-19609, OMN-23615).
 
-        Only the rows and rulings answers are narrowed. With a start the store keeps the asked row types and
-        lane; with no start it also keeps the asked term, and the parity window is then taken from the
-        ledger's oldest row (``oldest_row_ts``) so it does not depend on the rows read. Every other answer
-        reads the window whole. The narrowing is a superset of what select_rows keeps, so the answer is the same.
+        ``since`` is the effective start: the request's ``since`` or the bounded window's start
+        (OMN-23541), so a bounded rows read narrows in the store too. Only the rows and rulings
+        answers are narrowed. With a start the store keeps the asked row types and lane; with no
+        start it also keeps the asked term, and the parity window is then taken from the ledger's
+        oldest row (``oldest_row_ts``) so it does not depend on the rows read. Every other answer
+        reads the window whole. The narrowing is a superset of what select_rows keeps, so the
+        answer is the same.
         """
         reader = self._reader
         no_start = self._narrowed_without_start(request)
         if (
-            (request.since is not None or no_start)
+            (since is not None or no_start)
             and request.query
             in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}
             and isinstance(reader, ProtocolWorkLedgerFilteredRowReader)
@@ -227,13 +244,13 @@ class HandlerWorkLedgerQuery:
             term = request.term if no_start and request.term else None
             if kinds or request.lane or term:
                 return reader.read_rows_matching(
-                    since=request.since,
+                    since=since,
                     until=until,
                     kinds=tuple(k.upper() for k in kinds),
                     contains=request.lane or None,
                     **({"term": term} if term else {}),
                 )
-        return reader.read_rows(since=request.since, until=until)
+        return reader.read_rows(since=since, until=until)
 
     @staticmethod
     def _narrow_kinds(request: ModelWorkLedgerQueryRequest) -> tuple[str, ...]:
