@@ -394,6 +394,7 @@ node_broker_acl_overlay_render_compute = "omnimarket.nodes.node_broker_acl_overl
 node_broker_acl_reconcile_effect = "omnimarket.nodes.node_broker_acl_reconcile_effect"
 node_broker_auth_refusal_reading_effect = "omnimarket.nodes.node_broker_auth_refusal_reading_effect"
 node_broker_load_reading_effect = "omnimarket.nodes.node_broker_load_reading_effect"
+node_broker_topic_delete_effect = "omnimarket.nodes.node_broker_topic_delete_effect"
 node_broker_topic_removal_effect = "omnimarket.nodes.node_broker_topic_removal_effect"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect"
