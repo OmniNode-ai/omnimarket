@@ -81,6 +81,8 @@ runtime:
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r3_legs.yaml
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
   # Leg b: the paid rung is a real OpenRouter model on the probe key. The key VALUE is read from the variable named below when
   # the call is made and is never printed, logged, emitted or stored. Enabled with an empty variable the run is red, never skipped.
   leg_b_enabled: true

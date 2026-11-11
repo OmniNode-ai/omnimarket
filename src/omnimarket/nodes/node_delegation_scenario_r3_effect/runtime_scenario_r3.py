@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from omnimarket.handlers.delegation_readiness_scenario import scenario_main
+from omnimarket.handlers.delegation_scenario_settings import SecretStoreSettingsReader
 from omnimarket.models.model_delegation_scenario import EnumScenarioTrigger
 from omnimarket.nodes.node_delegation_scenario_r3_effect.handlers.handler_scenario_r3 import (
     NODE_MODULE,
@@ -22,7 +23,7 @@ from omnimarket.nodes.node_delegation_scenario_r3_effect.handlers.handler_scenar
 
 
 def _build(trigger: EnumScenarioTrigger) -> HandlerScenarioR3:
-    return build_runner(trigger=trigger)
+    return build_runner(trigger=trigger, settings_store=SecretStoreSettingsReader())
 
 
 def main(argv: Sequence[str] | None = None) -> int:

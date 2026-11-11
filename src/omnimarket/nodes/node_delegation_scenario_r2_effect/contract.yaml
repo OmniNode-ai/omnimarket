@@ -93,6 +93,8 @@ runtime:
   # The scenario's settings are read from this folder of the secret store when the environment does not
   # hold them; no value is in the contract.
   secret_store_folder: /shared/env
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
   local_backend_id: local-url
   delegate_task_type: summarization
   # A sentence, not a single word: the quality gate vetoes a bare one-word answer.

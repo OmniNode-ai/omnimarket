@@ -22,6 +22,7 @@ import pytest
 from pydantic import SecretStr
 
 from omnimarket.handlers.delegation_scenario_runtime import InMemoryScenarioEventSink
+from omnimarket.handlers.delegation_scenario_settings import load_settings_overlay
 from omnimarket.models.model_delegation_scenario import EnumScenarioTrigger
 from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2 import (
     HandlerScenarioR2,
@@ -45,6 +46,9 @@ pytestmark = pytest.mark.unit
 
 NOW = datetime(2026, 11, 9, 13, 6, 30, tzinfo=UTC)
 ALL_NAMES = tuple(SETTINGS)
+OVERLAY = load_settings_overlay(
+    Path(main.__code__.co_filename).parent / str(RUNTIME.settings_overlay_relpath)
+)
 
 
 class FakeSettingStore:
@@ -111,6 +115,7 @@ def _tick(
         ["--omni-home", str(tmp_path / "home"), "--state-dir", str(state_dir)],
         store=store,
         runner_factory=factory,
+        home=tmp_path / "no-host-env",
     )
     return exit_code, state_dir
 
@@ -157,6 +162,7 @@ def test_tick_never_asks_the_store_for_a_setting_the_environment_holds(
         ["--omni-home", str(tmp_path / "home"), "--state-dir", str(state_dir)],
         store=store,
         runner_factory=factory,
+        home=tmp_path / "no-host-env",
     )
     assert exit_code == 0
     assert RUNTIME.onboarding.provider_env not in store.asked
@@ -175,7 +181,11 @@ def test_tick_a_store_that_supplies_nothing_fails_the_run_and_never_skips(
     assert exit_code == 1
     record = json.loads(_record_text(state_dir))
     assert record["conclusion"] == "failure"
-    assert record["unresolved_settings"] == list(setting_names(RUNTIME))
+    # The overlay's two literals (the provider kind and the dead address) are not looked up; every other setting is unresolved.
+    literals = {s.env for s in OVERLAY.settings if s.value is not None}
+    assert record["unresolved_settings"] == [
+        name for name in setting_names(RUNTIME) if name not in literals
+    ]
     assert factory.rows
     assert "conclusion=failure" in factory.rows[0]
     # A missing setting is a failure that runs no command.
@@ -216,6 +226,7 @@ def test_tick_a_missing_ledger_route_refuses_with_65(
     exit_code = main(
         ["--omni-home", str(tmp_path / "home"), "--state-dir", str(state_dir)],
         store=store,
+        home=tmp_path / "no-host-env",
     )
     assert exit_code == 65
     record = json.loads(_record_text(state_dir))
