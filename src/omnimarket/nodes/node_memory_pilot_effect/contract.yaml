@@ -64,6 +64,11 @@ event_bus:
     - onex.evt.omnimarket.memory-pilot-run-started.v1
     - onex.evt.omnimarket.memory-pilot-run-completed.v1
     - onex.evt.omnimarket.memory-pilot-run-failed.v1
+# The run request has no node producer: the daily systemd unit (runtime_memory_pilot_run) builds it
+# from the overlay and calls the handler directly; the onex node dispatcher can publish it too.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.memory-pilot-run-requested.v1
+    producer: "the memory pilot daily unit (runtime_memory_pilot_run) and the onex node dispatcher (`onex run-node`), which publish or call this run command directly -- not a node contract"
 # The started event is a sink: no node contract subscribes to it; the pilot's readers
 # (a person or a reading of the bus) consume it outside the node graph.
 externally_consumed_topics:

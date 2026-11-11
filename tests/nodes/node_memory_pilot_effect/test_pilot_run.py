@@ -291,3 +291,22 @@ def test_the_contract_declares_the_run_topics() -> None:
     assert STARTED == "onex.evt.omnimarket.memory-pilot-run-started.v1"
     assert COMPLETED == "onex.evt.omnimarket.memory-pilot-run-completed.v1"
     assert FAILED == "onex.evt.omnimarket.memory-pilot-run-failed.v1"
+
+
+def test_the_run_command_has_a_named_external_producer() -> None:
+    """The run command has no node producer, so the contract must name who sends it (contract-topic-graph, HARD, no baseline)."""
+    import yaml
+
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[3]
+            / "src/omnimarket/nodes/node_memory_pilot_effect/contract.yaml"
+        ).read_text()
+    )
+    run_topic = "onex.cmd.omnimarket.memory-pilot-run-requested.v1"
+    produced = {
+        e["topic"]: e.get("producer", "")
+        for e in contract.get("externally_produced_topics", [])
+    }
+    assert run_topic in contract["event_bus"]["subscribe_topics"]
+    assert produced.get(run_topic, "").strip(), "the run command must name its producer"
