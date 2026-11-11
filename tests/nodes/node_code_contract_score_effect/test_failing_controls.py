@@ -12,6 +12,10 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.events.delegated_test_control import (
+    EnumControlStatus,
+    ModelControlGrade,
+)
 from omnimarket.nodes.node_code_contract_score_effect.handlers import (
     handler_code_contract_score,
 )
@@ -22,10 +26,6 @@ from omnimarket.nodes.node_code_contract_score_effect.models import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
     ModelCodeScoreRequest,
-)
-from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated_test_control import (
-    EnumControlStatus,
-    ModelControlGrade,
 )
 from tests.nodes.node_code_contract_score_effect.fixture_repo import Fixture, request
 

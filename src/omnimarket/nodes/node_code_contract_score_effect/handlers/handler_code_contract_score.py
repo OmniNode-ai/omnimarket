@@ -37,6 +37,13 @@ from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
 from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from pydantic import ValidationError
 
+from omnimarket.events.delegated_test_control import (
+    EnumControlStatus,
+    ModelControlGradeRequest,
+)
+from omnimarket.events.delegated_test_control import (
+    RunOutcome as ControlRunOutcome,
+)
 from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
     BashCheckExecution,
@@ -64,13 +71,6 @@ from omnimarket.nodes.node_code_contract_score_effect.protocols import (
 )
 from omnimarket.nodes.node_delegated_test_control_compute.handlers.handler_delegated_test_control import (
     grade_control,
-)
-from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated_test_control import (
-    EnumControlStatus,
-    ModelControlGradeRequest,
-)
-from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated_test_control import (
-    RunOutcome as ControlRunOutcome,
 )
 
 _log = logging.getLogger(__name__)
