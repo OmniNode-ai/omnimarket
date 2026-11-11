@@ -5,8 +5,10 @@ What it models: the state_io row of node_code_eval_trial_orchestrator for one ru
 Message flow, Legs, Close rule; rules 2, 3 and 7). Exemplar: formal/delegation_eval_run.
 The seam to the plan's message-flow rows is the comment block at the top of CodeEvalTrial.tla.
 
-Run it: ./run_all.sh (fetches the pinned tla2tools.jar, TLC 2.19 / v1.7.4, checks its sha256,
-needs a Java 11+ runtime; set JAVA to its binary; WORKERS defaults to 2). Output lands in results/.
+Run it: java -XX:+UseParallelGC -Xmx2g -cp tla2tools.jar tlc2.TLC -config <cfg>.cfg -workers 2 CodeEvalTrial.tla
+for each config (pinned tla2tools.jar: TLC 2.19, release v1.7.4, sha256
+936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88; needs a Java 11+ runtime),
+and save each output as results/<cfg>.out.
 The design configs must end clean and every M* config must end in a TLC violation;
 tests/formal/test_code_eval_trial_model.py reads the checked-in results and asserts both.
 
