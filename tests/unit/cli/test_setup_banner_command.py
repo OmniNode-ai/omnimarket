@@ -20,6 +20,10 @@ def test_welcome_precedes_first_prompt(
     )
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    # From the home folder setup asks for the workspace (AC19); elsewhere the
+    # current folder is the workspace and there is no workspace prompt.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(setup_cli.setup_command, ["--interactive"], input="")
     title = "Welcome To OmniNode Delegation Onboarding"
     assert title in result.output

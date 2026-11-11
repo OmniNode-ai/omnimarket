@@ -9,6 +9,8 @@ models a clean customer shell, so it removes every name the policy file names,
 read from the policy itself so the tests cannot drift from the product. It also
 puts this interpreter's own `onex` first on PATH: shell-safety flags any other
 `onex` found first (a developer's installed tool, for one) as a conflict.
+It runs the test from the home folder, where setup's workspace fallback
+chain applies (AC19).
 """
 
 from __future__ import annotations
@@ -36,6 +38,11 @@ def isolate_setup_shell(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(name, raising=False)
     own_bin = str(Path(sys.executable).parent)
     monkeypatch.setenv("PATH", os.pathsep.join([own_bin, os.environ.get("PATH", "")]))
+    # OMN-23413 AC19: setup takes the current folder as the workspace, except
+    # from the home folder, where $OMNIBASE_PATH, $OMNI_HOME, the recorded root
+    # or a prompt decide. Tests built on that chain run from the (fake) home.
+    if Path.home().is_dir():
+        monkeypatch.chdir(Path.home())
 
 
 # `onex setup` preflight supports macOS only; on any other platform it reports

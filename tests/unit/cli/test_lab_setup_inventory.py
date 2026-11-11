@@ -163,9 +163,14 @@ def test_instrument_sees_real_flags_functions_and_helpers() -> None:
 def test_every_real_surface_has_one_owner() -> None:
     _assert_coverage(_sources(), _entries())
     for entry in _entries():
-        assert entry["owner"].startswith("onex setup:"), entry
+        # OMN-23413 Amendment 4: surfaces the operator left with the unchanged
+        # onboarding script name it as their external owner; every other
+        # surface is owned by an onex setup capability.
+        assert entry["owner"].startswith("onex setup:") or (
+            entry["disposition"] == "external"
+            and entry["owner"] == "lab-onboarding.sh (unchanged, Amendment 3)"
+        ), entry
         assert entry["disposition"] in {
-            "planned",
             "integrated",
             "external",
             "retired",

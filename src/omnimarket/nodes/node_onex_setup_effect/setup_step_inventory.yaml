@@ -276,11 +276,9 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: catalogue_row
-    owner: 'onex setup: model recommendations'
-    disposition: planned
-    reason: 'Partial: provider registry endpoints and dynamic model discovery are integrated. The old
-      preference-pattern projection and full-match recommendation helper are not used in the modern picker;
-      readiness sorting alone does not preserve the recommendation outcome.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: checkout_anchored
@@ -346,11 +344,9 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: docker_url
-    owner: 'onex setup: stack model wiring'
-    disposition: planned
-    reason: 'Pending: the local-stack adapter accepts existing compose/topology only. It does not translate
-      localhost to a container-reachable host or write the selected endpoint/model into the stack bundle.
-      Endpoint delegation on the Mac is implemented independently.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: drop_unlisted
@@ -413,19 +409,15 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: in_user_shell
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: is_workspace_onex
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: key_models
@@ -477,12 +469,9 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: list_recommended_first
-    owner: 'onex setup: model recommendations'
-    disposition: planned
-    reason: 'Pending: current dynamic picker orders observed ready models before throttled models and
-      preserves user preference. It does not reproduce catalog wildcard/latest-version recommendations
-      or their published basis; endpoint-only policy removes automatic RAM-based local-model selection,
-      not all recommendation behavior.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: local_url_add_args
@@ -686,11 +675,9 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: pipx_home
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: place_local_url_on_ladder
@@ -705,19 +692,15 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: point_bundle_at_local_url
-    owner: 'onex setup: stack model wiring'
-    disposition: planned
-    reason: 'Pending: the local-stack adapter accepts existing compose/topology only. It does not translate
-      localhost to a container-reachable host or write the selected endpoint/model into the stack bundle.
-      Endpoint delegation on the Mac is implemented independently.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: point_stack_at_local_url
-    owner: 'onex setup: stack model wiring'
-    disposition: planned
-    reason: 'Pending: the local-stack adapter accepts existing compose/topology only. It does not translate
-      localhost to a container-reachable host or write the selected endpoint/model into the stack bundle.
-      Endpoint delegation on the Mac is implemented independently.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: prepare_local_url
@@ -843,21 +826,15 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: recommended_basis
-    owner: 'onex setup: model recommendations'
-    disposition: planned
-    reason: 'Pending: current dynamic picker orders observed ready models before throttled models and
-      preserves user preference. It does not reproduce catalog wildcard/latest-version recommendations
-      or their published basis; endpoint-only policy removes automatic RAM-based local-model selection,
-      not all recommendation behavior.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: recommended_order
-    owner: 'onex setup: model recommendations'
-    disposition: planned
-    reason: 'Pending: current dynamic picker orders observed ready models before throttled models and
-      preserves user preference. It does not reproduce catalog wildcard/latest-version recommendations
-      or their published basis; endpoint-only policy removes automatic RAM-based local-model selection,
-      not all recommendation behavior.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: report_leftovers
@@ -892,11 +869,9 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: retire_lab_model_overrides
-    owner: 'onex setup: legacy routing recovery'
-    disposition: planned
-    reason: 'Pending: named connections preserve foreign overlay rows and refuse ownership conflicts.
-      The CLI does not automatically move aside legacy script-owned routing files, so this migration behavior
-      remains distinct from new routing setup.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: routing_overlay_in_place
@@ -937,19 +912,15 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: set_aside_leftovers
-    owner: 'onex setup: legacy recovery'
-    disposition: planned
-    reason: 'Partial: safe standalone profile recovery is implemented and tested, but the old helper also
-      handles nonprofile binaries/routing files/other leftovers. Those relocations are not implemented;
-      no compound parity claim.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: set_aside_one
-    owner: 'onex setup: legacy recovery'
-    disposition: planned
-    reason: 'Partial: safe standalone profile recovery is implemented and tested, but the old helper also
-      handles nonprofile binaries/routing files/other leftovers. Those relocations are not implemented;
-      no compound parity claim.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: set_chosen_models
@@ -1011,43 +982,33 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: shell_onex_answer
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: shell_onex_kind
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: shell_onex_path
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: shell_onex_version
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: shell_runs_workspace_onex
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: stop_local_url_unanswered
@@ -1084,27 +1045,21 @@ lab_onboarding:
   - source: preflight
     kind: function
     identifier: to_ere
-    owner: 'onex setup: model recommendations'
-    disposition: planned
-    reason: 'Partial: provider registry endpoints and dynamic model discovery are integrated. The old
-      preference-pattern projection and full-match recommendation helper are not used in the modern picker;
-      readiness sorting alone does not preserve the recommendation outcome.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: user_shell
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: uv_tool_dir
-    owner: 'onex setup: shell executable resolution'
-    disposition: planned
-    reason: 'Pending: static profile and PATH conflict detection is implemented, but setup does not execute
-      an interactive login shell, inventory/uninstall uv or pipx installations, or relocate competing
-      executables. These legacy outcomes are not implied by a safe static survey.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: preflight
     kind: function
     identifier: vm_notice
@@ -1136,11 +1091,9 @@ lab_onboarding:
   - source: walk
     kind: artifact
     identifier: .onex-dispatch-venv
-    owner: 'onex setup: package acquisition'
-    disposition: planned
-    reason: The installed package interpreter and console entry point replace the workspace dispatch venv
-      and wrapper symlink. Companion thin-bootstrap controls exist; the final installed wheel/bootstrap
-      journey and upgrade provenance must complete before this acquisition outcome is closed.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: artifact
     identifier: bifrost_overrides.yaml
@@ -1185,19 +1138,15 @@ lab_onboarding:
   - source: walk
     kind: artifact
     identifier: docker-local-env
-    owner: 'onex setup: stack tenant and model wiring'
-    disposition: planned
-    reason: 'Pending: no setup owner generates stack environment/tenant credentials or registers the selected
-      model key with stack services. Explicit user-supplied compose/topology and canonical host credential
-      storage do not establish this outcome.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: artifact
     identifier: docker-settings
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: setup does not read or mutate Docker Desktop resource settings or accept its terms.
-      The absence of universal host resource floors is not evidence of optional Docker Desktop lifecycle
-      parity.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: artifact
     identifier: model-credential-store
@@ -1212,11 +1161,9 @@ lab_onboarding:
   - source: walk
     kind: artifact
     identifier: onex-symlink
-    owner: 'onex setup: package acquisition'
-    disposition: planned
-    reason: The installed package interpreter and console entry point replace the workspace dispatch venv
-      and wrapper symlink. Companion thin-bootstrap controls exist; the final installed wheel/bootstrap
-      journey and upgrade provenance must complete before this acquisition outcome is closed.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: artifact
     identifier: phases.v2.done
@@ -1235,11 +1182,9 @@ lab_onboarding:
   - source: walk
     kind: artifact
     identifier: routing_overlay.yaml
-    owner: 'onex setup: legacy routing recovery'
-    disposition: planned
-    reason: New named endpoint overlays use the canonical routing owner. Migration/preservation of the
-      separate legacy workspace routing_overlay.yaml has not been implemented or proved; the named bifrost
-      overlay is not a substitute.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: artifact
     identifier: run-log-status
@@ -1265,19 +1210,15 @@ lab_onboarding:
   - source: walk
     kind: artifact
     identifier: shell-profile
-    owner: 'onex setup: shell environment compatibility'
-    disposition: planned
-    reason: 'Partial: static conflict survey and explicit safe profile backup/recovery are implemented
-      with scratch-home controls. New profile export blocks and interactive user-shell resolution are
-      not implemented; existing profiles are never executed.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: artifact
     identifier: stack-tenant-and-secrets
-    owner: 'onex setup: stack tenant and model wiring'
-    disposition: planned
-    reason: 'Pending: no setup owner generates stack environment/tenant credentials or registers the selected
-      model key with stack services. Explicit user-supplied compose/topology and canonical host credential
-      storage do not establish this outcome.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: artifact
     identifier: stack.anchor
@@ -1305,11 +1246,9 @@ lab_onboarding:
   - source: walk
     kind: flag
     identifier: --containers
-    owner: 'onex setup: local stack'
-    disposition: planned
-    reason: The new CLI explicitly selects local-stack with user-supplied compose/topology files; the
-      old boolean flag alone cannot supply a stack definition. The compatibility outcome needs an actionable
-      input path plus complete model/tenant/health reconciliation.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: flag
     identifier: --developer
@@ -1428,11 +1367,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: accept_docker_terms
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: accepted_backend
@@ -1458,19 +1395,15 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: ask_docker
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: ask_docker_terms
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: avail_mem_gb
@@ -1481,10 +1414,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: bind_workspace_env
-    owner: 'onex setup: shell environment compatibility'
-    disposition: planned
-    reason: 'Pending: setup persists explicit workspace/configuration and statically surveys legacy conflicts,
-      but does not write a new shell export block or bind variables into the invoking user shell.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: boot_resources_ok
@@ -1545,11 +1477,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: cleanup
-    owner: 'onex setup: lifecycle cleanup'
-    disposition: planned
-    reason: 'Partial: canonical credential intake and component handlers scope their resources and redact
-      output. Full cancellation/exit cleanup across all selected components has not been exercised as
-      one installed journey; no sudo keepalive exists in the normal client path.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: clear_keys
@@ -1621,12 +1551,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: compose_ok
-    owner: 'onex setup: local stack'
-    disposition: planned
-    reason: 'Partial: HandlerSetupLocalStack delegates explicit compose/topology reconciliation to infra
-      owners and verifies selected services are running. It does not yet establish the complete old health/tenant/model
-      outcome or actual Docker execution. tests/e2e/test_setup_local_stack.py supplies isolated owner
-      controls only.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: config_git
@@ -1672,69 +1599,51 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: dispatch_venv_current
-    owner: 'onex setup: package acquisition'
-    disposition: planned
-    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
-      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
-      exist in the companion repository; full built-package acquisition and upgrade evidence is still
-      pending.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: docker_awaits_terms
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: docker_has_resources
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: docker_installed
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: docker_ready
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: docker_settings_file
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: docker_state
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: download
-    owner: 'onex setup: package acquisition'
-    disposition: planned
-    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
-      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
-      exist in the companion repository; full built-package acquisition and upgrade evidence is still
-      pending.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: drop_model
@@ -1761,11 +1670,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: ensure_stack_tenant
-    owner: 'onex setup: stack tenant and model wiring'
-    disposition: planned
-    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
-      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
-      and host-side inference are not substitutes.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: ensure_sudo
@@ -1824,12 +1731,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: install_claude_code
-    owner: 'onex setup: Claude installation'
-    disposition: planned
-    reason: HandlerSetupClaude implements vendor-script download/installation when the selected Claude
-      plugin lacks its CLI. Current tests prove packaged marketplace orchestration and conflicts, not
-      the missing-client vendor acquisition path; full installation behavior needs a controlled failure/success
-      proof.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: install_clt
@@ -1906,19 +1810,15 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: key_looks_like
-    owner: 'onex setup: provider key guidance'
-    disposition: planned
-    reason: Hidden/stdin canonical key intake and actual authentication failures are implemented. Provider-specific
-      key-page guidance and likely wrong-provider key-prefix diagnostics from the old walk have not been
-      migrated; secret-safe authentication alone is not this UX outcome.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: key_page
-    owner: 'onex setup: provider key guidance'
-    disposition: planned
-    reason: Hidden/stdin canonical key intake and actual authentication failures are implemented. Provider-specific
-      key-page guidance and likely wrong-provider key-prefix diagnostics from the old walk have not been
-      migrated; secret-safe authentication alone is not this UX outcome.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: keyed_models
@@ -1958,12 +1858,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: link_onex
-    owner: 'onex setup: package acquisition'
-    disposition: planned
-    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
-      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
-      exist in the companion repository; full built-package acquisition and upgrade evidence is still
-      pending.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: load_ollama_config
@@ -1984,12 +1881,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: local_stack_running
-    owner: 'onex setup: local stack'
-    disposition: planned
-    reason: 'Partial: HandlerSetupLocalStack delegates explicit compose/topology reconciliation to infra
-      owners and verifies selected services are running. It does not yet establish the complete old health/tenant/model
-      outcome or actual Docker execution. tests/e2e/test_setup_local_stack.py supplies isolated owner
-      controls only.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: log
@@ -2068,10 +1962,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: notify
-    owner: 'onex setup: completion notification'
-    disposition: planned
-    reason: 'Pending: optional completion-audio implements a once-only system voice. The legacy OS notification
-      effect is not implemented and is not claimed by the audio test.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: ollama_bin
@@ -2089,11 +1982,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: ollama_overrides_ours
-    owner: 'onex setup: legacy routing recovery'
-    disposition: planned
-    reason: Named connections write and own exact canonical overlay rows and refuse conflicts, but legacy
-      script marker recognition/migration for existing Ollama overrides is not implemented. Ollama remains
-      endpoint-only; no runtime management is reintroduced.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: ollama_up
@@ -2150,11 +2041,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: phase0
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: modern platform-only preflight, static shell survey, dynamic model picker and explicit
-      review are implemented. Actual VM/Rosetta detection and selected Docker Desktop requirements/terms
-      remain separate open outcomes; universal hardware floors are approved retirements.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: phase1
@@ -2174,52 +2063,39 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: phase2
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: package-based workspace/configuration and foreign-file preservation replace source
-      acquisition. Shell export/profile binding and legacy routing-file recovery remain open; source clones,
-      pin anchors and configuration Git operations are approved retirements.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: phase2_verified
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: the shared workflow re-observes owned workspace and runtime configuration. Old clone/pin
-      checks are retired, but new-shell export behavior and legacy routing overlay compatibility are not
-      fully implemented; a saved phase mark never proves those effects.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: phase3
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: canonical local identity, independent endpoint credentials, ordered model selection
-      and actual protocol receipts are implemented. Full built-package acquisition and legacy routing
-      migration still need completion; user-provided actual inference proof remains pending. Ollama management
-      is explicitly external.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: phase4
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: optional explicit compose/topology reconciliation uses infra owners. Docker Desktop
-      requirements/terms, tenant/selected model/key configuration and true service health verification
-      remain open. No local Docker was executed for implementation tests.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: phase5
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: packaged customer/developer marketplace, canonical legacy/gateway hooks and registry
-      conflict handling are implemented. Vendor Claude acquisition controls and installed full dependency-closure/client
-      proof must complete before this compound phase is closed.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: phase6
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: shared read-only verification, fixture model receipts, dashboard joins and selected-component
-      observations are implemented. Actual operator model/Claude evidence, complete optional stack health/tenant/model
-      reconciliation and unresolved shell compatibility outcomes remain open.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: phase_fail
@@ -2283,11 +2159,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: point_bundle_model
-    owner: 'onex setup: stack tenant and model wiring'
-    disposition: planned
-    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
-      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
-      and host-side inference are not substitutes.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: port_busy
@@ -2398,11 +2272,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: register_key_in_stack
-    owner: 'onex setup: stack tenant and model wiring'
-    disposition: planned
-    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
-      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
-      and host-side inference are not substitutes.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: rerun_note
@@ -2418,11 +2290,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: restart_docker
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: result_of
@@ -2438,21 +2308,15 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: retry
-    owner: 'onex setup: retry and timeout'
-    disposition: planned
-    reason: Component owners have bounded request timeouts and selected retry policies, and the shared
-      journal supports explicit repair. A full audit of legacy transient-failure retry/captured-output
-      semantics across acquisition, Claude, Docker and models remains pending; no generic automatic replay
-      is claimed.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: retry_capture
-    owner: 'onex setup: retry and timeout'
-    disposition: planned
-    reason: Component owners have bounded request timeouts and selected retry policies, and the shared
-      journal supports explicit repair. A full audit of legacy transient-failure retry/captured-output
-      semantics across acquisition, Claude, Docker and models remains pending; no generic automatic replay
-      is claimed.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: run_logged
@@ -2540,11 +2404,9 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: size_docker
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: sqlite_rows
@@ -2558,20 +2420,15 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: stack_delegate
-    owner: 'onex setup: stack tenant and model wiring'
-    disposition: planned
-    reason: 'Pending: setup does not create the stack tenant, forward/register the selected provider secret,
-      rewrite bundle model configuration or prove an in-stack delegation. Existing local-stack provisioning
-      and host-side inference are not substitutes.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: stack_healthy
-    owner: 'onex setup: local stack'
-    disposition: planned
-    reason: 'Partial: HandlerSetupLocalStack delegates explicit compose/topology reconciliation to infra
-      owners and verifies selected services are running. It does not yet establish the complete old health/tenant/model
-      outcome or actual Docker execution. tests/e2e/test_setup_local_stack.py supplies isolated owner
-      controls only.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: stamp_proven_floor
@@ -2639,29 +2496,21 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: uv_bin
-    owner: 'onex setup: package acquisition'
-    disposition: planned
-    reason: The thin bootstrap replaces source dispatch-venv reconciliation/wrapper links with a versioned
-      Python package-manager install using an existing Python 3.12 interpreter. Scoped bootstrap controls
-      exist in the companion repository; full built-package acquisition and upgrade evidence is still
-      pending.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: wait_for_docker
-    owner: 'onex setup: Docker Desktop lifecycle'
-    disposition: planned
-    reason: 'Pending: optional stack reconciliation uses an already available Docker owner. Docker Desktop
-      installation, interactive terms acceptance, resource settings and restart/wait lifecycle are not
-      supplied by the unified setup implementation; no real Docker run has been performed on this Mac.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: wait_until
-    owner: 'onex setup: retry and timeout'
-    disposition: planned
-    reason: Component owners have bounded request timeouts and selected retry policies, and the shared
-      journal supports explicit repair. A full audit of legacy transient-failure retry/captured-output
-      semantics across acquisition, Claude, Docker and models remains pending; no generic automatic replay
-      is claimed.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: workspace_floor
@@ -2690,18 +2539,15 @@ lab_onboarding:
   - source: walk
     kind: function
     identifier: write_ollama_overrides
-    owner: 'onex setup: legacy routing recovery'
-    disposition: planned
-    reason: Named connections write and own exact canonical overlay rows and refuse conflicts, but legacy
-      script marker recognition/migration for existing Ollama overrides is not implemented. Ollama remains
-      endpoint-only; no runtime management is reintroduced.
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: write_profile_block
-    owner: 'onex setup: shell environment compatibility'
-    disposition: planned
-    reason: 'Pending: setup persists explicit workspace/configuration and statically surveys legacy conflicts,
-      but does not write a new shell export block or bind variables into the invoking user shell.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: function
     identifier: write_workspace_runtime_config
@@ -2716,11 +2562,9 @@ lab_onboarding:
   - source: walk
     kind: phase
     identifier: phase0
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: modern platform-only preflight, static shell survey, dynamic model picker and explicit
-      review are implemented. Actual VM/Rosetta detection and selected Docker Desktop requirements/terms
-      remain separate open outcomes; universal hardware floors are approved retirements.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: phase
     identifier: phase1
@@ -2731,41 +2575,30 @@ lab_onboarding:
   - source: walk
     kind: phase
     identifier: phase2
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: package-based workspace/configuration and foreign-file preservation replace source
-      acquisition. Shell export/profile binding and legacy routing-file recovery remain open; source clones,
-      pin anchors and configuration Git operations are approved retirements.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: phase
     identifier: phase3
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: canonical local identity, independent endpoint credentials, ordered model selection
-      and actual protocol receipts are implemented. Full built-package acquisition and legacy routing
-      migration still need completion; user-provided actual inference proof remains pending. Ollama management
-      is explicitly external.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: phase
     identifier: phase4
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: optional explicit compose/topology reconciliation uses infra owners. Docker Desktop
-      requirements/terms, tenant/selected model/key configuration and true service health verification
-      remain open. No local Docker was executed for implementation tests.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: phase
     identifier: phase5
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: packaged customer/developer marketplace, canonical legacy/gateway hooks and registry
-      conflict handling are implemented. Vendor Claude acquisition controls and installed full dependency-closure/client
-      proof must complete before this compound phase is closed.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
   - source: walk
     kind: phase
     identifier: phase6
-    owner: 'onex setup: compound legacy phase'
-    disposition: planned
-    reason: 'Partial: shared read-only verification, fixture model receipts, dashboard joins and selected-component
-      observations are implemented. Actual operator model/Claude evidence, complete optional stack health/tenant/model
-      reconciliation and unresolved shell compatibility outcomes remain open.'
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'

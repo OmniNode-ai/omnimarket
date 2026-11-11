@@ -4482,6 +4482,7 @@
   "tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py": 0.98,
   "tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py": 1.09,
   "tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py": 1.09,
+  "tests/unit/nodes/node_onex_setup_effect/test_setup_workspace_default.py": 0.47,
   "tests/unit/nodes/node_onex_setup_effect/test_tui_design.py": 1.34,
   "tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py": 0.02,
   "tests/unit/nodes/node_operator_capture_compute/test_handler_utterance_classify.py": 0.27,
