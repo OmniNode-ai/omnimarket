@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -80,7 +81,45 @@ class ModelTickOrchestratorOverlay(BaseModel):
         default=None,
         description="Redpanda with bus_lane: the workspace root whose lane config names the broker.",
     )
-    consumer_group: str | None = Field(default=None, description="Redpanda only.")
+    consumer_group: str | None = Field(
+        default=None,
+        description=(
+            "Redpanda only: the consumer group's base name. The group the reader joins is this name, "
+            "a hyphen and the instance identity the host_env variable holds (OMN-22921), so two "
+            "orchestrators on the same topic never share a group and split its records."
+        ),
+    )
+    host_env: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Redpanda only: the environment variable holding this instance's host identity (the unit "
+            "sets it from its host), appended to consumer_group. Unset or empty at run time refuses the "
+            "pass; a missing identity never falls back to the shared group."
+        ),
+    )
+    join_timeout_s: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Redpanda only: how long the consumer group join may take before the pass ends unread "
+            "(measured on the dev broker, OMN-22921)."
+        ),
+    )
+    run_limit_s: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Redpanda only: the unit's run limit in seconds (the registry unit's run_timeout_s), declared "
+            "here so the pass's own bounds are checked against it: join_timeout_s plus poll_timeout_s must "
+            "fit inside it with run_margin_s to spare."
+        ),
+    )
+    run_margin_s: float | None = Field(
+        default=None,
+        gt=0,
+        description="Redpanda only: the time a pass keeps in hand for compare and publish after its reads.",
+    )
     snapshot_topic: str | None = Field(
         default=None,
         description="Redpanda only: the topic the landing snapshot step's tick records arrive on (its record_topic).",
@@ -119,6 +158,30 @@ class ModelTickOrchestratorOverlay(BaseModel):
             raise ValueError(
                 "publish_backend redpanda needs bus_lane or bootstrap_servers"
             )
+        if self.backend is EnumTickBackend.REDPANDA:
+            missing = [
+                name
+                for name in (
+                    "host_env",
+                    "join_timeout_s",
+                    "run_limit_s",
+                    "run_margin_s",
+                )
+                if getattr(self, name) is None
+            ]
+            if missing:
+                raise ValueError(f"backend redpanda needs overlay fields {missing}")
+            budget = (
+                (self.join_timeout_s or 0)
+                + (self.poll_timeout_s or 0)
+                + (self.run_margin_s or 0)
+            )
+            if budget > (self.run_limit_s or 0):
+                raise ValueError(
+                    f"join_timeout_s {self.join_timeout_s} + poll_timeout_s {self.poll_timeout_s} + "
+                    f"run_margin_s {self.run_margin_s} exceed run_limit_s {self.run_limit_s}: "
+                    "the unit would end the pass before it reads"
+                )
         for repository in self.script_out_of_scope_repositories:
             if not re.fullmatch(REPO_PATTERN, repository):
                 raise ValueError(
@@ -138,6 +201,7 @@ class ModelTickTopicSelection(BaseModel):
 
     topic: str = Field(min_length=1)
     consumer_group: str = Field(min_length=1)
+    join_timeout_s: float = Field(gt=0)
     bus_lane: str | None = None
     workspace_root: str | None = None
     bootstrap_servers: str | None = None
@@ -153,9 +217,25 @@ class ModelTickTopicSelection(BaseModel):
         return self
 
 
+def resolved_consumer_group(
+    overlay: ModelTickOrchestratorOverlay, environ: Mapping[str, str]
+) -> str:
+    """The consumer group this instance joins: the overlay's base name and the host identity (OMN-22921)."""
+    if not overlay.consumer_group or not overlay.host_env:
+        raise ValueError("backend redpanda needs consumer_group and host_env")
+    identity = environ.get(overlay.host_env, "").strip()
+    if not identity:
+        raise ValueError(
+            f"the host identity variable {overlay.host_env} is unset or empty: "
+            "a consumer group without it would be shared with another instance"
+        )
+    return f"{overlay.consumer_group}-{identity}"
+
+
 __all__: list[str] = [
     "OVERLAY_ID",
     "EnumTickBackend",
     "ModelTickOrchestratorOverlay",
     "ModelTickTopicSelection",
+    "resolved_consumer_group",
 ]

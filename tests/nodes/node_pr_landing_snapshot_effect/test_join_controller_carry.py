@@ -30,6 +30,7 @@ from uuid import uuid4
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.landing_controller_carry import decisions_of
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.adapter_publisher import (
     LaneBusSnapshotPublisher,
@@ -81,6 +82,9 @@ from tests.nodes.node_pr_landing_snapshot_effect.test_join_landing_snapshot_tick
 )
 
 pytestmark = [pytest.mark.unit]
+
+
+BROKER_PAYLOAD_LIMIT = 1_048_588  # the dev broker's message size limit, in bytes
 
 
 def _record(publisher: Any, topic: str, run: str = "") -> ModelLandingTickRecord:
@@ -161,7 +165,7 @@ def test_join_in_memory_bus_the_controller_tick_crosses_the_seam_and_the_compare
 ):
     record, raw, topic = _over_inmemory_bus()
     (snapshot,) = _read(raw, topic).snapshots()
-    assert snapshot.controller == record.controller == carry()
+    assert snapshot.controller == record.controller == decisions_of(carry())
     assert snapshot.facts == record.facts
     assert snapshot.decision is None
     # the carried gate crossed the bus: 713 is held in the node's own facts
@@ -193,16 +197,38 @@ def test_join_control_a_renamed_controller_field_is_skipped_by_the_reader() -> N
     assert all("ctrl: extra_forbidden" in row.detail for row in source.skipped())
 
 
-def test_join_control_a_carry_missing_its_facts_is_skipped_by_the_reader() -> None:
+def test_join_control_a_carry_missing_its_source_is_skipped_by_the_reader() -> None:
     _, raw, topic = _over_inmemory_bus()
     broken = []
     for line in raw:
         record = json.loads(line)
-        del record["controller"]["facts"]
+        del record["controller"]["source"]
         broken.append(json.dumps(record))
     source = _read(broken, topic)
     assert source.snapshots() == ()
-    assert all("controller.facts: missing" in row.detail for row in source.skipped())
+    assert all("controller.source: missing" in row.detail for row in source.skipped())
+
+
+def test_join_control_a_record_that_carries_the_controllers_facts_again_is_refused_by_the_reader() -> (
+    None
+):
+    """OMN-22921: the controller's whole facts on the record made it 5.7 MB against a 1,048,588-byte broker limit."""
+    _, raw, topic = _over_inmemory_bus()
+    heavy = []
+    for line in raw:
+        record = json.loads(line)
+        record["controller"]["facts"] = json.loads(carry().facts.model_dump_json())
+        heavy.append(json.dumps(record))
+    source = _read(heavy, topic)
+    assert source.snapshots() == ()
+    assert all(
+        "controller.facts: extra_forbidden" in row.detail for row in source.skipped()
+    )
+
+
+def test_join_the_record_on_the_bus_is_far_under_the_broker_limit() -> None:
+    _, raw, _ = _over_inmemory_bus()
+    assert all(len(line.encode()) < BROKER_PAYLOAD_LIMIT for line in raw)
 
 
 def test_join_control_without_the_carried_state_the_same_tick_diverges_on_the_held_pr() -> (
@@ -249,5 +275,5 @@ def test_join_redpanda_the_controller_tick_crosses_the_real_broker() -> None:
         if own:
             break
     assert own, "the record did not come back off the broker"
-    assert own[0].controller == record.controller == carry()
+    assert own[0].controller == record.controller == decisions_of(carry())
     _assert_compared_with_the_controller(own[0])
