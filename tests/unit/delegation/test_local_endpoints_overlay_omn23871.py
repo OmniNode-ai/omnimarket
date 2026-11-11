@@ -228,16 +228,19 @@ def test_a_local_endpoint_missing_its_endpoint_refuses(
     assert MODEL not in msg
 
 
-def test_a_local_endpoint_with_a_non_local_provider_refuses(
+def test_a_local_endpoint_naming_a_credential_refuses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A local endpoint whose provider is not local refuses, naming the id."""
-    _write_overlay(tmp_path, monkeypatch, _local_endpoints_one(provider="openrouter"))
+    """A local GPU endpoint has no provider key: a row naming a credential refuses, naming the id."""
+    _write_overlay(
+        tmp_path, monkeypatch, _local_endpoints_one(secret_ref="llm.hosted.api_key")
+    )
     with pytest.raises(ProtocolConfigurationError) as exc:
         _backends(tmp_path)
     msg = str(exc.value)
     assert "local-coder" in msg
-    assert "provider must be local" in msg
+    assert "must not name a credential" in msg
+    assert "llm.hosted.api_key" not in msg
     assert GPU_A not in msg
 
 

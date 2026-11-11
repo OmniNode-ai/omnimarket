@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23889
 title: Machines without a private model list find our own graphics machines through the shared settings
-summary: The delegation routing overlay gains an optional local_endpoints section. The bifrost loaders bind each row onto the routing contract's local backends (an override of a contract backend, or a new complete backend), the overlay winning over a machine-local overrides file, so a machine with no such file resolves the local rung. An absent section changes nothing. A row missing its endpoint or model name, naming a non-local provider, pinned-only, duplicated or incomplete is refused naming the backend and the key, never the endpoint value.
+summary: The delegation routing overlay gains an optional local_endpoints section. The bifrost loaders bind each row onto the routing contract's local backends (an override of a contract backend, or a new complete backend), the overlay winning over a machine-local overrides file, so a machine with no such file resolves the local rung. An absent section changes nothing. A row missing its endpoint or model name, naming a credential, pinned-only, duplicated or incomplete is refused naming the backend and the key, never the endpoint value.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
