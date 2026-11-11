@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -28,6 +28,7 @@ from omnimarket.handlers.floor_projection import (
 )
 from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
 from omnimarket.models.floor_17a import ModelNodeEmission
+from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 from omnimarket.models.floor_projection import (
     ModelFloorEmissionsOverlay,
 )
@@ -64,7 +65,7 @@ def chain(
         piece=3,
         clock=lambda: at,
         correlation_id=cid,
-        origin=origin,  # type: ignore[arg-type]
+        origin=cast(ChainOrigin, origin),
     )
     emitter.start()
     if fail:
@@ -190,6 +191,7 @@ def test_contract_and_overlay_name_the_same_topics() -> None:
     )
     assert tuple(contract["snapshot_reads"]) == OVERLAY.emission_topics
     assert contract["event_bus"]["publish_topics"] == [OVERLAY.snapshot_topic]
+    assert OVERLAY.snapshot_topic == "onex.snapshot.projection.floor-emissions.v1"
 
 
 def test_golden_and_error_chain_of_the_node_itself_are_probe_origin(

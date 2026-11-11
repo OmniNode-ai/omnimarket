@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -14,12 +15,11 @@ from omnimarket.handlers.floor_projection import payload_from_emissions
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
     ModelFloorSimpleTickRequest,
+    ModelNodeEmission,
 )
+from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 from omnimarket.nodes.node_floor_emission_compute.handlers import (
     handler_floor_receipt as fold_module,
-)
-from omnimarket.nodes.node_floor_simple_effect.handlers import (
-    handler_floor_simple_tick as tick_module,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
     HandlerFloorSimpleTick,
@@ -36,7 +36,9 @@ pytestmark = pytest.mark.unit
 PROJECTION = "floor_emissions"
 
 
-def chain_events(origin: str, cid: str, node: str = "node_x:x") -> list:
+def chain_events(
+    origin: str, cid: str, node: str = "node_x:x"
+) -> list[ModelNodeEmission]:
     sink = InMemoryEmissionSink()
     emitter = ChainEmitter(
         sink,
@@ -44,7 +46,7 @@ def chain_events(origin: str, cid: str, node: str = "node_x:x") -> list:
         piece=3,
         clock=lambda: NOW - timedelta(minutes=5),
         correlation_id=cid,
-        origin=origin,  # type: ignore[arg-type]
+        origin=cast(ChainOrigin, origin),
     )
     emitter.start()
     emitter.success()
@@ -55,18 +57,19 @@ def seen_by_the_fold(
     monkeypatch: pytest.MonkeyPatch,
     home: Path,
     *,
-    journal: list,
+    journal: list[ModelNodeEmission],
 ) -> list[ModelFloorReceiptInput]:
     """Run one cycle with ``journal`` in the file sink; the inputs the receipt fold was given."""
     inputs: list[ModelFloorReceiptInput] = []
-    real = fold_module.HandlerFloorReceipt
+    real_handle = fold_module.HandlerFloorReceipt.handle
 
-    class Spy(real):  # type: ignore[misc, valid-type]
-        def handle(self, request: ModelFloorReceiptInput):  # type: ignore[no-untyped-def]
-            inputs.append(request)
-            return super().handle(request)
+    def spy(
+        self: fold_module.HandlerFloorReceipt, request: ModelFloorReceiptInput
+    ) -> Any:
+        inputs.append(request)
+        return real_handle(self, request)
 
-    monkeypatch.setattr(tick_module, "HandlerFloorReceipt", Spy)
+    monkeypatch.setattr(fold_module.HandlerFloorReceipt, "handle", spy)
     sink = InMemoryEmissionSink()
     sink.events.extend(journal)
     HandlerFloorSimpleTick(sink=sink, clock=lambda: NOW).run(
