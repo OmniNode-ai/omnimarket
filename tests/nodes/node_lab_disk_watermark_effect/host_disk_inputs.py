@@ -16,7 +16,7 @@ from omnimarket.events.topics import (
     HOST_DISK_READ_FAILED_TOPIC_V1,
     HOST_DISK_READ_TOPIC_V1,
 )
-from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_host_disk_classes import (
+from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_class_reader import (
     HostDiskClassReader,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_watermark import (

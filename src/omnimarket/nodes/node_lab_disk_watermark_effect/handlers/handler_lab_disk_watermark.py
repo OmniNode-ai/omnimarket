@@ -24,7 +24,7 @@ from omnimarket.handlers.overlay_store.bus_opener import workspace_root
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.adapter_host_disk_bus import (
     LaneBusHostDiskPublisher,
 )
-from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_host_disk_classes import (
+from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_class_reader import (
     HostDiskClassReader,
     volume_for,
 )
