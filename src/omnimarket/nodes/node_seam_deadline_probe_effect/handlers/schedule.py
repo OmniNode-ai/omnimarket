@@ -235,7 +235,7 @@ def render_drill_systemd(
     cadence = drill.cadence
     service = (
         "# Rendered by the seam deadline node (schedule install); the node contract owns the\n"
-        "# drill, so change the contract and install again rather than editing this file.\n"
+        "# cadence, so change the contract and install again rather than editing this file.\n"
         "# Rollback: schedule uninstall.\n"
         "[Unit]\nDescription=ONEX scheduled seam deadline drill (piece 3 error event; an injected fault, drill=yes)\n"
         "\n[Service]\nType=oneshot\n"
