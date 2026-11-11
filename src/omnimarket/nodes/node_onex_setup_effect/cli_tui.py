@@ -58,8 +58,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
 # Shortcuts first, as coding-agent TUIs list them; every CLI command follows.
 _LOCAL_COMMANDS = {
-    ("setup",): "Connect a model server and choose its model.",
-    ("config",): "Change the model server, model or key.",
+    ("config",): "Providers, keys and models for delegation.",
     ("model",): "Pick the model every task tries first.",
     ("delegation",): "Turn delegation on or off for Claude Code.",
     ("clear",): "Clear the output.",
@@ -69,6 +68,8 @@ _LOCAL_COMMANDS = {
 
 
 _AUTO_FIND_SECONDS = 0.8
+# /config does what `onex setup` does; typing /setup still opens /config.
+_UNLISTED = frozenset({("setup",)})
 _MIN_KEY_LENGTH = 8
 
 
@@ -157,7 +158,9 @@ class ProtocolTuiRunner(Protocol):
         stdin: str | None = None,
     ) -> int: ...
 
-    async def capture(self, argv: tuple[str, ...]) -> tuple[int, str, str]: ...
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]: ...
 
     def in_terminal(self, argv: tuple[str, ...]) -> int: ...
 
@@ -239,15 +242,19 @@ class HandlerOnexCommand:
             emit(raw.decode(errors="replace").rstrip("\n"))
         return await process.wait()
 
-    async def capture(self, argv: tuple[str, ...]) -> tuple[int, str, str]:
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
         process = await asyncio.create_subprocess_exec(
             self._onex,
             *argv,
-            stdin=asyncio.subprocess.DEVNULL,
+            stdin=asyncio.subprocess.DEVNULL
+            if stdin is None
+            else asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        out, err = await process.communicate()
+        out, err = await process.communicate(None if stdin is None else stdin.encode())
         return (
             await process.wait(),
             out.decode(errors="replace"),
@@ -311,6 +318,31 @@ async def load_status() -> ModelTuiStatus:
     return ModelTuiStatus(
         workspace=display_path(Path.cwd()), model=model, gateway=gateway
     )
+
+
+def _setup_report(text: str) -> dict[str, object] | None:
+    """`onex setup --json`: one JSON document on stdout."""
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return _last_json_object(text)
+    return value if isinstance(value, dict) else None
+
+
+def _last_line(out: str, err: str) -> str:
+    lines = [ln for ln in (err or out).strip().splitlines() if ln.strip()]
+    return lines[-1] if lines else "no output"
+
+
+def _step_detail(evidence: dict[str, object]) -> str:
+    """The one evidence value worth a glance: a folder, or what a model step set."""
+    for key in ("workspace",):
+        if evidence.get(key):
+            return f"  {display_path(Path(str(evidence[key])))}"
+    picked = [
+        f"{k}: {str(v).split(';')[0]}" for k, v in evidence.items() if ";" in str(v)
+    ]
+    return f"  {', '.join(picked)}" if picked else ""
 
 
 def _discovered_models(text: str) -> tuple[str | None, list[str]]:
@@ -721,40 +753,47 @@ def _model_choices(text: str) -> list[tuple[str, str, bool]]:
 
 
 _LETTERS = {
-    "O": ("▄▀▀▄", "█  █", " ▀▀ "),
-    "M": ("█▄ ▄█", "█ ▀ █", "▀   ▀"),
-    "N": ("█▄  █", "█ ▀▄█", "▀   ▀"),
-    "I": ("█", "█", "▀"),
+    "A": ("▄▀▀▄", "█▀▀█", "▀  ▀"),
     "D": ("█▀▀▄", "█  █", "▀▀▀ "),
     "E": ("█▀▀▀", "█▀▀ ", "▀▀▀▀"),
+    "G": ("▄▀▀▀", "█ ▀█", " ▀▀▀"),
+    "I": ("█", "█", "▀"),
+    "L": ("█   ", "█   ", "▀▀▀▀"),
+    "M": ("█▄ ▄█", "█ ▀ █", "▀   ▀"),
+    "N": ("█▄  █", "█ ▀▄█", "▀   ▀"),
+    "O": ("▄▀▀▄", "█  █", " ▀▀ "),
+    "T": ("▀█▀", " █ ", " ▀ "),
 }
-_GRADIENT = ("#00d2ff", "#3a9bff", "#6a7bff", "#9a5cf5", "#c64cec", "#ff4fa3")
+_COOL = ("#00d2ff", "#3a9bff", "#6a7bff", "#9a5cf5", "#c64cec", "#ff4fa3")
+_WARM = ("#ffd166", "#ffb347", "#ff8c5a", "#ff6b81", "#ff4fa3")
 
 
-def welcome_banner() -> Text:
-    """OMNINODE in a cyan-to-pink gradient, DELEGATION under it, then the keys."""
-    rows = ["  ".join(_LETTERS[c][r] for c in "OMNINODE") for r in range(3)]
+def _big_word(word: str, gradient: tuple[str, ...], banner: Text) -> None:
+    """``word`` in three-row block letters, coloured left to right."""
+    rows = ["  ".join(_LETTERS[c][r] for c in word) for r in range(3)]
     width = max(len(row) for row in rows)
-    banner = Text("\n")
     for row in rows:
         banner.append("  ")
         for column, char in enumerate(row):
-            banner.append(
-                char, style=f"bold {_GRADIENT[column * len(_GRADIENT) // width]}"
-            )
+            colour = gradient[column * len(gradient) // width]
+            banner.append(char, style=f"bold {colour}")
         banner.append("\n")
+
+
+def welcome_banner() -> Text:
+    """Welcome to OMNINODE DELEGATION, then the commands that matter first."""
+    banner = Text("\n  Welcome to\n\n", style="italic #9aa5b1")
+    _big_word("OMNINODE", _COOL, banner)
+    banner.append("\n")
+    _big_word("DELEGATION", _WARM, banner)
     banner.append(
-        "  " + " ".join("DELEGATION").center(width) + "\n", style="bold #ffb347"
-    )
-    banner.append(
-        "  Your tasks, your models: run them where it costs least.\n\n",
+        "\n  Your tasks, your models: run them where it costs least.\n\n",
         style="italic #9aa5b1",
     )
     for key, text in (
         ("type a task", "and press Enter to delegate it"),
         ("/config", "providers, keys and models"),
-        ("/setup", "connect a model server"),
-        ("/model", "pick the model to use"),
+        ("/model", "pick the model to use first"),
         ("/delegation", "Claude Code on or off"),
         ("/", "every command   ·   ↑↓ history   ·   ctrl+c quit"),
     ):
@@ -843,7 +882,7 @@ class OnexTui(App[int]):
         parts.append("/ commands  ctrl+c quit")
         self.query_one("#status", Static).update("  ·  ".join(parts))
 
-    def _write(self, text: str) -> None:
+    def _write(self, text: str | Text) -> None:
         self.query_one("#output", RichLog).write(text)
 
     def _matches(self, query: str) -> list[ModelTuiCommand]:
@@ -856,7 +895,11 @@ class OnexTui(App[int]):
             entry
             for entry in (
                 *local,
-                *(c for c in self._commands if c.path not in _LOCAL_COMMANDS),
+                *(
+                    c
+                    for c in self._commands
+                    if c.path not in _LOCAL_COMMANDS and c.path not in _UNLISTED
+                ),
             )
             if all(word in " ".join(entry.path) for word in words)
         ]
@@ -1020,21 +1063,63 @@ class OnexTui(App[int]):
         self, choices: tuple[ModelTuiSetupChoice, ...] | None
     ) -> None:
         for choice in choices or ():
-            argv = choice.argv(Path.cwd())
-            self._write(f"$ onex {shlex.join(argv)}")
-            stdin = choice.key.get_secret_value() + "\n" if choice.key else None
-            code = await self._runner.stream(argv, self._write, stdin=stdin)
-            more = choice.more_models_argv()
-            if not code and more:
-                self._write(f"$ onex {shlex.join(more)}")
-                code = await self._runner.stream(more, self._write)
             models = ", ".join(choice.models)
             self._write(
-                f"exit {code}" if code else f"{choice.provider}: {models} set up."
+                Text(f"Setting up {_label(choice.provider)} · {models} …", style="bold")
             )
-        if choices:
-            self._write("Type a task to try it, or /model to choose which goes first.")
+            stdin = choice.key.get_secret_value() + "\n" if choice.key else None
+            code, out, err = await self._runner.capture(
+                (*choice.argv(Path.cwd()), "--json"), stdin=stdin
+            )
+            ok = self._write_setup_report(_setup_report(out), code, err)
+            more = choice.more_models_argv()
+            if ok and more:
+                code, out, err = await self._runner.capture(more)
+                extra = ", ".join(choice.models[1:])
+                self._write(
+                    Text(f"  ✓ also added {extra}", style="green")
+                    if not code
+                    else Text(
+                        f"  ✗ adding {extra}: {_last_line(out, err)}", style="red"
+                    )
+                )
+            if ok:
+                self._write(
+                    Text(
+                        f"Ready: {_label(choice.provider)} · {models}. "
+                        "Type a task to try it, or /model to choose which goes first.",
+                        style="bold green",
+                    )
+                )
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
+
+    def _write_setup_report(
+        self, report: dict[str, object] | None, code: int, err: str
+    ) -> bool:
+        """One line per setup step: ✓ done, · unchanged, ✗ failed with its fix."""
+        steps = report.get("observations") if report else None
+        if not isinstance(steps, list):
+            self._write(Text(f"  ✗ setup failed: {_last_line('', err)}", style="red"))
+            return False
+        ok = code == 0
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            name = str(step.get("step", "")).replace("_", " ").replace("-", " ")
+            evidence = step.get("evidence")
+            detail = _step_detail(evidence if isinstance(evidence, dict) else {})
+            if step.get("status") == "success":
+                mark, style = ("✓", "green") if step.get("changed") else ("·", "dim")
+                self._write(Text(f"  {mark} {name}{detail}", style=style))
+            else:
+                ok = False
+                fix = step.get("fix")
+                self._write(
+                    Text(
+                        f"  ✗ {name}{detail}" + (f": {fix}" if fix else ""), style="red"
+                    )
+                )
+        return ok
 
     async def _apply_delegation(self, choice: ModelTuiDelegationChoice | None) -> None:
         if choice is None:

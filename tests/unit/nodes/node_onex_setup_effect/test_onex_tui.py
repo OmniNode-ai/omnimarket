@@ -122,8 +122,11 @@ class _Runner:
         self._captured = captured
         self._errors = errors
 
-    async def capture(self, argv: tuple[str, ...]) -> tuple[int, str, str]:
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
         self.calls.append(argv)
+        self.stdins.append(stdin)
         return self._code, self._by_command.get(argv[:2], self._captured), self._errors
 
     async def stream(
@@ -181,6 +184,33 @@ async def test_enter_runs_the_named_cli_command_and_shows_its_output() -> None:
         await pilot.pause()
         assert runner.calls == [("models", "connections")]
         assert "qwen/qwen3.8-27b" in _log_text(app)
+
+
+_SETUP_REPORT = json.dumps(
+    {
+        "observations": [
+            {
+                "step": "preflight",
+                "status": "success",
+                "changed": False,
+                "evidence": {},
+            },
+            {
+                "step": "workspace",
+                "status": "success",
+                "changed": True,
+                "evidence": {"workspace": "/tmp/ws"},
+            },
+            {
+                "step": "models",
+                "status": "success",
+                "changed": True,
+                "evidence": {"ollama": "llama3.2; backend=local-url; tested_at=now"},
+            },
+        ]
+    },
+    indent=2,
+)
 
 
 _DELEGATED = json.dumps(
@@ -325,11 +355,12 @@ async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
         await pilot.press("slash")
         shown = [str(option.prompt) for option in app.query_one("#palette").options]
         assert [text.split()[0] for text in shown[:4]] == [
-            "/setup",
             "/config",
             "/model",
             "/delegation",
+            "/clear",
         ]
+        assert not any(text.split()[0] == "/setup" for text in shown)
         assert any(text.startswith("/models connections") for text in shown)
 
 
@@ -353,7 +384,13 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
     """Server provider: Find lists models; ticked ones are set up in this folder."""
     monkeypatch.chdir(tmp_path)
     found = json.dumps({"status": "ready", "models": ["llama3.2", "qwen3:8b"]})
-    runner = _Runner([], by_command={("models", "discover"): found})
+    runner = _Runner(
+        [],
+        by_command={
+            ("models", "discover"): found,
+            ("setup", "--no-interactive"): _SETUP_REPORT,
+        },
+    )
     app = _app(runner)
     async with app.run_test(size=(100, 44)) as pilot:
         await _open_config(pilot, app, "/setup")
@@ -382,6 +419,7 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
             "llama3.2",
             "--url",
             _OLLAMA_DEFAULT,
+            "--json",
         )
         assert runner.calls[-1] == (
             "models",
@@ -390,7 +428,12 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
             "--model",
             "qwen3:8b",
         )
-        assert "ollama: llama3.2, qwen3:8b set up." in _log_text(app)
+        text = _log_text(app)
+        assert "✓ workspace" in text
+        assert "✓ models  ollama: llama3.2" in text
+        assert "✓ also added qwen3:8b" in text
+        assert "Ready: Ollama · llama3.2, qwen3:8b" in text
+        assert "Welcome To OmniNode Delegation Onboarding" not in text
 
 
 def _hosted_listing(
@@ -614,9 +657,11 @@ def test_welcome_banner_names_omninode_delegation_and_the_main_commands() -> Non
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import welcome_banner
 
     text = welcome_banner().plain
-    assert "D E L E G A T I O N" in text
-    for command in ("/setup", "/config", "/model", "/delegation"):
+    assert "Welcome to" in text
+    assert "█" in text
+    for command in ("/config", "/model", "/delegation"):
         assert command in text
+    assert "/setup" not in text
 
 
 async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
@@ -746,3 +791,44 @@ async def test_every_model_is_listed_with_no_cap_and_any_number_can_be_ticked() 
         await _press(pilot, app, "add")
         basket = str(screen.query_one("#basket").render())
         assert basket.count(",") == 465
+
+
+async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    failed = json.dumps(
+        {
+            "observations": [
+                {"step": "preflight", "status": "success", "changed": False},
+                {
+                    "step": "models",
+                    "status": "failed",
+                    "changed": False,
+                    "evidence": {},
+                    "fix": "start Ollama, then run /config again",
+                },
+            ]
+        }
+    )
+    runner = _Runner([], code=1, by_command={("setup", "--no-interactive"): failed})
+    app = _app(runner)
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        app.screen.query_one("#model").value = "llama3.2"
+        await _press(pilot, app, "save")
+        await pilot.pause()
+        text = _log_text(app)
+        assert "✗ models: start Ollama, then run /config again" in text
+        assert "Ready:" not in text
+
+
+async def test_typing_setup_still_opens_the_config_form() -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+
+    app = _app(_Runner([]))
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _type(pilot, "/setup ")
+        await pilot.press("backspace", "enter")
+        await pilot.pause()
+        assert isinstance(app.screen, SetupScreen)
