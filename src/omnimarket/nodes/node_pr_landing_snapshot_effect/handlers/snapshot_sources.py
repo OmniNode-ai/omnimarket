@@ -9,6 +9,10 @@
 - WatcherStateWriteFactsSource: each PR's GraphQL node id and its head's failed run ids, read from
   the PR watcher's state (a projection of GitHub; no GitHub read here). A PR whose watcher head or
   CI head differs from the facts' head fills nothing; a state older than its bound is refused.
+- LandingCarryStateDirSource: the old controller's last finished tick during the cutover period (OMN-23665):
+  its facts file, its tick log (the tick is finished when the log's last row names it) and its decision
+  log's action rows for that tick. The controller keeps no copy of its decision, only the facts it decided
+  from and the actions it took, so the carry holds those two.
 - JsonlLandingTickRecorder: appends each tick's record to a journal and reads every record back,
   so a tick's facts are recoverable after any later tick and after a restart.
 
@@ -25,12 +29,21 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from omnimarket.models.landing_decision import ModelLandingFacts
+from omnimarket.models.landing_controller_carry import (
+    ModelLandingControllerCarry,
+    ModelLandingControllerLogged,
+)
+from omnimarket.models.landing_decision import (
+    EnumLandingActionKind,
+    ModelLandingFacts,
+)
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.adapter_publisher import (
     KafkaSnapshotPublisher,
     LaneBusSnapshotPublisher,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
+    ControllerStateStaleError,
+    ControllerTickOpenError,
     SnapshotSourceError,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
@@ -72,6 +85,10 @@ class LandingFactsFileSource:
     def current_tick(self) -> int:
         """The tick the file holds now."""
         return self._load().tick
+
+    def read_current(self) -> ModelLandingFacts:
+        """The facts the file holds now."""
+        return self._load()
 
     def read_facts(self, tick: int) -> ModelLandingFacts | None:
         facts = self._load()
@@ -152,6 +169,97 @@ class WatcherStateWriteFactsSource:
         return out
 
 
+_ACTION_KINDS = frozenset(kind.value for kind in EnumLandingActionKind)
+_STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _jsonl_rows(path: Path, *, missing_ok: bool) -> list[dict[str, object]]:
+    """The JSON objects of a jsonl file, one per line; a line that is not an object is skipped."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        if missing_ok:
+            return []
+        raise SnapshotSourceError(f"{path} unreadable: FileNotFoundError") from None
+    except OSError as exc:
+        raise SnapshotSourceError(f"{path} unreadable: {type(exc).__name__}") from None
+    rows: list[dict[str, object]] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+class LandingCarryStateDirSource:
+    """The old landing controller's last finished tick: its facts file, tick log and decision log."""
+
+    name = "controller-state"
+
+    def __init__(
+        self,
+        facts_path: Path,
+        ticks_path: Path,
+        decisions_path: Path,
+        *,
+        max_age_seconds: int,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        self._facts = LandingFactsFileSource(facts_path)
+        self._ticks = ticks_path
+        self._decisions = decisions_path
+        self._max_age = max_age_seconds
+        self._now = now
+
+    def read_carry(self) -> ModelLandingControllerCarry:
+        facts = self._facts.read_current()
+        ticks = _jsonl_rows(self._ticks, missing_ok=False)
+        if not ticks:
+            raise SnapshotSourceError(f"{self._ticks} holds no finished tick")
+        last = ticks[-1]
+        if last.get("tick") != facts.tick:
+            raise ControllerTickOpenError(
+                f"controller facts are tick {facts.tick}, its last finished tick is {last.get('tick')}"
+            )
+        try:
+            at = datetime.strptime(str(last.get("ts")), _STAMP).replace(tzinfo=UTC)
+        except ValueError:
+            raise SnapshotSourceError(
+                f"{self._ticks} last row ts {last.get('ts')!r} unreadable"
+            ) from None
+        age = (self._now() - at).total_seconds()
+        if age > self._max_age:
+            raise ControllerStateStaleError(
+                f"the controller's last finished tick is {int(age)}s old, past its bound of {self._max_age}s"
+            )
+        logged = tuple(
+            ModelLandingControllerLogged(
+                kind=EnumLandingActionKind(str(row["kind"])),
+                subject=str(row["subject"]),
+                outcome=str(row["outcome"]),
+            )
+            for row in _jsonl_rows(self._decisions, missing_ok=True)
+            if row.get("tick") == facts.tick
+            and row.get("kind") in _ACTION_KINDS
+            and isinstance(row.get("subject"), str)
+            and row["subject"]
+            and isinstance(row.get("outcome"), str)
+            and row["outcome"]
+        )
+        return ModelLandingControllerCarry(
+            controller_tick=facts.tick,
+            observed_at=facts.observed_at,
+            facts=facts,
+            logged=logged,
+            source=self.name,
+        )
+
+
 class JsonlLandingTickRecorder:
     """Appends every tick's record to a journal; reads them all back."""
 
@@ -212,6 +320,28 @@ def build_snapshot_ports(
     )
 
 
+def build_controller_source(
+    overlay: ModelSnapshotOverlay,
+    *,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> LandingCarryStateDirSource | None:
+    """The controller's state source when the overlay names it (the cutover instance), else None (OMN-23665)."""
+    if not (
+        overlay.controller_facts_path
+        and overlay.controller_ticks_path
+        and overlay.controller_decisions_path
+        and overlay.controller_max_age_seconds
+    ):
+        return None
+    return LandingCarryStateDirSource(
+        resolve_path(overlay.controller_facts_path),
+        resolve_path(overlay.controller_ticks_path),
+        resolve_path(overlay.controller_decisions_path),
+        max_age_seconds=overlay.controller_max_age_seconds,
+        now=now,
+    )
+
+
 def _publisher(overlay: ModelSnapshotOverlay) -> ProtocolLandingSnapshotPublisher:
     if overlay.bus_lane and overlay.workspace_root:
         return LaneBusSnapshotPublisher(
@@ -224,9 +354,11 @@ def _publisher(overlay: ModelSnapshotOverlay) -> ProtocolLandingSnapshotPublishe
 
 __all__: list[str] = [
     "JsonlLandingTickRecorder",
+    "LandingCarryStateDirSource",
     "LandingFactsFileSource",
     "SnapshotSourceError",
     "WatcherStateWriteFactsSource",
+    "build_controller_source",
     "build_snapshot_ports",
     "resolve_path",
 ]
