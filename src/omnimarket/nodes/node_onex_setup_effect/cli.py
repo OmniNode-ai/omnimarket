@@ -49,6 +49,9 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_cli_failure impo
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
 
 discover_models = HandlerEndpointCatalog().discover
 probe_models = HandlerModelProbe().probe
@@ -310,7 +313,10 @@ def setup_command(
     Setup rechecks each effect before skipping it. A failed component retains the
     completed steps and reports its fix; --action repair reconciles it on retry.
     """
-    if endpoint_auth is not None and provider != "ollama":
+    if (
+        endpoint_auth is not None
+        and provider not in setup_provider_traits().endpoint_auth
+    ):
         raise click.ClickException("--endpoint-auth is for --provider ollama.")
     if connection_id and provider and "," in provider:
         raise click.ClickException(

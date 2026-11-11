@@ -19,6 +19,9 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import 
     KEYLESS_PROVIDERS,
     URL_PROVIDERS,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
 
 
 def _suggested_order(
@@ -69,9 +72,7 @@ def ask_choices(
     if model is None and catalog_url is not None:
         key = None
         if provider not in KEYLESS_PROVIDERS or endpoint_auth == "api-key":
-            key = read_key(
-                "openai_compatible" if provider == "ollama" else provider, True
-            )
+            key = read_key(setup_provider_traits().key_name(provider), True)
             if key is None:
                 raise click.ClickException(
                     "This endpoint requires a key on hidden input or stdin."

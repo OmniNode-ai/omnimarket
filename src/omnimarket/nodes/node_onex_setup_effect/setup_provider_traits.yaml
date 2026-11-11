@@ -1,0 +1,15 @@
+# Setup inputs each provider takes (OMN-23413). Setup reads this to decide
+# whether to ask for a server URL or a key and which canonical owner registers
+# the choice. Routing never reads it, and no code compares a provider name
+# (deployment-fact gate). Loaded by models/model_setup_provider_traits.py.
+url_required: [local, openai_compatible, ollama]
+# The user's own server: keyless unless they say it needs a key.
+endpoint_auth: [ollama]
+# The credential owner a provider's key is stored under, when not its own.
+key_provider:
+  ollama: openai_compatible
+# The canonical endpoint owner a selection registers as, keyed or keyless.
+registers_as:
+  ollama:
+    keyed: openai_compatible
+    keyless: local

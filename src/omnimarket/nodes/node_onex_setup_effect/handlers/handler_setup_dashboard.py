@@ -26,6 +26,9 @@ from omnibase_core.cli.cli_user_config import user_config_path
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.local_deployment.tenant_identity import read_local_tenant_identity
+from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
+    loopback_url,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_dashboard_process import (
     ModelSetupDashboardProcess,
 )
@@ -236,7 +239,7 @@ class HandlerSetupDashboard:
                     record = ModelSetupDashboardProcess(
                         pid=process.pid,
                         process_stamp=stamp,
-                        url=f"http://127.0.0.1:{start.port}",
+                        url=loopback_url(start.port),
                         credential_ref=reference,
                         tenant_id=str(identity.tenant_uuid),
                     )

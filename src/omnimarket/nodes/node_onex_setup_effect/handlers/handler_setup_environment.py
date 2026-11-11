@@ -41,6 +41,9 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation impo
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_step_request import (
     ModelSetupStepRequest,
 )
@@ -354,7 +357,10 @@ class HandlerSetupEnvironment:
                                 or "The connection could not be selected"
                             )
                     continue
-                if desired.provider == "ollama" and desired.api_key_required:
+                if (
+                    desired.provider in setup_provider_traits().endpoint_auth
+                    and desired.api_key_required
+                ):
                     from omnimarket.handlers.openai_compatible_endpoint import (
                         base_url_of,
                         stored_base_url,

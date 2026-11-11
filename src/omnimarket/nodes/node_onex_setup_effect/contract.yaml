@@ -168,6 +168,9 @@ descriptor:
   idempotent: true
   timeout_ms: 7200000
   runtime_profiles: [effects]
+  # OMN-23413: this node installs Claude Code with its vendor script, manages its plugins and starts the onex claude gateway process; none of these is a model call
+  # (canonical-inference gate, model-cli-shellout carve-out).
+  agent_invocation: true
 
 terminal_event: onex.evt.omnimarket.onex-setup-completed.v1
 
@@ -202,3 +205,6 @@ dod_evidence:
 
 metadata:
   transport_type: filesystem
+  # OMN-23413: the loopback host of the processes setup starts (URL authority);
+  # read by handlers/setup_contract_values.py.
+  loopback_host: "127.0.0.1"

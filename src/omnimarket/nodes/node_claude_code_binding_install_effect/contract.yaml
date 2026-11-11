@@ -65,6 +65,9 @@ descriptor:
   idempotent: true
   timeout_ms: 5000
   runtime_profiles: [effects]
+  # OMN-23413: this node onex claude start launches the user's own Claude Code session; it is not a model call
+  # (canonical-inference gate, model-cli-shellout carve-out).
+  agent_invocation: true
 
 capabilities:
   - name: claude_code.gateway_binding

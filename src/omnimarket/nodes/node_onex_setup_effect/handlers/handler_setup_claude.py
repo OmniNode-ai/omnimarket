@@ -28,6 +28,9 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command impo
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
     _read,
 )
+from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
+    claude_code_installer_url,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_claude_request import (
     ModelSetupClaudeRequest,
 )
@@ -427,7 +430,7 @@ class HandlerSetupClaude:
                         "-fsSL",
                         "--retry",
                         "3",
-                        "https://claude.ai/install.sh",
+                        claude_code_installer_url(),
                         "-o",
                         str(script),
                     ),

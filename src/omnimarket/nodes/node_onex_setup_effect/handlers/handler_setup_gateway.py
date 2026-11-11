@@ -40,6 +40,9 @@ from omnimarket.local_deployment.tenant_identity import read_local_tenant_identi
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_dashboard import (
     _stamp,
 )
+from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
+    loopback_url,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_gateway import (
     ModelSetupGatewayProcess,
 )
@@ -306,7 +309,7 @@ class HandlerSetupGateway:
                 record = ModelSetupGatewayProcess(
                     pid=process.pid,
                     process_stamp=stamp,
-                    url=f"http://127.0.0.1:{port}",
+                    url=loopback_url(port),
                     credential_ref=reference,
                     tenant_id=str(identity.tenant_uuid),
                     selection=plan.gateway,

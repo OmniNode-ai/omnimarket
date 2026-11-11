@@ -6,11 +6,15 @@ from __future__ import annotations
 
 import re
 import urllib.parse
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelProvider,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
 )
 
 _URL_RE = re.compile(r"^[^\s\x00-\x1f\x7f-\x9f]*$")
@@ -66,10 +70,7 @@ class ModelSetupProvider(BaseModel):
     def model_post_init(self, __context: object) -> None:
         if self.connection_id is not None and self.url is None:
             raise ValueError("Named connections require an explicit endpoint URL")
-        if (
-            self.provider in ("local", "openai_compatible", "ollama")
-            and self.url is None
-        ):
+        if self.provider in setup_provider_traits().url_required and self.url is None:
             raise ValueError(f"provider {self.provider} requires url")
 
     @property
@@ -81,9 +82,12 @@ class ModelSetupProvider(BaseModel):
     @property
     def registration_provider(self) -> ModelProvider:
         """Canonical credential/endpoint owner for this logical selection."""
-        if self.provider == "ollama":
-            return "openai_compatible" if self.api_key_required else "local"
-        return self.provider
+        return cast(
+            "ModelProvider",
+            setup_provider_traits().registration(
+                self.provider, keyed=bool(self.api_key_required)
+            ),
+        )
 
     @property
     def needs_key(self) -> bool:
