@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-23842
+title: The piece 16 real-broker chain test creates its own drill topic
+summary: The real-broker leg of the piece 16 chain test started its consumer on a disposable topic nobody had created, so every redpanda case timed out in the consumer start. The leg now creates its drill topic through the admin client before it starts the producer and consumer, deletes it after, and fails with the broker's code when the create is refused; the matching CREATE and DELETE rows for the lab logins are declared in the overlays repository.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23842-drill-topic-provision
+  statement: The redpanda leg of the piece 16 chain test creates and deletes its own disposable drill topic through the admin client, and a refused create fails the leg without starting a consumer.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the real-broker leg creates its drill topic before its consumer starts and deletes it after -- falsifier: uv run pytest tests/chains/piece16/test_piece16_drill_topic_provision.py -q'
+  - id: AC2
+    statement: 'AC2: a refused create fails the leg with the broker''s code and starts no consumer -- falsifier: uv run pytest tests/chains/piece16/test_piece16_drill_topic_provision.py -q -k error'
+  - id: AC3
+    statement: 'AC3: the declared rows give each lab login CREATE and DELETE on the five drill prefixes -- falsifier: python -m pytest tests/test_broker_acl_overlays.py -q in the overlays repository'
+  - id: AC4
+    statement: 'AC4: integrated: after the rows are applied on the development broker, the real-broker cases of the piece 16 chain test pass on a lab host and the board J16 line reads pass -- falsifier: RUN_REDPANDA_PIECE16=1 uv run pytest tests/chains/piece16/test_piece16_chain.py -k redpanda, and the J16 line of the floor board read after its next publish'
+evidence_requirements:
+- kind: tests
+  description: The drill topic provision tests pass at the pushed head.
+  command: uv run --frozen pytest tests/chains/piece16/test_piece16_drill_topic_provision.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23842-ac1
+  description: The golden test shows the create before the consumer start and the delete after; it fails against the previous roundtrip (run on the lab host, quoted in the pull request).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/piece16/test_piece16_drill_topic_provision.py -k golden -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23842-ac2
+  description: The error test shows a refused create raising with code 29 and no producer or consumer start.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/piece16/test_piece16_drill_topic_provision.py -k error -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23842-ac3
+  description: The overlays repository test for the drill scope reads 162 rows with CREATE and DELETE on every drill prefix; quoted in the overlays pull request.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: python3 -m pytest "$OMNI_HOME/overlays/tests/test_broker_acl_overlays.py" -k piece16 -q -p no:cacheprovider
+    cwd: .
+- id: dod-omn23842-ac4
+  description: After the new rows are applied on the development broker, the real-broker cases of the piece 16 chain test pass on a lab host at the pushed head; the board J16 line is read after its next publish. Hosted CI cannot reach the lab broker, so only the local Done gate runs this check.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23842-redpanda --kind test -- env RUN_REDPANDA_PIECE16=1 PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -k redpanda -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23842-integration-proof
+  description: Run this pull request's own focused test on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23842 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/chains/piece16/test_piece16_drill_topic_provision.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

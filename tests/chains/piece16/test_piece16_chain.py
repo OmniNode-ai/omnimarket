@@ -112,6 +112,8 @@ REDPANDA_FLAG = "RUN_REDPANDA_PIECE16"
 NOW = datetime(2026, 11, 7, 13, 0, 0, tzinfo=UTC)
 CHAIN_DEADLINE_S = 900
 BUS_TIMEOUT_S = 15
+DRILL_PARTITIONS = 1
+DRILL_REPLICATION = 1
 
 PILOT_COMMAND_TOPIC: str = PILOT_CONTRACT["runtime_dispatch"]["command_topic"]
 PILOT_TERMINAL_TOPIC: str = PILOT_CONTRACT["terminal_event"]
@@ -157,7 +159,11 @@ class MemoryChainBus:
 
 
 class RedpandaChainBus:
-    """A real broker of the declared test lane, on disposable topics tagged ``drill``."""
+    """A real broker of the declared test lane, on disposable topics tagged ``drill``.
+
+    The leg creates and deletes its own disposable topic through the admin client (the lane login
+    needs CREATE and DELETE on the drill prefixes).
+    """
 
     name = "redpanda"
 
@@ -172,6 +178,7 @@ class RedpandaChainBus:
 
     async def roundtrip(self, topic: str, payload: bytes) -> bytes:
         from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+        from aiokafka.admin import AIOKafkaAdminClient, NewTopic
         from omnibase_infra.cli.delegate_lane_credentials import resolve_lane_binding
         from omnibase_infra.event_bus.kafka_auth import (
             build_aiokafka_auth_kwargs_for,
@@ -190,23 +197,55 @@ class RedpandaChainBus:
                 scope.enter_context(bind_lane_client_transport(transport))
             auth = build_aiokafka_auth_kwargs_for(self._bootstrap)
         drill_topic = f"{topic}.{self._tag}"
-        producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap, **auth)
-        consumer = AIOKafkaConsumer(
-            drill_topic,
-            bootstrap_servers=self._bootstrap,
-            group_id=f"piece16-{uuid.uuid4().hex[:8]}",
-            auto_offset_reset="earliest",
-            **auth,
-        )
-        await asyncio.wait_for(producer.start(), timeout=BUS_TIMEOUT_S)
-        await asyncio.wait_for(consumer.start(), timeout=BUS_TIMEOUT_S)
+        admin = AIOKafkaAdminClient(bootstrap_servers=self._bootstrap, **auth)
+        await asyncio.wait_for(admin.start(), timeout=BUS_TIMEOUT_S)
+        created = False
         try:
-            await producer.send_and_wait(drill_topic, value=payload)
-            message = await asyncio.wait_for(consumer.getone(), timeout=BUS_TIMEOUT_S)
-            return bytes(message.value)
+            # The consumer can only start on a topic that exists, so the drill topic is created first; a topic
+            # error on the answer fails the leg, it never skips.
+            response = await asyncio.wait_for(
+                admin.create_topics(
+                    [
+                        NewTopic(
+                            drill_topic,
+                            num_partitions=DRILL_PARTITIONS,
+                            replication_factor=DRILL_REPLICATION,
+                        )
+                    ]
+                ),
+                timeout=BUS_TIMEOUT_S,
+            )
+            for name, code, err in response.topic_errors:
+                if code != 0:
+                    raise RuntimeError(
+                        f"topic {name!r} was refused with code {code}: {err}"
+                    )
+            created = True
+            producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap, **auth)
+            consumer = AIOKafkaConsumer(
+                drill_topic,
+                bootstrap_servers=self._bootstrap,
+                group_id=f"piece16-{uuid.uuid4().hex[:8]}",
+                auto_offset_reset="earliest",
+                **auth,
+            )
+            await asyncio.wait_for(producer.start(), timeout=BUS_TIMEOUT_S)
+            await asyncio.wait_for(consumer.start(), timeout=BUS_TIMEOUT_S)
+            try:
+                await producer.send_and_wait(drill_topic, value=payload)
+                message = await asyncio.wait_for(
+                    consumer.getone(), timeout=BUS_TIMEOUT_S
+                )
+                return bytes(message.value)
+            finally:
+                await consumer.stop()
+                await producer.stop()
         finally:
-            await consumer.stop()
-            await producer.stop()
+            if created:
+                await asyncio.wait_for(
+                    admin.delete_topics([drill_topic]), timeout=BUS_TIMEOUT_S
+                )
+            await asyncio.wait_for(admin.close(), timeout=BUS_TIMEOUT_S)
 
 
 BACKENDS = ["memory"] + (["redpanda"] if os.environ.get(REDPANDA_FLAG) == "1" else [])
