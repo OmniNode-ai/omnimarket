@@ -89,7 +89,7 @@ def test_a_declared_root_that_is_not_there_is_unread_with_its_reason(
 def test_no_handler_source_holds_a_path_or_host_literal() -> None:
     offenders: list[str] = []
     for name in (
-        "handler_host_disk_classes.py",
+        "host_disk_classes.py",
         "adapter_host_disk_bus.py",
         "host_disk_ports.py",
     ):

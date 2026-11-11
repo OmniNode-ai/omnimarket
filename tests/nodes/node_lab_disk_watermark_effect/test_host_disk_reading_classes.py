@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_host_disk_classes import (
+from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_classes import (
     parse_docker_size,
     volume_for,
 )
@@ -175,7 +175,7 @@ def test_one_walk_counts_a_hardlinked_file_once_and_reports_the_newest_change(
 ) -> None:
     import os
 
-    from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_host_disk_classes import (
+    from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_classes import (
         walk_entry,
     )
 
