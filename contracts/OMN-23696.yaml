@@ -53,6 +53,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r7_unit.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn23696-ac4-tick-record
+  description: 'The R7 tick golden test passes at the pushed head: it runs the scenario''s own tick module and reads the last-run record it writes, with a conclusion. The tick module does not exist at the merge base, so the control at the merge base cannot run it and reads red. The scheduled run on a lab host is read in the pull request''s Lab comment.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r7_effect/test_scenario_r7_tick.py -k golden -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn23696-integration-proof
   description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the scheduled run on the lab host is read in the pull request's Lab comment.
   source: manual
