@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.delegated_test_control import (
+from omnimarket.models.model_delegated_test_control import (
     EnumControlStatus,
     ModelControlGrade,
 )

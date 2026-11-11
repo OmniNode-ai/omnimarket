@@ -6,7 +6,7 @@ These models are shared by the control-grading compute and the code contract
 score effect. Outcomes arrive as the pytest failure digest's outcome strings
 (``passed``, ``failed_call``, ``failed_collection``, ``error_setup``,
 ``no_tests``, ``infra_error``). They are plain strings here on purpose: the
-shared models live in ``omnimarket.events`` so sibling nodes do not import one
+shared models live in ``omnimarket.models`` so sibling nodes do not import one
 another's models; the orchestrator maps one onto the other.
 """
 

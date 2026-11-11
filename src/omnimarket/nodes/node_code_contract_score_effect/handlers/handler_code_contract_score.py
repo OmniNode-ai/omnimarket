@@ -37,11 +37,11 @@ from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
 from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from pydantic import ValidationError
 
-from omnimarket.events.delegated_test_control import (
+from omnimarket.models.model_delegated_test_control import (
     EnumControlStatus,
     ModelControlGradeRequest,
 )
-from omnimarket.events.delegated_test_control import (
+from omnimarket.models.model_delegated_test_control import (
     RunOutcome as ControlRunOutcome,
 )
 from omnimarket.nodes.contract_topics import contract_topic

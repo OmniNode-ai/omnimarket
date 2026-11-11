@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Re-export of the shared control-grading models.
 
-The definitions moved to ``omnimarket.events.delegated_test_control``; this
+The definitions moved to ``omnimarket.models.model_delegated_test_control``; this
 module re-exports them so the contract's model paths keep resolving.
 """
 
-from omnimarket.events.delegated_test_control import (
+from omnimarket.models.model_delegated_test_control import (
     HEADLINE_STATUSES,
     EnumControlStatus,
     ModelControlGrade,
