@@ -43,6 +43,8 @@ dod_evidence:
   description: Run the tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
   execution_scope: local_done_gate
+  binds_ac:
+  - AC4
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23660 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_memory_pilot_effect tests/nodes/node_host_installer_registry_units/test_memory_pilot_daily_unit.py -q --no-cov -n 0 -p no:randomly
