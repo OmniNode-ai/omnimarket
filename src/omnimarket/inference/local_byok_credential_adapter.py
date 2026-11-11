@@ -80,7 +80,9 @@ from omnimarket.nodes.node_model_setup_effect.credential_database_adapter import
 from omnimarket.nodes.node_model_setup_effect.credential_database_adapter import (
     read_local_credentials as read_local_credentials,
 )
-from omnimarket.projection.sqlite_database import default_evidence_db_path
+from omnimarket.projection.sqlite_database import (
+    default_evidence_db_path as default_evidence_db_path,
+)
 
 #: The local install's tenant identity. A machine running ``onex delegate`` with
 #: no gateway has exactly one principal, so the id is a constant rather than a

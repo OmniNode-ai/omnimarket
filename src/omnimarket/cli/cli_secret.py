@@ -570,7 +570,7 @@ def register_tenant_key(
                     tenant_id=tenant,
                     secret_store=secret_store,
                     event_bus=event_bus,
-                    **({"allow_custom_endpoint": True} if base_url is not None else {}),
+                    allow_custom_endpoint=base_url is not None,
                 ),
                 lane=_lab_host_bus_lane(bound_host),
             )

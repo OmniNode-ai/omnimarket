@@ -46,7 +46,7 @@ def _bytes(value: object) -> int:
     if match is None:
         raise ValueError("Invalid memory reservation")
     power = "kmgtp".index(match[2].lower()) + 1 if match[2] else 0
-    return math.ceil(float(match[1]) * 1024**power)
+    return math.ceil(float(match[1]) * (1 << (10 * power)))
 
 
 class HandlerSetupStackRequirements:
