@@ -14,6 +14,21 @@ input_ceilings:
     refactor: 65536
     validator_generation: 65536
     test: 65536
+    research: 65536
+    reasoning: 65536
+    complex_reasoning: 65536
+    planning: 65536
+    review: 65536
+    document: 65536
+    escalation: 65536
+    evidence_comment: 65536
+    documentation: 65536
+    summarization: 65536
+    brief_drafting: 65536
+    extraction_proposer: 65536
+    tail_summary: 65536
+    context_selection: 65536
+    context_compaction: 65536
   local-heavy-reasoning:
     research: 8192
     reasoning: 8192

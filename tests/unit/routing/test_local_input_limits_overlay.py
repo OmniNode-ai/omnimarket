@@ -177,12 +177,12 @@ def test_unreadable_overlay_is_not_a_default(
 
 
 def test_required_ceiling_names_the_key_of_an_unnamed_pair() -> None:
-    """The fixture overlay names local-heavy-reasoning research; it does not name local-coder summarization."""
+    """The fixture overlay names local-heavy-reasoning research; it does not name local-coder no_such_class."""
     assert required_input_ceiling(_HEAVY, "research") == _OLD_PACKAGED_WINDOW
     with pytest.raises(
-        InputLimitNotDeclaredError, match=f"{_KEY}.{_CODER}.summarization"
+        InputLimitNotDeclaredError, match=f"{_KEY}.{_CODER}.no_such_class"
     ):
-        required_input_ceiling(_CODER, "summarization")
+        required_input_ceiling(_CODER, "no_such_class")
 
 
 def test_backend_the_overlay_does_not_name_keeps_its_own_declaration() -> None:
