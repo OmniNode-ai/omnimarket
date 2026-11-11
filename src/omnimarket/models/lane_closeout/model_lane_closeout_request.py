@@ -22,6 +22,10 @@ class ModelLaneCloseoutRequest(BaseModel):
     url: str = Field(
         default="", description="Push target for a detached tree; empty is origin."
     )
+    salvage_branch: str = Field(
+        default="",
+        description="A tree with uncommitted changes is committed here and pushed instead of kept; empty keeps it.",
+    )
     remove: bool = Field(
         default=True,
         description="False runs the guard and the WIP push only (a dry closeout).",
