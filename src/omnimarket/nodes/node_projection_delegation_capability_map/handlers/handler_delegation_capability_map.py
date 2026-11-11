@@ -14,9 +14,8 @@ band with no rows has no cell.
 
 from __future__ import annotations
 
-import math
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from uuid import UUID
 
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
@@ -35,9 +34,6 @@ from omnimarket.models.delegation_capability_map.model_capability_cell import (
 from omnimarket.models.delegation_capability_map.model_capability_inadmissible_count import (
     ModelCapabilityInadmissibleCount,
 )
-from omnimarket.models.delegation_capability_map.model_capability_line import (
-    ModelCapabilityLine,
-)
 from omnimarket.models.delegation_capability_map.model_capability_map_fold import (
     ModelCapabilityMapFoldRequest,
     ModelCapabilityMapFoldResult,
@@ -48,22 +44,13 @@ from omnimarket.models.delegation_capability_map.model_capability_serving_assign
 from omnimarket.models.delegation_capability_map.model_capability_verdict_row import (
     ModelCapabilityVerdictRow,
 )
-from omnimarket.ranges.power import decision_lower_bound, required_sample_size
-
-_Z = 1.959963984540054
+from omnimarket.nodes.node_projection_delegation_capability_map.handlers.capability_cell import (
+    build_cell,
+)
 
 _CellKey = tuple[UUID, str, str, str, str, EnumSizeBand]
 _AssignmentKey = tuple[str, str, str]
 _RowKey = tuple[UUID, str, str, str, str, str]
-
-
-def _wilson_interval(passes: int, n: int) -> tuple[float, float]:
-    """Two-sided Wilson 95 percent interval for a pass proportion."""
-    p = passes / n
-    denominator = 1 + _Z**2 / n
-    center = (p + _Z**2 / (2 * n)) / denominator
-    half = _Z * math.sqrt(p * (1 - p) / n + _Z**2 / (4 * n**2)) / denominator
-    return max(0.0, center - half), min(1.0, center + half)
 
 
 def _admissibility(
@@ -149,7 +136,7 @@ class HandlerDelegationCapabilityMap:
             by_cell.setdefault(_cell_key(row, key[5]), []).append(row)
 
         cells = tuple(
-            _build_cell(request.map_run_id, key, by_cell[key], request.line)
+            build_cell(request.map_run_id, key, by_cell[key], request.line)
             for key in sorted(by_cell, key=str)
         )
         return ModelCapabilityMapFoldResult(
@@ -162,52 +149,6 @@ class HandlerDelegationCapabilityMap:
                 for reason, count in sorted(refused.items())
             ),
         )
-
-
-def _build_cell(
-    map_run_id: str,
-    key: _CellKey,
-    members: Sequence[ModelCapabilityVerdictRow],
-    line: ModelCapabilityLine,
-) -> ModelCapabilityCell:
-    tenant_id, model_key, backend_id, configuration_id, task_class, size_band = key
-    n = len(members)
-    passes = sum(1 for m in members if m.passed)
-    low, high = _wilson_interval(passes, n)
-    configuration = members[0].configuration
-    assert configuration is not None
-    bound = decision_lower_bound(passes=passes, n=n, confidence=line.confidence)
-    required_n = required_sample_size(
-        floor=line.floor,
-        margin=line.margin,
-        confidence=line.confidence,
-        power=line.power,
-    )
-    if n < required_n:
-        verdict = EnumCapabilityCellVerdict.REFUSED
-    elif bound >= line.floor:
-        verdict = EnumCapabilityCellVerdict.MET
-    else:
-        verdict = EnumCapabilityCellVerdict.MISSED
-    return ModelCapabilityCell(
-        tenant_id=tenant_id,
-        map_run_id=map_run_id,
-        model_key=model_key,
-        backend_id=backend_id,
-        configuration_id=configuration_id,
-        configuration_parameters=configuration.parameters,
-        task_class=task_class,
-        size_band=size_band,
-        n=n,
-        passes=passes,
-        pass_rate=passes / n,
-        wilson_low=low,
-        wilson_high=high,
-        decision_lower_bound=bound,
-        floor=line.floor,
-        required_n=required_n,
-        verdict=verdict,
-    )
 
 
 def best_configurations(

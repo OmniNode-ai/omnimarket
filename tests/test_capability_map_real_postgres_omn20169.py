@@ -194,6 +194,7 @@ async def test_capability_cells_round_trip_and_ordering_on_real_postgres() -> No
 
 @pytest.mark.integration
 async def test_a_run_without_the_line_writes_no_cell_on_real_postgres() -> None:
+    """A run with no class line writes no cell and says so; the same run with a line writes one."""
     tenant = uuid4()
     payload = _payload(tenant)
     del payload["line"]
