@@ -208,6 +208,24 @@ def test_a_paid_rung_joining_a_metered_ladder_tier_is_placed_there() -> None:
     assert cheap_cloud.models[-1].backend_ref == "paid-cheap-a"
 
 
+def test_an_openai_provider_slug_is_not_special_cased() -> None:
+    """No code rule names a provider: an openai/ slug in paid_rungs places like any other slug.
+
+    The house data omits it because the operator reaches those models through the OpenAI account
+    (RULING 2026-11-11T13:29:34Z), not because the loader refuses it.
+    """
+    doc = _paid()
+    doc["backends"][0]["model_name"] = "openai/some-model"
+    doc["rungs"][0]["slug"] = "openai/some-model"
+    paid = ModelPaidRungsOverlay.model_validate(doc)
+    placed = paid_mod.apply_paid_rungs(_ladder(), paid)
+    tier = next(t for t in placed.tiers if t.name == "paid_cheap")
+    assert [m.backend_ref for m in tier.models] == ["paid-cheap-a"]
+    assert (
+        paid.absent_slugs(frozenset({"openai/some-model", "vendor/frontier-b"})) == []
+    )
+
+
 def test_an_absent_slug_is_refused_by_the_catalog_check() -> None:
     paid = ModelPaidRungsOverlay.model_validate(_paid())
     assert paid.absent_slugs(frozenset({"vendor/cheap-a"})) == ["vendor/frontier-b"]

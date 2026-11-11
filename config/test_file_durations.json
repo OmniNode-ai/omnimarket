@@ -870,6 +870,7 @@
   "tests/nodes/node_delegation_completion_rate_effect/test_error_chain_delegation_completion_rate_effect.py": 0.106,
   "tests/nodes/node_delegation_completion_rate_effect/test_events_source.py": 0.031,
   "tests/nodes/node_delegation_completion_rate_effect/test_golden_chain_delegation_completion_rate_effect.py": 0.097,
+  "tests/nodes/node_delegation_completion_rate_effect/test_paid_rung_burn.py": 0.67,
   "tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py": 0.07,
   "tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py": 0.39,
   "tests/nodes/node_delegation_dod_verify_request_compute/test_wiring.py": 14.65,

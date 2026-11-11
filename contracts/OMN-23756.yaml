@@ -19,13 +19,15 @@ requirements:
   - id: AC4
     statement: 'AC4: a call on a paid rung is booked at the rung''s declared price and the provider''s own reported cost is recorded on the delegation completed event -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k booked in omnimarket'
   - id: AC5
-    statement: 'AC5: the burn reading reports balance, spend since switch-on, dollars per hour, calls and tokens per model and projected hours to empty from a credits reading and the per-call records -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k burn in omnimarket'
+    statement: 'AC5: the burn reading reports balance, spend since switch-on, dollars per hour, calls and tokens per model and projected hours to empty from a credits reading and the per-call records, and `python -m omnimarket.nodes.node_delegation_completion_rate_effect burn` prints it with per-model counts read from delegation_events or `unread` with the reason -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py tests/nodes/node_delegation_completion_rate_effect/test_paid_rung_burn.py -q -k burn in omnimarket'
+  - id: AC7
+    statement: 'AC7: no provider is special-cased by code: a paid rung whose slug starts with openai/ is placed like any other, so the house data omits it by data alone -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k openai in omnimarket'
   - id: AC6
     statement: 'AC6: integrated: in a local process with the switch on, ladder resolution places both paid tiers after cheap_cloud and one smoke call per paid tier at most 200 output tokens answers on the declared route with its cost booked -- falsifier: the smoke receipt comment on the ticket names per paid tier the backend id, served model and booked cost, read back with onex ticket read'
 evidence_requirements:
 - kind: tests
   description: The paid rungs overlay, placement, cap, booking and burn tests, beside the eval arms tests they build on.
-  command: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py tests/unit/delegation/test_eval_arms_overlay.py tests/unit/delegation/test_eval_arms_bifrost_merge.py -q --no-cov -p no:randomly
+  command: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py tests/unit/delegation/test_eval_arms_overlay.py tests/unit/delegation/test_eval_arms_bifrost_merge.py tests/nodes/node_delegation_completion_rate_effect/test_paid_rung_burn.py -q --no-cov -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -74,7 +76,16 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -k burn -q --no-cov -p no:randomly
+    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py tests/nodes/node_delegation_completion_rate_effect/test_paid_rung_burn.py -k "burn or unread or ssh_source or credits" -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23756-ac7-no-provider-rule
+  description: An openai/ slug in paid_rungs is placed like any other; nothing in code names a provider.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -k openai -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23756-integration-proof
   description: The pushed head ran the focused tests on a lab host through the lab work runner. The runtime half of AC6 (the switch-on dry run with one smoke call per paid tier) is read from the smoke receipt recorded on the ticket.
