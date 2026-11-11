@@ -50,8 +50,9 @@ sources:
     selects: harness backends, harness tiers and per-class escalation chains
     resolver: omnimarket.handlers.routing.routing_tiers_path:load_delegation_routing_overlay
     packaged_defaults: []
-    overlay: DELEGATION_ROUTING_OVERLAY_PATH; unbound resolves to the empty overlay, with no packaged file
+    overlay: the delegation_routing document under the first ONEX_SKILL_OVERLAY_ROOTS root that holds one (the overlay store, OMN-23826), then DELEGATION_ROUTING_OVERLAY_PATH; neither resolves to the empty overlay, with no packaged file
     resolution_sites:
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:find_node_overlay(ROUTING_OVERLAY_STORE_ID)"
       - "src/omnimarket/handlers/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
     precedence:
       probe: harness_routing_overlay
@@ -125,6 +126,8 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/handlers/delegation_scenario_settings.py:find_node_overlay(overlay_id)"
+    reason: finds the overlay document of a readiness scenario to read its secret store block (the store address, project, environment and identity file); it names where a probe key is read and generated and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_work_state_projection_effect/runtime_work_state.py:find_node_overlay(overlay_id)"
     reason: finds the overlay files of the work-state projection (its rules, the goal scope and the goal scope ticket rule); they hold plan patterns, state rules and the in-scope ticket list and choose no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_host_tree_install_effect/handlers/handler_tree_install.py:resolve_overlay_file(NODE_DIR.name)"
@@ -157,6 +160,8 @@ not_routing_resolution_sites:
     reason: the publisher identity, verifier endpoint and bus transport of the node that decides whether a verified agent receipt replaces lost review voters; it decides one gate attempt and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_prompt_cost_estimate_compute/handlers/contract_config.py:find_node_overlay(OVERLAY_ID)"
     reason: reads the typed savings uncertainty spreads for pricing confidence and token estimation methods; the overlay changes only savings ranges and contains no backend, model, tier or provider selection
+  - site: "src/omnimarket/nodes/node_claude_token_pool_effect/handlers/handler_pool_steering.py:find_node_overlay(NODE_NAME)"
+    reason: the pool steering block of the token pool overlay, read to steer a new lane start off a draining login label and to cap lanes per label; it chooses a subscription login label and no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_branch_prune_effect/handlers/handler_branch_prune.py:find_node_overlay(NODE_NAME)"
     reason: the keep policy of a remote-branch prune (repositories in scope, protected names, age floor); it decides which branches are kept and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/handlers/handler_contract_policy_source.py:find_node_overlay(NODE_NAME)"
@@ -209,7 +214,7 @@ not_routing_resolution_sites:
     reason: locates the start-path drill overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the start-path census, the drill gate and the schedule host and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
     reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
-  - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(NODE_NAME)"
+  - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(overlay_id())"
     reason: locates the secret reading overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and declared consumers and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
@@ -241,6 +246,10 @@ not_routing_resolution_sites:
     reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_github_repo_gateway_effect/handlers/handler_github_repo_gateway.py:find_node_overlay(overlay_id)"
     reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_delegation_rubric_check_compute/handlers/handler_delegation_route_check.py:resolve_setting(ROUTE_CHECK_NODE)"
+    reason: the served model id the route check expects a local walk to report, read from the node overlay (OMN-19184); it is the value a finished walk is compared against and selects no backend, model, tier or provider for a request
+  - site: "src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py:resolve_overlay_file(REGISTRY_OVERLAY_NODE)"
+    reason: the registry of models an A/B compare calls side by side, from the node overlay or a pinned file (OMN-19184); the compare harness names its own subjects and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_merged_history.py:find_node_overlay(NODE_NAME)"
     reason: reads the extra_repos of the lab fill overlay, the private clone names the merged-history read also covers; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/delegation_eval_read_binding.py:resolve_setting(OVERLAY_ID)"

@@ -10,6 +10,11 @@ Golden chain: the rendered unit holds the host name the request gave, the append
 root, and still parses as a plist although the commands hold long options.
 Error chain (the failing controls): an install that names no ledger host, in the request or the shell, is refused naming the
 variable; the previous contract's unit held none of the three variables.
+
+OMN-23606: the read command is also a request input. The unit installed through this node always held the contract's read
+command, and on the launching Mac the floor's window read through it took 23.5 s against 15.9 s through the internal ledger
+source, which put the 30 s factory_floor step over its limit every cycle; no request could name the faster command. The previous
+contract's unit ignored the request's command (the failing control).
 """
 
 from __future__ import annotations
@@ -47,6 +52,7 @@ def brew_python(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda path: path == BREW_PYTHON,
     )
     monkeypatch.delenv("ONEX_LEDGER_HOST_NAME", raising=False)
+    monkeypatch.delenv("ONEX_LEDGER_BUS_READ_COMMAND", raising=False)
 
 
 def environment_of(tmp_path: Path, **kw: str) -> dict[str, str]:
@@ -106,3 +112,40 @@ def test_error_the_unit_declares_the_host_as_required_and_both_commands_as_its_o
 def test_error_a_host_name_with_a_space_is_refused_by_the_request_model() -> None:
     with pytest.raises(ValueError, match="ledger_host_name"):
         request(Path("/tmp/x"), ledger_host_name="two words")
+
+
+READ_COMMAND = "/opt/venv/bin/python -m ledger_reader.source --stdin"
+
+
+def test_golden_the_request_names_the_ledger_read_command(tmp_path: Path) -> None:
+    env = environment_of(
+        tmp_path, ledger_host_name="host-under-test", ledger_read_command=READ_COMMAND
+    )
+    assert env["ONEX_LEDGER_BUS_READ_COMMAND"] == READ_COMMAND
+
+
+def test_golden_the_read_command_comes_from_the_installing_shell_when_the_request_has_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_LEDGER_BUS_READ_COMMAND", READ_COMMAND)
+    env = environment_of(tmp_path, ledger_host_name="host-under-test")
+    assert env["ONEX_LEDGER_BUS_READ_COMMAND"] == READ_COMMAND
+
+
+def test_error_the_unit_declares_the_read_command_as_a_request_input() -> None:
+    unit = load_units()[UNIT]
+    assert (
+        unit["environment_inputs"]["ONEX_LEDGER_BUS_READ_COMMAND"]
+        == "ledger_read_command"
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["relative/onex ledger query", "/bin/sh -c x;y", "/bin/x $(id)", "/bin/x `id`"],
+)
+def test_error_a_read_command_with_a_shell_metacharacter_or_relative_path_is_refused(
+    command: str,
+) -> None:
+    with pytest.raises(ValueError, match="ledger_read_command"):
+        request(Path("/tmp/x"), ledger_read_command=command)

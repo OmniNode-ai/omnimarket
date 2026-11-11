@@ -138,9 +138,10 @@ function draw(){
   const cur = doc.rebuild.current_piece;
   // The rebuild is the first section of the page (OMN-23135). Each tile draws its own state colour; the current piece is
   // marked by an outline and aria-current, never by a colour of its own, and a one-line legend names the colours and the outline.
-  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
+  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + pieceWord(p).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
   h += `<div class="legend" id="strip-legend"><span><i class="sw green"></i>Green: working</span><span><i class="sw amber"></i>Amber: held up, a lane is on it</span><span><i class="sw red"></i>Red: held up, nobody on it or it needs you</span><span><i class="sw"></i>Grey: not started</span><span><i class="sw cur"></i>Outline: the piece the rebuild is on now</span></div>`;
   h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div></section>`;
+  if (doc.readiness) h += `<div class="piece"><b>Ready, not just working:</b> ${esc(doc.readiness.text)}</div>`;
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
   h += healthRow(doc.health);
   h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
@@ -158,7 +159,7 @@ function draw(){
   for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
   h += `<h2>The 18 pieces, with their joins</h2>`;
   for (const p of doc.pieces) {
-    const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}`).join("; ");
+    const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}${j.counted ? "" : " (outside the scope)"}`).join("; ");
     h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n"><a href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="l${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ". Opens its details.")}">${p.piece}</a></span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
     for (const s of p.shadows || []) h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(s.label)}</b> <small>${esc(s.text)}${s.stale ? " (stale)" : ""}; it holds no merge</small></span><span class="a">read ${ago(s.age_s)}, max ${Math.floor(s.max_age_s / 60)} min</span></div>`;
   }
@@ -179,6 +180,9 @@ function draw(){
 // ---- The rebuild strip: a tooltip on hover or focus, and a side panel on click or tap. Everything is read from the record
 // the page already loads (doc.pieces, doc.causes); the address carries #piece-N, so a piece can be linked and Back closes it.
 const STATUS_WORD = {working: "Working", not_working: "Not working", unknown: "Unknown", started: "Started, no reading yet", not_started: "Not started"};
+// READY means integrated (OMN-23081): a piece that works and has a join that does not pass is "Working, not integrated".
+const INTEGRATION_WORD = {ready: "Ready", working_not_integrated: "Working, not integrated"};
+const pieceWord = p => INTEGRATION_WORD[p.integration] || STATUS_WORD[p.status] || p.status;
 const STATUS_DRAW = p => p.status === "not_started" ? "grey" : p.draw;
 let hashApplied = false, openPiece = null, returnFocus = null, quiet = false;
 const pieceOf = n => doc && doc.pieces ? doc.pieces.find(p => p.piece === n) : null;
@@ -194,6 +198,8 @@ function whoLine(p){
   const w = whoIsOn(p);
   if (w.lanes.length) return "On it: " + w.lanes.slice(0, 2).join(", ") + (w.lanes.length > 2 ? " and " + (w.lanes.length - 2) + " more" : "") + ".";
   if (w.unknown && p.status !== "working") return "Owner unknown: " + w.unknown + ".";
+  if (p.integration === "working_not_integrated") return (p.blocking_joins || []).length ? "Not integrated: " + p.blocking_joins.join(", ") + " do not pass." : "Not integrated: no join to a piece in scope.";
+  if (p.ready) return "Ready: its reading works and its joins pass.";
   return p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it.";
 }
 function readAge(p){ return p.reading_age_s == null ? "No reading yet." : "Read " + ago(p.reading_age_s) + "."; }
@@ -202,7 +208,7 @@ tip.id = "tip"; tip.setAttribute("role", "tooltip"); tip.hidden = true;
 function showTip(a){
   const p = pieceOf(Number(a.getAttribute("data-piece")));
   if (!p || openPiece != null || quiet) return;
-  tip.innerHTML = `<b>${p.piece} · ${esc(p.name)}</b><span>${esc(STATUS_WORD[p.status] || p.status)}</span><span>${esc(p.reason || p.text)}</span><span>${esc(readAge(p))}</span><span>${esc(whoLine(p))}</span>`;
+  tip.innerHTML = `<b>${p.piece} · ${esc(p.name)}</b><span>${esc(pieceWord(p))}</span><span>${esc(p.integration === "working_not_integrated" ? p.text : (p.reason || p.text))}</span><span>${esc(readAge(p))}</span><span>${esc(whoLine(p))}</span>`;
   tip.hidden = false;
   const r = a.getBoundingClientRect(), t = tip.getBoundingClientRect();
   const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), document.documentElement.clientWidth - t.width - 8);
@@ -235,7 +241,7 @@ function eventsSection(p){
 }
 function panelBody(p){
   const w = whoIsOn(p);
-  let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(STATUS_WORD[p.status] || p.status)}</span>`;
+  let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(pieceWord(p))}</span>`;
   h += `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
   if (p.status === "not_started") return h + (hasEvents(p) ? `<h3>State</h3><p>Not started. It has no reading yet, and its events do not yet include both a golden and an error one.</p>` + eventsSection(p) : `<h3>State</h3><p>Not started. It has no reading and no events yet.</p>`) + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
   h += `<h3>Reading now</h3><p>${esc(p.reason || p.text)}</p><p class="mute">${esc(readAge(p))}${p.reading_max_age_s ? " It may be at most " + esc(ageLimit(p.reading_max_age_s)) + " old." : ""}</p>`;

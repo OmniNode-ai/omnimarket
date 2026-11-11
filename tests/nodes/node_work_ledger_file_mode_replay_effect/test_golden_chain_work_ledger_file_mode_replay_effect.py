@@ -57,7 +57,10 @@ def test_contract_golden_chain() -> None:
     metadata = yaml.safe_load((root / "metadata.yaml").read_text())
     assert contract["name"] == metadata["name"] == NODE
     assert metadata["entry_points"]["onex.nodes"][NODE] == PACKAGE
-    assert contract["metadata"]["related_tickets"] == ["OMN-21849"]
+    assert contract["metadata"]["related_tickets"] == [
+        "OMN-21849",
+        "OMN-23667",
+    ]
     binding = contract["handler"]
     handler_class = getattr(
         importlib.import_module(binding["module"]), binding["class"]
