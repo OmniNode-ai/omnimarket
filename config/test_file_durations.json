@@ -3693,6 +3693,7 @@
   "tests/unit/delegation/test_length_constrained_shape_omn17547.py": 0.06,
   "tests/unit/delegation/test_local_accept_ends_chain_omn16932.py": 0.19,
   "tests/unit/delegation/test_local_acceptance_authority_omn14220.py": 0.05,
+  "tests/unit/delegation/test_local_endpoints_overlay_omn23871.py": 1.78,
   "tests/unit/delegation/test_local_model_binding_refusal_omn17427.py": 0.01,
   "tests/unit/delegation/test_local_port_response_contract_evidence_omn19201.py": 5.73,
   "tests/unit/delegation/test_local_reasoning_delivers_answer_omn19267.py": 2.35,
