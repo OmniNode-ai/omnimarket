@@ -21,6 +21,7 @@ dependencies:
 - pyyaml>=6.0
 - aiokafka>=0.10.0
 - omnibase-infra>=0.1.0
+- omnibase-spi>=0.23.3
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "lane-start", "floor-fill", "pool-snapshot", "OMN-23664"]
