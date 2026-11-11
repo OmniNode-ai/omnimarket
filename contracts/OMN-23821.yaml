@@ -49,9 +49,16 @@ dod_evidence:
   description: The pushed head ran the focused tests on a lab host through the lab work runner and exited 0. The dev runtime reading (onex scm pr-label adds and removes the label on a draft pull request a lane owns, the watcher label set read before and after) is read from the lab receipt comment on the ticket.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23821 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_label.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23821-ac3-verb-readback
+  description: The onex scm pr-label verb tests on a hosted runner. They fail at the merge base, where the verb and the operation do not exist; the dev runtime reading is the local-done-gate item above.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k label -q --no-cov -n 0 -p no:randomly
     cwd: .
