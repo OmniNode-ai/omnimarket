@@ -12,6 +12,9 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_delegation_completion_rate import (
     ModelDelegationEventFact,
 )
+from omnimarket.nodes.node_delegation_completion_rate_effect.models.model_paid_rung_burn_run import (
+    ModelPaidRungCallsRead,
+)
 
 
 class ModelEventsRead(BaseModel):
@@ -30,4 +33,14 @@ class ProtocolDelegationEventSource(Protocol):
         raise NotImplementedError
 
 
-__all__ = ["ModelEventsRead", "ProtocolDelegationEventSource"]
+class ProtocolPaidRungCallSource(Protocol):
+    def read(self, since: datetime, slugs: tuple[str, ...]) -> ModelPaidRungCallsRead:
+        """The completed calls on ``slugs`` at or after ``since``; never raises, a failure is ``error``."""
+        raise NotImplementedError
+
+
+__all__ = [
+    "ModelEventsRead",
+    "ProtocolDelegationEventSource",
+    "ProtocolPaidRungCallSource",
+]

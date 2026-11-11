@@ -1,0 +1,5 @@
+# The in-memory default. The real overlay (deployment data, kept outside this repository and
+# found under ONEX_SKILL_OVERLAY_ROOTS or at the file ONEX_LEDGER_QUERY_OVERLAY names) sets
+# default_rows_window_days: the days a rows query with no since reads back (OMN-23541).
+# The number is never in code; the contract's rows_default_window_days is the fallback.
+default_rows_window_days: 3

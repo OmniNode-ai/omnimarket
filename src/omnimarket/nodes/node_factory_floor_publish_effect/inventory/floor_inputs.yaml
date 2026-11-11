@@ -315,6 +315,15 @@ inputs:
     producer: the ledger's eval readings and the floor record
     replacement: {node: node_join_j16_effect, topic: onex.snapshot.projection.join-j16.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-join-j7-j16-projection
+  - id: join_j0_floor_record_reads
+    order: 21
+    class: file
+    where: python -m omnimarket.nodes.node_join_j0_effect run (reads the floor record the previous cycle wrote, the served floor-simple.json source, and writes the join's chains to the emission journal)
+    read_by: [node_join_j0_effect]
+    steps: [join_j0]
+    producer: the floor simple node's floor record
+    replacement: {node: node_join_j0_effect, topic: onex.snapshot.projection.join-j0.v1, status: new}
+    ticket: OMN-23747
   - id: network_reads
     order: 21
     class: http

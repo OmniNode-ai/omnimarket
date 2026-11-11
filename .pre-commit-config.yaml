@@ -756,6 +756,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-23560: a change that adds a test file records its time in
+      # config/test_file_durations.json in the same change, so the shard planner's record cannot
+      # drift from the tree. The refusal prints the exact command that times and records the file.
+      # The CI twin is the "Added test files are in the durations record" step of the lint job;
+      # test_committed_record_leaves_fewer_than_fifty_test_files_unrecorded stays as the backstop.
+      - id: test-duration-record-check
+        name: Added test files are in the durations record (OMN-23560)
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check --staged
+        files: ^(tests/.*\.py|config/test_file_durations\.json|src/omnimarket/nodes/node_test_duration_record_check_effect/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
       # the topic and deriving the event type proves the edge exists; hand-typing the
       # topic string as an event_type asserts on a shape the bus never carries, because

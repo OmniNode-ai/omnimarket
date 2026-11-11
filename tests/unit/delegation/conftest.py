@@ -356,3 +356,28 @@ def routing_tiers_with_local_sibling(
         yield
     finally:
         routing._config = None
+
+
+@pytest.fixture
+def _routing_is_never_consulted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rungs-mode probe run, accepted or refused, never asks the routing contract.
+
+    A faults-mode run is the opposite: it resolves the production ladder, so the
+    faults-mode tests below do not take this fixture.
+    """
+
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as port_mod,
+    )
+
+    def forbidden(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("a probe-ladder run consulted the routing contract")
+
+    for name in (
+        "first_eligible_tier",
+        "next_eligible_tier",
+        "backend_id_for_tier",
+        "sibling_backend_available_in_tier",
+        "resolve_delegation_backend",
+    ):
+        monkeypatch.setattr(port_mod, name, forbidden)

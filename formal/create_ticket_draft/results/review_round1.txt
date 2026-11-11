@@ -1,0 +1,140 @@
+Verdict: FAIL
+Independent design review, round 1. Model CreateTicketDraft.tla sha256=64d3cedf26aca092529a9f2206a0dba62fc4d683a44d6f918baad499e10795da (OMN-23760, plan S3).
+Bottom line: D1-D6 hold inside the model's own world, and every recorded result reproduces. But inside the seam of
+interest the design as written breaks required property (4), and its identity, a draft correlation id, exists nowhere
+in the code. The ticket rule is that the design changes, not the property, so the model has to be revised and rerun.
+I found the fixes for all counterexamples below and checked each one in TLC, so round 2 should be cheap.
+
+FINDINGS
+1. BLOCKING - P4 breaks in the create/write seam under a hand edit; the resume path launders edits.
+   Evidence: scratch variant (sha 898349ad...), x_haz_hand_edit: "Invariant CompletedHasBlock is violated", 10 states:
+   Start, FindOk, CreateOk, Build, WriteOk, HumanEdit, ReadOk, PublishOk, Term. D4 hashes what readback returns and
+   never checks that what came back still holds the block. The model's content is two-valued (stub | block_norm), so it
+   cannot show the worse case either: a rerun hours later finds an edited block, republishes it with the REBUILT
+   fingerprint and the hash of the edited text, and the written event then certifies the edit. That defeats the reason
+   the event exists ("so that a later reader can spot one"). A rerun that finds an edited issue with no block also goes
+   to build/write and overwrites the human's text (data loss; no property covers it).
+   Fix: before publish, and before reporting completed, readback must parse the block and compare its fingerprint and
+   rendered text with the in-memory build. On mismatch, fail with a typed hand_edited reason: no republish, no
+   overwrite. Model it as an edit action plus a third content value. My fix variant (ReadChecksBlock) passes
+   x_fix_hand_edit: all invariants except P3 (see 9), plus RunEnds and CommandAnswered, 94088 distinct states.
+2. BLOCKING - the identity D1 and the stamp key on is not defined in the code, and the bus front contradicts it.
+   Evidence: ModelTicketWriteRequest.ticket_request() (model_ticket_write_io.py) drops correlation_id before
+   HandlerCreateTicket sees the request, and ModelCreateTicketRequest has no cid or draft field. The bus front says
+   "Correlation ids change on retry" (handler_linear_ticket_write.py:104) and replays under a NEW correlation_id. The
+   model's Dup reuses the same cid. If the build uses the envelope correlation_id, then every caller retry after a
+   restart (when _done is empty) derives a new issue id and makes a second issue. P1 still holds to the letter, but
+   "one draft, one issue" does not.
+   Fix: put a draft-stable id (draft_correlation_id, or the idempotency key) on ModelCreateTicketRequest, derive the
+   D1 UUID and the stamp from it, and add a test that two envelopes with different correlation_ids and the same draft
+   id make one issue.
+3. CONDITION - D1 is unmeasured, and safety rests on it entirely. Measure it in a sandbox team before building: (a)
+   IssueCreateInput.id is documented as UUID v4 format, so a uuid5 may be refused; derive the id from a hash and set
+   the version and variant bits to v4. (b) A second create with the same id is refused, and the shape of that error is
+   recorded (today _post raises a bare RuntimeError on any "errors"). (c) issue(id:) on a trashed or archived issue.
+   If any of these fails, fall back to alt_stamp_serial with an ENFORCED per-draft lease (finding 8).
+4. CONDITION - the conflict loop is unbounded. CreateOk on Conflict goes back to "find", and the model's find under
+   IdLookup can never miss. If the lookup by id can miss (a trashed or deleted issue, a permission error, a lookup
+   error that is read as "not found"), the run loops create->refused->find->miss forever.
+   Evidence: x_haz_id_miss (IdMayMiss=TRUE): "Temporal properties were violated", lasso FindOk->CreateOk->FindOk.
+   Fix: after a refusal, do ONE lookup and fail typed if it misses. x_fix_id_miss (ConflictFix) passes all
+   invariants and liveness, 68438 distinct states. Also consider looking up by id after ANY create error, not only a
+   refusal; that turns CreateFailAfter into a resume.
+5. CONDITION - the resume path skips the project clear (the model's NOT MODELLED list says "project clearing").
+   create_ticket() runs clear_inherited_project only after a successful issueCreate. If that clear raises, the issue
+   exists, the run fails, and the rerun (find -> build -> write) never clears it. The result is a completed ticket
+   that carries the parent's project, against the 2026-09-30 ruling.
+   Evidence: x_haz_project_resume: "Invariant CompletedNoProject is violated", 11 states (CreateFailAfter, Dup,
+   FindOk, Build, WriteOk...). Fix: resume runs the project readback and clear before the write.
+   x_fix_project_resume passes.
+6. CONDITION - the fingerprint is a constant Fp(c) in the model, but in the code it is sha256(contract) built from
+   the request. The resume path (find -> readback) never builds, so the fingerprint it publishes is unspecified.
+   Evidence: x_fp_unstable (fp varies per run, e.g. a timestamp in the contract): "OneWrittenPerCid is violated",
+   12 states. Fix: the build is deterministic in (request, issue id), with no clock and no random; resume rebuilds.
+   A second request with the same draft id and a different payload is refused (idempotency_conflict); today the bus
+   front does that only per idempotency key and only in process.
+7. CONDITION - redelivery and terminal publication are assumed, not shown. The model needs Redeliver=TRUE
+   (mut_no_redelivery shows CommandAnswered fails without it). omnibase_infra ModelKafkaEventBusConfig defaults to
+   enable_auto_commit=True for the legacy push consumers, and its own note says auto-commit can move past a
+   short-lived dispatch. Only the new transport forces False. I did not establish which path the write effect uses.
+   Terminal publication failure (DLQ then commit, or a failed terminal published after a completed one) is also NOT
+   MODELLED. Fix: show the consumer commits only after the terminal publish is acknowledged; a terminal publish error
+   must lead to no commit.
+8. CONDITION - Serial (alt_stamp_serial) is not enforced by the code. The bus front's asyncio.Lock serializes runs
+   only within one process. A second replica, a rebalance zombie, or a retry under a different partition key
+   overlaps, which is exactly mut_stamp_search_concurrent. Search must use a consistent filter, not the search index
+   (mut_find_lag). The description write must also keep the stamp: x_alt_write_drops_stamp gives "AtMostOneIssuePerCid
+   is violated", 10 states (WriteFailAfter, Crash, rerun, CreateOk). Under D1 the same knob is harmless
+   (x_Model_write_drops_stamp passes).
+9. CONDITION - P3 is stated on the CURRENT issue content, not on what Linear returned at publish time. It holds only
+   because content never changes after the write. With edits it fails for a correct design
+   (x_fix_hand_edit_P3: "WrittenHashesReturned is violated"). Restate it with a history field (the hash read back is
+   recorded with the event and checked at publish). The title hash in the facts ("title and description Linear
+   returns") is not modelled at all.
+10. CONDITION - ordering and dedup of the written event depend on the build. D6 needs the handler to await the
+   broker ack of ticket-contract-written before the terminal is published, because completed and failed go to other
+   topics (linear-ticket-write-completed/failed.v1) and topics have no cross-topic ordering. events is a set, so the
+   build must give the event a deterministic id (uuid of cid, issue, fp, hash) and consumers must dedupe on it. The
+   written topic is not yet in the effect's publish_topics, and the sync HandlerCreateTicket has no publisher.
+11. CONDITION - the lane stamp and the guard. The bus path runs with require_description_stamp=True, and the guard
+   judges only the create payload. The description write is an update the guard never sees, so the rendered block
+   would bypass OMN-17942. The write must keep the caller's first-line lane stamp. The guard must judge the final
+   rendered description before the create (the D1 UUID is known up front; the OMN identifier is not). NOTE: if the
+   contract needs only the UUID, D1 lets the create carry the final description in ONE call, which removes the seam.
+12. NOTE - mutant controls are not all single-property. My cross-check ran each mutant against each of the 9
+   invariants: mut_publish_before_write violates WrittenFollowsWrite, WrittenHashesReturned and OneWrittenPerCid;
+   mut_resume_trusts_issue violates CompletedHasBlock and CompletedHasWritten (ResumeChecksBlock=FALSE also skips
+   readback and publish, so it is in effect two knobs); mut_find_lag and mut_stamp_search_concurrent also violate
+   OneWrittenPerCid (a consequence of two issues, acceptable). The rest are exact. CompletedHasBlock follows from
+   CompletedHasWritten plus WrittenFollowsWrite, so no mutant can isolate it. Say so rather than claim one-property
+   controls.
+13. NOTE - witness overclaim. In results/wit_NeverCreateFailAfterThenRerun.out the failure is WriteFailAfter
+   (State 6), not CreateFailAfter, because the predicate only asks fails>=1. My ghost witness x_wit_cfa shows the
+   CreateFailAfter -> rerun -> completed path is reachable. Nothing witnessed the D1 refusal branch either; my
+   x_wit_conflict Assert fires ("create refused on duplicate id", 224 distinct states), so it is reachable.
+14. NOTE - bounds. Model_2draft_crash has MaxFail=0 and checks no liveness; Model_2draft_fail has MaxExtra=0. No
+   2-draft config combines a duplicate with a failure. MaxExtra=1 everywhere, so a three-way race is never explored
+   (low risk under D1). Accepted but unlisted: after WriteFailAfter or PublishFail the issue has a block but no
+   written event and no completed, and nothing repairs it unless the caller retries. Record it beside
+   haz_fail_after_complete.
+
+RERUNS (jar sha256 936a2620...e88, eclipse-temurin:17-jre-alpine, -workers 2, model mounted read-only)
+ Model: No error has been found. 41773 generated, 17025 distinct (matches results/Model.out)
+ Model_2draft_crash: No error. 1850709 generated, 428957 distinct, depth 43 (matches)
+ Model_2draft_fail: No error. 110487 generated, 45563 distinct (matches)
+ alt_stamp_serial: No error. 4247 generated, 3402 distinct, depth 28 (matches)
+ mut_stamp_search_concurrent: Invariant AtMostOneIssuePerCid is violated, depth 7 (176 distinct at stop vs 169 recorded; worker order)
+ mut_resume_trusts_issue: Invariant CompletedHasBlock is violated, depth 7 (188 vs 165 at stop; worker order)
+ mut_no_redelivery: Temporal properties were violated. 2293 generated, 790 distinct (matches)
+ Cross-check: 90 runs (10 mutants x 9 invariants) on an unmodified copy; results in finding 12.
+ Scratch variant (copy under /data/omninode/scratch/rev-4250/m, 8 added knobs, defaults = design):
+ x_Model PASS (36662 distinct), x_alt PASS (6010), x_wit_conflict Assert fired, x_wit_cfa violated (reachable),
+ x_haz_hand_edit VIOLATED CompletedHasBlock, x_fix_hand_edit PASS, x_fix_hand_edit_P3 VIOLATED WrittenHashesReturned,
+ x_haz_id_miss VIOLATED liveness, x_fix_id_miss PASS, x_alt_write_drops_stamp VIOLATED AtMostOneIssuePerCid,
+ x_Model_write_drops_stamp PASS, x_fp_unstable VIOLATED OneWrittenPerCid, x_haz_project_resume VIOLATED
+ CompletedNoProject, x_fix_project_resume PASS. Outputs: /data/omninode/scratch/rev-4250/{out,xout,oout}.
+
+CONDITIONS THE BUILD MUST MEET (and the round-2 model must reflect R1, R2, R4, R5)
+ R1 Readback verifies that the block's fingerprint and text equal the build, then publishes and completes; on
+    mismatch, a typed hand_edited failure, no overwrite, no republish (finding 1).
+ R2 A draft-stable id on ModelCreateTicketRequest drives the D1 UUID and the stamp, never the envelope
+    correlation_id; plus a two-envelope test (finding 2).
+ R3 D1 is measured on Linear before merge: v4-format client id accepted, duplicate refused with a recognisable error,
+    lookup of trashed or archived issues. Otherwise build alt_stamp_serial with an enforced per-draft lease and a
+    consistent filter, and a write that keeps the stamp (findings 3, 8).
+ R4 After a create refusal, exactly one lookup by id, then a typed failure on a miss (finding 4).
+ R5 Resume reruns the project readback and clear before the write (finding 5).
+ R6 Deterministic build and fingerprint; resume rebuilds; a payload mismatch for the same draft id is refused
+    (finding 6).
+ R7 The consumer commits only after the terminal publish is acknowledged, shown from the deployed consumer config;
+    behaviour on a terminal publish failure is defined (finding 7).
+ R8 The written event is awaited before the terminal, has a deterministic event id, and is declared in
+    publish_topics (finding 10).
+ R9 The lane stamp line is preserved by the write; the guard judges the final rendered description (finding 11).
+
+NOT CHECKED
+ Linear's actual API behaviour (no Linear access used); which consumer class the write effect runs under; runtime
+ terminal-publish error handling; core_ticket_guard and stamp_description internals; the contract's renderer and
+ content; liveness of Model_2draft_crash (the cfg checks none); the haz_* and wit_* cfgs other than by reading
+ results/*.out (not rerun). The scratch hazards are my abstractions (one bounded edit, a nondeterministic project
+ flag), not measured behaviour.

@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23823
+title: Make the delegate wait test count only its own waits
+summary: The delegate wait test replaced the process-wide wait function and recorded every call, so a wait opened by another task running in the same process (one failing split on the pool snapshot change read 'assert 2 <= 1') was counted as the handler's. The watcher now records only the waits opened by the task that installed it and runs every other caller's wait unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23823-spy
+  statement: The wait watcher counts only the handler's own waits.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the wait watcher in tests/unit/delegation/test_caller_wait_deducts_queue_wait.py records only the waits opened by the task that installed it and still runs every other caller''s wait -- falsifier: the new test test_the_wait_spy_records_only_the_handlers_own_wait fails with 6 == 1 when run against the previous watcher'
+  - id: AC2
+    statement: 'AC2: no product code, bound or other test changes -- falsifier: the pull request diff names any file other than that test file and its own contract'
+  - id: AC3
+    statement: 'AC3: integrated: the part of the delegation test suite that holds the file passes on the pool snapshot change''s merge ref in the running CI -- falsifier: that part reads "assert 2 <= 1" from this file again'
+evidence_requirements:
+- kind: tests
+  description: The test file passes at the pushed head.
+  command: uv run --frozen pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23823-ac1
+  description: The new control test passes with the task-scoped watcher; it read 6 == 1 against the previous watcher (run on the lab host, quoted in the pull request).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -k only_the_handlers_own_wait -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23823-ac2
+  description: The whole file still passes with its original cases unchanged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23823-ac3
+  description: The running CI split that holds the file passes on the pool snapshot change; read from the pull request's checks at the exact head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23823-integration-proof
+  description: Run this pull request's own test file on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23823 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23747
+title: 'Join J0 gets its error chain, the floor record is read and a damaged one is refused by the code graph side'
+summary: 'Join J0 (step 0, piece 17 the floor, to piece 1 the code graph) ended at the floor''s cycle chain, which only ever ended in a success, so the served board read it half run (the golden chain ran, no error chain had). A new node, node_join_j0_effect, runs as a publish step. It reads the floor record the previous cycle wrote and writes piece 17''s join_j0 chain, a success when the record is fresh and draws a reading age for the code graph''s row and a typed failure with the code graph''s typed upstream_ refusal when it does not, and under its own id it feeds the same reader the overlay''s deliberately corrupt record so the journal holds the join''s error chain on every run; a payload the reader accepts exits 1. The floor simple node''s contract declares join_j0 among its pipeline chains and as the J0 join end in place of the cycle chain. No verdict, bound or check of the receipt fold changes.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23747-j0-golden-and-error
+  statement: A run writes piece 17's join_j0 success for a fresh record that draws the code graph, a typed failure and the code graph's upstream_ refusal for an unreadable, stale or undrawn record, and the control's error chain under its own id; the floor receipt fold reads J0 passed with both and golden_only without the control; a corrupt payload the reader accepts writes nothing and exits 1.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the golden chain (in-memory sink and journal file), the error chains (unreadable, not JSON, stale, undrawn), the control chain and the failing controls (a corrupt payload the reader accepts, the control failure dropped, the old cycle join end) hold, and the seam tests pin the floor contract, the receipt fold, the overlay example and the publish contract -- falsifier: uv run --frozen pytest tests/unit/nodes/node_join_j0_effect tests/nodes/node_join_j0_effect -q --no-cov'
+- id: req-omn23747-j0-step
+  statement: The publish cycle runs the join_j0 step with the other input steps before the record step, a node that fails is recorded failed and the floor still reads, and with the step dropped from the contract the node is not called.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the step is declared, runs once per cycle, a failing node does not stop the floor, and the dropped step makes the golden assertion fail -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j0_step.py -q --no-cov'
+  - id: AC3
+    statement: 'AC3: integrated: after install from the branch on the publisher and one publish cycle the served board no longer reads join:J0 as half run; the cause line is recorded in the pull request comment that names the installed head -- falsifier: curl of the served floor-simple.json causes[] by id join:J0 after the cycle'
+evidence_requirements:
+- kind: tests
+  description: The J0 golden, error, control and seam tests, and the publish step tests around them.
+  command: uv run --frozen pytest tests/unit/nodes/node_join_j0_effect tests/nodes/node_join_j0_effect tests/nodes/node_factory_floor_publish_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23747-j0-tests-ac1
+  description: The J0 node tests pass, including the failing controls and the seam tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_join_j0_effect tests/nodes/node_join_j0_effect -q --no-cov
+- id: dod-omn23747-j0-step-ac2
+  description: The publish step tests pass, including the dropped-step control.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j0_step.py -q --no-cov
+- id: dod-omn23747-j0-integrated-ac3
+  description: After install on the publisher from the branch and one publish cycle the served floor reads join:J0; the read is recorded in the pull request comment that names the installed head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_join_j0_effect/test_join_j0_floor_seam.py -q --no-cov
+- id: dod-omn23747-integration-proof
+  description: The J0 tests run on a lab host at the pushed head and the lab run is recorded in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23747 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_join_j0_effect tests/nodes/node_join_j0_effect -q --no-cov
+    cwd: .

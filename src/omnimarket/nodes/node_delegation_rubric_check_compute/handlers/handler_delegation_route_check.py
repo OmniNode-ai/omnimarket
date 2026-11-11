@@ -7,6 +7,7 @@ import re
 from pydantic import JsonValue
 
 from omnimarket.handlers.model_binding_reader import model_binding
+from omnimarket.handlers.node_overlay_reader import resolve_setting
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_route_check_outcome import (
     EnumRouteCheckOutcome,
 )
@@ -22,6 +23,14 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_ch
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_observation import (
     ModelRouteObservation,
 )
+
+#: The served model id of the local rung is a deployment fact (OMN-19184): it is read from
+#: ``<root>/node_delegation_rubric_check_compute/overlay.yaml`` under
+#: ``ONEX_SKILL_OVERLAY_ROOTS``, never spelled in the package. A walk that names no
+#: ``model`` and finds no overlay refuses, naming the field and where to supply it.
+ROUTE_CHECK_NODE = "node_delegation_rubric_check_compute"
+ROUTE_CHECK_LOCAL_MODEL_SETTING = "route_check_local_model"
+ROUTE_CHECK_OVERLAY_FIELDS = frozenset({ROUTE_CHECK_LOCAL_MODEL_SETTING})
 
 
 def _terminal(doc: dict[str, JsonValue]) -> dict[str, JsonValue] | None:
@@ -123,7 +132,12 @@ class HandlerDelegationRouteCheck:
             expect(
                 "model",
                 terminal.get("model_name"),
-                request.model or model_binding("route_check_local_model"),
+                request.model
+                or resolve_setting(
+                    ROUTE_CHECK_NODE,
+                    ROUTE_CHECK_LOCAL_MODEL_SETTING,
+                    fields=ROUTE_CHECK_OVERLAY_FIELDS,
+                ),
             )
             expect("routing_tier", doc.get("routing_tier"), "local")
             expect("accepted attempt backend_id", acc.get("backend_id"), request.pin)
