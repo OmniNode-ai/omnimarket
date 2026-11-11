@@ -1,0 +1,77 @@
+schema_version: 1.0.0
+ticket_id: OMN-23751
+title: Paid OpenRouter models join the code eval as pinned-only arms in the routing overlay, with a spending cap
+summary: "The delegation routing overlay contract gains an eval_arms section: hosted models the code eval may pin by backend id before it has scored them, each with slug, tier, price in and out, context length and task classes, plus one spend cap. Every arm backend is explicit_pin_only, internal surface, house tenant and has no placement; both bifrost loaders append the arms' backends so a backend-id pin resolves them and nothing else selects them; a call on an arm is booked at the arm's own price; admit_run refuses an eval run whose projected cost exceeds what is left of the cap. The house values live in the private overlays repository."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23751-eval-arms-pinned-only-and-capped
+  statement: The routing overlay declares eval arms that only an explicit backend-id pin reaches, books each call at the arm's declared price, and refuses an eval run that would pass the spend cap.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the routing overlay refuses an eval_arms backend that is not explicit_pin_only, an arm whose slug differs from its backend model_name, and a backend capability its arm does not list -- falsifier: uv run pytest tests/unit/delegation/test_eval_arms_overlay.py -q in omnimarket'
+  - id: AC2
+    statement: 'AC2: admit_run refuses a run whose projected cost exceeds the remaining spend cap and admits one under it -- falsifier: uv run pytest tests/unit/delegation/test_eval_arms_overlay.py -q -k admit in omnimarket'
+  - id: AC3
+    statement: 'AC3: a backend-id pin to an eval arm resolves through load_bifrost_delegation_config and load_bifrost_backends when the overlay is bound, and ordinary capability selection never picks it -- falsifier: uv run pytest tests/unit/delegation/test_eval_arms_bifrost_merge.py -q in omnimarket'
+  - id: AC4
+    statement: 'AC4: the house overlay document validates against the omnimarket overlay contract with seven arms over three tiers -- falsifier: uv run pytest tests/test_delegation_routing_overlay_eval_arms.py -q in the private overlays repository'
+  - id: AC5
+    statement: 'AC5: integrated: on a lab host with the overlay bound, one pinned delegation per tier (cheap_cloud, cheap_frontier, top) answers through the declared delegation path, the receipt naming the eval backend id -- falsifier: onex delegate with --backend-id openrouter-eval-deepseek-v4-1-flash on the lab host via lab-run, receipt backend_id and model read back'
+evidence_requirements:
+- kind: tests
+  description: The eval arms overlay and bifrost merge tests.
+  command: uv run --frozen pytest tests/unit/delegation/test_eval_arms_overlay.py tests/unit/delegation/test_eval_arms_bifrost_merge.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23751-ac1-refusals
+  description: The overlay contract refuses every eval backend shape that could reach real work.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_eval_arms_overlay.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23751-ac2-spend-cap
+  description: admit_run admits under the remaining cap and refuses over it, on an exhausted cap and for an unknown arm.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_eval_arms_overlay.py -k admit -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23751-ac3-pin-resolution
+  description: Both bifrost loaders append the eval arm, a pin resolves it, capability selection never picks it, an unbound overlay appends nothing, a collision is refused and the call is booked at the arm's price.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_eval_arms_bifrost_merge.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23751-ac4-house-overlay
+  description: The house overlay document and its test live in the private overlays repository (tests/test_delegation_routing_overlay_eval_arms.py there); this repository holds only the contract it validates against.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_eval_arms_overlay.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23751-integration-proof
+  description: The pushed head ran the focused eval arm tests on a lab host through the lab work runner. The runtime half of AC5 (one pinned delegation per tier answering on a lab host with the house overlay bound) is read from the smoke receipts recorded on the ticket.
+  source: manual
+  binds_ac:
+  - AC5
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23751 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_eval_arms_overlay.py tests/unit/delegation/test_eval_arms_bifrost_merge.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
