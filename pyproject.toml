@@ -1438,6 +1438,8 @@ onex-handoff-check = "omnimarket.nodes.node_handoff_check_effect.runtime_handoff
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
+# OMN-23413: the full-screen terminal UI over the onex CLI.
+tui = "omnimarket.nodes.node_onex_setup_effect.cli_tui:tui_command"
 # OMN-18697: the local metering and savings readout (`onex metering`).
 metering = "omnimarket.cli.cli_metering:metering_command"
 # OMN-16967: the tenant-facing delegation client (`onex cloud delegate`).
