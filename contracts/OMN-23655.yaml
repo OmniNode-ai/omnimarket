@@ -20,7 +20,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The deploy-agent rule tests of the compute node, the effect node's real-clone tests and the reading compute's unknown-source tests.
-  command: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute tests/nodes/node_dev_deploy_reading_effect tests/nodes/node_reading_compute -q --no-cov -p no:randomly
+  command: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute/test_deploy_agent_source.py tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_agent_source.py tests/nodes/node_reading_compute/test_reading_unknown_source.py -q --no-cov -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -35,14 +35,14 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute -q --no-cov -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute/test_deploy_agent_source.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23655-effect-source
   description: Runs the effect node's deploy-agent source tests over a real git clone with the agent's own answers, the seam tests and the reading compute's unknown-source tests.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect tests/nodes/node_reading_compute -q --no-cov -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_agent_source.py tests/nodes/node_reading_compute/test_reading_unknown_source.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23655-integration-proof-lab
   description: 'Integrated: on a lab host the reader prints one reading for a named dev merge read from the dev lane deploy agent and the running runtime build record, under the deployed overlay. Hosted CI cannot reach the lab runtime, so only the local Done gate runs this unbound item.'
