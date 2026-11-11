@@ -1878,6 +1878,7 @@
   "tests/nodes/node_pr_landing_snapshot_effect/test_landing_snapshot_replay.py": 0.17,
   "tests/nodes/node_pr_landing_snapshot_effect/test_overlay_file_pin.py": 2.19,
   "tests/nodes/node_pr_landing_snapshot_effect/test_record_bounds_and_publish_order.py": 2.58,
+  "tests/nodes/node_pr_landing_snapshot_effect/test_record_journal_retention.py": 0.86,
   "tests/nodes/node_pr_landing_snapshot_effect/test_snapshot_absent_overlay.py": 0.01,
   "tests/nodes/node_pr_landing_snapshot_effect/test_snapshot_real_backend.py": 0.17,
   "tests/nodes/node_pr_landing_tick_orchestrator/test_act_out_of_scope_record.py": 0.03,
