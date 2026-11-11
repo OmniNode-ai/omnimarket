@@ -95,6 +95,8 @@ class ModelScenarioR2Runtime(BaseModel):
     local_second_env: str = Field(min_length=1)
     dead_url_env: str = Field(min_length=1)
     secret_store_folder: str = Field(min_length=1)
+    #: The settings overlay (OMN-23602), relative to the node directory: where each setting is found by existing name.
+    settings_overlay_relpath: str | None = None
     local_backend_id: str = Field(min_length=1)
     delegate_task_type: str = Field(min_length=1)
     delegate_prompt: str = Field(min_length=1)

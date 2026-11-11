@@ -155,6 +155,9 @@ class ModelReadingReadRetry(BaseModel):
     #: Seconds one cycle may spend on source reads that failed (the attempts and the pauses between them). Once spent, a read is
     #: tried once, and the first such read that fails stops the cycle's later reads (read-budget-spent). Absent, no budget.
     budget_seconds: int | None = Field(default=None, ge=1)
+    #: Seconds the end-of-run final pass may spend starting source reads again for pieces whose source stayed unreadable through
+    #: their inline retries; absent, there is no final pass.
+    reread_budget_seconds: int | None = Field(default=None, ge=1)
 
 
 class ModelTwoBackendReading(BaseModel):

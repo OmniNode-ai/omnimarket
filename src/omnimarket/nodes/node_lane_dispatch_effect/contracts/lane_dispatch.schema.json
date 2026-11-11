@@ -1,0 +1,846 @@
+{
+  "$defs": {
+    "EnumLabJobDoneCriterionKind": {
+      "description": "Kinds of done criterion; every criterion of a job must hold.",
+      "enum": [
+        "terminal_row",
+        "pr_merged",
+        "check_passing",
+        "exit_zero"
+      ],
+      "title": "EnumLabJobDoneCriterionKind",
+      "type": "string"
+    },
+    "EnumLabJobEngine": {
+      "description": "The remote-lane runner's own ``--model`` values, plus ``shell``.",
+      "enum": [
+        "opus",
+        "sonnet",
+        "codex",
+        "glm",
+        "code-edit",
+        "shell"
+      ],
+      "title": "EnumLabJobEngine",
+      "type": "string"
+    },
+    "EnumLabJobOnTimeBox": {
+      "description": "What a time-box failure does: a continuation restart, or fail.",
+      "enum": [
+        "continue",
+        "fail"
+      ],
+      "title": "EnumLabJobOnTimeBox",
+      "type": "string"
+    },
+    "ModelLabJobDoneCriterion": {
+      "additionalProperties": false,
+      "description": "One done criterion. ``target`` names the PR (``owner/name#n``) where needed.",
+      "properties": {
+        "check_context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Check Context"
+        },
+        "kind": {
+          "$ref": "#/$defs/EnumLabJobDoneCriterionKind"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ModelLabJobDoneCriterion",
+      "type": "object"
+    },
+    "ModelLabJobRetryPolicy": {
+      "additionalProperties": false,
+      "description": "How many attempts a job gets, the wait between them, and time-box handling.",
+      "properties": {
+        "backoff_s": {
+          "default": 60,
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Backoff S",
+          "type": "integer"
+        },
+        "max_attempts": {
+          "default": 2,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "on_time_box": {
+          "$ref": "#/$defs/EnumLabJobOnTimeBox",
+          "default": "continue"
+        }
+      },
+      "title": "ModelLabJobRetryPolicy",
+      "type": "object"
+    },
+    "ModelLaneDispatchClaim": {
+      "additionalProperties": false,
+      "description": "Exact live CLAIM identity; a lane name alone cannot release a newer claim.",
+      "properties": {
+        "lane": {
+          "minLength": 1,
+          "title": "Lane",
+          "type": "string"
+        },
+        "stamp": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "title": "Stamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "lane",
+        "stamp"
+      ],
+      "title": "ModelLaneDispatchClaim",
+      "type": "object"
+    },
+    "ModelLaneDispatchDependency": {
+      "additionalProperties": false,
+      "description": "Every source artifact the task depends on, including cross-repo inputs.",
+      "properties": {
+        "merged": {
+          "title": "Merged",
+          "type": "boolean"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "pr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pr"
+        },
+        "repo": {
+          "pattern": "^[\\w.-]+/[\\w.-]+$",
+          "title": "Repo",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "path",
+        "merged"
+      ],
+      "title": "ModelLaneDispatchDependency",
+      "type": "object"
+    },
+    "ModelLaneDispatchFacts": {
+      "additionalProperties": false,
+      "description": "A cited, bounded read of admission state; unknown state is not empty state.",
+      "properties": {
+        "live_claims": {
+          "items": {
+            "$ref": "#/$defs/ModelLaneDispatchClaim"
+          },
+          "title": "Live Claims",
+          "type": "array"
+        },
+        "merged_work": {
+          "title": "Merged Work",
+          "type": "boolean"
+        },
+        "read_at": {
+          "format": "date-time",
+          "title": "Read At",
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "ticket_state": {
+          "minLength": 1,
+          "title": "Ticket State",
+          "type": "string"
+        },
+        "umbrella": {
+          "title": "Umbrella",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source",
+        "read_at",
+        "ticket_state",
+        "merged_work",
+        "umbrella",
+        "live_claims"
+      ],
+      "title": "ModelLaneDispatchFacts",
+      "type": "object"
+    },
+    "ModelLaneDispatchFieldRule": {
+      "additionalProperties": false,
+      "description": "Which engines accept an optional field, and its allowed nonempty values.",
+      "properties": {
+        "allowed_values": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowed Values"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/EnumLabJobEngine"
+          },
+          "minItems": 1,
+          "title": "Models",
+          "type": "array"
+        }
+      },
+      "required": [
+        "field",
+        "models"
+      ],
+      "title": "ModelLaneDispatchFieldRule",
+      "type": "object"
+    },
+    "ModelLaneDispatchHandoff": {
+      "additionalProperties": false,
+      "description": "Who performs publication and hands the PR to the landing controller.",
+      "properties": {
+        "actor": {
+          "minLength": 1,
+          "title": "Actor",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "lane",
+            "launcher"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "actor",
+        "mode"
+      ],
+      "title": "ModelLaneDispatchHandoff",
+      "type": "object"
+    },
+    "ModelLaneDispatchHost": {
+      "additionalProperties": false,
+      "description": "A host's declared publication capability; placement never substitutes it.",
+      "properties": {
+        "can_handoff": {
+          "title": "Can Handoff",
+          "type": "boolean"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "can_handoff"
+      ],
+      "title": "ModelLaneDispatchHost",
+      "type": "object"
+    },
+    "ModelLaneDispatchModelRequirement": {
+      "additionalProperties": false,
+      "description": "Extra inputs a runner engine requires, declared alongside the engine table.",
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/EnumLabJobEngine"
+        }
+      },
+      "required": [
+        "model",
+        "fields"
+      ],
+      "title": "ModelLaneDispatchModelRequirement",
+      "type": "object"
+    },
+    "ModelLaneDispatchPolicy": {
+      "additionalProperties": false,
+      "description": "Rule parameters, with no deployment facts defaulted in Python.",
+      "properties": {
+        "ack_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ack States",
+          "type": "array"
+        },
+        "allow_cross_repo": {
+          "title": "Allow Cross Repo",
+          "type": "boolean"
+        },
+        "allow_unmerged_dependencies": {
+          "title": "Allow Unmerged Dependencies",
+          "type": "boolean"
+        },
+        "cloud_lane_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cloud Lane Kinds",
+          "type": "array"
+        },
+        "cloud_models": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cloud Models",
+          "type": "array"
+        },
+        "cloud_placement": {
+          "title": "Cloud Placement",
+          "type": "string"
+        },
+        "context_done_kinds": {
+          "items": {
+            "$ref": "#/$defs/EnumLabJobDoneCriterionKind"
+          },
+          "title": "Context Done Kinds",
+          "type": "array"
+        },
+        "efforts": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Efforts",
+          "type": "array"
+        },
+        "field_rules": {
+          "items": {
+            "$ref": "#/$defs/ModelLaneDispatchFieldRule"
+          },
+          "title": "Field Rules",
+          "type": "array"
+        },
+        "forbidden_instruction_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Instruction Patterns",
+          "type": "array"
+        },
+        "hosts": {
+          "items": {
+            "$ref": "#/$defs/ModelLaneDispatchHost"
+          },
+          "minItems": 1,
+          "title": "Hosts",
+          "type": "array"
+        },
+        "lane_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Lane Kinds",
+          "type": "array"
+        },
+        "launching_actors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Launching Actors",
+          "type": "array"
+        },
+        "max_memory_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Max Memory Bytes",
+          "type": "integer"
+        },
+        "max_time_box_min": {
+          "exclusiveMinimum": 0,
+          "title": "Max Time Box Min",
+          "type": "integer"
+        },
+        "merged_ack_state": {
+          "title": "Merged Ack State",
+          "type": "string"
+        },
+        "model_requirements": {
+          "items": {
+            "$ref": "#/$defs/ModelLaneDispatchModelRequirement"
+          },
+          "title": "Model Requirements",
+          "type": "array"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/EnumLabJobEngine"
+          },
+          "minItems": 1,
+          "title": "Models",
+          "type": "array"
+        },
+        "placements": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Placements",
+          "type": "array"
+        },
+        "pr_done_kinds": {
+          "items": {
+            "$ref": "#/$defs/EnumLabJobDoneCriterionKind"
+          },
+          "title": "Pr Done Kinds",
+          "type": "array"
+        },
+        "priority_classes": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Priority Classes",
+          "type": "array"
+        },
+        "publish_steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Publish Steps",
+          "type": "array"
+        },
+        "repository_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Repository Names",
+          "type": "array"
+        },
+        "repository_reference_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Repository Reference Patterns",
+          "type": "array"
+        },
+        "runner_backoff_s": {
+          "minimum": 0,
+          "title": "Runner Backoff S",
+          "type": "integer"
+        },
+        "runner_effort_models": {
+          "items": {
+            "$ref": "#/$defs/EnumLabJobEngine"
+          },
+          "title": "Runner Effort Models",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "snapshot_max_age_s": {
+          "exclusiveMinimum": 0,
+          "title": "Snapshot Max Age S",
+          "type": "integer"
+        },
+        "umbrella_tickets": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Umbrella Tickets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "lane_kinds",
+        "placements",
+        "models",
+        "efforts",
+        "priority_classes",
+        "cloud_placement",
+        "cloud_lane_kinds",
+        "cloud_models",
+        "umbrella_tickets",
+        "ack_states",
+        "merged_ack_state",
+        "max_memory_bytes",
+        "max_time_box_min",
+        "snapshot_max_age_s",
+        "hosts",
+        "publish_steps",
+        "forbidden_instruction_patterns",
+        "repository_reference_patterns",
+        "repository_names",
+        "allow_cross_repo",
+        "allow_unmerged_dependencies",
+        "model_requirements",
+        "runner_backoff_s",
+        "field_rules",
+        "pr_done_kinds",
+        "context_done_kinds",
+        "launching_actors",
+        "runner_effort_models"
+      ],
+      "title": "ModelLaneDispatchPolicy",
+      "type": "object"
+    },
+    "ModelLaneDispatchPremise": {
+      "additionalProperties": false,
+      "description": "A claim and the actual reader observation supporting it.",
+      "properties": {
+        "claim": {
+          "minLength": 1,
+          "title": "Claim",
+          "type": "string"
+        },
+        "evidence": {
+          "minLength": 1,
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence"
+      ],
+      "title": "ModelLaneDispatchPremise",
+      "type": "object"
+    },
+    "ModelLaneDispatchSpec": {
+      "additionalProperties": false,
+      "description": "The spec IS the job record; no parallel runner dictionary is persisted.",
+      "properties": {
+        "checks": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "constraints": {
+          "minLength": 1,
+          "title": "Constraints",
+          "type": "string"
+        },
+        "context": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Context",
+          "type": "array"
+        },
+        "dependencies": {
+          "items": {
+            "$ref": "#/$defs/ModelLaneDispatchDependency"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "done_criteria": {
+          "items": {
+            "$ref": "#/$defs/ModelLabJobDoneCriterion"
+          },
+          "minItems": 1,
+          "title": "Done Criteria",
+          "type": "array"
+        },
+        "effort": {
+          "title": "Effort",
+          "type": "string"
+        },
+        "escalation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Escalation Reason"
+        },
+        "facts": {
+          "$ref": "#/$defs/ModelLaneDispatchFacts"
+        },
+        "handoff": {
+          "$ref": "#/$defs/ModelLaneDispatchHandoff"
+        },
+        "host": {
+          "minLength": 1,
+          "title": "Host",
+          "type": "string"
+        },
+        "job_id": {
+          "pattern": "^lj-[0-9a-f]{16}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "lane": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$",
+          "title": "Lane",
+          "type": "string"
+        },
+        "lane_kind": {
+          "title": "Lane Kind",
+          "type": "string"
+        },
+        "max_turns": {
+          "anyOf": [
+            {
+              "maximum": 40,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Turns"
+        },
+        "memory_limit_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Memory Limit Bytes",
+          "type": "integer"
+        },
+        "model": {
+          "$ref": "#/$defs/EnumLabJobEngine"
+        },
+        "parent": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$",
+          "title": "Parent",
+          "type": "string"
+        },
+        "placement": {
+          "title": "Placement",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/ModelLaneDispatchPolicy"
+        },
+        "pr": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pr",
+          "type": "array"
+        },
+        "premises": {
+          "items": {
+            "$ref": "#/$defs/ModelLaneDispatchPremise"
+          },
+          "minItems": 1,
+          "title": "Premises",
+          "type": "array"
+        },
+        "priority_class": {
+          "title": "Priority Class",
+          "type": "string"
+        },
+        "publish_steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Publish Steps",
+          "type": "array"
+        },
+        "ref": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Ref",
+          "type": "string"
+        },
+        "repo": {
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "title": "Repo",
+          "type": "string"
+        },
+        "report": {
+          "minLength": 1,
+          "title": "Report",
+          "type": "string"
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/ModelLabJobRetryPolicy"
+        },
+        "risk_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk Class"
+        },
+        "rules": {
+          "minLength": 1,
+          "title": "Rules",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "supersede": {
+          "items": {
+            "$ref": "#/$defs/ModelLaneDispatchClaim"
+          },
+          "title": "Supersede",
+          "type": "array"
+        },
+        "task": {
+          "minLength": 1,
+          "title": "Task",
+          "type": "string"
+        },
+        "ticket": {
+          "pattern": "^OMN-[0-9]+$",
+          "title": "Ticket",
+          "type": "string"
+        },
+        "ticket_state_ack": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ticket State Ack"
+        },
+        "time_box_min": {
+          "exclusiveMinimum": 0,
+          "title": "Time Box Min",
+          "type": "integer"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "writable": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Writable",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "repo",
+        "ref",
+        "pr",
+        "ticket",
+        "parent",
+        "lane",
+        "lane_kind",
+        "placement",
+        "host",
+        "model",
+        "effort",
+        "priority_class",
+        "title",
+        "premises",
+        "task",
+        "memory_limit_bytes",
+        "publish_steps",
+        "handoff",
+        "dependencies",
+        "supersede",
+        "ticket_state_ack",
+        "time_box_min",
+        "retry_policy",
+        "done_criteria",
+        "rules",
+        "constraints",
+        "report",
+        "facts",
+        "policy"
+      ],
+      "title": "ModelLaneDispatchSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Content addressed envelope: receipts cite content_hash and job_id.",
+  "properties": {
+    "content_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Hash",
+      "type": "string"
+    },
+    "spec": {
+      "$ref": "#/$defs/ModelLaneDispatchSpec"
+    }
+  },
+  "required": [
+    "spec",
+    "content_hash"
+  ],
+  "title": "ModelLaneDispatchRecord",
+  "type": "object"
+}

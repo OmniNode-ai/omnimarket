@@ -93,6 +93,8 @@ runtime:
   # The scenario's settings are read from this folder of the secret store when the environment does not
   # hold them; no value is in the contract.
   secret_store_folder: /shared/env
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
   local_backend_id: local-url
   delegate_task_type: summarization
   # A sentence, not a single word: the quality gate vetoes a bare one-word answer.
@@ -103,7 +105,7 @@ schedule:
   unit_name: onex-delegation-scenario-r2
   state_directory: .onex_state/delegation-scenario-r2
   timeout_seconds: 900
-  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND, ONEX_SCENARIO_R2_DEAD_URL, ONEX_SCENARIO_R2_PROVIDER, ONEX_SCENARIO_R2_PROVIDER_URL, ONEX_SCENARIO_R2_PROVIDER_MODEL, ONEX_SCENARIO_R2_LOCAL_FIRST, ONEX_SCENARIO_R2_LOCAL_SECOND]
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND, ONEX_SCENARIO_R2_DEAD_URL, ONEX_SCENARIO_R2_PROVIDER, ONEX_SCENARIO_R2_PROVIDER_URL, ONEX_SCENARIO_R2_PROVIDER_MODEL, ONEX_SCENARIO_R2_LOCAL_FIRST, ONEX_SCENARIO_R2_LOCAL_SECOND]
   # The key variable is loaded from this file under the home directory when it exists; it never sits in the unit.
   environment_file: .config/onex/scenario-r2.env
   cadence:
