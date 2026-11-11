@@ -48,6 +48,30 @@ class ModelAdjacencyMap(BaseModel):
     that turns the gate vacuous.
     """
 
+    node_scoped_modules: list[str] = Field(default_factory=list)
+    """Modules made of node packages (``src/omnimarket/<module>/node_*/``).
+
+    OMN-23719: selecting the whole ``tests/<module>/`` for one node's change
+    summed past the selector's weight bound (1800.75 recorded seconds against
+    1800 on dev), so every node change ran the full suite. For a module listed
+    here the selector runs the changed nodes' tests, the tests of every node
+    that imports them (transitively, through non-node modules too), the tests
+    of nodes whose YAML names them, every test that imports or names them, and
+    the module's flat ``tests/<module>/test_*.py`` files. When it cannot
+    attribute a change (a deleted source, a non-Python file outside a node, a
+    node with no tests of its own, a file that does not parse) it falls back to
+    the whole ``tests/<module>/`` directory.
+    """
+
+    @model_validator(mode="after")
+    def validate_node_scoped_modules(self) -> ModelAdjacencyMap:
+        for module in self.node_scoped_modules:
+            if module not in self.adjacency:
+                raise ValueError(
+                    f"node_scoped_modules entry '{module}' has no adjacency entry"
+                )
+        return self
+
     @model_validator(mode="after")
     def validate_always_selected_paths(self) -> ModelAdjacencyMap:
         for path in self.always_selected_paths:
