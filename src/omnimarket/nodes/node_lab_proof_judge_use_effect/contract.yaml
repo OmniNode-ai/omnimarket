@@ -61,6 +61,12 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.lab-proof-judge-use-recorded.v1
 
+dependency_ownership:
+  overlay: "Owned by the pool driver's CLI verb, which loads the node overlay from ONEX_SKILL_OVERLAY_ROOTS and constructs the handler in process."
+  host: "Owned by the pool driver, which names the lab host the use is recorded for."
+  appender: "Owned by the pool driver, which supplies the reading appender or none."
+  publisher: "Owned by the pool driver, which supplies the use-event publisher or none."
+
 overlay:
   node: node_lab_proof_judge_use_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
