@@ -138,6 +138,23 @@ def test_operational_failure_without_an_answer_has_no_content_verdict(
     assert report.tiers[0].correctness_counts == {}
 
 
+@pytest.mark.parametrize("outcome", [None, Outcome.BOUNDARY_FAILURE])
+def test_zero_attempt_operational_evidence_stays_in_availability(
+    outcome: Outcome | None,
+) -> None:
+    observation = _observation(outcome, attempts=0)
+    control = _observation(Outcome.COMPLETED)
+    report = summarize_single_hop_cohort([observation, control])
+    assert report.excluded_requests == ()
+    assert report.rows[0].availability == (outcome or "no_terminal")
+    assert report.rows[0].content_verdict is None
+    assert report.rows[0].quality_score is None
+    assert report.tiers[0].availability_total == 2
+    assert report.tiers[0].availability_failures == 1
+    assert report.tiers[0].correctness_total == 1
+    assert report.tiers[0].correctness_counts == {Verdict.USABLE: 1}
+
+
 def test_bad_content_is_correctness_evidence_and_tiers_stay_separate() -> None:
     report = summarize_single_hop_cohort(
         [
@@ -295,6 +312,10 @@ async def test_registered_contract_executes_the_fixed_cohort_json(
                         Outcome.PROVIDER_UNAVAILABLE,
                     )
                 ]
+                + [
+                    _observation(outcome, attempts=0).model_dump(mode="json")
+                    for outcome in (None, Outcome.BOUNDARY_FAILURE)
+                ]
             }
         )
     )
@@ -314,6 +335,6 @@ async def test_registered_contract_executes_the_fixed_cohort_json(
     output_type = getattr(importlib.import_module(output_module), output_name)
     round_trip = output_type.model_validate_json(result.model_dump_json())
     assert round_trip == result
-    assert round_trip.tiers[0].availability_total == 3
-    assert round_trip.tiers[0].availability_failures == 2
+    assert round_trip.tiers[0].availability_total == 5
+    assert round_trip.tiers[0].availability_failures == 4
     assert round_trip.tiers[0].correctness_total == 1

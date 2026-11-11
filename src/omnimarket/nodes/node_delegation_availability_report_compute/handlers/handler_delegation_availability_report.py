@@ -65,7 +65,7 @@ def summarize_single_hop_cohort(
             raise ValueError("cohort contains a duplicate request")
         seen.add(observation.correlation_id)
         terminal = observation.terminal
-        if observation.attempts_count != 1 or (
+        if observation.attempts_count > 1 or (
             terminal is not None and terminal.escalation_count != 0
         ):
             excluded.append(observation.correlation_id)
