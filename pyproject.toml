@@ -1859,9 +1859,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # To move the pin: bump `version`, download the new asset, compute its sha256
 # locally, and paste it. A mismatch is refused, never repaired -- re-downloading
 # on mismatch would turn an attack into a cache miss.
-version = "v1.1.11"
-sha256 = "e231574dab6f3a7441ab251ae3f4c82439d128efe8b02d11a6c9b8af80f14874"
-asset = "omnidash-bundle-v1.1.11.tar.gz"
+version = "v1.1.12"
+sha256 = "ec9b3f16c53b7cf77d53111bef587dbec40cdc837afb8cdc6e2be53353868de7"
+asset = "omnidash-bundle-v1.1.12.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]
