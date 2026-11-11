@@ -37,6 +37,10 @@ retirement:
   registry_key_pattern: '^(repos|repositories|.*_repos)$'
   registry_constant_pattern: "^_?(REPOS|REPOSITORIES|SIBLING_CLONE_MANIFEST|\
     (DEFAULT|LANDING|SYNC|CLONE|SCAN|FILL|FLEET|CI|OTHER|KNOWN|ORG|ALL|WATCH|TARGET|REGISTRY|CANONICAL)(_[A-Z]+)*_REPOS)$"
+  # A virtualenv is generated, not declared input.
+  generated_directory_markers: [pyvenv.cfg]
+  # Compose-only YAML tags are read as their plain value; any other tag is malformed.
+  compose_yaml_tags: [override, reset]
 input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileCommand
 output_model: omnimarket.models.model_host_reconcile.ModelHostReconcileRunResult
 handler:
