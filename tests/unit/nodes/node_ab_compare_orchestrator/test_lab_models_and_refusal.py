@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The shipped registry resolves the lab models, and an undeclared model is refused.
+"""The deployment registry resolves the lab models, and an undeclared model is refused.
+
+The lab models are a deployment fact (OMN-19184): the package ships a neutral registry and
+the lab supplies its registry as ``<root>/node_ab_compare_orchestrator/overlay.yaml``. These
+tests write an overlay with invented hosts and model ids, so no lab value lives here.
 
 The first group reproduces the dev runtime's environment: the lab endpoint URL
 variables are set and no ``*_MODEL_NAME`` variable is. Every registry model was
@@ -12,6 +16,7 @@ inference request.
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +39,51 @@ from tests.unit.nodes.node_ab_compare_orchestrator.test_handler_ab_compare_orche
 
 _LAB_A_URL = "http://lab-a.example.invalid:8000"
 _LAB_B_URL = "http://lab-b.example.invalid:8000"
-_LAB_MODEL_IDS = ("qwen3-coder-30b", "qwen3.8-27b-h202")
+_LAB_MODEL_IDS = ("qwen3-coder-30b", "second-local-model")
+_SERVED_A = "overlay-served-model-a"
+_SERVED_B = "overlay-served-model-b"
+_OVERLAY_REGISTRY = """\
+schema_version: "1.0.0"
+models:
+  - id: qwen3-coder-30b
+    display_name: "Local model A"
+    endpoint_env: LLM_CODER_URL
+    protocol: openai_compatible
+    model_id_env: LLM_CODER_MODEL_NAME
+    model_id_default: "{served_a}"
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    location: local
+    context_window: 112000
+  - id: second-local-model
+    display_name: "Local model B"
+    endpoint_env: LLM_LAB_H202_URL
+    protocol: openai_compatible
+    model_id_env: LLM_LAB_H202_MODEL_NAME
+    model_id_default: "{served_b}"
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    location: local
+    context_window: 131072
+"""
+
+
+def _install_registry_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+    served_a: str = _SERVED_A,
+    served_b: str = _SERVED_B,
+) -> Path:
+    root = Path(tempfile.mkdtemp(prefix="ab-compare-overlay-"))
+    node_dir = root / "node_ab_compare_orchestrator"
+    node_dir.mkdir()
+    overlay = node_dir / "overlay.yaml"
+    overlay.write_text(
+        _OVERLAY_REGISTRY.format(served_a=served_a, served_b=served_b), encoding="utf-8"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    monkeypatch.delenv("ONEX_AB_COMPARE_MODELS_REGISTRY", raising=False)
+    return overlay
+
 
 _MODEL_NAME_ENVS = (
     "LLM_CODER_MODEL_NAME",
@@ -60,6 +109,7 @@ class _RecordingEffectHandler(FakeEffectHandler):
 
 def _dev_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Endpoint URLs present, model-name variables absent: the dev runtime."""
+    _install_registry_overlay(monkeypatch)
     monkeypatch.setenv("LLM_CODER_URL", _LAB_A_URL)
     monkeypatch.setenv("LLM_LAB_H202_URL", _LAB_B_URL)
     for name in _MODEL_NAME_ENVS:
@@ -81,7 +131,42 @@ def test_shipped_registry_resolves_each_lab_model_from_endpoint_env_alone(
 
 
 @pytest.mark.unit
-def test_shipped_lab_models_are_priced_from_the_registry() -> None:
+def test_overlay_model_ids_reach_the_resolved_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _dev_runtime_env(monkeypatch)
+    resolved, _ = _resolve_models(_load_registry(), list(_LAB_MODEL_IDS))
+    assert {m.model_id: m.model_id_resolved for m in resolved} == {
+        "qwen3-coder-30b": _SERVED_A,
+        "second-local-model": _SERVED_B,
+    }
+    # AC3: changing a served id is an overlay edit, read on the next load, no code change.
+    overlay = _install_registry_overlay(monkeypatch, served_a="changed-served-model")
+    assert overlay.is_file()
+    resolved, _ = _resolve_models(_load_registry(), ["qwen3-coder-30b"])
+    assert [m.model_id_resolved for m in resolved] == ["changed-served-model"]
+
+
+@pytest.mark.unit
+def test_packaged_registry_declares_no_lab_endpoint_or_served_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Error chain: with no overlay the lab models are skipped, never filled from the package."""
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no_overlay_here"))
+    monkeypatch.delenv("ONEX_AB_COMPARE_MODELS_REGISTRY", raising=False)
+    monkeypatch.setenv("LLM_CODER_URL", _LAB_A_URL)
+    registry = _load_registry()
+    assert "second-local-model" not in {entry["id"] for entry in registry}
+    resolved, skipped = _resolve_models(registry, ["qwen3-coder-30b"])
+    assert resolved == []
+    assert skipped == ["qwen3-coder-30b"]
+
+
+@pytest.mark.unit
+def test_shipped_lab_models_are_priced_from_the_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _dev_runtime_env(monkeypatch)
     by_id = {entry["id"]: entry for entry in _load_registry()}
 
     for model_id in _LAB_MODEL_IDS:
