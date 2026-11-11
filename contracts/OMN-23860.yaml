@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-23860
+title: A lane the guard kills leaves an end record that the closeout notice carries
+summary: When the lane guard ends a lane's command for memory, runtime or a signal it writes one typed end record (cause, memory peak against the limit, runtime, and per worktree the branch, last pushed head, unpushed commit count and changed file count, read only), the host closeout sweep carries that record in the lane's closeout record, and a tree the record says holds unpushed work is removed only after its work is confirmed pushed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23860-guard-end-record
+  statement: The guard writes an end record on a kill and none on a clean exit; the closeout sweep carries it and keeps a tree with unpushed work until it is pushed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a guard run whose command is killed for memory (a failed scope with result oom-kill and a memory peak) writes one end record with cause oom_kill, the peak and the limit, a runtime-limit kill writes runtime_max, and a clean exit writes none -- falsifier: uv run pytest tests/nodes/node_lane_guard_unit_effect -q -k end_record fails at the merge base'
+  - id: AC2
+    statement: 'AC2: the end record lists per worktree the branch, last pushed head, unpushed commit count and changed file count, the closeout record for that lane carries it, and a tree with unpushed work is not removed until the work is pushed -- falsifier: uv run pytest tests/nodes/node_lane_closeout_sweep_effect -q -k end_record fails when the record field is removed or when that tree is removed'
+  - id: AC3
+    statement: 'AC3: integrated: on one lab host a planted command that allocates past a small declared memory limit is killed by the running guard, and its end record is read from the host and the closeout record carrying it from the same host -- falsifier: the kill leaves no end record, or the closeout record lacks the end cause'
+evidence_requirements:
+- kind: tests
+  description: The two focused end_record test files at the pushed head; each fails at origin/dev where neither the guard nor the sweep knows an end record.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lane_guard_unit_effect tests/nodes/node_lane_closeout_sweep_effect -q --no-cov -n 0 -p no:randomly -k end_record
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23860-ac1-guard-end-record
+  description: The guard writes an oom_kill, runtime_max, signal or exit_code end record on a kill and none on a clean exit. Fails at origin/dev.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_guard_unit_effect -q -k end_record
+    cwd: .
+- id: dod-omn23860-ac2-closeout-carries-record
+  description: The closeout record carries the end record and a tree with unpushed work is kept until pushed. Fails at origin/dev.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_closeout_sweep_effect -q -k end_record
+    cwd: .
+- id: dod-omn23860-ac3-integration-proof
+  description: The pushed head ran the focused end_record tests on a lab host through the lab work runner and exited 0. The planted memory kill on a lab host, its end record and the closeout record carrying it are read from the lab receipt comment on the ticket.
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23860 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_guard_unit_effect tests/nodes/node_lane_closeout_sweep_effect -q --no-cov -n 0 -p no:randomly -k end_record
+    cwd: .
