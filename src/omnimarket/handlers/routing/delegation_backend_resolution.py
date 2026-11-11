@@ -51,6 +51,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     warn_overlay_shadowed_authoritative_fields,
 )
 from omnimarket.handlers.routing.customer_key_terminus import is_customer_attributed
+from omnimarket.handlers.routing.eval_arm_backends import append_eval_arm_backends
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
@@ -502,7 +503,7 @@ def load_bifrost_backends(
                 overlay_source=store_source,
                 sink=provenance_sink,
             )
-            return backends
+            return append_eval_arm_backends(backends, provider_rules=provider_rules)
         # Store is configured but has no overlay key → fall through to file with
         # a deprecation warning.
         logger.warning(
@@ -542,7 +543,7 @@ def load_bifrost_backends(
             overlay_source=str(overlay_path),
             sink=provenance_sink,
         )
-        return backends
+        return append_eval_arm_backends(backends, provider_rules=provider_rules)
 
     _record_overlay_provenance(
         committed_backends,
@@ -551,7 +552,7 @@ def load_bifrost_backends(
         overlay_source=None,
         sink=provenance_sink,
     )
-    return backends
+    return append_eval_arm_backends(backends, provider_rules=provider_rules)
 
 
 def _record_overlay_provenance(

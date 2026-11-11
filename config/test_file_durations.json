@@ -3638,6 +3638,8 @@
   "tests/unit/delegation/test_escalation_emit_omn13140.py": 2.87,
   "tests/unit/delegation/test_escalation_metered_cost_reaches_projection_omn13535.py": 2.89,
   "tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py": 1.91,
+  "tests/unit/delegation/test_eval_arms_bifrost_merge.py": 0.47,
+  "tests/unit/delegation/test_eval_arms_overlay.py": 0.68,
   "tests/unit/delegation/test_eval_label_snapshot_scrubbed.py": 0.1,
   "tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py": 0.03,
   "tests/unit/delegation/test_execution_budget_overlay_omn21344.py": 0.17,
