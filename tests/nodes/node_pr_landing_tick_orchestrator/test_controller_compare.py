@@ -30,6 +30,8 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_land
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
     InMemoryTickWriter,
+    ProtocolTickDecider,
+    ProtocolTickWriter,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_sources import (
     InMemorySnapshotSource,
@@ -62,12 +64,18 @@ HELD, NEW_RED = f"{REPO}#713", f"{REPO}#714"
 
 
 def _handler(
-    publisher: InMemoryTickPublisher | None = None, **over: object
+    publisher: InMemoryTickPublisher | None = None,
+    *,
+    decider: ProtocolTickDecider | None = None,
+    writer: ProtocolTickWriter | None = None,
+    script_out_of_scope: tuple[str, ...] = (),
 ) -> HandlerPrLandingTickOrchestrator:
     return HandlerPrLandingTickOrchestrator(
         publisher=publisher,
         cutover_repository=REPO,
-        **over,  # type: ignore[arg-type]
+        decider=decider,
+        writer=writer,
+        script_out_of_scope=script_out_of_scope,
     )
 
 
