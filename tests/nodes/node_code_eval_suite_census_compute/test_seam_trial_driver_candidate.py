@@ -53,9 +53,11 @@ def test_candidate_dumps_to_a_dict_with_the_pinned_keys_and_patterns() -> None:
 
 def test_unknown_key_on_a_candidate_is_refused() -> None:
     with pytest.raises(ValidationError):
-        ModelCodeEvalSuiteCandidate(
-            repository="omnimarket",
-            merge_commit="a" * 40,
-            contract_id="OMN-123",
-            unknown="x",  # type: ignore[call-arg]
+        ModelCodeEvalSuiteCandidate.model_validate(
+            {
+                "repository": "omnimarket",
+                "merge_commit": "a" * 40,
+                "contract_id": "OMN-123",
+                "unknown": "x",
+            }
         )
