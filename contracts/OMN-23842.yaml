@@ -17,7 +17,7 @@ requirements:
   - id: AC3
     statement: 'AC3: the declared rows give each lab login CREATE and DELETE on the five drill prefixes -- falsifier: python -m pytest tests/test_broker_acl_overlays.py -q in the overlays repository'
   - id: AC4
-    statement: 'AC4: integrated: after the rows are applied on the development broker, the real-broker cases of the piece 16 chain test pass on a lab host and the board J16 line reads pass -- falsifier: RUN_REDPANDA_PIECE16=1 uv run pytest tests/chains/piece16/test_piece16_chain.py -k redpanda, and the J16 line of the floor board read after its next publish'
+    statement: 'AC4: integrated: after the rows are applied on the development broker, the real-broker cases of the piece 16 chain test pass on a lab host and the board''s J16 line reads pass -- falsifier: RUN_REDPANDA_PIECE16=1 uv run pytest tests/chains/piece16/test_piece16_chain.py -k redpanda, and the J16 line of the floor board read after its next publish'
 evidence_requirements:
 - kind: tests
   description: The drill topic provision tests pass at the pushed head.
