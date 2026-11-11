@@ -6,6 +6,8 @@ from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_in_memory 
     InMemoryDevDeployFacts,
 )
 from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_lab_facts import (
+    DeployAgentSource,
+    GitLineageSource,
     GitRuntimeMergeSource,
     LabDevDeployFacts,
     LaneHealthReceiptSource,
@@ -13,6 +15,8 @@ from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_lab_facts 
 )
 
 __all__ = [
+    "DeployAgentSource",
+    "GitLineageSource",
     "GitRuntimeMergeSource",
     "InMemoryDevDeployFacts",
     "LabDevDeployFacts",
