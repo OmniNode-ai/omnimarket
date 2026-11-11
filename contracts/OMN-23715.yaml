@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23715
+title: The lab proof runner applies the declared outside-the-runtime rule to the shard-crash fix
+summary: >-
+  node_lab_proof_judge_compute reads the lab probe's live-grep lines and answers for the pool driver's clone and probe text (the pool-run verb), so the changed_path_live rule has one home. A declared outside-the-runtime node reads NOT_APPLICABLE only with its substitute receipt at the head; a runtime node no log mentions still FAILS.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23715-judge
+    statement: The receipt verdict for changed_path_live comes from node_lab_proof_judge_compute, and a failure is never turned into a pass.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: with the judge command configured, the pool driver passes the changed paths to the declared judge and a NOT_APPLICABLE answer makes changed_path_live pass with the class and substitute proof in the receipt evidence, while a FAIL answer, an unavailable judge or an unset command never turns a failure into a pass -- falsifier: uv run --frozen pytest tests/unit/scripts/test_prepr_pool_declared_judge_omn23642.py -q --no-cov -n 0 -p no:randomly fails at the base'
+      - id: AC2
+        statement: 'AC2: the three timer nodes of the shard-crash fix are declared as running outside the runtime in the judge overlay and a substitute receipt is recorded for each at that revision -- falsifier: the judge reading on the lab host at that revision reads FAIL or names no substitute proof'
+      - id: AC3
+        statement: 'AC3: integrated: a lab proof run on the shard-crash fix''s exact revision, with the judge command installed on the pool driver''s host, posts a lab-proof-receipt check run of success with the not-applicable class in its evidence -- falsifier: the check run on that revision reads failure with token RESULT_NOT_PASS'
+evidence_requirements:
+  - kind: tests
+    description: The focused tests of this change and the existing tests they extend.
+    command: uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23715-node
+    description: The node reads the lab probe's live-grep lines itself and answers for the pool driver's clone and probe text. A declared node with a substitute receipt reads NOT_APPLICABLE with its class and proof; a runtime node no log mentions still reads FAIL, and a declared node with no receipt still reads FAIL; a probe with no live-grep line is NO_CHECK. The new test files are absent at the merge base.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn23715-declared-and-integrated
+    description: The three timer nodes are declared in the judge overlay (the overlays repository) and a substitute receipt is recorded for each at the shard-crash fix's head; a lab proof run at that head, with the judge command installed on the pool driver's host, posts a lab-proof-receipt check run of success with the class in its evidence. A hosted runner cannot reach the lab host, so the reading is the lane's runtime report.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC2, AC3]
+    checks:
+      - check_type: command
+        check_value: 'test -s "$OMNI_HOME/.claude_scratch/reports/labproof-judge-4070/result.md"'
+        cwd: .
+  - id: dod-omn23715-integration-proof-lab
+    description: Runs this change's tests at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23715 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute -q --no-cov -n 0 -p no:randomly'
+        cwd: .
