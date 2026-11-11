@@ -29,13 +29,21 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn23826-ac1-ac2-overlays-repository
-  description: The overlays half (AC1 and AC2) is held by tests in the overlays repository pull request for this ticket (tests/test_delegation_routing_overlay.py, tests/test_overlay_store_load_list.py) and its ci pin check; hosted CI here cannot run them, so the local Done gate reads the merged document and the loader list from the overlays clone.
+- id: dod-omn23826-ac1-ac2-ac5-store-document-loads
+  description: The omnimarket half of AC1, AC2 and AC5 at the pushed head. The store document is read through the omnimarket routing overlay model and resolved from the overlay store root while a plugin copy still exists. These tests fail at the merge base, where the store lookup does not exist. The overlays repository half (its own tests and pin check) is read by the unbound local Done gate items below.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC1
   - AC2
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_routing_overlay_store_first.py -q --no-cov -n 0 -p no:randomly -k "store_document_wins or golden_chain"
+    cwd: .
+- id: dod-omn23826-overlays-repository-readback
+  description: The overlays half (AC1 and AC2) is held by tests in the overlays repository pull request for this ticket (tests/test_delegation_routing_overlay.py, tests/test_overlay_store_load_list.py) and its ci pin check; hosted CI here cannot run them, so the local Done gate reads the merged document and the loader list from the overlays clone. Unbound because the hosted control cannot run a local_done_gate item.
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: git -C "$OMNI_HOME/../overlays" show origin/main:overlays/delegation_routing/overlay.yaml
@@ -65,8 +73,6 @@ dod_evidence:
   description: The pushed head ran the store-first tests on a lab host through the lab work runner and exited 0. The running-host half (the resolved path on a lab host) is read from the lab receipt comment on the ticket.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23826 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_routing_overlay_store_first.py -q --no-cov -n 0 -p no:randomly
