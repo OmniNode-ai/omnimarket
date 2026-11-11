@@ -37,9 +37,15 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_answer_
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history import (
     history_answer,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_latest_answer import (
+    encode_latest_cursor,
+    latest_query_for,
+    load_latest_default_page_size,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
     ProtocolWorkLedgerFilteredRowReader,
+    ProtocolWorkLedgerLatestReader,
     ProtocolWorkLedgerOldestRowReader,
     ProtocolWorkLedgerQueryReader,
     ProtocolWorkLedgerStateReader,
@@ -85,6 +91,7 @@ class HandlerWorkLedgerQuery:
         self._answer_bound = load_work_ledger_answer_bound(self._contract_path)
         self._hold_stale_after = load_hold_stale_after(self._contract_path)
         self._rows_window = load_rows_window(self._contract_path)
+        self._latest_page_size = load_latest_default_page_size(self._contract_path)
         self._now = now if now is not None else lambda: datetime.now(UTC)
         self._reader = (
             reader
@@ -135,6 +142,8 @@ class HandlerWorkLedgerQuery:
                 return self._fail(
                     base, f"{type(exc).__name__}: history acquisition failed"
                 )
+        if request.query is EnumWorkLedgerQueryKind.LATEST_STATE:
+            return self._latest_query(request, base)
         if request.query in POINT_QUERY_KINDS:
             if isinstance(self._reader, ProtocolWorkLedgerStateReader):
                 return self._point_query(request, base, now)
@@ -295,6 +304,43 @@ class HandlerWorkLedgerQuery:
         """An error answer: no section is an answer, so none is filled."""
         return base.model_copy(
             update={"error": message, "status": "error", "page_size": page_size}
+        )
+
+    def _latest_query(
+        self,
+        request: ModelWorkLedgerQueryRequest,
+        base: ModelWorkLedgerQueryResult,
+    ) -> ModelWorkLedgerQueryResult:
+        """latest-state (OMN-23606): one keyset page of the newest row per lane or ticket and row type,
+        with its size and the table's watermark. A reader with no latest table answers an error, never an empty page."""
+        page_size = request.page_size or self._latest_page_size
+        reader = self._reader
+        if not isinstance(reader, ProtocolWorkLedgerLatestReader):
+            return self._fail(
+                base,
+                "latest-state needs a reader backed by work_ledger_latest",
+                page_size=page_size,
+            )
+        try:
+            page = reader.read_latest_page(
+                query=latest_query_for(request, limit=page_size)
+            )
+        except Exception as exc:  # the reader already redacts connection details
+            with contextlib.suppress(Exception):
+                close = getattr(reader, "close", None)
+                if close is not None:
+                    close()
+            return self._fail(base, self._message(exc), page_size=page_size)
+        return base.model_copy(
+            update={
+                "latest": page.entries,
+                "matched": len(page.entries),
+                "page_size": page_size,
+                "watermark": page.watermark,
+                "next_cursor": encode_latest_cursor(page.entries[-1])
+                if page.has_more and page.entries
+                else None,
+            }
         )
 
     def _point_query(
