@@ -267,6 +267,7 @@
   "tests/formal/test_host_state_models_omn22429.py": 0.17,
   "tests/formal/test_lander_lease_model.py": 0.04,
   "tests/formal/test_landing_stall_model.py": 0.05,
+  "tests/formal/test_lane_start_model.py": 1.87,
   "tests/formal/test_ledger_reducer_judge_model.py": 0.47,
   "tests/formal/test_ledger_reducer_judge_review.py": 0.01,
   "tests/formal/test_remote_lane_stop_model.py": 0.17,
