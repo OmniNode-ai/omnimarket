@@ -14,7 +14,7 @@ requirements:
   - id: AC2
     statement: 'AC2: a bad local_endpoints row is refused naming the backend id and the key and never the endpoint value -- falsifier: the error-chain tests turn red when the validator is removed'
   - id: AC3
-    statement: 'AC3: a bound routing overlay with no local_endpoints section resolves exactly as before -- falsifier: test_an_absent_section_changes_nothing fails if the section becomes required'
+    statement: 'AC3: a routing overlay with or without a local_endpoints section resolves every other backend exactly as before -- falsifier: test_a_declared_section_leaves_every_other_backend_unchanged fails on the base revision, which refuses the section'
   - id: AC4
     statement: 'AC4: integrated: onex delegate with the lab rung first, on a machine with no machine-local overrides file and the routing overlay bound, is answered by a local GPU and the receipt names backend and model -- falsifier: the run receipt names a hosted backend or an empty endpoint'
 evidence_requirements:
@@ -51,7 +51,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_local_endpoints_overlay_omn23871.py -q -n 0 --no-cov -p no:cacheprovider -k absent_section
+    check_value: uv run pytest tests/unit/delegation/test_local_endpoints_overlay_omn23871.py -q -n 0 --no-cov -p no:cacheprovider -k "absent_section or other_backend"
     cwd: .
 - id: dod-omn23889-ac4
   description: 'AC4: integrated: the declared endpoint wins over a stale machine-local file in the loaders a lab run reaches, shown by the focused test; the lab run itself is recorded in the pull request, because hosted CI cannot reach the lab'

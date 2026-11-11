@@ -190,6 +190,20 @@ def test_an_absent_section_changes_nothing(
     assert _backends(tmp_path) == unbound
 
 
+def test_a_declared_section_leaves_every_other_backend_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A declaration for one local backend leaves the other contract backends as they were."""
+    monkeypatch.delenv(_KEY, raising=False)
+    unbound = {b["backend_id"]: b for b in _backends(tmp_path)}
+    _write_overlay(tmp_path, monkeypatch, _local_endpoints_one())
+    bound = {b["backend_id"]: b for b in _backends(tmp_path)}
+    assert set(bound) == set(unbound)
+    for backend_id, row in unbound.items():
+        if backend_id != "local-coder":
+            assert bound[backend_id] == row
+
+
 def _local_endpoints_one(**overrides: Any) -> list[dict[str, Any]]:
     row: dict[str, Any] = {
         "backend_id": "local-coder",
