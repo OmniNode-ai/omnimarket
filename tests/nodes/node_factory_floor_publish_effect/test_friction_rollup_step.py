@@ -431,9 +431,10 @@ def test_error_a_spent_time_budget_is_unread_and_stops_reading(
     ticks = iter([0.0, 1.0, 2.0, 6.0, 7.0, 8.0])
     home = tmp_path / "home"
     home.mkdir()
+    assert step.rollup is not None
     with pytest.raises(PublishRefusedError) as raised:
         HandlerFrictionRollupSource().handle(
-            step.rollup,  # type: ignore[arg-type]
+            step.rollup,
             now=NOW,
             environ=environ(tmp_path),
             monotonic=lambda: next(ticks),
@@ -455,12 +456,13 @@ def test_error_a_page_runs_under_the_time_left_of_the_budget() -> None:
 
     step = friction_step(ledger_time_budget_seconds=80)
     ticks = iter([0.0, 5.0, 45.5, 50.0, 60.0])
+    assert step.rollup is not None
     with patch(
         "omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source.CommandPointRead",
         Spy,
     ):
         HandlerFrictionRollupSource().handle(
-            step.rollup,  # type: ignore[arg-type]
+            step.rollup,
             now=NOW,
             environ={READ_ENV: "true", OVERLAY_ENV: str(OVERLAY)},
             monotonic=lambda: next(ticks),
