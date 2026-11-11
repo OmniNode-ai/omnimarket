@@ -32,7 +32,9 @@ def test_contract_declares_the_ledger_read_and_the_four_tables() -> None:
         "merge_override_verdicts",
         "merge_override_open_findings",
     ):
-        assert tables[name]["access"] == "write"
+        # The store reads these before it writes (OMN-16690): read_write, never write.
+        expected = "write" if name == "merge_override_open_findings" else "read_write"
+        assert tables[name]["access"] == expected
         assert (NODE / "migrations" / tables[name]["migration"]).is_file()
         assert (
             f"CREATE TABLE IF NOT EXISTS {name} "

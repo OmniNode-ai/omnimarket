@@ -20,9 +20,6 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import (
     EnumPrLandingGithubOperation,
 )
-from omnimarket.events.pr_landing_github.model_github_pr_merge_state_fact import (
-    ModelGithubPrMergeStateFact,
-)
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
 )
@@ -30,6 +27,9 @@ from omnimarket.events.pr_landing_github.model_pr_landing_github_completed impor
     ModelPrLandingGithubCompleted,
 )
 from omnimarket.github_landing.github_landing_requests import pull_request_request
+from omnimarket.models.model_github_pr_merge_state_fact import (
+    ModelGithubPrMergeStateFact,
+)
 from omnimarket.models.model_repo_merged import ModelRepoMerged
 from omnimarket.nodes.node_merge_override_alarm_effect.handlers import (
     handler_merge_override_alarm,

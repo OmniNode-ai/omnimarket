@@ -53,9 +53,6 @@ from omnimarket.events.pr_landing_github.model_github_check_run_fact import (
     required_contexts_from_branch_body,
     required_contexts_from_rules_body,
 )
-from omnimarket.events.pr_landing_github.model_github_pr_merge_state_fact import (
-    ModelGithubPrMergeStateFact,
-)
 from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
     branch_request,
@@ -77,6 +74,9 @@ from omnimarket.github_landing.model_github_http_exchange import (
 from omnimarket.handlers.github_quota_readings import GithubQuotaReadings
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.merge_control.hold_marker import evaluate_merge_hold
+from omnimarket.models.model_github_pr_merge_state_fact import (
+    ModelGithubPrMergeStateFact,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_landing_github_effect.models import (
     EnumPrLandingGithubFailureReason,

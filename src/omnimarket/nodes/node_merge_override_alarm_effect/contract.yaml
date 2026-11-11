@@ -122,19 +122,19 @@ db_io:
       database_ref: application
       schema: omninode_internal
       migration: "0001_create_merge_override_tables.sql"
-      access: write
+      access: read_write
       role: merge_override_receipts
     - name: merge_override_pending
       database_ref: application
       schema: omninode_internal
       migration: "0001_create_merge_override_tables.sql"
-      access: write
+      access: read_write
       role: merge_override_pending
     - name: merge_override_verdicts
       database_ref: application
       schema: omninode_internal
       migration: "0001_create_merge_override_tables.sql"
-      access: write
+      access: read_write
       role: merge_override_verdicts
     - name: merge_override_open_findings
       database_ref: application

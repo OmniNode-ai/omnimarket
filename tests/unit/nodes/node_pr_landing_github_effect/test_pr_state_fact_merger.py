@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.events.pr_landing_github.model_github_pr_merge_state_fact import (
-    ModelGithubPrMergeStateFact,
-)
 from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
     GithubPrStateParseError,
+)
+from omnimarket.models.model_github_pr_merge_state_fact import (
+    ModelGithubPrMergeStateFact,
 )
 
 pytestmark = pytest.mark.unit
