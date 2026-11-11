@@ -96,6 +96,7 @@ def emit_join_chains(
         clock=clock,
         correlation_id=result.correlation_id,
         backend=backend,
+        origin="probe",
     )
     graph.start()
     if result.state == "passed":
@@ -107,6 +108,7 @@ def emit_join_chains(
             clock=clock,
             correlation_id=result.correlation_id,
             backend=backend,
+            origin="probe",
         )
         host.start()
         host.success({"verdicts": len(result.verdicts)})
@@ -120,6 +122,7 @@ def emit_join_chains(
             phase="failure",
             emitted_at=clock(),
             backend=backend,
+            origin="probe",
             failure_code=f"{UPSTREAM_PREFIX}{result.failure_code}",
             failure_detail=result.failure_detail,
         )
