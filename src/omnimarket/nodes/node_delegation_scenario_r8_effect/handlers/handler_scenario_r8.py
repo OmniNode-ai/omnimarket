@@ -47,6 +47,12 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     build_event_sink,
     bus_appender,
 )
+from omnimarket.handlers.delegation_scenario_settings import (
+    ProtocolSettingStore,
+    SecretStoreSettingsReader,
+    fill_overlay_settings,
+    load_store_overlay,
+)
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioTrigger,
     ModelScenarioResult,
@@ -341,16 +347,31 @@ LANE_BUILDERS: Mapping[
 }
 
 
+def r8_settings_store(
+    environ: Mapping[str, str] | None = None,
+) -> SecretStoreSettingsReader:
+    """The R8 key store reader: its store block is the R8 overlay document's when the deployment supplies one."""
+    return SecretStoreSettingsReader(overlay=load_store_overlay(NODE_NAME, environ))
+
+
 def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
     record: Path | None = None,
+    settings_store: ProtocolSettingStore | None = None,
+    settings_home: Path | None = None,
 ) -> HandlerScenarioR8:
     """The production wiring: the registry home, the bus commands and the contract's lane backend."""
     runtime = load_runtime()
     settings = load_lane_settings()
-    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
+    environment = fill_overlay_settings(
+        dict(os.environ if env is None else env),  # ONEX_FLAG_EXEMPT
+        runtime.settings_overlay_relpath,
+        node_dir=CONTRACT_PATH.parent,
+        store=settings_store,
+        home=settings_home,
+    )
     home = Path(environment[runtime.home_env])
     if record is not None:
         appender = _record_appender(record)

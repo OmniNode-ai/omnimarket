@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Redpanda profile of node_pr_landing_tick_orchestrator, the shape of the deployed copy in the overlays repository
+# (node_pr_landing_tick_orchestrator/overlay.yaml): observe mode only, the broker resolved from the dev bus lane.
+backend: redpanda
+publish_backend: redpanda
+act_enabled: false
+cutover_repository: OmniNode-ai/omnimemory
+script_out_of_scope_repositories: []
+max_snapshots: 20
+floor_piece: 9
+emission_journal: $OMNIBASE_PATH/.onex_state/floor-simple/emissions.jsonl
+bus_lane: dev
+workspace_root: $OMNIBASE_PATH
+# The group joined is this name, a hyphen and the host identity the unit's ONEX_HOST_NAME holds (OMN-22921).
+consumer_group: landing-tick-orchestrator-cutover
+host_env: ONEX_HOST_NAME
+snapshot_topic: onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1
+# Measured 2026-11-11 on h053 against the dev broker: opening the lane 1.4 s, a fresh group's join 3.0 to 3.3 s
+# (three runs), so the join is bounded at 15 s. A pass reads up to poll_timeout_s after the join; the three bounds and the
+# margin must fit the unit's run limit (the registry unit's run_timeout_s), which the overlay validator checks.
+poll_timeout_s: 30
+join_timeout_s: 15
+run_limit_s: 50
+run_margin_s: 5
