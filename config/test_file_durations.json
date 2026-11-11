@@ -1716,6 +1716,7 @@
   "tests/nodes/node_merge_sweep_plan_compute/test_golden_chain_merge_sweep_plan_compute.py": 0.03,
   "tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_parity.py": 3.59,
   "tests/nodes/node_merge_sweep_reading_compute/test_error_chain_merge_sweep_reading_compute.py": 0.06,
+  "tests/nodes/node_merge_sweep_reading_compute/test_goal_scope_merge_sweep_reading.py": 3.56,
   "tests/nodes/node_merge_sweep_reading_compute/test_golden_chain_merge_sweep_reading_compute.py": 0.03,
   "tests/nodes/node_merge_sweep_reading_compute/test_merge_sweep_reading_parity.py": 5.55,
   "tests/nodes/node_merge_sweep_same_head_compute/test_golden_chain_merge_sweep_same_head_compute.py": 0.03,

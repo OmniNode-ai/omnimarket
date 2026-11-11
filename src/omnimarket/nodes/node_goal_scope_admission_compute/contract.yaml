@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_goal_scope_admission_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The one goal-scope rule (OMN-23851), ported from the onex-overlays plugin with its Linear
+  reads removed: a change is in the goal when the ticket it declares, or an ancestor within
+  max_depth hops, is a root of the rule or sits in a listed project; an unread ticket is never
+  admitted. The candidates arrive with the rule (the goal_scope_ticket_rule overlay, OMN-22570),
+  the ticket scope (the ticket_scope overlay, OMN-23184), the ancestry facts the caller already
+  read and the tickets a read failed on with why; nothing is read here, no clock, no env. The
+  walk is the plugin's own: the chain is walked on parents alone first (OMN-23310), a root on
+  it decides without a project read, the projects of a chain with no root are read lowest
+  first, and a read that failed never undoes a yes already read.
+input_model:
+  name: ModelGoalScopeAdmissionRequest
+  module: omnimarket.models.goal_scope_admission.model_goal_scope_admission
+output_model:
+  name: ModelGoalScopeAdmissionResult
+  module: omnimarket.models.goal_scope_admission.model_goal_scope_admission
+handler:
+  module: omnimarket.nodes.node_goal_scope_admission_compute.handlers.handler_goal_scope_admission
+  class: HandlerGoalScopeAdmission
+  input_model: omnimarket.models.goal_scope_admission.model_goal_scope_admission.ModelGoalScopeAdmissionRequest
+  output_model: omnimarket.models.goal_scope_admission.model_goal_scope_admission.ModelGoalScopeAdmissionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_goal_scope_admission_compute.handlers.handler_goal_scope_admission:HandlerGoalScopeAdmission
+  handlers:
+    - operation: admit_goal_scope
+      topic: onex.cmd.omnimarket.goal-scope-admission-requested.v1
+      handler:
+        name: HandlerGoalScopeAdmission
+        module: omnimarket.nodes.node_goal_scope_admission_compute.handlers.handler_goal_scope_admission
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  candidates: {type: object, required: true, description: "Candidate changes, each keyed repo#n, with the title and body declared_ticket reads."}
+  rule: {type: object, required: false, description: "The goal's ticket rule (OMN-22570) the caller read from its overlay: the roots, the depth walked and the read bounds it names."}
+  scope: {type: object, required: false, description: "The ticket scope (OMN-23184) the caller read from its overlay: the Linear projects listed by id or name."}
+  ticket_facts: {type: object, required: false, description: "The ancestry facts the caller already read, keyed by ticket id; a fact that does not cover the fields asked for is never guessed from."}
+  unread_tickets: {type: object, required: false, description: "Each ticket the caller tried to read and could not, with why; such a ticket is never admitted."}
+outputs:
+  admitted: {type: object, description: "Each admitted candidate keyed repo#n with its verdict: via ticket (the chain up to the root) or via project (the project, or name@ancestor)."}
+  not_admitted: {type: object, description: "Each candidate out of the goal keyed repo#n with the reason (declares no ticket, no goal rule or ticket scope is installed, under no goal root and in no listed project)."}
+  unread: {type: object, description: "Each candidate whose ticket could not be read keyed repo#n with why, cut at 160 characters; never admitted, never a no."}
+terminal_event: onex.evt.omnimarket.goal-scope-admission-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.goal-scope-admission-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.goal-scope-admission-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.goal-scope-admission-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.goal-scope-admission-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Goal-scope admission of candidate changes
+  author: OmniNode Team
+  created: "2026-11-11"
+  related_tickets: [OMN-23851, OMN-22570, OMN-23184, OMN-23310]
