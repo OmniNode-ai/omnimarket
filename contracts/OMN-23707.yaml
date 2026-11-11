@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-23707
+title: The host disk and container run uses the marketplace node with the declared lane list
+summary: The scheduled disk and container run on h201 ran a retired internal copy of the handler that errors on a container docker lists but cannot inspect. The marketplace node already treats those as ghosts but had no scheduled entry point. It now has one (with a probe, a run heartbeat and exit codes) and the host installer registry declares the unit that replaces the old one; the protected container list comes only from the node's overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23707-tick-entry
+  statement: The lab disk hygiene node has a scheduled tick entry that reads the protected container list from its overlay, never from code, and a unit declaration installs it on a lab host.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the scheduled entry point runs the hygiene handler with the lane list from the declared overlay, writes a run receipt, and exits 0 when the only trouble is a container Docker cannot describe -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q -k ''ghost or heartbeat'' fails at the merge base (the module does not exist)'
+  - id: AC2
+    statement: 'AC2: an unreadable or undeclared lane list removes no container and the entry point exits non-zero naming it -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q -k ''census or overlay_refused'''
+  - id: AC3
+    statement: 'AC3: integrated: the scheduled unit on the lab host, installed from the branch through the declared installer, ends a run with exit 0 and a fresh receipt -- falsifier: the lab-work run of the unit test files at the pushed head, and on the host systemctl --user show onex-host-disk-hygiene -p Result with the receipt file last-run.json'
+evidence_requirements:
+- kind: tests
+  description: The tick tests and the unit declaration test at the pushed head; on the dev head the tick module and the unit declaration do not exist so each fails at import.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-23707-ac1
+  description: 'Golden chain: a container docker cannot describe is a ghost and exits 0, the heartbeat is written, the probe loads nothing; failing control: an engine failure naming no candidate exits 1 and removes nothing.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q --no-cov -n 0 -p no:randomly -k 'ghost or heartbeat or probe or engine_failure'
+    cwd: .
+- id: dod-omn-23707-ac2
+  description: 'Error chain: an unreadable census, an undeclared census and a refused overlay each remove no container and exit non-zero.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py -q --no-cov -n 0 -p no:randomly -k 'census or overlay_refused'
+    cwd: .
+- id: dod-omn-23707-ac3
+  description: The unit declaration renders the module, overlay root and tick arguments.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_lab_disk_hygiene_unit.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn-23707-integration-proof
+  description: The pushed head's tick and unit tests ran on a lab host and exited 0, and the unit installed from the branch ran one tick.
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23707 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect/test_tick.py tests/nodes/node_host_installer_registry_units/test_lab_disk_hygiene_unit.py -q --no-cov -p no:randomly
+    cwd: .
