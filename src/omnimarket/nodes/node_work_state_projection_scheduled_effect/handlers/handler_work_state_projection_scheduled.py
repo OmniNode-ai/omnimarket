@@ -41,11 +41,13 @@ SCHEDULE_OVERLAY_FILE_ENV = "ONEX_WORK_STATE_SCHEDULE_OVERLAY"
 
 
 def projector_for(
-    profile: EnumWorkStateProjectorProfile, environ: Mapping[str, str] | None
+    profile: EnumWorkStateProjectorProfile,
+    environ: Mapping[str, str] | None,
+    state_home: str | None = None,
 ) -> ProtocolWorkStateProjector:
     """The projector a schedule overlay's profile binds: the in-memory default or the file sources."""
     if profile is EnumWorkStateProjectorProfile.FILE_SOURCES:
-        return FileSourcesWorkStateProjector(environ)
+        return FileSourcesWorkStateProjector(environ, state_home)
     return UnreadWorkStateProjector()
 
 
@@ -115,7 +117,9 @@ class HandlerWorkStateProjectionScheduled:
             seconds=schedule.run_interval_seconds
         ):
             return None
-        projector = self._projector or projector_for(schedule.projector, self._environ)
+        projector = self._projector or projector_for(
+            schedule.projector, self._environ, schedule.state_home
+        )
         try:
             result = projector.project(now)
         except NodeOverlayNotFoundError as exc:

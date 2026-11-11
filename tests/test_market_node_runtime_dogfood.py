@@ -169,6 +169,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # composes it; it subscribes to no topic, so it has no onex.nodes entry
     # point.
     "node_pr_landing_liveness_read_effect",
+    # OMN-23606: the factory floor unresolved rows effect runs as a step of the
+    # floor publisher through its own `python -m` module, about every six hours;
+    # it publishes nothing and subscribes to no topic, so it has no onex.nodes
+    # entry point.
+    "node_factory_floor_unresolved_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
