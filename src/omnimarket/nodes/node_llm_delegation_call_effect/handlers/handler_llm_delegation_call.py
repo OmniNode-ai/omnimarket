@@ -359,6 +359,12 @@ def _compute_cost(
     if byok_backend_provider(provider) is not None:
         model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
         if model_price is None:
+            # OMN-23751: an eval arm on the registered key keeps the arm's model
+            # and is booked at the arm's declared price.
+            model_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
+                endpoint_url, model_id
+            )
+        if model_price is None:
             return Decimal("0"), Decimal("0"), Decimal("0"), EnumCostBasis.UNKNOWN
         declared_price: tuple[Decimal, Decimal] | None = model_price
     else:

@@ -16,7 +16,9 @@ import omnimarket
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
+from omnimarket.handlers.routing import local_byok_route
 from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
     _select_backend,
     _select_backend_by_id,
     load_bifrost_backends,
@@ -141,3 +143,51 @@ def test_a_call_on_an_eval_arm_is_booked_at_its_own_price() -> None:
     )
     # 0.30 in plus 1.00 out, not cheap_frontier's free_local zero.
     assert actual == Decimal("1.30")
+
+
+def _resolved(backend_id: str, model_id: str) -> ModelResolvedDelegationBackend:
+    return ModelResolvedDelegationBackend(
+        backend_id=backend_id,
+        model_id=model_id,
+        endpoint_ref=ENDPOINT,
+        tier="cheap_frontier",
+        max_tokens=32768,
+        timeout_ms=300000,
+        secret_ref="llm.hosted.api_key",
+    )
+
+
+@pytest.fixture
+def registered_key_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A machine with the team's own key registered: every house rung is substituted."""
+    monkeypatch.setattr(
+        local_byok_route, "resolve_local_byok_credential_plan", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        local_byok_route, "resolve_byok_provider_backend", lambda *_a, **_k: object()
+    )
+
+    def _route(
+        _byok: object, *, replaced: ModelResolvedDelegationBackend, **_k: object
+    ) -> ModelResolvedDelegationBackend:
+        return _resolved("byok-hosted", "the-key/registered-model").model_copy(
+            update={"substituted_from_backend_id": replaced.backend_id}
+        )
+
+    monkeypatch.setattr(local_byok_route, "_registered_byok_route", _route)
+
+
+@pytest.mark.usefixtures("bound_overlay", "registered_key_route")
+def test_a_registered_key_keeps_the_eval_arm_model() -> None:
+    route = local_byok_route.substitute_local_byok_route(_resolved(EVAL_ID, SLUG))
+    assert route.backend_id == "byok-hosted"
+    assert route.substituted_from_backend_id == EVAL_ID
+    assert route.model_id == SLUG
+
+
+@pytest.mark.usefixtures("bound_overlay", "registered_key_route")
+def test_a_registered_key_still_chooses_the_model_of_any_other_rung() -> None:
+    route = local_byok_route.substitute_local_byok_route(
+        _resolved("some-house-rung", "house/model")
+    )
+    assert route.model_id == "the-key/registered-model"
