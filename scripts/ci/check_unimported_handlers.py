@@ -24,134 +24,16 @@ Exit codes: 0 = clean; 1 = violations found; 2 = invocation error.
 from __future__ import annotations
 
 import ast
-import contextlib
 import hashlib
 import pathlib
 import re
 import sys
 
-_INLINE_ALLOW_MARKER = "# unimported-handler-allow:"
-_HANDLER_CLASS_RE = re.compile(r"^Handler[A-Z]\w*$")
-
-
-def _collect_handler_definitions(
-    src_root: pathlib.Path,
-) -> list[tuple[str, pathlib.Path, int]]:
-    """Return (ClassName, defining_file, lineno) for all Handler* classes."""
-    definitions: list[tuple[str, pathlib.Path, int]] = []
-    for py_file in sorted(src_root.rglob("handler_*.py")):
-        # Skip test files
-        if py_file.name.startswith("test_") or "conftest" in py_file.name:
-            continue
-        try:
-            source = py_file.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if _INLINE_ALLOW_MARKER in source:
-            continue
-        try:
-            tree = ast.parse(source, filename=str(py_file))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and _HANDLER_CLASS_RE.match(node.name):
-                definitions.append((node.name, py_file, node.lineno))
-    return definitions
-
-
-def _collect_all_source_lines(src_root: pathlib.Path) -> dict[pathlib.Path, str]:
-    """Return {path: source_text} for all .py files under src_root."""
-    sources: dict[pathlib.Path, str] = {}
-    for py_file in sorted(src_root.rglob("*.py")):
-        with contextlib.suppress(OSError):
-            sources[py_file] = py_file.read_text(encoding="utf-8")
-    return sources
-
-
-def _repo_relative(path: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
-    with contextlib.suppress(ValueError):
-        return path.relative_to(repo_root)
-    return path
-
-
-def _load_baseline(baseline_path: pathlib.Path | None) -> set[str]:
-    """Load documented legacy entries as ``repo/path.py:HandlerClass`` keys."""
-    if baseline_path is None or not baseline_path.is_file():
-        return set()
-
-    entries: set[str] = set()
-    for raw_line in baseline_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        entries.add(line.split("#", 1)[0].strip())
-    return entries
-
-
-def _collect_referenced_symbols(source: str) -> set[str]:
-    """Return Python symbols imported or referenced by AST nodes."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return set()
-
-    symbols: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                symbols.add(alias.asname or alias.name.rsplit(".", 1)[-1])
-            continue
-
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                symbols.add(alias.asname or alias.name)
-            continue
-
-        if isinstance(node, ast.Name):
-            symbols.add(node.id)
-            continue
-
-        if isinstance(node, ast.Attribute):
-            symbols.add(node.attr)
-
-    return symbols
-
-
-def find_dead_handlers(
-    src_root: pathlib.Path,
-    baseline_path: pathlib.Path | None = None,
-) -> list[str]:
-    """Return sorted violation strings for Handler* with no wiring evidence."""
-    definitions = _collect_handler_definitions(src_root)
-    if not definitions:
-        return []
-
-    all_sources = _collect_all_source_lines(src_root)
-    all_source_symbols = {
-        py_file: _collect_referenced_symbols(source)
-        for py_file, source in all_sources.items()
-    }
-    repo_root = src_root.parent.parent
-    baseline = _load_baseline(baseline_path)
-
-    dead: list[str] = []
-    for class_name, defining_file, lineno in sorted(definitions):
-        imported_elsewhere = False
-        for py_file, symbols in all_source_symbols.items():
-            if py_file == defining_file:
-                continue
-            if class_name in symbols:
-                imported_elsewhere = True
-                break
-        if not imported_elsewhere:
-            rel = _repo_relative(defining_file, repo_root)
-            baseline_key = f"{rel}:{class_name}"
-            if baseline_key in baseline:
-                continue
-            dead.append(f"{rel}:{lineno}: {class_name}")
-
-    return dead
-
+from omnimarket.handlers.unimported_handler_baseline import (
+    _repo_relative,
+    find_dead_handlers,
+    find_stale_baseline_entries,
+)
 
 # The transport hook uses this existing import gate's CLI, so both import checks
 # share one implementation file. The core validator
@@ -497,6 +379,19 @@ def main() -> int:
     if not src_root.is_dir():
         print(f"ERROR: src/omnimarket not found under {repo_root}", file=sys.stderr)
         return 2
+
+    stale = find_stale_baseline_entries(src_root, baseline_path)
+    if stale:
+        print(f"ERROR: {len(stale)} stale unimported-handler baseline entr(ies):")
+        for entry in stale:
+            print(f"  {entry}")
+        print()
+        print(
+            "Fix: remove each entry from "
+            "scripts/validation/unimported_handler_baseline.txt (its file or "
+            "class is gone, or the class is now imported)."
+        )
+        return 1
 
     dead = find_dead_handlers(src_root, baseline_path=baseline_path)
     if dead:

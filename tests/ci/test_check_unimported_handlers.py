@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from scripts.ci.check_unimported_handlers import find_dead_handlers
+from scripts.ci.check_unimported_handlers import (
+    find_dead_handlers,
+    find_stale_baseline_entries,
+)
 
 
 def _write(root: Path, rel: str, body: str) -> Path:
@@ -193,3 +196,80 @@ def test_partial_import_clears_both_handlers(tmp_path: Path) -> None:
         "from .handlers.handler_x import HandlerXEffect, HandlerXAlt\n",
     )
     assert find_dead_handlers(tmp_path) == []
+
+
+_HANDLER_REL = "src/omnimarket/nodes/node_x/handlers/handler_x.py"
+
+
+def _baseline(tmp_path: Path, *entries: str) -> Path:
+    return _write(tmp_path, "baseline.txt", "".join(f"{e} # legacy\n" for e in entries))
+
+
+@pytest.mark.unit
+def test_stale_baseline_entry_for_deleted_file_is_reported(tmp_path: Path) -> None:
+    src = tmp_path / "src" / "omnimarket"
+    _write(src, "nodes/node_x/__init__.py", "")
+    baseline = _baseline(tmp_path, f"{_HANDLER_REL}:HandlerXEffect")
+    assert find_stale_baseline_entries(src, baseline) == [
+        f"{_HANDLER_REL}:HandlerXEffect"
+    ]
+
+
+@pytest.mark.unit
+def test_stale_baseline_entry_for_now_imported_class_is_reported(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src" / "omnimarket"
+    _write(
+        src, "nodes/node_x/handlers/handler_x.py", "class HandlerXEffect:\n    pass\n"
+    )
+    _write(
+        src,
+        "nodes/node_x/__init__.py",
+        "from .handlers.handler_x import HandlerXEffect\n",
+    )
+    baseline = _baseline(tmp_path, f"{_HANDLER_REL}:HandlerXEffect")
+    assert find_stale_baseline_entries(src, baseline) == [
+        f"{_HANDLER_REL}:HandlerXEffect"
+    ]
+
+
+@pytest.mark.unit
+def test_live_baseline_entry_is_not_a_stale_baseline_entry(tmp_path: Path) -> None:
+    src = tmp_path / "src" / "omnimarket"
+    _write(
+        src, "nodes/node_x/handlers/handler_x.py", "class HandlerXEffect:\n    pass\n"
+    )
+    baseline = _baseline(tmp_path, f"{_HANDLER_REL}:HandlerXEffect")
+    assert find_stale_baseline_entries(src, baseline) == []
+    assert find_dead_handlers(src, baseline_path=baseline) == []
+
+
+@pytest.mark.unit
+def test_committed_baseline_has_no_stale_baseline_entry() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    stale = find_stale_baseline_entries(
+        repo_root / "src" / "omnimarket",
+        repo_root / "scripts" / "validation" / "unimported_handler_baseline.txt",
+    )
+    assert stale == []
+
+
+_BASELINE_CEILING = 61
+
+
+@pytest.mark.unit
+def test_baseline_entry_count_does_not_grow_past_the_recorded_ceiling() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    baseline = repo_root / "scripts" / "validation" / "unimported_handler_baseline.txt"
+    entries = [
+        line
+        for line in baseline.read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    count = len(entries)
+    assert count <= _BASELINE_CEILING, (
+        f"unimported handler baseline holds {count} entries, which exceeds the "
+        f"recorded ceiling of {_BASELINE_CEILING}; shrink the baseline instead of "
+        "growing it"
+    )

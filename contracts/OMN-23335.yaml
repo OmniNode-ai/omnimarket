@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-23335
+title: Remove stale unimported-handler baseline entries and add a gate that refuses stale entries (validator exclusion burn-down slice)
+summary: The unimported-handler baseline lost the six entries that no longer name a dead handler (67 to 61), and the check now refuses a stale entry. The stale-entry logic lives in a handler module under src/omnimarket/handlers, so the baselined CI script does not grow.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23335-stale-baseline-entries
+  statement: The unimported-handler baseline holds no entry whose file or class is gone or whose class is now imported, and the check exits 1 and names any such entry.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the unimported-handler baseline holds no entry for a handler that does not exist, and the gate refuses a stale entry -- falsifier: uv run pytest tests -q -k stale_baseline_entry in omnimarket, failing with a stale entry planted'
+  - id: AC2
+    statement: 'AC2: the remaining exclusion count is recorded after this slice merges -- falsifier: the burn-down count in the PR body matches a recount on dev'
+evidence_requirements:
+- kind: tests
+  description: The stale-entry tests (deleted file, class now imported, live entry kept, committed baseline clean) and the dead-handler tests pass.
+  command: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23335-stale-entries-refused
+  description: Runs the focused tests selected by stale_baseline_entry. A planted entry for a deleted file and a planted entry for a class that is now imported are each reported, a live entry is not, and the committed baseline reports none. The planted-entry tests fail against the pre-change baseline, which carries six stale entries.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k stale_baseline_entry
+    cwd: .
+- id: dod-omn23335-check-clean
+  description: Runs the unimported-handler check on the tree; it exits 0 only when no stale entry and no unbaselined dead handler exists. It also exits 0 at the merge base, where the check cannot see a stale entry, so it is a regression check and binds no criterion.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
+    cwd: .
+- id: dod-omn23335-baseline-count
+  description: Runs the focused test selected by baseline_entry_count. The baseline file holds at most 61 entries, the count after this slice and down from 67 at the merge base, so the test fails on the merge base. The PR body states the count.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k baseline_entry_count
+    cwd: .
+- id: dod-omn23335-dead-handler-regression
+  description: Runs the whole file of dead-handler tests, which still pass with the scan moved into src/omnimarket/handlers. A regression check, so it binds no criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23335-integration-proof
+  description: On a lab host the unimported-handler check runs at the pushed head through the lab work runner and the focused stale-entry tests pass there. Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23335 --kind test -- uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q --no-cov -p no:randomly -k stale_baseline_entry'
+    cwd: .
