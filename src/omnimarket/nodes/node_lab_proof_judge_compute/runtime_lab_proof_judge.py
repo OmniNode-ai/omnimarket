@@ -24,7 +24,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ValidationError
 
-from omnimarket.adapters.lab_proof_receipt_store import (
+from omnimarket.handlers.adapter_lab_proof_receipt_store import (
     DirectoryReceiptStore,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
