@@ -8,8 +8,9 @@
 
 ``--inject <break>`` swaps one real port for a named injected break (the failing control); it is refused unless the overlay
 sets ``allow_injected_break``. Each verb prints one JSON object naming correlation ids, outcomes and positions, never a
-value. Exit codes: 0 every answered chain landed (or nothing was owed); 1 a chain did not land or the ledger could not be
-read; 3 a deployment fact is missing (no overlay, no host name, no append route), reported as INDETERMINATE.
+value; a verb that fails also writes its reason as one ``JOIN-J5-FAILED`` line to stderr, because the publisher keeps only
+the stderr tail of a failed step. Exit codes: 0 every answered chain landed (or nothing was owed); 1 a chain did not land or the
+ledger could not be read; 3 a deployment fact is missing (no overlay, no host name, no append route), reported as INDETERMINATE.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from pydantic import ValidationError
 from omnimarket.handlers.emission_sink import JsonlEmissionSink
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.work_ledger_append import (
+    EnumJoinJ5Outcome,
     ModelJoinJ5RunCommand,
     ModelJoinJ5RunResult,
 )
@@ -84,6 +86,33 @@ def _required_env(name: str) -> str:
     if not value:
         raise ValueError(f"{name} is not set; the overlay names it")
     return value
+
+
+def failure_report(result: ModelJoinJ5RunResult) -> str | None:
+    """The one-line stderr report of a run that did not land; ``None`` when the ledger read and every chain landed."""
+    if result.read_ok and all(
+        i.outcome is EnumJoinJ5Outcome.LANDED for i in result.items
+    ):
+        return None
+    if not result.read_ok:
+        return f"JOIN-J5-FAILED read_ok=false reason={result.reason}"
+    return "JOIN-J5-FAILED " + "; ".join(
+        f"{item.correlation_id} {item.outcome.value} {item.failure_code}: {item.detail}"
+        for item in result.items
+        if item.outcome is not EnumJoinJ5Outcome.LANDED
+    )
+
+
+def emit(result: ModelJoinJ5RunResult) -> int:
+    """The run's answer to the step: the JSON on stdout, the failure line on stderr when present, the exit code."""
+    sys.stdout.buffer.write(
+        (json.dumps(result.model_dump(mode="json"), sort_keys=True) + "\n").encode()
+    )
+    sys.stdout.buffer.flush()
+    report = failure_report(result)
+    if report is not None:
+        sys.stderr.write(report + "\n")
+    return 0 if report is None else 1
 
 
 def _run(arguments: argparse.Namespace) -> int:
@@ -158,12 +187,7 @@ def _run(arguments: argparse.Namespace) -> int:
             read_ok=False,
             reason=f"run deadline of {join.run_deadline_seconds} s passed before a chain started",
         )
-    sys.stdout.buffer.write(
-        (json.dumps(result.model_dump(mode="json"), sort_keys=True) + "\n").encode()
-    )
-    sys.stdout.buffer.flush()
-    ok = result.read_ok and all(i.outcome.value == "landed" for i in result.items)
-    return 0 if ok else 1
+    return emit(result)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

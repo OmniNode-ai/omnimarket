@@ -18,6 +18,10 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.landing_controller_carry import (
+    ModelLandingControllerDecisions,
+    ModelLandingControllerLogged,
+)
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
@@ -61,12 +65,28 @@ def _cutover() -> tuple[ModelTickSnapshot, str]:
     return snap, repos[0]
 
 
+def _controller(snap: ModelTickSnapshot) -> ModelLandingControllerDecisions:
+    """The old controller's finished tick as the record carries it: its decision rows, here the node path's own."""
+    return ModelLandingControllerDecisions(
+        controller_tick=1,
+        observed_at=snap.facts.observed_at,
+        decisions=tuple(
+            ModelLandingControllerLogged(
+                kind=action.kind, subject=action.subject, outcome="performed"
+            )
+            for action in NodePathDecider().decide(snap.facts, snap.fair_share).actions
+        ),
+        source="test",
+    )
+
+
 def _record(snap: ModelTickSnapshot) -> str:
     return ModelLandingTickRecord(
         correlation_id=uuid4(),
         tick=snap.facts.tick,
         facts=snap.facts,
         provenance="test",
+        controller=_controller(snap),
     ).model_dump_json()
 
 
@@ -84,6 +104,10 @@ def _overlay(
         "consumer_group": "landing-tick-cutover",
         "snapshot_topic": RECORD_TOPIC,
         "poll_timeout_s": 1.0,
+        "host_env": "ONEX_HOST_NAME",
+        "join_timeout_s": 5.0,
+        "run_limit_s": 60,
+        "run_margin_s": 5.0,
         "cutover_repository": repository,
         "script_out_of_scope_repositories": [repository] if repository else [],
     }
@@ -191,11 +215,21 @@ def test_control_act_mode_is_refused_before_any_read(tmp_path: Path) -> None:
     assert reads == []
 
 
-def test_control_without_the_cutover_setting_every_record_fails(tmp_path: Path) -> None:
-    snap, _ = _cutover()
-    reader = _Reader([_record(snap)])
+def test_control_a_record_with_no_controller_tick_fails_unread_never_assumed(
+    tmp_path: Path,
+) -> None:
+    """OMN-22921: a record carrying none of the old controller's ticks has no decision to compare with, in any setting."""
+    snap, repository = _cutover()
+    bare = ModelLandingTickRecord(
+        correlation_id=uuid4(),
+        tick=snap.facts.tick,
+        facts=snap.facts,
+        provenance="test",
+    ).model_dump_json()
+    reader = _Reader([bare])
     code, line = run_once(
-        _overlay(tmp_path, None), topic_reader_factory=lambda _selection: reader
+        _overlay(tmp_path, repository),
+        topic_reader_factory=lambda _selection: reader,
     )
     assert code == 1
     assert line["status"] == "failed"

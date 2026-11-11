@@ -21,6 +21,10 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
 from omnimarket.topic_namespace import apply_topic_namespace
 
 
+class TickJoinTimeoutError(Exception):
+    """The consumer group join took longer than the overlay's join_timeout_s: the pass ends unread."""
+
+
 class BusTickTopicReader:
     """ProtocolTickTopicReader over the overlay's declared bus lane or lab broker (OMN-23458)."""
 
@@ -54,12 +58,21 @@ class BusTickTopicReader:
                 if len(raw) >= max_records:
                     done.set()
 
-            handle = await bus.subscribe(
-                apply_topic_namespace(selection.topic),
-                on_message=collect,
-                group_id=selection.consumer_group,
-                auto_offset_reset="earliest",
-            )
+            try:
+                handle = await asyncio.wait_for(
+                    bus.subscribe(
+                        apply_topic_namespace(selection.topic),
+                        on_message=collect,
+                        group_id=selection.consumer_group,
+                        auto_offset_reset="earliest",
+                    ),
+                    selection.join_timeout_s,
+                )
+            except TimeoutError:
+                raise TickJoinTimeoutError(
+                    f"the consumer group {selection.consumer_group} did not join "
+                    f"within {selection.join_timeout_s} s"
+                ) from None
             try:
                 await asyncio.wait_for(done.wait(), timeout_s)
             except TimeoutError:
@@ -69,4 +82,4 @@ class BusTickTopicReader:
         return raw
 
 
-__all__: list[str] = ["BusTickTopicReader"]
+__all__: list[str] = ["BusTickTopicReader", "TickJoinTimeoutError"]
