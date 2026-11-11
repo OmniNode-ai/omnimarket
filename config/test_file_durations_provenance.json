@@ -261,5 +261,12 @@
     "basis": "Each test file the record did not hold at this branch's head, measured in one serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; entries built with the record command; existing entries left as they were.",
     "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "5964561a28f2ee540a2736657cc5d48e584e03a9"
+  },
+  "supplement_omn19998_scenarios_pass": {
+    "recorded_on": "2026-11-10",
+    "files_added": 47,
+    "basis": "Each file the record did not hold, summed from its measured pytest per-test seconds (junit) in serial runs of those files with -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were.",
+    "runner": "lab host h051, lane landing-L35549; the next CI refresh replaces these entries",
+    "base_sha": "a49d7447850bf6282e652873f35c2d96ff91c3f0"
   }
 }
