@@ -37,7 +37,7 @@ def test_contract_declares_the_ledger_read_and_the_four_tables() -> None:
         assert tables[name]["access"] == expected
         assert (NODE / "migrations" / tables[name]["migration"]).is_file()
         assert (
-            f"CREATE TABLE IF NOT EXISTS {name} "
+            f"CREATE TABLE IF NOT EXISTS omninode_internal.{name} "
             in (NODE / "migrations" / tables[name]["migration"]).read_text()
         )
 
