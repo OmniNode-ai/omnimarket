@@ -7,16 +7,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import httpx
-
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
-    post_chat_completion,
+from omnimarket.nodes.node_memory_pilot_effect.adapters.adapter_lab_chat_post import (
+    chat_completion_text,
 )
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
     ModelLabEndpoint,
-)
-from omnimarket.nodes.node_memory_pilot_effect.protocols.protocol_memory_pilot import (
-    LabModelUnavailableError,
 )
 
 
@@ -53,13 +48,8 @@ class LabChatAnswerer:
             ],
             **self._extra,
         }
-        try:
-            response = post_chat_completion(
-                endpoint_url=f"{self._endpoint.base_url}/chat/completions",
-                payload=payload,
-                timeout_seconds=self._endpoint.timeout_seconds,
-            )
-            content = response.json_body["choices"][0]["message"]["content"]
-        except (httpx.HTTPError, OSError, ValueError, KeyError, IndexError) as exc:
-            raise LabModelUnavailableError(type(exc).__name__) from None
-        return (content or "").strip()
+        return chat_completion_text(
+            endpoint_url=f"{self._endpoint.base_url}/chat/completions",
+            payload=payload,
+            timeout_seconds=self._endpoint.timeout_seconds,
+        )
