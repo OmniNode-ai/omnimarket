@@ -233,6 +233,14 @@ lanes:
   stability-test:
     broker: "192.168.86.201:39092"  # onex-allow-internal-ip OMN-18349 reason="stability-test lane Redpanda external listener; config-not-secret, replaces a literal that lived in tests/delegation_golden/runner.py"
     security_protocol: PLAINTEXT
+    # OMN-23605 (step A1 of the HTTP API removal, parent OMN-23566): the tenant
+    # the chain canary (C15) stamps on the delegation it publishes to this lane's
+    # bus. It is the house tenant the dev lane already records in its
+    # tenant_registry_mirror (slug omninode, from onex.tenant.events), the same
+    # value as ONEX_TENANT_ID in docker/docker-compose.dev-lane.yml. A tenant is an
+    # identifier, not a credential. Absent means RED for the canary: it never
+    # falls back to the tenant-less route (OMN-18421).
+    tenant_id: "820272f9-4aaf-5add-a2df-0af942852ab2"
 
   # OMN-18693: private dogfood runtime for Codex delegation measurements. Its
   # broker belongs only to compose project `omnibase-infra-dogfood`; it does

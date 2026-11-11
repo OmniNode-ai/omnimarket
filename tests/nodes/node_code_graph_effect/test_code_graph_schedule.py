@@ -116,3 +116,95 @@ def test_the_two_units_do_not_share_a_name_and_the_nightly_text_is_unchanged(
     assert nightly.verb == "nightly"
     assert nightly.timer_description == "ONEX nightly code graph tick"
     assert nightly.description == "ONEX nightly code graph (piece 1 reading)"
+
+
+def test_the_drill_unit_renders_its_timer_and_service(tmp_path: Path) -> None:
+    scheduler = CodeGraphScheduler(
+        schedule=load_schedule(block="drill_schedule"),
+        overlay=overlay(),
+        home=tmp_path / "home",
+        run=_Runner(),
+    )
+    result = scheduler.install(
+        "example-host",
+        omni_root=tmp_path / "root",
+        overlay_root=tmp_path / "overlays",
+        dry_run=True,
+    )
+    assert result.exit_code == 0, result.stderr
+    assert "OnCalendar=*-*-* 00,12:25:00 UTC" in result.stdout
+    assert (
+        "-m omnimarket.nodes.node_code_graph_effect nightly --fault unreadable-repo"
+        in result.stdout
+    )
+    assert "SyslogIdentifier=onex-code-graph-drill" in result.stdout
+    assert result.stdout.count("SuccessExitStatus=1") == 1
+
+
+def test_the_nightly_schedule_has_no_success_exit_status(tmp_path: Path) -> None:
+    scheduler = CodeGraphScheduler(
+        schedule=load_schedule(),
+        overlay=overlay(),
+        home=tmp_path / "home",
+        run=_Runner(),
+    )
+    result = scheduler.install(
+        "example-host",
+        omni_root=tmp_path / "root",
+        overlay_root=tmp_path / "overlays",
+        dry_run=True,
+    )
+    assert result.exit_code == 0, result.stderr
+    assert "SuccessExitStatus" not in result.stdout
+
+
+def test_the_drill_install_enables_its_timer_and_uninstall_removes_it(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    python = root / "example/.venv/bin/python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    runner = _Runner()
+    scheduler = CodeGraphScheduler(
+        schedule=load_schedule(block="drill_schedule"),
+        overlay=overlay(),
+        home=tmp_path / "home",
+        run=runner,
+    )
+    installed = scheduler.install(
+        "example-host", omni_root=root, overlay_root=tmp_path / "o"
+    )
+    assert installed.exit_code == 0, installed.stderr
+    assert [
+        "systemctl",
+        "--user",
+        "enable",
+        "--now",
+        "onex-code-graph-drill.timer",
+    ] in runner.calls
+    timer = tmp_path / "home/.config/systemd/user/onex-code-graph-drill.timer"
+    assert timer.is_file()
+    service = tmp_path / "home/.config/systemd/user/onex-code-graph-drill.service"
+    assert service.is_file()
+    removed = scheduler.uninstall("example-host")
+    assert removed.exit_code == 0
+    assert not timer.exists()
+    assert not service.exists()
+
+
+def test_schedule_blocks_names_drill() -> None:
+    from omnimarket.nodes.node_code_graph_effect.runtime_code_graph import (
+        SCHEDULE_BLOCKS,
+    )
+
+    assert SCHEDULE_BLOCKS["drill"] == "drill_schedule"
+
+
+def test_the_drill_fault_the_contract_names_is_one_the_node_accepts() -> None:
+    """Seam: the verb the drill unit runs against the node's CLI: its ``--fault`` is a fault the node declares."""
+    from omnimarket.models.model_code_graph import EnumGraphFault
+
+    verb, flag, fault = load_schedule(block="drill_schedule").verb.split()
+    assert (verb, flag) == ("nightly", "--fault")
+    assert EnumGraphFault(fault) is not EnumGraphFault.NONE
