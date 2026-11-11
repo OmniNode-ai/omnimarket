@@ -28,6 +28,7 @@ lease_after_minutes: 1
 # stop class in a mode that only observes, so the gate admits it. That is piece 7 failing typed under the control's own id (node
 # upstream_node, code failure_code, written as a chain that is no drill); piece 8 is not asked and answers upstream_<failure_code>.
 # A gate that still refuses in this mode turns the run red and nothing is written. Written when the journal holds none in window_hours.
+# An overlay with no control block reads unconfigured for one release: no control is owed or written and the run's result says control_configured false.
 control:
   upstream_node: "node_stop_drill_effect:control"
   id_prefix: "control-j7-"

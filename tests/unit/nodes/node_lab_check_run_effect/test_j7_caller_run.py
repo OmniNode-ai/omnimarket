@@ -82,6 +82,8 @@ BASE = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
 OVERLAY = ModelJoinJ7Overlay.model_validate(
     {**BASE, "max_chains_per_run": 1, "allow_injected_break": True}
 )
+assert OVERLAY.control is not None
+CONTROL = OVERLAY.control
 FROM_PIECE = 7
 TO_PIECE = 8
 JOIN_ID = OVERLAY.join_id
@@ -213,8 +215,8 @@ class _JumpClock:
 
 def _without_control(events: list[ModelNodeEmission]) -> list[ModelNodeEmission]:
     """The journal with the control's own chains out: nothing under its correlation id or its piece 7 node."""
-    prefix = OVERLAY.control.id_prefix
-    node = OVERLAY.control.upstream_node
+    prefix = CONTROL.id_prefix
+    node = CONTROL.upstream_node
     return [
         e for e in events if not e.correlation_id.startswith(prefix) and e.node != node
     ]
@@ -493,7 +495,7 @@ def test_control_a_planted_rename_of_the_verdict_cell_finds_nothing_owed() -> No
             correlation_id=result.items[0].correlation_id,
             outcome=EnumJoinJ7RunOutcome.CONTROL_RECORDED,
             control=True,
-            failure_code=OVERLAY.control.failure_code,
+            failure_code=CONTROL.failure_code,
             detail="the stop gate admitted a lane the stop on "
             f"{OVERLAY.stopped_piece} must refuse",
         )
@@ -531,7 +533,7 @@ def test_error_the_failing_control_gives_the_join_its_error_side_from_a_non_dril
         if e.piece == FROM_PIECE and e.correlation_id == control.correlation_id
     ]
     assert [e.phase for e in piece7] == ["start", "failure"]
-    assert piece7[-1].failure_code == OVERLAY.control.failure_code
+    assert piece7[-1].failure_code == CONTROL.failure_code
     assert all(not e.drill for e in piece7)
     piece8 = [
         e
@@ -539,7 +541,7 @@ def test_error_the_failing_control_gives_the_join_its_error_side_from_a_non_dril
         if e.piece == TO_PIECE and e.correlation_id == control.correlation_id
     ]
     assert [e.phase for e in piece8] == ["failure"]
-    assert piece8[0].failure_code == f"upstream_{OVERLAY.control.failure_code}"
+    assert piece8[0].failure_code == f"upstream_{CONTROL.failure_code}"
     assert _floor_read(rig, NOW + timedelta(minutes=5)) == ("error_only", [])
 
 
@@ -564,7 +566,7 @@ def test_control_the_gate_that_still_refuses_in_the_control_mode_turns_the_run_r
     def enforcing(
         request: ModelStopGateRequest, fsm: ModelFSMSubcontract
     ) -> ModelStopGateResult:
-        if request.policy.modes == {OVERLAY.stop_class: OVERLAY.control.mode}:
+        if request.policy.modes == {OVERLAY.stop_class: CONTROL.mode}:
             return stop_gate(
                 request.model_copy(
                     update={
@@ -610,7 +612,7 @@ def test_control_is_written_once_per_window_and_owed_again_after_it() -> None:
     assert not any(i.control for i in second.items)
     assert len(rig.sink.events) == written
 
-    jump.advance(timedelta(hours=OVERLAY.control.window_hours + 1))
+    jump.advance(timedelta(hours=CONTROL.window_hours + 1))
     again = runner.handle(ModelJoinJ7RunCommand(probe=True))
     assert again.control_owed is True
     assert again.items == ()
@@ -648,6 +650,57 @@ def test_the_overlay_refuses_a_control_that_enforces_or_names_a_refusal_code() -
         ModelJoinJ7Overlay.model_validate(refusal_code)
     with pytest.raises(ValidationError, match="not piece 8's emission node"):
         ModelJoinJ7Overlay.model_validate(same_node)
+
+
+def test_an_overlay_that_predates_the_control_loads_and_reads_unconfigured() -> None:
+    old = ModelJoinJ7Overlay.model_validate(
+        {k: v for k, v in BASE.items() if k != "control"}
+    )
+
+    assert old.control is None
+
+
+def test_control_an_old_overlay_probe_and_run_write_no_control_and_say_so() -> None:
+    without_control = {k: v for k, v in BASE.items() if k != "control"}
+    old = ModelJoinJ7Overlay.model_validate(
+        {**without_control, "max_chains_per_run": 1, "allow_injected_break": True}
+    )
+    rig = _Rig([])
+    runner = rig.runner(overlay=old)
+
+    probe = runner.handle(ModelJoinJ7RunCommand(probe=True))
+    assert probe.control_configured is False
+    assert probe.control_owed is False
+
+    run = runner.handle(ModelJoinJ7RunCommand())
+    assert run.control_configured is False
+    assert run.control_owed is False
+    assert not any(i.control for i in run.items)
+    assert not any(
+        e.correlation_id.startswith(CONTROL.id_prefix) for e in rig.sink.events
+    )
+
+
+def test_control_an_old_overlay_still_answers_a_golden_reading() -> None:
+    without_control = {k: v for k, v in BASE.items() if k != "control"}
+    old = ModelJoinJ7Overlay.model_validate(
+        {**without_control, "max_chains_per_run": 1, "allow_injected_break": True}
+    )
+    rig = _Rig([_reading_row(GOLDEN_AT, "WORKING")])
+
+    result = rig.runner(overlay=old).handle(ModelJoinJ7RunCommand())
+
+    assert [i.outcome for i in result.items if not i.drill and not i.control] == [
+        EnumJoinJ7RunOutcome.LANDED
+    ]
+    assert not any(i.control for i in result.items)
+    assert result.ok is True
+
+
+def test_control_a_configured_overlay_says_it_is_configured() -> None:
+    probe = _Rig([]).runner().handle(ModelJoinJ7RunCommand(probe=True))
+
+    assert probe.control_configured is True
 
 
 # --- the overlay and the runtime ---------------------------------------------------------------------------------------
@@ -739,10 +792,10 @@ def test_the_runtime_end_to_end_over_a_file_ledger_and_a_jsonl_journal(
         and line["phase"] == "failure"
     ]
     assert len(piece7_failure) == 1
-    assert piece7_failure[0]["failure_code"] == OVERLAY.control.failure_code
+    assert piece7_failure[0]["failure_code"] == CONTROL.failure_code
     assert {line["node"] for line in lines} == {
         OVERLAY.emission_node,
-        OVERLAY.control.upstream_node,
+        CONTROL.upstream_node,
     }
     assert runtime_join_j7.main(["run", "--inject", "deaf-invalidation"]) == 3
 

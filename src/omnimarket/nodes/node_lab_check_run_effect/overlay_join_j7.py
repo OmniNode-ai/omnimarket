@@ -83,8 +83,10 @@ class ModelJoinJ7Overlay(BaseModel):
     stop_class: str = Field(min_length=1)
     stop_age_minutes: int = Field(ge=1)
     lease_after_minutes: int = Field(ge=1)
-    #: The failing control that gives the join its error side from a real run, not a drill.
-    control: ModelJoinJ7Control
+    #: The failing control that gives the join its error side from a real run, not a drill. An overlay that predates the control
+    #: (no ``control`` key) reads unconfigured for one release: no control is owed, none is written, and the run's result says
+    #: ``control_configured: false`` so the missing control is read, never silent. Code and overlay then land in either order.
+    control: ModelJoinJ7Control | None = None
     #: The twin's check-run settings (the in-memory source, the check's name and the superseded conclusion).
     check_run: ModelLabCheckRunOverlay
     #: Whether this overlay may run a named injected break (the join's failing control).
@@ -99,7 +101,10 @@ class ModelJoinJ7Overlay(BaseModel):
             raise ValueError("the head and the old head are two heads")
         if self.current_attempt_id == self.old_attempt_id:
             raise ValueError("the current attempt and the old attempt are two attempts")
-        if self.control.upstream_node == self.emission_node:
+        if (
+            self.control is not None
+            and self.control.upstream_node == self.emission_node
+        ):
             raise ValueError(
                 "the control's piece 7 node is not piece 8's emission node"
             )

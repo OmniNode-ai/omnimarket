@@ -64,6 +64,8 @@ class ModelJoinJ7RunResult(BaseModel):
     drill_owed: bool = False
     #: Whether the failing control (piece 7's stop not held, piece 8's typed refusal) is owed in this window.
     control_owed: bool = False
+    #: Whether the overlay names the failing control at all; an overlay that predates it reads False and the run writes none.
+    control_configured: bool = False
     items: tuple[ModelJoinJ7RunItem, ...] = ()
 
     @property

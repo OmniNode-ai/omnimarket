@@ -93,6 +93,7 @@ from omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run impor
     ModelLabCheckRunResult,
 )
 from omnimarket.nodes.node_lab_check_run_effect.overlay_join_j7 import (
+    ModelJoinJ7Control,
     ModelJoinJ7Overlay,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
@@ -174,13 +175,13 @@ class HandlerLabCheckRunJoinJ7Run:
             and e.emitted_at >= drill_since
             for e in journal
         )
-        control_since = now - timedelta(hours=self._overlay.control.window_hours)
-        control_owed = not any(
+        control = self._overlay.control
+        control_owed = control is not None and not any(
             e.piece == self._rule.piece
-            and e.node == self._overlay.control.upstream_node
+            and e.node == control.upstream_node
             and not e.drill
             and e.phase == "failure"
-            and e.emitted_at >= control_since
+            and e.emitted_at >= now - timedelta(hours=control.window_hours)
             for e in journal
         )
         seen: set[str] = set()
@@ -202,10 +203,11 @@ class HandlerLabCheckRunJoinJ7Run:
                 answered=answered,
                 drill_owed=drill_owed,
                 control_owed=control_owed,
+                control_configured=control is not None,
             )
         items = [self._answer(cid) for cid in owed[: self._overlay.max_chains_per_run]]
-        if control_owed:
-            items.append(self._failing_control())
+        if control is not None and control_owed:
+            items.append(self._failing_control(control))
         if drill_owed:
             items.append(self._error_drill())
         return ModelJoinJ7RunResult(
@@ -214,6 +216,7 @@ class HandlerLabCheckRunJoinJ7Run:
             answered=answered,
             drill_owed=drill_owed,
             control_owed=control_owed,
+            control_configured=control is not None,
             items=tuple(items),
         )
 
@@ -495,7 +498,7 @@ class HandlerLabCheckRunJoinJ7Run:
         finally:
             rig.release()
 
-    def _failing_control(self) -> ModelJoinJ7RunItem:
+    def _failing_control(self, control: ModelJoinJ7Control) -> ModelJoinJ7RunItem:
         """The join's error side: piece 7 fails typed on purpose, piece 8 is not asked and refuses with ``upstream_<code>``.
 
         The stop is opened in the twin exactly as the golden run opens it, then the stop gate is asked about the lane the stop
@@ -505,7 +508,6 @@ class HandlerLabCheckRunJoinJ7Run:
         so and no chain is written.
         """
         ov = self._overlay
-        control = ov.control
         cid = f"{control.id_prefix}{uuid4().hex}"
         rig = self._golden_rig()
         try:
