@@ -69,6 +69,7 @@ _REQUEST_FIELDS = frozenset(
         "output",
         "pr_number",
         "ref",
+        "replaces",
         "repo",
         "requested_by_lane",
         "requested_by_run",
@@ -284,3 +285,123 @@ async def test_a_reused_key_refusal_crosses_the_wire_as_the_failed_model() -> No
     assert "SEAM-SECOND" not in json.dumps(on_the_wire)
     read_back = ModelRepoWriteFailed.model_validate(on_the_wire)
     assert read_back.reason is EnumRepoWriteRefusal.IDEMPOTENCY_KEY_CONFLICT
+
+
+_BUNDLE_REPO = "OmniNode-ai/example_repo"
+_REPLACED = f"{_BUNDLE_REPO}#1574"
+
+
+def _pr_create_request(**extra: object) -> ModelRepoWriteRequest:
+    return ModelRepoWriteRequest.model_validate(
+        {
+            "correlation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "pr_create",
+            "repo": _BUNDLE_REPO,
+            "idempotency_key": "seam-replaces-key",
+            "requested_by_lane": "scm-seam-test",
+            "head": "omn-19998-glm-lane-route",
+            "base": "main",
+            "title": "feat(OMN-19998): GLM lane route",
+            **extra,
+        }
+    )
+
+
+def test_pr_create_carries_replaces_as_a_list_of_pull_request_refs_the_handoff_reads() -> (
+    None
+):
+    """The shape handoff and landing read: ``replaces`` is a list of OWNER/REPO#N, on pr_create only."""
+    request = _pr_create_request(replaces=[_REPLACED])
+
+    wire = json.loads(request.model_dump_json())
+    assert wire["replaces"] == [_REPLACED]
+    assert ModelRepoWriteRequest.model_validate(wire).replaces == (_REPLACED,)
+
+
+def test_a_pr_create_without_replaces_leaves_the_field_out_of_the_envelope() -> None:
+    """A runtime that predates the field forbids extras: the envelope of a request that names none must not carry it."""
+    wire = json.loads(_pr_create_request().model_dump_json())
+    assert "replaces" not in wire
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["1574", "example_repo#1574", f"{_BUNDLE_REPO}#0", f"{_BUNDLE_REPO}#x"],
+)
+def test_a_replaces_entry_that_is_not_a_pull_request_ref_is_refused_by_the_model(
+    bad: str,
+) -> None:
+    with pytest.raises(ValueError, match="OWNER/REPO#N"):
+        _pr_create_request(replaces=[bad])
+
+
+def test_replaces_is_read_only_by_pr_create() -> None:
+    with pytest.raises(ValueError, match="read only by pr_create"):
+        ModelRepoWriteRequest.model_validate(
+            {
+                "correlation_id": "00000000-0000-4000-8000-000000000002",
+                "operation": "pr_comment",
+                "repo": _BUNDLE_REPO,
+                "idempotency_key": "seam-replaces-key",
+                "requested_by_lane": "scm-seam-test",
+                "pr_number": 4000,
+                "body": "text",
+                "replaces": [_REPLACED],
+            }
+        )
+
+
+def _invoke_pr_create(
+    monkeypatch: pytest.MonkeyPatch, *extra: str
+) -> tuple[dict[str, object], list[tuple[str, ...]]]:
+    """Run the real CLI's pr-create to the node on the in-memory bus; the guard is recorded and let through."""
+    asked: list[tuple[str, ...]] = []
+
+    def let_through(**kwargs: object) -> None:
+        replaces = kwargs["replaces"]
+        assert isinstance(replaces, tuple)
+        asked.append(replaces)
+        return
+
+    monkeypatch.setattr(scm_cli, "refuse_or_continue", let_through)
+    result = CliRunner().invoke(
+        scm_cli.scm_group,
+        [
+            "pr-create",
+            _BUNDLE_REPO,
+            "--head",
+            "omn-19998-glm-lane-route",
+            "--base",
+            "main",
+            "--title",
+            "feat(OMN-19998): GLM lane route",
+            "--lane",
+            "scm-seam-test",
+            "--bus",
+            "inmemory",
+            "--timeout-s",
+            "0.1",
+            "--dry-run",
+            *extra,
+        ],
+        catch_exceptions=False,
+    )
+    answer: dict[str, object] = json.loads(result.stdout.splitlines()[-1])
+    return answer, asked
+
+
+def test_pr_create_replaces_flag_reaches_the_guard_and_the_node_and_keys_the_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI hands ``--replaces`` (repeatable) to the guard and to the node's request, and it changes the write's key."""
+    plain, plain_asked = _invoke_pr_create(monkeypatch)
+    given, given_asked = _invoke_pr_create(
+        monkeypatch, "--replaces", _REPLACED, "--replaces", f"{_BUNDLE_REPO}#1575"
+    )
+
+    assert plain_asked == [()]
+    assert given_asked == [(_REPLACED, f"{_BUNDLE_REPO}#1575")]
+    plain_result, given_result = plain["result"], given["result"]
+    assert isinstance(plain_result, dict)
+    assert isinstance(given_result, dict)
+    assert plain_result["idempotency_key"] != given_result["idempotency_key"]
