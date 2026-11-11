@@ -209,49 +209,57 @@ class HandlerDodVerify:
         if evidence_results is None:
             assert execution_audience is not None
             collector = self._make_collector()
-            if command.goal_id is not None:
-                assert command.contract_schema_version is not None
-                evidence_results = collector.collect_inline(
-                    ticket_id=command.ticket_id,
-                    dod_evidence=command.dod_evidence,
-                    goal_id=command.goal_id,
-                    contract_schema_version=command.contract_schema_version,
-                    execution_audience=execution_audience,
+            # OMN-23198: the collector builds lock-exact environments for the
+            # run; whatever way the run ends they are removed here, so a lab
+            # host never accumulates them. ``getattr`` for the stub seam.
+            try:
+                if command.goal_id is not None:
+                    assert command.contract_schema_version is not None
+                    evidence_results = collector.collect_inline(
+                        ticket_id=command.ticket_id,
+                        dod_evidence=command.dod_evidence,
+                        goal_id=command.goal_id,
+                        contract_schema_version=command.contract_schema_version,
+                        execution_audience=execution_audience,
+                    )
+                else:
+                    evidence_results = collector.collect(
+                        ticket_id=command.ticket_id,
+                        contract_path=command.contract_path,
+                        execution_audience=execution_audience,
+                    )
+                # ``getattr`` because ``_make_collector`` is the documented seam a
+                # dozen suites replace with a stub; a stub that never derived
+                # anything reads as "not measured", never as "no checks".
+                acceptance_summary = getattr(collector, "acceptance_summary", None)
+                contract_subject = getattr(collector, "contract_subject", None)
+                # OMN-17022: read the same way — typed provenance the collector
+                # already holds, never a message string parsed back out.
+                lookup_failure_cause = collector.lookup_failure_cause
+                lookup_failure_code = collector.lookup_failure_code
+                # OMN-20886: the DurableEvidenceGate runs on the auto-resolved
+                # path, so its three pre-Done checks are checks of this verdict.
+                # ``getattr`` for the same stub seam as above: a stub that never
+                # resolved a contract runs no gate.
+                run_durable_gate = getattr(collector, "run_durable_gate", None)
+                gate_run = run_durable_gate() if callable(run_durable_gate) else None
+                if isinstance(gate_run, ModelDurableEvidenceGateRun):
+                    evidence_results = [
+                        *evidence_results,
+                        *durable_gate_check_results(gate_run),
+                    ]
+                # OMN-20858: the second ticket read, taken after the checks ran. A
+                # stub collector that never measured it, or one that hands back
+                # anything but the typed check, reads as "not measured".
+                finish_criteria = getattr(collector, "finish_criteria_check", None)
+                finished = finish_criteria() if callable(finish_criteria) else None
+                criteria_check = (
+                    finished if isinstance(finished, ModelCriteriaCheck) else None
                 )
-            else:
-                evidence_results = collector.collect(
-                    ticket_id=command.ticket_id,
-                    contract_path=command.contract_path,
-                    execution_audience=execution_audience,
-                )
-            # ``getattr`` because ``_make_collector`` is the documented seam a
-            # dozen suites replace with a stub; a stub that never derived
-            # anything reads as "not measured", never as "no checks".
-            acceptance_summary = getattr(collector, "acceptance_summary", None)
-            contract_subject = getattr(collector, "contract_subject", None)
-            # OMN-17022: read the same way — typed provenance the collector
-            # already holds, never a message string parsed back out.
-            lookup_failure_cause = collector.lookup_failure_cause
-            lookup_failure_code = collector.lookup_failure_code
-            # OMN-20886: the DurableEvidenceGate runs on the auto-resolved
-            # path, so its three pre-Done checks are checks of this verdict.
-            # ``getattr`` for the same stub seam as above: a stub that never
-            # resolved a contract runs no gate.
-            run_durable_gate = getattr(collector, "run_durable_gate", None)
-            gate_run = run_durable_gate() if callable(run_durable_gate) else None
-            if isinstance(gate_run, ModelDurableEvidenceGateRun):
-                evidence_results = [
-                    *evidence_results,
-                    *durable_gate_check_results(gate_run),
-                ]
-            # OMN-20858: the second ticket read, taken after the checks ran. A
-            # stub collector that never measured it, or one that hands back
-            # anything but the typed check, reads as "not measured".
-            finish_criteria = getattr(collector, "finish_criteria_check", None)
-            finished = finish_criteria() if callable(finish_criteria) else None
-            criteria_check = (
-                finished if isinstance(finished, ModelCriteriaCheck) else None
-            )
+            finally:
+                close_collector = getattr(collector, "close", None)
+                if callable(close_collector):
+                    close_collector()
 
         # OMN-20858: a pass that rests on a criterion the ticket no longer carries
         # in the text it was accepted against stops counting before anything is

@@ -140,6 +140,9 @@ runtime:
     - node_lab_state_alarm_effect:publish_canary
     - node_product_floor_verdict_compute:decide_customer_health
     - node_product_floor_verdict_compute:decide_mvp_launch
+    # OMN-23601: the piece 17 chain the J16 join (node_join_j16_effect) writes for its answer to a piece 16 failure. A join into
+    # piece 17 reads only the chains named here, so a refusal written under a node that is not named reads as no answer at all.
+    - node_floor_simple_effect:join_j16
   # Joins that end at a node of this piece (OMN-22864). J0 (piece 17 to piece 1) asked piece 1 for a typed refusal of every
   # piece 17 failure, and no node of piece 1 can give one: the code graph and the ledger rows that stand for piece 1 run under
   # their own correlation ids and never receive a piece 17 failure. J0 ends at the last node that emits a typed outcome for
