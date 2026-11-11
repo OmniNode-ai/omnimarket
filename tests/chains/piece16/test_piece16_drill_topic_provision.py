@@ -21,7 +21,12 @@ from omnibase_infra.cli import delegate_lane_credentials as lane_credentials
 from omnibase_infra.event_bus import kafka_auth
 
 from tests import bus_lane_guard
-from tests.chains.piece16.test_piece16_chain import RedpandaChainBus
+from tests.chains.piece16.test_piece16_chain import (
+    EMISSION_TOPIC,
+    PILOT_COMMAND_TOPIC,
+    PILOT_TERMINAL_TOPIC,
+    RedpandaChainBus,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -195,3 +200,23 @@ def test_control_without_the_create_the_consumer_waits_on_a_missing_topic(
     assert got == PAYLOAD
     create = next(event for event in STATE.events if event.startswith("admin.create:"))
     assert STATE.events.index(create) < STATE.events.index("consumer.start")
+
+
+# The seam with the overlays repository: the five topics the leg sends on, spelled here and in that repository's own
+# test (tests/test_broker_acl_overlays.py, PIECE16_DRILL_PREFIXES), whose rows give the lab logins CREATE and DELETE on
+# each name plus the per-run drill suffix. A change to a contract topic fails this file; a change to the declared rows
+# fails the overlays test.
+DECLARED_DRILL_TOPICS = {
+    "onex.cmd.omnimarket.pilot-manifest-check-requested.v1",
+    "onex.evt.omnimarket.pilot-manifest-checked.v1",
+    "onex.evt.omnimarket.floor-node-started.v1",
+    "onex.evt.omnimarket.floor-node-succeeded.v1",
+    "onex.evt.omnimarket.floor-node-failed.v1",
+}
+
+
+def test_seam_the_topics_the_leg_sends_on_are_the_ones_the_overlay_rows_declare() -> (
+    None
+):
+    used = {PILOT_COMMAND_TOPIC, PILOT_TERMINAL_TOPIC, *EMISSION_TOPIC.values()}
+    assert used == DECLARED_DRILL_TOPICS
