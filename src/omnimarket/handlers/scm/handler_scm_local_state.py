@@ -30,12 +30,14 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import JsonValue
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.scm.handler_scm_local_git import HandlerScmLocalGit
 from omnimarket.models.model_github_gateway_io import (
     ModelPrHead,
@@ -46,6 +48,13 @@ from omnimarket.models.scm import (
     ModelScmLocalReadRequest,
     ModelScmLocalReadResult,
 )
+
+if TYPE_CHECKING:
+    # Imported lazily in HandlerScmLocalState._red_facts: the filler node's
+    # handlers import this module, so a top-level import would be a cycle.
+    from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_red_facts import (
+        RedFactsStore,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -159,8 +168,13 @@ def _git(clone: Path, *args: str, timeout: int = 30) -> str | None:
 class HandlerScmLocalState:
     """Answer one PR or CI state read from the watcher state and the clone."""
 
-    def __init__(self, now: datetime | None = None) -> None:
+    def __init__(
+        self,
+        now: datetime | None = None,
+        red_facts_store: Callable[[], RedFactsStore] | None = None,
+    ) -> None:
         self._now = now
+        self._red_facts_store = red_facts_store
 
     def handle(self, request: ModelScmLocalReadRequest) -> ModelScmLocalReadResult:
         state = self._load(request.watcher_state_path)
@@ -205,6 +219,9 @@ class HandlerScmLocalState:
             )
         if not terminal and not fresh:
             return self._unanswered(request, why or "the watcher state is stale")
+
+        if request.read is EnumScmLocalRead.RED_FACTS:
+            return self._red_facts(request, facts, record, tick_text)
 
         if request.read is EnumScmLocalRead.PR_COMMITS:
             return (
@@ -363,6 +380,57 @@ class HandlerScmLocalState:
                 "number": number,
                 **self._ci_payload(record, facts, self._dict(record.get("ci"))),
             },
+        )
+
+    def _red_facts(
+        self,
+        request: ModelScmLocalReadRequest,
+        facts: dict[str, JsonValue],
+        record: dict[str, JsonValue],
+        tick: str | None,
+    ) -> ModelScmLocalReadResult:
+        """The filler's red-facts records of the PR's current head; no gateway, no GitHub."""
+        # Imported here: the filler node's handlers import this package.
+        from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_red_facts import (
+            RedFactsStore,
+            answer_red_facts,
+            load_red_facts_overlay,
+        )
+
+        head = self._str(facts.get("head_sha"))
+        if head is None or request.pr_number is None:
+            return self._unanswered(request, "the watcher record has no head commit")
+        read_at = _parse_stamp(self._dict(record.get("ci")).get("read_at"))
+        age = (
+            max(0, int(((self._now or datetime.now(UTC)) - read_at).total_seconds()))
+            if read_at is not None
+            else None
+        )
+        try:
+            store = (
+                self._red_facts_store()
+                if self._red_facts_store
+                else RedFactsStore.from_overlay(load_red_facts_overlay())
+            )
+            answer = answer_red_facts(
+                store=store,
+                repo=request.repo,
+                pr_number=request.pr_number,
+                head_sha=head,
+                head_age_seconds=age,
+            )
+        except (NodeOverlayError, ValueError, OSError) as exc:
+            return self._unanswered(
+                request, f"the red-facts store is unreadable: {exc}"
+            )
+        return ModelScmLocalReadResult(
+            read=request.read,
+            repo=request.repo,
+            pr_number=request.pr_number,
+            answered=True,
+            source="watcher",
+            watcher_tick=tick,
+            result=answer.model_dump(mode="json"),
         )
 
     def _merge_commit(

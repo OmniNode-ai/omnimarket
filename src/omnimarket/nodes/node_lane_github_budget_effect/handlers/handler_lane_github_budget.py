@@ -23,10 +23,20 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.models.scm import ModelScmDispatchReceipt
 
-from ..models.model_lane_github_budget import ModelLaneGithubCall, ModelLaneGithubResult
+from ..models.model_lane_github_budget import (
+    OVERLAY_FILE_ENV,
+    OVERLAY_ID,
+    ModelLaneGithubBudgetOverlay,
+    ModelLaneGithubCall,
+    ModelLaneGithubResult,
+)
 
 if TYPE_CHECKING:
     from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
@@ -59,6 +69,14 @@ class HandlerLaneGithubDispatchBus:
 POLICY = json.loads(
     (Path(__file__).resolve().parents[1] / "contract.yaml").read_text()
 )["policy"]
+
+
+def gateway_cache_misses_per_lane() -> int:
+    """The per-lane allowance of gateway cache misses, from the node's overlay (OMN-23832)."""
+    return load_structured_overlay(
+        OVERLAY_ID, ModelLaneGithubBudgetOverlay, file_env=OVERLAY_FILE_ENV
+    ).gateway_cache_misses_per_lane
+
 
 READ_GUIDANCE = (
     "Use pr_state_local.py for PR state and check runs; use onex scm job-log or run-view "
@@ -150,10 +168,16 @@ class HandlerLaneGithubBudget:
         if tool not in {"gh", "onex"}:
             raise ValueError("unknown tool")
         budget = policy["budget"]
-        if (
-            type(budget) is not int
-            or not 0 <= budget <= POLICY["gateway_cache_misses_per_lane"]
-        ):
+        try:
+            allowance = gateway_cache_misses_per_lane()
+        except NodeOverlayError as exc:
+            result = ModelLaneGithubResult(
+                78,
+                stderr=f"REFUSED lane={lane}: the per-lane read allowance is unreadable ({clean(str(exc))}).\n",
+            )
+            self.record(policy, "overlay", "GET", "-", result.code, "refused")
+            return result
+        if type(budget) is not int or not 0 <= budget <= allowance:
             raise ValueError("invalid lane read budget")
         if tool == "gh":
             cls, method, endpoint = gh_kind(args)
@@ -596,7 +620,7 @@ for tool in ("gh", "onex"):
 """
     return [
         "export C",
-        f"python3 -c {shlex.quote(setup)} {POLICY['gateway_cache_misses_per_lane']} {shlex.quote(resolve_overlay_key('repos.deploy'))} || exit 78",
+        f"python3 -c {shlex.quote(setup)} {gateway_cache_misses_per_lane()} {shlex.quote(resolve_overlay_key('repos.deploy'))} || exit 78",
         'export PATH="$C/github-bin:$PATH"',
     ]
 
