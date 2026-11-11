@@ -214,6 +214,9 @@ class ModelFloorLinearIssue(BaseModel):
     status: str = ""
     status_type: str = ""
     title: str = ""
+    # The ids of the issue's children as the snapshot read them (empty when the snapshot did not read them): the floor
+    # walks them to tell whether a lane's ticket sits under a root of the goal's ticket rule (OMN-22934).
+    children: tuple[str, ...] = ()
 
 
 class ModelFloorStoppage(BaseModel):
@@ -583,6 +586,9 @@ class ModelFloorStoppedConfig(BaseModel):
     next_step_markers: tuple[str, ...] = Field(min_length=1)
     # A lane name with this regular expression removed is its stem: a later lane of the same stem is its successor.
     lane_stem_suffix: str = Field(min_length=1)
+    # Parent steps walked from a lane's ticket up to a root of the goal's ticket rule through the Linear snapshot's child
+    # ids (the rule's own bound is max_depth in the goal_scope_ticket_rule overlay).
+    scope_max_depth: int = Field(ge=1)
     # How many of the lane's last rows the record carries, and each row cut at this many characters.
     rows_kept: int = Field(ge=1)
     row_chars: int = Field(ge=40)
@@ -791,7 +797,8 @@ class ModelFactoryFloorRequest(BaseModel):
     # never everything in scope).
     goal_scope: ModelGoalScope | None = None
     # The ticket roots of the goal's ticket rule (read with goal_scope): work on a root ticket is in scope. A child of a
-    # root is in scope only when goal_scope lists it; resolving children from Linear is not done here.
+    # root is in scope when the Linear snapshot's child ids (``linear``) lead from the root down to it, within the stopped
+    # config's scope_max_depth steps; with no snapshot read only the roots and goal_scope's own tickets are in scope.
     scope_ticket_roots: tuple[str, ...] = ()
     # Blocked, partial and handed-off TERMINAL rows and handed-off STATUS rows of the live ledger and every archive roll,
     # with no age limit, that are older than the ledger window (the window's own rows are in ``ledger``). None when the

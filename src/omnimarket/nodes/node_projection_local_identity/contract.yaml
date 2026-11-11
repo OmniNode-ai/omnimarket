@@ -84,5 +84,8 @@ projection_api:
   bus_backed: true
   key_columns: [tenant_id]
   tenant_column: tenant_id
+  consumers: none
+  consumers_reason: >-
+    No omnidash component, local page or typed status-page backend reader reads onex.snapshot.projection.local-identity.v1 yet; the change that adds a reader deletes this self-expiring opt-out and its reason.
 metadata:
   transport_type: kafka
