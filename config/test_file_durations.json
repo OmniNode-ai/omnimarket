@@ -236,6 +236,7 @@
   "tests/ci/test_sibling_pin_train_schedule_off_omn23498.py": 3.13,
   "tests/ci/test_sibling_pins_omn20001.py": 54.64,
   "tests/ci/test_sibling_release_compat_dev_tag_omn19998.py": 13.83,
+  "tests/ci/test_skip_count_ratchet_download_retry_omn23527.py": 7.46,
   "tests/ci/test_skip_count_ratchet_omn18790.py": 2.11,
   "tests/ci/test_staging_delivery_announcement_omn17057.py": 0.07,
   "tests/ci/test_subscriber_dispatcher_resolution_omni_home_preflight.py": 0.04,
