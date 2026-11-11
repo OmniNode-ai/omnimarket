@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
 
 import omnimarket.nodes.node_pool_usage_verdict_compute as node_package
 from omnimarket.nodes.node_pool_usage_verdict_compute.handlers.handler_pool_usage_verdict import (
@@ -124,13 +125,11 @@ def test_golden_chain_over_the_inmemory_bus_command_topic_to_terminal_event() ->
         bus = EventBusInmemory()
         await bus.start()
 
-        async def collect(message: object) -> None:
-            terminal.append(bytes(message.value).decode())  # type: ignore[attr-defined]
+        async def collect(message: ModelEventMessage) -> None:
+            terminal.append(bytes(message.value).decode())
 
-        async def serve(message: object) -> None:
-            request = ModelPoolUsageRequest.model_validate_json(
-                bytes(message.value)  # type: ignore[attr-defined]
-            )
+        async def serve(message: ModelEventMessage) -> None:
+            request = ModelPoolUsageRequest.model_validate_json(bytes(message.value))
             await bus.publish(
                 terminal_topic, None, node.handle(request).model_dump_json().encode()
             )
