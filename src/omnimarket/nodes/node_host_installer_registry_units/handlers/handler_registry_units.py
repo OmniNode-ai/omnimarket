@@ -583,6 +583,11 @@ class HandlerRegistryUnits:
             # in for the registry root in the job (working directory, OMNI_HOME, the tick's --omni-home); undeclared, the
             # job keeps the registry root.
             "OMNI_HOME": str(job_root),
+            # A unit whose tick reads the registry root itself (the lane closeout sweep reads its worktrees) declares
+            # tick_omni_home: registry_root; the job still stands in job_root, only the tick's --omni-home is the real root.
+            "TICK_OMNI_HOME": str(root)
+            if unit.get("tick_omni_home") == "registry_root"
+            else str(job_root),
             "EVIDENCE_DIR": str(evidence.parent),
             "HOME": str(home),
             "USER": user,
