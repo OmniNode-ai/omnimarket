@@ -17,7 +17,7 @@ requirements:
       -q -k real_pytest_setup_error, red when the handler reads the exit code only'
   - id: AC2
     statement: 'AC2: a failed test beside an error, a collection error and a non-pytest failing command stay fail_check -- falsifier: uv run pytest tests/nodes/node_code_contract_score_effect/test_check_setup_error_unscorable.py
-      -q -k error_chain, red if any of them reads unscorable'
+      -q -k "error_chain or summary_parser", red if any of them reads unscorable or the summary parser is missing'
   - id: AC3
     statement: 'AC3: a setup-error verdict ends on the scored topic as one event that round-trips -- falsifier: uv run pytest tests/nodes/node_code_contract_score_effect/test_check_setup_error_unscorable.py
       -q -k golden_chain, red when the verdict is fail_check'
@@ -42,13 +42,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_check_setup_error_unscorable.py -q -n 0 --no-cov -p no:randomly -k real_pytest_setup_error
     cwd: .
 - id: dod-omn23718-ac2-other-failures-stay-failures
-  description: A failed test beside an error, a collection error and a non-pytest failing command stay fail_check.
+  description: A failed test beside an error, a collection error and a non-pytest failing command stay fail_check, and the typed summary parser that decides it reads the closing line only (the parser does not exist at the merge base).
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_check_setup_error_unscorable.py -q -n 0 --no-cov -p no:randomly -k error_chain
+    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_check_setup_error_unscorable.py -q -n 0 --no-cov -p no:randomly -k 'error_chain or summary_parser'
     cwd: .
 - id: dod-omn23718-ac3-golden-chain
   description: The setup-error verdict is published once on the scored topic and reads back equal.
@@ -68,5 +68,12 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23718 --kind test -- env PYTHONDONTWRITEBYTECODE=1
       uv run --frozen pytest tests/nodes/node_code_contract_score_effect -q -n 0 --no-cov -p no:randomly
     cwd: .
+- id: dod-omn23718-ac4-hosted-proxy
+  description: Hosted proxy for AC4. The golden-chain test publishes one unscorable scored event on the in-memory bus and reads it back. The dev-lane readback itself is pending and is not claimed here.
+  source: manual
   binds_ac:
   - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_check_setup_error_unscorable.py -q -n 0 --no-cov -p no:randomly -k golden_chain
+    cwd: .
