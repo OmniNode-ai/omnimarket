@@ -68,7 +68,7 @@ descriptor:
   timeout_ms: 600000
   side_effects:
   - reads the plans repository clone, the PR watcher state, the plans-today output, the lab placement reading and the friction report
-  - reads the rolling ledger through the plugin's reader, the window and, for unresolved hand-offs, the live ledger and every archive roll through the same reader
+  - reads the rolling ledger through the plugin's reader for the window, and the unresolved-rows record the unresolved step wrote for the older hand-offs
   - reads the goal file in the plans repository clone and the queue-status tick's saved required-contexts map
   - reads the trace count and newest span time from the Phoenix GraphQL API at the URL the phoenix_url_env variable names (a read that fails is recorded as unread)
   - reads each declared host's container listing over ssh (read-only listing; a host that cannot be read draws UNKNOWN with its cause)
@@ -94,6 +94,9 @@ runtime:
   # The Phoenix base URL the floor reads its trace count and newest span age from; unset draws the reading unread.
   phoenix_url_env: ONEX_FACTORY_FLOOR_PHOENIX_URL
   ledger_window_days: 14
+  # The reader's row source is the deployment overlay's ledger_source (OMN-23606), for this node and, in its own overlay, for the
+  # unresolved step: which source answers inside the time limit is a fact of the host. An overlay that names none leaves the reader
+  # its own default.
   # The reader cuts each row's text at this many characters (its own default drops the sentence a CLAIM carries).
   ledger_cut_chars: 1200
   # The reader returns 14 days (57 MB) in 8 s in the foreground and 69 s as the Background-class module tick runs it on a Mac at load 56.
@@ -101,13 +104,12 @@ runtime:
   # The kinds kept from the window. The first five were read before OMN-22368; RULING, MSG, ACK, CORRECTION and FRICTION
   # rows are forwarded whole so the line board can map a ruling to its line and a stop to its cause.
   ledger_kinds: [CLAIM, TERMINAL, HOLD, RELEASE, STATUS, RULING, MSG, ACK, CORRECTION, FRICTION]
-  # Unresolved evidence outlives the window: the same ledger reader, over the live ledger and every archive roll with no
-  # age limit, filtered by kind and text. Whether a row is resolved is the compute's call, not the effect's.
-  unresolved_reads:
-    - {kind: TERMINAL, grep: "outcome=blocked"}
-    - {kind: TERMINAL, grep: "outcome=partial"}
-    - {kind: TERMINAL, grep: "outcome=handed-off"}
-    - {kind: STATUS, grep: "handed-off="}
+  # Unresolved evidence outlives the window. Its four reads (the overlay of node_factory_floor_unresolved_effect names them) are
+  # their own step of the publisher cycle, which writes the record at sources.unresolved_rows_relpath; this node reads that
+  # record and never the ledger for them (OMN-19998: four reads in series took 207 s of a 231 s step). Whether a row is resolved
+  # is the compute's call, not the effect's. A record older than this many hours reads unread, so a stop kept only in an archive
+  # roll is never reported absent; it must not exceed the step's overlap_hours.
+  unresolved_max_age_hours: 24
   # Minutes after which a source reads stale. The ledger is read live, so its bar measures the reader's own read time.
   source_max_age_min:
     plans: 1440
@@ -153,6 +155,8 @@ runtime:
     host_drift_relpath: .onex_state/host-drift/fleet.json
     # The queue-status tick's saved required contexts, a map keyed by repository (or repository:branch).
     required_contexts_relpath: .claude_scratch/queue-status/required-contexts.json
+    # The record the unresolved step writes (node_factory_floor_unresolved_effect).
+    unresolved_rows_relpath: .onex_state/factory-floor/unresolved-rows.json
   # Limits status mirrors under the registry home; absent or invalid files remain unread.
   limit_sources:
     api_meter_relpath: .claude_scratch/limits/api-credit-meter.json

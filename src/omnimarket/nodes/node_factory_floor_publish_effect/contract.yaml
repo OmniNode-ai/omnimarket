@@ -290,14 +290,26 @@ runtime:
     timeout_seconds: 90
     output_relpath: .claude_scratch/friction/friction-report.json
     rollup:
-      # The ledger is on the bus: the window's rows come from typed reads of the kinds below, one chunk of
-      # ledger_chunk_hours at a time, through the command the variable holds. A failed or truncated read refuses the step
-      # and the previous report stays; nothing here reads a file.
+      # The ledger is on the bus: the rows come from typed `rows` reads through the command the variable holds, one page at a
+      # time with the read node's own page_size and cursor (OMN-23606). The node refuses any answer over its 917,516-byte bound
+      # whatever the window (measured on the launching Mac 2026-11-11: STATUS rows 6.8 MB for 24 hours, FRICTION 1.43 MB), and
+      # a read answers in about 5.5 to 6.5 s (measured on the dev lane from a lab host, 2026-11-11), so the step reads only
+      # what the floor draws. The longest measured FRICTION rows are about 3.9 KB each in the answer, so 200 rows is 0.78 MB under the
+      # bound; the window is 574 rows, three pages, and the resolved= STATUS read is one more. A failed page, a cursor still open after ledger_max_pages, or the
+      # time budget spent makes the read unread and refuses the step: the previous report stays, never a report from the pages
+      # that did arrive. Each page's timeout is cut to the budget left, so every page together stays inside the budget, which stays inside this step's timeout_seconds.
       ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
-      ledger_read_timeout_seconds: 60
-      ledger_row_limit: 5000
-      ledger_row_kinds: [FRICTION, CORRECTION, STATUS, TERMINAL, CLAIM, MSG]
-      ledger_chunk_hours: 24
+      ledger_page_timeout_seconds: 60
+      ledger_page_size: 200
+      ledger_max_pages: 12
+      ledger_time_budget_seconds: 80
+      ledger_reads:
+        - kinds: [FRICTION]
+          why: every FRICTION row is a class observation (class, cost, tickets, lane)
+        - kinds: [STATUS]
+          term: "resolved="
+          why: the STATUS rows that carry a resolved=<class> cell give each class its resolved_at
+      signals_unread_reason: the signals block is drawn from the CORRECTION, STATUS, TERMINAL, CLAIM and MSG rows, which this step does not read; the friction-rollup timer unit's latest.json carries them
       window_hours: 24
       bucket_hours: 2
       umbrella_tickets: [OMN-17427]
@@ -376,12 +388,42 @@ runtime:
     timeout_seconds: 30
     module: omnimarket.nodes.node_join_j16_effect
     args: ["run"]
+  # OMN-19998: the factory floor record's four unresolved ledger reads (TERMINAL blocked, partial, handed-off and STATUS handed-off=,
+  # each across the live ledger and every archive roll) are this step's, not the floor step's. Measured on the launching Mac
+  # 2026-11-10 (cProfile, three runs each): the floor step took 231 s, 207 s of it five ledger reads in series, four of them these.
+  # The evidence moves in days (a row is older than the window and a later row resolves it), so the step is rebuilt only when its
+  # record is older than fresh_seconds, the way process_health is, and is not required: when it fails the previous record stays and
+  # the floor reads it until its own bound (unresolved_max_age_hours), then draws the ledger unread with the cause. The reads run
+  # together and name their row source (the step's overlay: read_workers, ledger_source, read_timeout_seconds). Measured on the
+  # publishing Mac 2026-11-10 (OMN-23606, 4 workers, the file source, 26,977 rows from a 2.6 MB live ledger and 225 MB of archive
+  # rolls): 10.6 s, 10.4 s and 10.8 s. It joins the first group, so it adds nothing past 90 s.
+  - name: factory_floor_unresolved
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 90
+    module: omnimarket.nodes.node_factory_floor_unresolved_effect
+    args: ["--home", "{home}"]
+    fresh_relpath: .onex_state/factory-floor/unresolved-rows.json
+    fresh_seconds: 21600
+  # OMN-23606: the record step, one window read of the ledger and every other source, with the unresolved record read from its file.
+  # Its limit stays 30 s and the cycle bound stays 240 s. Measured on the publishing Mac 2026-11-10 at load 10 to 11, with the
+  # overlay naming the file as the ledger source and the window read running beside the step's other reads: 19.6 s, 19.5 s and
+  # 19.1 s (three runs; 24.1 s before the window read ran beside the others, 14.7 s of that the window read alone).
+  # The window read takes the file (OMN-23606, measured on the publishing Mac 2026-11-11): the bus source never answers it (the
+  # read node matched 161,693 rows and returned none past its answer bound, and the contract's default command refused a 225 MB
+  # answer), so on a host whose ledger record is the bus each read spent 5 s (internal source) to 14 s (default command) on that
+  # refusal before the reader fell back to the file: 14.3 s to 15.9 s and 24.2 s, against 9.6 s for the file. With the bus read
+  # command the tracker and friction steps need, the step took 25 s and then passed its 30 s limit. A deployment overlay's
+  # ledger_source still names the source when it is set.
   - name: factory_floor
     kind: module
     required: true
     timeout_seconds: 30
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
+    environment:
+      ONEX_LEDGER_RECORD: file
   # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
   # required: when it fails the previous floor-simple.json stays and the page draws its own age, red past 15 minutes.
   - name: floor_simple
