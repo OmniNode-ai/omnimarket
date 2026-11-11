@@ -574,7 +574,7 @@ class ModelTierSaturationRule(BaseModel):
             "How many generations this tier's backends can serve AT ONCE "
             "(OMN-18349). The bounded wait above already says this tier can be "
             "saturated; this says by how little. It was prose in the overlay "
-            "header -- '.201:8000 serves both local-coder and "
+            "header -- 'one local endpoint serves both local-coder and "
             "local-heavy-reasoning and permits a SINGLE running generation' -- "
             "which no caller could read, so a probe that wanted to publish at "
             "the rate the tier can serve had to guess it. A caller that fans "

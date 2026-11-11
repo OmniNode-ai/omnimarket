@@ -51,6 +51,7 @@ from omnimarket.handlers.work_ledger_fold import (
     fold_row,
     rows_for_records,
 )
+from omnimarket.handlers.work_ledger_latest_fold import latest_entries_for_row
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
@@ -58,6 +59,9 @@ from omnimarket.models.model_work_ledger_fold_request import (
 from omnimarket.models.model_work_ledger_fold_result import (
     ModelWorkLedgerFoldResult,
     ModelWorkLedgerStateOp,
+)
+from omnimarket.models.work_ledger_query.model_work_ledger_latest import (
+    ModelWorkLedgerLatestEntry,
 )
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     ALL_SUBSCRIBE_TOPICS,
@@ -138,6 +142,21 @@ _CLOSE_ENTITY = f"""
     WHERE {STATE_TABLE}.closed_at IS NULL
        OR ({STATE_TABLE}.closed_at, {STATE_TABLE}.closed_row_id)
           <= (EXCLUDED.closed_at, EXCLUDED.closed_row_id)
+"""
+
+LATEST_TABLE = "omninode_internal.work_ledger_latest"
+
+# OMN-23606: the newest row per (subject kind, subject, row type), guarded on (at, row_id) like the state ops, so a
+# redelivered or reordered row cannot move an entry backwards.
+_UPSERT_LATEST = f"""
+    INSERT INTO {LATEST_TABLE}
+        (subject_kind, subject, row_type, row_id, at, lane, ticket, pr, outcome, to_cell, projected_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ON CONFLICT (subject_kind, subject, row_type) DO UPDATE SET
+        row_id = EXCLUDED.row_id, at = EXCLUDED.at, lane = EXCLUDED.lane, ticket = EXCLUDED.ticket,
+        pr = EXCLUDED.pr, outcome = EXCLUDED.outcome, to_cell = EXCLUDED.to_cell,
+        projected_at = EXCLUDED.projected_at
+    WHERE ({LATEST_TABLE}.at, {LATEST_TABLE}.row_id) <= (EXCLUDED.at, EXCLUDED.row_id)
 """
 
 _READ_ROWS = f"SELECT row_id, ledger_id, raw_row, event_id, record, provenance_kind FROM {ROWS_TABLE} ORDER BY row_id"
@@ -227,6 +246,22 @@ def _op_args(op: ModelWorkLedgerStateOp, now: datetime) -> tuple[str, tuple[Any,
             now,
         )
     return _CLOSE_ENTITY, (op.entity_key, op.kind.value, op.at, op.row_id, now)
+
+
+def latest_args(entry: ModelWorkLedgerLatestEntry, now: datetime) -> tuple[Any, ...]:
+    return (
+        entry.subject_kind.value,
+        entry.subject,
+        entry.row_type,
+        entry.row_id,
+        entry.at,
+        entry.lane,
+        entry.ticket,
+        entry.pr,
+        entry.outcome,
+        entry.to,
+        now,
+    )
 
 
 class WorkLedgerProjectionWriter(BaseProjectionRunner):
@@ -379,6 +414,9 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             for op in result.ops:
                 sql, args = _op_args(op, now)
                 await conn.execute(sql, *args)
+            # The latest-state table is derived from the row; the count stays the log row plus its state ops.
+            for entry in latest_entries_for_row(row, self._config.latest_row_types):
+                await conn.execute(_UPSERT_LATEST, *latest_args(entry, now))
         return 1 + len(result.ops)
 
     def _validated_rows(

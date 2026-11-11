@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: c32c7f4cefb01db2fd505839e0ae7035c2b8d0f4adeefb56f8728cecb43b6106
+      sha256: 71977f9bb1f6055bdc00a57e890df422c693cf699f717b1c1ae268e53884b04c
     expected_exit: 0
     target: src/omnibase_core/models/core/model_deployment_topology_database_migration_ledger.py
     patch:

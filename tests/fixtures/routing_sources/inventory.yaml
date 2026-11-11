@@ -248,6 +248,10 @@ not_routing_resolution_sites:
     reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_github_repo_gateway_effect/handlers/handler_github_repo_gateway.py:find_node_overlay(overlay_id)"
     reason: the cache root and time to live of the shared GitHub job-log cache; it decides where a read job log is kept and for how long and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_delegation_rubric_check_compute/handlers/handler_delegation_route_check.py:resolve_setting(ROUTE_CHECK_NODE)"
+    reason: the served model id the route check expects a local walk to report, read from the node overlay (OMN-19184); it is the value a finished walk is compared against and selects no backend, model, tier or provider for a request
+  - site: "src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py:resolve_overlay_file(REGISTRY_OVERLAY_NODE)"
+    reason: the registry of models an A/B compare calls side by side, from the node overlay or a pinned file (OMN-19184); the compare harness names its own subjects and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_merged_history.py:find_node_overlay(NODE_NAME)"
     reason: reads the extra_repos of the lab fill overlay, the private clone names the merged-history read also covers; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/delegation_eval_read_binding.py:resolve_setting(OVERLAY_ID)"
