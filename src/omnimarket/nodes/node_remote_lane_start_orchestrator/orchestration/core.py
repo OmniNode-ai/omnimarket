@@ -26,6 +26,7 @@ the stopped outcome (exit 143). An engine that survives leaves the CLAIM open, t
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -75,6 +76,10 @@ from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane
 from omnimarket.nodes.node_remote_lane_start_effect.protocols.protocol_engine_login_draw import (
     ProtocolEngineLoginDraw,
 )
+from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_availability import (
+    HostAvailability,
+    HostTableUnreadableError,
+)
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_provisioning import (
     EnumLaneProvisioningPhase,
     ModelLaneProvisioningRecord,
@@ -82,6 +87,7 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_la
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     EXIT_CODES,
     EnumRemoteLaneStartOutcome,
+    ModelRemoteLaneStartObserved,
     ModelRemoteLaneStartReceipt,
     ModelRemoteLaneStartRequest,
     ModelRemoteLaneStartResult,
@@ -140,6 +146,13 @@ class InMemoryReceiptSink:
         self.written.append(receipt.model_copy(deep=True))
 
 
+class DiscardReceiptSink:
+    """Write nothing: the sink of an ``observe``-mode start, which leaves no receipt whatever way it ends."""
+
+    def write(self, receipt: ModelRemoteLaneStartReceipt) -> None:
+        return None
+
+
 class FileReceiptSink:
     """Write ``<receipt_dir>/<lane>/<run_id>.json`` atomically."""
 
@@ -193,8 +206,10 @@ class RemoteLaneStartOrchestrator:
         sleep: Callable[[float], None] | None = None,
         stop_requested: Callable[[], bool] = lambda: False,
         requesting_host: str = "leader",
+        host_availability: HostAvailability | None = None,
     ) -> None:
         self._s = settings
+        self._availability = host_availability
         self._pool = host_pool
         self._ledger = ledger
         self._reader = ledger_reader
@@ -203,7 +218,13 @@ class RemoteLaneStartOrchestrator:
         self._login_refusal = ""
         self._placement = placement or HandlerRemoteLanePlacement()
         self._close = close or HandlerRemoteLaneResult()
-        self._receipts = receipts or InMemoryReceiptSink()
+        # An observe-mode start writes no receipt on any ending (no host, unsupported shape, observed): the sink it is
+        # given is replaced, so a file sink wired by the caller is never reached.
+        self._receipts: ProtocolReceiptSink = (
+            DiscardReceiptSink()
+            if settings.start_mode == "observe"
+            else (receipts or InMemoryReceiptSink())
+        )
         self._echo = echo
         self._clock = clock
         self._sleep = sleep or (lambda _s: None)
@@ -440,6 +461,87 @@ class RemoteLaneStartOrchestrator:
             for line in lines[at + 1 :]
         )
 
+    def _observe(
+        self,
+        request: ModelRemoteLaneStartRequest,
+        receipt: ModelRemoteLaneStartReceipt,
+        host_ref: ModelLaneHostRef,
+        verdicts: Any,
+    ) -> ModelRemoteLaneStartResult:
+        """``start_mode: observe``: the start the node would make, as an event; nothing is written or called (OMN-22847).
+
+        No CLAIM (the ledger is neither read nor written), no receipt file, no host call (so no ssh, no login draw and no
+        process). The brief goes into the event as a reference (its sha-256 and size), and the engine command carries
+        that reference where the real start carries the brief text.
+        """
+        brief_sha = hashlib.sha256(request.brief.encode("utf-8")).hexdigest()
+        argv = tuple(
+            a.format(
+                model=request.model,
+                brief=f"<brief sha256:{brief_sha}>",
+                lane=request.lane,
+            )
+            for a in self._s.engine_argv
+        )
+        observed = ModelRemoteLaneStartObserved(
+            lane=request.lane,
+            key=request.key,
+            ticket=request.ticket,
+            attempt=request.attempt,
+            run_id=request.run_id,
+            engine=request.engine,
+            model=request.model,
+            host=host_ref.name,
+            host_target=host_ref.target,
+            host_local=host_ref.local,
+            account_label=None,
+            account_label_source=(
+                "drawn on the placed host over ssh when the start acts; "
+                "observe mode makes no host call"
+            ),
+            claim_cells=(
+                *self._cells(request, host_ref.name)[:2],
+                f"actor={self._s.actor}",
+                f"model={request.engine}-{request.model}",
+                f"est ~{self._est_hours(request)} lane-hours; displaces {self._s.displaces}; ({request.ticket})",
+                *self._cells(request, host_ref.name)[2:],
+                f"priority={self._s.priority}",
+                self._worktree_cell(request),
+            ),
+            engine_argv=argv,
+            engine_environment_names=tuple(sorted(self._s.engine_environment)),
+            workdir=(
+                self._worktree_path(request)
+                if request.repo
+                else f"{self._s.host_run_root.rstrip('/')}/{request.run_id}"
+            ),
+            brief_sha256=brief_sha,
+            brief_bytes=len(request.brief.encode("utf-8")),
+            refused_hosts=tuple(
+                f"{v.host}: {v.reason}" for v in verdicts if v.host != host_ref.name
+            ),
+            observed_at=self._clock().astimezone(UTC),
+        )
+        self._say(
+            "REMOTE-LANE-OBSERVED "
+            + json.dumps(observed.model_dump(mode="json"), sort_keys=True)
+        )
+        receipt.state = EnumRemoteLaneStartOutcome.OBSERVED.value
+        receipt.status = EnumRemoteLaneStartOutcome.OBSERVED.value
+        receipt.final = True
+        self._say(
+            f"OK remote-lane-observe lane={request.lane} host={host_ref.name} status=observed exit=0 "
+            "nothing written, nothing started"
+        )
+        return ModelRemoteLaneStartResult(
+            outcome=EnumRemoteLaneStartOutcome.OBSERVED,
+            exit_code=EXIT_CODES[EnumRemoteLaneStartOutcome.OBSERVED],
+            host=host_ref.name,
+            lines=tuple(self._lines),
+            receipt=receipt.model_copy(deep=True),
+            observed=observed,
+        )
+
     # -------------------------------------------------------------- the sequence
 
     def run(self, request: ModelRemoteLaneStartRequest) -> ModelRemoteLaneStartResult:
@@ -486,6 +588,15 @@ class RemoteLaneStartOrchestrator:
             )
         )
         targets = {r.name: r for r in snapshot.readings}
+        try:
+            out_of_service = dict(self._availability()) if self._availability else {}
+        except HostTableUnreadableError as exc:
+            # No table, no judgement: the start is refused, never placed as if every host were in (OMN-22847).
+            self._say(
+                f"REMOTE-LANE-NO-HOST lane={request.lane} engine={host_engine} outcome=host-table-unreadable: {exc}"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.NO_HOST.value
+            return self._result(EnumRemoteLaneStartOutcome.NO_HOST, receipt)
         decision = self._placement.handle(
             ModelRemoteLanePlacementRequest(
                 engine=host_engine,
@@ -501,6 +612,15 @@ class RemoteLaneStartOrchestrator:
                             **(
                                 {"ssh_reach": request.host_ssh_reach[r.name]}
                                 if r.name in request.host_ssh_reach
+                                else {}
+                            ),
+                            # A host the lab host table marks out keeps its own refusal first; else the table's.
+                            **(
+                                {
+                                    "lane_admission_refusal": r.lane_admission_refusal
+                                    or f"unavailable in the host table: {out_of_service[r.name]}"
+                                }
+                                if r.name in out_of_service
                                 else {}
                             ),
                         },
@@ -529,6 +649,9 @@ class RemoteLaneStartOrchestrator:
         self._say(
             f"placed lane={request.lane} host={host_ref.name} ({host_ref.target or 'launching host'})"
         )
+
+        if self._s.start_mode == "observe":
+            return self._observe(request, receipt, host_ref, decision.verdicts)
 
         # (3) Claim, by the leader itself, before any host call that starts the engine.
         req_id = claim_request_id(request.lane, request.attempt)

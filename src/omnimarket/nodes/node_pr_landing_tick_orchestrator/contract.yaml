@@ -32,7 +32,11 @@ node_version:
 description: >
   Landing tick orchestrator. Runs one tick's facts through the decision node and the tick
   reducer, compares the decision per pull request with the script's recorded decision, and
-  emits one compared event (or a typed failure). Observe and replay never write.
+  emits one compared event (or a typed failure). Observe and replay never write. During the
+  cutover the tick record can carry the old controller's finished tick, with its facts and
+  logged actions: when it does, the comparison runs against the controller's real decision
+  for that tick, scoped to the cutover repository, instead of a synthetic no action
+  (OMN-23665).
 input_model:
   name: "ModelTickRequest"
   module: "omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator"
@@ -94,7 +98,7 @@ runtime_dispatch:
 consumed_events:
   - event_type: ModelLandingTickRecord
     topic: "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
-    description: The landing snapshot step's tick record, read by this node's topic reader under its overlay's consumer group; declared as a consumed event and not in event_bus.subscribe_topics so the runtime wires no handler subscription for it (OMN-23494).
+    description: The landing snapshot step's tick record, read by this node's topic reader under its overlay's consumer group; declared as a consumed event and not in event_bus.subscribe_topics so the runtime wires no handler subscription for it (OMN-23494). During the cutover the record carries the old controller's finished tick, with its facts and logged actions, and the compare step decides those facts and compares against that controller's real decision instead of a synthetic no action (OMN-23665).
 descriptor:
   node_archetype: orchestrator
   purity: side_effecting
