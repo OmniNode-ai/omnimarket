@@ -87,20 +87,22 @@ def test_building_an_env_removes_stale_siblings_and_keeps_recent_ones(
     assert recent.exists(), "an environment used within the retention must stay"
 
 
-def test_a_reused_env_is_marked_used_so_it_outlives_the_retention(
+def test_a_second_run_builds_its_own_env_and_never_touches_the_first_runs(
     root: Path, tmp_path: Path
 ) -> None:
+    # OMN-23198: each collector's run token makes its environment path its own,
+    # so a run never reuses (or removes) another live run's environment.
     project = _project(tmp_path)
     first, _ = EvidenceCollector()._ensure_hermetic_uv_env(project)
     assert first is not None
-    old = time.time() - 48 * _HOUR
-    os.utime(first, (old, old))
+    stamp = time.time() - 1 * _HOUR
+    os.utime(first, (stamp, stamp))
 
     again, _ = EvidenceCollector()._ensure_hermetic_uv_env(project)
 
-    assert again == first
-    assert first.exists()
-    assert time.time() - first.stat().st_mtime < _HOUR
+    assert again is not None
+    assert again != first
+    assert first.exists(), "an environment used within the retention must stay"
 
 
 def test_non_positive_retention_disables_nothing_it_falls_back_to_default(

@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-23547
+title: A failed dev roll releases the roll batching hold after its declared bound
+summary: 'Five whys plan root R4 follow-up: node_dev_roll_request_compute held with previous_roll_not_healthy forever when the last roll failed. A failed or unread previous roll now holds the next decision only until failed_roll_release_after_seconds (an overlay value, ruled at 60 minutes) after it finished, then the node decides roll now and names the released roll in its output. Shadow only: nothing is wired to the deploy agent.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23547-release
+  statement: A failed previous roll releases the batching hold after the declared bound and the decision says so.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a failed or unread previous roll holds the next decision only until the overlay''s failed_roll_release_after_seconds after it finished, then the node decides roll_now and names the released roll in its output -- falsifier: the table test run against the unfixed handler still holds forever'
+  - id: AC2
+    statement: 'AC2: the bound is an overlay value read with no packaged fallback, and a facts set with a failed roll finished before the bound still holds with the release time as hold_until -- falsifier: a bound written in the handler or a hold with no release time'
+  - id: AC3
+    statement: 'AC3: the golden chain and error chain tests of the node still pass over the real contract on the in-memory bus, and the replay of the 2026-11-10 job records still reports the same roll counts -- falsifier: a changed replay count'
+  - id: AC4
+    statement: 'AC4: integrated: once the shadow node is installed on the dev runtime, a decision tick fed a failed previous roll older than the bound answers roll_now with the released roll named, read from the running runtime -- falsifier: the running node still answers previous_roll_not_healthy'
+evidence_requirements:
+- kind: tests
+  description: The node tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23547-ac1
+  description: "The table tests of the release: a failed roll past the bound rolls and names the released roll; they fail against the unfixed handler."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_handler_dev_roll_request.py -k 'failed_roll or healthy_roll_releases' -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23547-ac2
+  description: "A failed roll inside the bound holds with the release time as hold_until; the missing-overlay and missing-value refusals still hold (the bound is read from the overlay, no default)."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_handler_dev_roll_request.py -k 'release_bound or overlay' -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23547-ac3
+  description: "The golden chain, error chain and seam tests and the replay of the 2026-11-10 job records pass."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_golden_chain_dev_roll_request.py tests/unit/nodes/node_dev_roll_request_compute/test_error_chain_dev_roll_request.py tests/unit/nodes/node_dev_roll_request_compute/test_replay_dev_jobs_2026_11_10.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23547-ac4
+  description: "The hosted part of AC4: the golden chain test sends a failed roll finished past the bound over the real contract on the in-memory bus and reads roll_now with the released roll named. The running-runtime read waits for the node to be installed on the dev runtime."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute/test_golden_chain_dev_roll_request.py -k failed_roll -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23547-integration-proof
+  description: "The pushed head ran the node tests, the release tests and the replay on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; its hosted counterparts are the checks bound to AC1 to AC4."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23547 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dev_roll_request_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .

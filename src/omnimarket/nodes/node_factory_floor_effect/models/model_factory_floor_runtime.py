@@ -32,6 +32,8 @@ class ModelFactoryFloorSources(BaseModel):
     host_drift_relpath: str = Field(min_length=1)
     # The required contexts the queue-status tick saved: a map keyed by repository (or ``repository:branch``).
     required_contexts_relpath: str = Field(min_length=1)
+    # The record node_factory_floor_unresolved_effect writes: the ledger rows older than the window that nothing resolved (OMN-19998).
+    unresolved_rows_relpath: str = Field(min_length=1)
 
 
 class ModelFactoryFloorSourceBars(BaseModel):
@@ -48,15 +50,6 @@ class ModelFactoryFloorSourceBars(BaseModel):
     required_contexts: int = Field(gt=0)
     goal: int = Field(gt=0)
     placement: int = Field(gt=0)
-
-
-class ModelFactoryFloorUnresolvedRead(BaseModel):
-    """One read of the ledger reader across the live ledger and every archive roll, filtered by kind and a text match, with no age limit."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    kind: str = Field(min_length=1)
-    grep: str = Field(min_length=1)
 
 
 class ModelFactoryFloorLaneSources(BaseModel):
@@ -142,9 +135,10 @@ class ModelFactoryFloorRuntime(BaseModel):
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
-    # The row kinds the effect keeps from the window, and the reads that bring back unresolved rows older than it.
+    # The row kinds the effect keeps from the window.
     ledger_kinds: tuple[str, ...] = Field(min_length=1)
-    unresolved_reads: tuple[ModelFactoryFloorUnresolvedRead, ...] = Field(min_length=1)
+    # Hours after which the unresolved step's record reads unread (its own margin past the window's edge is the other bound).
+    unresolved_max_age_hours: int = Field(gt=0)
     source_max_age_min: ModelFactoryFloorSourceBars
     # The plans repository file with the goal's rows, and the verdicts that close a row.
     goal_relpath: str = Field(min_length=1)
@@ -219,6 +213,9 @@ class ModelFactoryFloorOverlay(BaseModel):
     container_read_line: str = ""
     container_hosts: tuple[ModelFactoryFloorContainerHost, ...] = ()
     container_budgets: tuple[ModelLaneContainerBudgetDeclaration, ...] = ()
+    # The ledger reader's row source for the window read (its ``--source``: file, db or compare; the reader refuses another).
+    # None names no source and leaves the reader its own default, which on a host whose ledger record is the bus is the bus read.
+    ledger_source: str | None = Field(default=None, min_length=1)
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]
     roles: tuple[str, ...]

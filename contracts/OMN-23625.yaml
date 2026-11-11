@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-23625
+title: Test runs that die mid-test name the test and the cause
+summary: "The Tests job's two pytest steps run with PYTHONFAULTHANDLER and unbuffered output, keep pytest's own exit status through a tee of the verbose log, and a failure-only step prints the last test started, any Python fatal-error block and the kernel's segfault lines when the log holds no pytest summary. A diagnostic: no test, flag, marker, timeout or required check changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23625-crash-names-itself
+  statement: A split that dies with no pytest summary leaves its last started test, its fault-handler stack and the kernel's fault line in the job log; an ordinary failure and a missing log print one line and exit 0; pytest's exit status and every flag are unchanged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the Tests job pytest steps run with the fault handler on and, when pytest dies with no summary line, a failure-only step prints the last test started and a read of the kernel log -- falsifier: uv run pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py fails at the base, 8 of 24 tests red'
+  - id: AC2
+    statement: 'AC2: the change drops no check and loosens no limit: the pytest flags, the marker filter, the timeout and the exit status of the step are unchanged -- falsifier: the same test file control cases fail if a flag is dropped or pipefail is removed'
+  - id: AC3
+    statement: 'AC3: integrated: on the pull request''s own Tests jobs the step still passes and a real segfaulting test replayed through the same step shapes prints its last started test -- falsifier: the Tests job logs show the step ran green, and the replay log lacks the last-started line'
+evidence_requirements:
+- kind: tests
+  description: The Tests job crash diagnostic shape and behaviour tests, and the neighbouring tests that read the same job.
+  command: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py tests/unit/test_ci_workflow_shape_durations_merge.py tests/ci/test_omn18693_native_postgres_ci_wiring.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23625-diagnostic-tests
+  description: The diagnostic tests pass; at the base 8 of 24 fail (the shape tests for env, exit status, step order and the four behaviour tests for the step that does not exist).
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23625-ac3-diagnostic-names-last-test
+  description: 'The hosted-runnable part of AC3: the diagnostic step script, run with bash on a log that ends mid-test, prints the last test started and the kernel segfault line, and on an ordinary failure prints neither; the pull request''s own Tests job logs and the lab replay are read from the pull request body and its Tests jobs.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py -k "diagnostic" -q --no-cov -p no:randomly
+    cwd: .
