@@ -87,7 +87,7 @@ runtime:
   # the call is made and is never printed, logged, emitted or stored. Enabled with an empty variable the run is red, never skipped.
   leg_b_enabled: true
   openrouter_probe_key_env: ONEX_R3_OPENROUTER_PROBE_KEY
-  openrouter_max_tokens: 16
+  openrouter_max_tokens: 256
   # The paid model id and its endpoint are the overlay's: the file below holds them, never this contract.
   openrouter_overlay_relpath: inputs/r3_openrouter_overlay.yaml
 
