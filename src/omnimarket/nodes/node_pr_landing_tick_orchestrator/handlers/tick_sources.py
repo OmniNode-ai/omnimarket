@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
     JsonlEmissionSink,
@@ -35,8 +37,10 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports impo
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickMode,
+    EnumTickSkipReason,
     ModelTickRequest,
     ModelTickResult,
+    ModelTickSkippedRecord,
     ModelTickSnapshot,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overlay import (
@@ -49,6 +53,8 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
 
 class ProtocolTickSnapshotSource(Protocol):
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]: ...
+
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]: ...
 
 
 class ProtocolTickTopicReader(Protocol):
@@ -69,12 +75,17 @@ class InMemorySnapshotSource:
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]:
         return self._snapshots
 
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]:
+        return ()
+
 
 class RedpandaSnapshotSource:
     """The landing snapshot step's tick records, read from the overlay's topic through the injected reader.
 
     Each record is the shared ModelLandingTickRecord the snapshot step publishes on its record_topic
-    (OMN-23409); its facts become one snapshot with no recorded decision.
+    (OMN-23409); its facts become one snapshot with no recorded decision. The topic is shared, so a
+    record this reader cannot parse is skipped with a typed row (skipped()) and the read goes on
+    (OMN-23529); only the reader itself raising fails the read.
     """
 
     def __init__(
@@ -87,15 +98,43 @@ class RedpandaSnapshotSource:
         self._reader = reader
         self._max = max_snapshots
         self._timeout = poll_timeout_s
+        self._skipped: tuple[ModelTickSkippedRecord, ...] = ()
 
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]:
         out: list[ModelTickSnapshot] = []
-        for raw in self._reader.read(self._max, self._timeout):
-            record = ModelLandingTickRecord.model_validate_json(raw)
+        skipped: list[ModelTickSkippedRecord] = []
+        for position, raw in enumerate(self._reader.read(self._max, self._timeout)):
+            try:
+                record = ModelLandingTickRecord.model_validate_json(raw)
+            except ValidationError as exc:
+                skipped.append(
+                    ModelTickSkippedRecord(
+                        position=position,
+                        reason=EnumTickSkipReason.UNPARSEABLE_RECORD,
+                        detail=_validation_detail(exc),
+                    )
+                )
+                continue
             out.append(
                 ModelTickSnapshot(facts=record.facts, provenance=record.provenance)
             )
+        self._skipped = tuple(skipped)
         return tuple(out)
+
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]:
+        """The records the last snapshots() call skipped, each with its place and reason."""
+        return self._skipped
+
+
+_DETAIL_ERRORS = 3
+
+
+def _validation_detail(exc: ValidationError) -> str:
+    """The first errors as location: type, e.g. facts.prs.0.liveness: extra_forbidden."""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in error['loc']) or '<record>'}: {error['type']}"
+        for error in exc.errors()[:_DETAIL_ERRORS]
+    )
 
 
 _REQUIRED_FIELDS: dict[EnumTickBackend, tuple[str, ...]] = {

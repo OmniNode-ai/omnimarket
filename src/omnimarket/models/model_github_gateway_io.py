@@ -449,6 +449,13 @@ class ModelWorkflowRunsResult(_ModelBoundedList):
     repo: str
     runs: list[ModelWorkflowRunSummary] = Field(default_factory=list)
 
+    def succeeded_at(self, head_sha: str) -> bool:
+        """True when a run on ``head_sha`` concluded ``success``."""
+        return any(
+            run.head_sha == head_sha and run.conclusion == "success"
+            for run in self.runs
+        )
+
 
 class ModelJobStep(BaseModel):
     """One step of a job."""
