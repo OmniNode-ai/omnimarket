@@ -5,6 +5,8 @@
 The pool driver's own command (OMN-23642). Each answering verb reads ONE JSON request from stdin, loads the deployment
 overlay, and prints the result model as one JSON object on stdout:
 
+``pool-run``           the same rule, handed the pool driver's clone and probe phase text unread; the pull request and its
+                       changed paths are read from that text (OMN-23715).
 ``changed-path-live``  the declared not-applicable class for the changed-path-live rule; the substitute receipts at the
                        request's head are read from the store the overlay names.
 ``select-tests``       the repository's own marker selection, as the pool applies it.
@@ -37,6 +39,9 @@ from omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_focused_test
 from omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_log_retention import (
     HandlerLogRetention,
 )
+from omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_pool_run import (
+    HandlerPoolRun,
+)
 from omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_test_selection import (
     HandlerTestSelection,
 )
@@ -48,6 +53,9 @@ from omnimarket.nodes.node_lab_proof_judge_compute.models.model_focused_tests im
 )
 from omnimarket.nodes.node_lab_proof_judge_compute.models.model_log_retention import (
     ModelLogRetentionRequest,
+)
+from omnimarket.nodes.node_lab_proof_judge_compute.models.model_pool_run import (
+    ModelPoolRunRequest,
 )
 from omnimarket.nodes.node_lab_proof_judge_compute.models.model_substitute_receipt import (
     ModelSubstituteReceipt,
@@ -80,6 +88,12 @@ def _changed_path_live(overlay: ModelLabProofJudgeOverlay) -> int:
     return _answer(HandlerChangedPathLive(overlay).handle(request))
 
 
+def _pool_run(overlay: ModelLabProofJudgeOverlay) -> int:
+    request = ModelPoolRunRequest.model_validate_json(sys.stdin.read())
+    judge = HandlerChangedPathLive(overlay)
+    return _answer(HandlerPoolRun(judge, _store(overlay).read_for_head).handle(request))
+
+
 def _record_substitute(
     overlay: ModelLabProofJudgeOverlay, args: argparse.Namespace
 ) -> int:
@@ -103,6 +117,8 @@ def _run(args: argparse.Namespace) -> int:
     overlay = load_overlay()
     if args.verb == "changed-path-live":
         return _changed_path_live(overlay)
+    if args.verb == "pool-run":
+        return _pool_run(overlay)
     if args.verb == "select-tests":
         return _answer(
             HandlerTestSelection(overlay).handle(
@@ -127,7 +143,13 @@ def _run(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
     sub = parser.add_subparsers(dest="verb", required=True)
-    for verb in ("changed-path-live", "select-tests", "focused-tests", "retention"):
+    for verb in (
+        "changed-path-live",
+        "pool-run",
+        "select-tests",
+        "focused-tests",
+        "retention",
+    ):
         sub.add_parser(verb)
     record = sub.add_parser("record-substitute")
     for flag in (

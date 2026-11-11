@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from decimal import Decimal
 from typing import Literal
 
 from omnibase_core.models.delegation.wire import ModelRoutingTier
@@ -16,6 +17,7 @@ from omnimarket.models.delegation.model_class_escalation_chain import (
     ModelClassEscalationChain,
 )
 from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
+from omnimarket.models.delegation.model_eval_arms_overlay import ModelEvalArmsOverlay
 from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationBackendKind,
@@ -72,7 +74,13 @@ class ModelRegisteredByokTier(ModelRoutingTier):
 
 
 class ModelDelegationRoutingOverlay(BaseModel):
-    """Harness backends, tiers and chains supplied by the operator."""
+    """Harness backends, tiers and chains supplied by the operator.
+
+    ``eval_arms`` (OMN-23751) carries the hosted models the code eval may pin
+    before it has scored them, with their prices and the eval spend cap. Their
+    backends are pinned-only and are appended to the loaded routing contract by
+    the bifrost loaders, so a backend-id pin resolves them and nothing else does.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -81,6 +89,7 @@ class ModelDelegationRoutingOverlay(BaseModel):
     harness_tiers: tuple[ModelHarnessTier, ...] = ()
     escalation_chains: tuple[ModelTaskClassEscalationChain, ...] = ()
     registered_byok_tier: ModelRegisteredByokTier | None = None
+    eval_arms: ModelEvalArmsOverlay | None = None
 
     @model_validator(mode="after")
     def _validate_references(self) -> ModelDelegationRoutingOverlay:
@@ -107,6 +116,19 @@ class ModelDelegationRoutingOverlay(BaseModel):
                 problems.append(
                     f"tier {tier.name!r} names undeclared harness backend {tier.backend_id!r}"
                 )
+        if self.eval_arms is not None:
+            for backend in self.eval_arms.backends:
+                if backend.backend_id in backend_ids:
+                    problems.append(
+                        f"eval backend {backend.backend_id!r} reuses a harness backend_id"
+                    )
+            eval_tiers = {arm.tier for arm in self.eval_arms.arms}
+            for chain in self.escalation_chains:
+                for rung in sorted(eval_tiers.intersection(chain.rungs)):
+                    problems.append(
+                        f"task_class {chain.task_class!r} chain names eval tier {rung!r}; "
+                        "eval arms are reached only by an explicit pin"
+                    )
         for chain in self.escalation_chains:
             for tier in self.harness_tiers:
                 if tier.name in chain.rungs and chain.task_class not in tier.use_for:
@@ -135,6 +157,41 @@ class ModelDelegationRoutingOverlay(BaseModel):
     def backend_by_id(self) -> dict[str, ModelDelegationBackendConfig]:
         """Index the declared harness backends."""
         return {backend.backend_id: backend for backend in self.harness_backends}
+
+    def eval_backend_rows(self) -> list[dict[str, object]]:
+        """The eval arms' backends as routing-contract rows, empty when none."""
+        if self.eval_arms is None:
+            return []
+        rows: list[dict[str, object]] = []
+        for backend in self.eval_arms.backends:
+            row = backend.model_dump(mode="json", exclude_none=True)
+            # An added contract row states these keys even when null (OMN-17099).
+            row.setdefault("secret_ref", None)
+            row.setdefault("endpoint_url", None)
+            rows.append(row)
+        return rows
+
+    def eval_arm_price_per_1m(
+        self, endpoint_url: str | None, model_name: str
+    ) -> tuple[Decimal, Decimal] | None:
+        """The eval arm's declared ``(input, output)`` USD per 1M tokens, or ``None``.
+
+        Keyed on the endpoint and the served model together, as the BYOK price
+        lookup is, so a call on an eval arm is booked at the arm's own price
+        and never at the rate of the ladder tier whose name it shares.
+        """
+        if self.eval_arms is None or not endpoint_url:
+            return None
+        arms = self.eval_arms.arm_by_backend_id()
+        for backend in self.eval_arms.backends:
+            arm = arms.get(backend.backend_id)
+            if (
+                arm is not None
+                and backend.endpoint_url == endpoint_url
+                and arm.slug == model_name
+            ):
+                return arm.price_in_usd_per_mtok, arm.price_out_usd_per_mtok
+        return None
 
 
 EMPTY_DELEGATION_ROUTING_OVERLAY = ModelDelegationRoutingOverlay(

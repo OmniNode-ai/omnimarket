@@ -1,0 +1,17 @@
+Design-review verdict for formal/code_eval_trial (OMN-23627 AC10, child OMN-23753)
+
+VERDICT: approve-with-notes
+Reviewer: an opus design-review subagent run by lane eval-e1-model-4140 (read-only, not the model's author).
+Rounds: 1 revise (4 blocking: M2 was an unknown-message trace; LateNoEffect did not catch a dropped
+ordinal guard; stop at first pass unchecked; liveness vacuous), 2 revise (3 blocking: M2 control sent
+check; M10 failed because the abandon preempted dispatch; M8 failed on a never-sent ordinal),
+3 approve-with-notes. Each blocking finding was fixed in the model and its mutant re-run.
+
+Notes carried to the build (non-blocking):
+  - LateNoEffect holds by construction (a ghost set by the same guard); VerdictsStable, AtMostBoundTries,
+    M2, M2b and M8 carry the evidence that a late answer changes nothing.
+  - ExactlyOneClose holds by construction; the build must close and abandon under compare-and-set so
+    the runtime's abandoned-row sweep cannot race the reducer's close.
+  - The completion bound must exceed each deadline by at least one nudge interval (M6b; README item 7).
+  - The liveness configs check one task; the 2 task, 2 model, bound 3 config is untimed.
+Results: formal/code_eval_trial/results/*.out; the README lists each config's states and verdict.

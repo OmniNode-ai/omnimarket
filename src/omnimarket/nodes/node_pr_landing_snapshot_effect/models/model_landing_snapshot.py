@@ -35,6 +35,8 @@ class EnumSnapshotFailureReason(StrEnum):
     CONTROLLER_STATE_UNREAD = "controller_state_unread"
     CONTROLLER_TICK_OPEN = "controller_tick_open"
     CONTROLLER_STATE_STALE = "controller_state_stale"
+    RECORD_TOO_LARGE = "record_too_large"
+    PUBLISH_FAILED = "publish_failed"
 
 
 class ModelPrWriteFacts(BaseModel):

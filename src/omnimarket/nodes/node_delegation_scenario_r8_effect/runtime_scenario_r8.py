@@ -22,6 +22,7 @@ from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.handler_scenar
     HandlerScenarioR8,
     build_runner,
     load_schedule,
+    r8_settings_store,
 )
 
 RECORD_FLAG = "--record"
@@ -49,7 +50,9 @@ def _build_with(
     record: Path | None,
 ) -> Callable[[EnumScenarioTrigger], HandlerScenarioR8]:
     def _build(trigger: EnumScenarioTrigger) -> HandlerScenarioR8:
-        return build_runner(trigger=trigger, record=record)
+        return build_runner(
+            trigger=trigger, record=record, settings_store=r8_settings_store()
+        )
 
     return _build
 
