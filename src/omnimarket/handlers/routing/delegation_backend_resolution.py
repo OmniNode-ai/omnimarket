@@ -45,13 +45,13 @@ from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    append_eval_arm_backends,
     build_overlay_field_provenance,
     reject_backends_off_a_declared_provider_surface,
     validate_overlay_added_backends,
     warn_overlay_shadowed_authoritative_fields,
 )
 from omnimarket.handlers.routing.customer_key_terminus import is_customer_attributed
+from omnimarket.handlers.routing.eval_arm_backends import append_eval_arm_backends
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
