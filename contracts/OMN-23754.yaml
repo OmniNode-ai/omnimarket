@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23754
+title: Record the lane start model and its design-review verdict
+summary: 'A TLA+ model of the lane start (the CLAIM, one engine start, one TERMINAL, and a retry of the same key) is recorded in docs/formal/lane_start with the recorded TLC 2.19 results of 28 configs, a test that fails when the model or a config changes without a rerun, the independent design-review verdict (PASS with conditions A to D, after two FAIL rounds) and a mapping of the model''s actions to one observe-mode run of the lane start entry on lab host h201.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23754-model
+  statement: The lane start has a checked model and a recorded design-review verdict before anything builds against it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lane start model and its recorded checker results are in the repository, and a test fails when the model or a config changes without a rerun -- falsifier: uv run pytest tests/formal/test_lane_start_model.py -q passes at the pull request head and fails after Model.cfg is changed without a rerun'
+  - id: AC2
+    statement: 'AC2: the design-review verdict and its conditions A to D are recorded beside the model -- falsifier: docs/formal/lane_start/results/design_review_verdict.txt holds a Verdict line and the test_lane_start_design_review_verdict_is_recorded test fails without it'
+  - id: AC3
+    statement: 'AC3: integrated: one observe-mode run of the lane start entry on a lab host maps each model action to an event it printed, with the gaps named -- falsifier: docs/formal/lane_start/mapping.txt names the host, the revision, the observed event fields and the model actions no event carries'
+evidence_requirements:
+- kind: tests
+  description: The focused test of this change passes at the pushed head.
+  command: uv run --frozen pytest tests/formal/test_lane_start_model.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23754-ac1
+  description: 'The recorded TLC results bind to the model and each config by sha256; the design config passes and each mutant, as-built config and witness reads its named result.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_lane_start_model.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23754-ac2
+  description: 'The verdict file carries the Verdict line and names every mutant and as-built config.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_lane_start_model.py -q --no-cov -n 0 -p no:randomly -k design_review
+    cwd: .
+- id: dod-omn23754-ac3
+  description: 'The mapping file names the host, the revision, the observed event fields and the gaps; the observe-mode run itself is read in the pull request''s Lab line and the lane report.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: grep -c "GAP" docs/formal/lane_start/mapping.txt
+    cwd: .
