@@ -23,6 +23,8 @@ from typing import Protocol
 
 import click
 from pydantic import BaseModel, ConfigDict, SecretStr
+from rich.align import Align
+from rich.console import Group
 from rich.markdown import Markdown
 from rich.text import Text
 from textual.app import App, ComposeResult, SuspendNotSupported
@@ -409,14 +411,18 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
 
     CSS = """
     SetupScreen { align: center middle; }
-    #form { width: 90%; max-width: 140; height: auto; max-height: 95%; border: round $accent; padding: 1 2; background: $panel; }
-    #form Input, #form Select { margin-bottom: 1; }
-    #found { height: auto; min-height: 6; max-height: 24; display: none; margin-bottom: 1; }
-    #note { color: $text-muted; }
-    #basket { color: $success; margin-bottom: 1; }
-    #buttons { height: auto; align-horizontal: right; }
+    #form { width: 90%; max-width: 140; height: 90%; border: round $accent; padding: 0 2; background: $panel; }
+    #form Input, #form Select { margin-bottom: 0; }
+    #found { height: 1fr; min-height: 3; display: none; }
+    #note { color: $text-muted; height: auto; }
+    #basket { color: $success; height: auto; }
+    #keys { color: $text-muted; height: 1; }
+    #buttons { height: 3; dock: bottom; align-horizontal: right; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS = [
+        Binding("escape", "cancel", "Back"),
+        Binding("ctrl+s", "save", "Save", priority=True),
+    ]
 
     def __init__(
         self, runner: ProtocolTuiRunner, list_models: ListModels | None = None
@@ -449,6 +455,11 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             yield Input(placeholder="Or type a model id", id="model")
             yield Static("", id="note")
             yield Static("Selected: none yet (at least one is needed)", id="basket")
+            yield Static(
+                "Space ticks a model  ·  Add keeps this provider's picks  ·  "
+                "Ctrl+S saves  ·  Esc goes back",
+                id="keys",
+            )
             with Horizontal(id="buttons"):
                 yield Button("Find models", id="find")
                 yield Button("Add", id="add")
@@ -609,11 +620,17 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             else:
                 note.update("tick or type a model first")
         elif event.button.id == "save":
-            self._add_current()
-            if not self._basket:
-                note.update("select at least one model before saving")
-                return
-            self.dismiss(tuple(self._basket.values()))
+            self.action_save()
+
+    def action_save(self) -> None:
+        """Save what is ticked or added; refuse with nothing chosen."""
+        self._add_current()
+        if not self._basket:
+            self.query_one("#note", Static).update(
+                "select at least one model before saving"
+            )
+            return
+        self.dismiss(tuple(self._basket.values()))
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -779,41 +796,54 @@ def _model_choices(text: str) -> list[tuple[str, str, bool]]:
     return choices
 
 
-def _big_word(word: str, gradient: tuple[str, ...], banner: Text) -> None:
+def _big_word(word: str, gradient: tuple[str, ...]) -> Text:
     """``word`` in the design font, coloured left to right along ``gradient``."""
     font = tui_design().font
     rows = ["  ".join(font[c][r] for c in word) for r in range(3)]
     width = max(len(row) for row in rows)
-    for row in rows:
-        for column, char in enumerate(row):
-            banner.append(
+    block = Text(no_wrap=True)
+    for index, row in enumerate(rows):
+        if index:
+            block.append("\n")
+        for column, char in enumerate(row.ljust(width)):
+            block.append(
                 char, style=f"bold {gradient[column * len(gradient) // width]}"
             )
-        banner.append("\n")
+    return block
+
+
+def welcome_sections() -> list[Text]:
+    """Greeting, banner words, tagline and tips, each its own block."""
+    design = tui_design()
+    sections = [Text(design.banner.greeting, style=_style("muted", "italic"))]
+    sections += [
+        _big_word(word.text, design.gradients[word.gradient])
+        for word in design.banner.words
+    ]
+    sections.append(Text(design.banner.tagline, style=_style("muted", "italic")))
+    key_width = max(len(tip.key) for tip in design.banner.tips) + 3
+    tips = Text(no_wrap=True)
+    for index, tip in enumerate(design.banner.tips):
+        if index:
+            tips.append("\n")
+        tips.append(f"{design.glyphs.tip} ", style=_style("primary"))
+        tips.append(f"{tip.key:<{key_width}}", style=_style("secondary", "bold"))
+        tips.append(tip.text, style=_style("foreground"))
+    sections.append(tips)
+    return sections
 
 
 def welcome_banner() -> Text:
-    """The design file's greeting, banner words, tagline and tips, centred.
+    """The welcome sections as one plain block (what the screen shows, uncentred)."""
+    return Text("\n\n").join(welcome_sections())
 
-    Every line is centred on its own; the tips are padded to one width first so
-    they stay aligned with each other as a block.
-    """
-    design = tui_design()
-    banner = Text(justify="center")
-    banner.append(f"\n{design.banner.greeting}\n\n", style=_style("muted", "italic"))
-    for index, word in enumerate(design.banner.words):
-        if index:
-            banner.append("\n")
-        _big_word(word.text, design.gradients[word.gradient], banner)
-    banner.append(f"\n{design.banner.tagline}\n\n", style=_style("muted", "italic"))
-    key_width = max(len(tip.key) for tip in design.banner.tips) + 3
-    line_width = max(len(tip.text) for tip in design.banner.tips) + key_width + 2
-    for tip in design.banner.tips:
-        banner.append(f"{design.glyphs.tip} ", style=_style("primary"))
-        banner.append(f"{tip.key:<{key_width}}", style=_style("secondary", "bold"))
-        pad = line_width - key_width - 2 - len(tip.text)
-        banner.append(f"{tip.text}{' ' * pad}\n", style=_style("foreground"))
-    return banner
+
+def welcome_renderable() -> Group:
+    """Each section centred as a block, so letters and tips stay aligned inside."""
+    parts: list[Align | Text] = [Text("")]
+    for section in welcome_sections():
+        parts += [Align.center(section), Text("")]
+    return Group(*parts)
 
 
 class OnexTui(App[int]):
@@ -888,7 +918,7 @@ class OnexTui(App[int]):
         yield Static(id="status")
 
     async def on_mount(self) -> None:
-        self.query_one("#output", RichLog).write(welcome_banner(), expand=True)
+        self.query_one("#output", RichLog).write(welcome_renderable(), expand=True)
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")

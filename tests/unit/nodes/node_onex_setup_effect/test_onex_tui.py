@@ -835,15 +835,6 @@ async def test_typing_setup_still_opens_the_config_form() -> None:
         assert isinstance(app.screen, SetupScreen)
 
 
-def test_the_welcome_banner_is_centred_with_its_tips_kept_aligned() -> None:
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import welcome_banner
-
-    banner = welcome_banner()
-    assert banner.justify == "center"
-    tips = [line for line in banner.plain.splitlines() if "/" in line]
-    assert len({len(line) for line in tips}) == 1  # one block width, so aligned
-
-
 async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:
     app = _app(_Runner([]))
     async with app.run_test(size=(140, 40)) as pilot:
@@ -852,3 +843,61 @@ async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:
         tagline = next(line for line in lines if "costs least" in line)
         left = len(tagline) - len(tagline.lstrip())
         assert left > 20  # centred, not pinned to the left edge
+
+
+async def test_centred_banner_keeps_letters_and_tips_aligned() -> None:
+    """Each section is centred as a block: a word's three rows, and the tips,
+    start in the same column."""
+    app = _app(_Runner([]))
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        lines = [str(line.text) for line in app.query_one("#output").lines]
+
+        def start(line: str) -> int:
+            return len(line) - len(line.lstrip())
+
+        from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+            tui_design,
+        )
+
+        design = tui_design()
+        for word in design.banner.words:
+            rows = ["  ".join(design.font[c][r] for c in word.text) for r in range(3)]
+            columns = {
+                next(line.index(row) for line in lines if row in line) for row in rows
+            }
+            assert len(columns) == 1, word.text  # all three rows share one column
+        keys = [tip.key for tip in design.banner.tips]
+        tips = [line for line in lines if any(f" {key}" in line for key in keys[1:3])]
+        assert len({start(t) for t in tips}) == 1
+        assert start(tips[0]) > 20
+
+
+async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    list_models, _ = _hosted_listing(count=466)
+    runner = _Runner([], by_command={("setup", "--no-interactive"): _SETUP_REPORT})
+    app = OnexTui(
+        root=_root, runner=runner, load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(100, 30)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        screen.query_one("#key").value = "k"
+        await _press(pilot, app, "find")
+        await pilot.pause()
+        for button in ("find", "add", "save", "cancel"):
+            region = screen.query_one(f"#{button}").region
+            assert region.height > 0, button
+            assert region.bottom <= 30, button
+        assert "Ctrl+S saves" in str(screen.query_one("#keys").render())
+        screen.query_one("#found").select("qwen/qwen3.8-27b")
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        await pilot.pause()
+        assert any(call[0] == "setup" for call in runner.calls)
