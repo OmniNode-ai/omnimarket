@@ -1,0 +1,21 @@
+Parsing file CreateTicketDraft.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file TLC.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CreateTicketDraft
+Implied-temporal checking--satisfiability problem has 5 branches.
+Computing initial states...
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 8.5E-9
+  based on the actual fingerprints:  val = 9.9E-9
+800949 states generated, 336230 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 29.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 2).
+exit=0

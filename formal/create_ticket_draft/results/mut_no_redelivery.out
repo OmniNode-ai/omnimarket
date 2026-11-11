@@ -1,0 +1,236 @@
+Parsing file CreateTicketDraft.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file TLC.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CreateTicketDraft
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Checking temporal properties for the complete state space with 9661 total distinct states at (2026-11-11 15:29:21)
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 1)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 2: <Dup line 146, col 3 to line 150, col 104 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "find" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 1)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 3: <FindFail line 170, col 3 to line 171, col 104 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 1
+/\ pc = ( <<c1, 1>> :> "fail" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 1)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 4: <TermPubFail line 307, col 3 to line 311, col 93 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 1
+/\ pc = ( <<c1, 1>> :> "unacked" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 1)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 1
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 5: <Start line 137, col 3 to line 141, col 102 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 1
+/\ pc = ( <<c1, 1>> :> "unacked" @@
+  <<c1, 2>> :> "find" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 0)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 1
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 6: <FindOk line 159, col 3 to line 167, col 106 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 1
+/\ pc = ( <<c1, 1>> :> "unacked" @@
+  <<c1, 2>> :> "create" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 0)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 1
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 7: <CreateFailAfter line 192, col 3 to line 197, col 88 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 2
+/\ pc = ( <<c1, 1>> :> "unacked" @@
+  <<c1, 2>> :> "fail" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "stub",
+    id |-> 1,
+    by |-> <<c1, 2>>,
+    proj |-> TRUE,
+    wrote |-> FALSE ] }
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 1
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 8: <Crash line 320, col 3 to line 327, col 84 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 2
+/\ pc = ( <<c1, 1>> :> "unacked" @@
+  <<c1, 2>> :> "crashed" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "stub",
+    id |-> 1,
+    by |-> <<c1, 2>>,
+    proj |-> TRUE,
+    wrote |-> FALSE ] }
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 2
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 9: <HandEdit line 331, col 3 to line 336, col 100 of module CreateTicketDraft>
+/\ extra = (c1 :> 1)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 2
+/\ pc = ( <<c1, 1>> :> "unacked" @@
+  <<c1, 2>> :> "crashed" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "edited",
+    id |-> 1,
+    by |-> <<c1, 2>>,
+    proj |-> TRUE,
+    wrote |-> FALSE ] }
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 2
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 1
+/\ terms = {}
+
+State 10: Stuttering
+26929 states generated, 9661 distinct states found, 0 states left on queue.
+exit=13
