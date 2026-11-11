@@ -1109,12 +1109,9 @@ lab_onboarding:
     kind: function
     identifier: vm_notice
     owner: 'onex setup: machine detection'
-    disposition: integrated
-    reason: 'Preflight refuses the selected local stack in a macOS virtual machine, naming the VM and the
-      endpoint alternative, because Docker gets no nested virtualization there; endpoint-only setup in the
-      same VM proceeds. No universal hardware requirement is introduced.'
-    verification:
-    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+    disposition: retired
+    reason: 'Retired by operator rulings of 2026-11-10 and 2026-11-11: no VM is needed, and the onboarding walk needs only a clean venv. Setup gives no VM-specific notice
+      or refusal.'
   - source: preflight
     kind: function
     identifier: write_routing_overlay
@@ -1883,9 +1880,8 @@ lab_onboarding:
     identifier: is_rosetta
     owner: 'onex setup: machine detection'
     disposition: integrated
-    reason: 'The production collector asks sysctl (sysctl.proc_translated, kern.hv_vmm_present); an error
-      or unexpected answer stays unknown rather than guessed. Rosetta is refused with the native-terminal fix;
-      a VM refuses only the local stack.'
+    reason: 'The production collector asks sysctl.proc_translated; an error or unexpected answer stays
+      unknown rather than guessed. Rosetta is refused with the native-terminal fix.'
     verification:
     - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
   - source: walk
@@ -1904,12 +1900,9 @@ lab_onboarding:
     kind: function
     identifier: is_vm
     owner: 'onex setup: machine detection'
-    disposition: integrated
-    reason: 'The production collector asks sysctl (sysctl.proc_translated, kern.hv_vmm_present); an error
-      or unexpected answer stays unknown rather than guessed. Rosetta is refused with the native-terminal fix;
-      a VM refuses only the local stack.'
-    verification:
-    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+    disposition: retired
+    reason: 'Retired by operator rulings of 2026-11-10 and 2026-11-11: no VM is needed, and the onboarding walk needs only a clean venv. A VM reading is evidence only and
+      gates nothing.'
   - source: walk
     kind: function
     identifier: key_looks_like

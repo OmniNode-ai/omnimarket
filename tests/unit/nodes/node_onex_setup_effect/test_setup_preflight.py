@@ -127,37 +127,6 @@ def test_probe_error_is_not_a_success_or_zero_measurement(tmp_path: Path) -> Non
     assert "free_disk_bytes" not in result.evidence
 
 
-def _stack_plan(tmp_path: Path) -> ModelSetupPlan:
-    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_local_stack import (
-        ModelSetupLocalStackSelection,
-    )
-
-    return ModelSetupPlan(
-        workspace=tmp_path,
-        local_stack=ModelSetupLocalStackSelection(
-            compose_file=tmp_path / "compose.yaml",
-            topology_file=tmp_path / "topology.yaml",
-        ),
-    )
-
-
-def test_vm_notice_stops_only_the_local_stack(tmp_path: Path) -> None:
-    """OMN-23413 inventory row vm_notice: a macOS VM cannot give Docker the
-    nested virtualization the local stack needs, so selecting the stack in a VM
-    is refused with that reason, while endpoint-only setup in the same VM runs."""
-    handler = HandlerSetupPreflight(collect=lambda _: facts(virtual_machine=True))
-    stack = handler.handle(_stack_plan(tmp_path))
-    assert stack.status == "unavailable"
-    assert "virtual machine" in (stack.fix or "")
-    endpoint_only = handler.handle(ModelSetupPlan(workspace=tmp_path))
-    assert endpoint_only.status == "success"
-    assert endpoint_only.evidence["virtual_machine"] == "true"
-    physical = HandlerSetupPreflight(collect=lambda _: facts()).handle(
-        _stack_plan(tmp_path)
-    )
-    assert physical.status == "success"
-
-
 @pytest.mark.parametrize(
     ("answers", "rosetta", "vm"),
     [
