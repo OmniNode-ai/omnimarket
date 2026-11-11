@@ -321,23 +321,21 @@ def test_undeclared_unreadable_environment_file_run_chain_error(
 
 
 def test_unreadable_environment_files_must_be_absolute_paths() -> None:
-    from uuid import uuid4
-
     from pydantic import ValidationError
 
-    from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
+    from omnimarket.models.model_worktree_reconcile_policy import (
+        ModelWorktreeReconcilePolicy,
+    )
 
     with pytest.raises(ValidationError):
-        ModelWorktreeReconcileCommand(
-            host="h",
-            roots=("/r",),
-            correlation_id=uuid4(),
-            unreadable_environment_files={"relative/env": ("/a",)},
+        ModelWorktreeReconcilePolicy(
+            unreadable_environment_files={"relative/env": ("/a",)}
         )
     with pytest.raises(ValidationError):
-        ModelWorktreeReconcileCommand(
-            host="h",
-            roots=("/r",),
-            correlation_id=uuid4(),
-            unreadable_environment_files={"/env": ("relative/a",)},
+        ModelWorktreeReconcilePolicy(
+            unreadable_environment_files={"/env": ("relative/a",)}
         )
+    declared = ModelWorktreeReconcilePolicy(
+        unreadable_environment_files={"/env": ("/a",)}
+    )
+    assert declared.unreadable_environment_files == {"/env": ("/a",)}

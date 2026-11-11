@@ -79,7 +79,7 @@ def run_command(
                 LaunchdUnitRootReader()
                 if sys.platform == "darwin"
                 else SystemdUnitRootReader(
-                    declared_environment_files=command.unreadable_environment_files
+                    declared_environment_files=command.policy.unreadable_environment_files
                 )
             ),
             merged_pr_reader=CommandMergedPrReader(),

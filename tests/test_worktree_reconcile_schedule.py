@@ -207,7 +207,7 @@ def test_tick_hands_the_overlay_declared_environment_files_to_the_unit_reader(
     capsys.readouterr()
     assert _NoInstalledUnits.built_with == {"declared_environment_files": {}}
     document = yaml.safe_load(path.read_text())
-    document["hosts"]["lab-host"]["unreadable_environment_files"] = {
+    document["hosts"]["lab-host"]["policy"]["unreadable_environment_files"] = {
         "/etc/example/service.env": []
     }
     path.write_text(yaml.safe_dump(document))
@@ -220,7 +220,9 @@ def test_tick_hands_the_overlay_declared_environment_files_to_the_unit_reader(
 
 def test_overlay_refuses_a_relative_declared_environment_file(tmp_path: Path) -> None:
     document = yaml.safe_load(overlay(tmp_path).read_text())
-    document["hosts"]["lab-host"]["unreadable_environment_files"] = {"etc/x.env": []}
+    document["hosts"]["lab-host"]["policy"]["unreadable_environment_files"] = {
+        "etc/x.env": []
+    }
     with pytest.raises(ValidationError):
         ModelWorktreeScheduleOverlay.model_validate(document)
 
