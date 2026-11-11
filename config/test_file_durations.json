@@ -33,7 +33,6 @@
   "tests/chains/local/test_local_chain_pair_registry_omn18698.py": 0.1,
   "tests/chains/piece14/test_piece14_chain.py": 13.24,
   "tests/chains/piece16/test_piece16_chain.py": 0.062,
-  "tests/chains/piece16/test_piece16_drill_topic_provision.py": 3.41,
   "tests/chains/pr_handoff/test_golden_chain_pr_handoff.py": 0.16,
   "tests/chains/pr_handoff/test_obligation_binding.py": 0.1,
   "tests/chains/pr_landing/test_chain_pr_landing_orchestrator.py": 0.11,
