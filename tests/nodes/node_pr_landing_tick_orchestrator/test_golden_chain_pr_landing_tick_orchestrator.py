@@ -151,10 +151,15 @@ def test_error_chain_a_tick_with_no_recorded_decision_ends_in_the_failed_event()
 ):
     publisher = InMemoryTickPublisher()
     result = HandlerPrLandingTickOrchestrator(publisher=publisher).handle(
-        _request(recorded_decision=None)
+        _request(EnumTickMode.REPLAY, recorded_decision=None)
     )
     assert result.failure_reason is EnumTickFailureReason.RECORDED_DECISION_MISSING
     assert [t for t, _ in publisher.published] == [FAILED_TOPIC]
+    # observe mode names the cause as the controller's missing tick (OMN-22921)
+    observed = HandlerPrLandingTickOrchestrator(
+        publisher=InMemoryTickPublisher()
+    ).handle(_request(EnumTickMode.OBSERVE, recorded_decision=None))
+    assert observed.failure_reason is EnumTickFailureReason.CONTROLLER_TICK_MISSING
 
 
 class _RaisingDecider:

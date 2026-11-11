@@ -14,7 +14,10 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.models.landing_controller_carry import ModelLandingControllerLogged
+from omnimarket.models.landing_controller_carry import (
+    ModelLandingControllerLogged,
+    decisions_of,
+)
 from omnimarket.models.landing_decision import (
     EnumLandingActionKind,
     ModelLandingDecision,
@@ -88,7 +91,7 @@ def _compare(
                 "correlation_id": uuid4(),
                 "mode": EnumTickMode.OBSERVE,
                 "facts": facts,
-                "controller": carry(),
+                "controller": decisions_of(carry()),
                 **over,
             }
         )
@@ -139,15 +142,6 @@ def test_the_controllers_real_decision_replaces_the_synthetic_no_action() -> Non
     assert out_of_scope.equal
     assert out_of_scope.recorded_written is False
     assert out_of_scope.recorded_actions == 1  # the controller's one dispatch, for 714
-    # the old path stays for a record with no controller tick: no recorded decision, repo out of scope
-    legacy = _handler(script_out_of_scope=(REPO,)).handle(
-        ModelTickRequest(
-            correlation_id=uuid4(), mode=EnumTickMode.OBSERVE, facts=node_facts_bare()
-        )
-    )
-    assert legacy.status is EnumTickStatus.COMPARED
-    assert legacy.recorded_written is True
-    assert legacy.recorded_actions == 0
 
 
 def test_other_repositories_are_not_in_the_compared_scope() -> None:
@@ -157,14 +151,13 @@ def test_other_repositories_are_not_in_the_compared_scope() -> None:
     )
     both = carry().model_copy(update={"facts": controller_facts})
     facts = carry_controller_state(node_facts_bare(), both)
-    result = _compare(facts, _handler(), controller=both)
+    result = _compare(facts, _handler(), controller=decisions_of(both))
     assert result.equal
     assert all(p.startswith(f"{REPO}#") for p in result.compared_prs)
 
 
-def test_error_chain_a_logged_action_the_controller_decision_does_not_name_is_refused() -> (
-    None
-):
+def test_a_decision_row_the_node_does_not_decide_is_a_named_divergence() -> None:
+    """The controller's real decision is its logged rows: a merge it logged that the node does not decide names the pull request."""
     publisher = InMemoryTickPublisher()
     logged = ModelLandingControllerLogged(
         kind=EnumLandingActionKind.MERGE, subject=HELD, outcome="merged"
@@ -172,17 +165,33 @@ def test_error_chain_a_logged_action_the_controller_decision_does_not_name_is_re
     result = _compare(
         carry_controller_state(node_facts_bare(), carry((logged,))),
         _handler(publisher),
-        controller=carry((logged,)),
+        controller=decisions_of(carry((logged,))),
+    )
+    assert result.status is EnumTickStatus.COMPARED
+    assert not result.equal
+    assert {d.subject for d in result.divergences} == {HELD, NEW_RED}
+    ((topic, event),) = publisher.published
+    assert topic == COMPARED_TOPIC
+    assert isinstance(event, ModelTickComparedEvent)
+    assert set(event.divergent_subjects) == {HELD, NEW_RED}
+
+
+def test_error_chain_a_record_with_no_controller_tick_is_unread_not_assumed() -> None:
+    """OMN-22921: the controller decides the cutover repository, so a record that carries none of its ticks has no decision to compare with."""
+    publisher = InMemoryTickPublisher()
+    result = _handler(publisher, script_out_of_scope=(REPO,)).handle(
+        ModelTickRequest(
+            correlation_id=uuid4(), mode=EnumTickMode.OBSERVE, facts=node_facts_bare()
+        )
     )
     assert result.status is EnumTickStatus.FAILED
-    assert (
-        result.failure_reason is EnumTickFailureReason.CONTROLLER_DECISION_UNREPRODUCED
-    )
-    assert "merge" in result.failure_detail
-    assert HELD in result.failure_detail
+    assert result.failure_reason is EnumTickFailureReason.CONTROLLER_TICK_MISSING
+    assert result.recorded_written is False
+    assert result.equal is False
     ((topic, event),) = publisher.published
     assert topic == FAILED_TOPIC
     assert isinstance(event, ModelTickFailedEvent)
+    assert event.reason is EnumTickFailureReason.CONTROLLER_TICK_MISSING
 
 
 class _RaisingDecider:
@@ -213,7 +222,7 @@ def _record_json() -> str:
         tick=1000,
         facts=carry_controller_state(node_facts_bare(), carry()),
         provenance="test",
-        controller=carry(),
+        controller=decisions_of(carry()),
     ).model_dump_json()
 
 
@@ -238,7 +247,8 @@ def test_golden_chain_a_recorded_tick_with_the_controller_carry_ends_in_the_comp
 
 def test_the_in_memory_source_carries_the_controller_into_the_request() -> None:
     snapshot = ModelTickSnapshot(
-        facts=carry_controller_state(node_facts_bare(), carry()), controller=carry()
+        facts=carry_controller_state(node_facts_bare(), carry()),
+        controller=decisions_of(carry()),
     )
     (result,) = run_snapshots(
         _handler(), InMemorySnapshotSource([snapshot]), EnumTickMode.OBSERVE

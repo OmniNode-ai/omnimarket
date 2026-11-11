@@ -10,8 +10,7 @@
 # faults file makes the run answer on B with no attempt on A. Every assertion is a typed field of a registry listing or a
 # delegation terminal; no model judges a pass.
 #
-# The market ingress does not yet accept a per-call `model` (OMN-20844 step 2), so the two pinned legs are red with
-# assertions named `pinned_model_accepted_a|b` until that ticket lands: a red scenario is the expected colour, never a skip.
+# The delegation request declares a per-call `model` (OMN-20844 step 2); the two pinned legs run on it.
 name: node_delegation_scenario_r5_effect
 contract_name: node_delegation_scenario_r5_effect
 node_name: node_delegation_scenario_r5_effect

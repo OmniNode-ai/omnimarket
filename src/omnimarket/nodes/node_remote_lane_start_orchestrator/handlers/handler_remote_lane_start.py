@@ -19,6 +19,9 @@ from omnibase_spi.protocols.lane import ProtocolLaneHostPool
 from omnimarket.models.engine_login import (
     ModelEngineLoginPool,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_steering import (
+    lane_start_steer,
+)
 from omnimarket.nodes.node_lane_guard_unit_effect.lane_guard_host_source import (
     lane_guard_host_source,
 )
@@ -133,6 +136,8 @@ def build_real(
                 roots=settings.registry_root_candidates,
                 draw_timeout_seconds=settings.login_draw_timeout_seconds,
             ),
+            # Account steering (OMN-23636): off unless the pool node's overlay switches it on.
+            login_steer=lane_start_steer(ledger_file),
         )
         return RemoteLaneStartOrchestrator(
             settings=settings,

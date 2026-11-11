@@ -137,11 +137,11 @@ models:
     endpoint_env: "OPENROUTER_URL"
     model_name: "qwen/qwen3.8-27b"
     requires_api_key_env: "OPENROUTER_API_KEY"
-    context_window: 1000000
-    pricing_per_1m_input: "0.24"
-    pricing_per_1m_output: "2.20"
+    context_window: 1048575
+    pricing_per_1m_input: "0.15"
+    pricing_per_1m_output: "1.875"
     cost_basis: "cloud_api_cost"
-    observed_at: "2026-10-16T00:00:00Z"
+    observed_at: "2026-11-11T12:36:49Z"
     source: "openrouter catalog"
     notes: >
       The model onboarding registers on a developer's own OpenRouter key when
@@ -151,6 +151,10 @@ models:
       routes to it by this id. Read from the live OpenRouter catalog on
       2026-10-16 (GET /api/v1/models): qwen/qwen3.8-27b, context_length
       1000000, prompt 0.00000024 and completion 0.0000022 USD per token.
+      Re-read 2026-11-11T12:36:49Z (OMN-23751): context_length 1048575, prompt
+      0.00000015 and completion 0.000001875 USD per token. A pinned eval-arm
+      call on this model on a registered key was booked at the stale 0.24/2.20
+      until this refresh.
 
   llama-3.3-70b-free:
     model_id: "llama-3.3-70b-free"
