@@ -56,11 +56,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q -k error
     cwd: .
-- id: dod-omn23863-ac4-integration-proof
-  description: The pushed head ran the focused tests on a lab host through the lab work runner and exited 0. The dry-run readback of each changed unit on a lab host is read from the lab receipt comment on the ticket.
+- id: dod-omn23863-ac4-dry-run-render
+  description: The installer's dry run renders each changed unit with the overlays clone before the plugin copy, run in the hosted job. The lab-host readback is the unbound local Done gate item below.
   source: manual
   binds_ac:
   - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py -q -k golden
+    cwd: .
+- id: dod-omn23863-ac4-integration-proof
+  description: The pushed head ran the focused tests on a lab host through the lab work runner and exited 0. The dry-run readback of each changed unit on a lab host is read from the lab receipt comment on the ticket.
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
