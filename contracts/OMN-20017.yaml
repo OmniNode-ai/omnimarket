@@ -61,6 +61,7 @@ dod_evidence:
   source: manual
   binds_ac:
   - AC4
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute -q --no-cov -p no:cacheprovider
@@ -85,8 +86,6 @@ dod_evidence:
 - id: dod-omn20017-ac5-integration-proof
   description: On a lab host, from the pushed head, a request of fixture rows is published on the dev bus and the answer event is read back by the request's correlation id. Hosted CI cannot reach a lab host, so this unbound check belongs to the local Done gate; AC5 is read there and in the PR's lab comment.
   source: manual
-  binds_ac:
-  - AC5
   execution_scope: local_done_gate
   checks:
   - check_type: command
