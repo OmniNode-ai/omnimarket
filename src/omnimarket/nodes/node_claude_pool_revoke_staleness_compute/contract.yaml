@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_claude_pool_revoke_staleness_compute
+lifecycle: experimental
+node_type: compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decides whether a recorded revoke of a Claude token-pool label is stale: a
+  later success of the same token on any host after the revoke stamp plus the
+  overlay's margin proves the revoke is stale and the token should be cleared.
+  Pure compute over the revoke stamp, the observations and the policy margin;
+  the handler reads no clock and carries no token or secret value.
+input_model:
+  name: ModelRevokeStalenessRequest
+  module: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness
+output_model:
+  name: ModelRevokeStalenessResult
+  module: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness
+handler:
+  module: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness
+  class: HandlerRevokeStaleness
+  input_model: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness.ModelRevokeStalenessRequest
+  output_model: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness.ModelRevokeStalenessResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness:HandlerRevokeStaleness
+  handlers:
+    - operation: decide_revoke_staleness
+      handler:
+        name: HandlerRevokeStaleness
+        module: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles:
+    - main
+# The node publishes nothing: the pool tick calls it in process.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+metadata:
+  transport_type: inmemory
+  description: Claude token pool revoke staleness compute
+  author: OmniNode Team
+  created: "2026-11-10"
+  related_tickets: [OMN-23887]
