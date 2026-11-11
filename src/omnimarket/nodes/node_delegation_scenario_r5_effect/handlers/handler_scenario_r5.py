@@ -12,8 +12,8 @@ One run, in a fresh home on the real backend:
 4. falsifier of the add: an id the key does not list is refused and stores nothing;
 5. falsifier of the order: after a reorder to B, A the same faults file makes the run answer on B with no attempt on A.
 
-The market ingress does not yet accept a per-call ``model`` (OMN-20844 step 2), so step 2 is red, with the assertions
-``pinned_model_accepted_a|b``, until that ticket lands: a red scenario is the expected colour, never a skip.
+The delegation request declares a per-call ``model`` (OMN-20844 step 2), so step 2 pins one delegation to each model and each
+receipt names its model.
 
 The model registry and the delegator are injected (``ProtocolModelRegistry``, ``ProtocolR5Delegator``): the in-memory default
 scripts both, the real backend drives the registry's own add and list functions and the delegation skill handler. The paid
@@ -246,7 +246,7 @@ BackendFactory = Callable[[ModelR5Inputs], ModelR5Backend]
 
 
 def wire_pin_refusal(inputs: ModelR5Inputs, model: str) -> None:
-    """The request model's own admission of a pinned model: raises ``ModelPinRefusedError`` while the ingress refuses it."""
+    """The request model's own admission of a pinned model: raises ``ModelPinRefusedError`` when the request model refuses the pinned payload."""
     try:
         ModelDelegateSkillRequest.model_validate(inputs.pinned_payload(model))
     except ValueError as exc:
