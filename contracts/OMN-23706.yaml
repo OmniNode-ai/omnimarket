@@ -42,13 +42,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_units.py -q --no-cov -n 0 -p no:randomly -k 'undeclared or missing or absolute'
     cwd: .
-- id: dod-omn-23706-integration-proof
-  description: The pushed head's reader tests ran on a lab host and exited 0, and the unit installed from the branch ran one clean tick.
+- id: dod-omn23706-ac3-overlay-seam
+  description: The host overlay's declared value reaches the unit reader through the scheduled tick (the in-process half of AC3; the lab half is the unbound integration item).
   source: manual
   binds_ac:
   - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov -n 0 -p no:randomly -k hands_the_overlay
+    cwd: .
+- id: dod-omn-23706-integration-proof
+  description: The pushed head's reader tests ran on a lab host and exited 0, and the unit installed from the branch ran one clean tick.
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23706 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_schedule.py -q --no-cov -p no:randomly'
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23706 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_schedule.py -q --no-cov -p no:randomly
     cwd: .
