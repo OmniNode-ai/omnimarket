@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23475
+title: The floor's stopped-work list follows the ticket tree down to child tickets
+summary: The floor record's stopped line counted a stopped lane in scope only when the lane's own ticket was one the goal names. The Linear snapshot's child ids now lead from a goal ticket down to the lane's ticket, within a configured depth and with a guard against loops, so a lane on a child or grandchild ticket is listed. A snapshot with no children, or with a loop, reads every child lane out of scope.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23475-child-ticket-scope
+  statement: A stopped lane on a child or grandchild of a goal ticket is listed on the floor's stopped line, a lane under no goal ticket is not, and the seam between the Linear snapshot's child ids and the floor's scope read has a test that fails when the snapshot's key or the floor's read changes.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a stopped lane whose ticket is a child or grandchild of a goal ticket is listed on the floor''s stopped line, and a lane under no goal ticket is not -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_stopped_lane_child_tickets.py -q -k "golden or control"'
+  - id: AC2
+    statement: 'AC2: when the ticket snapshot carries no children, or carries a loop, every child lane reads out of scope and nothing hangs -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_stopped_lane_child_tickets.py tests/nodes/node_factory_floor_compute/test_linear_snapshot_children_seam.py -q -k "error_chain"'
+  - id: AC3
+    statement: 'AC3: integrated: on the running dev runtime the floor record''s stopped line lists a stopped child-ticket lane read from the live ticket snapshot -- falsifier: read the floor record on the dev runtime after the change is installed and see the child-ticket lane absent from the stopped line when the change is not installed'
+evidence_requirements:
+- kind: tests
+  description: The child-ticket scope tests, the snapshot seam test and the candidates parity test at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stopped_lane_child_tickets.py tests/nodes/node_factory_floor_compute/test_linear_snapshot_children_seam.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23475-ac1-scope
+  description: The child-ticket scope tests pass on the branch; on origin/dev source the golden cases fail, because the issue model there carries no child ids.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_stopped_lane_child_tickets.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23475-ac2-seam
+  description: The snapshot seam test and the error chain cases pass on the branch and fail on origin/dev source, where the snapshot loader reads no child ids. For AC3 this binds the typed reading only (a snapshot that carries children lists the child lane, one that does not lists none); the live floor record is read in the unbound lab step below.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_linear_snapshot_children_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23475-integration-proof
+  description: The pushed head ran the floor compute tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live floor record read of AC3 is recorded in the pull request's Lab comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23475 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_compute tests/nodes/node_floor_fill_candidates_compute -q --no-cov'
+    cwd: .

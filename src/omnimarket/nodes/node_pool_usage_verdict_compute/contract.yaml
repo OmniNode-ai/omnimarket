@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pool_usage_verdict_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  One verdict per Claude token-pool label. Pure compute over each label's
+  measured usage on its two windows (five-hour and weekly), the policy
+  thresholds, and a clock that arrives on the request: it answers the fraction
+  used, the seconds to each reset, and a verdict ok, drain, limited or unknown.
+  Every threshold lives in the deployed overlay (the drain and limited bounds
+  per window, and the freshest reading age the verdict still trusts); the node
+  ships none, and a missing overlay refuses the run. The handler reads no clock.
+  A drain label only skips NEW lane starts while another label is still ok, so
+  the pool is never drained empty. Readings and verdicts carry labels only,
+  never a token or secret value.
+input_model:
+  name: ModelPoolUsageRequest
+  module: omnimarket.nodes.node_pool_usage_verdict_compute.models.model_pool_usage_request
+output_model:
+  name: ModelPoolUsageResult
+  module: omnimarket.nodes.node_pool_usage_verdict_compute.models.model_pool_usage_result
+handler:
+  module: omnimarket.nodes.node_pool_usage_verdict_compute.handlers.handler_pool_usage_verdict
+  class: HandlerPoolUsageVerdict
+  input_model: omnimarket.nodes.node_pool_usage_verdict_compute.models.model_pool_usage_request.ModelPoolUsageRequest
+  output_model: omnimarket.nodes.node_pool_usage_verdict_compute.models.model_pool_usage_result.ModelPoolUsageResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_pool_usage_verdict_compute.handlers.handler_pool_usage_verdict:HandlerPoolUsageVerdict
+  handlers:
+    - operation: pool_usage_verdict
+      handler:
+        name: HandlerPoolUsageVerdict
+        module: omnimarket.nodes.node_pool_usage_verdict_compute.handlers.handler_pool_usage_verdict
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  now: {type: datetime, required: true, description: "Timezone-aware evaluation instant; the handler reads no clock."}
+  policy: {type: object, required: true, description: "Verdict thresholds loaded from the deployed overlay; the node ships none."}
+  readings: {type: array, required: true, description: "One measured usage record per label, both windows; labels only, never a token or secret value."}
+  correlation_id: {type: uuid, required: true}
+outputs:
+  labels: {type: array, description: "One entry per label: each window's fraction used, seconds to reset and state, the verdict and the reason."}
+  drain_labels: {type: array, description: "Labels the pool skips for NEW lane starts; empty unless at least one other label is ok."}
+  ok: {type: int}
+  drain: {type: int}
+  limited: {type: int}
+  unknown: {type: int}
+terminal_event: onex.evt.omnimarket.pool-usage-verdict-evaluated.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pool-usage-verdict-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pool-usage-verdict-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pool-usage-verdict-evaluated.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.pool-usage-verdict-evaluated.v1
+overlay:
+  node: node_pool_usage_verdict_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+seams:
+  pool_resolve:
+    owner_lane: poolpin3-2710
+    node: node_claude_token_pool_effect
+    operation: resolve
+    field: drain_labels
+    status: awaiting_peer
+metadata:
+  transport_type: inmemory
+  description: Claude token pool usage verdict compute
+  author: OmniNode Team
+  created: "2026-11-10"
+  related_tickets: [OMN-23607]

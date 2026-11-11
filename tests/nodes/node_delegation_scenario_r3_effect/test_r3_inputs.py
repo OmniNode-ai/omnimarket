@@ -86,14 +86,17 @@ def test_r3_first_rung_is_a_free_503_and_second_is_paid_on_every_escalation_leg(
         assert paid.scripted_cost_usd > 0
 
 
-def test_r3_leg_b_rung_names_the_real_backend_and_caps_tokens_at_sixteen() -> None:
+def test_r3_leg_b_rung_names_the_real_backend_and_its_cap_matches_the_contract() -> (
+    None
+):
     inputs = load_inputs(INPUTS)
     real = next(
         r for r in inputs.leg_b.rungs if r.backend_id == inputs.leg_b.real_backend_id
     )
     assert real is inputs.leg_b.rungs[1]
-    assert real.max_tokens == 16
-    assert load_runtime(CONTRACT_PATH).openrouter_max_tokens == 16
+    cap = load_runtime(CONTRACT_PATH).openrouter_max_tokens
+    assert real.max_tokens == cap
+    assert cap >= 64
 
 
 def test_r3_control_ladder_has_both_rungs_answering_503() -> None:

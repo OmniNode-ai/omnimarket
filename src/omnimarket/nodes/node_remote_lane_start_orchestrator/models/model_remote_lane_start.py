@@ -7,12 +7,19 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
+from omnibase_spi.contracts.services import ModelLanePluginTree
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     ValidationError,
     model_validator,
+)
+
+from omnimarket.models.engine_login import LABEL_PATTERN
+from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_provisioning import (
+    ModelLaneProvisioningPlan,
+    ModelLaneProvisioningRecord,
 )
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -68,6 +75,21 @@ class ModelRemoteLaneStartSettings(BaseModel):
     registry_root_candidates: tuple[str, ...]
     # The directory a registry root holds (the runner's marker), so a candidate that is not one is skipped.
     registry_marker: str = Field(min_length=1)
+    # The repository directory that holds the host's lane-closeout command, beside the registry root; "" leaves the
+    # closeout step to the frozen runner script.
+    closeout_tool_repo: str = ""
+    # The variable the closeout command reads the lane's ledger copy path from; all three closeout keys set, or the
+    # step stays with the runner script.
+    closeout_ledger_env: str = ""
+    # The variable the closeout command reads the registry root from; all three closeout keys set, or the step stays
+    # with the runner script.
+    closeout_registry_env: str = ""
+    # The plugin store on the host (path characters, optionally under $HOME): a tree is installed there from its archive;
+    # "" leaves the step to the runner script.
+    plugin_store: str = ""
+    # The provisioning steps around the engine, in the runner's order, with the phase of each and whether its
+    # failure ends the start (OMN-23528). The overlay states the section (an empty ``steps`` runs none).
+    provisioning: ModelLaneProvisioningPlan
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
     # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin
@@ -179,6 +201,9 @@ class ModelRemoteLaneStartRequest(BaseModel):
     #: Per host, the hosts it reached over ssh, read by the caller beside the pool snapshot. A host with no entry
     #: was not tried and takes no repair lane.
     host_ssh_reach: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    #: The plugin trees the engine loads, as archives on the launching host (``ship_plugin_trees`` step); none
+    #: leaves that step skipped, as the runner skips it for a lane with no plugin sources.
+    plugin_trees: tuple[ModelLanePluginTree, ...] = ()
 
 
 class ModelRemoteLaneStartReceipt(BaseModel):
@@ -196,6 +221,8 @@ class ModelRemoteLaneStartReceipt(BaseModel):
     claim_request_id: str | None = None
     claim_row: str | None = None
     session_id: str | None = None
+    #: The pool label the lane's engine login was drawn under (OMN-23550); None when the pool drew nothing.
+    login: str | None = Field(default=None, pattern=LABEL_PATTERN)
     workdir: str | None = None
     log_lines: int = 0
     engine_rc: int | None = None
@@ -205,6 +232,8 @@ class ModelRemoteLaneStartReceipt(BaseModel):
     final: bool = False
     error: str | None = None
     states: list[str] = Field(default_factory=list)
+    #: Each provisioning step's result, in the order the steps ran (OMN-23528).
+    provisioning: list[ModelLaneProvisioningRecord] = Field(default_factory=list)
 
 
 class ModelRemoteLaneStartResult(BaseModel):
