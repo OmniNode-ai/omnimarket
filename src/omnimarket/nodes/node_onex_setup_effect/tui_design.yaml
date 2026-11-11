@@ -1,0 +1,85 @@
+# The onex TUI's design system (OMN-23413): colours, banner, words, shortcuts
+# and timings. The TUI reads this file when it starts; none of these values is
+# written in code. Loaded and checked by models/model_tui_design.py.
+
+# Colour tokens. Every widget and every line of output uses these by name.
+theme:
+  name: onex
+  dark: true
+  primary: "#6a7bff"
+  secondary: "#00d2ff"
+  accent: "#ffb347"
+  success: "#3ddc97"
+  warning: "#ffb347"
+  error: "#ff6b81"
+  foreground: "#e6e9ef"
+  muted: "#8b95a7"
+  background: "#0e1117"
+  surface: "#151a23"
+  panel: "#1c2230"
+
+# Left-to-right colour ramps for the banner words.
+gradients:
+  cool: ["#00d2ff", "#3a9bff", "#6a7bff", "#9a5cf5", "#c64cec", "#ff4fa3"]
+  warm: ["#ffd166", "#ffb347", "#ff8c5a", "#ff6b81", "#ff4fa3"]
+
+# Three-row block letters for the banner words.
+font:
+  A: ["▄▀▀▄", "█▀▀█", "▀  ▀"]
+  D: ["█▀▀▄", "█  █", "▀▀▀ "]
+  E: ["█▀▀▀", "█▀▀ ", "▀▀▀▀"]
+  G: ["▄▀▀▀", "█ ▀█", " ▀▀▀"]
+  I: ["█", "█", "▀"]
+  L: ["█   ", "█   ", "▀▀▀▀"]
+  M: ["█▄ ▄█", "█ ▀ █", "▀   ▀"]
+  N: ["█▄  █", "█ ▀▄█", "▀   ▀"]
+  O: ["▄▀▀▄", "█  █", " ▀▀ "]
+  T: ["▀█▀", " █ ", " ▀ "]
+
+banner:
+  greeting: Welcome to
+  words:
+    - {text: OMNINODE, gradient: cool}
+    - {text: DELEGATION, gradient: warm}
+  tagline: "Your tasks, your models: run them where it costs least."
+  tips:
+    - {key: type a task, text: and press Enter to delegate it}
+    - {key: /config, text: "providers, keys and models"}
+    - {key: /model, text: pick the model to use first}
+    - {key: /delegation, text: Claude Code on or off}
+    - {key: /, text: "every command   ·   ↑↓ history   ·   ctrl+c quit"}
+
+# Shortcuts lead the / palette in this order; every onex CLI command follows.
+shortcuts:
+  - {path: [config], action: config, help: "Providers, keys and models for delegation."}
+  - {path: [model], action: model, help: Pick the model every task tries first.}
+  - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
+  - {path: [clear], action: clear, help: Clear the output.}
+  - {path: [help], action: help, help: Show keys and how commands work.}
+  - {path: [quit], action: quit, help: Leave the TUI.}
+
+# Typed but not listed: each opens the shortcut it names.
+aliases:
+  setup: config
+  exit: quit
+
+# Marks used in the output pane.
+glyphs:
+  task: "›"
+  tip: "▸"
+  done: "✓"
+  unchanged: "·"
+  failed: "✗"
+
+prompt_placeholder: Ask ONEX to delegate a task, or type / for commands
+help: >-
+  Type a task and press Enter to delegate it. /config sets up providers, keys
+  and models, /model picks the model tried first, /delegation turns Claude Code
+  delegation on or off, /clear empties this pane. Type / to list every onex
+  command; keep typing to filter, Tab to complete, Enter to run, Esc to close.
+  Up and Down recall earlier entries.
+
+# /config loads a provider's models this long after the key or URL stops
+# changing; a key shorter than min_key_length is never sent.
+auto_find_seconds: 0.8
+min_key_length: 8

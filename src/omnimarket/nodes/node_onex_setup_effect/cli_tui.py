@@ -28,6 +28,7 @@ from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.timer import Timer
 from textual.widgets import (
     Button,
@@ -54,23 +55,26 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
     ModelSetupPickerProvider,
     setup_provider_traits,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+    tui_design,
+)
 
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
-# Shortcuts first, as coding-agent TUIs list them; every CLI command follows.
-_LOCAL_COMMANDS = {
-    ("config",): "Providers, keys and models for delegation.",
-    ("model",): "Pick the model every task tries first.",
-    ("delegation",): "Turn delegation on or off for Claude Code.",
-    ("clear",): "Clear the output.",
-    ("help",): "Show keys and how commands work.",
-    ("quit",): "Leave the TUI.",
-}
 
 
-_AUTO_FIND_SECONDS = 0.8
-# /config does what `onex setup` does; typing /setup still opens /config.
-_UNLISTED = frozenset({("setup",)})
-_MIN_KEY_LENGTH = 8
+def _shortcut_paths() -> dict[tuple[str, ...], str]:
+    """The design file's shortcuts, in order: path -> one-line help."""
+    return {s.path: s.help for s in tui_design().shortcuts}
+
+
+def _alias_paths() -> set[tuple[str, ...]]:
+    """Typed-only names (an alias) never listed in the palette."""
+    return {(alias,) for alias in tui_design().aliases}
+
+
+def _style(token: str, *extra: str) -> str:
+    """A Rich style from a design colour token, e.g. ``_style("error", "bold")``."""
+    return " ".join((*extra, getattr(tui_design().theme, token)))
 
 
 def _picker() -> tuple[ModelSetupPickerProvider, ...]:
@@ -468,11 +472,15 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         """Fetch the list on its own once the key or URL stops changing."""
         if self._find_timer is not None:
             self._find_timer.stop()
-        self._find_timer = self.set_timer(_AUTO_FIND_SECONDS, self._auto_find)
+        self._find_timer = self.set_timer(
+            tui_design().auto_find_seconds, self._auto_find
+        )
 
     def _auto_find(self) -> None:
         provider, value = self._source()
-        if not value or (_hosted(provider) and len(value) < _MIN_KEY_LENGTH):
+        if not value or (
+            _hosted(provider) and len(value) < tui_design().min_key_length
+        ):
             return
         self.run_worker(self._find(), exclusive=True, group="find")
 
@@ -717,7 +725,8 @@ class ModelPickScreen(ModalScreen[tuple[str, str] | None]):
             yield OptionList(
                 *(
                     Option(
-                        f"{model}  ·  {provider}" + ("  ✓ current" if first else ""),
+                        f"{model}  ·  {provider}"
+                        + (f"  {tui_design().glyphs.done} current" if first else ""),
                         id=f"{provider}\t{model}",
                     )
                     for provider, model, first in self._choices
@@ -752,54 +761,34 @@ def _model_choices(text: str) -> list[tuple[str, str, bool]]:
     return choices
 
 
-_LETTERS = {
-    "A": ("▄▀▀▄", "█▀▀█", "▀  ▀"),
-    "D": ("█▀▀▄", "█  █", "▀▀▀ "),
-    "E": ("█▀▀▀", "█▀▀ ", "▀▀▀▀"),
-    "G": ("▄▀▀▀", "█ ▀█", " ▀▀▀"),
-    "I": ("█", "█", "▀"),
-    "L": ("█   ", "█   ", "▀▀▀▀"),
-    "M": ("█▄ ▄█", "█ ▀ █", "▀   ▀"),
-    "N": ("█▄  █", "█ ▀▄█", "▀   ▀"),
-    "O": ("▄▀▀▄", "█  █", " ▀▀ "),
-    "T": ("▀█▀", " █ ", " ▀ "),
-}
-_COOL = ("#00d2ff", "#3a9bff", "#6a7bff", "#9a5cf5", "#c64cec", "#ff4fa3")
-_WARM = ("#ffd166", "#ffb347", "#ff8c5a", "#ff6b81", "#ff4fa3")
-
-
 def _big_word(word: str, gradient: tuple[str, ...], banner: Text) -> None:
-    """``word`` in three-row block letters, coloured left to right."""
-    rows = ["  ".join(_LETTERS[c][r] for c in word) for r in range(3)]
+    """``word`` in the design font, coloured left to right along ``gradient``."""
+    font = tui_design().font
+    rows = ["  ".join(font[c][r] for c in word) for r in range(3)]
     width = max(len(row) for row in rows)
     for row in rows:
         banner.append("  ")
         for column, char in enumerate(row):
-            colour = gradient[column * len(gradient) // width]
-            banner.append(char, style=f"bold {colour}")
+            banner.append(
+                char, style=f"bold {gradient[column * len(gradient) // width]}"
+            )
         banner.append("\n")
 
 
 def welcome_banner() -> Text:
-    """Welcome to OMNINODE DELEGATION, then the commands that matter first."""
-    banner = Text("\n  Welcome to\n\n", style="italic #9aa5b1")
-    _big_word("OMNINODE", _COOL, banner)
-    banner.append("\n")
-    _big_word("DELEGATION", _WARM, banner)
-    banner.append(
-        "\n  Your tasks, your models: run them where it costs least.\n\n",
-        style="italic #9aa5b1",
-    )
-    for key, text in (
-        ("type a task", "and press Enter to delegate it"),
-        ("/config", "providers, keys and models"),
-        ("/model", "pick the model to use first"),
-        ("/delegation", "Claude Code on or off"),
-        ("/", "every command   ·   ↑↓ history   ·   ctrl+c quit"),
-    ):
-        banner.append("  ▸ ", style="#6a7bff")
-        banner.append(f"{key:<14}", style="bold #00d2ff")
-        banner.append(f"{text}\n", style="#c9d1d9")
+    """The design file's greeting, banner words, tagline and tips."""
+    design = tui_design()
+    banner = Text(f"\n  {design.banner.greeting}\n\n", style=_style("muted", "italic"))
+    for index, word in enumerate(design.banner.words):
+        if index:
+            banner.append("\n")
+        _big_word(word.text, design.gradients[word.gradient], banner)
+    banner.append(f"\n  {design.banner.tagline}\n\n", style=_style("muted", "italic"))
+    width = max(len(tip.key) for tip in design.banner.tips) + 3
+    for tip in design.banner.tips:
+        banner.append(f"  {design.glyphs.tip} ", style=_style("primary"))
+        banner.append(f"{tip.key:<{width}}", style=_style("secondary", "bold"))
+        banner.append(f"{tip.text}\n", style=_style("foreground"))
     return banner
 
 
@@ -831,6 +820,24 @@ class OnexTui(App[int]):
         list_models: ListModels | None = None,
     ) -> None:
         super().__init__()
+        tokens = tui_design().theme
+        self.register_theme(
+            Theme(
+                name=tokens.name,
+                dark=tokens.dark,
+                primary=tokens.primary,
+                secondary=tokens.secondary,
+                accent=tokens.accent,
+                success=tokens.success,
+                warning=tokens.warning,
+                error=tokens.error,
+                foreground=tokens.foreground,
+                background=tokens.background,
+                surface=tokens.surface,
+                panel=tokens.panel,
+            )
+        )
+        self.theme = tokens.name
         if root is None:
             from omnibase_core.cli.cli_commands import cli
 
@@ -849,7 +856,7 @@ class OnexTui(App[int]):
         yield OptionList(id="palette")
         yield Input(
             id="prompt",
-            placeholder="Ask ONEX to delegate a task, or type / for commands",
+            placeholder=tui_design().prompt_placeholder,
         )
         yield Static(id="status")
 
@@ -872,15 +879,22 @@ class OnexTui(App[int]):
         self._render_status()
 
     def _render_status(self) -> None:
-        parts = [
-            self._status.workspace,
-            f"model {self._status.model or 'not set'}",
-            "gateway on" if self._status.gateway else "gateway off",
+        sep = ("  ·  ", _style("muted"))
+        parts: list[tuple[str, str]] = [
+            (self._status.workspace, _style("muted")),
+            sep,
+            (f"model {self._status.model or 'not set'}", _style("secondary", "bold")),
+            sep,
+            (
+                ("gateway on", _style("success"))
+                if self._status.gateway
+                else ("gateway off", _style("muted"))
+            ),
         ]
         if self._last_run:
-            parts.append(self._last_run)
-        parts.append("/ commands  ctrl+c quit")
-        self.query_one("#status", Static).update("  ·  ".join(parts))
+            parts += [sep, (self._last_run, _style("accent"))]
+        parts += [sep, ("/ commands  ctrl+c quit", _style("muted"))]
+        self.query_one("#status", Static).update(Text.assemble(*parts))
 
     def _write(self, text: str | Text) -> None:
         self.query_one("#output", RichLog).write(text)
@@ -889,7 +903,7 @@ class OnexTui(App[int]):
         words = query.lower().split()
         local = [
             ModelTuiCommand(path=path, help=text, needs_terminal=False)
-            for path, text in _LOCAL_COMMANDS.items()
+            for path, text in _shortcut_paths().items()
         ]
         return [
             entry
@@ -898,7 +912,7 @@ class OnexTui(App[int]):
                 *(
                     c
                     for c in self._commands
-                    if c.path not in _LOCAL_COMMANDS and c.path not in _UNLISTED
+                    if c.path not in _shortcut_paths() and c.path not in _alias_paths()
                 ),
             )
             if all(word in " ".join(entry.path) for word in words)
@@ -979,7 +993,10 @@ class OnexTui(App[int]):
         if not (text.startswith("/") and palette.display and " " not in text):
             return text
         words = text[1:].split()
-        exact = tuple(words) in _LOCAL_COMMANDS or self._resolve(words) is not None
+        exact = (
+            tui_design().shortcut_for(words) is not None
+            or self._resolve(words) is not None
+        )
         if exact or palette.highlighted is None:
             return text
         return f"/{palette.get_option_at_index(palette.highlighted).id}"
@@ -1009,32 +1026,9 @@ class OnexTui(App[int]):
         except ValueError as error:
             self._write(f"could not read that command: {error}")
             return
-        if words in (["quit"], ["exit"]):
-            self.exit(0)
-            return
-        if words == ["help"]:
-            self._write(
-                "Type a task and press Enter to delegate it. /setup or /config connects "
-                "a model server, /model picks the model, /clear empties this pane. Type "
-                "/ to list every onex command; keep typing to filter, Tab to complete, "
-                "Enter to run, Esc to close. Up and Down recall earlier entries."
-            )
-            return
-        if words == ["clear"]:
-            self.query_one("#output", RichLog).clear()
-            return
-        if words in (["setup"], ["config"]):
-            self.push_screen(
-                SetupScreen(self._runner, self._list_models), self._apply_setup
-            )
-            return
-        if words == ["model"]:
-            await self._pick_model()
-            return
-        if words == ["delegation"]:
-            self.push_screen(
-                DelegationScreen(self._status.gateway), self._apply_delegation
-            )
+        shortcut = tui_design().shortcut_for(words)
+        if shortcut is not None:
+            await self._shortcut(shortcut.action)
             return
         entry = self._resolve(words)
         if entry is None:
@@ -1045,7 +1039,7 @@ class OnexTui(App[int]):
         await self._run(entry, tuple(words))
 
     async def _run(self, entry: ModelTuiCommand, argv: tuple[str, ...]) -> None:
-        self._write(f"$ onex {shlex.join(argv)}")
+        self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
         if entry.needs_terminal:
             try:
                 with self.suspend():
@@ -1059,13 +1053,34 @@ class OnexTui(App[int]):
         if entry.path[:1] in (("models",), ("claude",), ("setup",)):
             self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
+    async def _shortcut(self, action: str) -> None:
+        if action == "quit":
+            self.exit(0)
+        elif action == "help":
+            self._write(Text(tui_design().help, style=_style("foreground")))
+        elif action == "clear":
+            self.query_one("#output", RichLog).clear()
+        elif action == "config":
+            self.push_screen(
+                SetupScreen(self._runner, self._list_models), self._apply_setup
+            )
+        elif action == "model":
+            await self._pick_model()
+        elif action == "delegation":
+            self.push_screen(
+                DelegationScreen(self._status.gateway), self._apply_delegation
+            )
+
     async def _apply_setup(
         self, choices: tuple[ModelTuiSetupChoice, ...] | None
     ) -> None:
         for choice in choices or ():
             models = ", ".join(choice.models)
             self._write(
-                Text(f"Setting up {_label(choice.provider)} · {models} …", style="bold")
+                Text(
+                    f"Setting up {_label(choice.provider)} · {models} …",
+                    style=_style("foreground", "bold"),
+                )
             )
             stdin = choice.key.get_secret_value() + "\n" if choice.key else None
             code, out, err = await self._runner.capture(
@@ -1077,10 +1092,14 @@ class OnexTui(App[int]):
                 code, out, err = await self._runner.capture(more)
                 extra = ", ".join(choice.models[1:])
                 self._write(
-                    Text(f"  ✓ also added {extra}", style="green")
+                    Text(
+                        f"  {tui_design().glyphs.done} also added {extra}",
+                        style=_style("success"),
+                    )
                     if not code
                     else Text(
-                        f"  ✗ adding {extra}: {_last_line(out, err)}", style="red"
+                        f"  {tui_design().glyphs.failed} adding {extra}: {_last_line(out, err)}",
+                        style=_style("error"),
                     )
                 )
             if ok:
@@ -1088,7 +1107,7 @@ class OnexTui(App[int]):
                     Text(
                         f"Ready: {_label(choice.provider)} · {models}. "
                         "Type a task to try it, or /model to choose which goes first.",
-                        style="bold green",
+                        style=_style("success", "bold"),
                     )
                 )
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
@@ -1096,10 +1115,15 @@ class OnexTui(App[int]):
     def _write_setup_report(
         self, report: dict[str, object] | None, code: int, err: str
     ) -> bool:
-        """One line per setup step: ✓ done, · unchanged, ✗ failed with its fix."""
+        """One line per setup step: done, unchanged, or failed with its fix."""
         steps = report.get("observations") if report else None
         if not isinstance(steps, list):
-            self._write(Text(f"  ✗ setup failed: {_last_line('', err)}", style="red"))
+            self._write(
+                Text(
+                    f"  {tui_design().glyphs.failed} setup failed: {_last_line('', err)}",
+                    style=_style("error"),
+                )
+            )
             return False
         ok = code == 0
         for step in steps:
@@ -1109,14 +1133,20 @@ class OnexTui(App[int]):
             evidence = step.get("evidence")
             detail = _step_detail(evidence if isinstance(evidence, dict) else {})
             if step.get("status") == "success":
-                mark, style = ("✓", "green") if step.get("changed") else ("·", "dim")
+                mark, style = (
+                    (tui_design().glyphs.done, _style("success"))
+                    if step.get("changed")
+                    else (tui_design().glyphs.unchanged, _style("muted"))
+                )
                 self._write(Text(f"  {mark} {name}{detail}", style=style))
             else:
                 ok = False
                 fix = step.get("fix")
                 self._write(
                     Text(
-                        f"  ✗ {name}{detail}" + (f": {fix}" if fix else ""), style="red"
+                        f"  {tui_design().glyphs.failed} {name}{detail}"
+                        + (f": {fix}" if fix else ""),
+                        style=_style("error"),
                     )
                 )
         return ok
@@ -1125,7 +1155,7 @@ class OnexTui(App[int]):
         if choice is None:
             return
         argv = choice.argv()
-        self._write(f"$ onex {shlex.join(argv)}")
+        self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
         code = await self._runner.stream(argv, self._write)
         state = "on" if choice.on else "off"
         self._write(f"exit {code}" if code else f"Claude Code delegation is {state}.")
@@ -1142,16 +1172,31 @@ class OnexTui(App[int]):
     async def _apply_model(self, picked: tuple[str, str] | None) -> None:
         if picked is None:
             return
-        argv = ("models", "first", *picked)
-        self._write(f"$ onex {shlex.join(argv)}")
-        code = await self._runner.stream(argv, self._write)
-        if code:
-            self._write(f"exit {code}")
+        provider, model = picked
+        code, out, err = await self._runner.capture(
+            ("models", "first", provider, model)
+        )
+        glyphs = tui_design().glyphs
+        self._write(
+            Text(
+                f"{glyphs.done} {model} is now tried first ({_label(provider)})",
+                style=_style("success"),
+            )
+            if not code
+            else Text(
+                f"{glyphs.failed} could not make {model} first: {_last_line(out, err)}",
+                style=_style("error"),
+            )
+        )
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
     async def _delegate(self, task: str) -> None:
-        self._write(f"> {task}")
-        self._write("delegating…")
+        self._write(
+            Text(
+                f"{tui_design().glyphs.task} {task}", style=_style("secondary", "bold")
+            )
+        )
+        self._write(Text("delegating…", style=_style("muted", "italic")))
         code, out, err = await self._runner.capture(("delegate", task, "--json"))
         document = _last_json_object(out)
         result = document.get("result") if document else None
@@ -1159,8 +1204,13 @@ class OnexTui(App[int]):
             reason = (_failure_reason(document) if document else None) or (
                 err.strip().splitlines()[-1] if err.strip() else "no answer"
             )
-            self._write(f"delegation failed: {reason}")
-            self._write(f"exit {code}")
+            self._write(
+                Text(
+                    f"{tui_design().glyphs.failed} delegation failed: {reason}",
+                    style=_style("error"),
+                )
+            )
+            self._write(Text(f"exit {code}", style=_style("muted")))
             return
         metrics = result.get("metrics")
         metrics = metrics if isinstance(metrics, dict) else {}
@@ -1178,7 +1228,12 @@ class OnexTui(App[int]):
         self.query_one("#output", RichLog).write(
             Markdown(str(result["response"]).strip())
         )
-        self._write("  ·  ".join(facts) + (f"  ·  run {run_id[:8]}" if run_id else ""))
+        self._write(
+            Text(
+                "  ·  ".join(facts) + (f"  ·  run {run_id[:8]}" if run_id else ""),
+                style=_style("muted"),
+            )
+        )
         self._last_run = f"last run ${cost:.4f}" + (
             f" · {run_id[:8]}" if run_id else ""
         )

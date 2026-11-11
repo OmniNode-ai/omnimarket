@@ -691,6 +691,7 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         await pilot.pause()
         await pilot.pause()
         assert runner.calls[-1] == ("models", "first", "ollama", "qwen3:8b")
+        assert "qwen3:8b is now tried first (Ollama)" in _log_text(app)
 
 
 async def test_model_with_nothing_set_up_points_to_setup() -> None:
