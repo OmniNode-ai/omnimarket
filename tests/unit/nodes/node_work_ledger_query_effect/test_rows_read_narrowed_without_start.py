@@ -191,7 +191,8 @@ def test_error_a_failed_narrowed_read_is_an_error_answer_never_an_empty_one() ->
 def test_whole_a_store_that_cannot_name_its_oldest_row_is_read_whole() -> None:
     records = _data()
     reader = NoOldestReader(records)
-    request = _request(kinds=("TERMINAL",))
+    # rulings are not window-bounded (OMN-23541), so the read really has no start
+    request = _request(query=EnumWorkLedgerQueryKind.RULINGS, kinds=("TERMINAL",))
     result = _answer(reader, request)
     assert result.error is None
     assert [c[0] for c in reader.calls if c[0].startswith("rows")] == ["rows"]

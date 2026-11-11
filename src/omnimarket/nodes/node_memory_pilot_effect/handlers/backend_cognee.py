@@ -10,7 +10,9 @@ dependency of omnimarket; only a host that installed it can use this backend.
 from __future__ import annotations
 
 import importlib
+import json
 import os
+import sys
 from typing import Any
 
 from omnimarket.nodes.node_memory_pilot_effect.handlers.lab_reachability import (
@@ -49,7 +51,7 @@ def cognee_environment(overlay: ModelMemoryPilotOverlay) -> dict[str, str]:
         "DO_NOT_TRACK": "1",
         "LITELLM_LOCAL_MODEL_COST_MAP": "True",
         "HF_HUB_OFFLINE": "1",
-        "TIKTOKEN_CACHE_DIR": str(root / "tiktoken"),
+        "TIKTOKEN_CACHE_DIR": str(overlay.tiktoken_cache_dir or root / "tiktoken"),
         "LLM_PROVIDER": "custom",
         "LLM_MODEL": f"openai/{overlay.chat.model}",
         "LLM_ENDPOINT": overlay.chat.base_url,
@@ -65,6 +67,8 @@ def cognee_environment(overlay: ModelMemoryPilotOverlay) -> dict[str, str]:
         "SYSTEM_ROOT_DIRECTORY": str(root / "system"),
         "CACHE_ROOT_DIRECTORY": str(root / "cache"),
     }
+    if overlay.llm_args is not None:
+        env["LLM_ARGS"] = json.dumps(overlay.llm_args, sort_keys=True)
     if overlay.chat_extraction is not None:
         for stage in ("EXTRACTION", "SUMMARIZATION"):
             env[f"LLM_{stage}_PROVIDER"] = "custom"
@@ -100,6 +104,9 @@ class BackendCognee:
     def _load(self) -> Any:
         if self._cognee is None:
             os.environ.update(cognee_environment(self._overlay))
+            extra = self._overlay.cognee_site_packages
+            if extra is not None and str(extra) not in sys.path:
+                sys.path.append(str(extra))
             self._cognee = importlib.import_module("cognee")
         return self._cognee
 
