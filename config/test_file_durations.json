@@ -169,6 +169,7 @@
   "tests/ci/test_omn21630_urllib3_lock_floor.py": 0.05,
   "tests/ci/test_omn21709_own_contract_file.py": 0.02,
   "tests/ci/test_omn22496_contract_checks_run_inside_omni_home.py": 2.08,
+  "tests/ci/test_omn23518_spi_lock_floor.py": 3.8,
   "tests/ci/test_omniclaude_pin_drift_omn20001.py": 3.04,
   "tests/ci/test_omniclaude_pin_follows_dev_omn19998.py": 1.08,
   "tests/ci/test_omniclaude_release_notice_omn20001.py": 0.77,
