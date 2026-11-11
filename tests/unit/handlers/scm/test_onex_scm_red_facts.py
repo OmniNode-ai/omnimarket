@@ -21,7 +21,7 @@ from click.testing import CliRunner
 
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.handler_scm_dispatch import SCM_LOCAL_VERBS
-from omnimarket.nodes.node_job_log_filler_effect.handlers.handler_red_facts import (
+from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
     RedFactsStore,
 )
 from omnimarket.nodes.node_job_log_filler_effect.models.model_red_facts import (
