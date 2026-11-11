@@ -43,12 +43,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -q --no-cov -n 0 -p no:randomly -k error
     cwd: .
-- id: dod-omn23650-integration-proof
-  description: The pushed head ran the focused tests of the node on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The runtime half (AC3) is read in the running dev runtime log after the deploy agent rolls the merged tag.
+- id: dod-omn23650-ac3-in-process
+  description: The in-process half of AC3. With the runtime's home unwritable, the run with a state home writes the projection and the snapshots under the state home and the lab fill reads them there. The runtime half is the unbound integration proof below.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -q --no-cov -n 0 -p no:randomly -k "test_golden_state_home_receives_the_projection_when_the_runtime_home_is_unwritable or test_seam_the_fill_and_the_floor_read_what_the_state_home_run_wrote"
+    cwd: .
+- id: dod-omn23650-integration-proof
+  description: The pushed head ran the focused tests of the node on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The runtime half (zero PermissionError lines for ten minutes in the running dev runtime log) is read after the deploy agent rolls the merged tag.
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23650 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -n 0 -p no:randomly
