@@ -113,3 +113,6 @@ dod_evidence:
           grep -q '^exit=0$' results/base2.out
           grep -q '^exit=12$' results/M1_no_reread.out
         cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ticket_sync_model.py -q -n 0 -p no:randomly --no-cov -k "digests or violation"
+        cwd: .
