@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: MIT
 """OMN-20844: a per-call model for the customer's own key, consumer first.
 
-The request decodes ``model`` before it declares it (step 1 of the Wire
-Compatibility Gate's release order): a null is dropped, so a request without it
-is byte-identical to today's, and a named model is refused by name rather than
-dropped, so a call never runs the stored model when another was asked for. The
-handler therefore never passes a model to the dispatch port yet. The in-process
-port already runs the customer's own BYOK route on a named model, so the result
-and the receipt name it; a model named for a route that is not the customer's
-own key is refused, never applied to a house or local rung. The runtime port's
-canonical request cannot carry it, so it refuses rather than dropping it.
+Step 1 released a consumer that decodes ``model`` without declaring it; step 2
+declares it on the request. A null is the ordinary request and is dropped from
+serialisation, so a request without it stays byte-identical on the wire. The
+handler passes a named model to the dispatch port only when the request names
+one, so a port that predates the keyword keeps working for every request that
+names no model. The in-process port already runs the customer's own BYOK route
+on a named model, so the result and the receipt name it; a model named for a
+route that is not the customer's own key is refused, never applied to a house
+or local rung. The runtime port's canonical request cannot carry it, so it
+refuses rather than dropping it.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -61,8 +61,8 @@ _ANSWER = (
 
 
 class TestRequestField:
-    def test_the_model_key_is_not_declared_yet(self) -> None:
-        assert MODEL_WIRE_KEY not in ModelDelegateSkillRequest.model_fields
+    def test_the_model_key_is_now_declared(self) -> None:
+        assert MODEL_WIRE_KEY in ModelDelegateSkillRequest.model_fields
 
     def test_a_null_model_is_dropped(self) -> None:
         request = ModelDelegateSkillRequest.model_validate(
@@ -76,16 +76,17 @@ class TestRequestField:
         assert "model" not in request.model_dump()
         assert '"model"' not in request.model_dump_json()
 
-    def test_a_named_model_is_refused_by_name(self) -> None:
-        with pytest.raises(ValidationError, match="model is not honoured"):
-            ModelDelegateSkillRequest.model_validate(
-                {
-                    "prompt": "p",
-                    "task_type": "research",
-                    "source": "claude-code",
-                    MODEL_WIRE_KEY: PAID,
-                }
-            )
+    def test_a_named_model_decodes_and_is_carried_on_the_wire(self) -> None:
+        request = ModelDelegateSkillRequest.model_validate(
+            {
+                "prompt": "p",
+                "task_type": "research",
+                "source": "claude-code",
+                MODEL_WIRE_KEY: PAID,
+            }
+        )
+        assert request.model == PAID
+        assert request.model_dump(mode="json")["model"] == PAID
 
 
 class TestHandlerSeam:
@@ -99,6 +100,20 @@ class TestHandlerSeam:
             )
         )
         assert "model" not in port.dispatch.await_args.kwargs
+
+    async def test_a_named_model_reaches_the_port(self) -> None:
+        port = AsyncMock()
+        port.dispatch.return_value = {"status": "completed", "content": "ok"}
+        handler = HandlerDelegateSkill(object(), dispatch_port=port)
+        await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt="p",
+                task_type="research",
+                source="claude-code",
+                model=PAID,
+            )
+        )
+        assert port.dispatch.await_args.kwargs["model"] == PAID
 
 
 class _Effect:
