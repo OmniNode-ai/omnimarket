@@ -76,7 +76,7 @@ def test_r8_the_contract_runtime_block_is_typed_and_names_the_inputs_file() -> N
 
 def test_r8_the_lane_block_names_every_total_and_every_run_field() -> None:
     settings = load_lane_settings(CONTRACT_PATH)
-    assert settings.backend == "http"
+    assert settings.backend == "bus"
     assert set(settings.totals_keys) == set(TOTALS_NAMES)
     assert set(settings.run_keys) == set(RUN_NAMES)
 

@@ -288,7 +288,7 @@ def test_golden_chain_the_record_run_writes_the_row_to_the_file_not_the_ledger(
     assert (
         handler._lane_factory.__name__ == "lane_factory"
     )  # the contract's lane, not a test double
-    with pytest.raises(LaneReadError, match="R8_PROBE_API_BASE_URL"):
+    with pytest.raises(LaneReadError, match="no tenant_read block"):
         handler._lane_factory()
 
     # An unconfigured lane is a failed run that still writes its row: the record holds exactly one STATUS row.
