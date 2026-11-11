@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_secret_reading_effect.overlay import (
     NODE_NAME,
+    OVERLAY_ID_ENV,
     ModelSecretReadingOverlay,
 )
 
@@ -31,6 +32,7 @@ CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 JOIN_J4_OVERLAY_ID = "node_secret_reading_join_j4"
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
+_SAFE_ID = re.compile(r"^[a-z0-9_]+$")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
 
@@ -132,8 +134,15 @@ def render_units(
     overlay_root: Path,
     drill: bool = False,
     join_j4: bool = False,
+    overlay_id: str = NODE_NAME,
 ) -> tuple[str, str]:
-    """The systemd user service and timer text; ``drill`` and ``join_j4`` render those units' pairs."""
+    """The systemd user service and timer text; ``drill`` and ``join_j4`` render those units' pairs.
+
+    ``overlay_id`` is the overlay document the unit reads from ``overlay_root``; the unit pins it
+    (``OVERLAY_ID_ENV``) when it is not the node's own name.
+    """
+    if not _SAFE_ID.match(overlay_id):
+        raise ValueError(f"overlay id {overlay_id!r} is not a plain identifier")
     if drill and schedule.drill is None:
         raise ValueError("the contract declares no drill schedule")
     if join_j4 and schedule.join_j4 is None:
@@ -173,6 +182,7 @@ def render_units(
         "OMNI_HOME": root,
         OVERLAY_ROOTS_ENV: _safe(overlay_root, "overlay root"),
         "PATH": f"{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        **({OVERLAY_ID_ENV: overlay_id} if overlay_id != NODE_NAME else {}),
         **overlay.unit_environment,
     }
     service = (
@@ -236,6 +246,12 @@ class SecretReadingScheduler:
             os.path.expandvars(os.path.expanduser(self.overlay.drill_overlay_root))
         )
 
+    def _drill_id(self) -> str | None:
+        """The drill's overlay document id, read from the same overlay root as the hourly unit."""
+        if self.schedule.drill is None:
+            return None
+        return self.overlay.drill_overlay_id
+
     def check(self) -> ModelScheduleResult:
         if not self.overlay.schedule_hosts:
             return ModelScheduleResult(
@@ -253,7 +269,13 @@ class SecretReadingScheduler:
         )
 
     def install(
-        self, host: str, *, omni_root: Path, overlay_root: Path, dry_run: bool = False
+        self,
+        host: str,
+        *,
+        omni_root: Path,
+        overlay_root: Path,
+        dry_run: bool = False,
+        overlay_id: str = NODE_NAME,
     ) -> ModelScheduleResult:
         refused = self._declared(host)
         if refused is not None:
@@ -262,6 +284,7 @@ class SecretReadingScheduler:
         venv = omni_root / declared.venv
         python = venv / "bin" / "python"
         drill_root = self._drill_root()
+        drill_id = self._drill_id()
         units: list[tuple[str, str]] = []
         timers: list[str] = [self.timer_name]
         try:
@@ -272,10 +295,11 @@ class SecretReadingScheduler:
                 venv=venv,
                 home=self.home,
                 overlay_root=overlay_root,
+                overlay_id=overlay_id,
             )
             units += [(self.service_name, service), (self.timer_name, timer)]
             if (
-                drill_root is not None
+                (drill_root is not None or drill_id is not None)
                 and self.drill_timer_name
                 and self.drill_service_name
             ):
@@ -285,8 +309,9 @@ class SecretReadingScheduler:
                     omni_root=omni_root,
                     venv=venv,
                     home=self.home,
-                    overlay_root=drill_root,
+                    overlay_root=drill_root or overlay_root,
                     drill=True,
+                    overlay_id=drill_id or NODE_NAME,
                 )
                 units += [
                     (self.drill_service_name, drill_service),
@@ -306,6 +331,7 @@ class SecretReadingScheduler:
                     home=self.home,
                     overlay_root=overlay_root,
                     join_j4=True,
+                    overlay_id=overlay_id,
                 )
                 units += [
                     (self.join_j4_service_name, j4_service),
@@ -318,13 +344,16 @@ class SecretReadingScheduler:
             return ModelScheduleResult(
                 exit_code=0, stdout="".join(f"{text}\n" for _, text in units)
             )
-        if (
-            drill_root is not None
-            and not (drill_root / NODE_NAME / "overlay.yaml").is_file()
-        ):
+        drill_file = (
+            drill_root / NODE_NAME / "overlay.yaml"
+            if drill_root is not None
+            else overlay_root / drill_id / "overlay.yaml"
+            if drill_id is not None
+            else None
+        )
+        if drill_file is not None and not drill_file.is_file():
             return ModelScheduleResult(
-                exit_code=1,
-                stderr=f"no drill overlay at {drill_root / NODE_NAME / 'overlay.yaml'}\n",
+                exit_code=1, stderr=f"no drill overlay at {drill_file}\n"
             )
         if not python.is_file():
             return ModelScheduleResult(

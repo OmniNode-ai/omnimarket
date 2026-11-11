@@ -243,11 +243,20 @@ def test_heavy_job_event_admission(event, ref, docs, expected):
 
 
 def test_pr_code_change_is_narrowed():
+    # OMN-23719: the whole of tests/nodes/ summed past the selector's bound, so a node
+    # change selects that node's tests (and its dependents'), not tests/nodes/. A
+    # node that does not exist (node_example) cannot be attributed and fails closed.
     selection = compute_selection(
-        ["src/omnimarket/nodes/node_example/handler.py"], ADJACENCY, "feature"
+        [
+            "src/omnimarket/nodes/node_remote_lane_compute/handlers/"
+            "handler_remote_lane_placement.py"
+        ],
+        ADJACENCY,
+        "feature",
     )
     assert not selection.is_full_suite
-    assert "tests/nodes/" in selection.selected_paths
+    assert "tests/nodes/node_remote_lane_compute/" in selection.selected_paths
+    assert "tests/nodes/" not in selection.selected_paths
 
 
 @pytest.mark.parametrize(
