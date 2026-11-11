@@ -23,17 +23,17 @@ from pathlib import Path
 from uuid import UUID, uuid5
 
 import yaml
+from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+    ModelDelegationTerminalCompletedV2,
+)
 from omnibase_core.models.events.work.model_work_result_recorded import (
     ModelWorkResultRecorded,
 )
 
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2 import (
-    ModelDelegationTerminalCompletedV2,
-)
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
+from omnimarket.events.dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
+from omnimarket.events.dod_verify_start_command import (
     ModelDodVerifyStartCommand,
 )
 from omnimarket.nodes.node_goal_verification_orchestrator.handlers.store_goal_verification_inmemory import (

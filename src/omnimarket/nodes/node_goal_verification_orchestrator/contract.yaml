@@ -44,7 +44,7 @@ handler_routing:
         module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
       event_model:
         name: ModelDelegationTerminalCompletedV2
-        module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
     - operation: record_disposition
       topic: onex.evt.omnimarket.goal-disposition-recorded.v1
       handler:
@@ -60,7 +60,7 @@ handler_routing:
         module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
       event_model:
         name: ModelDodVerifyCompletedEvent
-        module: omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event
+        module: omnimarket.events.dod_verify_completed_event
     - operation: sweep
       topic: onex.cmd.omnimarket.goal-verification-sweep.v1
       handler:
@@ -82,7 +82,7 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 30000
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
 runtime_dispatch:
   external_trigger: "A result event or a delegation terminal reaches the subscribe topics; a scheduled sweep command retries quiet runs."
 event_bus:
