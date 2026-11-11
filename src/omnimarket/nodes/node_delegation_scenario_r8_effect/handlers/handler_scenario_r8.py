@@ -52,12 +52,20 @@ from omnimarket.handlers.delegation_scenario_settings import (
     SecretStoreSettingsReader,
     fill_overlay_settings,
     load_store_overlay,
+    load_tenant_read_overlay,
 )
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioTrigger,
     ModelScenarioResult,
 )
+from omnimarket.models.model_delegation_scenario_settings import (
+    ModelScenarioTenantReadOverlay,
+)
+from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_bus_request import (
+    build_bus_request,
+)
 from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_lane import (
+    BusLane,
     HttpLane,
     InMemoryLane,
     LaneReadError,
@@ -323,27 +331,60 @@ def _record_appender(record: Path) -> LedgerAppender:
 
 
 def _build_inmemory_lane(
-    settings: ModelLaneSettings, environment: Mapping[str, str]
+    settings: ModelLaneSettings,
+    environment: Mapping[str, str],
+    tenant_read: ModelScenarioTenantReadOverlay | None,
 ) -> ProtocolR8Lane:
     """The typed in-memory model of the tenant lane; it reads no setting and no environment."""
-    del settings, environment
+    del settings, environment, tenant_read
     return InMemoryLane()
 
 
 def _build_http_lane(
-    settings: ModelLaneSettings, environment: Mapping[str, str]
+    settings: ModelLaneSettings,
+    environment: Mapping[str, str],
+    tenant_read: ModelScenarioTenantReadOverlay | None,
 ) -> ProtocolR8Lane:
     """The real tenant API, addressed and keyed from the environment variables the contract names."""
+    del tenant_read
     return HttpLane(settings, environment)
+
+
+def _build_bus_lane(
+    settings: ModelLaneSettings,
+    environment: Mapping[str, str],
+    tenant_read: ModelScenarioTenantReadOverlay | None,
+) -> ProtocolR8Lane:
+    """The tenant reads over the event bus; the bus, lane and probe tenant come from the R8 overlay document."""
+    del environment
+    if tenant_read is None:
+        raise LaneReadError("the R8 overlay document has no tenant_read block")
+    if settings.bus is None:
+        raise LaneReadError("the R8 contract lane block has no bus block")
+    return BusLane(
+        settings,
+        tenant_read,
+        build_bus_request(
+            tenant_read,
+            savings_node=settings.bus.savings_node,
+            delegations_node=settings.bus.delegations_node,
+            workspace_env=settings.bus.workspace_env,
+        ),
+    )
 
 
 #: The contract's ``lane.backend`` value picks the lane from this table; the pattern on ``ModelLaneSettings.backend`` admits
 #: exactly these keys, so a backend the table lacks cannot reach it.
 LANE_BUILDERS: Mapping[
-    str, Callable[[ModelLaneSettings, Mapping[str, str]], ProtocolR8Lane]
+    str,
+    Callable[
+        [ModelLaneSettings, Mapping[str, str], ModelScenarioTenantReadOverlay | None],
+        ProtocolR8Lane,
+    ],
 ] = {
     "inmemory": _build_inmemory_lane,
     "http": _build_http_lane,
+    "bus": _build_bus_lane,
 }
 
 
@@ -391,7 +432,9 @@ def build_runner(
         )
 
     def lane_factory() -> ProtocolR8Lane:
-        return LANE_BUILDERS[settings.backend](settings, environment)
+        return LANE_BUILDERS[settings.backend](
+            settings, environment, load_tenant_read_overlay(NODE_NAME, environment)
+        )
 
     return HandlerScenarioR8(
         runtime,
