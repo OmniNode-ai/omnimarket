@@ -24,6 +24,9 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.models.model_reading import EnumReadingVerdict as V
+from omnimarket.nodes.node_dev_deploy_reading_effect import (
+    runtime_dev_deploy_reading as cli,
+)
 from omnimarket.nodes.node_dev_deploy_reading_effect.adapters import (
     DeployAgentSource,
     LabDevDeployFacts,
@@ -502,3 +505,75 @@ def test_seam_the_row_the_effect_writes_reads_unknown_through_the_reading_writer
     )
     assert reading.verdict is V.UNKNOWN
     assert reading.reasons == ("source-unknown:dev_deploy_reading",)
+
+
+# --- AC4: the probe-merge verb itself, end to end over the agent's answers -------------------------------------
+
+
+def _run_probe_merge_verb(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    clone: dict[str, str],
+    answers: dict[str, str | Exception],
+    shas: Sequence[str],
+) -> tuple[int, list[dict[str, Any]]]:
+    """Run ``main(["probe-merge", ...])`` as the command line does; only the overlay file and the two network reads are injected."""
+    fetch, run = fakes(answers)
+    monkeypatch.setenv("TEST_CLONE", clone["repo"])
+    monkeypatch.setenv("TEST_SSH_HOST", "lab@host.test")
+    monkeypatch.setattr(cli, "load_overlay", overlay)
+    monkeypatch.setattr(
+        cli,
+        "HandlerDevDeployMergeProbe",
+        lambda ov, environ, _clock: HandlerDevDeployMergeProbe(
+            ov, environ, lambda: NOW, run=run, fetch=fetch
+        ),
+    )
+    args = ["probe-merge", "--repo", "repo-a"]
+    for sha in shas:
+        args += ["--sha", sha]
+    code = cli.main(args)
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.strip()]
+    return code, lines
+
+
+def test_probe_merge_verb_prints_one_verdict_per_sha_and_exits_zero(
+    clone: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    answers = agent_answers(clone["old"], active=IN_FLIGHT, commands_ahead=2)
+    code, lines = _run_probe_merge_verb(
+        monkeypatch, capsys, clone, answers, [clone["old"][:12], clone["new"][:12]]
+    )
+    assert code == 0
+    assert [x["commit"] for x in lines] == [clone["old"][:12], clone["new"][:12]]
+    assert [x["verdict"] for x in lines] == ["WORKING", "UNKNOWN"]
+    assert lines[1]["reasons"] == [f"deploy-queued:{clone['new'][:12]}:ahead-2"]
+
+
+def test_error_chain_probe_merge_verb_exits_non_zero_when_the_deploy_agent_is_unreachable(
+    clone: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    answers = agent_answers(clone["new"])
+    answers[HEALTH] = OSError("connection refused")
+    code, lines = _run_probe_merge_verb(
+        monkeypatch, capsys, clone, answers, [clone["old"][:12]]
+    )
+    assert code == 3
+    assert lines[0]["verdict"] == "UNKNOWN"
+    assert lines[0]["reasons"][0].startswith("deploy-source-unread:")
+
+
+def test_error_chain_probe_merge_verb_exits_one_for_a_commit_outside_the_clone(
+    clone: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, lines = _run_probe_merge_verb(
+        monkeypatch, capsys, clone, agent_answers(clone["new"]), ["deadbeef"]
+    )
+    assert code == 1
+    assert lines[0]["failure"]

@@ -44,11 +44,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_agent_source.py tests/nodes/node_reading_compute/test_reading_unknown_source.py -q --no-cov -p no:randomly
     cwd: .
-- id: dod-omn23655-integration-proof-lab
-  description: 'Integrated: on a lab host the reader prints one reading for a named dev merge read from the dev lane deploy agent and the running runtime build record, under the deployed overlay. Hosted CI cannot reach the lab runtime, so only the local Done gate runs this unbound item.'
+- id: dod-omn23655-probe-merge-verb
+  description: Runs the probe-merge verb itself (main with the command line arguments) over a real git clone and the deploy agent's own answers; it prints one verdict per sha and exits non-zero when the deploy agent is unreachable or a commit is outside the clone.
   source: manual
   binds_ac:
   - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_agent_source.py -k probe_merge -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23655-integration-proof-lab
+  description: 'Integrated: on a lab host the reader prints one reading for a named dev merge read from the dev lane deploy agent and the running runtime build record, under the deployed overlay. Hosted CI cannot reach the lab runtime, so only the local Done gate runs this unbound item (no binds_ac: a bound item of that scope cannot be controlled by the hosted must-fail check).'
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
