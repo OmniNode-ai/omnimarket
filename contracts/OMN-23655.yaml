@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23655
+title: Dev deploy reading follows what the deploy agent reports
+summary: The piece 11 dev deploy reading waited for a per-merge CI receipt that its verify job abandons after about 27 minutes when the deploy queue is backed up, so a queued merge never got a receipt and read NOT WORKING. The reading now has a second source rule, chosen by an overlay value, that reads what the deploy agent itself reports (its health, its queue and the running runtime's build record). A merge counts as deployed when the running build contains it and the agent's newest finished job succeeded; a merge the agent has not reached reads UNKNOWN with its queue position; a failed roll reads NOT WORKING with the job id. The reading writer's piece 11 source gains an overlay-declared unknown rule so an UNKNOWN row reads UNKNOWN.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23655-deploy-agent-source
+  statement: The reading judges each runtime-affecting merge by the deploy agent's own report and the running build's record, under an overlay-selected source rule.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a merge contained in the running dev build, with the deploy agent's last job finished healthy, reads WORKING -- falsifier: pytest tests/nodes/node_dev_deploy_reading_compute/test_deploy_agent_source.py -k deployed -q fails when the containment fact is dropped"
+  - id: AC2
+    statement: "AC2: a merge not yet in the running build while the deploy agent has commands ahead reads UNKNOWN with its queue position and never NOT WORKING -- falsifier: pytest tests/nodes/node_dev_deploy_reading_compute/test_deploy_agent_source.py -k queued -q fails when the queue depth is set to zero"
+  - id: AC3
+    statement: "AC3: a merge not in the running build whose last deploy job failed reads NOT WORKING naming the job id -- falsifier: pytest tests/nodes/node_dev_deploy_reading_compute/test_deploy_agent_source.py -k failed -q fails when the job is marked success"
+  - id: AC4
+    statement: "AC4: integrated: the reader run from the branch against the real dev lane prints a reading for omnibase_infra merges 2959ea796683 and a21526125aef and the newest omnimarket dev merge, read from the deploy agent's status pages and the runtime's build record -- falsifier: python -m omnimarket.nodes.node_dev_deploy_reading_effect probe-merge prints a verdict per sha and exits non-zero when the deploy agent is unreachable"
+evidence_requirements:
+- kind: tests
+  description: The deploy-agent rule tests of the compute node, the effect node's real-clone tests and the reading compute's unknown-source tests.
+  command: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute tests/nodes/node_dev_deploy_reading_effect tests/nodes/node_reading_compute -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23655-compute-rule
+  description: Runs the compute node's deploy-agent rule tests, including the deployed, queued and failed readings each with its failing control, and the error chain refusals.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23655-effect-source
+  description: Runs the effect node's deploy-agent source tests over a real git clone with the agent's own answers, the seam tests and the reading compute's unknown-source tests.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect tests/nodes/node_reading_compute -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23655-integration-proof-lab
+  description: 'Integrated: on a lab host the reader prints one reading for a named dev merge read from the dev lane deploy agent and the running runtime build record, under the deployed overlay. Hosted CI cannot reach the lab runtime, so only the local Done gate runs this unbound item.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23655 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python -m omnimarket.nodes.node_dev_deploy_reading_effect probe-merge --repo omnibase_infra --sha a21526125aef'
+    cwd: .

@@ -20,6 +20,11 @@ description: >
   lab pass receipt for its exact sha and the runtime's functional probe is fresh, passing and saw the sha it
   was asked for. NOT WORKING when one of those fails; UNKNOWN when a source could not be read and nothing
   readable already fails. The in-memory fact source carries the facts, so a dropped receipt is the failing control.
+  The overlay's source_rule picks the rule that judges the merges: lab_pass_receipt (the lane's receipt per merge) or
+  deploy_agent (OMN-23655), which reads the deploy agent's own health and queue and the running build's record: a merge
+  the running build contains, with the agent's newest finished job succeeded, is deployed; a merge still queued behind the
+  agent reads UNKNOWN with its queue position; a failed roll reads NOT WORKING with the job id. The probe-merge verb reads
+  named dev merges the same way and appends nothing.
 
 handler:
   module: omnimarket.nodes.node_dev_deploy_reading_effect.handlers.handler_dev_deploy_reading_run
