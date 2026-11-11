@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 """The scenario R8 tick the registry installer renders.
 
-The tick runs the scenario once as a SCHEDULE run. R8 reads the probe tenant's address and key from its
-environment, so the tick carries no secret-store fill. The golden chain does it with an injected build that
-returns a success result: exit 0, the record is success, and stdout holds the result. The error chains are the
-named breaks: a build whose run raises RuntimeError refuses with 65 and the record says refused, a failing
-conclusion exits 1, and ``--help`` exits 0.
+The tick runs the scenario once as a SCHEDULE run. The probe tenant's key is filled from the node's settings
+overlay through the secret store, while the tenant's address still comes from the environment file. The golden
+chain does it with an injected build that returns a success result: exit 0, the record is success, and stdout
+holds the result. The error chains are the named breaks: a build whose run raises RuntimeError refuses with 65
+and the record says refused, a failing conclusion exits 1, and ``--help`` exits 0.
 """
 
 from __future__ import annotations

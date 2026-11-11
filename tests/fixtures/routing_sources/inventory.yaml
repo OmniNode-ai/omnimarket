@@ -211,7 +211,7 @@ not_routing_resolution_sites:
     reason: locates the start-path drill overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the start-path census, the drill gate and the schedule host and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_reading_writer_effect/runtime_reading_writer.py:find_node_overlay(NODE_NAME)"
     reason: locates the reading writer overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and ledger locations and selects no backend, model or tier
-  - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(NODE_NAME)"
+  - site: "src/omnimarket/nodes/node_secret_reading_effect/runtime_secret_reading.py:find_node_overlay(overlay_id())"
     reason: locates the secret reading overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and declared consumers and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
