@@ -204,3 +204,12 @@ def test_lane_start_design_review_verdict_is_recorded() -> None:
     for name in MUTATIONS:
         assert name in verdict
     assert "Verdict:" in verdict
+
+
+def test_lane_start_mapping_names_host_revision_event_fields_and_gaps() -> None:
+    mapping = (MODEL_DIR / "mapping.txt").read_text(encoding="utf-8")
+    assert "h201" in mapping
+    assert "932c24044" in mapping
+    assert "REMOTE-LANE-OBSERVED" in mapping
+    assert "engine_argv" in mapping
+    assert "GAP:" in mapping

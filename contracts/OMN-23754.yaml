@@ -48,6 +48,6 @@ dod_evidence:
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: grep -c "GAP" docs/formal/lane_start/mapping.txt
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_lane_start_model.py -q --no-cov -n 0 -p no:randomly -k mapping
     cwd: .
