@@ -34,7 +34,6 @@ def _scripts_on_path(tmp_path: Path) -> None:
 
 
 from scripts.ci.detect_test_paths import (  # noqa: E402
-    REPO_ROOT,
     compute_selection,
     resolve_test_paths,
 )
@@ -42,6 +41,31 @@ from scripts.ci.test_selection_models import (  # noqa: E402
     EnumFullSuiteReason,
     ModelTestSelection,
 )
+
+# The weight bound is claimed over a pinned durations record, not the live one: every
+# PR that adds a test file must add its seconds to the recorded durations file, so
+# the live tests/nodes/ total only grows and walks a light change past the bound.
+_PINNED_DURATIONS = {
+    "tests/nodes/test_pinned.py": 1705.0,
+    "tests/gates/test_pinned.py": 43.0,
+    "tests/ci/test_repo_evidence_caller_workflow.py": 5.0,
+    "tests/test_no_cross_node_reach_in.py": 3.0,
+    "tests/unit/test_pinned.py": 3420.0,
+}
+_pinned_durations_path: Path | None = None
+
+
+@pytest.fixture(autouse=True)
+def _pinned_durations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    global _pinned_durations_path
+    _pinned_durations_path = tmp_path / "pinned_durations.json"
+    _pinned_durations_path.write_text(json.dumps(_PINNED_DURATIONS))
+    pinned = load_policy().model_copy(
+        update={"durations_path": str(_pinned_durations_path)}
+    )
+    monkeypatch.setattr(
+        sys.modules["scripts.ci.detect_test_paths"], "load_policy", lambda: pinned
+    )
 
 
 def test_adjacency_yaml_loads() -> None:
@@ -873,7 +897,8 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
 
 def _shard_seconds(selection: ModelTestSelection) -> float:
     """Recorded seconds one shard of a narrowed selection carries, read from the durations file."""
-    durations = json.loads((REPO_ROOT / "config/test_file_durations.json").read_text())
+    assert _pinned_durations_path is not None
+    durations = json.loads(_pinned_durations_path.read_text())
     covered = sum(
         seconds
         for test_file, seconds in durations.items()
@@ -932,9 +957,12 @@ def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count
 
 
 def test_a_bounded_selection_with_no_durations_file_fails_closed(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "tests" / "nodes").mkdir(parents=True)
+    monkeypatch.setattr(
+        sys.modules["scripts.ci.detect_test_paths"], "load_policy", load_policy
+    )
     selection = compute_selection(
         _LIGHT_CHANGE,
         ADJACENCY_PATH,
