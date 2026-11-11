@@ -10,6 +10,7 @@ A source that cannot read ends in the typed failed event and replaces no earlier
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -243,38 +244,60 @@ class HandlerPoolSnapshot:
     def handle(self, request: ModelPoolSnapshotRequest) -> ModelPoolSnapshotResult:
         read_at = self._clock()
 
-        try:
-            ads = self._advertisement_source.read_advertisements()
-        except PoolSnapshotSourceError as exc:
-            return self._fail(
-                request, EnumPoolSnapshotFailureReason.ADVERTISEMENTS_UNREAD, str(exc)
+        # The advertisement, the lane count and the account reads are independent and each waits on a far command; read at once, a pass
+        # takes the longest of them and not their sum (measured on h051: 28 s, 26 s and 6.5 s against the unit's 50 s bound). The
+        # failures below are judged in the order the sources were once read in, so a pass with two failures names the same first one.
+        rows: tuple[ModelLabHostRow, ...] = ()
+        rows_error: PoolSnapshotSourceError | None = None
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            ads_read = pool.submit(self._advertisement_source.read_advertisements)
+            lanes_read = pool.submit(self._lanes_source.running_lanes, read_at)
+            try:
+                rows = self._host_table_source.read_hosts()
+            except PoolSnapshotSourceError as exc:
+                rows_error = exc
+            accounts_read = (
+                pool.submit(self._accounts_source.read_accounts, rows)
+                if rows_error is None and rows
+                else None
             )
 
-        try:
-            rows = self._host_table_source.read_hosts()
-        except PoolSnapshotSourceError as exc:
-            return self._fail(
-                request, EnumPoolSnapshotFailureReason.HOST_TABLE_UNREAD, str(exc)
-            )
+            try:
+                ads = ads_read.result()
+            except PoolSnapshotSourceError as exc:
+                return self._fail(
+                    request,
+                    EnumPoolSnapshotFailureReason.ADVERTISEMENTS_UNREAD,
+                    str(exc),
+                )
 
-        if not rows:
-            return self._fail(
-                request, EnumPoolSnapshotFailureReason.NO_HOSTS, "host table is empty"
-            )
+            if rows_error is not None:
+                return self._fail(
+                    request,
+                    EnumPoolSnapshotFailureReason.HOST_TABLE_UNREAD,
+                    str(rows_error),
+                )
 
-        try:
-            lanes = self._lanes_source.running_lanes(read_at)
-        except PoolSnapshotSourceError as exc:
-            return self._fail(
-                request, EnumPoolSnapshotFailureReason.LANES_UNREAD, str(exc)
-            )
+            if not rows or accounts_read is None:
+                return self._fail(
+                    request,
+                    EnumPoolSnapshotFailureReason.NO_HOSTS,
+                    "host table is empty",
+                )
 
-        try:
-            accounts = self._accounts_source.read_accounts(rows)
-        except PoolSnapshotSourceError as exc:
-            return self._fail(
-                request, EnumPoolSnapshotFailureReason.ACCOUNTS_UNREAD, str(exc)
-            )
+            try:
+                lanes = lanes_read.result()
+            except PoolSnapshotSourceError as exc:
+                return self._fail(
+                    request, EnumPoolSnapshotFailureReason.LANES_UNREAD, str(exc)
+                )
+
+            try:
+                accounts = accounts_read.result()
+            except PoolSnapshotSourceError as exc:
+                return self._fail(
+                    request, EnumPoolSnapshotFailureReason.ACCOUNTS_UNREAD, str(exc)
+                )
 
         snapshot, host_rows = build_pool_snapshot(
             rows, ads, lanes, accounts, self._overlay, read_at

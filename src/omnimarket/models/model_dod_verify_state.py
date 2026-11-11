@@ -1,0 +1,732 @@
+"""ModelDodVerifyState and EnumDodVerifyStatus for DoD verification."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from enum import StrEnum
+from typing import Literal, Self
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.delegated_test_loop.must_fail_models import ModelMustFailControl
+from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
+from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
+from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
+from omnimarket.models.model_criteria_drift import (
+    ModelCriteriaAmendment,
+    ModelCriterionDrift,
+)
+
+
+class EnumEvidenceCheckStatus(StrEnum):
+    """Status of a single evidence check."""
+
+    VERIFIED = "verified"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    # OMN-15382 (runner-supersession follow-up): a dod_evidence item that a
+    # LATER item in the same contract explicitly supersedes via
+    # ``evidence_artifact: "supersedes_dod_evidence:<this-id>"``. Distinct
+    # from VERIFIED/FAILED/SKIPPED — it is neither executed nor counted as a
+    # failure; the superseding item's own checks carry the verdict. See
+    # ``EvidenceCollector._resolve_supersessions``.
+    SUPERSEDED = "superseded"
+    # OMN-15391: the check RAN and EXITED 0, but its exit status is invariant
+    # over the product change, so the green it produced is not evidence about
+    # this ticket. A bare ``gh pr view`` is green for every PR on GitHub; OCC's
+    # own admissibility suite is green with the ticket's entire fix reverted.
+    # Distinct from VERIFIED (it proved nothing about the product), from FAILED
+    # (nothing went wrong), and from SKIPPED (it was not skipped — it executed).
+    # Admitted and reported as provenance; never counted toward completion.
+    # See ``omnimarket.occ_evidence_probative_class``.
+    NON_PROBATIVE = "non_probative"
+
+
+class EnumEvidenceUnverifiableCause(StrEnum):
+    """Why a check could not be EVALUATED AT ALL (OMN-16788).
+
+    A check that the verifier's credential could not read is not a check that
+    ran and found the evidence wanting. Before this enum existed, both
+    collapsed to FAILED: the scheduled CI sweep recorded ~29 substantive
+    failures on OMN-16682 that were, every one of them, the same unread
+    branch-protection endpoint. The fix is NOT to relax the gate — the check
+    still blocks a Done-flip (see ``HandlerDodVerify._handle_typed``, which
+    refuses to reach VERIFIED while any cause is present) — it is to record
+    the block honestly, so a receipt distinguishes "we looked and it was red"
+    from "we were not permitted to look".
+
+    Deliberately narrow, and every member POSITIVELY identified — from the
+    endpoint's own rendering, the clone's own git state, the gate's own banner,
+    or this process's own ceiling. A cause is never inferred from a bare
+    non-zero exit, and never grepped out of a subprocess's stdout/stderr: a
+    command under test can print anything, and one that could mint its own
+    cause would launder its own red.
+
+    OMN-17795 overturns one clause of this docstring, on the record rather than
+    silently. It read: *"A timeout, a 5xx, or an OSError stays a substantive
+    fail-closed FAILURE, because a transient transport fault is not evidence
+    about a credential and must not become a laundering channel."* That was
+    written for OMN-16788, when this enum held ONLY the two credential
+    renderings and "not evidence about a credential" was therefore decisive.
+    OMN-16846 then added two causes that are not about credentials at all
+    (``PRODUCT_CLONE_STALE``, ``GATE_VENV_IMPURE``) without revisiting it, so
+    the clause had already stopped describing the enum it sits on.
+
+    The measurement that overturned it: 36 runs, 12 tickets x 3 back-to-back,
+    nothing changed between runs. 8 of 12 tickets produced a different verdict
+    digest; OMN-16803 flipped verdict STATUS ``failed`` -> ``skipped`` ->
+    ``failed``. Every delta localised to one check racing between three
+    environmental terminal states, of which two were recorded here and the
+    third — a trip of the verifier's own per-check ceiling — was recorded
+    FAILED. Which state won the race decided the ticket's verdict.
+
+    Why the feared laundering channel does not open. A cause recorded here is
+    strictly MORE blocking than the FAILED it replaces, not less:
+    ``HandlerDodVerify._handle_typed`` refuses VERIFIED while any cause is
+    present; the check keeps its place in the verdict-bearing denominator
+    (it carries no ``unbindable_derived_overlay`` marker, which is the only
+    thing that removes an entry from it); it is not ``non_probative``; and it
+    is not ``behavior_proving``, so the OMN-16821 flip predicate
+    (``verified + non_probative == total AND behavior_proving > 0``) still
+    refuses. A budget trip cannot move a ticket one step closer to Done. The
+    clause's real content — that a fault must not become a way to PASS — is
+    preserved exactly; what changes is that the block is recorded honestly
+    instead of as a defect nobody looked for.
+    """
+
+    # ``gh: Resource not accessible by integration (HTTP 403)`` on
+    # ``repos/{repo}/branches/{base}/protection/required_status_checks``.
+    # The credential can read PRs; reading branch protection additionally
+    # needs the ``administration: read`` scope. Remedy: grant the scope.
+    CREDENTIAL_CANNOT_READ_BRANCH_PROTECTION = (
+        "credential_cannot_read_branch_protection"
+    )
+    # A bare ``gh: Not Found (HTTP 404)`` on the same endpoint — what GitHub
+    # returns for a repository that is absent from the App installation
+    # (verified live 2026-08-27). Distinct from the two branch-scoped 404s
+    # ("Branch not found" / "Branch not protected"), which are substantive.
+    # Remedy: add the repo to the installation.
+    REPO_NOT_ACCESSIBLE_TO_CREDENTIAL = "repo_not_accessible_to_credential"
+
+    # OMN-16846 D2. The clone named by a check's ``cwd`` is BEHIND its own
+    # remote-tracking branch, so the tree the command would execute against is
+    # not the tree under adjudication. Measured live 2026-08-28: the canonical
+    # ``omnibase_core`` clone sat 2 commits behind ``origin/dev``, missing the
+    # very merge being verified, and ``uv run pytest <new test file>`` returned
+    # "collected 0 items / no tests ran" — a verdict indistinguishable in the
+    # receipt from "the tests were never written". 9 of 12 canonical clones
+    # were behind that same session (up to -22), so this is the machine's
+    # normal state, not an edge case. Remedy: fast-forward the named clone.
+    PRODUCT_CLONE_STALE = "product_clone_stale"
+    # OMN-16846 D2, fail-closed arm. Freshness of the clone named by ``cwd``
+    # could not be established at all — it is not a git repository, has no
+    # upstream to compare against, or the ``git fetch`` that would resolve the
+    # comparison failed. UNKNOWN must never read as fresh (the OMN-15454 rule,
+    # applied to the product clone instead of the OCC one).
+    PRODUCT_CLONE_FRESHNESS_UNKNOWN = "product_clone_freshness_unknown"
+    # A declared sibling cwd has no checkout (including a --no-checkout clone).
+    # The command never ran; provisioning the sibling is the remedy.
+    SIBLING_CHECKOUT_MISSING = "sibling_checkout_missing"
+    # OMN-16846 D1. The OMN-15620 venv-purity gate refused the venv at
+    # ``pytest_configure`` — before collection, before any test module import.
+    # The command exited non-zero having executed NOTHING about the product, so
+    # recording it FAILED asserts a defect the run never looked for. Positively
+    # identified from the gate's own verbatim refusal banner, never inferred
+    # from a bare non-zero exit.
+    GATE_VENV_IMPURE = "gate_venv_impure"
+    # OMN-17795. The verifier killed the check's subprocess at its OWN
+    # per-check ceiling (``DOD_VERIFY_CHECK_TIMEOUT_S``, default 30 s). The
+    # command was cut off mid-flight, so what it would have concluded is
+    # unknown — and the ceiling belongs to the verifier, not to the product.
+    # Measured: the one run in 36 where the OMN-16434 behaviour-proof check
+    # survived read ``OK (19850ms): 16 passed in 1.55s`` — 18.3 s of pytest
+    # import/collection against a 30 s ceiling, and 1.55 s of product work;
+    # the identical command tripped on the next two runs of the same ticket.
+    # Set ONLY from ``EvidenceCollector._last_check_budget_exceeded``, which
+    # this process sets inside its own ``TimeoutExpired`` handler. Remedy:
+    # raise the named ceiling for the host, or make the check cheaper.
+    CHECK_BUDGET_EXCEEDED = "check_budget_exceeded"
+    # OMN-20032 (GC.9). The check passed at the head, and the must-fail control
+    # that says whether it would have failed before the change could not run:
+    # the PR's diff was unreadable, the earlier commit was not in the clone, the
+    # earlier tree could not be built, or the run never produced a verdict. The
+    # green is unproven, and an unproven green is not a proof. Set ONLY from the
+    # control's own ``UNAVAILABLE`` outcome; remedy: make the named input
+    # available and re-run.
+    MUST_FAIL_CONTROL_UNAVAILABLE = "must_fail_control_unavailable"
+    # OMN-16846 D1, local path. The verifier could not BUILD the lock-exact
+    # environment a behaviour check runs in (``uv`` unresolvable, the sync
+    # exceeded its own build ceiling, or it exited non-zero), so the command
+    # never ran. That is a fact about the verifier's setup, not about the
+    # product -- and the fallback it refuses is the shared canonical venv,
+    # which the workspace reconciler composes an undeclared ``onex.nodes``
+    # provider into and which GATE_VENV_IMPURE above records the refusal of.
+    # Set only from this process's own subprocess result, never grepped out of
+    # a check's stdout. Strictly more blocking than the FAILED it replaces:
+    # like every member here it is neither verified nor non_probative nor
+    # behavior_proving, so the OMN-16821 flip predicate still refuses.
+    HERMETIC_ENV_UNAVAILABLE = "hermetic_env_unavailable"
+    # OMN-18756. A check that invokes a BARE ``python``/``python3`` is routed
+    # to the interpreter the verifier itself runs on, and THAT interpreter
+    # cannot import a module the command needs. The command exited having
+    # imported nothing and read nothing, so recording it FAILED asserts a
+    # defect the run never looked for -- the same argument as its four
+    # siblings above, applied to the interpreter instead of the venv, the
+    # clone or the clock.
+    #
+    # Measured: omnibase_infra run 35379376978 counted OMN-18426's
+    # ``ac1-ac2-hook-on-all-fifteen-default-branches`` among that ticket's
+    # three failures. It died in 31 ms on ``No module named 'yaml'`` --
+    # against a dispatch venv that had PyYAML installed and a verifier that
+    # imports ``yaml`` at module scope. The check never reached a repository.
+    #
+    # Positively identified by this process re-resolving the named module in
+    # its OWN interpreter (``importlib.util.find_spec``), and only for a
+    # command this process routed. The module NAME is read out of the failure;
+    # the DECISION is never the check's to make, so a command printing the
+    # words for a module the verifier can import stays FAILED. Strictly more
+    # blocking than the FAILED it replaces: neither verified nor
+    # non_probative nor behavior_proving, so the OMN-16821 flip predicate
+    # still refuses. Remedy: install the distribution into the verifier's
+    # environment.
+    VERIFIER_ENVIRONMENT = "verifier_environment"
+    # The gateway returned no usable check-run listing for the deciding head.
+    # Set from the read result, never from a check's output. Still blocks Done.
+    CHECK_RUN_READ_FAILED = "check_run_read_failed"
+
+
+class EnumProductCloneFreshness(StrEnum):
+    """Freshness of the PRODUCT clone a behaviour check executes in (OMN-16846).
+
+    ``node_dod_verify`` asserted nothing about the clone the ``test_passes``
+    commands actually run in, and recorded no tree SHA for it, so two runs of
+    the same contract against different trees produced receipts a reader cannot
+    tell apart. This enum records whether that clone was refreshed.
+    """
+
+    # HEAD contains every commit its upstream has. AHEAD is deliberately not a
+    # distinct value: a worktree parked on a feature branch is legitimately
+    # ahead of ``origin/dev``, and refusing that would break verification of
+    # the very branch under review. Only MISSING commits falsify a verdict.
+    FRESH = "fresh"
+    # HEAD is behind its upstream — the tree lacks commits the remote has.
+    STALE = "stale"
+    # Tracked files differ from HEAD, so the executed tree is not any commit
+    # and the recorded SHA would misattribute the result. Untracked files are
+    # deliberately NOT dirt: build artefacts, caches and scratch files litter
+    # every canonical clone, and refusing on them would make the gate
+    # unusable without catching the failure mode it exists for.
+    DIRTY = "dirty"
+    # The clone IS a git repository, but freshness could not be established:
+    # no upstream is configured for HEAD, or the comparison fetch failed.
+    # UNKNOWN never reads as FRESH (OMN-15454's rule).
+    UNKNOWN = "unknown"
+    # The declared ``cwd`` is not inside a git repository at all — a scratch
+    # or generated directory. There is no tree it could be stale against, so
+    # there is nothing for this gate to assert and no provenance to record.
+    # Distinct from UNKNOWN on purpose: UNKNOWN means "there is a tree here
+    # and we could not pin it", which is a refusal; this means the question
+    # does not arise. ``_resolve_cwd`` has already proven the path exists, so
+    # this cannot mask a typo'd repository path.
+    NOT_APPLICABLE = "not_applicable"
+
+
+class ModelProductCloneResolution(BaseModel):
+    """What tree a check's declared ``cwd`` resolved to, and how fresh it was.
+
+    Recorded on the check result so a receipt reader can answer "which tree
+    produced this verdict?" without re-running anything (OMN-16846 AC5).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo_root: str = Field(
+        ..., description="Absolute path of the git repository the check ran in."
+    )
+    freshness: EnumProductCloneFreshness = Field(...)
+    head_sha: str | None = Field(
+        default=None,
+        description="40-char commit SHA of the tree the check executed against.",
+    )
+    upstream_ref: str | None = Field(
+        default=None,
+        description="Remote-tracking ref HEAD was compared against (e.g. origin/dev).",
+    )
+    behind_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Commits present on the upstream ref but absent from HEAD.",
+    )
+    # OMN-18117. `upstream_ref` names a MOVING ref, so on its own it does not
+    # say what this verdict was actually measured against — two runs minutes
+    # apart can both record `origin/dev` and mean different commits. These two
+    # fields make the comparison target explicit, and say whether it was frozen
+    # at the run's own materialisation or read from a live fetch.
+    comparison_sha: str | None = Field(
+        default=None,
+        description="The commit HEAD was measured against to produce this verdict.",
+    )
+    comparison_pinned: bool = Field(
+        default=False,
+        description=(
+            "True when comparison_sha came from the run's materialisation pin "
+            "rather than from a fetch performed at check time."
+        ),
+    )
+    detail: str | None = Field(
+        default=None, description="Why freshness is UNKNOWN, when it is."
+    )
+
+
+class ModelProductClonePin(BaseModel):
+    """One repository's frozen comparison target for the duration of a run.
+
+    OMN-18117. A long-running verifier — the evidence-autoclose sweep spends
+    ~20 minutes on a corpus after materialising its clones once — cannot
+    measure freshness against a ref that moves underneath it. Whoever
+    materialises the tree records the upstream tip it materialised AGAINST,
+    and the collector measures HEAD against that recorded commit instead of
+    re-fetching.
+
+    ``pinned_sha`` is the upstream TIP observed at materialisation, never the
+    clone's own HEAD. Pinning to HEAD would make the comparison vacuous — HEAD
+    always equals itself — and would silently launder a clone that was already
+    behind when the run picked it up, which is the OMN-16846 AC5 refusal this
+    must not weaken.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo_root: str = Field(
+        ...,
+        min_length=1,
+        description="Absolute path of the git repository this pin binds.",
+    )
+    pinned_sha: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{40}$",
+        description=(
+            "The upstream tip commit observed when this run materialised the "
+            "clone. Full 40-char lowercase hex; an abbreviation would be "
+            "ambiguous in a shallow clone."
+        ),
+    )
+    upstream_ref: str | None = Field(
+        default=None,
+        description="The ref that tip was read from, for the receipt (e.g. origin/dev).",
+    )
+    recorded_at: str | None = Field(
+        default=None,
+        description="When the materialising step observed the tip, for the receipt.",
+    )
+
+
+class ModelProductClonePinSet(BaseModel):
+    """The whole pin file a run's materialisation step writes.
+
+    ``version`` is checked rather than assumed: a file this collector cannot
+    interpret must fall back to the live comparison, which is the pre-existing
+    fail-closed behaviour, not be read optimistically.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    version: int = Field(..., description="Schema version of this pin file.")
+    pins: tuple[ModelProductClonePin, ...] = Field(default=())
+
+
+class ModelCommandCheckFailure(BaseModel):
+    """Diagnostics observed from a completed nonzero command check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    exit_code: int
+    failing_test_ids: tuple[str, ...] = ()
+    first_error_line: str | None = None
+
+    def summary(self) -> str:
+        tests = ", ".join(self.failing_test_ids) or "<no test ids reported>"
+        error = self.first_error_line or "<no error line reported>"
+        return f"exit_code={self.exit_code}; tests={tests}; first_error={error}"
+
+
+class ModelEvidenceCheckResult(BaseModel):
+    """Result of a single DoD evidence check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evidence_id: str = Field(..., description="Evidence item ID (e.g. dod-001).")
+    description: str = Field(..., description="What was checked.")
+    status: EnumEvidenceCheckStatus = Field(...)
+    message: str | None = Field(default=None, description="Detail or error message.")
+    failure: ModelCommandCheckFailure | None = Field(
+        default=None, description="Nonzero command exit and test diagnostics."
+    )
+    # OMN-16788: set ONLY on a SKIPPED result, and only when the skip is a
+    # credential-reachability fact rather than a deliberate one. It is the
+    # machine-checkable discriminator between the two kinds of SKIPPED that
+    # now exist: an ordinary skip (OMN-16087's intentional non-merged
+    # assertion, a disabled live-PR check) is non-blocking and unchanged,
+    # while an UNVERIFIABLE skip blocks the ticket verdict from reaching
+    # VERIFIED. Consumers must branch on this field, never on message text.
+    unverifiable_cause: EnumEvidenceUnverifiableCause | None = Field(
+        default=None,
+        description=(
+            "Why this check could not be evaluated at all. None for every "
+            "check that actually ran, and for a deliberate skip."
+        ),
+    )
+
+    # OMN-17323: this result is an overlay the VERIFIER auto-derived, not a
+    # criterion the TICKET declared, and the verifier's own binder could not
+    # bind it. Set ONLY on the ``::pr-live-state`` result that
+    # ``EvidenceCollector._live_pr_checks_for_item`` emits when
+    # ``_resolve_pr_bindings`` returned nothing but left a binding note — the
+    # tool reporting its own inability, which was being attributed to the
+    # ticket as an evidence shortfall.
+    #
+    # Why it needs its own axis rather than reusing ``unverifiable_cause``:
+    # that field means "the evidence exists and the credential could not READ
+    # it", and it deliberately BLOCKS the verdict on those terms. This means
+    # "there is no evidence item here at all" — the overlay is synthetic, was
+    # never executed, and can never pass. Since OMN-16434 auto-mints
+    # ``dod-occ-diff-derived-behavior-proof`` onto every new OCC companion,
+    # every freshly-minted companion carries exactly one guaranteed-unbindable
+    # overlay, which made the OMN-16821 flip equality unsatisfiable by
+    # construction for the entire corpus (24 consecutive scheduled autoclose
+    # runs, ~660 scans, FLIP=0).
+    #
+    # Consumers must branch on this field, never on ``NO_CONSISTENT_PR_BINDING``
+    # message text — the OMN-16788 rule, one axis over.
+    unbindable_derived_overlay: bool = Field(
+        default=False,
+        description=(
+            "True only for a verifier-derived ::pr-live-state overlay whose "
+            "binder derived no (repo, pr) pair. Excluded from the "
+            "verdict-bearing denominator; retained in `checks` with its note."
+        ),
+    )
+
+    # OMN-15911: `status` says whether the check passed; `proof_class` says
+    # what passing it PROVED. Without this axis a merge-state read and an
+    # executed test suite are the same `verified`, and a downstream tally of
+    # "N/N verified" reads as completion when it may be merge-state only.
+    # Derived from the executed command, never from the contract's prose
+    # (OMN-15391: the two are allowed to disagree). Defaults to INDETERMINATE
+    # so a caller-supplied result that never classified anything cannot be
+    # counted as behavior-proving.
+    proof_class: EnumCheckProofClass = Field(
+        default=EnumCheckProofClass.INDETERMINATE,
+        description="What this check binds: behavior / merge-state / surrogate.",
+    )
+    is_disposition: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description=(
+            "True for a stored lane disposition receipt, which is recorded in "
+            "checks but excluded from the executable-check verdict counts."
+        ),
+    )
+
+    # OMN-18056. WHICH ACCEPTANCE CRITERIA THIS CHECK'S EVIDENCE ITEM CLAIMS.
+    #
+    # Copied verbatim from `binds_ac` on the contract's `dod_evidence` item.
+    # It is the CONTRACT AUTHOR speaking, carried onto the per-check record so
+    # a consumer can ask which criterion a green check covered instead of only
+    # how many checks were green.
+    #
+    # Why the verifier carries it rather than each consumer re-reading the
+    # contract: the evidence autoclose sweep runs on a GitHub Actions runner
+    # with no contract checkout, and a second contract parser would be a
+    # second truth that drifts from this one. The verifier already resolves,
+    # pins and reads the contract, so it is the only place the binding can be
+    # reported from without adding a second reader.
+    #
+    # An EMPTY tuple and an ABSENT field are different facts downstream: empty
+    # means this item declares no criterion (a coverage gap the ticket author
+    # can close), absent means the receipt predates this field entirely (a
+    # verifier that cannot answer the question at all). Defaulting to empty
+    # here is safe because a receipt from THIS verifier always carries the key.
+    binds_ac: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Acceptance-criterion labels this check's evidence item declares "
+            "it proves, from the contract's `binds_ac`. Empty means none."
+        ),
+    )
+
+    # OMN-18238. WHICH OF THOSE CLAIMS IS ONLY A PROPOSAL.
+    #
+    # A binding record on the item carries the criterion hash it was derived
+    # against and, when somebody agreed to it, who accepted it and when. A
+    # record with no acceptance is a DRAFT: a machine may propose a binding, it
+    # may not decide one, because a passing check whose name resembles a
+    # criterion is not proof of the criterion it names.
+    # OMN-17427: a record whose accepted_by is its own proposer is also a proposal.
+    #
+    # This is a strict subset of `binds_ac` above -- it NARROWS the claim and
+    # can never add to it. The consumer subtracts these labels from the
+    # discharge set, so a criterion whose only declaration is a proposal stays
+    # unbound until a person accepts it.
+    #
+    # EMPTY is the corpus default and means "nothing here is a proposal".
+    draft_binds_ac: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "The subset of `binds_ac` that is a PROPOSAL rather than an "
+            "accepted binding -- a record carrying a criterion hash and no "
+            "independent acceptance, including acceptance by its own proposer "
+            "(OMN-17427). Empty means none of the claims is a proposal."
+        ),
+    )
+
+    # OMN-16846 AC5: the tree(s) this item's commands actually executed in, one
+    # entry per distinct repository a check's declared ``cwd`` resolved to.
+    # Empty for every item whose checks declare no ``cwd`` (they inherit the
+    # caller's directory or the auto-injected OCC root, which the OCC
+    # provenance fields above already pin). Ordered by first resolution so the
+    # receipt is stable across runs.
+    product_clones: tuple[ModelProductCloneResolution, ...] = Field(
+        default=(),
+        description="Per-repository tree provenance for this item's commands.",
+    )
+
+    # OMN-20032 (GC.9): what the must-fail control established about this
+    # item's green. Present on every ``test_passes`` result that passed at the
+    # head. ``route`` says whether the control ran (``control``) or the item
+    # ran by the shell only (``shell``); a shell-route result is never labelled
+    # controlled. None on every other kind of check, so receipts that predate
+    # the control are unchanged.
+    must_fail_control: ModelMustFailControl | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The must-fail control's record: whether the item's tests failed "
+            "on the code before the change, or why no control exists."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _cause_requires_skipped(self) -> Self:
+        """A cause asserts "this check did not run" — it may not contradict a
+        status that says it did. Rejecting the combination structurally is
+        cheaper than auditing every future producer for the invariant."""
+        if (
+            self.unverifiable_cause is not None
+            and self.status is not EnumEvidenceCheckStatus.SKIPPED
+        ):
+            raise ValueError(
+                f"unverifiable_cause is only valid on a SKIPPED result; "
+                f"got status={self.status.value} for {self.evidence_id}"
+            )
+        # OMN-17323: the marker asserts "this overlay was never executed and
+        # can never pass" — it may not sit on a status claiming it ran. The
+        # counter in HandlerDodVerify subtracts every marked entry from the
+        # denominator, so a marker on a VERIFIED/NON_PROBATIVE result would
+        # shrink the denominator while its own verdict stayed in a numerator
+        # term and manufacture a green. Rejected structurally rather than
+        # audited per-producer, mirroring the cause invariant above.
+        if (
+            self.unbindable_derived_overlay
+            and self.status is not EnumEvidenceCheckStatus.SKIPPED
+        ):
+            raise ValueError(
+                f"unbindable_derived_overlay is only valid on a SKIPPED "
+                f"result; got status={self.status.value} for {self.evidence_id}"
+            )
+        return self
+
+
+class ModelDodVerifyState(BaseModel):
+    """State for DoD verification computation."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Verification run correlation ID.")
+    ticket_id: str = Field(..., description="Linear ticket ID.")
+    status: EnumDodVerifyStatus = Field(default=EnumDodVerifyStatus.PENDING)
+    dry_run: bool = Field(default=False)
+    # OMN-19514: the delegation run whose output this verification judges --
+    # the delegate-skill correlation id, which is the delegation_events key.
+    # The verifier's own correlation_id identifies the verification run, not
+    # the attempt, so without this no verdict can be joined to the delegated
+    # attempt it judged. Omitted from serialisation when unset, so every
+    # existing caller and every consumer predating the field sees the shape it
+    # saw before.
+    delegation_correlation_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Correlation id of the delegation run this verification judged.",
+    )
+    goal_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
+    parent_goal_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    level: Literal["delegate_call", "workflow_lane", "interactive_session"] | None = (
+        Field(default=None, exclude_if=lambda value: value is None)
+    )
+    contract_revision: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-20696: the contract the verdict was evaluated against. Omitted
+    # when unset so older consumers see the shape they saw before.
+    contract_source: EnumDodContractSource | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_repository: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_commit_sha: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_repo_path: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-18901. When the run began and when its verdict was sealed.
+    #
+    # These are on the STATE, not only on the completed-event twin, because the
+    # state is the object the runtime publishes on this node's declared
+    # terminal topic: a def-B handler's returned model IS its output event
+    # (``_normalize_handler_result`` wraps any returned BaseModel, and the
+    # dispatch-result applier routes it to the contract's terminal). The
+    # already-merged projection that consumes that topic requires both fields
+    # and rejects a payload missing either, so before this change the runtime
+    # published a state the consumer could only dead-letter.
+    #
+    # Both are REQUIRED. The verify path is the only construction site in
+    # source and it reads the clock around the actual work. A default would
+    # let any other construction stamp the time the model happened to be
+    # built, and the projection would store that invented window as the run's
+    # history without being able to tell it apart from a real one. Refusing to
+    # construct a state without a window is the fail-closed choice.
+    started_at: datetime = Field(
+        ...,
+        description="When this verification run began.",
+    )
+    completed_at: datetime = Field(
+        ...,
+        description="When this verification run reached its terminal status.",
+    )
+    checks: list[ModelEvidenceCheckResult] = Field(default_factory=list)
+    total_checks: int = Field(default=0, ge=0)
+    verified_count: int = Field(default=0, ge=0)
+    failed_count: int = Field(default=0, ge=0)
+    skipped_count: int = Field(default=0, ge=0)
+    superseded_count: int = Field(default=0, ge=0)
+    # OMN-15391: checks that executed and exited 0 but whose exit status cannot
+    # depend on the product change. Counted separately and NEVER folded into
+    # ``verified_count`` — that field is the completion tally an operator reads
+    # to decide whether a ticket is closeable, and provenance is not completion.
+    # These entries STAY in ``total_checks`` so the shortfall is visible
+    # (a contract reads 2/14, not 2/2).
+    non_probative_count: int = Field(default=0, ge=0)
+    # OMN-15911: verdict-bearing checks that both PASSED and executed the
+    # claimed behavior. The orthogonal axis to ``non_probative_count``:
+    # OMN-15391 asks whether a check's exit status CAN depend on the product
+    # change at all, this asks what a check that passed actually BOUND. They
+    # do not subsume each other — an asserted merge probe
+    # (`gh pr view … | grep -q MERGED`) is probative by OMN-15391's definition
+    # and still proves only that a merge happened, which is the residual that
+    # module records as deliberately out of its scope.
+    #
+    # Restricted to VERIFIED ∧ BEHAVIOR: a FAILED behavior check is not proof,
+    # and a NON_PROBATIVE one never was. Zero means "green, and nothing here
+    # proves the system does the thing."
+    behavior_proving_count: int = Field(default=0, ge=0)
+    # OMN-18135 AC4. VERIFIED ∧ READBACK: checks that read live state from a
+    # running system and asserted on what they read. Carried SEPARATELY from
+    # `behavior_proving_count`, never folded into it, for two reasons. A
+    # readback proves what the system currently IS and never what the code
+    # DOES, which is the line the ruling draws. And a consumer that has not
+    # been taught about readbacks keeps reading exactly the number it read
+    # before, so this field can only be acted on deliberately.
+    #
+    # Which criteria a readback may discharge is NOT decided here: that needs
+    # the ticket's acceptance text, which this package never sees.
+    readback_proving_count: int = Field(default=0, ge=0)
+    # OMN-17323: verifier-derived ``::pr-live-state`` overlays whose binder
+    # derived no (repo, pr) pair. Excluded from ``total_checks`` on exactly the
+    # OMN-15390 reasoning that excludes ``superseded`` — an entry carrying no
+    # product-dependent verdict does not belong in a verdict-bearing
+    # denominator — and named here, like ``superseded_count``, so the receipt
+    # shows the binder gap rather than hiding it. These entries ARE still
+    # counted in ``skipped_count``: they are skipped results present in
+    # ``checks``, and understating that would trade one misreport for another.
+    unbindable_overlay_count: int = Field(default=0, ge=0)
+    # OMN-20153: what the acceptance evidence was written from. None when no
+    # ticket contract was loaded (a goal-scoped run, caller-supplied results, a
+    # missing contract), so "not measured" is never read as "no checks". The
+    # counts sit beside it so a consumer can compute the share of a ticket's
+    # falsifiers that were actually run without re-reading the contract.
+    acceptance_basis: EnumDodAcceptanceBasis | None = Field(default=None)
+    acceptance_declared_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_runnable_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
+    # OMN-17427: self-accepted bindings still awaiting acceptance by a second lane.
+    acceptance_self_accepted_bindings: tuple[str, ...] = Field(default=())
+    acceptance_retired_bindings: tuple[str, ...] = Field(default=())
+    acceptance_refused_retirements: tuple[str, ...] = Field(default=())
+    # OMN-20070: declared criteria no evidence item binds through binds_ac.
+    acceptance_unbound_criteria: tuple[str, ...] = Field(default=())
+    # OMN-20858: the revision of the live ticket's criteria this verdict was
+    # computed against, so the Done transition can re-check it and a reader can
+    # tell which text a verdict judged. None when no ticket was read (a contract
+    # recording no criteria, a goal-scoped run, caller-supplied results).
+    criteria_revision: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-20858: the criteria on which the live ticket and the contract disagree,
+    # and the one amendment that would bring the contract back in line.
+    criteria_drift: tuple[ModelCriterionDrift, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-21676: True when the contract records criteria and this hosted run left
+    # their comparison with the live ticket to the trusted pre-merge check
+    # (node_dod_criteria_check_effect) and the local Done gate. A delegated verdict
+    # says nothing about drift, so the Done gate refuses to rest on one alone.
+    criteria_delegated: bool = Field(default=False, exclude_if=lambda value: not value)
+    error_message: str | None = Field(default=None)
+    # OMN-17022: set exactly on an UNRESOLVED status. An unresolved run that
+    # cannot say WHY is the untyped ``RUN_ERROR_OR_TIMEOUT`` label all over
+    # again — the closeout's ad-hoc string, which no consumer could branch on.
+    # The pairing is enforced structurally below rather than by convention,
+    # because the two retry policies (bounded backoff for a run fault, refusal
+    # for a credential/resolution defect) key off this field alone.
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+        default=None,
+        description="Why the run reached no verdict. Set iff status is UNRESOLVED.",
+    )
+
+    @model_validator(mode="after")
+    def _cause_pairs_with_unresolved(self) -> Self:
+        """A cause without UNRESOLVED misreports a run that DID reach a verdict;
+        UNRESOLVED without a cause is unactionable. Reject both shapes."""
+        unresolved = self.status is EnumDodVerifyStatus.UNRESOLVED
+        if unresolved != (self.unresolved_cause is not None):
+            raise ValueError(
+                "unresolved_cause is set exactly when status is UNRESOLVED; got "
+                f"status={self.status.value}, "
+                f"unresolved_cause={self.unresolved_cause!r} for {self.ticket_id}"
+            )
+        return self
+
+
+__all__: list[str] = [
+    "EnumCheckProofClass",
+    "EnumDodVerifyStatus",
+    "EnumDodVerifyUnresolvedCause",
+    "EnumEvidenceCheckStatus",
+    "EnumEvidenceUnverifiableCause",
+    "EnumProductCloneFreshness",
+    "ModelDodVerifyState",
+    "ModelEvidenceCheckResult",
+    "ModelProductCloneResolution",
+]
