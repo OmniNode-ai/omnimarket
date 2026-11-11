@@ -128,8 +128,8 @@ class HandlerPoolSteering:
     def __init__(
         self,
         *,
-        steering: ModelRotationSteering | None,
-        ledger: ProtocolLedgerText,
+        steering: ModelRotationSteering | None = None,
+        ledger: ProtocolLedgerText | None = None,
         run: VerdictRunner = run_verdict_command,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
@@ -141,6 +141,10 @@ class HandlerPoolSteering:
     def handle(self) -> ModelEngineLoginSteer | None:
         steering = self._steering
         if steering is None or not steering.enabled:
+            return None
+        # The runtime boot builds this handler with no arguments (the contract binds it to the node), so an
+        # instance with no ledger is steering off, never a guess at a ledger.
+        if self._ledger is None:
             return None
         # The overlay model refuses an enabled block without these; the checks keep the types honest.
         if (

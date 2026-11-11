@@ -139,6 +139,26 @@ def test_switched_off_the_caller_answers_nothing_and_asks_nobody(
     assert ledger.reads == 0
 
 
+def test_the_runtime_boot_builds_the_caller_with_no_arguments_and_it_answers_nothing() -> (
+    None
+):
+    """The contract binds the caller to the node; the boot resolver builds it from injectable params only.
+
+    A caller built that way holds no steering block and no ledger, so it is steering off: it asks nobody.
+    The failing control is the constructor with a required ``steering`` or ``ledger``: the boot resolver
+    raises ``TypeError`` and quarantines the handler (tests/test_handler_routing_boot_resolvable.py).
+    """
+    assert HandlerPoolSteering().handle() is None
+
+
+def test_a_caller_given_steering_on_but_no_ledger_answers_nothing_and_asks_nobody() -> (
+    None
+):
+    verdict = Verdict(VERDICT_RESULT)
+    assert HandlerPoolSteering(steering=ON, run=verdict).handle() is None
+    assert verdict.calls == []
+
+
 def test_switched_on_the_caller_asks_the_verdict_and_passes_its_drain_labels() -> None:
     verdict = Verdict(VERDICT_RESULT)
     ledger = Ledger(

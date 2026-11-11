@@ -65,6 +65,14 @@ handler_routing:
         module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick
       input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenAssignRequest
       output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenAssignResult
+    # Read by the lane start in process (lane_start_steer), not routed through the runtime:
+    # the entry binds the handler to this node for the canonical-file-shape ratchet. The handler
+    # builds from no arguments (steering off) so the boot resolver can instantiate it.
+    - operation: steer
+      handler:
+        name: HandlerPoolSteering
+        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_steering
+      output_model: omnimarket.models.engine_login.ModelEngineLoginSteer
 
 descriptor:
   node_archetype: effect
