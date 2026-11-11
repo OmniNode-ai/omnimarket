@@ -16,7 +16,8 @@ join:
   from_piece: 16
   to_piece: 17
   from_node: "example_eval_node:join_j16"
-  to_node: "example_floor_node:join_j16"
+  # Piece 17's node: it must be one of the floor simple node's pipeline_chains, or the floor reads no answer and the run exits 3.
+  to_node: "node_floor_simple_effect:join_j16"
   injected_fault: Drop the join_j16 step from the publish contract
   # The floor overlay's ledger_readings rule, as it stands there.
   reading:

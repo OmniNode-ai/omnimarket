@@ -53,6 +53,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exha
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
     ModelLandingLabCheckFacts,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
+    ModelLandingLivenessFacts,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -244,6 +247,15 @@ class ModelLandingPrFacts(BaseModel):
             "Only a run on this exact head carrying the current attempt's identity "
             "counts; a pass lets the head merge, a failing, running, missing or "
             "superseded one holds it with its own reason. Absent: decided as before."
+        ),
+    )
+    liveness: ModelLandingLivenessFacts | None = Field(
+        default=None,
+        description=(
+            "The automation-liveness read of this head (OMN-23529): a read that names "
+            "an undeclared installer source holds the head with the file named; an "
+            "unreadable read holds nothing and is listed as not made. Absent: decided "
+            "as before, and listed as not made when the policy expects the read."
         ),
     )
     gate_since: datetime | None = Field(
@@ -501,6 +513,13 @@ class ModelLandingPolicy(BaseModel):
         default=600,
         ge=1,
         description="Backoff after an update-branch 422 no-new-commits response.",
+    )
+    liveness_read_expected: bool = Field(
+        default=False,
+        description=(
+            "OMN-23529: the snapshot step runs the liveness read for every PR, so a PR "
+            "with no liveness fact is listed as a read not made (it is never held)."
+        ),
     )
     lab_check_wait_seconds: int = Field(
         default=900,

@@ -27,6 +27,11 @@ requirements:
   acceptance:
   - id: AC6
     statement: 'AC6: the probe reports the login''s visible topics and groups on the in-memory and Redpanda overlays, and a fixture granting one extra topic is reported as an exposure -- falsifier: uv run --frozen pytest tests/nodes/node_bus_login_exposure_effect -q --no-cov -p no:cacheprovider'
+- id: req-omn22860-fleet-projection-read
+  statement: The runner fleet file the floor row lab:runner_groups reads is refreshed from the runtime's HTTP projection first and over ssh only when that read fails.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: with a projection url and a timed-out ssh the runner fleet reads 50 runners with zero ssh calls, and with no url the same timed-out ssh reads unread -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_projection_read.py -q --no-cov -p no:cacheprovider'
 evidence_requirements:
 - kind: tests
   description: The compute node's tests and the effect node's golden chain, error chain and named failing controls on both overlays.
@@ -92,6 +97,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_bus_login_exposure_effect -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22860-fleet-projection-read
+  description: The runner fleet projection is read over HTTP before ssh, and a timed-out ssh without the url reads unread.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_projection_read.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn22860-integration-proof
   description: Run this pull request's own tests on a lab host at the pushed head (the probe node run on both overlays, the GitHub one against a local fixture server). Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

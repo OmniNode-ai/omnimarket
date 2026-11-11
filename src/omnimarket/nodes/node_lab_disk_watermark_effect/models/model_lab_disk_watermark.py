@@ -32,6 +32,10 @@ class ModelWatermarkHost(_Frozen):
     name: NonEmptyStr
     scheduler: Literal["systemd-user"]
     reading_file: NonEmptyStr
+    #: The free space below which placement refuses a unit on this host (the placement contract's disk bar, or the
+    #: host row's own ``min_free_disk_gb``). A page mark that leaves this much free or less would page after the
+    #: admission floor has already refused, so the handler refuses such an overlay.
+    admission_floor_gb: float = Field(gt=0)
     volumes: tuple[ModelWatermarkVolume, ...] = Field(min_length=1)
 
 

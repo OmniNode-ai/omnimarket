@@ -32,6 +32,8 @@ from omnimarket.nodes.node_prrp_snapshot_publish_effect.models import (
 )
 
 HandlerPrrpSnapshotPublish = publish.HandlerPrrpSnapshotPublish
+lane_hosts = publish.lane_hosts
+merge_hosts = publish.merge_hosts
 main = publish_cli.main
 
 pytestmark = pytest.mark.unit
@@ -63,7 +65,7 @@ GATE = """\
 FAKE_SSH = """\
     import os, subprocess, sys
     args = sys.argv[1:]
-    while args[0] == "-o":
+    while args[0] in ("-o", "-J", "-i"):
         args = args[2:]
     target, body = args
     if target in os.environ.get("FAKE_SSH_DOWN", "").split(","):
@@ -76,6 +78,8 @@ FAKE_SSH = """\
     sys.exit(done.returncode)
 """
 HOSTS = """\
+    registry_root_candidates:
+      - $HOME/registry
     hosts:
       - name: host-a
         target: user@host-a.example.invalid
@@ -106,7 +110,6 @@ def _script(path: Path, body: str) -> Path:
 def _request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> ModelPrrpSnapshotPublishRequest:
-    (tmp_path / "hosts.yaml").write_text(textwrap.dedent(HOSTS))
     (tmp_path / "repos.yaml").write_text(textwrap.dedent(REPOS))
     (tmp_path / "home").mkdir()
     monkeypatch.setenv("FAKE_GATE_CALLS", str(tmp_path / "gate-calls"))
@@ -264,11 +267,15 @@ def test_the_cli_prints_a_summary_and_exits_with_the_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     request = _request(tmp_path, monkeypatch)
-    argv = _cli_arguments(request, tmp_path / "hosts.yaml")
+    table = tmp_path / "four-hosts.yaml"
+    table.write_text(textwrap.dedent(HOSTS))
+    monkeypatch.setenv(LAB_TABLE_ENV, str(table))
+    argv = _cli_arguments(request)
     assert main(argv) == 0
     out = capsys.readouterr().out
     assert "prrp_variables_snapshot: OK" in out
     assert "host-b=written" in out
+    assert "host-d=skipped" in out
     monkeypatch.setenv("FAKE_GATE_FAIL", "OmniNode-ai/alpha")
     assert main(argv) == 1
     captured = capsys.readouterr()
@@ -290,13 +297,10 @@ def test_a_missing_repos_file_or_an_empty_list_is_refused(
     assert any("repos.yaml" in f for f in result.failures)
 
 
-def _cli_arguments(
-    request: ModelPrrpSnapshotPublishRequest, hosts_file: Path
-) -> list[str]:
+def _cli_arguments(request: ModelPrrpSnapshotPublishRequest) -> list[str]:
     return [
         "--gate-script", str(request.gate_script),
         "--repos-file", str(request.repos_file),
-        "--hosts-file", str(hosts_file),
         "--state-dir", str(request.state_dir),
         "--home", str(request.home),
         "--destination", DESTINATION,
@@ -304,42 +308,7 @@ def _cli_arguments(
     ]  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    "document",
-    [
-        "",
-        "[]",
-        "{}",
-        "hosts: null",
-        "hosts: {}",
-        "hosts: [null]",
-        "hosts: [{name: host-a}]",
-        "hosts: [{name: host-a, target: 42}]",
-        "hosts: [{name: host-a, target: user@host-a.example.invalid, local: perhaps}]",
-        "hosts: [{name: host-a, target: user@host-a.example.invalid, extra: true}]",
-        "hosts: [",
-    ],
-)
-def test_cli_refuses_malformed_hosts_before_running_the_gate(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    document: str,
-) -> None:
-    request = _request(tmp_path, monkeypatch)
-    hosts_file = tmp_path / "hosts.yaml"
-    hosts_file.write_text(document)
-    assert main(_cli_arguments(request, hosts_file)) == 2
-    captured = capsys.readouterr()
-    assert "ERROR: invalid hosts file" in captured.err
-    assert "hosts.yaml" in captured.err
-    assert not captured.out
-    assert not (tmp_path / "gate-calls").exists()
-    assert not request.state_dir.exists()
-    assert not (request.home / DESTINATION).exists()
-
-
-def test_module_cli_refuses_missing_hosts_file_with_exit_two(
+def test_the_command_takes_no_hosts_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request(tmp_path, monkeypatch)
@@ -348,20 +317,195 @@ def test_module_cli_refuses_missing_hosts_file_with_exit_two(
             sys.executable,
             "-m",
             "omnimarket.nodes.node_prrp_snapshot_publish_effect",
-            *_cli_arguments(request, tmp_path / "missing-hosts.yaml"),
+            *_cli_arguments(request),
+            "--hosts-file",
+            str(tmp_path / "hosts.yaml"),
         ],
         capture_output=True,
         text=True,
         check=False,
     )
     assert done.returncode == 2
-    assert "ERROR: invalid hosts file" in done.stderr
-    assert "missing-hosts.yaml" in done.stderr
-    assert "Traceback" not in done.stderr
+    assert "unrecognized arguments: --hosts-file" in done.stderr
     assert not (tmp_path / "gate-calls").exists()
+    assert not request.state_dir.exists()
 
 
 def test_the_effects_runtime_owns_the_publisher_command_subscription() -> None:
     contract_path = Path(publish_node.__file__).parent / "contract.yaml"
     contract = yaml.safe_load(contract_path.read_text())
     assert contract["descriptor"]["runtime_profiles"] == ["effects"]
+
+
+# ---- OMN-23219: every host that takes lanes receives the snapshot -------------------------------------
+
+LAB_TABLE_ENV = "ONEX_LAB_RUN_HOSTS"
+RECORDED_REFUSAL = json.loads(
+    (
+        Path(__file__).parent / "fixtures" / "h053_hook_refusal_2026_11_08.json"
+    ).read_text()
+)
+
+
+def _table_row(name: str, **cells: object) -> dict[str, object]:
+    return {"name": name, "target": f"user@{name}.example.invalid", **cells}
+
+
+def _write_table(path: Path, rows: list[dict[str, object]]) -> Path:
+    path.write_text(yaml.safe_dump({"hosts": rows}))
+    return path
+
+
+@pytest.fixture(autouse=True)
+def _a_lab_table_that_adds_no_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The CLI reads the lab host table; the tests above name their hosts in the file, so the table here only repeats one."""
+    monkeypatch.setenv(
+        LAB_TABLE_ENV,
+        str(_write_table(tmp_path / "lab-table.yaml", [_table_row("host-b", cap=2)])),
+    )
+
+
+def test_prrp_snapshot_hosts_the_recorded_h053_refusal_is_closed_by_the_lab_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The unit named h200, h201 and h202; h053 and h051 take lanes by the table and got nothing."""
+    request = _request(tmp_path, monkeypatch)
+    named = RECORDED_REFUSAL["last_publish_wrote"]
+    refused = RECORDED_REFUSAL["refused_on_host"]
+    table = [
+        _table_row(name, cap=8)
+        for name in (*named, *RECORDED_REFUSAL["lane_hosts_at_the_time"])
+    ]
+    monkeypatch.setenv(
+        LAB_TABLE_ENV, str(_write_table(tmp_path / "lab-table.yaml", table))
+    )
+    argv = _cli_arguments(request)
+    assert main(argv) == 0, capsys.readouterr().err
+    for name in (*named, *RECORDED_REFUSAL["lane_hosts_at_the_time"]):
+        assert _remote(tmp_path, f"user@{name}.example.invalid").is_file(), name
+    assert (
+        _remote(tmp_path, f"user@{refused}.example.invalid").read_bytes()
+        == _remote(tmp_path, "user@h201.example.invalid").read_bytes()
+    )
+    heartbeat = json.loads((request.state_dir / "heartbeat.json").read_text())
+    assert heartbeat["hosts"][refused] == "written"
+
+
+def test_prrp_snapshot_hosts_only_rows_that_take_lanes_are_added(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.models.overlay_keys.model_overlay_documents import (
+        ModelLabHostsTable,
+    )
+
+    table = ModelLabHostsTable.model_validate(
+        {
+            "hosts": [
+                _table_row("takes-lanes", cap=4),
+                _table_row("default-cap"),
+                _table_row("no-lanes", cap=0),
+                _table_row(
+                    "collaborator",
+                    contributor=True,
+                    lane_binding="their-lane",
+                    ledger_bus_lane="their-lane",
+                    lane_ready=True,
+                ),
+                _table_row(
+                    "off", cap=4, available=False, unavailable_reason="away for repair"
+                ),
+            ]
+        }
+    )
+    hosts = {host.name: host for host in lane_hosts(table)}
+    assert list(hosts) == ["takes-lanes", "default-cap", "off"]
+    assert hosts["off"].available is False
+    assert hosts["off"].unavailable_reason == "away for repair"
+
+
+def test_prrp_snapshot_hosts_an_unavailable_table_row_is_reported_skipped_not_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    request = _request(tmp_path, monkeypatch)
+    table = [
+        _table_row("host-b"),
+        _table_row(
+            "h-away", cap=4, available=False, unavailable_reason="away for repair"
+        ),
+    ]
+    monkeypatch.setenv(
+        LAB_TABLE_ENV, str(_write_table(tmp_path / "lab-table.yaml", table))
+    )
+    assert main(_cli_arguments(request)) == 0
+    assert "h-away=skipped" in capsys.readouterr().out
+    assert not _remote(tmp_path, "user@h-away.example.invalid").exists()
+
+
+def test_prrp_snapshot_hosts_a_host_the_caller_names_keeps_the_callers_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    named = ModelPrrpSnapshotHost(name="a", target="user@a", local=True)
+    same_name = ModelPrrpSnapshotHost(name="a", target="other", available=False)
+    same_target = ModelPrrpSnapshotHost(name="renamed", target="user@a")
+    new = ModelPrrpSnapshotHost(name="b", target="user@b")
+    assert merge_hosts((named,), (same_name, same_target, new)) == (named, new)
+
+
+def test_prrp_snapshot_hosts_an_unreadable_table_fails_the_run_loudly_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    request = _request(tmp_path, monkeypatch)
+    monkeypatch.setenv(LAB_TABLE_ENV, str(tmp_path / "no-such-table.yaml"))
+    argv = _cli_arguments(request)
+    assert main(argv) == 1
+    err = capsys.readouterr().err
+    assert "ALARM prrp_variables_snapshot" in err
+    assert "lab host table could not be read" in err
+    assert not _remote(tmp_path, "user@host-b.example.invalid").exists()
+    assert not _remote(tmp_path, "user@host-c.example.invalid").exists()
+    assert not (request.state_dir / "heartbeat.json").exists()
+    assert "lab host table" in (request.state_dir / "failure.json").read_text()
+
+
+def test_prrp_snapshot_hosts_a_handler_with_no_table_reader_publishes_to_the_named_hosts_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request(tmp_path, monkeypatch)
+    result = HandlerPrrpSnapshotPublish().handle(request)
+    assert {outcome.host for outcome in result.hosts} == {
+        "host-a",
+        "host-b",
+        "host-c",
+        "host-d",
+    }
+
+
+def test_prrp_snapshot_hosts_an_injected_table_adds_its_lane_hosts_and_an_injected_break_fails_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.models.overlay_keys.model_overlay_documents import (
+        ModelLabHostsTable,
+    )
+
+    request = _request(tmp_path, monkeypatch)
+    table = ModelLabHostsTable.model_validate(
+        {"hosts": [_table_row("host-b"), _table_row("extra", cap=3)]}
+    )
+    result = HandlerPrrpSnapshotPublish(read_lab_table=lambda: table).handle(request)
+    assert result.exit_code == 0, result.failures
+    assert [outcome.host for outcome in result.hosts][-1] == "extra"
+    assert _remote(tmp_path, "user@extra.example.invalid").is_file()
+
+    def broken() -> ModelLabHostsTable:
+        raise OSError("the overlay store is down")
+
+    (request.state_dir / "heartbeat.json").unlink()
+    result = HandlerPrrpSnapshotPublish(read_lab_table=broken).handle(request)
+    assert result.exit_code == 1
+    assert "overlay store is down" in result.failures[0]
+    assert _remote(tmp_path, "user@host-c.example.invalid").is_file()
+    assert not (request.state_dir / "heartbeat.json").exists()
+    assert (request.state_dir / "failure.json").is_file()
