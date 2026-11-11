@@ -39,6 +39,7 @@ from omnimarket.models.delegation.model_harness_observation import (
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
 )
+from omnimarket.models.delegation_capability_map import model_capability_line
 from omnimarket.models.delegation_capability_map.enum_capability_source import (
     EnumCapabilitySource,
 )
@@ -47,9 +48,6 @@ from omnimarket.models.delegation_capability_map.model_capability_configuration 
 )
 from omnimarket.models.delegation_capability_map.model_capability_identity import (
     ModelCapabilityIdentity,
-)
-from omnimarket.models.delegation_capability_map.model_capability_line import (
-    ModelCapabilityLine,
 )
 from omnimarket.models.delegation_capability_map.model_capability_map_run_recorded import (
     ModelCapabilityMapRunRecorded,
@@ -187,6 +185,7 @@ def summarize(
     for (harness, model, configuration, task_class), rows in sorted(groups.items()):
         available = [r for r in rows if r.available]
         passes = sum(r.passed for r in available)
+        failed = [r.failure_kind or "checker-failed" for r in rows if not r.passed]
         cells.append(
             {
                 "harness": harness,
@@ -200,11 +199,7 @@ def summarize(
                 "median_minutes": median(r.duration_s for r in available) / 60
                 if available
                 else None,
-                "failure_kinds": dict(
-                    Counter(
-                        r.failure_kind or "checker-failed" for r in rows if not r.passed
-                    )
-                ),
+                "failure_kinds": dict(Counter(failed)),
             }
         )
     return cells
@@ -217,15 +212,13 @@ def build_harness_capability_run(
     observed_at: datetime,
     suite_revision: str,
     harness_revision: str,
-    line: ModelCapabilityLine,
+    line: model_capability_line.ModelCapabilityLine,
 ) -> ModelCapabilityMapRunRecorded:
     """Adapt small fixed-fixture trials to the existing capability projection.
 
-    The attempt budget rides in ``configuration``, which is part of the backend
-    id, so each budget is its own backend. The backend identity includes the
-    harness and complete configuration label, so two harnesses using the same
-    model never pool. Unavailable trials create no cell. The existing
-    sample-size line still refuses three-item cells.
+    The backend identity includes the harness and complete configuration label,
+    so two harnesses using the same model never pool. Unavailable trials create
+    no cell. The existing sample-size line still refuses three-item cells.
     """
     rows = []
     assignments = {}

@@ -36,9 +36,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
-from omnimarket.handlers.overlay_capability_line import (
-    resolve_capability_line,
-)
+from omnimarket.handlers.overlay_capability_line import resolve_capability_line
 from omnimarket.inference.task_class_authority import (
     ModelTaskClassAuthority,
     load_task_class_authority,
@@ -171,11 +169,7 @@ def build_map_run(
             )
         ).encode("utf-8")
     ).hexdigest()
-    observed = [
-        item["observed_at"]
-        for item in items
-        if isinstance(item.get("observed_at"), datetime)
-    ]
+    observed = [t for i in items if isinstance(t := i.get("observed_at"), datetime)]
     if not observed:
         raise SystemExit("no labelled item carries an observed_at; nothing to seed")
     run = ModelCapabilityMapRunRecorded(
@@ -227,8 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     seed.add_argument("--rubric-version", required=True)
     args = parser.parse_args(argv)
     receipt = _seed_labelled(args)
-    json.dump(receipt, sys.stdout, indent=1, sort_keys=True)
-    sys.stdout.write("\n")
+    sys.stdout.write(json.dumps(receipt, indent=1, sort_keys=True) + "\n")
     return 0
 
 

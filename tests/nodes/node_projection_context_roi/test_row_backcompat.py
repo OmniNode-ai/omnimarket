@@ -19,10 +19,10 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.events.context_roi import (
-    EnumContextRoiRowKind,
     ModelAttemptReductionRow,
     ModelContextRoiRunResult,
 )
+from omnimarket.models.context_roi_trial_fields import EnumContextRoiRowKind
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
     EnumCodeScoreSource,

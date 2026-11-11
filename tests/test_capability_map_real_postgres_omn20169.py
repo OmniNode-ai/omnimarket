@@ -25,12 +25,23 @@ from omnimarket.nodes.node_projection_delegation_capability_map.handlers import 
 from omnimarket.nodes.node_projection_delegation_capability_map.lab_run import (
     build_map_run,
 )
+from tests.node_overlay_support import CAPABILITY_MAP_OVERLAY, install_node_overlay
 
 _MIGRATIONS = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_delegation_capability_map/migrations"
 )
 _OBSERVED = datetime(2026, 10, 1, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _capability_map_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    install_node_overlay(
+        monkeypatch,
+        tmp_path / "capability_map_overlay_root",
+        "node_projection_delegation_capability_map",
+        CAPABILITY_MAP_OVERLAY,
+    )
 
 
 def _dsn(database: str, user: str, password: str) -> str:

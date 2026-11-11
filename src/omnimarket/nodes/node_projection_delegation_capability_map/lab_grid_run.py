@@ -45,9 +45,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
-from omnimarket.handlers.overlay_capability_line import (
-    resolve_capability_line,
-)
+from omnimarket.handlers.overlay_capability_line import resolve_capability_line
 from omnimarket.inference.task_class_authority import (
     ModelTaskClassAuthority,
     load_task_class_authority,
@@ -265,15 +263,10 @@ def build_grid_map_run(
             continue
         request = ModelCapabilityGridRequest(**request_kwargs, items=tuple(graded))
 
-        def grade(
-            item: ModelCapabilityGridItem,
-            model: ModelCapabilityGridModel,
-            configuration: ModelCapabilityConfiguration,
-        ) -> ModelCapabilityGridGrade:
-            del configuration
-            return grades[(item.item_key, model.backend_id)]
-
-        rows.extend(HandlerCapabilityGridRun(grade).handle(request))
+        grade = HandlerCapabilityGridRun(
+            lambda item, model, _config: grades[(item.item_key, model.backend_id)]
+        )
+        rows.extend(grade.handle(request))
     digest = hashlib.sha256(
         json.dumps(
             sorted(
@@ -565,8 +558,7 @@ def main(argv: list[str] | None = None) -> int:
     grid.add_argument("--no-write", action="store_true")
     args = parser.parse_args(argv)
     receipt = _grid_run(args)
-    json.dump(receipt, sys.stdout, indent=1, sort_keys=True)
-    sys.stdout.write("\n")
+    sys.stdout.write(json.dumps(receipt, indent=1, sort_keys=True) + "\n")
     return 0
 
 
