@@ -110,6 +110,7 @@ from omnimarket.models.scm import (
     ModelScmAnswer,
     ModelScmLocalAnswer,
     ModelScmLocalReadRequest,
+    ModelScmLocalReadResult,
     ModelScmLocalVerb,
     ModelScmTerminal,
     ModelScmVerb,
@@ -674,6 +675,21 @@ _LOCAL_OPTION_DECORATORS: Final[
 }
 
 
+def _local_read(request: ModelScmLocalReadRequest) -> ModelScmLocalReadResult:
+    """Answer one local read; red-facts reads the head from the CI read, then the record."""
+    if request.read is not EnumScmLocalRead.RED_FACTS:
+        return HandlerScmLocalState().handle(request)
+    # Imported here: the filler node's handlers import this package.
+    from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
+        answer_red_facts_read,
+    )
+
+    checks = HandlerScmLocalState().handle(
+        request.model_copy(update={"read": EnumScmLocalRead.PR_CHECKS})
+    )
+    return answer_red_facts_read(request, checks)
+
+
 def _local_command(spec: ModelScmLocalVerb) -> click.Command:
     pr_scoped = spec.read in (
         EnumScmLocalRead.PR_COMMITS,
@@ -704,7 +720,7 @@ def _local_command(spec: ModelScmLocalVerb) -> click.Command:
             )
         except ValidationError as exc:
             raise click.UsageError(str(exc)) from exc
-        local = HandlerScmLocalState().handle(request)
+        local = _local_read(request)
         if not local.answered or local.source is None:
             click.echo(
                 f"local: {local.unanswered_reason} ({spec.verb} has no bus or "
