@@ -368,6 +368,21 @@ class HandlerRegistryUnits:
             )
         return list(declared)
 
+    def tick_arguments(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> list[str]:
+        """The arguments the rendered unit passes to its module at every tick, so the start check runs the real argv."""
+        root = Path(request.registry_root)
+        evidence_dir = str((Path(request.home) / str(unit["evidence_file"])).parent)
+        tick_root = str(root)
+        if (
+            unit.get("platform") != "systemd"
+            and unit.get("tick_omni_home") != "registry_root"
+            and unit.get("launchd_root")
+        ):
+            tick_root = str(Path(request.home) / str(unit["launchd_root"]))
+        return ["--omni-home", tick_root, "--state-dir", evidence_dir]
+
     def start_check(
         self,
         request: ModelRegistryUnitsRequest,
@@ -399,6 +414,7 @@ class HandlerRegistryUnits:
                 "python",
                 "-m",
                 str(unit["module"]),
+                *self.tick_arguments(request, unit),
                 *self.probe_argv(unit),
             ]
         )
@@ -682,7 +698,7 @@ class HandlerRegistryUnits:
         proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project} (start check: {' '.join(self.probe_argv(unit))}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join([*self.tick_arguments(request, unit), *self.probe_argv(unit)])}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         if unit.get("launchd_root"):
@@ -914,7 +930,7 @@ class HandlerRegistryUnits:
         proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project} (start check: {' '.join(self.probe_argv(unit))}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join([*self.tick_arguments(request, unit), *self.probe_argv(unit)])}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         unit_dir.mkdir(parents=True, exist_ok=True)
