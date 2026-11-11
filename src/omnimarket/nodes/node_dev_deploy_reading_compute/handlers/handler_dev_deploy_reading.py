@@ -10,6 +10,13 @@ Two rules, both judged against the request's own time and thresholds:
 * probe: the newest functional probe of the running runtime is not future-dated, is inside its max
   age, passed, and observed the exact sha it was asked for.
 
+Lineage (ruling 2026-11-10T16:53:27Z), when the overlay's rule allows it, widens each rule by ancestry the clone read:
+
+* receipts: a PASS receipt whose sha has the merge as an ancestor covers the merge, within the rule's commit and
+  time bounds. A receipt that is not a descendant covers nothing; an unreadable pair is unread, never a pass.
+* probe: a running sha that descends from the expected one passes when no runtime-affecting commit lies between
+  them and the distance is inside the rule's bound.
+
 A failure of a readable source reads NOT_WORKING. A source that could not be read reads UNKNOWN only
 when nothing readable already fails.
 """
@@ -23,15 +30,61 @@ from omnimarket.models.model_dev_deploy_reading import (
     ModelDevDeployReading,
     ModelDevDeployReadingRequest,
     ModelLabPassReceiptFact,
+    ModelLineageFact,
+    ModelRuntimeMerge,
     ModelRuntimeProbeFact,
 )
 from omnimarket.models.model_reading import EnumReadingVerdict
 
 _SHORT = 12
+#: A pair the clone could not read is unread, not failed: the handler moves these out of the failures.
+RECEIPT_LINEAGE_UNREAD = "receipt-lineage-unread:"
+PROBE_LINEAGE_UNREAD = "probe-lineage-unread:"
+_UNREAD_PREFIXES = (RECEIPT_LINEAGE_UNREAD, PROBE_LINEAGE_UNREAD)
+_NOT_READ = "no lineage fact was read for the pair"
 
 
 def _short(sha: str) -> str:
     return sha[:_SHORT]
+
+
+def _lineage_fact(
+    request: ModelDevDeployReadingRequest, base_sha: str, head_sha: str
+) -> ModelLineageFact | None:
+    for fact in request.lineage:
+        if fact.base_sha == base_sha and fact.head_sha == head_sha:
+            return fact
+    return None
+
+
+def _covering_receipt(
+    request: ModelDevDeployReadingRequest,
+    merge: ModelRuntimeMerge,
+    lane_passes: list[ModelLabPassReceiptFact],
+) -> tuple[bool, str | None]:
+    """Whether a later PASS receipt covers ``merge`` by ancestry, and why a pair stayed unread."""
+    rule = request.lineage_rule
+    if not rule.receipt_covers_descendant:
+        return False, None
+    window = timedelta(seconds=rule.receipt_cover_window_seconds)
+    unread: str | None = None
+    for later in lane_passes:
+        if later.sha == merge.sha or not (
+            timedelta(0) <= later.finished_at - merge.merged_at <= window
+        ):
+            continue
+        fact = _lineage_fact(request, merge.sha, later.sha)
+        if fact is None:
+            unread = unread or _NOT_READ
+        elif fact.relation == "unread":
+            unread = unread or fact.unread_reason
+        elif (
+            fact.relation == "ancestor"
+            and fact.commits_between is not None
+            and fact.commits_between <= rule.max_commits_between
+        ):
+            return True, None
+    return False, unread
 
 
 def judge_receipts(
@@ -43,6 +96,13 @@ def judge_receipts(
     for receipt in request.receipts:
         if receipt.lane == request.required_lane:
             by_sha.setdefault(receipt.sha, []).append(receipt)
+    lane_passes = [
+        r
+        for r in request.receipts
+        if r.lane == request.required_lane
+        and r.result == "PASS"
+        and r.finished_at <= request.now
+    ]
     failures: list[str] = []
     pending: list[str] = []
     checked = receipted = 0
@@ -65,6 +125,13 @@ def judge_receipts(
         if in_time:
             receipted += 1
             continue
+        covered, unread_reason = _covering_receipt(request, merge, lane_passes)
+        if covered:
+            receipted += 1
+            continue
+        if unread_reason is not None and age > deadline:
+            failures.append(f"{RECEIPT_LINEAGE_UNREAD}{tag}:{unread_reason}")
+            continue
         if age > deadline and passes:
             after_merge = [p for p in passes if p >= merge.merged_at]
             if after_merge:
@@ -84,6 +151,40 @@ def judge_receipts(
         if any(r.result == "FAIL" for r in own):
             failures.append(f"receipt-fail:{tag}")
     return failures, pending, checked, receipted
+
+
+def _probe_sha_failures(
+    request: ModelDevDeployReadingRequest, probe: ModelRuntimeProbeFact, observed: str
+) -> list[str]:
+    """The failures of a probe whose observed sha is not the expected one; none when a descendant is accepted."""
+    mismatch = (
+        f"probe-sha-mismatch:{probe.probe_id}:{_short(probe.expected_sha)}"
+        f"-observed-{_short(observed)}"
+    )
+    rule = request.lineage_rule
+    if not rule.probe_accepts_descendant:
+        return [mismatch]
+    fact = _lineage_fact(request, probe.expected_sha, observed)
+    if fact is None:
+        return [f"{PROBE_LINEAGE_UNREAD}{probe.probe_id}:{_NOT_READ}"]
+    if fact.relation == "unread":
+        return [f"{PROBE_LINEAGE_UNREAD}{probe.probe_id}:{fact.unread_reason}"]
+    if fact.relation == "not-ancestor":
+        return [mismatch]
+    if fact.runtime_affecting_between:
+        return [
+            f"probe-runtime-commit-between:{probe.probe_id}:{_short(probe.expected_sha)}"
+            f"-observed-{_short(observed)}:{len(fact.runtime_affecting_between)}"
+        ]
+    if (
+        fact.commits_between is not None
+        and fact.commits_between > rule.max_commits_between
+    ):
+        return [
+            f"probe-descendant-too-far:{probe.probe_id}:{fact.commits_between}"
+            f"-over-{rule.max_commits_between}"
+        ]
+    return []
 
 
 def judge_probe(
@@ -109,10 +210,7 @@ def judge_probe(
     if newest.observed_sha is None:
         failures.append(f"probe-sha-unobserved:{newest.probe_id}")
     elif newest.observed_sha != newest.expected_sha:
-        failures.append(
-            f"probe-sha-mismatch:{newest.probe_id}:{_short(newest.expected_sha)}"
-            f"-observed-{_short(newest.observed_sha)}"
-        )
+        failures += _probe_sha_failures(request, newest, newest.observed_sha)
     return failures, int(exact_age.total_seconds())
 
 
@@ -135,6 +233,8 @@ class HandlerDevDeployReading:
         else:
             probe_failures, probe_age = judge_probe(request)
             failures += probe_failures
+        unread += [f for f in failures if f.startswith(_UNREAD_PREFIXES)]
+        failures = [f for f in failures if not f.startswith(_UNREAD_PREFIXES)]
         if failures:
             verdict = EnumReadingVerdict.NOT_WORKING
         elif unread:

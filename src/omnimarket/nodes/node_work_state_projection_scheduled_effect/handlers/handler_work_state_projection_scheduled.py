@@ -16,7 +16,11 @@ from datetime import UTC, datetime, timedelta
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.work_state_projection import (
     EnumSourceReading,
     EnumWorkStateProjectorProfile,
@@ -84,6 +88,7 @@ class HandlerWorkStateProjectionScheduled:
         self._projector = projector
         self._environ = environ
         self._last_run: datetime | None = None
+        self._refusals = ScheduledOverlayRefusalLatch(SCHEDULE_OVERLAY_ID)
 
     def _env(self) -> Mapping[str, str]:
         return os.environ if self._environ is None else self._environ
@@ -99,7 +104,11 @@ class HandlerWorkStateProjectionScheduled:
         return self._schedule
 
     def handle(self, request: ModelRuntimeTick) -> ModelWorkStateProjectedEvent | None:
-        schedule = self._schedule_overlay()
+        try:
+            schedule = self._schedule_overlay()
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
         now = request.now.astimezone(UTC)
         last = self._last_run
         if last is not None and (now - last) < timedelta(
@@ -107,8 +116,13 @@ class HandlerWorkStateProjectionScheduled:
         ):
             return None
         projector = self._projector or projector_for(schedule.projector, self._environ)
-        result = projector.project(now)
+        try:
+            result = projector.project(now)
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
         self._last_run = now
+        self._refusals.recovered()
         return summarize(
             result,
             computed_at=now,

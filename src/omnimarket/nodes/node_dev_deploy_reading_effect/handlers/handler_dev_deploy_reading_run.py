@@ -124,6 +124,8 @@ class HandlerDevDeployReadingRun:
                     merges=merges,
                     receipts=facts.receipts,
                     probes=facts.probes,
+                    lineage_rule=self._overlay.lineage,
+                    lineage=facts.lineage,
                     receipts_unread_reason=facts.receipts_unread_reason,
                     probes_unread_reason=facts.probes_unread_reason,
                 )

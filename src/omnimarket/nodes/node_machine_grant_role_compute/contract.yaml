@@ -51,6 +51,22 @@ overlay:
 # that node_github_repo_write_effect subscribes to and reads that node's terminal events, so the
 # grant set is exactly that node's runtime_dispatch topics; a test pins the two contracts together.
 grant_roles:
+  # The dispatcher CLI runs RuntimeLocal on the calling machine, so that machine
+  # needs both roles. A deployed caller and consumer can bind them separately.
+  # These topic roles do not provision topics or grant consumer-group access;
+  # the deployment derives those from the resolved produce/consume bindings.
+  lane-dispatch-caller:
+    description: Publish a serialized lane dispatch request and read its terminal.
+    write_topics:
+      - onex.cmd.omnimarket.lane-dispatch-requested.v1
+    read_topics:
+      - onex.evt.omnimarket.lane-dispatch-completed.v1
+  lane-dispatch-runtime:
+    description: Consume lane dispatch requests and publish their terminal results.
+    write_topics:
+      - onex.evt.omnimarket.lane-dispatch-completed.v1
+    read_topics:
+      - onex.cmd.omnimarket.lane-dispatch-requested.v1
   scm-writer:
     description: Publish PR write commands to the repo write node and read its terminal events.
     write_topics:

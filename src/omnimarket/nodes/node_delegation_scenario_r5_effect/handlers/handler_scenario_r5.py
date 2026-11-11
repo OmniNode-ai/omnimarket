@@ -58,6 +58,10 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     ModelScenarioSchedule,
     ProtocolScenarioEventSink,
 )
+from omnimarket.handlers.delegation_scenario_settings import (
+    ProtocolSettingStore,
+    fill_overlay_settings,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -661,10 +665,18 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    settings_store: ProtocolSettingStore | None = None,
+    settings_home: Path | None = None,
 ) -> HandlerScenarioR5:
     """The production wiring: the registry home, the bus commands and the contract's backend profile."""
     runtime = load_runtime()
-    environment = dict(os.environ if env is None else env)  # ONEX_FLAG_EXEMPT
+    environment = fill_overlay_settings(
+        dict(os.environ if env is None else env),  # ONEX_FLAG_EXEMPT
+        runtime.settings_overlay_relpath,
+        node_dir=NODE_DIR,
+        store=settings_store,
+        home=settings_home,
+    )
     # The unit's environment file may override the contract's model backend for this one run: `real` or `inmemory` is
     # honoured, unset keeps the contract's value and any other value refuses the tick (exit 65, conclusion `refused`).
     override = environment.get(runtime.model_backend_env, "").strip()

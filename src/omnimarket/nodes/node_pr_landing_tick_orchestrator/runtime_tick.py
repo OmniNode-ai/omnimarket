@@ -19,6 +19,7 @@ read; nothing was compared.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 
@@ -29,8 +30,10 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports impo
     ProtocolTickPublisher,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_sources import (
+    PublisherFactory,
     TopicReaderFactory,
     build_emission,
+    build_publisher,
     build_snapshot_source,
     load_tick_overlay,
     run_snapshots,
@@ -43,12 +46,16 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
     ModelTickOrchestratorOverlay,
 )
 
+PROBE_FLAG = "--probe"
+PROBE_STATUS = "probe_ok"
+
 
 def run_once(
     overlay: ModelTickOrchestratorOverlay,
     *,
     topic_reader_factory: TopicReaderFactory | None = None,
     publisher: ProtocolTickPublisher | None = None,
+    publisher_factory: PublisherFactory | None = None,
 ) -> tuple[int, dict[str, object]]:
     """One pass: the exit code and the line it prints."""
     if overlay.act_enabled:
@@ -56,6 +63,8 @@ def run_once(
             "status": "act_refused",
             "detail": "this runtime runs observe mode only and never constructs a writer",
         }
+    if publisher is None:
+        publisher = build_publisher(overlay, publisher_factory=publisher_factory)
     source = build_snapshot_source(overlay, topic_reader_factory=topic_reader_factory)
     sink, label = build_emission(overlay)
     handler = HandlerPrLandingTickOrchestrator(
@@ -83,12 +92,31 @@ def run_once(
         "divergent": sorted(
             {d.subject for result in results for d in result.divergences}
         ),
+        "skipped": [row.model_dump(mode="json") for row in source.skipped()],
     }
     return (1 if failed else 0), line
 
 
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="omnimarket.nodes.node_pr_landing_tick_orchestrator.runtime_tick",
+        description="One pass of the landing tick orchestrator: compare the recorded tick snapshots through the node path",
+    )
+    parser.add_argument(
+        PROBE_FLAG,
+        action="store_true",
+        help="Start check: exit 0 and print one status line without loading an overlay, reading the bus or writing a file",
+    )
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
-    del argv
+    """--probe exits 0 after one status line, before loading the overlay or running the pass."""
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.probe:
+        sys.stdout.write(json.dumps({"status": PROBE_STATUS}, sort_keys=True) + "\n")
+        return 0
     try:
         overlay = load_tick_overlay()
         code, line = run_once(overlay)
