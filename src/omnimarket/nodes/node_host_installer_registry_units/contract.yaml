@@ -1085,6 +1085,110 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
+  # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
+  # launchd units above, as a systemd user service and timer, so the new landing workflow runs in observe mode on a lab host
+  # beside the controller. Each start check runs the unit with its rendered --omni-home and --state-dir plus --probe.
+  landing-watcher-facts-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-landing-watcher-facts
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_watcher_facts_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_watcher_facts_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-watcher-facts/last-run.json
+    state_directory: .onex_state/landing-watcher-facts
+  landing-snapshot-cutover-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-landing-snapshot-cutover
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_LANDING_SNAPSHOT_OVERLAY_FILE
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{registry_root}/overlays/overlays/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-snapshot-cutover/last-run.json
+    state_directory: .onex_state/landing-snapshot-cutover
+  landing-tick-orchestrator-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-landing-tick-orchestrator
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_tick_orchestrator
+    entry_file: src/omnimarket/nodes/node_pr_landing_tick_orchestrator/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
+    state_directory: .onex_state/landing-tick-orchestrator
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick

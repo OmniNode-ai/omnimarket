@@ -29,14 +29,12 @@ from omnimarket.models.model_host_capacity_advertisement import (
 )
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.models.overlay_keys import ModelLabHostRow
-from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
-    ModelClaudeTokenPoolResult,
-)
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_errors import (
     PoolSnapshotSourceError,
 )
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot import (
     ModelHostAccounts,
+    ModelTokenPoolStatusReading,
 )
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot_overlay import (
     ModelAccountsRoute,
@@ -237,7 +235,7 @@ class TokenPoolCommandAccountsSource:
                 )
                 continue
             try:
-                result = ModelClaudeTokenPoolResult.model_validate_json(stdout)
+                result = ModelTokenPoolStatusReading.model_validate_json(stdout)
             except ValidationError:
                 out.append(
                     ModelHostAccounts(

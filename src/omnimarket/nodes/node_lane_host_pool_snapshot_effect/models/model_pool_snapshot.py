@@ -43,6 +43,27 @@ class ModelHostAccounts(BaseModel):
     unread_reason: str | None = None
 
 
+class ModelTokenPoolEntryReading(BaseModel):
+    """One token's label and state, read from the token pool command's status JSON; every other key is ignored."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    label: str = Field(..., min_length=1)
+    limited: bool = False
+    revoked: bool = False
+
+
+class ModelTokenPoolStatusReading(BaseModel):
+    """The slice of the token pool command's status JSON this node reads (labels and whether each is limited).
+
+    Declared here, not imported from the token pool node's models, so this node does not reach into a sibling's models.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    tokens: tuple[ModelTokenPoolEntryReading, ...] = ()
+
+
 class ModelPoolSnapshotRequest(BaseModel):
     """Take the snapshot of the lane host pool."""
 
@@ -123,4 +144,6 @@ __all__: list[str] = [
     "ModelPoolSnapshotRecord",
     "ModelPoolSnapshotRequest",
     "ModelPoolSnapshotResult",
+    "ModelTokenPoolEntryReading",
+    "ModelTokenPoolStatusReading",
 ]

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
+from omnimarket.models.model_lane_host_pool_unreadable import (
     LaneHostPoolUnreadableError,
 )
 

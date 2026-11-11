@@ -24,6 +24,7 @@ from omnimarket.events.model_ledger_row_event import (
     work_ledger_event_id,
     work_ledger_row_id,
 )
+from omnimarket.handlers.bus_binding.node_broker import NodeBrokerResolutionError
 from omnimarket.handlers.work_ledger_judge_acceptance import judge_gate_refusal
 from omnimarket.models.model_work_ledger_projection_inbound import (
     ModelWorkLedgerProjectionInbound,
@@ -120,6 +121,13 @@ class HandlerWorkLedgerEmit:
         }
         try:
             emitted = self.emit_event(event, ledger_seq=request.ledger_seq)
+        except NodeBrokerResolutionError as exc:
+            return ModelWorkLedgerEmitResult(
+                accepted=False,
+                error=f"broker_not_declared: {exc}",
+                ledger_seq=request.ledger_seq,
+                **common,
+            )
         except Exception as exc:  # effect boundary: any spool refusal is a typed result
             return ModelWorkLedgerEmitResult(
                 accepted=False, error=repr(exc), ledger_seq=request.ledger_seq, **common
@@ -196,6 +204,10 @@ class HandlerWorkLedgerEmit:
                 row_type=row_type.value,
                 event_type=row_type.typed_event_type,
                 topic=row_type.typed_topic,
+            )
+        except NodeBrokerResolutionError as exc:
+            return ModelWorkLedgerEmitResult(
+                accepted=False, error=f"broker_not_declared: {exc}"
             )
         except (ValueError, KeyError) as exc:
             return ModelWorkLedgerEmitResult(accepted=False, refusal=str(exc))
