@@ -298,8 +298,10 @@ class HandlerLocalEnvironmentObserve:
             return self._output(request, (), (refused,))
         targets: list[ModelProbeTarget]
         logs: list[str]
+        retired: tuple[str, ...] = ()
         if roster is not None:
             targets, logs = list(roster.services), []
+            retired = roster.retired
         else:
             targets, logs = await asyncio.to_thread(self._catalog_targets)
         results = await asyncio.gather(
@@ -319,6 +321,17 @@ class HandlerLocalEnvironmentObserve:
                 versions={},
             )
             for target, result in zip(targets, results, strict=True)
+        ) + tuple(
+            ModelLocalEnvironmentStatus(
+                tenant_id=tenant,
+                mode=EnumLocalEnvironmentMode.COMPOSE,
+                service=service,
+                observed_state=EnumLocalServiceState.RETIRED,
+                reason=f"{service} is no longer in this lane's service roster.",
+                observed_at=now,
+                versions={},
+            )
+            for service in retired
         )
         logger.debug(
             "Returning %d observations for %s", len(events), self._publish_topic

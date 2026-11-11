@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""onex-prrp-snapshot-publish: the timer's command; prints one summary line, an ALARM on failure."""
+"""onex-prrp-snapshot-publish: the timer's command; prints one summary line, an ALARM on failure.
+
+The target hosts are the rows of the declared lab host table (the ``lab_hosts`` overlay), read by the handler the
+container builds (OMN-23396); no flag or file names a host, so the request carries none.
+"""
 
 from __future__ import annotations
 
@@ -9,50 +13,24 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-import yaml
-from pydantic import ValidationError
-
 from .container import container_prrp_snapshot_publish_effect
-from .models import ModelPrrpSnapshotHost, ModelPrrpSnapshotPublishRequest
-
-
-def _load_hosts(path: Path) -> tuple[ModelPrrpSnapshotHost, ...]:
-    """Validate deployment configuration before starting any gate reads or copies."""
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or set(document) != {"hosts"}:
-        raise ValueError("expected a mapping containing only hosts")
-    rows = document["hosts"]
-    if not isinstance(rows, list):
-        raise ValueError("hosts must be a list of host mappings")
-    hosts: list[ModelPrrpSnapshotHost] = []
-    for index, row in enumerate(rows):
-        try:
-            hosts.append(ModelPrrpSnapshotHost.model_validate(row, strict=True))
-        except ValidationError as error:
-            raise ValueError(f"hosts[{index}]: {error}") from error
-    return tuple(hosts)
+from .models import ModelPrrpSnapshotPublishRequest
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="onex-prrp-snapshot-publish")
     parser.add_argument("--gate-script", type=Path, required=True)
     parser.add_argument("--repos-file", type=Path, required=True)
-    parser.add_argument("--hosts-file", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--home", type=Path, required=True)
     parser.add_argument("--destination", required=True)
     parser.add_argument("--ssh-program", default="ssh")
     args = parser.parse_args(argv)
-    try:
-        hosts = _load_hosts(args.hosts_file)
-    except (OSError, UnicodeError, ValueError, yaml.YAMLError) as error:
-        sys.stderr.write(f"ERROR: invalid hosts file {args.hosts_file}: {error}\n")
-        return 2
     result = container_prrp_snapshot_publish_effect.build_handler_prrp_snapshot_publish().handle(
         ModelPrrpSnapshotPublishRequest(
             gate_script=args.gate_script,
             repos_file=args.repos_file,
-            hosts=hosts,
+            hosts=(),
             state_dir=args.state_dir,
             home=args.home,
             destination=args.destination,

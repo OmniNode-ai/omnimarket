@@ -1459,7 +1459,11 @@ jobs:
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
           OMN20025_POSTGRES_BACKEND: ci
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
+          set -o pipefail
+          rc=0
           paths=$(echo '${{ needs.detect-changes.outputs.selected_paths }}' | python -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
           uv run pytest $paths \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
@@ -1467,7 +1471,9 @@ jobs:
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
-            --junitxml=junit-${{ matrix.split }}.xml
+            --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
+            | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          exit "$rc"
 
       # OMN-19684: the full-suite shards are planned, not split by pytest-split.
       # Live PR runs after the first duration-cache fix still spread 1.75-2.10x
@@ -1494,7 +1500,11 @@ jobs:
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
           OMN20025_POSTGRES_BACKEND: ci
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
+          set -o pipefail
+          rc=0
           mapfile -t shard_files < .shard_test_files
           test "${#shard_files[@]}" -gt 0
           uv run pytest "${shard_files[@]}" \
@@ -1504,7 +1514,46 @@ jobs:
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
-            --junitxml=junit-${{ matrix.split }}.xml
+            --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
+            | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          exit "$rc"
+
+      # OMN-23625: DIAGNOSTIC ONLY. Some shards die with exit 139 (or exit 1)
+      # mid-test and print no pytest summary, so no log names the faulting frame
+      # (omnimarket cause-omnimarket-exit139 reading, 2026-11-10: 8 of 26 failed
+      # Tests splits). The two pytest steps above now run with Python's fault
+      # handler on and keep their output in $RUNNER_TEMP while still printing it
+      # and still exiting with pytest's own status. This step runs only after a
+      # failure, reads that log, and when it holds no pytest summary line prints
+      # the last test started, any Python fatal-error block with every thread's
+      # stack, and the kernel's own segfault/OOM lines (which name the shared
+      # library). It changes no test, drops no check and always exits 0; the
+      # failed pytest step stays the job's failure.
+      - name: Name the crashed test (OMN-23625)
+        if: failure()
+        env:
+          SPLIT: ${{ matrix.split }}
+        run: |
+          log="$RUNNER_TEMP/pytest-${SPLIT}.log"
+          if ! test -s "$log"; then
+            echo "no pytest log for split ${SPLIT}: pytest did not start or an earlier step failed"
+            exit 0
+          fi
+          if grep -aEq '^=+ .* in [0-9.]+s' "$log"; then
+            echo "pytest printed a summary for split ${SPLIT}: an ordinary test failure, not a crash"
+            exit 0
+          fi
+          echo "::group::split ${SPLIT}: pytest ended with no summary line"
+          echo "last test started: $(grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 1 | awk '{print $1}')"
+          echo "last three test lines:"
+          grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 3 || true
+          echo "--- Python fatal-error block (every thread's stack), if printed ---"
+          grep -an -A60 -E 'Fatal Python error|^Timeout \(' "$log" | head -n 120 || true
+          echo "--- kernel log: segfault, oom and kill lines ---"
+          sudo -n dmesg 2>&1 | grep -aEi 'segfault|general protection|out of memory|oom-kill|killed process' | tail -n 20 || true
+          echo "--- memory ---"
+          free -m || true
+          echo "::endgroup::"
 
       # OMN-14680: stamp a versioned metadata sidecar (head SHA, environment,
       # test-scope, schema) so the shadow aggregator can validate the artifact

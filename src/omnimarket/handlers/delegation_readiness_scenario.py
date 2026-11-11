@@ -42,6 +42,10 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     bus_appender,
     write_atomic,
 )
+from omnimarket.handlers.delegation_scenario_settings import (
+    ProtocolSettingStore,
+    fill_overlay_settings,
+)
 from omnimarket.models.model_delegation_scenario import (
     SCENARIO_ID_PATTERN,
     EnumScenarioCadence,
@@ -84,6 +88,8 @@ class ModelReadinessRuntime(BaseModel):
     probe_tenant_slug: str = Field(min_length=1)
     #: The committed inputs file, relative to the node directory.
     inputs_relpath: str = Field(min_length=1)
+    #: The settings overlay (OMN-23602), relative to the node directory: where each run variable is found by existing name.
+    settings_overlay_relpath: str | None = None
 
 
 def read_contract(path: Path) -> dict[str, object]:
@@ -184,9 +190,20 @@ def build_scenario(
     contract_path: Path,
     env: Mapping[str, str] | None,
     trigger: EnumScenarioTrigger,
+    settings_store: ProtocolSettingStore | None = None,
+    settings_home: Path | None = None,
 ) -> ReadinessScenarioBase:
-    """The production wiring: the registry home, the bus commands and the contract's leg backend."""
-    environment = dict(os.environ if env is None else env)
+    """The production wiring: the registry home, the bus commands and the contract's leg backend.
+
+    The run's settings the node's overlay names are filled from the existing names they live under (OMN-23602).
+    """
+    environment = fill_overlay_settings(
+        dict(os.environ if env is None else env),
+        runtime.settings_overlay_relpath,
+        node_dir=contract_path.parent,
+        store=settings_store,
+        home=settings_home,
+    )
     append_argv = shlex.split(environment.get(runtime.ledger_append_command_env, ""))
     if not append_argv:
         raise RuntimeError(

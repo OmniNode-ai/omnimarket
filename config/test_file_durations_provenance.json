@@ -246,11 +246,27 @@
     "runner": "lab host h053, lane sweepi37-1630, shared omnimarket venv; the next CI refresh replaces these entries",
     "base_sha": "0d92c2da3b09eb8140836d586f800759f4c53457"
   },
-  "supplement_omn23560_lab_fill": {
+  "supplement_omn23538": {
+    "ticket": "OMN-23538",
     "recorded_on": "2026-11-10",
-    "files_added": 22,
-    "basis": "files the record did not hold on dev 87c92f204d38, 19 of the first 41 measured entries being already recorded by other changes and dropped; the entries are each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov, and include this change's own three test files; existing entries left as they were",
-    "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
+    "files_added": 39,
+    "basis": "20 files measured on lab host h201 with the shard run's pytest options (--store-durations --clean-durations -m 'not kafka'), and 19 files that other merges added after that read, measured the same way in one serial run; entries built with the record command; existing entries left as they were.",
+    "runner": "lab hosts h201 and h051, serial focused runs; the next CI refresh replaces these entries",
     "base_sha": "87c92f204d38576ba05727ea1d905201543e9b71"
+  },
+  "supplement_omn19998_scenarios_pass": {
+    "recorded_on": "2026-11-10",
+    "files_added": 47,
+    "basis": "Each file the record did not hold, summed from its measured pytest per-test seconds (junit) in serial runs of those files with -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were.",
+    "runner": "lab host h051, lane landing-L35549; the next CI refresh replaces these entries",
+    "base_sha": "a49d7447850bf6282e652873f35c2d96ff91c3f0"
+  },
+  "supplement_omn23560_own_files": {
+    "ticket": "OMN-23560",
+    "recorded_on": "2026-11-11",
+    "files_added": 3,
+    "basis": "the three test files of node_test_duration_record_check_effect, which the record did not hold on dev 474c566dd05e; each timed by the node's own record command (one serial pytest run per file with --no-cov); existing entries left as they were.",
+    "runner": "lab host h202, lane redfix-e-3810; the next CI refresh replaces these entries",
+    "base_sha": "474c566dd05e84a0094c28f83e823c0cc044db1d"
   }
 }

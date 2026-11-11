@@ -35,6 +35,28 @@ class EnumTickFailureReason(StrEnum):
     DECISION_RAISED = "decision_raised"
 
 
+class EnumTickSkipReason(StrEnum):
+    """Why the snapshot source skipped one record instead of reading it."""
+
+    UNPARSEABLE_RECORD = "unparseable_record"
+
+
+class ModelTickSkippedRecord(BaseModel):
+    """One record the snapshot source could not parse: skipped and named, so the rest of the read stands (OMN-23529).
+
+    The record topic is shared, so a record a newer or older producer shape wrote (a field this reader does
+    not know) is skipped with this row instead of failing the whole read.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    position: int = Field(ge=0, description="The record's place in the read, from 0.")
+    reason: EnumTickSkipReason
+    detail: str = Field(
+        description="The first validation errors as location: error type, so the shape that differs is named."
+    )
+
+
 class ModelTickSnapshot(BaseModel):
     """One recorded tick: the facts read, and the script's decision from them when one was recorded."""
 
@@ -127,10 +149,12 @@ class ModelTickFailedEvent(BaseModel):
 __all__: list[str] = [
     "EnumTickFailureReason",
     "EnumTickMode",
+    "EnumTickSkipReason",
     "EnumTickStatus",
     "ModelTickComparedEvent",
     "ModelTickFailedEvent",
     "ModelTickRequest",
     "ModelTickResult",
+    "ModelTickSkippedRecord",
     "ModelTickSnapshot",
 ]
