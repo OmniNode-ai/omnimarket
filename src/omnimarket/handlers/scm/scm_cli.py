@@ -654,6 +654,7 @@ _LOCAL_OPTIONS: Final[dict[EnumScmLocalRead, tuple[str, ...]]] = {
     EnumScmLocalRead.FILE_CONTENTS: ("path", "ref", "max_bytes"),
     EnumScmLocalRead.COMMIT_VIEW: ("ref",),
     EnumScmLocalRead.COMMIT_CHECKS: ("sha",),
+    EnumScmLocalRead.RED_FACTS: (),
 }
 _LOCAL_OPTION_DECORATORS: Final[
     dict[str, Callable[[click.decorators.FC], click.decorators.FC]]
@@ -674,7 +675,10 @@ _LOCAL_OPTION_DECORATORS: Final[
 
 
 def _local_command(spec: ModelScmLocalVerb) -> click.Command:
-    pr_scoped = spec.read is EnumScmLocalRead.PR_COMMITS
+    pr_scoped = spec.read in (
+        EnumScmLocalRead.PR_COMMITS,
+        EnumScmLocalRead.RED_FACTS,
+    )
     ref_required = spec.read is EnumScmLocalRead.COMMIT_VIEW
 
     def command(
