@@ -80,12 +80,19 @@ def test_golden_the_start_check_runs_the_declared_probe(
     )
     assert result.exit_code == 0, result.stderr
     assert len(proofs.proofs) == 1
-    assert proofs.proofs[0][-3:-1] == [
+    words = proofs.proofs[0]
+    assert words[-1] == "--probe"
+    assert words[-7:] == [
         "-m",
         "omnimarket.nodes.node_pr_landing_tick_orchestrator",
+        "--omni-home",
+        str(tmp_path / "omni"),
+        "--state-dir",
+        words[-2],
+        "--probe",
     ]
-    assert proofs.proofs[0][-1] == "--probe"
-    assert "--help" not in proofs.proofs[0]
+    assert words[-2].endswith("landing-tick-orchestrator")
+    assert "--help" not in words
 
 
 def test_golden_a_unit_declaring_no_probe_is_checked_with_help(
@@ -97,7 +104,11 @@ def test_golden_a_unit_declaring_no_probe_is_checked_with_help(
         tick_request(tmp_path, path_overrides={ROOTS: str(tmp_path / "clone")})
     )
     assert result.exit_code == 0, result.stderr
-    assert proofs.proofs[0][-1] == "--help"
+    words = proofs.proofs[0]
+    assert words[-1] == "--help"
+    assert words[-5] == "--omni-home"
+    assert words[-4] == str(tmp_path / "omni")
+    assert words[-3] == "--state-dir"
 
 
 def test_golden_a_declared_probe_may_carry_several_words(
@@ -109,7 +120,11 @@ def test_golden_a_declared_probe_may_carry_several_words(
         proofs, units=units_with(probe_argv=["--probe", "--quiet"])
     ).handle(tick_request(tmp_path, path_overrides={ROOTS: str(tmp_path / "clone")}))
     assert result.exit_code == 0, result.stderr
-    assert proofs.proofs[0][-2:] == ["--probe", "--quiet"]
+    words = proofs.proofs[0]
+    assert words[-2:] == ["--probe", "--quiet"]
+    assert words[-6] == "--omni-home"
+    assert words[-5] == str(tmp_path / "omni")
+    assert words[-4] == "--state-dir"
 
 
 def test_error_a_failing_probe_is_refused_and_named(
@@ -121,7 +136,8 @@ def test_error_a_failing_probe_is_refused_and_named(
     )
     assert result.exit_code != 0
     assert "does not start from" in result.stderr
-    assert "start check: --probe" in result.stderr
+    assert "start check: --omni-home" in result.stderr
+    assert "--probe" in result.stderr
     assert "probe refused" in result.stderr
 
 
@@ -160,7 +176,16 @@ def test_seam_every_declared_probe_is_honoured_by_its_main_from_a_bare_shell(
         "ONEX_STATE_DIR": str(tmp_path / "state"),
     }
     run = subprocess.run(
-        [sys.executable, "-m", module, *argv],
+        [
+            sys.executable,
+            "-m",
+            module,
+            "--omni-home",
+            str(tmp_path / "root"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            *argv,
+        ],
         cwd=tmp_path,
         env=env,
         capture_output=True,
