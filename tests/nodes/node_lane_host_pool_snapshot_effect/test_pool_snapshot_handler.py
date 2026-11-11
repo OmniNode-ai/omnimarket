@@ -11,6 +11,7 @@ the away host a free slot, and write=False observes without touching the store o
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 
 import pytest
@@ -258,3 +259,60 @@ class _RaisingSource:
     @property
     def name(self) -> str:
         return "raising-source"
+
+
+class _BarrierSources:
+    """Three sources that each wait for the other two to have started, so a pass that reads them one after another never finishes."""
+
+    name = "barrier"
+
+    def __init__(self, ads, lanes, accs) -> None:
+        self._barrier = threading.Barrier(3, timeout=5)
+        self._ads = ads
+        self._lanes = lanes
+        self._accs = accs
+
+    def read_advertisements(self):
+        self._barrier.wait()
+        return self._ads
+
+    def running_lanes(self, now):
+        self._barrier.wait()
+        return dict(self._lanes)
+
+    def read_accounts(self, hosts):
+        self._barrier.wait()
+        return self._accs
+
+
+def test_golden_the_far_reads_run_at_once_so_a_pass_takes_the_longest_not_the_sum() -> (
+    None
+):
+    ads, rows, lanes, accs = _golden_inputs()
+    h = handler(rows=rows)
+    sources = _BarrierSources(ads, lanes, accs)
+    h._advertisement_source = sources
+    h._lanes_source = sources
+    h._accounts_source = sources
+    result = h.handle(pool_request())
+    assert result.status is EnumPoolSnapshotStatus.WRITTEN
+    assert result.record is not None
+    assert [r.host for r in result.record.hosts] == ["h1", "h2", "h3", "h4"]
+
+
+def test_error_two_failing_sources_name_the_first_in_the_old_reading_order() -> None:
+    class _Raises:
+        name = "raises"
+
+        def read_advertisements(self):
+            raise PoolSnapshotSourceError("ads down")
+
+        def read_hosts(self):
+            raise PoolSnapshotSourceError("table down")
+
+    h = handler()
+    h._advertisement_source = _Raises()
+    h._host_table_source = _Raises()
+    result = h.handle(pool_request())
+    assert result.status is EnumPoolSnapshotStatus.FAILED
+    assert result.failure_reason is EnumPoolSnapshotFailureReason.ADVERTISEMENTS_UNREAD

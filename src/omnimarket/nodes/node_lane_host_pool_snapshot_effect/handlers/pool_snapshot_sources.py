@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -203,62 +204,66 @@ class TokenPoolCommandAccountsSource:
         self,
         route: ModelAccountsRoute,
         runner: Callable[[Sequence[str], int], tuple[int, str]] | None = None,
+        *,
+        registry_roots: Sequence[str] = (),
     ) -> None:
         self._route = route
         self._runner = runner or _default_runner
+        self._registry_roots = tuple(registry_roots)
 
     def read_accounts(
         self, hosts: tuple[ModelLabHostRow, ...]
     ) -> tuple[ModelHostAccounts, ...]:
-        out: list[ModelHostAccounts] = []
-        for row in hosts:
-            if not row.available:
-                out.append(ModelHostAccounts(host=row.name, unread_reason="away"))
-                continue
-            if row.local:
-                argv = [os.path.expandvars(a) for a in self._route.local_argv]
-            else:
-                argv = [
-                    a.replace("{target}", row.target) for a in self._route.remote_argv
-                ]
-            try:
-                rc, stdout = self._runner(argv, self._route.timeout_seconds)
-            except PoolSnapshotSourceError as exc:
-                out.append(ModelHostAccounts(host=row.name, unread_reason=str(exc)))
-                continue
-            if rc != 0:
-                out.append(
-                    ModelHostAccounts(
-                        host=row.name,
-                        unread_reason=f"token pool command rc={rc}: {stdout.strip()[-120:]}",
-                    )
+        """One reading per host, in the order given. The hosts are read at once: each far read is its own ssh run, and one run that
+        waits out its timeout must not hold the rest past the tick's bound."""
+        if not hosts:
+            return ()
+        roots = " ".join(f'"{root}"' for root in self._registry_roots)
+        with ThreadPoolExecutor(max_workers=len(hosts)) as pool:
+            return tuple(pool.map(lambda row: self._read_row(row, roots), hosts))
+
+    def _read_row(self, row: ModelLabHostRow, roots: str) -> ModelHostAccounts:
+        if not row.available:
+            return ModelHostAccounts(host=row.name, unread_reason="away")
+        if row.local:
+            argv = [os.path.expandvars(a) for a in self._route.local_argv]
+        else:
+            if (
+                any("{registry_roots}" in a for a in self._route.remote_argv)
+                and not roots
+            ):
+                return ModelHostAccounts(
+                    host=row.name, unread_reason="no registry root declared"
                 )
-                continue
-            try:
-                result = ModelTokenPoolStatusReading.model_validate_json(stdout)
-            except ValidationError:
-                out.append(
-                    ModelHostAccounts(
-                        host=row.name,
-                        unread_reason="token pool output not JSON",
-                    )
-                )
-                continue
-            usable: list[str] = []
-            limited: list[str] = []
-            for token in result.tokens:
-                if token.limited or token.revoked:
-                    limited.append(token.label)
-                else:
-                    usable.append(token.label)
-            out.append(
-                ModelHostAccounts(
-                    host=row.name,
-                    usable=tuple(usable),
-                    limited=tuple(limited),
-                )
+            argv = [
+                a.replace("{target}", row.target).replace("{registry_roots}", roots)
+                for a in self._route.remote_argv
+            ]
+        try:
+            rc, stdout = self._runner(argv, self._route.timeout_seconds)
+        except PoolSnapshotSourceError as exc:
+            return ModelHostAccounts(host=row.name, unread_reason=str(exc))
+        if rc != 0:
+            return ModelHostAccounts(
+                host=row.name,
+                unread_reason=f"token pool command rc={rc}: {stdout.strip()[-120:]}",
             )
-        return tuple(out)
+        try:
+            result = ModelTokenPoolStatusReading.model_validate_json(stdout)
+        except ValidationError:
+            return ModelHostAccounts(
+                host=row.name, unread_reason="token pool output not JSON"
+            )
+        usable: list[str] = []
+        limited: list[str] = []
+        for token in result.tokens:
+            if token.limited or token.revoked:
+                limited.append(token.label)
+            else:
+                usable.append(token.label)
+        return ModelHostAccounts(
+            host=row.name, usable=tuple(usable), limited=tuple(limited)
+        )
 
 
 def resolve_path(value: str) -> Path:
