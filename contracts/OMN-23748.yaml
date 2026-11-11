@@ -53,22 +53,22 @@ dod_evidence:
       -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23748-ac3
-  description: The typed failed event path of the runtime tests passes; the existence of the topic on the dev broker is read in the pull request's Lab comment.
+  description: A pass with two failing sources ends failed naming the advertisement failure first (the failure the unit writes to the failed-event topic); the existence of the topic on the dev broker is read in the pull request's Lab comment.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_runtime.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_handler.py -k two_failing_sources -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23748-ac4
-  description: The unit's tick on h051 installed from the branch and its snapshot event and row are read in the pull request's Lab comment.
+  description: The wiring hands a far host its declared registry root, so the free slots it reads are real rather than 0; the unit's tick on h051 and its snapshot event and row are read in the pull request's Lab comment.
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_runtime.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_wiring_roots.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23748-integration-proof
   description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the unit's tick on the lab host is read in the pull request's Lab comment.
