@@ -24,12 +24,16 @@ import os
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 from omnimarket.handlers.emission_sink import ChainEmitter, JsonlEmissionSink
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
+)
+from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_io import (
+    write_atomic,
 )
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.handler_pool_snapshot import (
     HandlerPoolSnapshot,
@@ -58,6 +62,7 @@ NODE = "node_lane_host_pool_snapshot_effect"
 PROBE_FLAG = "--probe"
 PROBE_STATUS = "probe_ok"
 OBSERVE_FLAG = "--observe"
+EVIDENCE_FILE = "last-run.json"
 
 
 def run_once(
@@ -140,7 +145,31 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Compute and print the per-host rows, write and publish nothing, still no chain",
     )
+    parser.add_argument(
+        "--omni-home",
+        help="The registry root the installer's unit passes (accepted; the overlay names every path)",
+    )
+    parser.add_argument(
+        "--state-dir",
+        help="Where last-run.json, the unit's heartbeat, is written after a pass",
+    )
     return parser
+
+
+def _write_heartbeat(
+    state_dir: str | None, code: int, line: dict[str, object], now: datetime
+) -> None:
+    """Leave last-run.json beside the unit's other state so the install's heartbeat check reads the last pass."""
+    if not state_dir:
+        return
+    Path(state_dir).mkdir(parents=True, exist_ok=True)
+    evidence = {
+        "status": line.get("status"),
+        "exit_code": code,
+        "written_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "line": line,
+    }
+    write_atomic(Path(state_dir) / EVIDENCE_FILE, json.dumps(evidence, indent=2) + "\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -158,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
     except (NodeOverlayError, ValueError) as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}
     sys.stdout.write(json.dumps(line, sort_keys=True) + "\n")
+    if not args.observe:
+        _write_heartbeat(args.state_dir, code, line, datetime.now(UTC))
     return code
 
 

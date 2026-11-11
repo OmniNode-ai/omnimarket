@@ -214,3 +214,46 @@ def test_main_without_a_declared_overlay_is_refused_with_exit_three(
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
     assert main([]) == 3
     assert json.loads(capsys.readouterr().out.strip())["status"] == "overlay_refused"
+
+
+def test_main_accepts_the_installers_arguments_and_writes_the_heartbeat(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The systemd template runs `... --omni-home <root> --state-dir <dir>`: the main accepts both and leaves last-run.json."""
+    ov = _ov(tmp_path, emission_journal=str(tmp_path / "emissions.jsonl"))
+    overlay_file = tmp_path / "overlay.yaml"
+    overlay_file.write_text(json.dumps(ov.model_dump(mode="json")), encoding="utf-8")
+    ports = _ports(
+        ads=(advertisement("h1"),),
+        rows=(host_row("h1"),),
+        accs=(accounts("h1"),),
+    )
+    monkeypatch.setenv("ONEX_POOL_SNAPSHOT_OVERLAY_FILE", str(overlay_file))
+    monkeypatch.setattr(
+        runtime, "build_pool_snapshot_ports", lambda *_args, **_kwargs: ports
+    )
+    state_dir = tmp_path / "state"
+    code = main(["--omni-home", str(tmp_path), "--state-dir", str(state_dir)])
+    assert code == 0
+    capsys.readouterr()
+    heartbeat = json.loads((state_dir / "last-run.json").read_text(encoding="utf-8"))
+    assert heartbeat["exit_code"] == 0
+    assert heartbeat["status"] == "written"
+    assert heartbeat["written_at"]
+
+
+def test_error_a_refused_overlay_leaves_a_heartbeat_with_exit_three(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ONEX_POOL_SNAPSHOT_OVERLAY_FILE", raising=False)
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    state_dir = tmp_path / "state"
+    assert main(["--omni-home", str(tmp_path), "--state-dir", str(state_dir)]) == 3
+    capsys.readouterr()
+    heartbeat = json.loads((state_dir / "last-run.json").read_text(encoding="utf-8"))
+    assert heartbeat["exit_code"] == 3
+    assert heartbeat["status"] == "overlay_refused"
