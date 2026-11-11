@@ -54,6 +54,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.delegation_coercion im
     _safe_int_or_none,
     _safe_numeric_str,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.delegation_runtime_coalescing import (
+    CoalescingProjectionBase,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
 )
@@ -132,7 +135,6 @@ from omnimarket.projection.envelope import (
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.relation_domains import assert_internal_relation
 from omnimarket.projection.runner import (
-    BaseProjectionRunner,
     MessageMeta,
     PublishFn,
     safe_parse_date,
@@ -292,7 +294,7 @@ WRITE_ATTESTATION_COLUMNS: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 
-class DelegationProjectionRunner(BaseProjectionRunner):
+class DelegationProjectionRunner(CoalescingProjectionBase):
     """Projects task-delegated and delegation-shadow-comparison events.
 
     Two topics -> two tables, each with ON CONFLICT (correlation_id) DO NOTHING.
@@ -452,17 +454,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._coalescer = AggregateCoalescer(
             window_s_from_contract(self._contract), self._publish_aggregate_snapshots
         )
-
-    async def run(self) -> None:
-        if self._coalescer.window_s is not None:
-            self._coalescer.enable()
-        await super().run()
-
-    async def _stop_producer(self) -> None:
-        # Every exit of run and shutdown stops the producer: publish what the
-        # coalescer still holds first.
-        await self._coalescer.drain()
-        await super()._stop_producer()
 
     def _resolve_aggregate_exposures(
         self, contract_path: Path

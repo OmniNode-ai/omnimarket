@@ -3,7 +3,7 @@
 """The fill's filled runner_command crosses the bus and meets the entry's parser (OMN-22848).
 
 The seam under proof joins the floor fill (``node_floor_fill_orchestrator``, which fills the
-four placeholders ``{lane} {key} {ticket} {attempt}`` into ``floor_fill.runner_command``) to
+five placeholders ``{lane} {key} {ticket} {attempt} {brief}`` into ``floor_fill.runner_command``) to
 this entry (``runtime_remote_lane_start.parser``). Producer side, in the test process: the
 fill's example overlay's ``runner_command`` with the placeholders filled from
 ``FILL_PLACEHOLDERS``, plus the fill's placeholder set, goes onto the bus under test as the
@@ -66,21 +66,14 @@ OVERLAY = ModelFactoryBindingsOverlay.model_validate(
     }
 )
 
-#: Pinned 2026-11-10 against omnimarket dev: as shipped the fill passes --lane --key --ticket
-#: --attempt, all of which the entry's parser knows, so nothing is unknown to it; the six
-#: required flags its command does not carry are the measured gap (the seams test pins the
-#: same six), and the fill fills exactly the four placeholders.
+#: Measured 2026-11-10 against omnimarket dev, the fill passed --lane --key --ticket --attempt and the six required
+#: flags --brief --ledger --model --overlay --pool-snapshot --run-id were unbridged: the entry's parser refused a
+#: floor-line start with exit 2. The fill's command now carries all six (the brief as a file the fill writes), so the
+#: entry knows every flag it passes, none of its required flags is unbridged, and the fill fills five placeholders.
 EXPECTED_AS_SHIPPED: dict[str, list[str]] = {
     "unknown_to_entry": [],
-    "unbridged_required": [
-        "--brief",
-        "--ledger",
-        "--model",
-        "--overlay",
-        "--pool-snapshot",
-        "--run-id",
-    ],
-    "placeholders": ["attempt", "key", "lane", "ticket"],
+    "unbridged_required": [],
+    "placeholders": ["attempt", "brief", "key", "lane", "ticket"],
 }
 
 
@@ -222,6 +215,18 @@ def test_fill_seam_planted_rename_control_turns_the_pin_red() -> None:
     assert planted != EXPECTED_AS_SHIPPED
     assert planted["unknown_to_entry"] == ["--lane-name"]
     assert "--lane" in planted["unbridged_required"]
+
+
+def test_fill_seam_a_dropped_required_flag_control_turns_the_pin_red() -> None:
+    """Failing control for the bridge: the command without ``--model`` (one of the six) leaves it unbridged."""
+    argv = list(filled_command(None))
+    at = argv.index("--model")
+    dropped = argv[:at] + argv[at + 2 :]
+    output = decide({"id": "x", "request": {"argv": dropped, "placeholders": []}})[
+        "output"
+    ]
+    assert output["unbridged_required"] == ["--model"]
+    assert output != {**EXPECTED_AS_SHIPPED, "placeholders": []}
 
 
 def test_fill_seam_in_memory_bus_projection_matches_the_in_process_one() -> None:

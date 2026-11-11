@@ -1098,3 +1098,15 @@ events:
         description: "C32 auth-boundary probe run: verdict, conclusion, clauses and graded versions; no credential value"
     partition_key_field: criterion
     required_fields: [run_id, verdict, conclusion, criterion]
+
+  # Lab proof judge use (OMN-23642): one record each time the judge applies its declared not-applicable class to a change, or refuses
+  # a change that qualifies but has no substitute proof. Carries the repository, pull request, head, class, outcome, node names and
+  # substitute receipt ids; no code, no log text, no credential.
+  lab_proof_judge.use_recorded:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.lab-proof-judge-use-recorded.v1"
+        tier: telemetry
+        description: "Lab proof judge use: repo, pr, head, class, outcome, node names and substitute receipt ids"
+    partition_key_field: head
+    required_fields: [repo, pr_number, head, class_id, outcome]

@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-23636
+title: The Claude token pool steers new lanes off an account that is filling up and caps lanes per account, shipped switched off
+summary: The Claude token pool node's resolve request takes drain_labels (the usage verdict node's result field) and the lanes running per label; resolve skips a draining label while another is usable, falls back to it when nothing else is, never returns a limited or revoked label, and answers a typed refusal at the overlay's lanes-per-label cap. The lane start asks the verdict and passes both only when the overlay switch is on; the switch ships off and the cap unset.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23636-pool-steering
+  statement: A new lane start stays off a label the usage verdict names as draining while another label is usable, and a label never runs more lanes than the overlay's cap, by values the overlay holds and a switch that ships off.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the pool resolve request takes drain_labels (a tuple of labels, the name and type of the verdict node result field) and returns a label outside that list while one is usable -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_steering.py -q'
+  - id: AC2
+    statement: 'AC2: resolve returns a drained label only when no other label is usable, and its result says it fell back -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_steering.py -q'
+  - id: AC3
+    statement: 'AC3: resolve never returns a limited or revoked label, whether or not it is in drain_labels -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_steering.py -q'
+  - id: AC4
+    statement: 'AC4: with the overlay lanes-per-label cap set, resolve returns a typed refusal for the next start once every usable label is at the cap, and with the cap unset the result is the same as before this change -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_lane_cap.py -q'
+  - id: AC5
+    statement: 'AC5: the lane start asks the verdict for drain_labels and passes them to resolve only when the overlay switch is on, and the shipped overlay value is off with the cap unset -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_steering_caller.py -q'
+  - id: AC6
+    statement: 'AC6: a seam check over the in-memory bus returns a failure when either side of drain_labels changes its name or element type -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_seam_drain_labels.py -q'
+  - id: AC7
+    statement: 'AC7: integrated: a lane start observed running on a lab host, with the switch on in a scratch overlay root and one label in the drain list, shows the drained label skipped and another label named in the login line of the start -- falsifier: the login line of the start read on that lab host names the drained label while another label was usable'
+evidence_requirements:
+- kind: tests
+  description: The steering, lane cap, caller and seam tests with the node's existing pool, tick and schedule tests
+  command: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23636-drain
+  description: A drained label is skipped while another label is usable, is used with drained_fallback set when it is the only one or every other label is limited, and a limited or revoked label is never returned whatever the drain list says; the golden chain walks the same through the resolve verb. The test file does not exist at the merge base, where the request has no drain_labels field.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_steering.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23636-lane-cap
+  description: At the cap resolve answers the typed refusal label_lane_cap and no token, one lane under the cap is served, a cap with no counts and counts with an unread overlay are each refused by their own code, the resolve verb exits 5 naming the refusal, and with the cap unset any count is served. The cap is read from the overlay; the overlay model refuses a cap with the switch off and a switch with no values.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_lane_cap.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23636-caller
+  description: Switched off the caller runs nothing and the host command is the one it was; switched on it runs the overlay's verdict command, passes the drain labels and the open lanes per label to the real pool node under a real shell, and a start the pool refuses claims nothing and starts no engine.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_steering_caller.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23636-seam
+  description: The verdict result crosses the in-memory bus and steers the real pool handler off the drained label; a planted rename of drain_labels and a planted change of its element type are each refused. Where the verdict node is on the same tree its live model and contract are held to the pin.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_seam_drain_labels.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23636-lane-start-proxy
+  description: AC7 hosted proxy. The ssh transport, under a real shell and over the real pool node, draws the label the steer does not drain. The lab observation of a lane start with the switch on in a scratch overlay root is not made by this change (the verdict node is not on dev yet) and stays open on the ticket; the local_done_gate item below binds no criterion because the hosted must-fail control can never run a local_done_gate item.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_steering_caller.py -k "skips_the_drained_label or at_the_cap_answers_refused" -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23636-integration-proof-lab
+  description: Runs the node tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23636 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_token_pool_effect -q --no-cov -p no:randomly'
+    cwd: .
