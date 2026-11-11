@@ -13,6 +13,7 @@ capabilities:
   requires_network: false
 dependencies:
   - "omnibase_core>=0.47.73"
+  - "omnibase-infra>=0.38.75"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["compute", "delegation", "routing", "routing-order", "deterministic"]
