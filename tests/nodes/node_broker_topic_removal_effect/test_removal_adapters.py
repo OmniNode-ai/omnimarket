@@ -158,6 +158,83 @@ def test_the_contract_files_give_the_declared_and_the_published_topics(
     assert declared.producers() == {"onex.evt.one.v1": ("contract-one",)}
 
 
+def test_a_topic_named_only_in_a_source_file_is_declared_but_not_published(
+    tmp_path: Path,
+) -> None:
+    one = tmp_path / "repo-one/contracts/one"
+    one.mkdir(parents=True)
+    (one / "contract.yaml").write_text(
+        "name: contract-one\nevent_bus:\n  publish_topics:\n    - onex.evt.one.v1\n",
+        encoding="utf-8",
+    )
+    mod = tmp_path / "repo-one/src"
+    mod.mkdir(parents=True)
+    (mod / "mod.py").write_text('TOPIC = "onex.evt.src.v1"\n', encoding="utf-8")
+    two = tmp_path / "repo-two/contracts/two"
+    two.mkdir(parents=True)
+    (two / "contract.yaml").write_text(
+        "name: contract-two\nevent_bus:\n  subscribe_topics:\n    - onex.evt.two.v1\n",
+        encoding="utf-8",
+    )
+    deploy = tmp_path / "repo-two/deploy"
+    deploy.mkdir(parents=True)
+    (deploy / "topics.yaml").write_text(
+        "topics:\n  - onex.evt.deploy.v1\n", encoding="utf-8"
+    )
+    declared = ContractFileDeclaredTopics(
+        _source(), {"TEST_REGISTRY_ROOT": str(tmp_path)}
+    )
+    assert declared.declared() == {
+        "onex.evt.one.v1": ("contract-one",),
+        "onex.evt.two.v1": ("contract-two",),
+        "onex.evt.src.v1": ("source:repo-one/src/mod.py",),
+        "onex.evt.deploy.v1": ("source:repo-two/deploy/topics.yaml",),
+    }
+    assert declared.producers() == {"onex.evt.one.v1": ("contract-one",)}
+    assert "onex.evt.src.v1" not in declared.producers()
+    assert "onex.evt.deploy.v1" not in declared.producers()
+
+
+def test_a_reference_glob_that_matches_nothing_leaves_the_source_topic_undeclared(
+    tmp_path: Path,
+) -> None:
+    one = tmp_path / "repo-one/contracts/one"
+    one.mkdir(parents=True)
+    (one / "contract.yaml").write_text(
+        "name: contract-one\nevent_bus:\n  publish_topics:\n    - onex.evt.one.v1\n",
+        encoding="utf-8",
+    )
+    mod = tmp_path / "repo-one/src"
+    mod.mkdir(parents=True)
+    (mod / "mod.py").write_text('TOPIC = "onex.evt.src.v1"\n', encoding="utf-8")
+    source = overlay().contracts.model_copy(
+        update={
+            "registry_root_env": "TEST_REGISTRY_ROOT",
+            "repositories": ("repo-one",),
+            "reference_globs": ("nothing/**/*",),
+        }
+    )
+    declared = ContractFileDeclaredTopics(source, {"TEST_REGISTRY_ROOT": str(tmp_path)})
+    assert declared.declared() == {"onex.evt.one.v1": ("contract-one",)}
+    assert "onex.evt.src.v1" not in declared.declared()
+
+
+def test_a_binary_source_file_does_not_break_the_read(tmp_path: Path) -> None:
+    one = tmp_path / "repo-one/contracts/one"
+    one.mkdir(parents=True)
+    (one / "contract.yaml").write_text(
+        "name: contract-one\nevent_bus:\n  publish_topics:\n    - onex.evt.one.v1\n",
+        encoding="utf-8",
+    )
+    mod = tmp_path / "repo-one/src"
+    mod.mkdir(parents=True)
+    (mod / "blob.bin").write_bytes(b"\x00\x01\x02\xff\xfe\x00")
+    declared = ContractFileDeclaredTopics(
+        _source(), {"TEST_REGISTRY_ROOT": str(tmp_path)}
+    )
+    assert declared.declared() == {"onex.evt.one.v1": ("contract-one",)}
+
+
 def test_a_missing_registry_root_is_a_typed_unreadable_declarations() -> None:
     with pytest.raises(DeclaredTopicsError, match="registry-root-variable-unset"):
         ContractFileDeclaredTopics(_source(), {})

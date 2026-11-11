@@ -5,6 +5,7 @@
 #
 #   metrics_source          the broker's public metrics, read inside its container over ssh (the broker load reading's shape)
 #   contracts               where the contracts that declare topics are found and how a topic and its role are told
+#     reference_globs       globs, relative to a repository, of source files whose text naming a topic makes it declared
 #   listing_rule            the never-produced listing's rule: protected prefixes and the declared-producer policy
 #   remove_declared_topics  whether a never-produced topic that a contract declares may be a candidate
 #   execute_enabled         whether an execute run may issue deletes; a dry run never reads it
@@ -22,6 +23,7 @@ contracts:
   topic_pattern: '^onex\.[a-z]+\.[A-Za-z0-9_.-]+\.v[0-9]+$'
   publish_key_fragments: [publish, terminal_event]
   excluded_parts: [.venv, .git, omni_worktrees, node_modules]
+  reference_globs: ["src/**/*", "scripts/**/*", "deploy/**/*", "plugins/**/*"]
 listing_rule:
   protected_prefixes: ["_", "__consumer_offsets"]
   list_declared_producers: true

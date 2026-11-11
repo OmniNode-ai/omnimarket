@@ -42,6 +42,8 @@ class ModelContractSource(BaseModel):
     publish_key_fragments: tuple[str, ...] = Field(min_length=1)
     #: Path parts that are never contract roots (vendored trees, worktrees, caches).
     excluded_parts: tuple[str, ...]
+    #: Globs, relative to a repository, of source files whose text naming a topic makes it declared.
+    reference_globs: tuple[str, ...] = Field(min_length=1)
 
     @field_validator("topic_pattern")
     @classmethod
