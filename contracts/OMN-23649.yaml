@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-23649
+title: The repo-wide contract binding test runs on every narrowed selection and the OMN-23643 work-record file binds a real test
+summary: A merged change added contracts/OMN-23643.yaml whose AC2 evidence item held only a command check, which the repo-wide binding test tests/ci/test_repo_evidence_caller_workflow.py refuses. That test was not in always_selected_paths, so the change's own narrowed selection skipped it and the failure showed up as Tests (Split 12/20) red on every open change that took dev in. The AC2 item now also carries the test_passes check on the missing-base file, and the binding test is added to always_selected_paths with a selection test that fails without the entry. No check is widened and no bound is changed. The market node runtime dogfood test was measured too and is not added, because adding it makes a narrowed selection exceed the shard weight bound and run the full suite.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23649-binding-test-always-runs
+  statement: The repo-wide contract binding test passes on dev and runs on every narrowed selection.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the repo-wide contract binding test passes on the tip of dev with the repaired work-record file -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q, red on dev before the change'
+  - id: AC2
+    statement: 'AC2: a narrowed test selection for a one-node change still selects the contract binding test -- falsifier: uv run pytest tests/unit/scripts/test_detect_test_paths.py -q -k contract_binding_test, red without the list entry'
+  - id: AC3
+    statement: 'AC3: the Tests (Split 12/20) check is green on the open changes that took dev in after this landed -- falsifier: read the check on each such change head through the pull request watcher'
+  - id: AC4
+    statement: 'AC4: integrated: the selector picks the binding test on a real narrowed selection at the pushed head on a lab host -- falsifier: run the selector over a one-node change there and read the binding test in its selected paths'
+evidence_requirements:
+- kind: tests
+  description: The binding test and the selector tests pass.
+  command: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23649-ac1-binding-test-passes
+  description: The repo-wide binding test reads every contracts/OMN-*.yaml, the repaired OMN-23643 file included.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23649-ac2-selection-keeps-binding-test
+  description: The selector keeps the binding test in a narrowed one-node selection; with the entry removed from always_selected_paths the test is red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly -k contract_binding_test
+    cwd: .
+- id: dod-omn23649-ac3-open-changes-green
+  description: Read through the pull request watcher after landing; the selector test is the repository-side evidence that the entry stays.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly -k non_delegation_node_still_narrows
+    cwd: .
+- id: dod-omn23649-ac4-integrated
+  description: The same selector run on a lab host at the pushed head; the lab read is in the pull request lab line.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly -k always_selected
+    cwd: .
