@@ -260,6 +260,7 @@
   "tests/formal/test_agent_call_adapter_model.py": 0.05,
   "tests/formal/test_andon_stop_model.py": 0.17,
   "tests/formal/test_ci_red_triage_model.py": 0.04,
+  "tests/formal/test_claim_release_model.py": 2.1,
   "tests/formal/test_code_eval_trial_model.py": 1.94,
   "tests/formal/test_compaction_lifecycle_model.py": 0.04,
   "tests/formal/test_delegation_reaper_model.py": 0.09,
