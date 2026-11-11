@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Node models of the code eval trial orchestrator (OMN-23627)."""
 
+from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_overlay import (
+    ModelCodeEvalRunnerOverlay,
+)
 from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
     ModelCodeEvalControlReading,
     ModelCodeEvalRunClosed,
@@ -33,6 +36,7 @@ __all__ = [
     "ModelCodeEvalRunNudge",
     "ModelCodeEvalRunRequest",
     "ModelCodeEvalRunRow",
+    "ModelCodeEvalRunnerOverlay",
     "ModelCodeEvalSequenceReading",
     "ModelCodeEvalSequenceRow",
     "ModelCodeEvalSettings",
