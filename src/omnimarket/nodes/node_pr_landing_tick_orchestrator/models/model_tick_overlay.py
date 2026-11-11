@@ -30,6 +30,13 @@ class ModelTickOrchestratorOverlay(BaseModel):
     backend: EnumTickBackend = Field(
         description="Where recorded tick snapshots are read from."
     )
+    publish_backend: EnumTickBackend = Field(
+        default=EnumTickBackend.INMEMORY,
+        description=(
+            "Where the compared and compare-failed events are published: inmemory (the default, "
+            "tests) or redpanda (the overlay's bus_lane or bootstrap_servers) (OMN-23539)."
+        ),
+    )
     act_enabled: bool = Field(
         description="Whether act mode may call the writer. False while the script keeps landing."
     )
@@ -104,6 +111,14 @@ class ModelTickOrchestratorOverlay(BaseModel):
             raise ValueError("name one of bus_lane or bootstrap_servers, not both")
         if self.bus_lane and not self.workspace_root:
             raise ValueError("bus_lane needs workspace_root")
+        if (
+            self.publish_backend is EnumTickBackend.REDPANDA
+            and not self.bus_lane
+            and not self.bootstrap_servers
+        ):
+            raise ValueError(
+                "publish_backend redpanda needs bus_lane or bootstrap_servers"
+            )
         for repository in self.script_out_of_scope_repositories:
             if not re.fullmatch(REPO_PATTERN, repository):
                 raise ValueError(

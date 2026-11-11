@@ -665,7 +665,7 @@ def test_preservation_requires_overlay_and_refuses_unsafe_stage_before_copy(
     for root in (live, stage, outside):
         root.mkdir()
     assert main(["--install-root", str(live), "--stage-root", str(stage)]) == 3
-    assert "nodes" in capsys.readouterr().err
+    assert "overlay.yaml" in capsys.readouterr().err
     for relative in ("src/nodes/first", "src/nodes/second"):
         target = live / relative / "handler.py"
         target.parent.mkdir(parents=True)

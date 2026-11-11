@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Scenario R8 Effect (OMN-23175, readiness plan A9)
+#
+# Scenario R8, a synthetic delegation run is labelled and listed but never counted in a tenant's totals. One scheduled run, in a
+# probe tenant only this scenario uses, reads the tenant's totals, sends one synthetic run (traffic class synthetic, source
+# surface readiness_probe) and one organic control, waits until the tenant's Runs list holds both correlation ids and reads the
+# totals again. It holds only when the synthetic row is labelled synthetic and listed, and the run, token, spend and savings
+# totals rose by exactly the organic run's values. Every assertion compares typed fields; no model judges a pass, an unreadable
+# lane and a wait that runs out are failures and never a skip. The result is emitted on the bus and written as one ledger
+# STATUS row (the row node_delegation_scenario_days_effect reads for the scenario's green days).
+name: node_delegation_scenario_r8_effect
+contract_name: node_delegation_scenario_r8_effect
+node_name: node_delegation_scenario_r8_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs readiness scenario R8 once against a probe tenant's delegation lane, publishes the result on the bus
+  and writes one ledger STATUS row. The node's own systemd user timer (`schedule install`) runs it every six hours.
+
+handler:
+  module: omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.handler_scenario_r8
+  class: HandlerScenarioR8
+  input_model: omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.handler_scenario_r8.ModelScenarioR8RunCommand
+
+# Not a runtime-dispatched handler: HandlerScenarioR8 takes its contract runtime block, lane, ledger append route,
+# event sink and clock as constructor parameters, so the node runs through its own CLI and schedule.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [http-read, process-spawn, file-write, ledger-append, bus-publish]
+  timeout_ms: 900000
+
+input_model:
+  name: ModelScenarioR8RunCommand
+  module: omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.handler_scenario_r8
+  description: One run of scenario R8; it carries no value.
+output_model:
+  name: ModelScenarioResult
+  module: omnimarket.models.model_delegation_scenario
+  description: The slot, trigger, conclusion and each assertion that held or did not.
+
+terminal_event: onex.evt.omnimarket.delegation-scenario-result.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.delegation-scenario-result.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-scenario-result.v1
+
+runtime:
+  home_env: OMNI_HOME
+  ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  ledger_append_timeout_seconds: 60
+  host_env: ONEX_HOST_NAME
+  bus_emit_command_env: ONEX_BUS_EMIT_COMMAND
+  # Every event is journalled here; when the deployment names a bus produce command in bus_emit_command_env it also gets the event.
+  event_journal_relpath: .onex_state/delegation-scenario-r8/events.jsonl
+  bus_emit_timeout_seconds: 60
+  scenario_id: R8
+  cadence: every_6h
+  ticket: OMN-23175
+  # The lane the green-days reader (node_delegation_scenario_days_effect) names for R8.
+  lane: node_delegation_scenario_r8
+  actor: script:node_delegation_scenario_r8_effect
+  work_relpath: .onex_state/delegation-scenario-r8/work
+  # R8 runs no probe ladder: these two keys are the shared runtime block's and are unused here.
+  leg_backend: inmemory
+  loopback_host: 127.0.0.1
+  probe_tenant_slug: readiness-probe
+  inputs_relpath: inputs/r8_run.yaml
+
+# The delegation lane the scenario drives. backend `http` reads the probe tenant's totals and Runs from the tenant API and sends
+# runs with the `onex delegate` command, which the caller's environment points at the same tenant; `inmemory` is the typed model
+# the tests use. The address and the tenant's key are read from the named environment variables, never from a file.
+lane:
+  backend: http
+  base_url_env: R8_PROBE_API_BASE_URL
+  api_key_env: R8_PROBE_TENANT_API_KEY
+  api_key_header: x-api-key
+  totals_path: /v1/tenants/me/savings
+  runs_path: /v1/tenants/me/delegations
+  runs_limit: 50
+  request_timeout_seconds: 30
+  delegate_command: [onex, delegate]
+  delegate_timeout_seconds: 300
+  runs_list_key: runs
+  delegate_id_key: correlation_id
+  totals_keys:
+    runs: delegation_runs
+    tokens: total_tokens
+    spend_usd: total_spend_usd
+    savings_usd: total_saved_usd
+  run_keys:
+    correlation_id: run_id
+    traffic_class: traffic_class
+    tokens: total_tokens
+    cost_usd: cost_usd
+    saved_usd: saved_usd
+
+schedule:
+  unit_name: onex-delegation-scenario-r8
+  state_directory: .onex_state/delegation-scenario-r8
+  timeout_seconds: 900
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  # The probe tenant address and key are loaded from this file under the home directory, so their values never sit in the unit.
+  environment_file: .config/onex/scenario-r8.env
+  cadence:
+    on_calendar: "*-*-* 00,06,12,18:50:00"
+    time_zone: UTC
+    randomized_delay: 0s
+    persistent: false
+    description: delegation readiness scenario R8, every six hours at minute 50 UTC
+
+metadata:
+  ticket: OMN-23175
+  transport_type: inmemory
