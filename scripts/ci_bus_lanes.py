@@ -49,7 +49,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -68,21 +70,58 @@ MODE_FROM_SECRET = "from-secret"  # trust the injected secret verbatim (no check
 MODE_CONCRETE = "concrete"  # overlay declares a concrete host:port (preferred)
 
 
-def load_lane_overlay(path: Path | None = None) -> dict[str, object]:
-    """Load the checked-in lane->broker overlay (OMN-14801).
+class LaneOverlayError(ValueError):
+    """The required private lane declaration is absent, malformed or changed."""
 
-    Returns an empty dict when the overlay file is absent so callers can apply
-    the documented "no overlay -> in-memory default" fallback. A malformed
-    (non-mapping) overlay is likewise treated as empty rather than crashing the
-    thin publisher.
-    """
-    overlay_path = path if path is not None else LANE_OVERLAY_PATH
-    if not overlay_path.exists():
-        return {}
-    with overlay_path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle)
-    if not isinstance(loaded, dict):
-        return {}
+
+def load_lane_overlay(path: Path | None = None) -> dict[str, object]:
+    """Load an explicit fixture, or the digest-bound private lane declaration."""
+    expected = None
+    if path is None:
+        contract = yaml.safe_load(LANE_OVERLAY_PATH.read_text(encoding="utf-8"))
+        expected = (
+            contract.get("overlay_sha256") if isinstance(contract, dict) else None
+        )
+        if (
+            not isinstance(expected, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected) is None
+        ):
+            raise LaneOverlayError("lane contract requires overlay_sha256")
+        configured_file = os.environ.get("ONEX_CI_BUS_LANES_PATH", "").strip()
+        configured_root = os.environ.get("ONEX_WORKSPACE_CONFIG_ROOT", "").strip()
+        if configured_file:
+            path = Path(configured_file)
+        elif configured_root:
+            path = (
+                Path(configured_root)
+                / "config/onex/overlays/ci_bus_lanes"
+                / f"{expected}.yaml"
+            )
+        else:
+            for root in os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "").split(
+                os.pathsep
+            ):
+                candidate = Path(root) / "ci_bus_lanes" / f"{expected}.yaml"
+                if root and candidate.is_file():
+                    path = candidate
+                    break
+        if path is None:
+            raise LaneOverlayError(
+                "set ONEX_WORKSPACE_CONFIG_ROOT, ONEX_SKILL_OVERLAY_ROOTS or ONEX_CI_BUS_LANES_PATH; private CI bus lane overlay is missing"
+            )
+    try:
+        data = path.read_bytes()
+        loaded = yaml.safe_load(data)
+    except (OSError, yaml.YAMLError) as exc:
+        raise LaneOverlayError(
+            f"private CI bus lane overlay unreadable at {path}; check ONEX_WORKSPACE_CONFIG_ROOT"
+        ) from exc
+    if expected is not None and hashlib.sha256(data).hexdigest() != expected:
+        raise LaneOverlayError(f"private CI bus lane overlay digest mismatch at {path}")
+    if not isinstance(loaded, dict) or not isinstance(loaded.get("lanes"), dict):
+        raise LaneOverlayError(
+            f"private CI bus lane overlay at {path} must declare a lanes mapping"
+        )
     return loaded
 
 
