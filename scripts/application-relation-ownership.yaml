@@ -369,6 +369,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
       access: write
       role: work_ledger_state
+    # OMN-23694: the newest row per lane and per ticket and row type, derived from the
+    # same row events by node_projection_work_ledger and read by the work ledger query
+    # node's latest-state query.
+    - name: work_ledger_latest
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0011_work_ledger_latest.sql
+      access: write
+      role: work_ledger_latest
     # OMN-19399: register this repository as the CATALOG owner of the physical
     # relation `worktree_reconcile_hosts`, one row per host carrying the latest
     # worktree-reconcile run's counts, created by
