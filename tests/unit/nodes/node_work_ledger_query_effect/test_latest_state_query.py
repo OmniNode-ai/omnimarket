@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -41,6 +42,7 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger
     HandlerWorkLedgerQuery,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
+    ProtocolWorkLedgerQueryReader,
     WorkLedgerReadError,
 )
 
@@ -105,7 +107,9 @@ class NoLatestTableReader:
 
 
 def _handler(reader: object) -> HandlerWorkLedgerQuery:
-    return HandlerWorkLedgerQuery(now=lambda: NOW, reader=reader)  # type: ignore[arg-type]
+    return HandlerWorkLedgerQuery(
+        now=lambda: NOW, reader=cast(ProtocolWorkLedgerQueryReader, reader)
+    )
 
 
 def _ask(**fields: object) -> ModelWorkLedgerQueryRequest:
@@ -116,7 +120,7 @@ def _ask(**fields: object) -> ModelWorkLedgerQueryRequest:
 
 def _contract_page_size() -> int:
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
-    return contract["work_ledger_query"]["latest_default_page_size"]
+    return int(contract["work_ledger_query"]["latest_default_page_size"])
 
 
 def test_golden_a_lane_terminal_read_answers_the_newest_terminal_per_lane() -> None:

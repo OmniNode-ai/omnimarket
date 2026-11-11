@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -95,7 +96,7 @@ def test_seam_the_request_each_consumer_sends_is_a_valid_latest_state_request(
         {**request_fields, "correlation_id": str(uuid4())}
     )
     assert request.query.value == "latest-state"
-    assert request.kinds == tuple(request_fields["kinds"])  # type: ignore[arg-type]
+    assert request.kinds == tuple(cast(list[str], request_fields["kinds"]))
 
 
 def test_seam_a_request_field_a_consumer_sends_renamed_in_the_model_is_refused() -> (
@@ -114,11 +115,10 @@ def test_seam_the_answer_fields_the_consumers_read_exist() -> None:
 
 
 def test_seam_a_planted_rename_of_an_answer_field_is_found() -> None:
-    renamed = create_model(
-        "Renamed",
-        subject_name=(str, ...),
-        **{n: (str | None, None) for n in ENTRY_FIELDS_READ if n != "subject"},
-    )
+    fields: dict[str, Any] = {
+        n: (str | None, None) for n in ENTRY_FIELDS_READ if n != "subject"
+    }
+    renamed = create_model("Renamed", subject_name=(str, ...), **fields)
     assert missing_fields(renamed, ENTRY_FIELDS_READ) == ["subject"]
 
 
