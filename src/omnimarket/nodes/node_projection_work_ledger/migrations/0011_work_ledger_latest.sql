@@ -31,6 +31,21 @@ CREATE TABLE IF NOT EXISTS omninode_internal.work_ledger_latest (
     CONSTRAINT work_ledger_latest_subject_kind CHECK (subject_kind IN ('lane', 'ticket'))
 );
 
+-- A table of this name that already exists with another shape is converged column by
+-- column (nullable adds: no-ops on the fresh-create path) before the index and the
+-- backfill name its columns (the node-migration shape reconciliation gate, OMN-15376).
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS subject_kind TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS row_type TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS row_id TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS lane TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS ticket TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS pr TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS outcome TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS to_cell TEXT;
+ALTER TABLE omninode_internal.work_ledger_latest ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS work_ledger_latest_at_idx
     ON omninode_internal.work_ledger_latest (at);
 
