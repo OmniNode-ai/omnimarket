@@ -50,8 +50,9 @@ sources:
     selects: harness backends, harness tiers and per-class escalation chains
     resolver: omnimarket.handlers.routing.routing_tiers_path:load_delegation_routing_overlay
     packaged_defaults: []
-    overlay: DELEGATION_ROUTING_OVERLAY_PATH; unbound resolves to the empty overlay, with no packaged file
+    overlay: the delegation_routing document under the first ONEX_SKILL_OVERLAY_ROOTS root that holds one (the overlay store, OMN-23826), then DELEGATION_ROUTING_OVERLAY_PATH; neither resolves to the empty overlay, with no packaged file
     resolution_sites:
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:find_node_overlay(ROUTING_OVERLAY_STORE_ID)"
       - "src/omnimarket/handlers/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
     precedence:
       probe: harness_routing_overlay

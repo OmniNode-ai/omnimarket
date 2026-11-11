@@ -1129,6 +1129,38 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
+  # The host disk and container run of a Linux pool host (OMN-23707): omnimarket's lab disk hygiene node on a six-hour timer,
+  # in place of the retired host collectors unit. The lane census comes from the node's overlay, never from this unit.
+  lab-disk-hygiene-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-disk-hygiene
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 3600
+      run_at_load: false
+      description: every 6 hours
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lab_disk_hygiene_effect
+    entry_file: src/omnimarket/nodes/node_lab_disk_hygiene_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+    evidence_file: .local/state/omni/lab-disk-hygiene/last-run.json
+    state_directory: .onex_state/lab-disk-hygiene
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
   # launchd units above, as a systemd user service and timer, so the new landing workflow runs in observe mode on a lab host
   # beside the controller. Each start check runs the unit with its rendered --omni-home and --state-dir plus --probe.
