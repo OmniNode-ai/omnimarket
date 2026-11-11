@@ -29,12 +29,10 @@ from omnimarket.models.landing_controller_carry import (
     decisions_of,
 )
 from omnimarket.models.landing_decision import (
+    ModelLandingControllerState,
     ModelLandingExternalJudged,
     ModelLandingFacts,
     ModelLandingPrFacts,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
-    ModelLandingControllerState,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
     ControllerStateStaleError,
