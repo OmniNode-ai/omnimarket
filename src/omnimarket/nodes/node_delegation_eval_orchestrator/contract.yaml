@@ -32,7 +32,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.delegation-eval-item-labelled.v1
 terminal_event: onex.evt.omnimarket.delegation-eval-item-labelled.v1
-# Invoking runtimes bind the tenant-scoped snapshot port before dispatch.
+# OMN-20577: the handler binds one tenant-scoped snapshot reader per command, from the
+# node overlay delegation_eval_sources (field read_dsn_env), unless a source is injected.
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegation-eval-label-record.v1
   terminal_events:

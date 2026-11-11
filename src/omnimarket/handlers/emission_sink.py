@@ -116,6 +116,12 @@ class ChainEmitter:
         self._started = True
         self._emit("start")
 
+    def resume(self) -> None:
+        """Continue a chain whose start is already in the journal: no second start is emitted."""
+        if self._started:
+            raise RuntimeError("a chain starts once")
+        self._started = True
+
     def success(self, counters: dict[str, int] | None = None) -> None:
         self._close()
         self._emit("success", counters=counters or {})

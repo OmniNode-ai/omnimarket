@@ -21,7 +21,7 @@ class ModelFactoryFloorRunRequest(BaseModel):
     plan_path_contains: tuple[str, ...] = ()
     now: datetime | None = None
     ledger_rows_file: str | None = None
-    # A file of ledger rows that stands in for the unresolved-evidence reads across the archive rolls (tests and replays).
+    # A file in the unresolved-rows record shape (ModelUnresolvedRowsRecord) read in place of the unresolved step's record (tests and replays).
     unresolved_rows_file: str | None = None
     home: str | None = None
     kb: str | None = None

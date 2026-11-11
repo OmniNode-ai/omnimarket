@@ -293,3 +293,20 @@ def test_dynamic_import_gate_metadata_cannot_widen_static_policy(
         "node_role: effect\ndependencies: ['redis>=5']\n"
     )
     assert gate.transport_import_main([str(path)]) == 1
+
+
+@pytest.mark.unit
+def test_transport_import_static_excludes_each_still_violate() -> None:
+    """An exclusion that no longer hides a banned import is stale and must be removed."""
+    from omnibase_core.validation.validator_transport_import import (
+        ValidatorTransportImport,
+    )
+
+    root = Path(__file__).resolve().parents[2]
+    validator = ValidatorTransportImport()
+    stale = [
+        rel
+        for rel in sorted(gate._STATIC_EXCLUDES)
+        if not validator.check_file(root / "src/omnimarket/nodes" / rel)
+    ]
+    assert stale == []

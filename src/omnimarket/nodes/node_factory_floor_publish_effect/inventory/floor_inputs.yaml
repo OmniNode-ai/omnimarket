@@ -70,9 +70,9 @@ inputs:
   - id: ledger_rows_file_and_query
     order: 4
     class: command
-    where: python $CLAUDE_PLUGIN_ROOT/scripts/onex_ledger.py query --since 14d --archives (factory floor record); contract ledger route file with the ledger path variable and its archive/ (floor simple, work state, process health, join_j5, join_refusal)
-    read_by: [node_factory_floor_effect, node_floor_simple_effect, node_work_state_projection_effect, node_process_health_effect, node_work_ledger_append_effect, node_join_refusal_effect]
-    steps: [factory_floor, floor_simple, process_health, join_j5, join_refusal]
+    where: python $CLAUDE_PLUGIN_ROOT/scripts/onex_ledger.py query --since 14d --archives (factory floor record; the unresolved step reads its four unresolved reads into .onex_state/factory-floor/unresolved-rows.json); contract ledger route file with the ledger path variable and its archive/ (floor simple, work state, process health, join_j5, join_refusal)
+    read_by: [node_factory_floor_effect, node_factory_floor_unresolved_effect, node_floor_simple_effect, node_work_state_projection_effect, node_process_health_effect, node_work_ledger_append_effect, node_join_refusal_effect]
+    steps: [factory_floor, factory_floor_unresolved, floor_simple, process_health, join_j5, join_refusal]
     producer: the rolling work ledger file on the Mac
     replacement: {node: node_projection_work_ledger, topic: onex.snapshot.projection.work-ledger-rows.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-ledger-route-bus
@@ -264,10 +264,10 @@ inputs:
   - id: delegation_scenario_reads
     order: 20
     class: file
-    where: .onex_state/floor-delegation/scenario-runs.json
+    where: .onex_state/floor-delegation/scenario-runs.json; .onex_state/floor-delegation/route-reads.json (the routes stage's delegations per hour by route)
     read_by: [node_floor_delegation_effect]
     steps: [delegation_tracker]
-    producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
+    producer: node_floor_delegation_effect itself (scm run-list and the delegation routes stage, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
   - id: delegation_route_reads
@@ -306,6 +306,15 @@ inputs:
     producer: the lab check run overlay and the ledger's golden stop drill readings
     replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
     ticket: OMN-23420
+  - id: join_j16_ledger_reads
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_join_j16_effect run (reads the newest eval reading of piece 16 on the ledger and the floor record, writes the chains to the emission journal)
+    read_by: [node_join_j16_effect]
+    steps: [join_j16]
+    producer: the ledger's eval readings and the floor record
+    replacement: {node: node_join_j16_effect, topic: onex.snapshot.projection.join-j16.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-join-j7-j16-projection
   - id: network_reads
     order: 21
     class: http

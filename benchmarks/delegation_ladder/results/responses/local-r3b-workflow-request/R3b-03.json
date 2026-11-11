@@ -1,0 +1,6 @@
+{
+  "task_id": "R3b-03",
+  "path": "local",
+  "sha256": "4bc17ec35441892f1b9d363e7fc7b57ed1a51dcc0308ec49f68ed5bacf134fa1",
+  "response": "read_and_answer\n{\n  \"paths\": [\n    \"scripts/check_dockerfile_pins.py\"\n  ],\n  \"question\": \"What does the function _satisfies_specifier return when it is given the version string 2.0.0 against the specifier that requires at least 1.0.0 and less than 2.0.0?\",\n  \"repo\": \"omnibase_infra\"\n}"
+}

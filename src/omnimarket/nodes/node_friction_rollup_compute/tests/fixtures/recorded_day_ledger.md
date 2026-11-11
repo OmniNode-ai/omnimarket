@@ -1,6 +1,6 @@
 # Recorded day 2026-11-06 of the rolling ledger, scrubbed: lane ids replaced by synthetic ones; only the lane, ticket, class, cost, existing,
-# source-lane, pr, outcome, state and delegation cells and the closing text (cut at 300 characters) are kept; paths, URLs, hex ids, host names,
-# addresses and repository names other than omnimarket are replaced.
+# source-lane, pr, outcome, state and delegation cells and the closing text (cut at 300 characters) are kept; URLs, host names and
+# addresses are replaced. Some short hex ids, module paths and repository names other than omnimarket are retained as recorded.
 
 2026-11-06T10:59:51Z | FRICTION | lane=lane-78 | ticket=OMN-18954 | cost=~10 lane-minutes | plan_index offset 257 limit 120 overflowed the tool-result token cap and the saved file is unreadable without file tools; re-paged with limit 33. The projectless linear_issues read has 999 rows, too many to page in context, so the qualifying union stays partial.
 2026-11-06T11:04:48Z | FRICTION | lane=lane-79 | class=refusal | existing=OMN-18946 | cost=~1 lane-minute | This row exists because a hook refusal is otherwise terminal-only and unaggregated (OMN-18946)

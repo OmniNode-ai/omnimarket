@@ -44,6 +44,7 @@ from pydantic import SecretStr
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
     ModelClaudeTokenPoolEntry,
+    ModelClaudeTokenPoolRefusal,
     ModelClaudeTokenPoolRequest,
     ModelClaudeTokenPoolResult,
 )
@@ -128,7 +129,13 @@ class HandlerClaudeTokenPool:
         status_path: Path | None = None,
         host: str | None = None,
         now: Callable[[], datetime] = _utc_now,
+        lane_cap: int | None = None,
+        lane_cap_read: bool = True,
     ) -> None:
+        #: The overlay's lanes-per-label cap (``None``: no cap), and whether the overlay holding it was read
+        #: on this host. The runtime reads both from the overlay; no cap is spelled here.
+        self._lane_cap = lane_cap
+        self._lane_cap_read = lane_cap_read
         self._store = store or LocalByokCredentialStore()
         self._pool_path = pool_path or self._store.db_path.parent / POOL_FILE_NAME
         self._status_path = status_path or STATUS_MIRROR
@@ -148,15 +155,26 @@ class HandlerClaudeTokenPool:
                 alert = self._revoke(pool, request)
             elif request.operation == "reorder":
                 self._reorder(pool, request)
+            elif request.operation == "record_use":
+                self._record_use(pool, request)
+            elif request.operation == "pin":
+                self._pin(pool, request)
+            elif request.operation == "release":
+                pool.pop("pinned", None)
+                pool.pop("pinned_by", None)
             synced: tuple[str, ...] = ()
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
             chosen, token = (None, None)
+            refusal: ModelClaudeTokenPoolRefusal | None = None
+            fallback = False
             if request.operation == "resolve":
-                chosen, token = self._resolve(pool)
+                chosen, token, refusal, fallback = self._resolve(pool, request)
             if request.operation != "status" and not request.dry_run:
                 _write_private(self._pool_path, pool)
-            result = self._result(request.operation, pool, chosen, token, alert, synced)
+            result = self._result(
+                request.operation, pool, chosen, token, alert, synced
+            ).model_copy(update={"refusal": refusal, "drained_fallback": fallback})
             if not request.dry_run:
                 _write_private(
                     self._status_path,
@@ -251,6 +269,46 @@ class HandlerClaudeTokenPool:
         entry["until"] = max(until, entry.get("until") or "")
         entry["limited_at"] = _stamp(self._now())
 
+    def _record_use(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> None:
+        """A lane on this host started under ``label``: count the use and when it was seen."""
+        label = self._label(request)
+        entry = next((t for t in pool["tokens"] if t["label"] == label), None)
+        if entry is None:
+            raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        self._count_use(entry)
+
+    def _count_use(self, entry: dict[str, Any]) -> None:
+        entry["uses"] = entry.get("uses", 0) + 1
+        entry["last_used_at"] = _stamp(self._now())
+
+    def _pin(self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest) -> None:
+        """Hold ``label`` first in the draw until released: ``resolve`` and every later ``reorder`` keep it first."""
+        label = self._label(request)
+        entry = next((t for t in pool["tokens"] if t["label"] == label), None)
+        if entry is None:
+            raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        if entry.get("revoked_at"):
+            raise ClaudeTokenPoolRefusedError(
+                f"{label} is revoked; re-add it with --force"
+            )
+        if (entry.get("until") or "") > _stamp(self._now()):
+            raise ClaudeTokenPoolRefusedError(
+                f"{label} is limited until {entry['until']}"
+            )
+        pool["pinned"] = label
+        pool["pinned_by"] = request.pinned_by
+        self._pinned_first(pool)
+
+    @staticmethod
+    def _pinned_first(pool: dict[str, Any]) -> None:
+        """Move the pinned token, when the pool still holds it, to the head of the draw order."""
+        head = pool.get("pinned")
+        held = [t for t in pool["tokens"] if t["label"] == head]
+        if held:
+            pool["tokens"] = held + [t for t in pool["tokens"] if t["label"] != head]
+
     def _reorder(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
     ) -> None:
@@ -265,6 +323,8 @@ class HandlerClaudeTokenPool:
             )
         rest = [t for t in pool["tokens"] if t["label"] not in set(wanted)]
         pool["tokens"] = [by_label[label] for label in wanted] + rest
+        # a pin outlives every reorder: the rotation tick resets the order every few minutes
+        self._pinned_first(pool)
 
     def _sync_marks(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -333,18 +393,86 @@ class HandlerClaudeTokenPool:
             f"omnimarket.nodes.node_claude_token_pool_effect add --label {label} --force`"
         )
 
-    def _resolve(self, pool: dict[str, Any]) -> tuple[str | None, SecretStr | None]:
+    def _resolve(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[str | None, SecretStr | None, ModelClaudeTokenPoolRefusal | None, bool]:
+        """The token a NEW lane start runs on: the label, its value, a refusal, and whether it is a drained fallback.
+
+        A limited or revoked label is never returned. Of the rest, a label at the overlay's lane cap is
+        out; a label in ``drain_labels`` is skipped while another label is left and is used (as a
+        fallback) when it is the only one. Draw order decides among equals, as before.
+        """
         now = _stamp(self._now())
-        for entry in pool["tokens"]:
-            if entry.get("revoked_at") or (entry.get("until") or "") > now:
-                continue
+        usable = [
+            entry
+            for entry in pool["tokens"]
+            if not entry.get("revoked_at") and (entry.get("until") or "") <= now
+        ]
+        if not usable:
+            # Nothing usable is the answer it always was (an empty pool, or every token limited or
+            # revoked), never a refusal: a refusal says a usable token exists.
+            return None, None, None, False
+        counted = request.lane_counts
+        if counted is not None and not self._lane_cap_read:
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="lane_cap_unread",
+                    detail="the caller passed lane counts and this host's pool overlay, which holds the lane cap, was not read",
+                ),
+                False,
+            )
+        cap = self._lane_cap
+        if cap is not None and counted is None:
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="lane_counts_missing",
+                    cap=cap,
+                    detail=f"the overlay caps a label at {cap} lanes and the caller passed no lane counts",
+                ),
+                False,
+            )
+        lanes = {row.label: row.lanes for row in counted or ()}
+        open_labels = [
+            entry
+            for entry in usable
+            if cap is None or lanes.get(entry["label"], 0) < cap
+        ]
+        drained = frozenset(request.drain_labels)
+        ordered = [e for e in open_labels if e["label"] not in drained] + [
+            e for e in open_labels if e["label"] in drained
+        ]
+        for entry in ordered:
             value = asyncio.run(
                 self._store.get_secret(SECRET_REF_PREFIX + entry["label"])
             )
             if value:
                 pool["current"] = entry["label"]
-                return entry["label"], SecretStr(value)
-        return None, None
+                # every draw is a lane about to start under the token: count it, so "unused" means undrawn
+                self._count_use(entry)
+                return (
+                    entry["label"],
+                    SecretStr(value),
+                    None,
+                    entry["label"] in drained,
+                )
+        if not open_labels and cap is not None:
+            at_cap = tuple(e["label"] for e in usable)
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="label_lane_cap",
+                    cap=cap,
+                    labels=at_cap,
+                    detail=f"every usable label already runs {cap} lanes or more: {', '.join(at_cap)}",
+                ),
+                False,
+            )
+        return None, None, None, False
 
     def _result(
         self,
@@ -364,6 +492,8 @@ class HandlerClaudeTokenPool:
                 until=t.get("until") if (t.get("until") or "") > now else None,
                 limited=(t.get("until") or "") > now and not t.get("revoked_at"),
                 revoked=bool(t.get("revoked_at")),
+                uses=t.get("uses", 0),
+                last_used_at=t.get("last_used_at"),
             )
             for t in pool["tokens"]
         )
@@ -373,6 +503,8 @@ class HandlerClaudeTokenPool:
             host=self._host,
             tokens=entries,
             chosen=chosen,
+            pinned=pool.get("pinned"),
+            pinned_by=pool.get("pinned_by"),
             token=token,
             revoked=revoked,
             synced=synced,

@@ -103,6 +103,7 @@ from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
 )
+from omnimarket.models.model_pr_duplicate_guard import validate_replaces
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
@@ -127,6 +128,7 @@ EXIT_FAILED: Final[int] = 1
 EXIT_USAGE: Final[int] = 2
 EXIT_LOCAL_UNANSWERED: Final[int] = 3
 EXIT_DUPLICATE: Final[int] = 4
+EXIT_REPLACES_REFUSED: Final[int] = 5
 EXIT_BUS_UNAVAILABLE: Final[int] = 69
 EXIT_NO_TERMINAL: Final[int] = 75
 READ_RETRY_PAUSE_S: Final[float] = 20.0
@@ -443,6 +445,15 @@ def _body(body: str | None, body_file: str | None) -> str | None:
     return text
 
 
+def _replaces_given(raw: object) -> tuple[str, ...]:
+    """The ``--replaces`` values, each ``OWNER/REPO#N`` and each once, or a usage error naming the bad one."""
+    items = tuple(str(item) for item in raw) if isinstance(raw, (tuple, list)) else ()
+    try:
+        return validate_replaces(items)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+
+
 def _idempotency_key(operation: str, fields: dict[str, JsonValue]) -> str:
     """Stable per intended write: the same command run twice writes once."""
     digest = hashlib.sha256(
@@ -731,7 +742,7 @@ def _local_command(spec: ModelScmLocalVerb) -> click.Command:
 
 # The options each write verb takes, beyond the target and the common ones.
 _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
-    "pr_create": ("head", "base", "title", "body", "body_file", "draft"),
+    "pr_create": ("head", "base", "title", "body", "body_file", "draft", "replaces"),
     "pr_edit": ("title", "body", "body_file", "base", "draft"),
     "pr_ready": (),
     "pr_close": ("run", "claims_dir"),
@@ -789,6 +800,14 @@ _OPTION_DECORATORS: Final[
         "--body-file", type=click.Path(dir_okay=False, allow_dash=True), default=None
     ),
     "draft": click.option("--draft/--no-draft", default=None),
+    "replaces": click.option(
+        "--replaces",
+        "replaces",
+        multiple=True,
+        metavar="OWNER/REPO#N",
+        help="A closed, unmerged pull request of this repository that this change replaces (repeatable). "
+        "The duplicate check reads its state itself and sets aside only the overlaps it alone introduced.",
+    ),
     "run": click.option(
         "--run",
         envvar="ONEX_RUN_ID",
@@ -908,6 +927,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
             if not sep or not key:
                 raise click.UsageError(f"--input {item!r} is not KEY=VALUE")
             inputs[key] = value
+        replaces = _replaces_given(fields.pop("replaces", ()))
         if spec.operation == EnumRepoWriteOperation.PR_CREATE:
             # One fix, one pull request (OMN-17427): a duplicate or an unreadable check opens nothing.
             refused = refuse_or_continue(
@@ -919,6 +939,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 lane=lane,
                 watcher_state=watcher_state,
                 open_prs_source=gateway_open_prs_source(bus_opts, timeout_s),
+                replaces=replaces,
             )
             if refused is not None:
                 sys.exit(refused)
@@ -947,6 +968,8 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
             given["body"] = body
         if run is not None:
             given["requested_by_run"] = str(run)
+        if replaces:
+            given["replaces"] = list(replaces)
         identity: dict[str, JsonValue] = {
             "repo": repo,
             "pr_number": number,
@@ -1095,6 +1118,7 @@ __all__: list[str] = [
     "EXIT_FAILED",
     "EXIT_LOCAL_UNANSWERED",
     "EXIT_NO_TERMINAL",
+    "EXIT_REPLACES_REFUSED",
     "EXIT_USAGE",
     "scm_group",
 ]

@@ -80,3 +80,29 @@ def test_golden_the_panel_reads_only_cells_of_the_record_the_page_already_loads(
     # The panel's own code (from its section comment to the tabs section) reads nothing: no fetch, no new source.
     panel_code = PAGE.split("// ---- The rebuild strip:")[1].split("// ---- Tabs.")[0]
     assert "fetch(" not in panel_code
+
+
+def test_golden_the_page_says_working_not_integrated_and_reports_the_ready_count() -> (
+    None
+):
+    """OMN-23522: a piece that works and has a join that does not pass is worded as not integrated."""
+    assert 'working_not_integrated: "Working, not integrated"' in PAGE
+    assert "const pieceWord = p => INTEGRATION_WORD[p.integration]" in PAGE
+    # The strip label, the hover note and the side panel all word the piece through the one function.
+    assert PAGE.count("pieceWord(p)") >= 3
+    assert "Ready, not just working:" in PAGE
+    assert "doc.readiness.text" in PAGE
+    # The piece's note names the joins that do not pass; a join that does not count says so.
+    assert "p.blocking_joins" in PAGE
+    assert '" (outside the scope)"' in PAGE
+
+
+def test_error_a_piece_that_does_not_work_keeps_its_own_word_and_a_missing_readiness_draws_no_line() -> (
+    None
+):
+    # Any integration value the table lacks (not_working, not_started) falls back to the reading's own word.
+    assert "|| STATUS_WORD[p.status] || p.status;" in PAGE
+    # A record written before the rule existed carries no readiness: the page draws no ready line for it.
+    assert "if (doc.readiness) h +=" in PAGE
+    # The strip label no longer takes the reading's word past the integration word.
+    assert "(STATUS_WORD[p.status] || p.status).toLowerCase()" not in PAGE

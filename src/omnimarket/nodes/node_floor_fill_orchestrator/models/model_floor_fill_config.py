@@ -33,6 +33,10 @@ class ModelFloorFillConfig(BaseModel):
     url: str = Field(min_length=1)
     plans_root: str = Field(min_length=1)
     runner_command: tuple[str, ...] = Field(min_length=1)
+    # The text of the brief a floor-line start hands the start node through ``{brief}`` in ``runner_command``
+    # ({lane} {key} {ticket} {line_id} {task_id} and {plans_root} are filled per start). A floor line has no predecessor to
+    # continue, so its brief names the line, the task and the ticket and points at the plan.
+    line_brief_text: str = Field(min_length=1)
     reserved_timeout_seconds: int = Field(gt=0)
     sent_window_minutes: int = Field(gt=0)
     command_timeout_seconds: int = Field(gt=0)
@@ -92,6 +96,16 @@ class ModelFloorFillConfig(BaseModel):
             raise ValueError(
                 f"{OVERLAY_PREFIX}stopped_runner_command carries no {BRIEF_PLACEHOLDER} element"
             )
+        try:
+            self.line_brief_text.format(
+                lane="", key="", ticket="", line_id="", task_id="", plans_root=""
+            )
+        except (KeyError, IndexError, ValueError) as error:
+            raise ValueError(
+                f"{OVERLAY_PREFIX}line_brief_text cannot be filled from "
+                f"lane, key, ticket, line_id, task_id and plans_root ({type(error).__name__}: {error}); "
+                "write a literal brace doubled"
+            ) from error
         if ARGV_PLACEHOLDER not in self.remote_argv:
             raise ValueError(
                 f"{OVERLAY_PREFIX}remote_argv carries no {ARGV_PLACEHOLDER} element"
@@ -118,13 +132,17 @@ def load_floor_fill_config(overlay: Mapping[str, Any]) -> ModelFloorFillConfig:
     try:
         return ModelFloorFillConfig.model_validate(dict(overlay))
     except ValidationError as error:
-        messages = [str(item["msg"]) for item in error.errors()]
+        messages: list[str] = []
+        located: list[str] = []
+        for item in error.errors():
+            message = str(item["msg"])
+            if item["loc"]:
+                key = f"{OVERLAY_PREFIX}{'.'.join(str(part) for part in item['loc'])}"
+                located.append(key)
+                if key not in message:
+                    message = f"{key}: {message}"
+            messages.append(message)
         text = "; ".join(messages)
-        located = [
-            f"{OVERLAY_PREFIX}{'.'.join(str(part) for part in item['loc'])}"
-            for item in error.errors()
-            if item["loc"]
-        ]
         keys = tuple(
             dict.fromkeys(
                 [

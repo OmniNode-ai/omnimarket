@@ -65,6 +65,11 @@ WRITER_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ROW_TYPE = "STATUS"
 _ROW_SOURCE_CELL = "src=reading"
 _UNREAD = "unread"
+#: The error a source read answers with once the cycle's failed-read budget is spent and a later read has failed too.
+_BUDGET_SPENT = "read-budget-spent"
+#: The ledger token of a piece whose source stayed unreadable through its inline retries and is held for the end-of-run
+#: final pass, which reads the source again; no row is written for the piece until that pass.
+_DEFERRED = "deferred-final-read"
 #: The row type and source cell of every reading row; other handlers of this node import them.
 ROW_TYPE = _ROW_TYPE
 ROW_SOURCE_CELL = _ROW_SOURCE_CELL
@@ -180,11 +185,20 @@ class HandlerReadingWriter:
         self._revision = revision or load_revision()
         # Answers read earlier in the cycle being run, by query: see _read. Emptied when a window starts.
         self._cycle_reads: dict[ModelLedgerQuery, ModelLedgerRead] = {}
+        # Seconds this handle() call has spent on source reads that failed; the overlay's read_retry budget bounds it.
+        self._failed_read_seconds: float = 0.0
+        # Set when a read that failed after that budget was spent: every later read of the cycle reads _BUDGET_SPENT.
+        self._reads_stopped: bool = False
+        # Set while the end-of-run final pass reads deferred sources again: there, a read is tried once and never paused.
+        self._final_pass_active: bool = False
 
     # -- the window -------------------------------------------------------------------------
 
     def handle(self, command: ModelReadingWindowCommand) -> ModelReadingWindowResult:
         self._cycle_reads = {}
+        self._failed_read_seconds = 0.0
+        self._reads_stopped = False
+        self._final_pass_active = False
         now = self._clock().astimezone(UTC)
         length = self._overlay.window.length_seconds
         delay = self._overlay.window.close_delay_seconds
@@ -202,13 +216,27 @@ class HandlerReadingWriter:
                 command, f"unknown-pieces:{unknown}", start, end, cutoff
             )
         wanted = command.pieces or tuple(self._overlay.order)
+        retry = self._overlay.read_retry
+        reread = retry.reread_budget_seconds if retry is not None else None
+        defer = command.write and reread is not None
         outcomes = tuple(
             self._piece(
-                self._overlay.spec(piece), start, end, cutoff, now, command.write
+                self._overlay.spec(piece),
+                start,
+                end,
+                cutoff,
+                now,
+                command.write,
+                defer_unreadable=defer,
             )
             for piece in wanted
         )
         if command.write:
+            deferred = [i for i, o in enumerate(outcomes) if o.ledger == _DEFERRED]
+            if deferred and reread is not None:
+                outcomes = self._final_pass(
+                    outcomes, deferred, start, end, cutoff, now, reread
+                )
             outcomes = self._retry_failed(outcomes, start, end, cutoff, now)
         return ModelReadingWindowResult(
             correlation_id=command.correlation_id,
@@ -252,6 +280,42 @@ class HandlerReadingWriter:
                 )
         return tuple(current)
 
+    def _final_pass(
+        self,
+        outcomes: tuple[ModelReadingPieceOutcome, ...],
+        deferred: list[int],
+        start: datetime,
+        end: datetime,
+        cutoff: datetime,
+        now: datetime,
+        reread: int,
+    ) -> tuple[ModelReadingPieceOutcome, ...]:
+        """Read again each piece whose source stayed unreadable through its inline retries, at the end of the run.
+
+        A source that stayed unreadable left its piece UNKNOWN, and an hourly tick that leaves one is an hour with
+        that reading missing; before the run's rows are finished, each deferred piece is computed once more. Its
+        read is tried once, with no pause and no further passes; the overlay's reread budget bounds the seconds the
+        pass spends starting those reads, and the first read that fails once the budget is spent stops the pass's
+        later reads at read-budget-spent. The pass never sleeps: its only wait is the budget itself.
+        """
+        current = list(outcomes)
+        stopped_before = self._reads_stopped
+        self._final_pass_active = True
+        self._reads_stopped = False
+        try:
+            started = self._clock()
+            for i in deferred:
+                if (self._clock() - started).total_seconds() >= reread:
+                    self._reads_stopped = True
+                current[i] = self._piece(
+                    self._overlay.spec(current[i].piece), start, end, cutoff, now, True
+                )
+        finally:
+            # The pass's own stop is not the cycle's: the append retry after it reads as it would have without the pass.
+            self._final_pass_active = False
+            self._reads_stopped = stopped_before
+        return tuple(current)
+
     @staticmethod
     def _failed(
         command: ModelReadingWindowCommand,
@@ -287,17 +351,41 @@ class HandlerReadingWriter:
         """Read a source; when the read fails, ask again for the passes the overlay declares (OMN-23119).
 
         The bound of the read is never raised: a slow bus reply is asked for again, and a source that stays dead
-        still reads UNKNOWN after the last pass.
+        still reads UNKNOWN after the last pass. When the overlay sets read_retry budget_seconds (OMN-23519) the
+        seconds one cycle spends on failed reads (the attempts and the pauses between them) are bounded: once
+        spent, a read is tried once and not again, and the first such read that fails stops every later read of
+        the cycle, which reads read-budget-spent at once, so a stalled bus cannot use up the unit's whole time
+        and leave the later pieces without a row. A read that answers after the budget is spent keeps the cycle going.
+        The end-of-run final pass comes through here too: each deferred source is read once, with no pause and no
+        further passes, and the pass's first read that fails stops its later reads at read-budget-spent.
         """
-        read = self._source.read(query)
-        retry = self._overlay.read_retry
-        if retry is None:
-            return read
-        for _ in range(retry.passes):
-            if read.error is None:
-                break
-            self._pause(retry.pause_seconds)
+        if self._final_pass_active:
+            if self._reads_stopped:
+                return ModelLedgerRead(error=_BUDGET_SPENT)
             read = self._source.read(query)
+            if read.error is not None:
+                self._reads_stopped = True
+            return read
+        retry = self._overlay.read_retry
+        budget = retry.budget_seconds if retry is not None else None
+        if budget is not None and self._reads_stopped:
+            return ModelLedgerRead(error=_BUDGET_SPENT)
+        spent_before = budget is not None and self._failed_read_seconds >= budget
+        started = self._clock()
+        read = self._source.read(query)
+        if retry is not None:
+            for _ in range(retry.passes):
+                if read.error is None:
+                    break
+                elapsed = (self._clock() - started).total_seconds()
+                if budget is not None and self._failed_read_seconds + elapsed >= budget:
+                    break
+                self._pause(retry.pause_seconds)
+                read = self._source.read(query)
+        if read.error is not None:
+            self._failed_read_seconds += (self._clock() - started).total_seconds()
+            if spent_before:
+                self._reads_stopped = True
         return read
 
     def _read(self, query: ModelLedgerQuery) -> ModelLedgerRead:
@@ -381,6 +469,7 @@ class HandlerReadingWriter:
         cutoff: datetime,
         now: datetime,
         write: bool,
+        defer_unreadable: bool = False,
     ) -> ModelReadingPieceOutcome:
         landing = self._landing_read(spec, now)
         result = self._compute.handle(
@@ -434,6 +523,15 @@ class HandlerReadingWriter:
                 ledger=ledger,
                 row=row,
             )
+
+        # A source that stayed unreadable through its inline retries is not written UNKNOWN yet: the piece is held
+        # for the end-of-run final pass, which reads the source again, and no row is written for it here.
+        if (
+            defer_unreadable
+            and write
+            and result.outcome is EnumReadingOutcome.SOURCE_UNREADABLE
+        ):
+            return outcome(result, _DEFERRED)
 
         if not write:
             return outcome(result, "not-written")

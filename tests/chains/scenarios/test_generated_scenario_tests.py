@@ -134,7 +134,8 @@ def test_an_error_case_without_a_ledger_row_does_not_parse() -> None:
 def test_the_projection_writers_error_half_is_a_refusal_that_says_why() -> None:
     document = _document(_NODES / "node_projection_work_ledger" / "contract.yaml")
     refusals = document["chain_scenarios"]["refusals"]
-    assert [(r["applies_to"], r["kind"]) for r in refusals] == [
-        ("ERROR", "FAILURE_NOT_TYPED")
+    assert [(r["applies_to"], r["subject"], r["kind"]) for r in refusals] == [
+        ("ERROR", "write_failed", "FAILURE_NOT_TYPED"),
+        ("ERROR", "unsequenced_live_row", "FAILURE_NOT_TYPED"),
     ]
-    assert len(refusals[0]["reason"]) >= 40
+    assert all(len(r["reason"]) >= 40 for r in refusals)
