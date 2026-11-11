@@ -10,6 +10,10 @@ from pathlib import PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
+)
+
 
 class EnumWorkStateProjectorProfile(StrEnum):
     """Which projector the schedule binds: the in-memory default or the file sources the lab runtime reads."""
@@ -33,6 +37,14 @@ class ModelWorkStateScheduleOverlay(BaseModel):
             "An absolute directory; when set, the file_sources profile reads and writes every "
             "home-relative path (projection file, source snapshots, feeder inputs) under it instead "
             "of under OMNI_HOME. The runtime sets a directory on its own data volume."
+        ),
+    )
+    ledger_read: ModelCommandLedgerReadRoute | None = Field(
+        default=None,
+        description=(
+            "When set, the file_sources profile reads ledger rows through the bus read command "
+            "that route names (command_env, timeout_seconds, row_limit) and never reads a ledger "
+            "file; when None the profile keeps its file route."
         ),
     )
 
