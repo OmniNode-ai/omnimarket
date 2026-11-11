@@ -3,6 +3,8 @@
 """``python -m omnimarket.nodes.node_delegation_scenario_r8_effect.runtime_scenario_r8_tick``.
 
 The scheduled tick of scenario R8: run it once as a SCHEDULE run, print the result and write the last-run record.
+The probe tenant key is filled from the node's settings overlay through the secret store, as ``runtime_scenario_r8.py``
+fills it; the tenant address still comes from the environment file.
 R8 reads the probe tenant's address and key from its environment, so the tick carries no secret-store fill.
 """
 
