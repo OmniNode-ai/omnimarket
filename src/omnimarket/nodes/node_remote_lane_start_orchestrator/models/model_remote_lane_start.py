@@ -25,11 +25,19 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_la
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
+class LaneHostPoolUnreadableError(RuntimeError):
+    """A host pool adapter could not give a fresh, readable snapshot (missing, stale, unparseable).
+
+    The leader ends the start ``pool-unreadable`` before any claim; it never reads the pool as empty or as full.
+    """
+
+
 class EnumRemoteLaneStartOutcome(StrEnum):
     """How one lane start ended, as the leader sees it (the ledger decides what happened)."""
 
     UNSUPPORTED_SHAPE = "unsupported-shape"
     NO_HOST = "no-host"
+    POOL_UNREADABLE = "pool-unreadable"
     CLAIM_REFUSED = "claim-refused"
     ALREADY_CLAIMED = "already-claimed"
     START_FAILED = "start-failed"
@@ -43,6 +51,7 @@ class EnumRemoteLaneStartOutcome(StrEnum):
 EXIT_CODES: dict[EnumRemoteLaneStartOutcome, int] = {
     EnumRemoteLaneStartOutcome.UNSUPPORTED_SHAPE: 64,
     EnumRemoteLaneStartOutcome.NO_HOST: 75,
+    EnumRemoteLaneStartOutcome.POOL_UNREADABLE: 75,
     EnumRemoteLaneStartOutcome.CLAIM_REFUSED: 70,
     EnumRemoteLaneStartOutcome.ALREADY_CLAIMED: 70,
     EnumRemoteLaneStartOutcome.START_FAILED: 1,

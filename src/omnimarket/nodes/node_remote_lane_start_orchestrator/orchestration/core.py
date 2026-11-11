@@ -82,6 +82,7 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_la
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     EXIT_CODES,
     EnumRemoteLaneStartOutcome,
+    LaneHostPoolUnreadableError,
     ModelRemoteLaneStartReceipt,
     ModelRemoteLaneStartRequest,
     ModelRemoteLaneStartResult,
@@ -475,11 +476,21 @@ class RemoteLaneStartOrchestrator:
         # (2) Place.
         # The placement node's engine id is the host login a lane needs: <engine>_<model>.
         host_engine = f"{request.engine}_{request.model}"
-        snapshot = self._pool.read_pool(
-            ModelLaneHostPoolRequest(
-                engine=host_engine, pinned_host=request.pinned_host, lane=request.lane
+        try:
+            snapshot = self._pool.read_pool(
+                ModelLaneHostPoolRequest(
+                    engine=host_engine,
+                    pinned_host=request.pinned_host,
+                    lane=request.lane,
+                )
             )
-        )
+        except (LaneHostPoolUnreadableError, OSError, ValueError) as exc:
+            # A pool that cannot be read is not an empty pool and not a full one: refuse before any claim, with the reason.
+            self._say(
+                f"REMOTE-LANE-POOL-UNREADABLE lane={request.lane} engine={host_engine}: {exc}"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.POOL_UNREADABLE.value
+            return self._result(EnumRemoteLaneStartOutcome.POOL_UNREADABLE, receipt)
         targets = {r.name: r for r in snapshot.readings}
         decision = self._placement.handle(
             ModelRemoteLanePlacementRequest(

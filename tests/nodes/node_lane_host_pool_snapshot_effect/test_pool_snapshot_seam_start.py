@@ -23,9 +23,6 @@ from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snaps
     FileSnapshotStore,
     StampedSnapshotFileLaneHostPool,
 )
-from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_errors import (
-    PoolSnapshotStaleError,
-)
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
     ModelScriptedTransportScript,
 )
@@ -146,10 +143,33 @@ def test_failing_control_the_same_host_without_the_away_mark_takes_the_lane(
     assert cells(rig.ledger_rows("CLAIM")[0])["host"] == "h2"
 
 
-def test_error_a_stale_record_refuses_the_read_before_any_claim(tmp_path: Path) -> None:
+def test_error_a_stale_record_ends_pool_unreadable_before_any_claim(
+    tmp_path: Path,
+) -> None:
     path = _write(tmp_path, host_row("h1"))
     rig = _rig(tmp_path, path, age=181)
-    with pytest.raises(PoolSnapshotStaleError, match="stale"):
-        rig.orchestrator.run(request())
+    result = rig.orchestrator.run(request())
+    assert result.outcome is EnumRemoteLaneStartOutcome.POOL_UNREADABLE
+    assert result.exit_code == 75
+    assert any("REMOTE-LANE-POOL-UNREADABLE" in line for line in rig.printed)
+    assert any("stale" in line for line in rig.printed)
     assert rig.ledger_rows("CLAIM") == []
     assert rig.host_calls() == []
+
+
+def test_error_a_missing_snapshot_file_ends_pool_unreadable_before_any_claim(
+    tmp_path: Path,
+) -> None:
+    path = _write(tmp_path, host_row("h1"))
+    rig = _rig(tmp_path, path)
+    path.unlink()
+    result = rig.orchestrator.run(request())
+    assert result.outcome is EnumRemoteLaneStartOutcome.POOL_UNREADABLE
+    assert rig.ledger_rows("CLAIM") == []
+
+
+def test_failing_control_the_same_fresh_record_places_the_lane(tmp_path: Path) -> None:
+    path = _write(tmp_path, host_row("h1"))
+    rig = _rig(tmp_path, path, age=180)
+    result = rig.orchestrator.run(request())
+    assert result.outcome is EnumRemoteLaneStartOutcome.ENDED
