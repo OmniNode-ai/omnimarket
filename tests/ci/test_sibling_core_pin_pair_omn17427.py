@@ -41,6 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 0ddea3131fd0: omnibase_infra#5833 vendors the gate store migrations (OMN-23055); core is unchanged.
 # 25ae57b628a4: omnibase_infra#5890 (OMN-23705) vendors the work ledger latest-state migrations 0011 and 0012 and the runtime grant; core is unchanged.
 # 440ae9e031dc: omnibase_infra#5815 (OMN-18595, OMN-23424) moves infra to core cd128b790ec6, which carries the ticket validator (omnibase_core#2281).
+# 6e29faa59eeb: omnibase_infra#5883 adds tenant_id to ModelCiBusLane; core is unchanged.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
@@ -52,6 +53,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("8b4382a1606d", "dev-20261108014124-2fe30fd9dc47"),
     ("440ae9e031dc", "dev-20261109065232-cd128b790ec6"),
     ("0ddea3131fd0", "dev-20261109065232-cd128b790ec6"),
+    ("6e29faa59eeb", "dev-20261109065232-cd128b790ec6"),
     ("25ae57b628a4", "dev-20261109065232-cd128b790ec6"),
 )
 

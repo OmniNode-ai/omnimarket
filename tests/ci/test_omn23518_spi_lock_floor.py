@@ -59,6 +59,13 @@ def test_pyproject_floors_agree() -> None:
 
 
 def test_lane_process_types_import() -> None:
+    # The import alone passes wherever the runner env already holds a newer spi,
+    # so the locked version is asserted too: it fails at a merge base whose lock
+    # still names 0.23.14.
+    lock = tomllib.loads((_REPO / "uv.lock").read_text(encoding="utf-8"))
+    pinned = [p["version"] for p in lock["package"] if p["name"] == "omnibase-spi"]
+    assert pinned
+    assert all(_version(v) >= _FLOOR for v in pinned), pinned
     from omnibase_spi.contracts.services import (
         ModelLaneProcessRunResult,
         ModelLaneProcessStartResult,
