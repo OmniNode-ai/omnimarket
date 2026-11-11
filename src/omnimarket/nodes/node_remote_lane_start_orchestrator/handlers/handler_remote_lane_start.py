@@ -23,10 +23,15 @@ from omnimarket.nodes.node_lane_guard_unit_effect.lane_guard_host_source import 
     lane_guard_host_source,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
+    ProtocolHostCommandRunner,
     SshLaneHostTransport,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_availability import (
+    HostAvailability,
+    lab_host_table_unavailable,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
     ModelRemoteLaneStartRequest,
@@ -81,8 +86,15 @@ def build_real(
     stop_requested: Callable[[], bool],
     sleep: Callable[[float], None],
     echo: Callable[[str], None] = print,
+    host_availability: HostAvailability = lab_host_table_unavailable,
+    host_runner: ProtocolHostCommandRunner | None = None,
 ) -> HandlerRemoteLaneStart:
-    """The real-backend wiring; every value comes from the overlay or the request."""
+    """The real-backend wiring; every value comes from the overlay or the request.
+
+    ``host_availability`` reads which hosts the lab host table keeps out of placement (the real table by default; a
+    test names its own). ``host_runner`` is the command runner under the ssh transport (the real subprocess runner by
+    default; a test injects a spy to read that ``start_mode: observe`` never reaches it).
+    """
 
     def build(request: ModelRemoteLaneStartRequest) -> RemoteLaneStartOrchestrator:
         ledger_file = LocalLedgerFile(Path(request.ledger_path))
@@ -110,6 +122,7 @@ def build_real(
             closeout_ledger_env=settings.closeout_ledger_env,
             closeout_registry_env=settings.closeout_registry_env,
             plugin_store=settings.plugin_store,
+            runner=host_runner,
             runtime_config_text=settings.provisioning.runtime_config_text,
             runtime_config_target=settings.provisioning.runtime_config_target,
             ledger_write_via=settings.ledger_write_via,
@@ -133,6 +146,7 @@ def build_real(
             sleep=sleep,
             stop_requested=stop_requested,
             requesting_host=socket.gethostname().split(".", 1)[0],
+            host_availability=host_availability,
         )
 
     return HandlerRemoteLaneStart(build)

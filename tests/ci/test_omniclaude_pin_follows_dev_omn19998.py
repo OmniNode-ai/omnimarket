@@ -6,10 +6,9 @@ Operator ruling 2026-10-16T07:34:18Z: "There's no reason we need to wait for a
 release." omniclaude pins omnimarket to a dev commit in its uv.lock. Two
 wirings here follow from that:
 
-* a merge to dev dispatches ``omnimarket-dev-moved`` to omniclaude, whose
-  sibling-lock-refresh.yml advances the pin (the event type is spelled in both
-  repositories; a cross-repo test would skip wherever the other clone is
-  absent, so each side pins its own spelling);
+* a merge to dev used to dispatch ``omnimarket-dev-moved`` to omniclaude; that
+  notice is removed (OMN-18594), so omniclaude's pin moves only on its own
+  dispatch;
 * the Wire Compatibility Gate grades the dev-merge tag omniclaude pins, read
   from omniclaude dev's pyproject.toml and uv.lock (OMN-21901 moved this from
   a commit sha parsed out of the lock), instead of the last release tag.
@@ -47,19 +46,17 @@ def _gate_step_run() -> str:
     return runs[0]
 
 
-def test_a_dev_merge_dispatches_the_pin_refresh_to_omniclaude() -> None:
-    job = _load("runtime-rebuild-trigger.yml")["jobs"]["notify-omniclaude-pin"]
-    condition = " ".join(str(job["if"]).split())
-    assert "github.event.pull_request.merged == true" in condition
-    assert "github.event.pull_request.base.ref == 'dev'" in condition
-    # Public repository: hosted runners only (operator ruling 2026-10-16T07:07:09Z).
-    assert job["runs-on"] == "ubuntu-latest"
-    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
-    assert "repos/OmniNode-ai/omniclaude/dispatches" in runs
-    assert f"event_type={DISPATCH_TYPE}" in runs
-    mint = next(s for s in job["steps"] if s.get("id") == "app-token")
-    assert mint["with"]["repositories"] == "omniclaude"
-    assert mint["with"]["permission-contents"] == "write"
+def test_a_dev_merge_no_longer_dispatches_the_pin_refresh_to_omniclaude() -> None:
+    """OMN-18594: omniclaude moves its omnimarket pin only when it needs to.
+
+    RULING 2026-11-09T21:54:25Z lane=orchestrator-31d9. The merge-triggered
+    ``notify-omniclaude-pin`` job is gone, and nothing in the trigger workflow
+    sends ``omnimarket-dev-moved`` any more.
+    """
+    text = (WORKFLOWS / "runtime-rebuild-trigger.yml").read_text(encoding="utf-8")
+    assert "notify-omniclaude-pin" not in _load("runtime-rebuild-trigger.yml")["jobs"]
+    assert DISPATCH_TYPE not in text
+    assert "repos/OmniNode-ai/omniclaude/dispatches" not in text
 
 
 def test_the_wire_gate_grades_omniclaudes_pinned_dev_tag() -> None:
