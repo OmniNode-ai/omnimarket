@@ -116,7 +116,11 @@ class RedpandaSnapshotSource:
                 )
                 continue
             out.append(
-                ModelTickSnapshot(facts=record.facts, provenance=record.provenance)
+                ModelTickSnapshot(
+                    facts=record.facts,
+                    provenance=record.provenance,
+                    controller=record.controller,
+                )
             )
         self._skipped = tuple(skipped)
         return tuple(out)
@@ -258,6 +262,7 @@ def run_snapshots(
                 facts=snapshot.facts,
                 recorded_decision=snapshot.decision,
                 fair_share=snapshot.fair_share,
+                controller=snapshot.controller,
             )
         )
         for snapshot in source.snapshots()

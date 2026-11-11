@@ -20,6 +20,12 @@ _REDPANDA_FIELDS = (
     "record_journal",
     "emission_journal",
 )
+_CONTROLLER_FIELDS = (
+    "controller_facts_path",
+    "controller_ticks_path",
+    "controller_decisions_path",
+    "controller_max_age_seconds",
+)
 
 
 class EnumSnapshotBackend(StrEnum):
@@ -94,6 +100,38 @@ class ModelSnapshotOverlay(BaseModel):
         default=None,
         description="Redpanda only: the floor's emission journal each pass's chain is written to.",
     )
+    controller_facts_path: str | None = Field(
+        default=None,
+        description=(
+            "Cutover only: the landing controller's facts file, read with its tick and "
+            "decision log and carried on the tick record (OMN-23665); set with its three "
+            "companions, never alone."
+        ),
+    )
+    controller_ticks_path: str | None = Field(
+        default=None,
+        description=(
+            "Cutover only: the controller's tick log, one finished tick per line; its last "
+            "row must be the facts file's tick (OMN-23665); set with its three companions, "
+            "never alone."
+        ),
+    )
+    controller_decisions_path: str | None = Field(
+        default=None,
+        description=(
+            "Cutover only: the controller's decision log; a missing file is an empty log, "
+            "and its rows for the facts file's tick ride on the carry (OMN-23665); set with "
+            "its three companions, never alone."
+        ),
+    )
+    controller_max_age_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Cutover only: a controller state older than this is refused (OMN-23665); set "
+            "with its three companions, never alone."
+        ),
+    )
 
     @model_validator(mode="after")
     def _redpanda_needs_its_fields(self) -> ModelSnapshotOverlay:
@@ -107,6 +145,17 @@ class ModelSnapshotOverlay(BaseModel):
                 )
             if self.bus_lane and not self.workspace_root:
                 raise ValueError("bus_lane needs workspace_root")
+        return self
+
+    @model_validator(mode="after")
+    def _controller_fields_come_as_a_set(self) -> ModelSnapshotOverlay:
+        set_fields = [name for name in _CONTROLLER_FIELDS if getattr(self, name)]
+        if set_fields and len(set_fields) != len(_CONTROLLER_FIELDS):
+            missing = [name for name in _CONTROLLER_FIELDS if name not in set_fields]
+            raise ValueError(
+                f"the controller carry fields come as a set; set with "
+                f"{', '.join(set_fields)}: {', '.join(missing)}"
+            )
         return self
 
 

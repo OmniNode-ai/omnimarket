@@ -16,11 +16,14 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
 from omnimarket.models.landing_decision import (
     ModelLandingFacts,
     ModelLandingPrFacts,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
+    ControllerStateStaleError,
+    ControllerTickOpenError,
     SnapshotSourceError,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_ports import (
@@ -42,6 +45,7 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_snapshot_over
     ModelSnapshotOverlay,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.protocols.protocol_landing_snapshot import (
+    ProtocolLandingControllerSource,
     ProtocolLandingFactsSource,
     ProtocolLandingSnapshotPublisher,
     ProtocolLandingTickRecorder,
@@ -80,6 +84,84 @@ def fill_write_facts(
     return facts.model_copy(update={"prs": tuple(prs)}), node_ids, run_ids
 
 
+# What the PR watcher's state cannot give and the old controller's facts carry (OMN-23665): the
+# controller's leases, records, worker results and blocker references (state, probes, results ...),
+# and per pull request the classification, gates, parents and refs it read from the ledger and GitHub.
+CARRIED_FACT_FIELDS: tuple[str, ...] = (
+    "policy",
+    "state",
+    "probes",
+    "results",
+    "rebuild_acks",
+    "producer_failures",
+    "producer_release",
+    "drain_requested",
+    "load1",
+    "available_engines",
+    "fixer_hold",
+    "fixer_hold_released_prs",
+    "floor_breached_repos",
+    "cause_owners",
+    "cross_repo_causes",
+    "cause_releases",
+    "cause_escalations",
+    "base_red_checks",
+    "base_green_checks",
+    "base_heads",
+    "update_no_new_commits",
+    "shared_check_verdicts",
+)
+CARRIED_PR_FIELDS: tuple[str, ...] = (
+    "red_class",
+    "red_annotations",
+    "lab_check",
+    "liveness",
+    "blocker_refs",
+    "ref_updates",
+    "rerun_runs",
+    "auto_merge_head",
+    "gate_since",
+    "gate_reasons",
+    "suspensions",
+    "collaborator",
+    "runtime",
+    "process_fix",
+    "priority_class",
+    "parents",
+    "open_parents",
+    "lacks_base_head",
+)
+
+
+def carry_controller_state(
+    facts: ModelLandingFacts, carry: ModelLandingControllerCarry
+) -> ModelLandingFacts:
+    """The facts with the controller's state carried onto them (OMN-23665).
+
+    Every CARRIED_FACT_FIELDS value is the controller's. A pull request that is in the controller's
+    facts at the same head takes the controller's CARRIED_PR_FIELDS values; one the controller does
+    not hold, or holds at another head, keeps its own. The node's own prs, tick and observed_at stay.
+    """
+    held = {pr.pr: pr for pr in carry.facts.prs}
+    prs: list[ModelLandingPrFacts] = []
+    for pr in facts.prs:
+        controller = held.get(pr.pr)
+        if controller is None or controller.head_sha != pr.head_sha:
+            prs.append(pr)
+            continue
+        prs.append(
+            pr.model_copy(
+                update={name: getattr(controller, name) for name in CARRIED_PR_FIELDS}
+            )
+        )
+    values: dict[str, object] = {
+        name: getattr(facts, name) for name in ModelLandingFacts.model_fields
+    }
+    values.update({name: getattr(carry.facts, name) for name in CARRIED_FACT_FIELDS})
+    values["prs"] = tuple(prs)
+    return ModelLandingFacts.model_validate(values)
+
+
 class HandlerPrLandingSnapshot:
     """Fill one tick's facts from the declared sources and record them on the bus.
 
@@ -96,6 +178,7 @@ class HandlerPrLandingSnapshot:
         write_source: ProtocolLandingWriteFactsSource | None = None,
         recorder: ProtocolLandingTickRecorder | None = None,
         publisher: ProtocolLandingSnapshotPublisher | None = None,
+        controller_source: ProtocolLandingControllerSource | None = None,
     ) -> None:
         self._overlay = default_overlay() if overlay is None else overlay
         self._facts_source = (
@@ -110,6 +193,7 @@ class HandlerPrLandingSnapshot:
         self._publisher = (
             InMemoryLandingSnapshotPublisher() if publisher is None else publisher
         )
+        self._controller_source = controller_source
 
     def handle(
         self, request: ModelLandingSnapshotRequest
@@ -145,11 +229,32 @@ class HandlerPrLandingSnapshot:
                 request, EnumSnapshotFailureReason.WRITE_FACTS_UNREAD, str(exc)
             )
         filled, node_ids, run_ids = fill_write_facts(facts, write)
+        carry: ModelLandingControllerCarry | None = None
+        if self._controller_source is not None:
+            try:
+                carry = self._controller_source.read_carry()
+            except ControllerTickOpenError as exc:
+                return self._fail(
+                    request, EnumSnapshotFailureReason.CONTROLLER_TICK_OPEN, str(exc)
+                )
+            except ControllerStateStaleError as exc:
+                return self._fail(
+                    request, EnumSnapshotFailureReason.CONTROLLER_STATE_STALE, str(exc)
+                )
+            except SnapshotSourceError as exc:
+                return self._fail(
+                    request, EnumSnapshotFailureReason.CONTROLLER_STATE_UNREAD, str(exc)
+                )
+            filled = carry_controller_state(filled, carry)
+        provenance = f"{self._facts_source.name}+{self._write_source.name}"
+        if carry is not None and self._controller_source is not None:
+            provenance += f"+{self._controller_source.name}"
         record = ModelLandingTickRecord(
             correlation_id=request.correlation_id,
             tick=request.tick,
             facts=filled,
-            provenance=f"{self._facts_source.name}+{self._write_source.name}",
+            provenance=provenance,
+            controller=carry,
         )
         self._recorder.record(record)
         self._publisher.publish(self._overlay.record_topic, record)
@@ -187,7 +292,10 @@ class HandlerPrLandingSnapshot:
 
 
 __all__: list[str] = [
+    "CARRIED_FACT_FIELDS",
+    "CARRIED_PR_FIELDS",
     "HandlerPrLandingSnapshot",
+    "carry_controller_state",
     "default_overlay",
     "fill_write_facts",
 ]

@@ -6,7 +6,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
 from omnimarket.models.landing_decision import ModelLandingFacts
+from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
+    SnapshotSourceError,
+)
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
     ModelLandingTickRecord,
     ModelPrWriteFacts,
@@ -43,6 +47,20 @@ class InMemoryLandingWriteFactsSource:
         }
 
 
+class InMemoryLandingControllerSource:
+    """The controller's finished tick, as given; unread when none is."""
+
+    name = "inmemory-controller-state"
+
+    def __init__(self, carry: ModelLandingControllerCarry | None) -> None:
+        self._carry = carry
+
+    def read_carry(self) -> ModelLandingControllerCarry:
+        if self._carry is None:
+            raise SnapshotSourceError("no controller state")
+        return self._carry
+
+
 class InMemoryLandingTickRecorder:
     """Appends every tick's record and keeps them all."""
 
@@ -67,6 +85,7 @@ class InMemoryLandingSnapshotPublisher:
 
 
 __all__: list[str] = [
+    "InMemoryLandingControllerSource",
     "InMemoryLandingFactsSource",
     "InMemoryLandingSnapshotPublisher",
     "InMemoryLandingTickRecorder",
