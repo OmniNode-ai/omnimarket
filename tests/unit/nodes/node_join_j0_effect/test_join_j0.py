@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -63,7 +64,7 @@ FROM_NODE = "node_floor_simple_effect:join_j0"
 RECORD_MAX_AGE_S = 900
 
 
-def _overlay_data() -> dict[str, object]:
+def _overlay_data() -> dict[str, Any]:
     data = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
     return data
@@ -72,7 +73,7 @@ def _overlay_data() -> dict[str, object]:
 def _overlay(control_text: str | None = None) -> ModelJoinJ0Overlay:
     data = _overlay_data()
     if control_text is not None:
-        data["control"]["record_text"] = control_text  # type: ignore[index]
+        data["control"]["record_text"] = control_text
     return ModelJoinJ0Overlay.model_validate(data)
 
 
@@ -289,16 +290,16 @@ class TestFailingControls:
         # main() reads the wall clock, so the record the runtime accepts must be fresh against it, not against NOW.
         accepted = _record(generated_at=datetime.now(UTC))
         data = _overlay_data()
-        data["control"]["record_text"] = accepted  # type: ignore[index]
+        data["control"]["record_text"] = accepted
         root = tmp_path / "overlays" / "node_join_j0_effect"
         root.mkdir(parents=True)
         (root / "overlay.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
         home = tmp_path / "home"
-        record = home / data["emission"]["floor_record_relpath"]  # type: ignore[index]
+        record = home / data["emission"]["floor_record_relpath"]
         record.parent.mkdir(parents=True)
         record.write_text(accepted, encoding="utf-8")
         monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
-        monkeypatch.setenv(data["emission"]["home_env"], str(home))  # type: ignore[index]
+        monkeypatch.setenv(data["emission"]["home_env"], str(home))
         # The runtime also needs the real floor contract to name the node; the example overlay does.
         assert main(["run"]) == 1
 
@@ -323,25 +324,25 @@ class TestFailingControls:
 class TestRuntime:
     def _root(
         self, tmp_path: Path, mutate: dict[str, object] | None = None
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         data = _overlay_data()
         for key, value in (mutate or {}).items():
-            data["join"][key] = value  # type: ignore[index]
+            data["join"][key] = value
         root = tmp_path / "overlays" / "node_join_j0_effect"
         root.mkdir(parents=True)
         (root / "overlay.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
         return data
 
     def _env(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, data: dict[str, object]
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, data: dict[str, Any]
     ) -> Path:
         home = tmp_path / "home"
-        record = home / data["emission"]["floor_record_relpath"]  # type: ignore[index]
+        record = home / data["emission"]["floor_record_relpath"]
         record.parent.mkdir(parents=True)
         record.write_text(_record(generated_at=datetime.now(UTC)), encoding="utf-8")
         monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
-        monkeypatch.setenv(data["emission"]["home_env"], str(home))  # type: ignore[index]
-        return home / data["emission"]["journal_relpath"]  # type: ignore[index]
+        monkeypatch.setenv(data["emission"]["home_env"], str(home))
+        return home / data["emission"]["journal_relpath"]
 
     def test_j0_runtime_run_writes_the_chains_to_the_journal_file(
         self,
