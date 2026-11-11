@@ -146,14 +146,24 @@ def local_input_window(
 
 def required_input_ceiling(
     backend_id: str, task_type: str, environ: Mapping[str, str] | None = None
-) -> int:
-    """The overlay's input ceiling for a backend and class, which must be declared.
+) -> int | None:
+    """The overlay's input ceiling for a class of a backend the overlay names, which must be declared.
 
-    The required form of :func:`measured_correct_ceiling`: a pair the overlay
-    does not name raises :class:`InputLimitNotDeclaredError` instead of
-    returning ``None``, because the local input limit has no packaged value to
-    fall back to.
+    ``None`` when no overlay root names the code budget overlay or the overlay
+    names no ceiling for the backend at all: the backend's own declaration then
+    stands (a local backend of a customer's own is not held to a house value).
+    A backend the overlay names with the class missing raises
+    :class:`InputLimitNotDeclaredError` naming the key, because the local input
+    limit has no packaged value to fall back to.
     """
+    try:
+        overlay = load_structured_overlay(
+            CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
+        )
+    except NodeOverlayNotFoundError:
+        return None
+    if backend_id not in overlay.input_ceilings:
+        return None
     ceiling = measured_correct_ceiling(backend_id, task_type, environ)
     if ceiling is None:
         raise InputLimitNotDeclaredError(

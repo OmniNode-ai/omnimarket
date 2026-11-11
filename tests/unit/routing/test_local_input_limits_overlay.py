@@ -185,6 +185,11 @@ def test_required_ceiling_names_the_key_of_an_unnamed_pair() -> None:
         required_input_ceiling(_CODER, "summarization")
 
 
+def test_backend_the_overlay_does_not_name_keeps_its_own_declaration() -> None:
+    """A local backend of a customer's own, absent from the overlay, is not held to a house value."""
+    assert required_input_ceiling("customer-local", "document") is None
+
+
 def test_dispatch_budget_of_a_local_backend_is_the_overlay_ceiling(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
