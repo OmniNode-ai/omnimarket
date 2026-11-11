@@ -12,7 +12,8 @@ same probe piece 5 reads every consumer through); the value the store returns is
 
 ``SourceProjectedRows`` answers piece 6's side: the projected row, found by asking a ledger row source (the work-ledger
 read command, which reads the projection) for the durable row's own text. A row the projection has not heard yet is
-asked for again, up to the attempts the overlay sets; a source that errors reads as no projected row. Each read carries the
+asked for again, up to the attempts the overlay sets; a source that errors on its last attempt raises
+``ProjectionReadFailedError`` carrying the last error. Each read carries the
 join run's correlation id (the reading's own), because the read command's request requires one and refuses a read without it.
 """
 
@@ -49,6 +50,7 @@ from omnimarket.nodes.node_secret_reading_effect.protocols import (
     ProtocolSecretProbeStore,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
+    ProjectionReadFailedError,
     StoreIdentityUnresolvedError,
 )
 
@@ -211,6 +213,7 @@ class SourceProjectedRows:
         expected = evidence_row_from_text(raw_row)
         if expected is None:
             return None
+        last_error: str | None = None
         for attempt in range(self._attempts):
             if attempt:
                 self._sleep(self._interval)
@@ -224,6 +227,7 @@ class SourceProjectedRows:
                     correlation_id=correlation_id,
                 )
             )
+            last_error = read.error
             if read.error is not None:
                 continue
             for row in read.rows:
@@ -239,4 +243,6 @@ class SourceProjectedRows:
                         source="join-j5-projection-read",
                         ledger_seq=ledger_seq,
                     )
+        if last_error is not None:
+            raise ProjectionReadFailedError(error=last_error, attempts=self._attempts)
         return None

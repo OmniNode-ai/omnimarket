@@ -67,6 +67,10 @@ REDPANDA = {
     "consumer_group": "landing-tick-observe",
     "snapshot_topic": "onex.evt.example.landing-tick-record.v1",
     "poll_timeout_s": 2.0,
+    "host_env": "ONEX_HOST_NAME",
+    "join_timeout_s": 5.0,
+    "run_limit_s": 60,
+    "run_margin_s": 5.0,
     "emission_journal": ".onex_state/example/emissions.jsonl",
 }
 REDPANDA_LANE = {
@@ -120,7 +124,8 @@ def test_redpanda_overlay_reads_the_snapshot_step_tick_records_through_the_injec
     assert seen == [
         ModelTickTopicSelection(
             topic="onex.evt.example.landing-tick-record.v1",
-            consumer_group="landing-tick-observe",
+            consumer_group="landing-tick-observe-test-host",
+            join_timeout_s=5.0,
             bootstrap_servers="broker.example:9092",
         )
     ]
@@ -179,7 +184,16 @@ def test_a_lane_without_its_workspace_root_is_refused() -> None:
 
 def test_a_redpanda_overlay_missing_its_fields_is_refused_naming_them() -> None:
     with pytest.raises(ValueError, match="snapshot_topic"):
-        load_tick_overlay(explicit={**INMEMORY, "backend": "redpanda"})
+        load_tick_overlay(
+            explicit={k: v for k, v in REDPANDA.items() if k != "snapshot_topic"}
+        )
+
+
+def test_a_redpanda_overlay_without_the_host_identity_or_the_run_bounds_is_refused() -> (
+    None
+):
+    with pytest.raises(ValueError, match="host_env"):
+        ModelTickOrchestratorOverlay.model_validate({**INMEMORY, "backend": "redpanda"})
 
 
 def test_no_overlay_is_refused_naming_the_overlay() -> None:
