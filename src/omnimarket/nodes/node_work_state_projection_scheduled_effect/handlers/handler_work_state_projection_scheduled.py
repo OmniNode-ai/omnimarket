@@ -28,6 +28,9 @@ from omnimarket.models.work_state_projection import (
     ModelWorkStateResult,
     ModelWorkStateScheduleOverlay,
 )
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
+)
 from omnimarket.nodes.node_work_state_projection_scheduled_effect.protocols.adapter_file_sources_projector import (
     FileSourcesWorkStateProjector,
 )
@@ -44,10 +47,11 @@ def projector_for(
     profile: EnumWorkStateProjectorProfile,
     environ: Mapping[str, str] | None,
     state_home: str | None = None,
+    ledger_read: ModelCommandLedgerReadRoute | None = None,
 ) -> ProtocolWorkStateProjector:
     """The projector a schedule overlay's profile binds: the in-memory default or the file sources."""
     if profile is EnumWorkStateProjectorProfile.FILE_SOURCES:
-        return FileSourcesWorkStateProjector(environ, state_home)
+        return FileSourcesWorkStateProjector(environ, state_home, ledger_read)
     return UnreadWorkStateProjector()
 
 
@@ -118,7 +122,10 @@ class HandlerWorkStateProjectionScheduled:
         ):
             return None
         projector = self._projector or projector_for(
-            schedule.projector, self._environ, schedule.state_home
+            schedule.projector,
+            self._environ,
+            schedule.state_home,
+            schedule.ledger_read,
         )
         try:
             result = projector.project(now)

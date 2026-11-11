@@ -1,0 +1,145 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 105 and seed -4495464379609700091 with 2 workers on 56 cores with 1928MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/ClaimRelease.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module ClaimRelease
+Starting... (2026-11-11 13:55:10)
+Implied-temporal checking--satisfiability problem has 4 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-11 13:55:11.
+Progress(23) at 2026-11-11 13:55:11: 7,259 states generated, 2,765 distinct states found, 0 states left on queue.
+Checking 4 branches of temporal properties for the complete state space with 11060 total distinct states at (2026-11-11 13:55:11)
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "unborn", i2 |-> "unborn"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 2: <Start line 83, col 3 to line 85, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "unborn", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 3: <End line 106, col 3 to line 108, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "unborn", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 4: <Start line 83, col 3 to line 85, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "live", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 5: <Acquire line 88, col 3 to line 91, col 40 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "i1"]
+/\ rel = {}
+/\ life = [i1 |-> "live", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 6: <SelfRelease line 99, col 3 to line 103, col 42 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = { [ life |-> "live",
+    seen |-> FALSE,
+    how |-> "self",
+    by |-> "i1",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "live", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 7: <Observe line 128, col 3 to line 130, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> TRUE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = { [ life |-> "live",
+    seen |-> FALSE,
+    how |-> "self",
+    by |-> "i1",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "live", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 8: <Acquire line 88, col 3 to line 91, col 40 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> TRUE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = { [ life |-> "live",
+    seen |-> FALSE,
+    how |-> "self",
+    by |-> "i1",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "live", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 9: <End line 106, col 3 to line 108, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> TRUE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = { [ life |-> "live",
+    seen |-> FALSE,
+    how |-> "self",
+    by |-> "i1",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "ended", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 10: <Observe line 128, col 3 to line 130, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> TRUE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = { [ life |-> "live",
+    seen |-> FALSE,
+    how |-> "self",
+    by |-> "i1",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "ended", i2 |-> "ended"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 11: <Age line 112, col 3 to line 115, col 47 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> TRUE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = { [ life |-> "live",
+    seen |-> FALSE,
+    how |-> "self",
+    by |-> "i1",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "ended", i2 |-> "ended"]
+/\ stale = [p1 |-> TRUE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 12: Stuttering
+Finished checking temporal properties in 00s at 2026-11-11 13:55:11
+7259 states generated, 2765 distinct states found, 0 states left on queue.
+Finished in 01s at (2026-11-11 13:55:11)
+exit=13
