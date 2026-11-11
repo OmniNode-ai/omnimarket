@@ -223,7 +223,7 @@
    "merge_commit": "31b01a3685cd414a111a4a10a5144ebe95b8d4c5",
    "merged_at": "2026-10-15T15:42:27Z",
    "repository": "omnibase_core",
-   "subject": "fix(OMN-19432): remove gpt-oss from the hardcoded-model-config family regex (#2001)"
+   "subject": "fix(OMN-19432): remove a retired model name from the hardcoded-model-config family regex (#2001)"
   },
   {
    "band": "S",
