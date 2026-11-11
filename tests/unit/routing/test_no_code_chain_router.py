@@ -34,7 +34,7 @@ def test_the_one_router_for_the_code_step_order_is_the_order_node_not_the_budget
 ):
     """The order is served by the order node alone; the budget node serves no order operation."""
     order_node = (
-        ROOT / "src" / "omnimarket" / "nodes" / "node_delegation_code_step_order_effect"
+        ROOT / "src" / "omnimarket" / "nodes" / "node_delegation_routing_order_compute"
     )
     order_contract = yaml.safe_load((order_node / "contract.yaml").read_text())
     order_operations = [
@@ -44,5 +44,5 @@ def test_the_one_router_for_the_code_step_order_is_the_order_node_not_the_budget
     budget_operations = [
         h["operation"] for h in budget_contract["handler_routing"]["handlers"]
     ]
-    assert order_operations == ["resolve_code_step_order"]
-    assert "resolve_code_step_order" not in budget_operations
+    assert order_operations == ["read_routing_order"]
+    assert "read_routing_order" not in budget_operations
