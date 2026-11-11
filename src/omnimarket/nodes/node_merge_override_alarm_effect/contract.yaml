@@ -1,0 +1,219 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_override_alarm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_merge_override_alarm_effect.models.model_merge_override_input.ModelMergeOverrideInput
+description: >
+  Merges made outside the landing nodes, effect side (OMN-23772; operator ruling
+  2026-11-11T13:17:28Z: merges are not made by hand except by explicit override).
+  Consumes both merge topics (the Actions publisher's and the PR watcher's), the
+  landing GitHub effect's completed topic and its failed topic. An enforced
+  arm_auto_merge or enqueue completion is a landing receipt; the newest receipt per
+  pull request is kept in merge_override_receipts. A merge event (either source,
+  one verdict per pull request) first makes the node ask the landing GitHub effect
+  for read_pr_state, because neither merge event carries the head or the merger; the
+  answer carries both. The merge is then landing (a receipt names the same head and,
+  where S19 is in force for the repository, the merger is the landing App),
+  override_merge (a RULING row of work_ledger_rows with override=merge, pr=<repo>#<n>
+  and head=<the merged head>), or merge_without_override. Every verdict is stored in
+  merge_override_verdicts and published on the verdict topic. A finding
+  (merge_without_override, or detector_unreadable when a source cannot be read: the
+  ledger, the receipts, or the GitHub read, failed, refused or unanswered past the
+  overlay's timeout) also emits one typed error event, one slack-publish command
+  under one key (repository, pull request, head) and one merge_override_open_findings
+  row. Settings are read from the overlay at evaluation time; a missing overlay
+  refuses the evaluation.
+  Limit before S19: a hand merge of a head the landing nodes had already armed
+  cannot be told apart, because the landing nodes, the auto-merge workflows and the
+  operator's login merge under one GitHub account.
+
+handler:
+  module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+  class: HandlerMergeOverrideAlarm
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: merge_override.pr_merged
+      message_category: event
+      handler:
+        name: HandlerMergeOverrideAlarm
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+      event_model:
+        name: ModelPrMergedEvent
+        module: omnimarket.events.github
+      topic: onex.evt.github.pr-merged.v1
+      description: "A merge from the Actions publisher: one verdict per pull request."
+    - operation: merge_override.repo_merged
+      message_category: event
+      handler:
+        name: HandlerMergeOverrideAlarm
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+      event_model:
+        name: ModelRepoMerged
+        module: omnimarket.models.model_repo_merged
+      topic: onex.evt.omnimarket.repo-merged.v1
+      description: "The same merge from the PR watcher: the same verdict, not a second one."
+    - operation: merge_override.landing_completed
+      message_category: event
+      handler:
+        name: HandlerMergeOverrideAlarm
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+      event_model:
+        name: ModelPrLandingGithubCompleted
+        module: omnimarket.events.pr_landing_github.model_pr_landing_github_completed
+      topic: onex.evt.omnimarket.pr-landing-github-completed.v1
+      description: "An enforced arm or enqueue is a landing receipt; a read_pr_state answers a pending merge."
+    - operation: merge_override.landing_failed
+      message_category: event
+      handler:
+        name: HandlerMergeOverrideAlarm
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+      event_model:
+        name: ModelPrLandingGithubFailed
+        module: omnimarket.events.pr_landing_github.model_pr_landing_github_failed
+      topic: onex.evt.omnimarket.pr-landing-github-failed.v1
+      description: "A refused or failed read of a pending merge is detector_unreadable."
+    - operation: merge_override.sweep
+      message_category: event
+      handler:
+        name: HandlerMergeOverrideAlarm
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+      event_model:
+        name: ModelMergeOverrideSweepTrigger
+        module: omnimarket.nodes.node_merge_override_alarm_effect.models.model_merge_override_sweep_trigger
+      topic: onex.evt.platform.node-heartbeat.v1
+      description: "The runtime heartbeat sweeps reads unanswered past the overlay's timeout."
+
+terminal_event: onex.evt.omnimarket.merge-override-verdict.v1
+
+golden_path:
+  - "A landing effect completion of an enforced arm_auto_merge or enqueue is kept as the pull request's newest receipt"
+  - "A merge event on either merge topic requests one read_pr_state from the landing GitHub effect; the second source for the same pull request is a duplicate"
+  - "The read's answer gives the head and the merger; the merge is classified landing, override_merge or merge_without_override"
+  - "Every verdict is stored and published on onex.evt.omnimarket.merge-override-verdict.v1"
+  - "A finding publishes onex.evt.omnimarket.merge-override-finding.v1 and onex.cmd.omnimarket.slack-publish.v1 under one key and opens one finding row"
+
+reads_source:
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+
+writes_source:
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+  schema: omninode_internal
+
+# Settings (landing_app_login, s19_repositories, pending_read_timeout_seconds,
+# sweep_interval_seconds) live in the overlay
+# <root>/node_merge_override_alarm_effect/overlay.yaml; none is packaged.
+
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+    - name: merge_override_receipts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_merge_override_tables.sql"
+      access: write
+      role: merge_override_receipts
+    - name: merge_override_pending
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_merge_override_tables.sql"
+      access: write
+      role: merge_override_pending
+    - name: merge_override_verdicts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_merge_override_tables.sql"
+      access: write
+      role: merge_override_verdicts
+    - name: merge_override_open_findings
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_merge_override_tables.sql"
+      access: write
+      role: merge_override_open_findings
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack destination resolved at the effect boundary through the canonical
+      secret store using this contract's ref; no channel literal or direct env read.
+    required: true
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.github.pr-merged.v1
+    - onex.evt.omnimarket.repo-merged.v1
+    - onex.evt.omnimarket.pr-landing-github-completed.v1
+    - onex.evt.omnimarket.pr-landing-github-failed.v1
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
+    - onex.cmd.omnimarket.slack-publish.v1
+    - onex.evt.omnimarket.merge-override-finding.v1
+    - onex.evt.omnimarket.merge-override-verdict.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.merge-override-alarm-malformed.v1
+
+externally_produced_topics:
+  - topic: onex.evt.github.pr-merged.v1
+    producer: "the pr-merged-publisher GHA workflow (scripts/publish_pr_merged_event.py), not a node contract"
+  - topic: onex.evt.omnimarket.repo-merged.v1
+    producer: "clone-refresh publish, run by the landing controller and the PR watcher on a merge, not a node contract"
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.merge-override-finding.v1
+  - onex.evt.omnimarket.merge-override-verdict.v1
+
+published_events:
+  - event_type: MergeOverrideFinding
+    topic: onex.evt.omnimarket.merge-override-finding.v1
+    description: One merge_without_override or detector_unreadable finding, under the finding's idempotency key.
+  - event_type: MergeOverrideVerdict
+    topic: onex.evt.omnimarket.merge-override-verdict.v1
+    description: One verdict per merge, whatever it is, with its source and whether a landing receipt existed.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+dod_evidence:
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_merge_without_override.py
+    description: "A merge with no receipt and no override row yields merge_without_override, one finding event, one slack-publish command, one open-findings row"
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_landing_merge_needs_receipt_and_app.py
+    description: "A receipt for the merged head is a landing merge; where S19 is in force the merger must be the landing App"
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_override_must_name_head.py
+    description: "An override row names the pull request and the merged head; another head does not match"
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_one_verdict_per_merge.py
+    description: "The same merge from both merge sources yields one verdict"
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_error_chain_detector_unreadable.py
+    description: "An unreadable ledger, a failed or unanswered GitHub read, or a missing publisher is detector_unreadable with an alarm"
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_golden_chain_merge_override.py
+    description: "Receipt, merge, read and verdict hops meet the shipped contracts and models"
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pyyaml>=6.0"
+    - "pydantic>=2.0"
+    - "psycopg2-binary>=2.9"
+
+metadata:
+  transport_type: kafka
+  description: "Merge override alarm effect over the landing receipts and the work ledger projection"
+  author: "OmniNode Platform Team"
+  tags: [effect, observability, alerting, merge, override]

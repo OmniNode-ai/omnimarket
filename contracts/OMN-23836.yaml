@@ -1,0 +1,105 @@
+schema_version: 1.0.0
+ticket_id: OMN-23836
+title: 'Merges made outside the landing nodes raise a typed error and an alarm unless an override names them: the alarm node'
+summary: New node node_merge_override_alarm_effect consumes onex.evt.github.pr-merged.v1, onex.evt.omnimarket.repo-merged.v1 and the landing GitHub effect's completed and failed events, keeps the newest enforced arm or enqueue receipt per pull request, reads the head and merger of each merge once through node_pr_landing_github_effect read_pr_state (which now also reports merged_by and merge_commit_sha), and judges the merge landing, override_merge (a RULING row with override=merge, pr and head) or merge_without_override. A finding emits one typed error event, one slack-publish command keyed on repository, pull request and head, and one open-findings row; an unreadable source is detector_unreadable with the same alarm. Four new tables, one migration, an overlay for the landing App login, the S19 repository list and the timeouts.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- topics
+requirements:
+- id: req-omn23836-merge-without-override
+  statement: A merge with no landing receipt and no override row is judged merge_without_override with one typed error event, one slack-publish command and one open-findings row.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a merge with no landing receipt and no override row yields merge_without_override and one slack-publish command -- falsifier: uv run pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k merge_without_override'
+- id: req-omn23836-landing-needs-receipt-and-app
+  statement: A merge whose head matches an enforced landing receipt is a landing merge, and where S19 is in force the merger must be the landing App.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a merge whose head matches a landing receipt yields no finding, and in a repository where S19 is in force the same merge with a merger other than the landing App yields merge_without_override -- falsifier: uv run pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k landing_merge_needs_receipt_and_app'
+- id: req-omn23836-override-names-head
+  statement: An override_merge verdict needs a ledger ruling row naming the pull request and the merged head.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a matching override row yields override_merge naming the ruling, and an override row naming another head does not -- falsifier: uv run pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k override_must_name_head'
+- id: req-omn23836-one-verdict-per-merge
+  statement: The same merge announced on both merge topics receives one verdict.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the same merge seen from both merge sources yields one verdict -- falsifier: uv run pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k one_verdict_per_merge'
+- id: req-omn23836-day-readback
+  statement: The node classifies one day of real merges on the dev lane and each merge_without_override is checked by hand.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: integrated: done only when running and observed where it runs: on the dev lane the node''s verdicts for one day of merges are read back and each merge_without_override is checked by hand against the pull request -- falsifier: the node''s verdict rows for the day and the hand check, the output pasted in the pull request'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the new node and the landing effect's pull request state and contract tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect tests/unit/nodes/node_pr_landing_github_effect/test_pr_state_fact_merger.py tests/unit/nodes/node_pr_landing_github_effect/test_contract.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23836-ac1
+  description: The focused tests selected by -k merge_without_override pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k merge_without_override --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23836-ac2
+  description: The focused tests selected by -k landing_merge_needs_receipt_and_app pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k landing_merge_needs_receipt_and_app --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23836-ac3
+  description: The focused tests selected by -k override_must_name_head pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k override_must_name_head --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23836-ac4
+  description: The focused tests selected by -k one_verdict_per_merge pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect -q -k one_verdict_per_merge --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23836-ac5
+  description: The checked-in readback names the dev-lane host and revision, the day's verdict counts and the hand check of every merge_without_override.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: 'set -eu
+
+      grep -q ''^host='' docs/readbacks/OMN-23836_day_verdicts.txt
+
+      grep -q ''^revision='' docs/readbacks/OMN-23836_day_verdicts.txt
+
+      grep -q ''^hand_check_complete=yes$'' docs/readbacks/OMN-23836_day_verdicts.txt
+
+      '
+    cwd: .
+- id: dod-omn23836-integration-proof
+  description: Run this pull request's node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The dev-lane readback of one day of real merges is AC5.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23836 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect tests/unit/nodes/node_pr_landing_github_effect/test_pr_state_fact_merger.py tests/unit/nodes/node_pr_landing_github_effect/test_contract.py -q --no-cov
+    cwd: .
