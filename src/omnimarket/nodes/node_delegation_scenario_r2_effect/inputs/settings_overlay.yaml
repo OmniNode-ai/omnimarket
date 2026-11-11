@@ -10,7 +10,12 @@ settings:
   - {env: ONEX_SCENARIO_R2_PROVIDER_URL, secret: LLM_GLM_URL}
   - {env: ONEX_SCENARIO_R2_KEY, secret: LLM_GLM_API_KEY}
   - {env: ONEX_SCENARIO_R2_PROVIDER_MODEL, secret: LLM_GLM_MODEL_NAME}
-  - {env: ONEX_SCENARIO_R2_LOCAL_FIRST, template: "{LLM_CODER_URL}|{LLM_CODER_MODEL_NAME}"}
-  - {env: ONEX_SCENARIO_R2_LOCAL_SECOND, template: "{LLM_CODER_FAST_URL}|{LLM_CODER_FAST_MODEL_NAME}"}
+  # The two local chat servers the scenario adds, first tried first: `<base url>|<model id>`, the model id the server itself lists
+  # at /v1/models (the stored LLM_CODER_MODEL_NAME, `qwen3.8`, is a routing alias the server does not list, so a pinned call to it
+  # fails). The first server's address is the existing name LLM_CODER_URL. LLM_CODER_FAST_URL names a server that was retired (its
+  # card went for repair), so the second server is the other lab host that serves the same model; its address is the setting
+  # LLM_CODER_PC2_URL, held with the others in the host's environment file or the secret store, never in this repository.
+  - {env: ONEX_SCENARIO_R2_LOCAL_FIRST, template: "{LLM_CODER_URL}|Qwen3.8-27B"}
+  - {env: ONEX_SCENARIO_R2_LOCAL_SECOND, template: "{LLM_CODER_PC2_URL}|Qwen3.8-27B"}
   # A base URL nothing listens on (the discard port): the refusal leg's address.
   - {env: ONEX_SCENARIO_R2_DEAD_URL, value: "http://127.0.0.1:9"}
