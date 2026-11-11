@@ -1,0 +1,94 @@
+schema_version: 1.0.0
+ticket_id: OMN-20017
+title: 'Context injection A/B: an exact paired comparison of two arms over the fixed eval set with a negative control'
+summary: >-
+  Adds node_delegation_arm_compare_compute: given two arms' per-task outcomes at one size band and attempt budget (and optionally a negative-control pair), it pairs them by task key, calls the exact paired test already in ranges/compare.py, and answers ModelComparisonResult with EnumComparisonVerdict on the answer topic. Margin, confidence and power come from the overlay key delegation.capability_map.line, read by the node itself. A gain that the negative control reproduces is not counted. A malformed request ends as a typed failure, never a verdict. No second statistical test and no second verdict enum.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20017-arm-compare
+  statement: Two arms' results on the same tasks are compared by the exact paired test, a gain the negative control reproduces is not counted, and a bad request is a typed failure and never a verdict.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The compute pairs by item and reports wins, losses and the exact p-value -- falsifier: `uv run pytest tests/nodes/node_delegation_arm_compare_compute -k exact_paired_planted -v`.'
+  - id: AC2
+    statement: 'AC2: An arm''s gain that the negative control reproduces is not counted as a gain -- falsifier: `uv run pytest tests/nodes/node_delegation_arm_compare_compute -k negative_control_cancels_gain -v`.'
+  - id: AC3
+    statement: 'AC3: failing control: the injected break "compare unpaired rows" turns a test red -- falsifier: uv run pytest tests/nodes/node_delegation_arm_compare_compute -q with the break applied'
+  - id: AC4
+    statement: 'AC4: golden chain and error chain: a request on `onex.cmd.omnimarket.delegation-arm-compare-requested.v1` is answered once on `onex.evt.omnimarket.delegation-arm-compare-measured.v1` with `ModelComparisonResult` and `EnumComparisonVerdict` from `ranges/compare.py`, and a malformed request ends as a typed failure, never a verdict -- falsifier: uv run pytest tests/nodes/node_delegation_arm_compare_compute -q'
+  - id: AC5
+    statement: 'AC5: integrated: from this branch a request of fixture rows published on the dev bus is answered on the answer topic -- falsifier: the answer event read from the dev bus by the request''s correlation id and recorded on this ticket'
+evidence_requirements:
+- kind: tests
+  description: The node's exact-paired, negative-control, failing-control, golden-chain, error-chain, overlay and seam tests.
+  command: uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20017-ac1-exact-paired
+  description: 'Planted discordant pairs (12 B-only, 2 A-only over 90 tasks) give the exact two-sided McNemar p computed from math.comb in the test; a different arm order still pairs by task key; a task an arm never answered counts as a failure. It reads red at the merge base, where the node does not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute -k exact_paired_planted -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn20017-ac2-negative-control
+  description: 'A planted gain with a control that reproduces it reads no difference with control_cancelled_gain true; the same gain with a quiet control, with no control, or with an opposite-direction control stays a difference.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute -k negative_control_cancels_gain -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn20017-ac3-failing-control
+  description: 'The injected break "compare unpaired rows" (pairing by position) and the break "count the control gain" each turn the planted check red while the unbroken handler reads green.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute/test_failing_controls.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn20017-ac4-chains
+  description: 'Golden chain: one answer per request on the answer topic, validating as ModelArmCompareResult carrying ModelComparisonResult. Error chain: a payload missing a field and each typed failure end with no verdict.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn20017-seams
+  description: 'The overlay line values equal the capability map line model today and the request wire shape is pinned for the trial driver; each fails when either side changes a field or a value.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute/test_seam_capability_line.py tests/nodes/node_delegation_arm_compare_compute/test_seam_trial_driver_request.py tests/nodes/node_delegation_arm_compare_compute/test_overlay_keys.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-deploy-omn20017-node-declared
+  description: 'Hosted structural probe: the node''s contract declares the command topic and the answer topic at the checked-out head. It fails at the merge base, which holds no such node.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -F 'delegation-arm-compare-requested.v1' src/omnimarket/nodes/node_delegation_arm_compare_compute/contract.yaml && grep -F 'delegation-arm-compare-measured.v1' src/omnimarket/nodes/node_delegation_arm_compare_compute/contract.yaml
+    cwd: .
+- id: dod-omn20017-ac5-integration-proof
+  description: On a lab host, from the pushed head, a request of fixture rows is published on the dev bus and the answer event is read back by the request's correlation id. Hosted CI cannot reach a lab host, so this unbound check belongs to the local Done gate; AC5 is read there and in the PR's lab comment.
+  source: manual
+  binds_ac:
+  - AC5
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20017 --kind test -- uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute -q --no-cov'
+    cwd: .
