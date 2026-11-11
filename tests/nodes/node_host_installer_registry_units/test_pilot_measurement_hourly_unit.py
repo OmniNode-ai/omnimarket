@@ -86,6 +86,10 @@ def test_the_unit_is_the_nodes_own_declared_schedule() -> None:
     assert unit["entry_file"] == ENTRY
     assert unit["probe_argv"] == ["--probe"]
     assert unit["required_environment_inputs"] == ["ONEX_LEDGER_HOST_NAME"]
+    # The ledger append finds the lane declaration table under this root; without it the row never lands.
+    assert (
+        unit["environment"]["ONEX_WORKSPACE_CONFIG_ROOT"] == "{workspace_config_root}"
+    )
     node_dir = base.ROOT / "src/omnimarket/nodes/node_host_installer_registry_units"
     assert (node_dir / str(unit["template"])).is_file()
     assert (node_dir / str(unit["timer_template"])).is_file()
@@ -104,6 +108,7 @@ def test_dry_run_renders_an_hourly_timer_with_the_reading_environment(
             project_path=str(path),
             expected_revision=revision,
             path_overrides={},
+            workspace_config_root=str(tmp_path / "config-root"),
             ledger_host_name="h053",
         )
     )
@@ -116,6 +121,7 @@ def test_dry_run_renders_an_hourly_timer_with_the_reading_environment(
     assert "OnUnitActiveSec=3600" in result.rendered
     assert f"Unit={load_schedule().unit_name}.service" in result.rendered
     assert '"ONEX_LEDGER_HOST_NAME=h053"' in result.rendered
+    assert f'"ONEX_WORKSPACE_CONFIG_ROOT={tmp_path}/config-root"' in result.rendered
     assert (
         f'"ONEX_MEMORY_PILOT_RESULT_FILE={tmp_path}/omni/.onex_state/memory-pilot-daily/result.json"'
         in result.rendered
@@ -137,6 +143,7 @@ def test_the_install_is_refused_without_the_host_name_the_row_needs(
             project_path=str(path),
             expected_revision=revision,
             path_overrides={},
+            workspace_config_root=str(tmp_path / "config-root"),
         )
     )
     assert result.status != "success"

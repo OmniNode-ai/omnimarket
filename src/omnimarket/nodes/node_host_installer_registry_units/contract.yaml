@@ -507,6 +507,9 @@ units:
       ONEX_MEMORY_PILOT_RESULT_FILE: "{registry_root}/.onex_state/memory-pilot-daily/result.json"
       ONEX_FLOOR_EMISSION_JOURNAL: "{registry_root}/.onex_state/floor-simple/emissions.jsonl"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/.onex_state/installed-units/dev-deploy-reading/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      # Without it the append ended append-failed and the row never landed (measured on h053, 2026-11-11).
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     # The name the ledger knows this host by: the reading's row names the host that wrote it (the node's overlay names this
     # variable as its ledger host_env). Required: a unit installed without it ends INDETERMINATE (exit 3) every tick.
     environment_inputs:
