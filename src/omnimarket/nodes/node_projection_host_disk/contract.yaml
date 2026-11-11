@@ -1,0 +1,87 @@
+---
+name: projection_host_disk
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading.ModelHostDiskRead
+description: >
+  OMN-23865. Keeps the newest host disk reading per host and class (and per
+  host and volume). The newest read_at wins: a redelivery or an older reading
+  is refused in the upsert WHERE, so the next ticket's compute reads this
+  projection and never a host.
+
+handler:
+  module: omnimarket.nodes.node_projection_host_disk.handlers.handler_projection_host_disk
+  class: HandlerProjectionHostDisk
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed. A routed pure fold is handed the raw event
+    # beside the writer, fails to validate it as its wrapped request, and
+    # dead-letters it, and its zero upserts count against the
+    # projection_apply_divergence health dimension. The writer calls the fold
+    # in process (rule 7a).
+    - operation: host_disk_projection_writer
+      handler:
+        name: HostDiskProjectionWriter
+        module: omnimarket.nodes.node_projection_host_disk.handlers.handler_host_disk_writer
+      handler_module: omnimarket.nodes.node_projection_host_disk.handlers.handler_host_disk_writer
+
+terminal_event: onex.evt.omnimarket.projection-host-disk-applied.v1
+
+golden_path:
+  - "node_lab_disk_watermark_effect publishes a host disk reading event per reading, with the row's read_at"
+  - "This reducer folds each reading into one class row and one volume row"
+  - "The writer upserts the class row, refusing a read_at older than the stored one in the conflict arm's WHERE"
+  - "The writer upserts the volume row, refusing a read_at older than the stored one in the conflict arm's WHERE"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-host-disk-applied.v1"
+
+dod_evidence:
+  - test: tests/nodes/node_projection_host_disk/test_host_disk_projection.py::test_an_older_reading_never_replaces_a_newer_row
+    description: "AC3 -- an out-of-order pair: the older read_at is refused by the upsert WHERE"
+  - test: tests/nodes/node_projection_host_disk/test_host_disk_projection.py::test_a_redelivery_writes_nothing
+    description: "AC3 -- a redelivery is refused by both tables"
+  - test: tests/nodes/node_projection_host_disk/test_host_disk_projection.py::test_the_writer_declares_in_process_dispatch_and_only_it_is_routed
+    description: "AC3 -- the writer declares in-process dispatch and is the only routed handler"
+  - test: tests/chains/host_disk/test_chain_host_disk_reading.py::test_golden_chain_requested_published_applied_in_memory
+    description: "AC5 -- requested, reading published, projection applied"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked (OMN-13083 / OMN-16690). `read_write`: each conflict arm reads the
+    # stored row (read_at) to refuse a stale or repeated write.
+    - name: host_disk_class
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_host_disk.sql"
+      access: read_write
+      role: host_disk_class
+    - name: host_disk_volume
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_host_disk.sql"
+      access: read_write
+      role: host_disk_volume
+
+  # The class row's key. The volume row is keyed (host_name, volume_path),
+  # which this key plus the ordering key spell.
+  dedupe_key:
+    - host_name
+    - class_name
+  ordering_key: read_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.host-disk-read.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-host-disk-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-host-disk-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-host-disk-applied.v1
+
+metadata:
+  transport_type: kafka
