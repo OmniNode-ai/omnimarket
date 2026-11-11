@@ -193,6 +193,34 @@ async def test_capability_cells_round_trip_and_ordering_on_real_postgres() -> No
 
 
 @pytest.mark.integration
+async def test_a_run_without_the_line_writes_no_cell_on_real_postgres() -> None:
+    tenant = uuid4()
+    payload = _payload(tenant)
+    del payload["line"]
+    async with _migrated_writer() as (writer, reader):
+        result = await asyncio.to_thread(writer.handle, payload)
+        assert result["rows_upserted"] == 0
+        assert result["rows_handled"] == 0
+        assert result["cells"] == 0
+        assert result["line_not_configured"] is True
+        assert result["folded_rows"] == 8
+        assert (
+            await reader.execute(
+                "SELECT * FROM public.delegation_capability_cells", tenant=str(tenant)
+            )
+            == []
+        )
+        original = _payload(tenant)
+        result = await asyncio.to_thread(writer.handle, original)
+        assert result["rows_upserted"] == 1
+        assert result["line_not_configured"] is False
+        rows = await reader.execute(
+            "SELECT * FROM public.delegation_capability_cells", tenant=str(tenant)
+        )
+        assert len(rows) == 1
+
+
+@pytest.mark.integration
 async def test_capability_cells_are_tenant_scoped_on_real_postgres() -> None:
     tenant, other = uuid4(), uuid4()
     payload = _payload(tenant)

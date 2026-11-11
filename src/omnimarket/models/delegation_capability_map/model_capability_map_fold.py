@@ -38,7 +38,7 @@ class ModelCapabilityMapFoldRequest(BaseModel):
     map_run_id: str = Field(min_length=1)
     rows: tuple[ModelCapabilityVerdictRow, ...] = ()
     assignments: tuple[ModelCapabilityServingAssignment, ...] = ()
-    line: ModelCapabilityLine
+    line: ModelCapabilityLine | None = None
 
 
 class ModelCapabilityMapFoldResult(BaseModel):
@@ -51,3 +51,4 @@ class ModelCapabilityMapFoldResult(BaseModel):
     best_configurations: tuple[ModelCapabilityBestConfiguration, ...] = ()
     folded_row_count: int = Field(default=0, ge=0)
     inadmissible: tuple[ModelCapabilityInadmissibleCount, ...] = ()
+    line_not_configured: bool = False

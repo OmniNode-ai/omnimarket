@@ -178,7 +178,7 @@ def build_map_run(
         observed_at=max(observed),
         rows=tuple(rows),
         assignments=tuple(assignments[key] for key in sorted(assignments)),
-        line=resolve_capability_line(),
+        line=resolve_capability_line().line,
     )
     return run, dict(sorted(skipped.items()))
 

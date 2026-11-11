@@ -197,7 +197,7 @@ def main() -> int:
         observed_at=now,
         suite_revision=digest,
         harness_revision=harness_revision,
-        line=resolve_capability_line(),
+        line=resolve_capability_line().line,
     )
     write("capability-map-run.json", capability.model_dump(mode="json"))
     write(

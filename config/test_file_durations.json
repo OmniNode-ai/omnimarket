@@ -869,6 +869,8 @@
   "tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py": 0.15,
   "tests/nodes/node_delegation_capability_map_compute/test_cells_from_code_eval_run.py": 2.92,
   "tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py": 3.1,
+  "tests/nodes/node_delegation_capability_map_compute/test_line_not_configured_safe_alone.py": 5.64,
+  "tests/nodes/node_delegation_capability_map_compute/test_seam_capability_line_bus.py": 7.28,
   "tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py": 1.9,
   "tests/nodes/node_delegation_client_verdict_compute/test_golden_chain_delegation_client_verdict_compute.py": 0.11,
   "tests/nodes/node_delegation_code_budget_compute/test_golden_chain_code_budget.py": 0.06,

@@ -212,7 +212,7 @@ def build_harness_capability_run(
     observed_at: datetime,
     suite_revision: str,
     harness_revision: str,
-    line: model_capability_line.ModelCapabilityLine,
+    line: model_capability_line.ModelCapabilityLine | None,
 ) -> ModelCapabilityMapRunRecorded:
     """Adapt small fixed-fixture trials to the existing capability projection.
 

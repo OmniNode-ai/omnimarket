@@ -281,7 +281,7 @@ def build_grid_map_run(
         observed_at=observed_at,
         rows=tuple(rows),
         assignments=tuple(assignments),
-        line=resolve_capability_line(),
+        line=resolve_capability_line().line,
     )
     return run, {
         "verdict_rows": len(rows),

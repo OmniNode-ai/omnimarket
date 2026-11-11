@@ -17,6 +17,8 @@ requirements:
     statement: 'AC3: the pass-rate cells follow the size and attempt limit of each trial and the pass line read from the setting -- falsifier: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_cells_from_code_eval_run.py -q'
   - id: AC4
     statement: 'AC4: integrated: from this branch the migrated development result table serves its existing lines with the new columns at their defaults -- falsifier: the table row count and one existing line new columns, read on the development lane before and after the migration and recorded on the parent ticket'
+  - id: AC5
+    statement: 'AC5: with the pass-line setting absent nothing refuses: the read answers not-configured, a map run keeps its rows and builds, the fold makes no cell, and the seam to the projection holds over the bus -- falsifier: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_line_not_configured_safe_alone.py tests/nodes/node_delegation_capability_map_compute/test_seam_capability_line_bus.py -q'
 evidence_requirements:
 - kind: tests
   description: The focused tests of this change pass at the pushed head.
@@ -61,6 +63,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_projection_context_roi/test_row_backcompat.py tests/test_golden_chain_projection_context_roi.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23749-ac5
+  description: 'AC5: with the pass-line setting absent nothing refuses: the read answers not-configured, a map run keeps its rows and builds, the fold makes no cell, and the seam to the projection holds over the bus'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_capability_map_compute/test_line_not_configured_safe_alone.py tests/nodes/node_delegation_capability_map_compute/test_seam_capability_line_bus.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23749-integration-proof
   description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the migrated development table reading is recorded on the parent ticket.

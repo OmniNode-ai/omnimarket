@@ -25,7 +25,6 @@ from omnimarket.handlers.handler_harness_eval import (
     ModelHarnessObservation,
     build_harness_capability_run,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_capability_line import (
     resolve_capability_line,
 )
@@ -120,7 +119,7 @@ def _run_and_result(observations: tuple[ModelHarnessObservation, ...], line) -> 
 
 def cells_for(observations: tuple[ModelHarnessObservation, ...], environ) -> tuple:
     """Read the class line from the overlay, then run and fold the observations."""
-    return _run_and_result(observations, resolve_capability_line(environ))
+    return _run_and_result(observations, resolve_capability_line(environ).line)
 
 
 def _recount(
@@ -212,7 +211,9 @@ def assert_line_follows_overlay(read_line, tmp_path) -> None:
 
 
 def test_overlay_floor_changes_the_line_and_the_verdict(tmp_path) -> None:
-    assert_line_follows_overlay(resolve_capability_line, tmp_path)
+    assert_line_follows_overlay(
+        lambda environ: resolve_capability_line(environ).line, tmp_path
+    )
 
 
 def _broken_line_reader(environ) -> ModelCapabilityLine:
@@ -226,23 +227,24 @@ def test_failing_control_read_line_from_defaults(tmp_path) -> None:
     no longer differ."""
     with pytest.raises(AssertionError):
         assert_line_follows_overlay(_broken_line_reader, tmp_path)
-    assert_line_follows_overlay(resolve_capability_line, tmp_path)
+    assert_line_follows_overlay(
+        lambda environ: resolve_capability_line(environ).line, tmp_path
+    )
 
 
 def test_no_overlay_means_no_line() -> None:
-    with pytest.raises(NodeOverlayError):
-        resolve_capability_line(environ={})
+    reading = resolve_capability_line(environ={})
+    assert reading.line is None
+    assert "delegation.capability_map.line" in reading.not_configured_reason
 
 
 def test_line_has_no_default() -> None:
     with pytest.raises(ValidationError):
         ModelCapabilityLine()
-    with pytest.raises(ValidationError):
-        ModelCapabilityMapFoldRequest(map_run_id="x")
-    with pytest.raises(ValidationError):
-        ModelCapabilityMapRunRecorded(
-            tenant_id=_TENANT, map_run_id="x", observed_at=_OBSERVED_AT
-        )
+    ModelCapabilityMapFoldRequest(map_run_id="x")
+    ModelCapabilityMapRunRecorded(
+        tenant_id=_TENANT, map_run_id="x", observed_at=_OBSERVED_AT
+    )
 
 
 def test_observation_requires_size_band() -> None:

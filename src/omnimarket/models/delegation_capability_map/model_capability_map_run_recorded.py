@@ -4,10 +4,18 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Any, Self
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from omnimarket.models.delegation_capability_map.model_capability_line import (
     ModelCapabilityLine,
@@ -37,7 +45,7 @@ class ModelCapabilityMapRunRecorded(BaseModel):
     observed_at: AwareDatetime
     rows: tuple[ModelCapabilityVerdictRow, ...] = ()
     assignments: tuple[ModelCapabilityServingAssignment, ...] = ()
-    line: ModelCapabilityLine
+    line: ModelCapabilityLine | None = None
 
     @model_validator(mode="after")
     def _one_tenant(self) -> Self:
@@ -45,6 +53,16 @@ class ModelCapabilityMapRunRecorded(BaseModel):
         if others:
             raise ValueError("every verdict row of a map run carries the run's tenant")
         return self
+
+    @model_serializer(mode="wrap")
+    def _omit_unconfigured_line(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """A run with no configured line keeps the wire shape of the older run model."""
+        dumped: dict[str, Any] = handler(self)
+        if self.line is None:
+            dumped.pop("line", None)
+        return dumped
 
     def fold_request(self) -> ModelCapabilityMapFoldRequest:
         return ModelCapabilityMapFoldRequest(

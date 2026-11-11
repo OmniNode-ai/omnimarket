@@ -131,6 +131,19 @@ class HandlerDelegationCapabilityMap:
             if held is None or row.model_dump_json() > held.model_dump_json():
                 standing[key] = row
 
+        if request.line is None:
+            return ModelCapabilityMapFoldResult(
+                map_run_id=request.map_run_id,
+                cells=(),
+                best_configurations=(),
+                folded_row_count=len(standing),
+                inadmissible=tuple(
+                    ModelCapabilityInadmissibleCount(reason=reason, count=count)
+                    for reason, count in sorted(refused.items())
+                ),
+                line_not_configured=True,
+            )
+
         by_cell: dict[_CellKey, list[ModelCapabilityVerdictRow]] = {}
         for key, row in standing.items():
             by_cell.setdefault(_cell_key(row, key[5]), []).append(row)
