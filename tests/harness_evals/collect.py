@@ -18,15 +18,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from omnimarket.handlers.handler_capability_line_overlay import (
-    resolve_capability_line,
-)
 from omnimarket.handlers.handler_harness_eval import (
     ModelHarnessObservation,
     build_harness_capability_run,
     build_harness_run,
     normalize_observation,
     summarize,
+)
+from omnimarket.handlers.overlay_capability_line import (
+    resolve_capability_line,
 )
 from omnimarket.models.model_engine_experiment import (
     ModelEngineExperimentRow,

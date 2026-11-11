@@ -45,7 +45,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
-from omnimarket.handlers.handler_capability_line_overlay import (
+from omnimarket.handlers.overlay_capability_line import (
     resolve_capability_line,
 )
 from omnimarket.inference.task_class_authority import (

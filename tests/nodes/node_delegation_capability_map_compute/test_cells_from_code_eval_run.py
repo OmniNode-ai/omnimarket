@@ -17,9 +17,6 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.handlers.handler_capability_line_overlay import (
-    resolve_capability_line,
-)
 from omnimarket.handlers.handler_capability_start import (
     REASON_NO_MET_CELL,
     resolve_capability_start,
@@ -29,6 +26,9 @@ from omnimarket.handlers.handler_harness_eval import (
     build_harness_capability_run,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_capability_line import (
+    resolve_capability_line,
+)
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation_capability_map.enum_capability_cell_verdict import (
     EnumCapabilityCellVerdict,
@@ -257,3 +257,24 @@ def test_observation_requires_size_band() -> None:
             passed=True,
             harness_succeeded=True,
         )
+
+
+def test_example_overlay_validates_and_names_the_class_line() -> None:
+    """The shipped example carries the key delegation.capability_map.line in the overlay schema."""
+    from pathlib import Path
+
+    import yaml
+
+    from omnimarket.models.delegation_capability_map.model_capability_map_overlay import (
+        ModelCapabilityMapOverlay,
+    )
+
+    example = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_projection_delegation_capability_map/overlay.example.yaml"
+    )
+    document = yaml.safe_load(example.read_text(encoding="utf-8"))
+    assert set(document) == set(ModelCapabilityMapOverlay.model_fields) == {"line"}
+    assert ModelCapabilityMapOverlay.model_validate(
+        document
+    ).line == ModelCapabilityLine(floor=0.90, margin=0.07, confidence=0.95, power=0.8)

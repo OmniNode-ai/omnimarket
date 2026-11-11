@@ -35,10 +35,10 @@ from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
-from omnimarket.handlers.handler_capability_line_overlay import (
+from omnimarket.handlers.handler_size_band_measurement import measure_size_band
+from omnimarket.handlers.overlay_capability_line import (
     resolve_capability_line,
 )
-from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference.task_class_authority import (
     ModelTaskClassAuthority,
     load_task_class_authority,
