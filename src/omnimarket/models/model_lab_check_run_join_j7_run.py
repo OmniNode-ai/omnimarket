@@ -23,6 +23,8 @@ class EnumJoinJ7RunOutcome(StrEnum):
     OTHER_LANE_NOT_REFUSED = "other_lane_not_refused"
     DRILL_NOT_HELD = "drill_not_held"
     DRILL_RECORDED = "drill_recorded"
+    CONTROL_RECORDED = "control_recorded"
+    CONTROL_NOT_BROKEN = "control_not_broken"
 
 
 class ModelJoinJ7RunCommand(BaseModel):
@@ -42,6 +44,8 @@ class ModelJoinJ7RunItem(BaseModel):
     correlation_id: str
     outcome: EnumJoinJ7RunOutcome
     drill: bool = False
+    #: True for the failing control: a real piece 7 failure the run produced on purpose, written as a non-drill chain.
+    control: bool = False
     failure_code: str | None = None
     detail: str = ""
 
@@ -58,6 +62,8 @@ class ModelJoinJ7RunResult(BaseModel):
     answered: int = 0
     #: Whether piece 8's own error drill is owed in this window.
     drill_owed: bool = False
+    #: Whether the failing control (piece 7's stop not held, piece 8's typed refusal) is owed in this window.
+    control_owed: bool = False
     items: tuple[ModelJoinJ7RunItem, ...] = ()
 
     @property
@@ -66,9 +72,13 @@ class ModelJoinJ7RunResult(BaseModel):
 
     @property
     def ok(self) -> bool:
-        """Every chain written landed (the drill counts as landed when it recorded the late post refused)."""
+        """Every chain written landed (the drill counts as landed when it recorded the late post refused, the control when it broke)."""
         return self.read_ok and all(
             i.outcome
-            in (EnumJoinJ7RunOutcome.LANDED, EnumJoinJ7RunOutcome.DRILL_RECORDED)
+            in (
+                EnumJoinJ7RunOutcome.LANDED,
+                EnumJoinJ7RunOutcome.DRILL_RECORDED,
+                EnumJoinJ7RunOutcome.CONTROL_RECORDED,
+            )
             for i in self.items
         )

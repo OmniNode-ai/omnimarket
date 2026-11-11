@@ -16,6 +16,7 @@ leaves the join not golden with the typed failure on the journal; a check-run AP
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -24,6 +25,7 @@ import yaml
 from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
     ModelFSMSubcontract,
 )
+from pydantic import ValidationError
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.handlers.rules_stop_gate import stop_gate
@@ -37,8 +39,13 @@ from omnimarket.models.floor_17a import (
 from omnimarket.models.model_lab_check_run_join_j7_run import (
     EnumJoinJ7RunOutcome,
     ModelJoinJ7RunCommand,
+    ModelJoinJ7RunItem,
 )
-from omnimarket.models.stop_gate import ModelStopGateRequest, ModelStopGateResult
+from omnimarket.models.stop_gate import (
+    EnumStopMode,
+    ModelStopGateRequest,
+    ModelStopGateResult,
+)
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
 )
@@ -134,6 +141,7 @@ class _Rig:
         drill: JoinJ7Rig | None = None,
         deaf: bool = False,
         overlay: ModelJoinJ7Overlay = OVERLAY,
+        clock: Callable[[], datetime] | None = None,
     ) -> HandlerLabCheckRunJoinJ7Run:
         return HandlerLabCheckRunJoinJ7Run(
             source=self.source,
@@ -145,7 +153,7 @@ class _Rig:
             window_hours=48,
             to_piece=TO_PIECE,
             backend="in_memory",
-            clock=self.clock,
+            clock=clock or self.clock,
         )
 
     def piece8(self) -> list[ModelNodeEmission]:
@@ -178,10 +186,38 @@ def _fold(emissions: list[ModelNodeEmission], now: datetime) -> tuple[str, list[
     return join.state, [f.code for f in receipts.findings]
 
 
-def _floor_read(rig: _Rig, now: datetime) -> tuple[str, list[str]]:
-    """What the floor folds: piece 7's chains from the ledger rows, plus every emission on the journal."""
+def _floor_read(
+    rig: _Rig, now: datetime, *, control: bool = True
+) -> tuple[str, list[str]]:
+    """What the floor folds: piece 7's chains from the ledger rows, plus every emission on the journal.
+
+    ``control=False`` leaves the failing control's chains out, which is the journal as it stood before the control existed.
+    """
     rows = [r for line in rig.source.lines if (r := evidence_row_from_text(line))]
-    return _fold([*piece_events(rows, (RULE,)), *rig.sink.events], now)
+    journal = rig.sink.events if control else _without_control(rig.sink.events)
+    return _fold([*piece_events(rows, (RULE,)), *journal], now)
+
+
+class _JumpClock:
+    """A clock the test can jump past an overlay window in one step."""
+
+    def __init__(self, start: datetime) -> None:
+        self._t = start
+
+    def __call__(self) -> datetime:
+        return self._t
+
+    def advance(self, by: timedelta) -> None:
+        self._t += by
+
+
+def _without_control(events: list[ModelNodeEmission]) -> list[ModelNodeEmission]:
+    """The journal with the control's own chains out: nothing under its correlation id or its piece 7 node."""
+    prefix = OVERLAY.control.id_prefix
+    node = OVERLAY.control.upstream_node
+    return [
+        e for e in events if not e.correlation_id.startswith(prefix) and e.node != node
+    ]
 
 
 def _refusal_overlay(downstream_node: str) -> dict[str, object]:
@@ -236,7 +272,7 @@ def test_golden_run_posts_the_check_past_the_stop_and_the_floor_reads_golden_onl
 
     assert result.read_ok
     assert (result.owed, result.answered) == (1, 0)
-    landed = [i for i in result.items if not i.drill]
+    landed = [i for i in result.items if not i.drill and not i.control]
     assert [i.outcome for i in landed] == [EnumJoinJ7RunOutcome.LANDED]
     chain = [e for e in rig.piece8() if e.correlation_id == landed[0].correlation_id]
     assert [e.phase for e in chain] == ["start", "success"]
@@ -247,7 +283,12 @@ def test_golden_run_posts_the_check_past_the_stop_and_the_floor_reads_golden_onl
         "other_lane_refused": 1,
     }
     assert all(e.backend == "in_memory" and not e.drill for e in chain)
-    assert _floor_read(rig, NOW + timedelta(minutes=5)) == ("golden_only", [])
+    assert _floor_read(rig, NOW + timedelta(minutes=5), control=False) == (
+        "golden_only",
+        [],
+    )
+    # With the failing control's error side beside the golden chain the join passes.
+    assert _floor_read(rig, NOW + timedelta(minutes=5)) == ("passed", [])
 
 
 def test_golden_and_error_together_read_passed() -> None:
@@ -284,7 +325,7 @@ def test_golden_a_run_answers_at_most_the_overlay_bound_newest_first() -> None:
 
     result = rig.runner().handle(ModelJoinJ7RunCommand())
 
-    chains = [i for i in result.items if not i.drill]
+    chains = [i for i in result.items if not i.drill and not i.control]
     assert (result.owed, len(chains)) == (2, 1)
     newest_row = evidence_row_from_text(rig.source.lines[1])
     assert newest_row is not None
@@ -304,18 +345,19 @@ def test_error_the_drill_writes_piece_8s_own_error_chain_once_per_window() -> No
     first = runner.handle(ModelJoinJ7RunCommand())
     second = runner.handle(ModelJoinJ7RunCommand())
 
-    assert [i.outcome for i in first.items] == [EnumJoinJ7RunOutcome.DRILL_RECORDED]
-    drill = first.items[0]
-    assert drill.drill
-    assert drill.failure_code == "superseded_attempt_refused"
-    chain = rig.piece8()
-    assert [(e.phase, e.drill) for e in chain] == [("start", True), ("failure", True)]
-    assert chain[-1].failure_code == "superseded_attempt_refused"
+    drill_items = [i for i in first.items if i.drill]
+    assert [i.outcome for i in drill_items] == [EnumJoinJ7RunOutcome.DRILL_RECORDED]
     assert second.drill_owed is False
     assert second.items == ()
-    assert len(rig.piece8()) == 2
+    chain = _without_control(rig.piece8())
+    assert [(e.phase, e.drill) for e in chain] == [("start", True), ("failure", True)]
+    assert chain[-1].failure_code == "superseded_attempt_refused"
+    assert len(chain) == 2
     # A drill chain is piece 8's error receipt; it is no evidence for the join.
-    assert _floor_read(rig, NOW + timedelta(minutes=5)) == ("not_run", [])
+    assert _floor_read(rig, NOW + timedelta(minutes=5), control=False) == (
+        "not_run",
+        [],
+    )
 
 
 def test_error_a_failed_or_drill_reading_is_never_answered_by_the_runner() -> None:
@@ -329,7 +371,7 @@ def test_error_a_failed_or_drill_reading_is_never_answered_by_the_runner() -> No
     result = rig.runner().handle(ModelJoinJ7RunCommand())
 
     assert result.owed == 0
-    assert [i.drill for i in result.items] == [True]
+    assert [i.drill for i in result.items if not i.control] == [True]
 
 
 def test_error_an_unreadable_ledger_is_not_an_empty_answer() -> None:
@@ -368,10 +410,13 @@ def test_error_a_head_that_already_reads_pass_is_a_typed_failure() -> None:
 
     result = rig.runner(golden=twin).handle(ModelJoinJ7RunCommand())
 
-    chains = [i for i in result.items if not i.drill]
+    chains = [i for i in result.items if not i.drill and not i.control]
     assert [i.outcome for i in chains] == [EnumJoinJ7RunOutcome.HEAD_NOT_PASSING]
     assert chains[0].failure_code == "head_already_passing"
-    assert [e.phase for e in rig.piece8() if not e.drill] == ["start", "failure"]
+    assert [e.phase for e in _without_control(rig.piece8()) if not e.drill] == [
+        "start",
+        "failure",
+    ]
 
 
 def test_a_probe_reads_what_is_owed_and_writes_nothing() -> None:
@@ -413,10 +458,14 @@ def test_control_a_stop_gate_that_ignores_the_stop_leaves_the_join_not_golden(
 
     result = rig.runner().handle(ModelJoinJ7RunCommand())
 
-    chains = [i for i in result.items if not i.drill]
+    chains = [i for i in result.items if not i.drill and not i.control]
     assert [i.outcome for i in chains] == [EnumJoinJ7RunOutcome.CAUSE_LANE_NOT_ADMITTED]
     assert result.ok is False
-    chain = [e for e in rig.piece8() if e.correlation_id == chains[0].correlation_id]
+    chain = [
+        e
+        for e in _without_control(rig.piece8())
+        if e.correlation_id == chains[0].correlation_id
+    ]
     assert [e.phase for e in chain] == ["start", "failure"]
     assert _floor_read(rig, NOW + timedelta(minutes=5))[0] == "not_run"
 
@@ -426,9 +475,10 @@ def test_control_the_named_break_deaf_invalidation_writes_no_error_receipt() -> 
 
     result = rig.runner(deaf=True).handle(ModelJoinJ7RunCommand())
 
-    assert [i.outcome for i in result.items] == [EnumJoinJ7RunOutcome.DRILL_NOT_HELD]
+    drills = [i for i in result.items if i.drill]
+    assert [i.outcome for i in drills] == [EnumJoinJ7RunOutcome.DRILL_NOT_HELD]
     assert result.ok is False
-    assert rig.sink.events == []
+    assert all(e.correlation_id != drills[0].correlation_id for e in rig.sink.events)
 
 
 def test_control_a_planted_rename_of_the_verdict_cell_finds_nothing_owed() -> None:
@@ -437,7 +487,17 @@ def test_control_a_planted_rename_of_the_verdict_cell_finds_nothing_owed() -> No
     result = rig.runner().handle(ModelJoinJ7RunCommand())
 
     assert result.owed == 0
-    assert [i for i in result.items if not i.drill] == []
+    assert [i for i in result.items if not i.drill and not i.control] == []
+    assert [i for i in result.items if i.control] == [
+        ModelJoinJ7RunItem(
+            correlation_id=result.items[0].correlation_id,
+            outcome=EnumJoinJ7RunOutcome.CONTROL_RECORDED,
+            control=True,
+            failure_code=OVERLAY.control.failure_code,
+            detail="the stop gate admitted a lane the stop on "
+            f"{OVERLAY.stopped_piece} must refuse",
+        )
+    ]
 
 
 def test_control_a_cause_lane_and_another_lane_are_two_lanes() -> None:
@@ -453,6 +513,141 @@ def test_control_a_cause_lane_and_another_lane_are_two_lanes() -> None:
     )._lanes()
 
     assert lanes[0] != lanes[1]
+
+
+def test_error_the_failing_control_gives_the_join_its_error_side_from_a_non_drill_run() -> (
+    None
+):
+    rig = _Rig([])
+
+    result = rig.runner().handle(ModelJoinJ7RunCommand())
+
+    control = next(i for i in result.items if i.control)
+    assert control.outcome is EnumJoinJ7RunOutcome.CONTROL_RECORDED
+    assert not control.drill
+    piece7 = [
+        e
+        for e in rig.sink.events
+        if e.piece == FROM_PIECE and e.correlation_id == control.correlation_id
+    ]
+    assert [e.phase for e in piece7] == ["start", "failure"]
+    assert piece7[-1].failure_code == OVERLAY.control.failure_code
+    assert all(not e.drill for e in piece7)
+    piece8 = [
+        e
+        for e in rig.sink.events
+        if e.piece == TO_PIECE and e.correlation_id == control.correlation_id
+    ]
+    assert [e.phase for e in piece8] == ["failure"]
+    assert piece8[0].failure_code == f"upstream_{OVERLAY.control.failure_code}"
+    assert _floor_read(rig, NOW + timedelta(minutes=5)) == ("error_only", [])
+
+
+def test_golden_and_the_control_together_read_passed() -> None:
+    rig = _Rig([_reading_row(GOLDEN_AT, "WORKING")])
+
+    result = rig.runner().handle(ModelJoinJ7RunCommand())
+
+    assert next(i for i in result.items if i.control).outcome is (
+        EnumJoinJ7RunOutcome.CONTROL_RECORDED
+    )
+    assert _floor_read(rig, NOW + timedelta(minutes=5)) == ("passed", [])
+
+
+def test_control_the_gate_that_still_refuses_in_the_control_mode_turns_the_run_red(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_lab_check_run_effect.handlers import (
+        handler_lab_check_run_join_j7_run as module,
+    )
+
+    def enforcing(
+        request: ModelStopGateRequest, fsm: ModelFSMSubcontract
+    ) -> ModelStopGateResult:
+        if request.policy.modes == {OVERLAY.stop_class: OVERLAY.control.mode}:
+            return stop_gate(
+                request.model_copy(
+                    update={
+                        "policy": request.policy.model_copy(
+                            update={"modes": {OVERLAY.stop_class: EnumStopMode.ENFORCE}}
+                        )
+                    }
+                ),
+                fsm,
+            )
+        return stop_gate(request, fsm)
+
+    monkeypatch.setattr(module, "stop_gate", enforcing)
+    rig = _Rig([])
+
+    result = rig.runner().handle(ModelJoinJ7RunCommand())
+
+    control = next(i for i in result.items if i.control)
+    assert control.outcome is EnumJoinJ7RunOutcome.CONTROL_NOT_BROKEN
+    assert result.ok is False
+    assert not any(e.correlation_id == control.correlation_id for e in rig.sink.events)
+    assert _floor_read(rig, NOW + timedelta(minutes=5))[0] != "passed"
+
+
+def test_control_is_written_once_per_window_and_owed_again_after_it() -> None:
+    rig = _Rig([])
+    jump = _JumpClock(NOW)
+    runner = rig.runner(clock=jump)
+
+    probe = runner.handle(ModelJoinJ7RunCommand(probe=True))
+    assert probe.control_owed is True
+    assert probe.items == ()
+    assert rig.sink.events == []
+
+    first = runner.handle(ModelJoinJ7RunCommand())
+    assert first.control_owed is True
+    control = next(i for i in first.items if i.control)
+    assert control.outcome is EnumJoinJ7RunOutcome.CONTROL_RECORDED
+    written = len(rig.sink.events)
+
+    second = runner.handle(ModelJoinJ7RunCommand())
+    assert second.control_owed is False
+    assert not any(i.control for i in second.items)
+    assert len(rig.sink.events) == written
+
+    jump.advance(timedelta(hours=OVERLAY.control.window_hours + 1))
+    again = runner.handle(ModelJoinJ7RunCommand(probe=True))
+    assert again.control_owed is True
+    assert again.items == ()
+    assert len(rig.sink.events) == written
+
+
+def test_control_the_control_never_posts_on_the_test_head() -> None:
+    rig = _Rig([])
+    gapi = runtime_join_j7.build_rig(OVERLAY)
+    rapi = runtime_join_j7.build_rig(OVERLAY)
+    runner = rig.runner(golden=gapi, drill=rapi)
+
+    result = runner.handle(ModelJoinJ7RunCommand())
+
+    control = next(i for i in result.items if i.control)
+    assert control.outcome is EnumJoinJ7RunOutcome.CONTROL_RECORDED
+    # The control reads the head (a read is a call) and never posts: the golden twin holds no run, the drill's twin does.
+    assert gapi.api.runs == ()
+    assert rapi.api.runs
+
+
+def test_the_overlay_refuses_a_control_that_enforces_or_names_a_refusal_code() -> None:
+    enforce = {**BASE, "control": {**BASE["control"], "mode": "enforce"}}
+    refusal_code = {
+        **BASE,
+        "control": {**BASE["control"], "failure_code": "upstream_x"},
+    }
+    same_node = {
+        **BASE,
+        "control": {**BASE["control"], "upstream_node": BASE["emission_node"]},
+    }
+    with pytest.raises(ValidationError, match="mode that does not refuse"):
+        ModelJoinJ7Overlay.model_validate(enforce)
+    with pytest.raises(ValidationError, match="not a refusal"):
+        ModelJoinJ7Overlay.model_validate(refusal_code)
+    with pytest.raises(ValidationError, match="not piece 8's emission node"):
+        ModelJoinJ7Overlay.model_validate(same_node)
 
 
 # --- the overlay and the runtime ---------------------------------------------------------------------------------------
@@ -515,15 +710,40 @@ def test_the_runtime_end_to_end_over_a_file_ledger_and_a_jsonl_journal(
     assert runtime_join_j7.main(["run"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["read_ok"] is True
-    assert sorted(i["outcome"] for i in out["items"]) == ["drill_recorded", "landed"]
-    lines = (tmp_path / "emissions.jsonl").read_text(encoding="utf-8").splitlines()
-    assert [json.loads(line)["phase"] for line in lines] == [
+    assert sorted(i["outcome"] for i in out["items"]) == [
+        "control_recorded",
+        "drill_recorded",
+        "landed",
+    ]
+    lines = [
+        json.loads(line)
+        for line in (tmp_path / "emissions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert [line["phase"] for line in lines] == [
         "start",
         "success",
         "start",
         "failure",
+        "failure",
+        "start",
+        "failure",
     ]
-    assert {json.loads(line)["node"] for line in lines} == {OVERLAY.emission_node}
+    control_cid = next(i["correlation_id"] for i in out["items"] if i["control"])
+    piece7_failure = [
+        line
+        for line in lines
+        if line["piece"] == FROM_PIECE
+        and line["correlation_id"] == control_cid
+        and line["phase"] == "failure"
+    ]
+    assert len(piece7_failure) == 1
+    assert piece7_failure[0]["failure_code"] == OVERLAY.control.failure_code
+    assert {line["node"] for line in lines} == {
+        OVERLAY.emission_node,
+        OVERLAY.control.upstream_node,
+    }
     assert runtime_join_j7.main(["run", "--inject", "deaf-invalidation"]) == 3
 
 
