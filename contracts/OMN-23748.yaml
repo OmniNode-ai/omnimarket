@@ -59,7 +59,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_handler.py -k two_failing_sources -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_handler.py -k failing_sources_read_at_once -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23748-ac4
   description: The wiring hands a far host its declared registry root, so the free slots it reads are real rather than 0; the unit's tick on h051 and its snapshot event and row are read in the pull request's Lab comment.

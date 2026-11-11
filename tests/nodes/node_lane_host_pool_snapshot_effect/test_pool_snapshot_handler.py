@@ -316,3 +316,35 @@ def test_error_two_failing_sources_name_the_first_in_the_old_reading_order() -> 
     result = h.handle(pool_request())
     assert result.status is EnumPoolSnapshotStatus.FAILED
     assert result.failure_reason is EnumPoolSnapshotFailureReason.ADVERTISEMENTS_UNREAD
+
+
+def test_error_failing_sources_read_at_once_still_name_the_advertisement_failure() -> (
+    None
+):
+    """Each failing source waits for the others to have started, so a one-after-another read never reaches the second failure."""
+    barrier = threading.Barrier(3, timeout=5)
+
+    class _FailsAfterBarrier:
+        name = "fails-after-barrier"
+
+        def read_advertisements(self):
+            barrier.wait()
+            raise PoolSnapshotSourceError("ads down")
+
+        def running_lanes(self, now):
+            barrier.wait()
+            raise PoolSnapshotSourceError("ledger down")
+
+        def read_accounts(self, hosts):
+            barrier.wait()
+            raise PoolSnapshotSourceError("accounts down")
+
+    sources = _FailsAfterBarrier()
+    _, rows, _, _ = _golden_inputs()
+    h = handler(rows=rows)
+    h._advertisement_source = sources
+    h._lanes_source = sources
+    h._accounts_source = sources
+    result = h.handle(pool_request())
+    assert result.status is EnumPoolSnapshotStatus.FAILED
+    assert result.failure_reason is EnumPoolSnapshotFailureReason.ADVERTISEMENTS_UNREAD
