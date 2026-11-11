@@ -344,6 +344,7 @@ BETA_BOARD = "omnimarket.nodes.node_beta_board_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
 FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
 JOIN_J16 = "omnimarket.nodes.node_join_j16_effect"
+JOIN_J0 = "omnimarket.nodes.node_join_j0_effect"
 UNRESOLVED = "omnimarket.nodes.node_factory_floor_unresolved_effect"
 JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
@@ -412,6 +413,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             BETA_BOARD,
             FLOOR_SIMPLE,
             JOIN_J16,
+            JOIN_J0,
             UNRESOLVED,
         ]
     )
@@ -457,6 +459,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "mvp_launch_reads",
         "floor_projections",
         "join_j16",
+        "join_j0",
         "factory_floor_unresolved",
     ]
     assert steps["factory_floor"].concurrent is False
@@ -482,6 +485,7 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and BETA_BOARD not in argv
                 and JOIN_REFUSAL not in argv
                 and JOIN_J16 not in argv
+                and JOIN_J0 not in argv
                 and JOIN_J2 not in argv
                 and JOIN_J5 not in argv
                 and FLOOR_PROJECTIONS not in argv

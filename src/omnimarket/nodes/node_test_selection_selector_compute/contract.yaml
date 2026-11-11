@@ -13,7 +13,9 @@ description: >-
   needs more shards than a narrowed run may take, or whose recorded durations cannot be read, is
   answered as a full-suite escalation. Every setting is in policy.yaml; the durations source is
   injected (in-memory default, durations file as the real backend). scripts/ci/detect_test_paths.py
-  calls this node.
+  calls this node. HandlerTestPathResolution (OMN-23719) maps a change's files to the test paths it can
+  affect, by the import graph for the modules the adjacency map lists as node-scoped; scripts/ci/detect_test_paths.py
+  calls it as a library handler.
 input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
 output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
 handler:
@@ -29,6 +31,12 @@ handler_routing:
       handler:
         name: HandlerTestSelectionSelector
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector
+    - operation: resolve_test_paths
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution.ModelPathResolutionRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution.ModelPathResolutionResult
+      handler:
+        name: HandlerTestPathResolution
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution
 descriptor:
   node_archetype: compute
   purity: pure

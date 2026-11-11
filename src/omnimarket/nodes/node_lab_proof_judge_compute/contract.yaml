@@ -20,7 +20,10 @@ runtime_profiles: []
 
 description: >
   Computes the lab proof judge's verdicts for the changed-path-live and
-  focused-tests checks. A change that already passes is left unchanged; a change
+  focused-tests checks. The changed-path-live request may carry the lab
+  probe's own text: the node then reads the live-grep lines itself (a name no
+  runtime log mentions is a changed path that never ran) and the driver keeps
+  no copy of that rule (OMN-23715). A change that already passes is left unchanged; a change
   that touches a runtime node the overlay declares as not-applicable is judged
   NOT_APPLICABLE only when a matching substitute receipt (same repo, node and
   head, exit 0, accepted host class) exists, otherwise it FAILS. A change that
@@ -43,6 +46,14 @@ in_process_handlers:
     handler:
       module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_changed_path_live
       class: HandlerChangedPathLive
+  pool_run:
+    handler:
+      module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_pool_run
+      class: HandlerPoolRun
+  live_probe:
+    handler:
+      module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_live_probe
+      class: HandlerLiveProbe
   select_tests:
     handler:
       module: omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_test_selection
@@ -74,7 +85,7 @@ output_model:
   description: The verdict, the matched entries, the substitute proofs and the not-applicable use.
 
 runtime_dispatch:
-  external_trigger: "The pool driver calls `python -m omnimarket.nodes.node_lab_proof_judge_compute changed-path-live` with one JSON request on stdin; the node answers with one JSON result on stdout."
+  external_trigger: "The pool driver calls `python -m omnimarket.nodes.node_lab_proof_judge_compute pool-run` (or changed-path-live) with one JSON request on stdin; the node answers with one JSON result on stdout."
 
 topics:
   lab_proof_judge_requested: onex.cmd.omnimarket.lab-proof-judge-requested.v1

@@ -1,0 +1,71 @@
+ThroughputTick design verdict (OMN-23732, task H0; unblocks H3 once cited)
+=======================================================================
+
+Model: ThroughputTick.tla sha256=4be33244cddf4e7c079f01cbedb2d5ad8951321e3ad00b6a52ed9cee570ba8e6
+Receipts: formal/throughput_tick/results/SUMMARY.txt (TLC 2.19, host h053, 2026-11-11)
+
+Result
+------
+base1 (lock, reread under the lock, locked writers, one store, no crash)   PASS  no error found
+base2 (the same with crashes and a consumer that starts one lane per key)   PASS  no error found
+M1  no lock on the read-send-record                         violates SendAttemptOnce
+M2  no reread under the lock                                violates SendAttemptOnce
+M3  a foreign writer that does not take the lock            violates SendAttemptOnce
+M4  a lock file that cannot be opened lets the check go on  violates SendAttemptOnce
+M5  crash between send and record, consumer not idempotent  violates StartedOnce
+M6  the same crash seen at the call level                   violates SendAttemptOnce
+M7  an unreadable store reads as empty                      violates SendAttemptOnce
+T1  the three unlocked stores as the source has them        violates SendAttemptOnce
+
+What the model says about the tick that runs today (read from the source, MAPPING.txt)
+-------------------------------------------------------------------------------------
+1. The fill (lab-fill.sent.json) has the lock, the reread under the lock and a record after each
+   send in the detached worker: base1 holds for it. Two holes remain, each a mutant that violates:
+   (a) fill_lock yields True when the lock file cannot be opened (OSError), so the fill goes on
+   without the lock (M4); (b) a worker or tick killed between the runner call and the record
+   leaves the key unrecorded, and the next tick starts a second lane, because the lane name
+   carries the minute stamp (fill-<kind>-<name>-<YYYYMMDDTHHMM>Z) and the runner refuses only a
+   repeated lane name (M5). read_sent also reads an unreadable file as empty (M7).
+2. The relaunch (dispatch-replaced.json), stuck-green (green-unlanded.json) and floor
+   (floor-escalation.json) stores have no lock and no reread: each decides, sends, then records
+   (T1). One launchd tick runs at a time; a second tick (a session's) can overlap it. The floor
+   escalation also reads the runner's receipts of its lane prefix before it sends, and stuck-green
+   reads the live fix lane; neither read is modelled, so T1 states the exposure of the
+   store-only dedupe and not a measured duplicate send.
+3. Not seen: any key sent twice inside its 3 h window in the 11 live lab-fill rows read
+   (MAPPING.txt). The model finds exposures, not a duplicate that happened.
+
+Requirements for the H3 orchestrator (each is the knob whose removal violates the invariant)
+-------------------------------------------------------------------------------------------
+R1  Fail closed: a lock or a store that cannot be opened or read sends nothing and says so (M4, M7).
+R2  One store and one lock for every writer of the send record, on one state directory
+    (the 2026-10-19 incident: two tick state directories, one item sent twice) (M3).
+R3  Every send store takes the lock, rereads under it and drops recorded keys before the first
+    send (M1, M2, T1); no store of the orchestrator is written without the lock.
+R4  The send is idempotent by key: the lane name is a function of the key alone (the whole key
+    hashed, not a 60-character cut of it) and the runner returns the lane it already started for
+    a repeated key, or the check reads the runner's receipts by key before it sends. Then a crash
+    between the send and the record is a retry, not a second lane (M5, base2).
+R5  Record after each send (not once after all sends).
+
+Not modelled (UNMEASURED or left out, stated so the pass is not over-read)
+--------------------------------------------------------------------------
+the dedupe window (a key is sent again after its window by design; the model is one window); more
+than two checks; two state directories (R2 states the requirement, the model shares one store); a
+store on another host; a refused send (it is not a Send; it is retried by design); the receipt read
+of the floor and green paths; the content of a send; the lane-name digest collision (two keys that
+agree in their first 60 slug characters share a digest; it can lose a send, it cannot double one).
+The state files themselves were not read: see MAPPING.txt.
+
+Design review (another reviewer)
+--------------------------------
+Reviewer: GLM glm-5.3 through Claude Code (harness-delegate), a model other than the author. Codex was
+the intended reviewer and was refused on h053 (HarnessPlacementRefused: Codex runs only on codex hosts).
+Pass 1, run c0c24977-5bef-42e7-bbb7-c6b9ef4a8f03: ACCEPT-WITH-CHANGES. Changes made: LockFailOpen
+requires lock=none; the header names refused sends, the in-tick record-once window and the
+two-state-directory incident; T1 added for the unlocked stores.
+Pass 2, run 0d906cf1-dac3-45b7-91df-b69c21bfb290: ACCEPT-WITH-CHANGES; it judged those three changes met
+and asked for two more: the read-fail-open path (added as ReadFailOpen and M7) and a note in MAPPING.txt
+that write_history does not resolve symlinks (added). The reviewer did not read the model after those
+last two changes; a re-read is open.
+Verdict recorded here: ACCEPT-WITH-CHANGES, changes applied. The verdict is also posted on OMN-23732.
