@@ -141,3 +141,16 @@ def test_seam_control_with_the_old_cycle_end_the_runner_chains_are_not_read(
 def test_seam_the_publish_contract_runs_the_step_before_the_record_step() -> None:
     names = [s.name for s in load_publish_runtime().steps]
     assert names.index("join_j0") < names.index("factory_floor")
+
+
+def test_seam_the_contract_declares_the_terminal_event_the_run_ends_on() -> None:
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[3]
+            / "src/omnimarket/nodes/node_join_j0_effect/contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    terminal = "onex.evt.omnimarket.join-zero-run-completed.v1"
+    assert contract["terminal_event"] == terminal
+    assert contract["topics"]["join_j0_run_completed"] == terminal
+    assert terminal in contract["externally_consumed_topics"]
