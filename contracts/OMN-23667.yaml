@@ -66,8 +66,6 @@ dod_evidence:
   description: The replay tests run on a lab host at the pushed head through the lab-work node; the live replay of the 39 rows against the dev lane and the parity re-run are in the pull request lab line.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23667 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_ledger_file_mode_replay_effect -q --no-cov

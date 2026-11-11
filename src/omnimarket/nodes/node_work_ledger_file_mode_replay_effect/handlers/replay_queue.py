@@ -43,7 +43,8 @@ class ProtocolReplayQueue(Protocol):
 
     def pending_row_ids(self) -> set[str]: ...
 
-    def replayed_row_ids(self) -> set[str]: ...
+    def replayed_row_ids(self) -> set[str]:
+        """Return the ids of the rows already replayed."""
 
     def refused_reasons(self) -> dict[str, str]: ...
 

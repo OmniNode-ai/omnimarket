@@ -26,7 +26,8 @@ _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 class ProtocolLedgerFileRows(Protocol):
     """The rows of the ledger file of record, in file order."""
 
-    def rows(self) -> Sequence[str]: ...
+    def rows(self) -> Sequence[str]:
+        """Return every row of the file, in file order."""
 
 
 class InMemoryLedgerFileRows:

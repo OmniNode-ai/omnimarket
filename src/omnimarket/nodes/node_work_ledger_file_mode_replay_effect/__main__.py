@@ -106,8 +106,7 @@ def main(
     with stack:
         result = handler.handle(request)
     click.echo(result.model_dump_json(indent=2))
-    clean = not (result.still_pending or result.refused or result.not_in_file)
-    sys.exit(0 if clean else 1)
+    sys.exit(1 if (result.still_pending or result.refused or result.not_in_file) else 0)
 
 
 if __name__ == "__main__":
