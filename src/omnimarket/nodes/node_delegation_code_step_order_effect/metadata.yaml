@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_code_step_order_effect
+version: "1.0.0"
+description: "Resolve the code-engine step order and attempts per engine from the routing contract and overlay"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_code_step_order_effect: "omnimarket.nodes.node_delegation_code_step_order_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "delegation", "routing", "code-step-order", "deterministic"]
+pack: "core"
+display_name: "Code Step Order Effect"
+node_role: "effect"

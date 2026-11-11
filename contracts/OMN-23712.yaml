@@ -1,0 +1,80 @@
+schema_version: 1.0.0
+ticket_id: OMN-23712
+title: Code tasks read their engine order from the routing rules
+summary: A new effect node reads the code_generation tier order and each tier's max_retries from the routing contract and an overlay that maps tiers to the lane tool's engines and switches engines off per
+  task class, refuses an order that does not open on the lab tier, and returns a typed refusal when anything cannot be read. The lane delegation tool asks it for its order and
+  holds none. No check is widened and no bound is changed.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23712-order-from-routing
+  statement: The code step's engine order and attempts come from the routing contract and its overlay, never from the script.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the order and attempts of the code engines come from a node that reads the routing contract and its overlay, refuses an order that does not open on the lab tier, and a changed overlay
+      changes both with no code change -- falsifier: uv run pytest tests/unit/routing/test_code_step_order_from_routing_contract.py -q'
+  - id: AC2
+    statement: 'AC2: an unreadable contract, tier file or overlay, an unknown class, an unknown tier or an overlay with every engine off is a typed refusal with no steps, never a default order -- falsifier:
+      uv run pytest tests/unit/routing/test_code_step_order_unreadable.py -q'
+  - id: AC3
+    statement: 'AC3: no third router exists: the code budget node has no chain operation and no code-chain key is read anywhere -- falsifier: uv run pytest tests/unit/routing/test_no_code_chain_router.py
+      -q'
+  - id: AC4
+    statement: 'AC4: integrated: on the dev lane, one real code task goes to the local model first with GLM not called, and the same task with the order reversed in the overlay goes to GLM first -- falsifier:
+      the two delegation receipts'' engine cells read in order'
+evidence_requirements:
+- kind: tests
+  description: The three routing test files pass.
+  command: uv run --frozen pytest tests/unit/routing/test_code_step_order_from_routing_contract.py tests/unit/routing/test_code_step_order_unreadable.py tests/unit/routing/test_no_code_chain_router.py -q
+    -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23712-ac1
+  description: The shipped contract and an overlay give the order code_edit, lab_agent, glm with attempts equal to each tier's max_retries; an edited overlay or tier order changes it; a non-lab first tier
+    is refused.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/routing/test_code_step_order_from_routing_contract.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23712-ac2
+  description: Each unreadable or invalid input is a typed refusal with no steps; the injected break (fall back to a default order on an unreadable overlay) turns test_missing_overlay red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/routing/test_code_step_order_unreadable.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23712-ac3
+  description: The budget node has no resolve_chain operation and no file names the code-chain key.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/routing/test_no_code_chain_router.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23712-ac4
+  description: The overlay reversal puts GLM first with no code change; the live reads of the two delegation receipts are in the pull request lab line.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/routing/test_code_step_order_from_routing_contract.py -k overlay_reversal -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23712-integration-proof
+  description: The routing tests run on a lab host at the pushed head through the lab-work node; the live reads of the two delegation receipts (local first, and the overlay reversed) are in the pull request lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23712 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/routing/test_code_step_order_from_routing_contract.py tests/unit/routing/test_code_step_order_unreadable.py tests/unit/routing/test_no_code_chain_router.py -q --no-cov
+    cwd: .
