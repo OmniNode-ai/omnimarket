@@ -28,6 +28,7 @@ from omnimarket.handlers.claude_gateway_settings import (
     HandlerClaudeGatewaySettings,
     ModelClaudeGatewaySettingsRequest,
     probe_gateway,
+    prove_gateway_route,
 )
 from omnimarket.handlers.handler_endpoint_connections import (
     HandlerModelConnections,
@@ -323,20 +324,9 @@ class HandlerSetupGateway:
                 else:
                     raise RuntimeError("Gateway route did not become ready")
                 token = asyncio.run(self._store.get_secret(reference))
-                with httpx.Client(trust_env=False, timeout=60) as client:
-                    response = client.post(
-                        record.url + "/v1/messages",
-                        headers={"authorization": "Bearer " + (token or "")},
-                        json={
-                            "model": plan.gateway.model,
-                            "max_tokens": 8,
-                            "messages": [
-                                {"role": "user", "content": "Reply with hello."}
-                            ],
-                        },
-                    )
-                    response.raise_for_status()
-                    body = response.json()
+                body, minted = prove_gateway_route(
+                    record.url, token or "", plan.gateway.model
+                )
                 if (
                     body.get("model") != plan.gateway.model
                     or not body.get("content")
@@ -347,7 +337,7 @@ class HandlerSetupGateway:
                     )
                 # This header is minted by our owned gateway only after its
                 # canonical receipt/projection write, never copied upstream.
-                proof_run_id = UUID(response.headers.get("x-onex-run-id", ""))
+                proof_run_id = UUID(minted)
                 record = record.model_copy(
                     update={"proved": True, "proof_run_id": proof_run_id}
                 )

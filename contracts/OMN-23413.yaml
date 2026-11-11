@@ -418,17 +418,9 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'set -eu
-
-      : "${ONEX_TEST_CLI:?required installed-wheel proof input}"
-
-      : "${ONEX_TEST_WHEEL:?required installed-wheel proof input}"
-
-      : "${ONEX_TEST_CORE_WHEEL:?required installed-wheel proof input}"
-
-      : "${ONEX_TEST_CLAUDE_WHEEL:?required installed-wheel proof input}"
-
-      env -u PYTHONPATH "$(dirname "$ONEX_TEST_CLI")/python" -m pytest tests/e2e/test_setup_packaged_journey.py::test_built_package_setup_delegation_dashboard_journey
+    check_value: env -u PYTHONPATH ONEX_E2E_REQUIRE_COMPLETE=1 sh -c 'test -n "$ONEX_TEST_WHEEL" && test
+      -n "$ONEX_TEST_CORE_WHEEL" && test -n "$ONEX_TEST_CLAUDE_WHEEL" && exec "$(dirname "$ONEX_TEST_CLI")/python"
+      -m pytest tests/e2e/test_setup_packaged_journey.py::test_built_package_setup_delegation_dashboard_journey
       tests/e2e/test_named_connections_cli.py tests/e2e/test_setup_external_plugin_cli.py tests/e2e/test_setup_plugin_lifecycle_cli.py
       tests/e2e/test_setup_gateway_lifecycle.py -q --no-cov -n 0 -p no:randomly'
     cwd: .
@@ -454,16 +446,8 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'set -eu
-
-      : "${ONEX_NATIVE_MESSAGES_ENDPOINT:?required actual Claude proof input}"
-
-      : "${ONEX_NATIVE_MESSAGES_MODEL:?required actual Claude proof input}"
-
-      : "${ONEX_TEST_CLI:?required actual Claude proof input}"
-
-      command -v claude
-
-      env -u PYTHONPATH "$(dirname "$ONEX_TEST_CLI")/python" -m pytest tests/e2e/test_claude_gateway_real_client.py
-      tests/e2e/test_claude_gateway_local_model.py -q --no-cov -n 0 -p no:randomly'
+    check_value: env -u PYTHONPATH ONEX_E2E_REQUIRE_COMPLETE=1 sh -c 'command -v claude >/dev/null &&
+      test -n "$ONEX_NATIVE_MESSAGES_ENDPOINT" && test -n "$ONEX_NATIVE_MESSAGES_MODEL" && exec "$(dirname
+      "$ONEX_TEST_CLI")/python" -m pytest tests/e2e/test_claude_gateway_real_client.py tests/e2e/test_claude_gateway_local_model.py
+      -q --no-cov -n 0 -p no:randomly'
     cwd: .

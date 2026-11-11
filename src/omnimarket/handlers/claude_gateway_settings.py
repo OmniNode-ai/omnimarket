@@ -29,6 +29,9 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models.model_gatew
     ModelGatewayHookInstallRequest,
     ModelGatewayHookInstallResult,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.gateway_route_proof import (
+    prove_gateway_route,
+)
 
 __all__ = [
     "HandlerClaudeGatewaySettings",
@@ -37,6 +40,7 @@ __all__ = [
     "gateway_hook_enabled",
     "manage_gateway_hooks",
     "probe_gateway",
+    "prove_gateway_route",
 ]
 
 
