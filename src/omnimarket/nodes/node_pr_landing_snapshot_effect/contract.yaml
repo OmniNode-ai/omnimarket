@@ -27,9 +27,13 @@ description: >
   failed_run_ids into the tick's facts (a read at another head fills nothing),
   and records the filled facts of that tick: appended to the recorder and
   published on the overlay's record topic. During the cutover period it also carries the old
-  controller's finished tick (its facts, state and logged actions) onto the facts and the
-  record, so the tick orchestrator compares with the controller's real decision (OMN-23665); a
-  controller tick still open or stale records nothing. An unread, mismatched or already
+  controller's finished tick onto the facts (its state, bounded to the pull requests the tick holds, and the external
+  blockers its sidecar holds as judged) and publishes the controller's decision rows (kind, subject, outcome, reason),
+  never its facts, on the record, so the tick orchestrator compares with the controller's real decision (OMN-23665,
+  OMN-22921); a controller tick still open or stale, or a sidecar unread, records nothing. The record is published
+  first and journaled only once the broker accepted it: a refused publish ends in the typed failed event
+  publish_failed and leaves no journal row, and a record over the overlay's record_max_bytes ends in record_too_large
+  without being offered to the broker. An unread, mismatched or already
   recorded tick ends in the typed failed event and replaces no earlier record.
 runtime_profiles:
   - effects
@@ -57,7 +61,7 @@ dependencies:
     required: true
   - name: ProtocolLandingControllerSource
     dependency_type: protocol
-    description: "the old controller's last finished tick during the cutover period (its facts file, tick log and decision log); absent unless the overlay names the four controller_* fields, so the controller's own instance is untouched. Carries the controller's state onto the node's facts and publishes the finished tick on the record (OMN-23665)."
+    description: "the old controller's last finished tick during the cutover period (its facts file, tick log and decision log); absent unless the overlay names the controller_* fields and the external blocker values, so the controller's own instance is untouched. Carries the controller's state onto the node's facts and publishes the finished tick on the record (OMN-23665)."
     required: false
   - name: ProtocolLandingTickRecorder
     dependency_type: protocol

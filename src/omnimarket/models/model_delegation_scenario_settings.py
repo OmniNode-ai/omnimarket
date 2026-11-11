@@ -16,6 +16,10 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
+
 NAME_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
 _TEMPLATE_PART = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -76,4 +80,17 @@ class ModelScenarioSettingsOverlay(BaseModel):
     settings: tuple[ModelScenarioSetting, ...] = Field(min_length=1)
 
 
-__all__ = ["NAME_PATTERN", "ModelScenarioSetting", "ModelScenarioSettingsOverlay"]
+class ModelScenarioStoreOverlay(BaseModel):
+    """The overlay document of a scenario node that names its store: names and addresses only, never a value."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    secret_store: ModelSecretStoreOverlay
+
+
+__all__ = [
+    "NAME_PATTERN",
+    "ModelScenarioSetting",
+    "ModelScenarioSettingsOverlay",
+    "ModelScenarioStoreOverlay",
+]
