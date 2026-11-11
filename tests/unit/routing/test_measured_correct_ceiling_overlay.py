@@ -265,11 +265,11 @@ def test_grounded_input_budget_follows_the_overlay(
     )
     assert grounded_input_budget(_CODER, _TASK) == _LOWERED
 
-    # local-heavy-reasoning names no ceiling in the overlay, so its budget is
-    # the packaged one in configs/grounding_budget_by_task_class.yaml.
+    # OMN-23631: local-heavy-reasoning code_generation has no packaged budget any more
+    # (it was 32000), so a class the overlay does not name has none.
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(code_budget_overlay_root))
-    assert grounded_input_budget("local-heavy-reasoning", _TASK) == 32000
+    assert grounded_input_budget("local-heavy-reasoning", _TASK) is None
     assert (
         load_grounding_budget_by_task_class().budget_for("local-heavy-reasoning", _TASK)
-        == 32000
+        is None
     )

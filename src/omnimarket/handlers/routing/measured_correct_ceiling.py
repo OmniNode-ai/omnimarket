@@ -26,6 +26,7 @@ from functools import lru_cache
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
 )
@@ -37,6 +38,7 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
 )
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.models.model_delegation_code_budget import (
+    INPUT_CEILING_OVERLAY_KEY,
     EnumCodeBudgetRefusal,
     ModelCodeBudgetOverlay,
     ModelCodeBudgetRequest,
@@ -57,6 +59,10 @@ _GROUNDING_TOKEN_CHARS_PER_TOKEN: int = 4
 
 #: The node whose overlay carries the input ceilings (OMN-23631).
 CODE_BUDGET_OVERLAY_ID = "node_delegation_code_budget_compute"
+
+
+class InputLimitNotDeclaredError(NodeOverlayError):
+    """Raised when a caller requires an input limit the overlay does not declare."""
 
 
 def measure_grounding_input_tokens(text: str) -> int:
@@ -107,6 +113,54 @@ def measured_correct_ceiling(
     if result.refusal is EnumCodeBudgetRefusal.UNNAMED_INPUT_CEILING:
         return None
     return result.input_ceiling_tokens
+
+
+def local_input_window(
+    backend_id: str, environ: Mapping[str, str] | None = None
+) -> int:
+    """The largest local input the overlay declares for ``backend_id`` in any class.
+
+    Read from ``delegation.code_budget.input_ceilings.<backend>`` of the code
+    budget overlay (OMN-23631). An install no overlay root names the overlay on,
+    or a backend the overlay does not name, raises
+    :class:`InputLimitNotDeclaredError`; an overlay that is present but unreadable
+    or invalid still raises :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`,
+    never a default.
+    """
+    try:
+        overlay = load_structured_overlay(
+            CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
+        )
+    except NodeOverlayNotFoundError:
+        raise InputLimitNotDeclaredError(
+            f"{CODE_BUDGET_OVERLAY_ID}: no overlay root names the code budget "
+            "overlay, so no local input limit is declared"
+        ) from None
+    if backend_id not in overlay.input_ceilings:
+        raise InputLimitNotDeclaredError(
+            f"{INPUT_CEILING_OVERLAY_KEY}.{backend_id}: name it in the code "
+            "budget overlay"
+        )
+    return max(overlay.input_ceilings[backend_id].values())
+
+
+def required_input_ceiling(
+    backend_id: str, task_type: str, environ: Mapping[str, str] | None = None
+) -> int:
+    """The overlay's input ceiling for a backend and class, which must be declared.
+
+    The required form of :func:`measured_correct_ceiling`: a pair the overlay
+    does not name raises :class:`InputLimitNotDeclaredError` instead of
+    returning ``None``, because the local input limit has no packaged value to
+    fall back to.
+    """
+    ceiling = measured_correct_ceiling(backend_id, task_type, environ)
+    if ceiling is None:
+        raise InputLimitNotDeclaredError(
+            f"{input_ceiling_overlay_key(backend_id, task_type)}: the local input "
+            "limit has no packaged value"
+        )
+    return ceiling
 
 
 def grounded_input_budget(backend_id: str, task_type: str) -> int | None:
@@ -174,10 +228,13 @@ def refuse_above_measured_correct_ceiling(
 
 __all__ = [
     "CODE_BUDGET_OVERLAY_ID",
+    "InputLimitNotDeclaredError",
     "exceeds_measured_correct_ceiling",
     "grounded_input_budget",
     "load_grounding_budget_by_task_class",
+    "local_input_window",
     "measure_grounding_input_tokens",
     "measured_correct_ceiling",
     "refuse_above_measured_correct_ceiling",
+    "required_input_ceiling",
 ]

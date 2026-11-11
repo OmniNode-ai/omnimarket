@@ -11,6 +11,25 @@ ceiling_s: 600
 input_ceilings:
   local-coder:
     code_generation: 8169
+    refactor: 65536
+    validator_generation: 65536
+    test: 65536
+  local-heavy-reasoning:
+    research: 8192
+    reasoning: 8192
+    complex_reasoning: 8192
+    planning: 8192
+    review: 8192
+    document: 8192
+    escalation: 8192
+    evidence_comment: 8192
+    documentation: 8192
+    summarization: 8192
+    brief_drafting: 8192
+    extraction_proposer: 8192
+    tail_summary: 8192
+    context_selection: 8192
+    context_compaction: 8192
   fixture-backend:
     code_generation: 1000
     test: 2000

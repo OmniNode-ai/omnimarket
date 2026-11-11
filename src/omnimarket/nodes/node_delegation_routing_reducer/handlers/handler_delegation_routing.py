@@ -96,6 +96,7 @@ from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
     grounded_input_budget,
     measure_grounding_input_tokens,
+    required_input_ceiling,
 )
 from omnimarket.handlers.routing.paid_gate import (
     ALLOW_PAID_ENV as _ALLOW_PAID_ENV,
@@ -2164,6 +2165,15 @@ def resolve_backend_grounding_budget(
     )
     for backend in config.backends:
         if backend.backend_id == backend_id:
+            # OMN-23631: a local backend with no packaged budget is held to the
+            # overlay's ceiling for the class; a pair the overlay does not name is
+            # a typed refusal naming the key, never an unlimited input.
+            if (
+                task_type is not None
+                and backend.tier == "local"
+                and backend.max_grounded_input_tokens is None
+            ):
+                return required_input_ceiling(backend_id, task_type)
             if task_type is not None:
                 class_budget = grounded_input_budget(backend_id, task_type)
                 if class_budget is not None:

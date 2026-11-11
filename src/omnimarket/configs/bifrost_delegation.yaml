@@ -67,7 +67,8 @@ backends:
     # has not been done. The identifier-grounding check is what actually catches a
     # fabricated citation; this budget is the coarse pre-emptive bound that keeps
     # an oversized prompt off a rung that cannot hold it.
-    max_grounded_input_tokens: 8000
+    # OMN-23631: no packaged budget. The local input limit is the overlay value
+    # delegation.code_budget.input_ceilings.<backend>.<task_class>; a pair it does not name is a typed refusal.
     capabilities:
       - code_generation
       - refactoring
@@ -125,7 +126,8 @@ backends:
     # has not been done. The identifier-grounding check is what actually catches a
     # fabricated citation; this budget is the coarse pre-emptive bound that keeps
     # an oversized prompt off a rung that cannot hold it.
-    max_grounded_input_tokens: 8000
+    # OMN-23631: no packaged budget. The local input limit is the overlay value
+    # delegation.code_budget.input_ceilings.<backend>.<task_class>; a pair it does not name is a typed refusal.
     capabilities:
       - deep_reasoning
       - reasoning
