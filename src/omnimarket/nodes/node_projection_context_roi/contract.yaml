@@ -65,7 +65,7 @@ db_io:
       # are the house tenant's rows. ADR-0027 classification, not a rename.
       schema: public
       migration: "001_create_context_roi_scores.sql"
-      access: write
+      access: read_write
       role: scores
 
 event_bus:
