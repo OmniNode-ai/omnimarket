@@ -1001,6 +1001,7 @@ node_plugin_bump_stuck_compute = "omnimarket.nodes.node_plugin_bump_stuck_comput
 node_plugin_walk_evidence_effect = "omnimarket.nodes.node_plugin_walk_evidence_effect"
 node_polish_task_classifier = "omnimarket.nodes.node_polish_task_classifier"
 node_pool_read_share_effect = "omnimarket.nodes.node_pool_read_share_effect"
+node_pool_usage_verdict_compute = "omnimarket.nodes.node_pool_usage_verdict_compute"
 node_post_merge_knowledge_sync_orchestrator = "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator"
 node_pr_arm_gate_compute = "omnimarket.nodes.node_pr_arm_gate_compute"
 node_pr_claim_registry_effect = "omnimarket.nodes.node_pr_claim_registry_effect"

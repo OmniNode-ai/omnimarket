@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example values only: the deployed thresholds live in the overlays repository. Copy to
+# <root>/node_pool_usage_verdict_compute/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+# A missing overlay refuses the run; no threshold has a default in code.
+#
+#   five_hour / weekly   the drain and limited bounds of one usage window, as a fraction of the
+#                       window's limit (0.0 to 1.0, never percent-scaled). drain_at is where the
+#                       label starts skipping NEW lane starts; limited_at is where it is limited;
+#                       drain_at must not sit past limited_at.
+#   max_reading_age_seconds  the age beyond which a label's usage reading reads as stale and its
+#                            verdict falls to unknown
+five_hour:
+  drain_at: 0.9
+  limited_at: 1.0
+weekly:
+  drain_at: 0.85
+  limited_at: 1.0
+max_reading_age_seconds: 900
