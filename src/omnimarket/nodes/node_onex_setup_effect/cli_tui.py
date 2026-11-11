@@ -21,17 +21,54 @@ from pathlib import Path
 from typing import Protocol
 
 import click
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, SecretStr
+from rich.markdown import Markdown
+from rich.text import Text
 from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding
-from textual.widgets import Input, OptionList, RichLog, Static
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import (
+    Button,
+    Input,
+    Label,
+    OptionList,
+    RichLog,
+    Select,
+    SelectionList,
+    Static,
+    Switch,
+)
 from textual.widgets.option_list import Option
 
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
+# Shortcuts first, as coding-agent TUIs list them; every CLI command follows.
 _LOCAL_COMMANDS = {
+    ("setup",): "Connect a model server and choose its model.",
+    ("config",): "Change the model server, model or key.",
+    ("model",): "Pick the model every task tries first.",
+    ("delegation",): "Turn delegation on or off for Claude Code.",
+    ("clear",): "Clear the output.",
     ("help",): "Show keys and how commands work.",
     ("quit",): "Leave the TUI.",
 }
+_PROVIDERS = (  # alphabetical; Ollama is selected first in the form
+    ("Google Gemini", "gemini"),
+    ("Ollama", "ollama"),
+    ("OpenAI", "openai"),
+    ("OpenRouter", "openrouter"),
+)
+_HOSTED = frozenset(("openrouter", "gemini", "openai"))
+# From each provider's own docs (docs.ollama.com/faq, openrouter.ai/docs,
+# aistudio.google.com/docs/api-key).
+_PROVIDER_HINTS = {
+    "ollama": "Ollama listens on http://localhost:11434. For a server on another "
+    "machine, set OLLAMA_HOST=0.0.0.0:11434 there and use its address.",
+    "openrouter": "Create a key at openrouter.ai/keys.",
+    "gemini": "Create a key at aistudio.google.com/apikey.",
+    "openai": "Create a key under API keys in your OpenAI dashboard.",
+}
+_DEFAULT_URL = "http://localhost:11434"
 
 
 class ModelTuiCommand(BaseModel):
@@ -54,9 +91,41 @@ class ModelTuiStatus(BaseModel):
     gateway: bool = False
 
 
+class ModelTuiSetupChoice(BaseModel):
+    """One provider and the models chosen for it; the key never reaches argv or the log."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider: str
+    url: str | None
+    models: tuple[str, ...]
+    key: SecretStr | None = None
+
+    def argv(self, workspace: Path) -> tuple[str, ...]:
+        argv: tuple[str, ...] = (
+            "setup",
+            "--no-interactive",
+            "--yes",
+            "--workspace",
+            str(workspace),
+        )
+        argv += ("--provider", self.provider, "--model", self.models[0])
+        return argv + (("--url", self.url) if self.url else ())
+
+    def more_models_argv(self) -> tuple[str, ...] | None:
+        """`models add-model` for every model after the first, in the order chosen."""
+        if len(self.models) < 2:
+            return None
+        extra = tuple(part for m in self.models[1:] for part in ("--model", m))
+        return ("models", "add-model", self.provider, *extra)
+
+
 class ProtocolTuiRunner(Protocol):
     async def stream(
-        self, argv: tuple[str, ...], emit: Callable[[str], None]
+        self,
+        argv: tuple[str, ...],
+        emit: Callable[[str], None],
+        stdin: str | None = None,
     ) -> int: ...
 
     async def capture(self, argv: tuple[str, ...]) -> tuple[int, str, str]: ...
@@ -117,15 +186,26 @@ class HandlerOnexCommand:
     def __init__(self) -> None:
         self._onex = str(Path(sys.executable).parent / "onex")
 
-    async def stream(self, argv: tuple[str, ...], emit: Callable[[str], None]) -> int:
+    async def stream(
+        self,
+        argv: tuple[str, ...],
+        emit: Callable[[str], None],
+        stdin: str | None = None,
+    ) -> int:
         process = await asyncio.create_subprocess_exec(
             self._onex,
             *argv,
-            stdin=asyncio.subprocess.DEVNULL,
+            stdin=asyncio.subprocess.DEVNULL
+            if stdin is None
+            else asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
         assert process.stdout is not None
+        if stdin is not None and process.stdin is not None:
+            process.stdin.write(stdin.encode())
+            await process.stdin.drain()
+            process.stdin.close()
         async for raw in process.stdout:
             emit(raw.decode(errors="replace").rstrip("\n"))
         return await process.wait()
@@ -186,9 +266,11 @@ async def load_status() -> ModelTuiStatus:
             row = json.loads(line)
         except ValueError:
             continue
-        if row.get("set_up") and row.get("first_model"):
-            model = str(row["first_model"])
+        first = row.get("first_model") or next(iter(row.get("models") or []), None)
+        if row.get("set_up") and first:
+            model = model or str(first)
             if row.get("tried_first"):
+                model = str(first)
                 break
     claude: list[str] = []
     await runner.stream(("claude", "status", "--json"), claude.append)
@@ -200,6 +282,353 @@ async def load_status() -> ModelTuiStatus:
     return ModelTuiStatus(
         workspace=display_path(Path.cwd()), model=model, gateway=gateway
     )
+
+
+def _discovered_models(text: str) -> tuple[str | None, list[str]]:
+    """`models discover --json`: (message when nothing was found, model ids)."""
+    document = _last_json_object(text) or {}
+    models = document.get("models")
+    found = [str(m) for m in models] if isinstance(models, list) else []
+    message = document.get("message")
+    return (None if found else str(message or "no models found")), found
+
+
+class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
+    """Provider, then its key or URL, then any number of its models; repeat per provider."""
+
+    CSS = """
+    SetupScreen { align: center middle; }
+    #form { width: 76; height: auto; max-height: 95%; border: round $accent; padding: 1 2; background: $panel; }
+    #form Input, #form Select { margin-bottom: 1; }
+    #found { height: auto; max-height: 8; display: none; margin-bottom: 1; }
+    #note { color: $text-muted; }
+    #basket { color: $success; margin-bottom: 1; }
+    #buttons { height: auto; align-horizontal: right; }
+    """
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, runner: ProtocolTuiRunner) -> None:
+        super().__init__()
+        self._runner = runner
+        self._basket: dict[str, ModelTuiSetupChoice] = {}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="form"):
+            yield Label("Models for delegation: provider, key or URL, then models")
+            yield Select(_PROVIDERS, value="ollama", allow_blank=False, id="provider")
+            yield Input(placeholder="API key", password=True, id="key")
+            yield Input(value=_DEFAULT_URL, placeholder="Server URL", id="url")
+            yield SelectionList[str](id="found")
+            yield Input(placeholder="Or type a model id", id="model")
+            yield Static("Find models lists what this provider offers.", id="note")
+            yield Static("Selected: none yet (at least one is needed)", id="basket")
+            with Horizontal(id="buttons"):
+                yield Button("Find models", id="find")
+                yield Button("Add", id="add")
+                yield Button("Save", variant="primary", id="save")
+                yield Button("Cancel", id="cancel")
+
+    def on_mount(self) -> None:
+        self._show_fields()
+        self.query_one("#note", Static).update(_PROVIDER_HINTS[self._provider()])
+
+    def _provider(self) -> str:
+        return str(self.query_one("#provider", Select).value)
+
+    def _value(self, widget_id: str) -> str:
+        return self.query_one(f"#{widget_id}", Input).value.strip()
+
+    def _show_fields(self) -> None:
+        hosted = self._provider() in _HOSTED
+        self.query_one("#key").display = hosted
+        self.query_one("#url").display = not hosted
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        self._show_fields()
+        self.query_one("#note", Static).update(_PROVIDER_HINTS[self._provider()])
+        found = self.query_one("#found", SelectionList)
+        found.clear_options()
+        found.display = False
+
+    async def _find(self) -> None:
+        note = self.query_one("#note", Static)
+        provider = self._provider()
+        if provider in _HOSTED:
+            key = self._value("key")
+            if not key:
+                note.update(f"enter your {provider} key first")
+                return
+            lines: list[str] = []
+            await self._runner.stream(
+                ("models", "default-model", provider), lines.append, stdin=key + "\n"
+            )
+            found = [ln.strip() for ln in lines if ln.strip() and " " not in ln.strip()]
+            message = None if found else (lines[-1] if lines else "no models found")
+        else:
+            _, out, err = await self._runner.capture(
+                ("models", "discover", "--url", self._value("url"), "--json")
+            )
+            message, found = _discovered_models(out or err)
+        listing = self.query_one("#found", SelectionList)
+        listing.clear_options()
+        listing.add_options([(model, model) for model in found])
+        listing.display = bool(found)
+        note.update(message or f"{len(found)} found: tick any number, then Add")
+
+    def _add_current(self) -> bool:
+        provider = self._provider()
+        chosen = [str(m) for m in self.query_one("#found", SelectionList).selected]
+        typed = self._value("model")
+        if typed and typed not in chosen:
+            chosen.append(typed)
+        if not chosen:
+            return False
+        key = self._value("key")
+        if provider in _HOSTED and not key:
+            self.query_one("#note", Static).update(f"{provider} needs an API key")
+            return False
+        earlier = self._basket.get(provider)
+        models = tuple(dict.fromkeys((*(earlier.models if earlier else ()), *chosen)))
+        self._basket[provider] = ModelTuiSetupChoice(
+            provider=provider,
+            url=None if provider in _HOSTED else self._value("url") or None,
+            models=models,
+            key=SecretStr(key) if key else None,
+        )
+        self.query_one("#found", SelectionList).deselect_all()
+        self.query_one("#model", Input).value = ""
+        self.query_one("#basket", Static).update(
+            "Selected: "
+            + "   ·   ".join(
+                f"{c.provider}: {', '.join(c.models)}" for c in self._basket.values()
+            )
+        )
+        return True
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        note = self.query_one("#note", Static)
+        if event.button.id == "cancel":
+            self.dismiss(None)
+        elif event.button.id == "find":
+            note.update("finding models…")
+            await self._find()
+        elif event.button.id == "add":
+            if self._add_current():
+                note.update("added; pick another provider, or Save")
+            else:
+                note.update("tick or type a model first")
+        elif event.button.id == "save":
+            self._add_current()
+            if not self._basket:
+                note.update("select at least one model before saving")
+                return
+            self.dismiss(tuple(self._basket.values()))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ModelTuiDelegationChoice(BaseModel):
+    """Claude Code delegation on (through an ONEX gateway) or off."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    target: str
+    on: bool
+    gateway_url: str = ""
+    model: str = ""
+    credential_ref: str = ""
+
+    def argv(self) -> tuple[str, ...]:
+        if not self.on:
+            return ("claude", "disable", "--yes")
+        return (
+            "claude",
+            "enable",
+            "--gateway-url",
+            self.gateway_url,
+            "--model",
+            self.model,
+            "--credential-ref",
+            self.credential_ref,
+            "--yes",
+        )
+
+
+class DelegationScreen(ModalScreen[ModelTuiDelegationChoice | None]):
+    """Pick a client, then switch its delegation on or off."""
+
+    CSS = """
+    DelegationScreen { align: center middle; }
+    #deleg { width: 72; height: auto; border: round $accent; padding: 1 2; background: $panel; }
+    #deleg Select, #deleg Input { margin-bottom: 1; }
+    #switch-row { height: auto; margin-bottom: 1; }
+    #switch-row Label { padding: 1 1 0 0; }
+    #gateway { height: auto; }
+    #dnote { color: $text-muted; margin-bottom: 1; }
+    #dbuttons { height: auto; align-horizontal: right; }
+    """
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, enabled: bool) -> None:
+        super().__init__()
+        self._enabled = enabled
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="deleg"):
+            yield Label("Delegation")
+            yield Select(
+                [("Claude Code", "claude")],
+                value="claude",
+                allow_blank=False,
+                id="target",
+            )
+            with Horizontal(id="switch-row"):
+                yield Label("Delegate Claude Code requests")
+                yield Switch(value=self._enabled, id="on")
+            with Vertical(id="gateway"):
+                yield Input(placeholder="ONEX gateway URL", id="gateway-url")
+                yield Input(placeholder="Model the gateway serves", id="gateway-model")
+                yield Input(placeholder="Credential reference", id="credential-ref")
+            yield Static(
+                "On: new Claude Code sessions route through your ONEX gateway. "
+                "Off: ONEX settings are removed; your own edits stay.",
+                id="dnote",
+            )
+            with Horizontal(id="dbuttons"):
+                yield Button("Save", variant="primary", id="dsave")
+                yield Button("Cancel", id="dcancel")
+
+    def on_mount(self) -> None:
+        self.query_one("#gateway").display = self._enabled
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        self.query_one("#gateway").display = event.value
+
+    def _value(self, widget_id: str) -> str:
+        return self.query_one(f"#{widget_id}", Input).value.strip()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "dcancel":
+            self.dismiss(None)
+            return
+        on = self.query_one("#on", Switch).value
+        fields = ("gateway-url", "gateway-model", "credential-ref")
+        if on and not all(self._value(f) for f in fields):
+            self.query_one("#dnote", Static).update(
+                "To turn it on, fill the gateway URL, model and credential reference."
+            )
+            return
+        self.dismiss(
+            ModelTuiDelegationChoice(
+                target=str(self.query_one("#target", Select).value),
+                on=on,
+                gateway_url=self._value("gateway-url"),
+                model=self._value("gateway-model"),
+                credential_ref=self._value("credential-ref"),
+            )
+        )
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ModelPickScreen(ModalScreen[tuple[str, str] | None]):
+    """Pick the model every task tries first."""
+
+    CSS = """
+    ModelPickScreen { align: center middle; }
+    #pick { width: 72; height: auto; max-height: 20; border: round $accent; padding: 1 2; background: $panel; }
+    """
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, choices: list[tuple[str, str, bool]]) -> None:
+        super().__init__()
+        self._choices = choices
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="pick"):
+            yield Label("Choose the model every task tries first  (Esc to close)")
+            yield OptionList(
+                *(
+                    Option(
+                        f"{model}  ·  {provider}" + ("  ✓ current" if first else ""),
+                        id=f"{provider}\t{model}",
+                    )
+                    for provider, model, first in self._choices
+                ),
+                id="models",
+            )
+
+    def on_mount(self) -> None:
+        self.query_one("#models", OptionList).focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        provider, _, model = str(event.option.id).partition("\t")
+        self.dismiss((provider, model))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+def _model_choices(text: str) -> list[tuple[str, str, bool]]:
+    """(provider, model, is first) for every set-up model in `models list --json`."""
+    choices: list[tuple[str, str, bool]] = []
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(row, dict) or not row.get("set_up"):
+            continue
+        for model in row.get("models") or []:
+            first = bool(row.get("tried_first")) and model == row.get("first_model")
+            choices.append((str(row["provider"]), str(model), first))
+    return choices
+
+
+_LETTERS = {
+    "O": ("▄▀▀▄", "█  █", " ▀▀ "),
+    "M": ("█▄ ▄█", "█ ▀ █", "▀   ▀"),
+    "N": ("█▄  █", "█ ▀▄█", "▀   ▀"),
+    "I": ("█", "█", "▀"),
+    "D": ("█▀▀▄", "█  █", "▀▀▀ "),
+    "E": ("█▀▀▀", "█▀▀ ", "▀▀▀▀"),
+}
+_GRADIENT = ("#00d2ff", "#3a9bff", "#6a7bff", "#9a5cf5", "#c64cec", "#ff4fa3")
+
+
+def welcome_banner() -> Text:
+    """OMNINODE in a cyan-to-pink gradient, DELEGATION under it, then the keys."""
+    rows = ["  ".join(_LETTERS[c][r] for c in "OMNINODE") for r in range(3)]
+    width = max(len(row) for row in rows)
+    banner = Text("\n")
+    for row in rows:
+        banner.append("  ")
+        for column, char in enumerate(row):
+            banner.append(
+                char, style=f"bold {_GRADIENT[column * len(_GRADIENT) // width]}"
+            )
+        banner.append("\n")
+    banner.append(
+        "  " + " ".join("DELEGATION").center(width) + "\n", style="bold #ffb347"
+    )
+    banner.append(
+        "  Your tasks, your models: run them where it costs least.\n\n",
+        style="italic #9aa5b1",
+    )
+    for key, text in (
+        ("type a task", "and press Enter to delegate it"),
+        ("/config", "providers, keys and models"),
+        ("/setup", "connect a model server"),
+        ("/model", "pick the model to use"),
+        ("/delegation", "Claude Code on or off"),
+        ("/", "every command   ·   ↑↓ history   ·   ctrl+c quit"),
+    ):
+        banner.append("  ▸ ", style="#6a7bff")
+        banner.append(f"{key:<14}", style="bold #00d2ff")
+        banner.append(f"{text}\n", style="#c9d1d9")
+    return banner
 
 
 class OnexTui(App[int]):
@@ -251,9 +680,7 @@ class OnexTui(App[int]):
         yield Static(id="status")
 
     async def on_mount(self) -> None:
-        self._write(
-            "Welcome to onex. Type a task to delegate it, or / to see every command."
-        )
+        self.query_one("#output", RichLog).write(welcome_banner())
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
@@ -292,7 +719,10 @@ class OnexTui(App[int]):
         ]
         return [
             entry
-            for entry in (*self._commands, *local)
+            for entry in (
+                *local,
+                *(c for c in self._commands if c.path not in _LOCAL_COMMANDS),
+            )
             if all(word in " ".join(entry.path) for word in words)
         ]
 
@@ -313,7 +743,22 @@ class OnexTui(App[int]):
     def action_close_palette(self) -> None:
         self.query_one("#palette", OptionList).display = False
 
+    def _in_dialog(self, key: str) -> bool:
+        """A form or picker is open: its own widgets get the arrow and Tab keys."""
+        if len(self.screen_stack) < 2:
+            return False
+        focused = self.focused
+        if key == "tab":
+            self.screen.focus_next()
+        elif isinstance(focused, OptionList):
+            getattr(focused, f"action_cursor_{key}")()
+        elif key in ("up", "down"):
+            self.screen.focus_previous() if key == "up" else self.screen.focus_next()
+        return True
+
     def action_palette_down(self) -> None:
+        if self._in_dialog("down"):
+            return
         palette = self.query_one("#palette", OptionList)
         if palette.display:
             palette.action_cursor_down()
@@ -321,6 +766,8 @@ class OnexTui(App[int]):
             self._recall_entry(+1)
 
     def action_palette_up(self) -> None:
+        if self._in_dialog("up"):
+            return
         palette = self.query_one("#palette", OptionList)
         if palette.display:
             palette.action_cursor_up()
@@ -339,6 +786,8 @@ class OnexTui(App[int]):
         prompt.cursor_position = len(prompt.value)
 
     def action_complete(self) -> None:
+        if self._in_dialog("tab"):
+            return
         palette = self.query_one("#palette", OptionList)
         if palette.display and palette.highlighted is not None:
             option = palette.get_option_at_index(palette.highlighted)
@@ -376,9 +825,24 @@ class OnexTui(App[int]):
             return
         if words == ["help"]:
             self._write(
-                "Type a task and press Enter to delegate it. Type / to list every onex "
-                "command; keep typing to filter, Tab to complete, Enter to run, Esc to "
-                "close. Commands that ask questions open in the terminal and return here."
+                "Type a task and press Enter to delegate it. /setup or /config connects "
+                "a model server, /model picks the model, /clear empties this pane. Type "
+                "/ to list every onex command; keep typing to filter, Tab to complete, "
+                "Enter to run, Esc to close. Up and Down recall earlier entries."
+            )
+            return
+        if words == ["clear"]:
+            self.query_one("#output", RichLog).clear()
+            return
+        if words in (["setup"], ["config"]):
+            self.push_screen(SetupScreen(self._runner), self._apply_setup)
+            return
+        if words == ["model"]:
+            await self._pick_model()
+            return
+        if words == ["delegation"]:
+            self.push_screen(
+                DelegationScreen(self._status.gateway), self._apply_delegation
             )
             return
         entry = self._resolve(words)
@@ -403,6 +867,54 @@ class OnexTui(App[int]):
             self._write(f"exit {code}")
         if entry.path[:1] in (("models",), ("claude",), ("setup",)):
             self.run_worker(self._refresh_status(), exclusive=True, group="status")
+
+    async def _apply_setup(
+        self, choices: tuple[ModelTuiSetupChoice, ...] | None
+    ) -> None:
+        for choice in choices or ():
+            argv = choice.argv(Path.cwd())
+            self._write(f"$ onex {shlex.join(argv)}")
+            stdin = choice.key.get_secret_value() + "\n" if choice.key else None
+            code = await self._runner.stream(argv, self._write, stdin=stdin)
+            more = choice.more_models_argv()
+            if not code and more:
+                self._write(f"$ onex {shlex.join(more)}")
+                code = await self._runner.stream(more, self._write)
+            models = ", ".join(choice.models)
+            self._write(
+                f"exit {code}" if code else f"{choice.provider}: {models} set up."
+            )
+        if choices:
+            self._write("Type a task to try it, or /model to choose which goes first.")
+        self.run_worker(self._refresh_status(), exclusive=True, group="status")
+
+    async def _apply_delegation(self, choice: ModelTuiDelegationChoice | None) -> None:
+        if choice is None:
+            return
+        argv = choice.argv()
+        self._write(f"$ onex {shlex.join(argv)}")
+        code = await self._runner.stream(argv, self._write)
+        state = "on" if choice.on else "off"
+        self._write(f"exit {code}" if code else f"Claude Code delegation is {state}.")
+        self.run_worker(self._refresh_status(), exclusive=True, group="status")
+
+    async def _pick_model(self) -> None:
+        _, out, _ = await self._runner.capture(("models", "list", "--json"))
+        choices = _model_choices(out)
+        if not choices:
+            self._write("No model is set up yet. Type /setup to connect one.")
+            return
+        self.push_screen(ModelPickScreen(choices), self._apply_model)
+
+    async def _apply_model(self, picked: tuple[str, str] | None) -> None:
+        if picked is None:
+            return
+        argv = ("models", "first", *picked)
+        self._write(f"$ onex {shlex.join(argv)}")
+        code = await self._runner.stream(argv, self._write)
+        if code:
+            self._write(f"exit {code}")
+        self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
     async def _delegate(self, task: str) -> None:
         self._write(f"> {task}")
@@ -430,7 +942,9 @@ class OnexTui(App[int]):
         if metrics.get("cost_savings_usd"):
             facts.append(f"saved ${float(metrics['cost_savings_usd']):.4f}")
         run_id = str(document.get("run_id") or "") if document else ""
-        self._write(str(result["response"]).strip())
+        self.query_one("#output", RichLog).write(
+            Markdown(str(result["response"]).strip())
+        )
         self._write("  ·  ".join(facts) + (f"  ·  run {run_id[:8]}" if run_id else ""))
         self._last_run = f"last run ${cost:.4f}" + (
             f" · {run_id[:8]}" if run_id else ""
