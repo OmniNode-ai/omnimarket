@@ -19,3 +19,5 @@ hosts:
       max_removals_per_run: 200
     # Template only: each scheduled tick generates its own correlation UUID.
     correlation_id: 00000000-0000-4000-8000-000000000000
+    # A systemd EnvironmentFile the run user cannot open: declared by the host overlay, never obtained by changing a file mode.
+    unreadable_environment_files: {}

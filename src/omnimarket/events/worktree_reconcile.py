@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy as Policy,
@@ -133,7 +133,32 @@ class ModelWorktreeReconcileCommand(BaseModel):
     # each merged pull request of that repository, one per line. Unset: no pull request
     # evidence is read and merged_pr_head stays False.
     merged_pr_command: list[str] | None = Field(default=None, min_length=1)
+    # What a systemd EnvironmentFile the run user cannot open holds, declared by the
+    # host overlay: key = the file's absolute path, value = the absolute paths it holds
+    # that matter to the live-path set. The content is never obtained by changing a
+    # file mode or reading with elevated rights.
+    unreadable_environment_files: dict[str, tuple[str, ...]] = Field(
+        default_factory=dict
+    )
     correlation_id: UUID
+
+    @field_validator("unreadable_environment_files")
+    @classmethod
+    def _unreadable_files_hold_absolute_paths(
+        cls, declared: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        for file, paths in declared.items():
+            if not file.startswith("/"):
+                raise ValueError(
+                    f"unreadable_environment_files key is not an absolute path: {file}"
+                )
+            for path in paths:
+                if not path.startswith("/"):
+                    raise ValueError(
+                        f"unreadable_environment_files[{file}] holds a path"
+                        f" that is not absolute: {path}"
+                    )
+        return declared
 
 
 class ModelWorktreeReconcileDecidedEvent(BaseModel):
