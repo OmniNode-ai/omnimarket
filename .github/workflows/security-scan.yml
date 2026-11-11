@@ -58,9 +58,33 @@ jobs:
       - name: Export requirements
         run: uv export --format requirements-txt --no-hashes --output-file requirements.txt
 
+      # OMN-20413: dependency review needs the repository's Dependency graph.
+      # When it is off, the action fails every pull request with "Dependency
+      # review is not supported on this repository", whatever the change is.
+      # Probe the graph's SBOM endpoint: only a 404 (graph disabled) skips the
+      # review, with a warning; any other outcome still runs it. The Safety
+      # check below stays the enforcing dependency scan.
+      - name: Detect Dependency graph
+        id: depgraph
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/dependency-graph/sbom")
+          if [ "$status" = "404" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Dependency graph is not enabled on $REPO; skipping Dependency Review"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.depgraph.outputs.enabled == 'true'
 
       - name: Run Safety Check
         run: |
