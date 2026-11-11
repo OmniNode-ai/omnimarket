@@ -1,0 +1,101 @@
+---
+# Every margin, confidence, power and n this node answers with is a value read from an
+# overlay key (delegation.capability_map.line) by the handler itself; the contract holds none.
+name: node_code_eval_suite_census_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Census of a code eval suite. Given the suite's verified-or-not tasks it answers how many
+  tasks each size band and each repository holds, how many were excluded and why, the
+  shortfall of each band against the sample size its line asks for, and the candidate rows
+  the trial driver's run request takes. The floor, margin, confidence and power come from
+  the overlay key delegation.capability_map.line, read by the handler itself. A request
+  with no tasks, a repeated task, or an unavailable line ends as a typed failure and never
+  a census. No clock, no model call.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: code_eval_suite_census
+      handler:
+        name: HandlerCodeEvalSuiteCensus
+        module: omnimarket.nodes.node_code_eval_suite_census_compute.handlers.handler_code_eval_suite_census
+
+handler:
+  module: omnimarket.nodes.node_code_eval_suite_census_compute.handlers.handler_code_eval_suite_census
+  class: HandlerCodeEvalSuiteCensus
+  input_model: omnimarket.models.code_eval_suite.model_suite_census_request.ModelCodeEvalSuiteCensusRequest
+  output_model: omnimarket.models.code_eval_suite.model_suite_census_result.ModelCodeEvalSuiteCensus
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles: [main]
+
+inputs:
+  suite_id:
+    type: str
+    required: true
+    description: The identity of the suite being censused.
+  tasks:
+    type: tuple
+    required: true
+    description: The suite's verified-or-not tasks, one row per task.
+  pre_control_exclusions:
+    type: tuple
+    required: false
+    description: Candidates dropped before their control ran, with the reason; empty when none.
+
+outputs:
+  suite_id:
+    type: str
+  suite_digest:
+    type: str
+  candidates_total:
+    type: int
+  control:
+    type: object
+  by_band:
+    type: tuple
+  by_repository:
+    type: tuple
+  by_band_repository:
+    type: tuple
+  excluded:
+    type: tuple
+  candidates:
+    type: tuple
+  failure:
+    type: str
+  detail:
+    type: str
+
+terminal_event: onex.evt.omnimarket.code-eval-suite-census-measured.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.code-eval-suite-census-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.code-eval-suite-census-measured.v1
+
+# The trial driver and the dashboard read the census from this topic.
+externally_consumed_topics:
+  - onex.evt.omnimarket.code-eval-suite-census-measured.v1
+
+published_events:
+  - event_type: CodeEvalSuiteCensusMeasured
+    topic: onex.evt.omnimarket.code-eval-suite-census-measured.v1
+    description: >
+      The census of a code eval suite: the per-band and per-repository counts, the
+      exclusions and their reasons, the band shortfalls against the line's sample size,
+      and the candidate rows the trial driver's run request takes, or the typed failure
+      that stopped it.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.code-eval-suite-census-requested.v1
