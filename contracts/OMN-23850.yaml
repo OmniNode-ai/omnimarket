@@ -1,0 +1,80 @@
+schema_version: 1.0.0
+ticket_id: OMN-23850
+title: The merge sweep's plan turns each red change's remedy into a landing command in watch-only mode
+summary: node_merge_sweep_plan_compute returns landing_commands beside its lanes. Each is a ModelPrLandingGithubRequest in dry_run mode with a once-per-head idempotency key and a reason; cancelled-latest plans rerun_runs, draft-era and stale-base-sql plan one update_branch per base, workflow-scope-arm and green-unarmed chain heads plan arm_auto_merge or enqueue, in-progress and real plan none. A plan request asking for enforce is refused. The reading models gain head, base, node id, queue and issued-command facts that OMN-21070 fills from live state; fixtures supply them now.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - public_api
+  - topics
+requirements:
+  - id: req-omn23850-commands
+    statement: The plan turns each red remedy into at most one landing command per head and plans nothing for an answered, unread or paced remedy.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a reading with one cancelled-latest red at head H plans exactly one rerun_runs command in dry_run for its newest run ids and no fix lane for that change, and the same reading with an issued record for (repo, pr, H, rerun_runs) plans none -- falsifier: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_landing_commands.py -q fails on dev, where the plan has no landing commands'
+      - id: AC2
+        statement: 'AC2: two stale-base-sql or draft-era reds on one base plan one update_branch at the expected head; a green-unarmed chain head or a workflow-scope-arm red plans arm_auto_merge, or enqueue when the base has a merge queue; an in-progress red plans nothing; a red whose head or run ids are unread is skipped with reason unread and no command -- falsifier: the same test file, cases pace, arm, wait and unread'
+  - id: req-omn23850-effect-shape
+    statement: Every command is the landing effect's own request in dry_run and the plan refuses enforce.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: every command validates as the landing effect''s own ModelPrLandingGithubRequest with mode dry_run, and the error chain refuses a plan request that asks for enforce -- falsifier: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_error_chain_merge_sweep_plan_compute.py -q -k enforce'
+  - id: req-omn23850-integrated
+    statement: The plan's commands are answered by the landing effect in dry_run with the run's correlation id.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: integrated: on the launching Mac the sweep''s node run (OMN-21032) reads the fleet and its plan carries at least one landing command that the landing effect answers in dry_run on the dev bus with the same correlation id -- falsifier: no pr-landing-github-completed event on the dev bus carrying the run''s correlation id after one sweep run with a red fleet'
+evidence_requirements:
+  - kind: tests
+    description: The landing-command cases, the enforce refusal, the golden chain and the plan-to-effect seam (AC1 to AC3, and the in-memory half of AC4).
+    command: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_landing_commands.py tests/nodes/node_merge_sweep_plan_compute/test_error_chain_merge_sweep_plan_compute.py tests/test_seam_merge_sweep_plan_to_landing_effect.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23850-ac1
+    description: AC1 is the landing-command cases for the rerun and its issued record.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_landing_commands.py -q -n 0 -p no:randomly --no-cov -k "rerun or issued"
+        cwd: .
+  - id: dod-omn23850-ac2
+    description: AC2 is the pace, arm, wait and unread cases.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_landing_commands.py -q -n 0 -p no:randomly --no-cov -k "pace or arm or wait or unread"
+        cwd: .
+  - id: dod-omn23850-ac3
+    description: AC3 is the request validation of every command and the enforce refusal.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_landing_commands.py tests/nodes/node_merge_sweep_plan_compute/test_error_chain_merge_sweep_plan_compute.py -q -n 0 -p no:randomly --no-cov -k "validates or enforce"
+        cwd: .
+  - id: dod-omn23850-ac4
+    description: AC4 in-memory half is the seam test, where the landing effect answers each planned command in dry_run under the sweep's correlation id; the read on the dev bus after a sweep run is left for after OMN-21032 and the live facts of OMN-21070.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_seam_merge_sweep_plan_to_landing_effect.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23850-integration-proof-plan-node-run
+    description: On the dev runtime the plan node, given a recorded red reading with a cancelled-latest red at a known head, returns a rerun_runs landing command in dry_run. Hosted CI cannot reach the lab bus, so only the local Done gate runs this unbound item; the lane records the run and its terminal offset in the pull request. The read of the sweep's own run after OMN-21032 is AC4.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: onex run-node node_merge_sweep_plan_compute --input "$(cat tests/nodes/node_merge_sweep_plan_compute/fixtures/red_fleet_request.json)" | grep -F rerun_runs | grep -F dry_run
+        cwd: .
