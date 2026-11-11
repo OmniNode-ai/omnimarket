@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23753
+title: Check the code eval trial coordinator's sequencing with a formal model before it is built
+summary: formal/code_eval_trial is a TLA+ model of the state_io row of node_code_eval_trial_orchestrator (task E1 of the local-model code eval plan, model before build). It checks that every sequence ends, that the run closes once and only under the close rule, that a late answer changes nothing and that no try is placed before its control passes, at 2 tasks, 2 models and bound 3, with mutants that must each violate a property. One test reads the checked-in TLC results. No node and no script.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23753-model-clean
+  statement: The model runs clean at 2 tasks, 2 models and bound 3 and every mutant violates its property.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the model under formal/code_eval_trial runs clean in TLC at 2 tasks, 2 models and bound 3, with every sequence ending, one close only under the close rule, and a late answer changing nothing -- falsifier: uv run pytest tests/formal/test_code_eval_trial_model.py -q -k design fails on a design result not clean'
+  - id: AC2
+    statement: 'AC2: the mutants "close with a try pending" and "a late answer changes the row" each violate their invariant -- falsifier: uv run pytest tests/formal/test_code_eval_trial_model.py -q passes with the M1 or M2 result file showing no violation'
+  - id: AC3
+    statement: 'AC3: integrated: the TLC runs made on a lab host from this branch reproduce the checked-in results, the design configs clean and every mutant violated -- falsifier: a design config reported violated or a mutant reported clean in the run''s output'
+evidence_requirements:
+- kind: tests
+  description: The checked-in TLC results, the configs and the expected verdicts agree.
+  command: uv run --frozen pytest tests/formal/test_code_eval_trial_model.py -q --no-cov -p no:randomly -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23753-clean
+  description: 'Reads the checked-in TLC outputs of the design configs: each ends with no error found, and the design config is the 2 task, 2 model, bound 3 run.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/formal/test_code_eval_trial_model.py -q --no-cov -p no:randomly -n 0 -k "design"'
+    cwd: .
+- id: dod-omn23753-mutants
+  description: 'Reads the checked-in TLC output of each mutant config: close with a try pending ends in a violation of CloseOnlyUnderRule and a late answer changes the row ends in a violation of VerdictsStable. The files do not exist at the merge base, so the command fails there.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/formal/test_code_eval_trial_model.py -q --no-cov -p no:randomly -n 0 -k "M1_close or M2_late"'
+    cwd: .
+- id: dod-omn23753-integrated
+  description: 'Reads every checked-in TLC output: the design configs are clean and every mutant config is violated, the run made on lab host h053 from this branch.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/formal/test_code_eval_trial_model.py -q --no-cov -p no:randomly -n 0'
+    cwd: .

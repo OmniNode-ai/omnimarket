@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import re
 
+from omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_live_probe import (
+    HandlerLiveProbe,
+)
 from omnimarket.nodes.node_lab_proof_judge_compute.models.enum_judge_verdict import (
     EnumJudgeVerdict,
 )
@@ -23,6 +26,9 @@ from omnimarket.nodes.node_lab_proof_judge_compute.models.model_changed_path_liv
     ModelMatchedEntry,
     ModelNotApplicableUse,
 )
+from omnimarket.nodes.node_lab_proof_judge_compute.models.model_live_probe import (
+    ModelLiveProbeRequest,
+)
 from omnimarket.nodes.node_lab_proof_judge_compute.overlay import (
     ModelLabProofJudgeOverlay,
 )
@@ -34,12 +40,47 @@ class HandlerChangedPathLive:
     def __init__(self, overlay: ModelLabProofJudgeOverlay) -> None:
         self._overlay = overlay
 
+    def qualify(self, repo: str) -> str:
+        """The declared repository a bare name stands for (the clone phase prints ``omnimarket``), else ``repo`` as given."""
+        named = [
+            r.repo
+            for r in self._overlay.not_applicable.repos
+            if r.repo.rsplit("/", 1)[-1] == repo
+        ]
+        return named[0] if len(named) == 1 else repo
+
     def handle(
         self, request: ModelChangedPathLiveRequest
     ) -> ModelChangedPathLiveResult:
-        """Compute the changed-path-live verdict for the request."""
+        """Compute the changed-path-live verdict for the request.
+
+        A request that carries the lab probe's text has the base verdict and the contract-local nodes read from it.
+        """
+        if request.probe is None:
+            return self._judge(
+                request,
+                bool(request.base_changed_path_live),
+                request.contract_local_nodes,
+            )
+        probed = HandlerLiveProbe().handle(ModelLiveProbeRequest(probe=request.probe))
+        if probed.base is None:
+            return ModelChangedPathLiveResult(
+                verdict=EnumJudgeVerdict.NO_CHECK,
+                ok=False,
+                evidence="the probe printed no live-grep line, so there is no changed-path check",
+            )
+        result = self._judge(request, probed.base, probed.contract_local_nodes)
+        evidence = "; ".join([result.evidence, *probed.notes])
+        return result.model_copy(update={"evidence": evidence, "notes": probed.notes})
+
+    def _judge(
+        self,
+        request: ModelChangedPathLiveRequest,
+        base_live: bool,
+        contract_local_nodes: tuple[str, ...],
+    ) -> ModelChangedPathLiveResult:
         # 1. If the base judge already passed, nothing changes.
-        if request.base_changed_path_live:
+        if base_live:
             return ModelChangedPathLiveResult(
                 verdict=EnumJudgeVerdict.PASS,
                 ok=True,
@@ -71,7 +112,7 @@ class HandlerChangedPathLive:
             m = node_pattern.search(path)
             if m and "node" in m.groupdict():
                 changed_nodes.add(m.group("node"))
-        changed_nodes -= set(request.contract_local_nodes)
+        changed_nodes -= set(contract_local_nodes)
         if not changed_nodes:
             return ModelChangedPathLiveResult(
                 verdict=EnumJudgeVerdict.FAIL,
@@ -163,7 +204,10 @@ class HandlerChangedPathLive:
             class_id=class_id,
             matched_entries=tuple(matched_entries),
             substitute_proofs=tuple(substitute_proofs),
-            evidence="all changed runtime nodes have substitute proofs",
+            evidence=(
+                f"NOT-APPLICABLE class={class_id} entries={','.join(nodes_tuple)} "
+                f"substitute={','.join(receipt_ids)}"
+            ),
             use=ModelNotApplicableUse(
                 repo=request.repo,
                 pr_number=request.pr_number,
