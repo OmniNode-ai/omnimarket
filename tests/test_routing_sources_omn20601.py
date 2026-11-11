@@ -308,8 +308,10 @@ def _probe_routing_tiers_ladder(
 def _probe_harness_routing_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
     from omnimarket.handlers.routing.routing_tiers_path import (
         DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY,
+        ROUTING_OVERLAY_STORE_ID,
         load_delegation_routing_overlay,
         load_harness_tiers,
     )
@@ -318,6 +320,7 @@ def _probe_harness_routing_overlay(
     )
 
     monkeypatch.delenv(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY, raising=False)
+    monkeypatch.delenv(OVERLAY_ROOTS_ENV, raising=False)
     assert load_delegation_routing_overlay() is EMPTY_DELEGATION_ROUTING_OVERLAY
     assert load_harness_tiers() == ()
 
@@ -352,6 +355,17 @@ def _probe_harness_routing_overlay(
     )
     monkeypatch.setenv(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY, str(path))
     assert [tier.name for tier in load_harness_tiers()] == ["harness_probe"]
+
+    # The overlay store's document (OMN-23826) is read first: it wins over the pinned file.
+    store_root = tmp_path / "store"
+    (store_root / ROUTING_OVERLAY_STORE_ID).mkdir(parents=True)
+    stored = yaml.safe_load(path.read_text(encoding="utf-8"))
+    stored["harness_tiers"][0]["name"] = "harness_store"
+    (store_root / ROUTING_OVERLAY_STORE_ID / "overlay.yaml").write_text(
+        yaml.safe_dump(stored), encoding="utf-8"
+    )
+    monkeypatch.setenv(OVERLAY_ROOTS_ENV, str(store_root))
+    assert [tier.name for tier in load_harness_tiers()] == ["harness_store"]
 
 
 def _probe_bifrost_backend_contract(

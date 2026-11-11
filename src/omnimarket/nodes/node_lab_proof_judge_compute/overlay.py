@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,6 +21,7 @@ from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_lab_proof_judge_compute.models.enum_runs_by import EnumRunsBy
 
 NODE_NAME = "node_lab_proof_judge_compute"
+POOL_OVERLAY_ID = "prepr_runtime_pool"
 
 
 class ModelSubstituteProof(BaseModel):
@@ -147,12 +149,33 @@ class ModelLabProofJudgeOverlay(BaseModel):
     retention: ModelRetention
 
 
+class ModelPoolJudgeCommandOverlay(BaseModel):
+    """The driver-read key that names this node's command (OMN-23715)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[1]
+    lab_proof_judge_command: str = Field(min_length=1)
+
+
 def load_overlay(environ: Mapping[str, str] | None = None) -> ModelLabProofJudgeOverlay:
     """Read the deployment overlay at ``<root>/node_lab_proof_judge_compute/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS``.
 
     An absent or invalid overlay refuses; there is no fallback to the packaged example.
     """
     return load_structured_overlay(NODE_NAME, ModelLabProofJudgeOverlay, environ)
+
+
+def load_pool_judge_command_overlay(
+    environ: Mapping[str, str] | None = None,
+) -> ModelPoolJudgeCommandOverlay:
+    """Read the pool driver's judge-command overlay at ``<root>/prepr_runtime_pool/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS``.
+
+    An absent or invalid overlay refuses; there is no fallback.
+    """
+    return load_structured_overlay(
+        POOL_OVERLAY_ID, ModelPoolJudgeCommandOverlay, environ
+    )
 
 
 def load_example_overlay() -> ModelLabProofJudgeOverlay:

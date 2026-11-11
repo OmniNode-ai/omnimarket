@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.nodes.node_lab_proof_judge_compute.models.enum_judge_verdict import (
     EnumJudgeVerdict,
@@ -27,9 +27,18 @@ class ModelChangedPathLiveRequest(BaseModel):
     pr_number: int = Field(..., ge=1)
     head: str = Field(..., pattern=HEAD_PATTERN)
     changed_paths: tuple[str, ...] = Field(..., min_length=1)
-    base_changed_path_live: bool
+    base_changed_path_live: bool | None = None
     contract_local_nodes: tuple[str, ...] = ()
+    probe: str | None = None
     substitute_receipts: tuple[ModelSubstituteReceipt, ...] = ()
+
+    @model_validator(mode="after")
+    def _one_source_of_the_base_verdict(self) -> ModelChangedPathLiveRequest:
+        if (self.probe is None) == (self.base_changed_path_live is None):
+            raise ValueError("give exactly one of probe and base_changed_path_live")
+        if self.probe is not None and self.contract_local_nodes:
+            raise ValueError("contract_local_nodes are read from the probe")
+        return self
 
 
 class ModelMatchedEntry(BaseModel):
@@ -84,4 +93,5 @@ class ModelChangedPathLiveResult(BaseModel):
     missing_proof_nodes: tuple[str, ...] = ()
     unmatched_nodes: tuple[str, ...] = ()
     evidence: str = Field(..., min_length=1)
+    notes: tuple[str, ...] = ()
     use: ModelNotApplicableUse | None = None

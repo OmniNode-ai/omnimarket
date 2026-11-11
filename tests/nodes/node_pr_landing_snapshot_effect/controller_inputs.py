@@ -136,4 +136,20 @@ def write_controller_state(
     decisions_path.write_text(
         "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
     )
+    (directory / "sidecar.json").write_text(
+        json.dumps(
+            {
+                "external_judged": {
+                    "omnimemory#713": {
+                        "omnimemory#725": {
+                            "head": "a" * 40,
+                            "kind": "upstream_open",
+                            "at": "2026-11-11T01:00:00Z",
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     return facts_path, ticks_path, decisions_path
