@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23717
 title: Join J5 tells a ledger read failure from a row not yet projected and sizes its wait
-summary: 'The J5 join ended with the same ''no projected row'' message whether the projection read command failed or the row had not been projected yet, and the runner''s reason reached only stdout, so the publisher''s log line for a J5 failure was empty. A failing read now ends the chain with its own typed outcome carrying the last read error, and the runner writes one JOIN-J5-FAILED line to stderr beside its JSON. The projection lag was measured from 61 existing join-j5 rows (projected_at minus row_ts): p50 11.1 s, p95 105.1 s, max 160.7 s.'
+summary: 'The J5 join ended with the same ''no projected row'' message whether the projection read command failed or the row had not been projected yet, and the runner''s reason reached only stdout, so the publisher''s log line for a J5 failure was empty. A failing read now ends the chain with its own typed outcome carrying the last read error, and the runner writes one JOIN-J5-FAILED line to stderr beside its JSON. The projection lag was measured from 61 existing join-j5 rows (projected_at minus row_ts): p50 11.1 s, p95 105.1 s, max 160.7 s. The J6 and J7 runners report their failures on stderr the same way, and the overlay refuses a poll that waits past the run deadline. The run deadline is not moved: the publish contract''s longest path is 238 s of its 240 s cycle bound, so a deadline of 125 s or more does not fit.'
 is_seam_ticket: true
 interface_change: false
 interfaces_touched: []
@@ -20,7 +20,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The focused J5 tests pass at the pushed head.
-  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_read_failure.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime_report.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5.py -q --no-cov -n 0 -p no:randomly
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_read_failure.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime_report.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_window.py tests/unit/nodes/node_gate_store_effect/test_join_j6_runtime_report.py tests/unit/nodes/node_lab_check_run_effect/test_join_j7_runtime_report.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -44,22 +44,32 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime_report.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_gate_store_effect/test_join_j6_runtime_report.py tests/unit/nodes/node_lab_check_run_effect/test_join_j7_runtime_report.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn23717-ac3
-  description: 'The poll settings come from the overlay through the existing loader (attempts, interval); the example overlay still loads. The measured p95 (105.1 s) is above the run deadline (75 s), which this change does not move: the pull request body names the bound change that covers it.'
+  description: 'The poll settings (attempts, interval) and the run deadline come from the overlay through the existing loader, and the overlay refuses a poll that waits past the run deadline; the run deadline sits below the join_j5 step limit of the publish contract and the publish contract''s longest declared path stays under its cycle bound. The measured p95 (105.1 s) is above the run deadline (75 s), which this change does not move: the step limit plus the other phases already total 238 s of the 240 s cycle bound, so a deadline of 125 s or more does not fit; the pull request body gives the arithmetic and the options.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime.py -q --no-cov -n 0 -p no:randomly -k example_overlay
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_window.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23717-ac4-publisher-log
+  description: 'The publisher''s step log keeps the J5 runner''s own stderr line when the step fails: the publisher is fed the line the runner''s failure report builds from a real failed result, and its status file carries the reason. The runner module''s failure report does not exist at the merge base, so the control at the merge base cannot import it; the lab run of the runner from the branch is read in the pull request''s Lab comment.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_join_j5_step_log.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23717-integration-proof
   description: Run this pull request's focused tests on a lab host at the pushed head; the J5 run from the branch on a lab host is read in the pull request's Lab comment.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23717 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_read_failure.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime_report.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime.py -q --no-cov -n 0 -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23717 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_read_failure.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime_report.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_runtime.py tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_window.py tests/unit/nodes/node_gate_store_effect/test_join_j6_runtime_report.py tests/unit/nodes/node_lab_check_run_effect/test_join_j7_runtime_report.py -q --no-cov -n 0 -p no:randomly
     cwd: .
