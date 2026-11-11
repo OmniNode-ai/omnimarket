@@ -10,6 +10,7 @@ changing shape turns this red.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -28,7 +29,7 @@ REGISTRY = NODES / "node_host_installer_registry_units" / "contract.yaml"
 UNITS = ("landing-tick-orchestrator", "landing-tick-orchestrator-systemd")
 
 
-def _units() -> dict[str, dict[str, object]]:
+def _units() -> dict[str, dict[str, Any]]:
     contract = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))
     found = (
         contract["units"]
@@ -38,10 +39,10 @@ def _units() -> dict[str, dict[str, object]]:
     return {name: found[name] for name in UNITS}
 
 
-def _limit(unit: dict[str, object]) -> int:
+def _limit(unit: dict[str, Any]) -> int:
     schedule = unit["schedule"]
     assert isinstance(schedule, dict)
-    return int(unit.get("run_timeout_s") or schedule["run_timeout_s"])  # type: ignore[call-overload]
+    return int(unit.get("run_timeout_s") or schedule["run_timeout_s"])
 
 
 def test_the_example_overlay_validates_and_its_bounds_fit_its_run_limit() -> None:
@@ -67,5 +68,5 @@ def test_each_unit_hands_the_host_identity_the_consumer_group_is_built_from(
     unit = _units()[name]
     overlay = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     host_env = overlay["host_env"]
-    assert host_env in unit["environment_inputs"]  # type: ignore[operator]
-    assert host_env in unit["required_environment_inputs"]  # type: ignore[operator]
+    assert host_env in unit["environment_inputs"]
+    assert host_env in unit["required_environment_inputs"]

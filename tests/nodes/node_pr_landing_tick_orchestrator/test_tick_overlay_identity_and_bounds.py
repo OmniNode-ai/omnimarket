@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from pydantic import ValidationError
@@ -101,12 +102,12 @@ def test_error_chain_a_pass_without_the_host_identity_exits_three_and_reads_noth
 ) -> None:
     monkeypatch.delenv("ONEX_HOST_NAME", raising=False)
 
-    def factory(selection: ModelTickTopicSelection) -> object:
+    def factory(selection: ModelTickTopicSelection) -> NoReturn:
         raise AssertionError("no topic may be read without the identity")
 
     code, line = run_once(
         _overlay(emission_journal=str(tmp_path / "e.jsonl")),
-        topic_reader_factory=factory,  # type: ignore[arg-type]
+        topic_reader_factory=factory,
     )
     assert code == 3
     assert line["status"] == "overlay_refused"

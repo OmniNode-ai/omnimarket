@@ -15,8 +15,12 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel
 
-from omnimarket.models.landing_controller_carry import REASON_MAX_LENGTH
+from omnimarket.models.landing_controller_carry import (
+    REASON_MAX_LENGTH,
+    ModelLandingControllerCarry,
+)
 from omnimarket.models.landing_decision import ModelLandingFacts
+from omnimarket.models.landing_tick_record import ModelLandingTickRecord
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingControllerState,
     ModelLandingPrRecord,
@@ -35,6 +39,12 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snaps
     EnumSnapshotFailureReason,
     EnumSnapshotStatus,
     ModelLandingSnapshotRequest,
+)
+from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_snapshot_overlay import (
+    ModelSnapshotOverlay,
+)
+from omnimarket.nodes.node_pr_landing_snapshot_effect.protocols.protocol_landing_snapshot import (
+    ProtocolLandingControllerSource,
 )
 from tests.nodes.node_pr_landing_snapshot_effect.controller_inputs import (
     NODE_TICK,
@@ -72,30 +82,30 @@ class _Journal:
             )
         self.published.append((topic, event))
 
-    def record(self, record: BaseModel) -> None:
+    def record(self, record: ModelLandingTickRecord) -> None:
         self.calls.append("journal")
-        self.recorder.record(record)  # type: ignore[arg-type]
+        self.recorder.record(record)
 
-    def recorded(self) -> tuple[BaseModel, ...]:
+    def recorded(self) -> tuple[ModelLandingTickRecord, ...]:
         return self.recorder.recorded()
 
 
 def _handler(
     journal: _Journal,
     *,
-    ov: object | None = None,
+    ov: ModelSnapshotOverlay | None = None,
     facts: ModelLandingFacts | None = None,
-    controller: object | None = None,
+    controller: ProtocolLandingControllerSource | None = None,
 ) -> HandlerPrLandingSnapshot:
     return HandlerPrLandingSnapshot(
-        overlay=ov or overlay(),  # type: ignore[arg-type]
+        overlay=ov or overlay(),
         facts_source=InMemoryLandingFactsSource(
             {NODE_TICK: facts or node_facts_bare()}
         ),
         write_source=InMemoryLandingWriteFactsSource(()),
-        recorder=journal,  # type: ignore[arg-type]
-        publisher=journal,  # type: ignore[arg-type]
-        controller_source=controller,  # type: ignore[arg-type]
+        recorder=journal,
+        publisher=journal,
+        controller_source=controller,
     )
 
 
@@ -153,7 +163,7 @@ def test_a_record_over_the_overlays_limit_is_never_offered_to_the_broker() -> No
     assert control.handle(_request()).status is EnumSnapshotStatus.RECORDED
 
 
-def _heavy_carry(records: int) -> object:
+def _heavy_carry(records: int) -> ModelLandingControllerCarry:
     """The controller's facts as the Mac measured them: state holding a record for every pull request it ever saw."""
     base = carry()
     state = ModelLandingControllerState(
@@ -175,21 +185,23 @@ def test_the_record_with_the_controllers_whole_state_is_bounded_under_the_broker
 ):
     heavy = _heavy_carry(6000)
     # failing control: the controller's facts as they stood are over the broker limit on their own
-    assert len(heavy.facts.model_dump_json().encode()) > BROKER_LIMIT  # type: ignore[attr-defined]
-    unbounded = carry_controller_state(node_facts_bare(), heavy)  # type: ignore[arg-type]
+    assert len(heavy.facts.model_dump_json().encode()) > BROKER_LIMIT
+    unbounded = carry_controller_state(node_facts_bare(), heavy)
     assert len(unbounded.state.records) == 1
     journal = _Journal()
     bounded_overlay = overlay().model_copy(update={"record_max_bytes": 1_000_000})
     result = _handler(
         journal,
         ov=bounded_overlay,
-        controller=InMemoryLandingCarrySource(heavy),  # type: ignore[arg-type]
+        controller=InMemoryLandingCarrySource(heavy),
     ).handle(_request())
     assert result.status is EnumSnapshotStatus.RECORDED
     ((_, event),) = journal.published
     assert len(event.model_dump_json().encode()) < BROKER_LIMIT
     assert result.record is not None
-    assert "facts" not in type(result.record.controller).model_fields  # type: ignore[arg-type]
+    controller_part = result.record.controller
+    assert controller_part is not None
+    assert "facts" not in type(controller_part).model_fields
     assert {r.pr for r in result.record.facts.state.records} <= {
         p.pr for p in result.record.facts.prs
     }
@@ -238,7 +250,6 @@ def test_join_redpanda_the_bounded_record_is_accepted_by_the_real_broker_and_the
     import os
     from pathlib import Path
 
-    from omnimarket.models.landing_tick_record import ModelLandingTickRecord
     from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.adapter_publisher import (
         LaneBusSnapshotPublisher,
     )
@@ -261,11 +272,11 @@ def test_join_redpanda_the_bounded_record_is_accepted_by_the_real_broker_and_the
             "tick": NODE_TICK,
             "facts": carry_controller_state(node_facts_bare(), heavy).model_dump(
                 mode="json"
-            ),  # type: ignore[arg-type]
+            ),
             "provenance": "p9-observe2-bounds-proof",
             "controller": {
                 "controller_tick": 5,
-                "observed_at": heavy.observed_at,  # type: ignore[attr-defined]
+                "observed_at": heavy.observed_at,
                 "decisions": [],
                 "source": "p9-observe2-bounds-proof",
             },
@@ -282,7 +293,7 @@ def test_join_redpanda_the_bounded_record_is_accepted_by_the_real_broker_and_the
         write_source=InMemoryLandingWriteFactsSource(()),
         recorder=journal.recorder,
         publisher=publisher,
-        controller_source=InMemoryLandingCarrySource(heavy),  # type: ignore[arg-type]
+        controller_source=InMemoryLandingCarrySource(heavy),
     ).handle(_request())
     assert result.status is EnumSnapshotStatus.RECORDED, result.failure_detail
     assert journal.recorder.recorded() != ()
