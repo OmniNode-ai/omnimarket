@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-23666
+title: A change that adds a test file must carry its timing entry
+summary: A change that adds a test file must add its time to config/test_file_durations.json in the same change. The effect node node_test_duration_record_check_effect reads the files the change adds (git), refuses any test file pytest would collect that the record lacks and prints the exact command that times it and records it; the same node runs as a pre-commit hook and as a CI step of the lint job. The threshold test test_committed_record_leaves_fewer_than_fifty_test_files_unrecorded stays as the backstop and its limit of 50 is unchanged. This adds a check on changes; it widens no existing check. The node was first built under OMN-23560 (omnimarket#5759, held out of landing and conflicting with dev); this change carries it forward under its own ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23666-record-check
+  statement: A pull request that adds a test file is refused unless the same change records the file's time in the committed duration record, and the refusal prints the command that records it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a change whose diff adds a test file with no entry in the committed timing record is refused by the check -- falsifier: pytest tests/nodes/node_test_duration_record_check_effect -q -k added_file_without_entry'
+  - id: AC2
+    statement: 'AC2: the same diff with the entry present passes, and a change that adds no test file is not refused whatever else others merged -- falsifier: pytest tests/nodes/node_test_duration_record_check_effect -q -k untouched_change'
+  - id: AC3
+    statement: 'AC3: every setting of the check comes from its overlay file and the golden and error chain tests pass -- falsifier: pytest tests/nodes/node_test_duration_record_check_effect/test_golden_chain.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: the check runs as its own step on a pull request in the running CI and its step result is read as passed on a change that adds a timed test file -- falsifier: read the check step of the pull request''s CI run for the head'
+evidence_requirements:
+- kind: tests
+  description: The node's unit, golden chain, error chain and seam tests
+  command: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23666-ac1-refused
+  description: A diff that adds a test file with no record entry is refused (the node does not exist at the merge base, so this cannot run there).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect/test_check_and_record.py -k added_test_file_that_is_not_recorded -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23666-ac2-admitted
+  description: The same diff with the entry present is admitted, and a merge commit reads only the additions this change made, so other people's merges never fail an untouched change.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect/test_check_and_record.py tests/nodes/node_test_duration_record_check_effect/test_seams.py -k "recorded_is_admitted or merge_commit_reads_only" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23666-ac3-overlay-and-chains
+  description: The settings are in policy.yaml, the wiring seam test finds the hook and the CI step, and the golden and error chain tests pass.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_duration_record_check_effect/test_golden_chain.py tests/nodes/node_test_duration_record_check_effect/test_seams.py -k "golden or wiring or refus" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23666-ac4-integrated-lab
+  description: Runs the freshness test, whose limit of 50 is unchanged, at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item; the CI step result of the pull request is read after the push.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23666 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov -p no:randomly'
+    cwd: .

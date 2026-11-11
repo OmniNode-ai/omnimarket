@@ -413,6 +413,16 @@ jobs:
         run: uv run --frozen python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check
       - name: Handwritten event-payload negative controls
         run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
+      # OMN-23666: the CI twin of the test-duration-record-check pre-commit hook. A pull request
+      # that adds a test file must add its time to config/test_file_durations.json in the same
+      # change; the refusal prints the command that does it.
+      - name: Added test files are in the durations record (OMN-23666)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: uv run --frozen python -m omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check --base-ref "$BASE_REF"
+      - name: Test duration record check negative controls (OMN-23666)
+        run: uv run pytest tests/nodes/node_test_duration_record_check_effect -q --no-cov -n 0 -p no:randomly
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
       - name: Lane census alias parity (OMN-19998)
