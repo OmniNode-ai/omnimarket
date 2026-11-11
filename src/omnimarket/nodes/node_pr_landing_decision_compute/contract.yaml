@@ -125,6 +125,27 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.pr-landing-decision-completed.v1"
     failure: "onex.evt.omnimarket.pr-landing-decision-failed.v1"
+# The dev runtime's per-contract provisioning (ONEX_BOOT_UNIVERSE_PROVISION=0) reads only
+# this section: event_bus.subscribe_topics, publish_topics and dlq_topics, the same
+# section that creates the topics of node_pr_landing_github_effect. consumed_events and
+# published_events are not read there, so a topic declared only in them never exists on
+# the dev broker (OMN-23395, OMN-23459). The command is the composed landing workflow's
+# decision step (runtime_dispatch.command_topic, sent by the landing controller); the two
+# terminals are runtime_dispatch.terminal_events.
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.pr-landing-decision-completed.v1"
+    - "onex.evt.omnimarket.pr-landing-decision-failed.v1"
+# main, beside the landing orchestrator and the GitHub effect: the runtime-profile
+# validator requires a profile on a contract that consumes a command.
+runtime_profiles:
+  - main
 descriptor:
   node_archetype: compute
   purity: pure
@@ -168,3 +189,7 @@ in_process_handlers:
     handler:
       module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8"
       class: "HandlerLandingJoinJ8"
+  join_j8_live:
+    handler:
+      module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_landing_join_j8_live"
+      class: "HandlerLandingJoinJ8Live"

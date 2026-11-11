@@ -585,6 +585,14 @@ class HandlerLlmDelegationCall:
             return result
         return self._build_completed_event(request, result)
 
+    def call_endpoint(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+    ) -> ModelLlmDelegationCallResult:
+        """Post, classify and price one call against ``endpoint_url`` without the loopback ``/health`` probe."""
+        return self._execute_call(request, endpoint_url, None)
+
     def _execute_call(
         self,
         request: ModelLlmDelegationCallRequest,

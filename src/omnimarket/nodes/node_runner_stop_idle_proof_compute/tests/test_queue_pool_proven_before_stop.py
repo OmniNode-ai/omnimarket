@@ -35,6 +35,10 @@ _N = EnumReadingVerdict.NOT_WORKING
 _U = EnumReadingVerdict.UNKNOWN
 QUEUE_NAMES = ("hp051-ci-mq-runner-1", "hp051-ci-mq-runner-4")
 NOW_OFFSET = 90
+# Both pools online at the read: stopping two of the four hp051 runners leaves queue runners on both hosts.
+ONLINE = tuple(f"hp051-ci-mq-runner-{i}" for i in range(1, 5)) + tuple(
+    f"hp053-ci-mq-runner-{i}" for i in range(1, 5)
+)
 
 
 def _overlay() -> dict[str, Any]:
@@ -76,6 +80,7 @@ def _request(
         reads=(idle_read(0), idle_read(GAP_SECONDS)),
         stop_request_names=names,
         queue_pool_proof=proof,
+        queue_runners_online=ONLINE,
     )
 
 

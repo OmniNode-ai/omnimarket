@@ -43,6 +43,10 @@ LANE_GUARD_TOOL_PREFIX = "lane-guard:"
 #: caller on an older omnimarket still parses the advertisement. A host with no sensor (a Mac, a VM) advertises none
 #: and is never judged on temperature. Pool placement reads it against the host row's ``max_cpu_c`` bar.
 CPU_TEMP_TOOL_PREFIX = "cpu-temp-c:"
+#: A pseudo-tool ``disk-watermark:page`` that a host advertises while its watermark reading file reads ``page`` (OMN-23390):
+#: a volume is past its high-water mark, which sits above the admission floor, so pool placement refuses new units there
+#: before the floor does. A host below the page mark advertises none. It rides ``tools`` for the same reason the lane guard does.
+DISK_WATERMARK_PAGE_TOOL = "disk-watermark:page"
 _HWMON_ROOT = Path("/sys/class/hwmon")
 _CPU_CHIPS = ("k10temp", "coretemp")
 _CPU_LABELS = ("Tctl", "Package id")
@@ -60,6 +64,11 @@ def cpu_temp_from_tools(tools: Iterable[str]) -> float | None:
             except ValueError:
                 return None
     return None
+
+
+def disk_watermark_paged(tools: Iterable[str]) -> bool:
+    """Whether an advertisement carries the ``disk-watermark:page`` pseudo-tool."""
+    return DISK_WATERMARK_PAGE_TOOL in tools
 
 
 def linux_cpu_temp_c(hwmon_root: Path = _HWMON_ROOT) -> float | None:
@@ -94,6 +103,10 @@ class HostReading:
     load1: float
     mem_available_bytes: int
     tools: tuple[str, ...]
+    #: The capacity inputs of OMN-23337; None when the platform gives no reading, and a None is never judged.
+    mem_total_bytes: int | None = None
+    swap_in_kb_s: float | None = None
+    swap_out_kb_s: float | None = None
 
 
 class ProtocolHostReader(Protocol):
@@ -111,6 +124,42 @@ def _linux_mem_available() -> int:
     if match is None:
         raise HostCapacityUnreadableError("MemAvailable is missing from /proc/meminfo")
     return int(match.group(1)) * 1024
+
+
+def _linux_mem_total() -> int:
+    text = Path("/proc/meminfo").read_text(encoding="utf-8")
+    match = re.search(r"^MemTotal:\s+(\d+)\s+kB", text, re.MULTILINE)
+    if match is None:
+        raise HostCapacityUnreadableError("MemTotal is missing from /proc/meminfo")
+    return int(match.group(1)) * 1024
+
+
+def _darwin_mem_total() -> int:
+    done = subprocess.run(
+        ["sysctl", "-n", "hw.memsize"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    if done.returncode != 0:
+        raise HostCapacityUnreadableError(f"sysctl hw.memsize exited {done.returncode}")
+    return int(done.stdout.strip())
+
+
+def _linux_swap_pages() -> tuple[int, int] | None:
+    """The cumulative pages swapped in and out, or None where ``/proc/vmstat`` has no counters."""
+    try:
+        text = Path("/proc/vmstat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    found = {
+        m.group(1): int(m.group(2))
+        for m in re.finditer(r"^(pswpin|pswpout) (\d+)$", text, re.MULTILINE)
+    }
+    if "pswpin" not in found or "pswpout" not in found:
+        return None
+    return found["pswpin"], found["pswpout"]
 
 
 def _darwin_mem_available() -> int:
@@ -184,6 +233,8 @@ class LocalHostReader:
         self._home = home
         self._hwmon_root = hwmon_root
         self._login: tuple[float, bool] | None = None
+        # The previous beat's swap counters: the rate is the change since the last read, so the first read has none.
+        self._swap_seen: tuple[float, int, int] | None = None
 
     def _has_login(self, path: str) -> bool:
         # A login changes rarely and the check spawns a process, so it is read at most once per
@@ -211,6 +262,11 @@ class LocalHostReader:
                 raise HostCapacityUnreadableError(f"no memory reader for {system}")
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             raise HostCapacityUnreadableError(f"available memory: {exc}") from exc
+        try:
+            mem_total = _linux_mem_total() if system == "Linux" else _darwin_mem_total()
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            raise HostCapacityUnreadableError(f"total memory: {exc}") from exc
+        swap_in, swap_out = self._swap_rates(system)
         path = _search_path()
         found = tuple(
             sorted(
@@ -234,18 +290,39 @@ class LocalHostReader:
             load1=load1,
             mem_available_bytes=mem,
             tools=tuple(sorted({*found, *guards, *heat})),
+            mem_total_bytes=mem_total,
+            swap_in_kb_s=swap_in,
+            swap_out_kb_s=swap_out,
+        )
+
+    def _swap_rates(self, system: str) -> tuple[float | None, float | None]:
+        """Swap-in and swap-out in KB/s since the previous read; None on the first read and off Linux."""
+        pages = _linux_swap_pages() if system == "Linux" else None
+        if pages is None:
+            return None, None
+        stamp = self._now()
+        previous, self._swap_seen = self._swap_seen, (stamp, *pages)
+        if previous is None or stamp <= previous[0]:
+            return None, None
+        page_kb = os.sysconf("SC_PAGE_SIZE") / 1024
+        seconds = stamp - previous[0]
+        return (
+            max(0, pages[0] - previous[1]) * page_kb / seconds,
+            max(0, pages[1] - previous[2]) * page_kb / seconds,
         )
 
 
 __all__ = [
     "CLAUDE_LOGIN_TOOL",
     "CPU_TEMP_TOOL_PREFIX",
+    "DISK_WATERMARK_PAGE_TOOL",
     "LANE_GUARD_TOOL_PREFIX",
     "HostCapacityUnreadableError",
     "HostReading",
     "LocalHostReader",
     "ProtocolHostReader",
     "cpu_temp_from_tools",
+    "disk_watermark_paged",
     "installed_lane_guards",
     "linux_cpu_temp_c",
 ]

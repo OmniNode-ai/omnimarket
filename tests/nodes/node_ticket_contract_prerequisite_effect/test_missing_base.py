@@ -150,6 +150,27 @@ def test_fetch_preserves_missing_contract_refusal(tmp_path: Path) -> None:
     assert _git(worker, "rev-parse", "origin/dev")
 
 
+# A base that names a remote and cannot be fetched propagates its fetch error to the
+# failed typed verdict (the handler's documented behaviour on dev), so only a base
+# that names no remote keeps the contract refusal.
+@pytest.mark.parametrize("base", ["no-such-base"])
+def test_unreadable_base_preserves_explicit_missing_contract_refusal(
+    tmp_path: Path, base: str
+) -> None:
+    """The CLI must retain the contract refusal even when base repair fails."""
+    worker = _worker(tmp_path, contract=False)
+    before = _git(worker, "rev-parse", "HEAD")
+    _git(worker, "remote", "set-url", "origin", str(tmp_path / "unreachable"))
+    result = _hook(worker, "--base", base, "--title", f"fix({TICKET}): change")
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        f"pull request cites {TICKET} but carries no contracts/{TICKET}.yaml"
+    )
+    assert _git(worker, "rev-parse", "HEAD") == before
+    assert _git(worker, "status", "--porcelain") == ""
+    assert _remote_branches(worker) == ["refs/remotes/origin/worker"]
+
+
 def test_fetch_preserves_runtime_integration_proof_refusal(tmp_path: Path) -> None:
     worker = _worker(tmp_path, runtime=True)
     result = _hook(worker)
@@ -250,3 +271,19 @@ def test_missing_remote_base_is_fetched_with_origin_head_present(
     assert _git(worker, "rev-parse", "origin/dev") == _git(
         tmp_path / "origin", "rev-parse", "dev"
     )
+
+
+def test_unresolvable_hook_run_ref_falls_back_to_head(tmp_path: Path) -> None:
+    """A hook-run ref from another worktree does not end the lookup at exit 128 (OMN-23283)."""
+    worker = _worker(tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-m", MODULE],
+        cwd=worker,
+        env=scrub_git_location_env(
+            {**_env(), "PRE_COMMIT_TO_REF": "0" * 40, "PRE_COMMIT_FROM_REF": "0" * 40}
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr

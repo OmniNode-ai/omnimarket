@@ -244,266 +244,108 @@ requirements:
     statement: "The step_by_step_explanation check accepts a correct short causal answer from a lab delegation walked through with a causative verb (cause, makes, lead to, result in) or a result clause after a comma, and still vetoes an answer that asserts without explaining."
   - id: "req-closer-gateway-loop-and-box-ticks"
     statement: "The gateway read client answers from under a running event loop, and the closer's decide_ticket names the description with exactly the acceptance boxes dod_verify verified ticked, holding open a ticket whose box no verified check covers."
-    acceptance:
-      - id: "AC111"
-        statement: "AC111: read_over_bus called from inside a running event loop returns the gateway's typed result instead of raising that asyncio.run cannot be called from a running event loop."
-      - id: "AC112"
-        statement: "AC112: decide_ticket given a description ticks only the boxes whose criterion has a verified accepted check, renders the evidence comment, and stays open with nothing ticked when any unchecked box names no criterion or has no verified check."
   - id: "req-private-hosted-minutes-watch"
     statement: "Once a day, one read of the organization's billing usage for the month sums GitHub-hosted Actions minutes per repository and per UTC day, appends one ledger STATUS row for the day, and raises one alert through the alert channel when any repository used any billed hosted minute that day."
-    acceptance:
-      - id: "AC108"
-        statement: "AC108: one watch run makes one billing read, sends the alert before it appends the STATUS row that records the alert outcome, never sends or appends twice for one day, appends a STATUS row on a quiet day, refuses before the billing read when ONEX_LEDGER_PATH is unset, and exits nonzero when the alert channel is dead or unconfigured -- falsifier: uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_handler_private_hosted_minutes_watch.py tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_main.py -q fails on a second send, a second append or a healthy exit with a dead alert"
   - id: "req-sibling-dev-tag-provenance"
     statement: "A registered internal sibling can use its own dev merge tag without a suppression, and foreign sources, branches, raw revisions and malformed tags do not qualify."
-    acceptance:
-      - id: "AC183"
-        statement: "AC183: check_dep_provenance.py reads the dev merge tag pattern, GitHub org and sibling list from omnibase_core's packaged internal_sibling_pins.yaml through load_contract, the same contract the Internal Sibling Pins check reads -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py -q fails when a contract with a different dev_tag_pattern does not change the verdict, or when the script source carries its own tag regex"
   - id: "req-landing-stall-liveness"
     statement: "A stall the landing controller holds (a red cause, a red base branch, an open plugin version bump) is a typed transition that the automation-liveness watchdog judges against a bus-event overlay deadline, so a hold past its bound opens one episode, raises one alarm carrying the cause, the repository, the minutes and the last decision text, and clears when it moves."
-    acceptance:
-      - id: "AC141"
-        statement: "AC141: replaying the 2026-10-19 held cause through node_landing_stall_expectation_compute, the watchdog compute and the delivery effect opens one TRIGGER_UNANSWERED episode past 60 minutes, sends one alarm naming the cause key, the repository, the minutes and the last decision text, and clears it after the merge; the fold opens at the first hold, answers on a move, and moves a version bump only on merge or release -- falsifier: uv run pytest tests/nodes/node_landing_stall_expectation_compute -q fails"
   - id: "req-compaction-adapter-invocation-and-verdict"
     statement: "The Claude Code hook adapter mints a fresh invocation_id for every invocation and carries it on the command through the @invocation_id argument source, and the context_compaction_verdict compute installs a compaction reply only when the echoed invocation_id is the adapter's own and its messages hash to the echoed installed_messages_hash; any other reply is native."
-    acceptance:
-      - id: "AC140"
-        statement: "AC140: two adapter invocations carry two different uuid4 invocation_ids on their commands and results, the payload holds no field not drawn from the hook input besides that id, a matching compaction reply installs its messages, and a reply for another invocation, a tampered message, a malformed reply, a native reply or no reply returns native -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q fails at the merge base, where the module handler_compaction_verdict does not exist"
   - id: "req-compaction-pack-build-over-pack-orchestrator"
     statement: "The compaction orchestrator's package build has a live port over the context-pack orchestrator: it requests the compaction_orchestrator profile at the command's session barrier for the envelope tenant, installs the built package with the pack's identities, and falls back pack_build_failed on any failed or incomplete build."
-    acceptance:
-      - id: "AC113"
-        statement: "AC113: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
   - id: "req-pack-orchestrator-tier-source-binding"
     statement: "The context-pack orchestrator resolves the source node for each tier from its contract's context_tier_sources block, so its zero-argument runtime construction reads operator_rulings, open_work, orchestration_state, operator_words_unrecorded, repo_state, lane_rules and architecture_patterns from their source nodes instead of answering every tier unavailable."
-    acceptance:
-      - id: "AC150"
-        statement: "AC150: HandlerContextPackOrchestrator() binds each factor named in context_tier_sources to one instance per source node, every required factor of the compaction_orchestrator profile is bound, an explicit empty mapping binds nothing, loading opens no database connection, and an unknown factor, an unknown node or a node whose contract does not take ModelContextSourceRequest is refused -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q fails at the merge base, where the module tier_source_binding does not exist"
   - id: "req-emit-one-kafka-connection"
     statement: "One node_event_emit_effect invocation publishes its own fan-out records and drains its spool backlog over one Kafka connection, opened at the first publish and closed when the invocation ends; a failed publish drops that connection so the next record opens a fresh one, and a publish outside an invocation still opens and closes its own."
   - id: "req-omn20303-canonical-savings-counterfactual"
     statement: |-
       A canonical completion that produces a saving keeps its token-derived premium counterfactual on the delegation row even when the outer handler ended during runtime shutdown; an originally pinned counterfactual takes precedence.
-    acceptance:
-      - id: "AC152"
-        statement: |-
-          AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
   - id: "req-compaction-receipts-fold"
     statement: "The compaction receipts fold derives one state per candidate, per activation and per invocation from the set of prepared, activated, fallback, installed, install-mismatch and install-uncertain receipts received, independent of their order and duplicates."
-    acceptance:
-      - id: "AC130"
-        statement: "AC130: installed and install_mismatch dominate not_installed and uncertain, installed with install_mismatch folds to conflict, prepared copies with differing assembly_hash fold to conflict, and two activations of one candidate with different model output fold to one prepared candidate with no conflict -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'dominates or mismatch or conflict or model_outputs' fails"
-      - id: "AC131"
-        statement: "AC131: 200 seeded shuffles of a mixed receipt set, with duplicates inserted, fold to a byte-identical result, and appending a later boundary's receipts leaves every earlier activation's fold byte-identical -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'permutations or later_boundary' fails"
   - id: "req-onex-models-lists-the-catalogue"
     statement: "onex models offers every provider the BYOK customer catalogue lets a customer route a key to, so z.ai's general API (glm) is listed, added and tested through the catalogue's own row, and no endpoint is written into the setup code."
-    acceptance:
-      - id: "AC158"
-        statement: "AC158: onex models list on a fresh profile names GLM as not set up, onex models add glm stores a general-API key under its detected plan and model and tests it pinned to the catalogue's byok-glm-general backend, a Coding Plan key is refused with BYOK_CODING_PLAN_NOT_PERMITTED and nothing is stored, and every catalogue provider with a routable plan is in the onex models provider list -- falsifier: uv run pytest tests/unit/cli/test_omn20157_onex_models_lists_the_catalogue.py -q fails at the merge base"
   - id: "req-compaction-loss-weights"
     statement: "The context-service lane's scorer-weights follow-up adds an auditable weighted recall without rewriting the original survival evidence. This slice does not qualify TA.12 latency, install the TA.15 binding, or close the parent integration-pass acceptance."
-    acceptance:
-      - id: "AC155"
-        statement: "AC155: callers can supply positive finite numeric weights per must-carry kind; unit defaults reproduce overall recall, absent kinds add no mass, empty windows remain unknown, and invalid or unknown weights are refused -- falsifier: uv run pytest tests/test_compaction_loss_weights.py -q --no-cov -k 'unit_weights or weights_are_per_item or empty_window or invalid_weights or misspelled_kind or large_finite'"
-      - id: "AC156"
-        statement: "AC156: weighted recall exposes a dropped instruction among surviving identifiers while items, drops, per-kind recall, overall recall and eval cases retain their original meaning; the applied policy survives result serialization and transcript pairing, and historical results do not claim a weighted measurement -- falsifier: uv run pytest tests/test_compaction_loss_weights.py tests/test_golden_chain_compaction_loss_compute.py -q --no-cov"
   - id: "req-in-process-evidence-trace-and-timing"
     statement: "An in-process onex delegate run's delegation_events row stores the command's trace_id, the measured queue wait and the measured execution time, because on that path only the local port's evidence terminal reaches the projection and the bus, and it carried none of the three."
   - id: "req-customer-ledger-in-memory-bus"
     statement: "A customer running OmniNode locally has a work ledger on the in-memory event bus: ledger row events written through the work-ledger emit handler reach an in-memory reader that answers the same query verbs as the lab database reader (RULING 2026-10-19T21:47:42Z)."
-    acceptance:
-      - id: "AC153"
-        statement: "AC153: every row of the golden ledger fixture, written through HandlerWorkLedgerEmit with the in-memory emitter onto an EventBusInmemory, is folded by InMemoryWorkLedgerQueryReader, a redelivered row is kept once, and HandlerWorkLedgerQuery over that reader returns the rows, holds, inbox entries and open claims the recorded markdown reads name -- falsifier: uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q fails at the merge base, where the module work_ledger_query_inmemory does not exist"
   - id: "req-emit-unreachable-backoff"
     statement: "When a node_event_emit_effect publish by one Kafka publish identity (bootstrap servers, security protocol and SASL user, never the password) fails as retryable, later invocations by that identity within the backoff window spool their event and attempt no publish, so an in-process delegate or GLM harness run no longer waits out the 5 s publish cap on a broker it cannot reach; any publish that succeeds clears the backoff, and an adapter with no identity is never backed off."
-    acceptance:
-      - id: "AC154"
-        statement: "AC154: a failed publish writes the identity's marker under the spool's publish-backoff directory; a second handler within the window makes zero publish calls, returns publish_skipped_unreachable=True and leaves both records pending; an expired marker allows the publish and the backlog drain and is cleared; another identity, an adapter without publish_identity and a zero window are never backed off; the marker is never listed as a pending record; the default adapter's identity carries no password -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q fails at the merge base, where ModelEmitResult has no publish_skipped_unreachable"
   - id: "req-compaction-latency-runner"
     statement: "The TA.12 latency qualification has a runner in the hook adapter node: HandlerCompactionLatencyRun drives the adapter in process over recorded PreCompact hook inputs with a compaction binding it supplies (not installed in Claude Code), cold trips on a fresh receipt-mode client each with its construction timed and warm trips on one shared client after a discarded warm-up, records each trip's wall time and the prepared receipt's split into deterministic_build_ms and model_section_ms, and records a refusal instead of a number for a missing or inconsistent timing or an adapter failure."
-    acceptance:
-      - id: "AC154"
-        statement: "AC154: two sizes with two cold and two warm trips against a fixture client whose prepared receipt carries build_ms 250 and model_section_ms 75 record eight trips of 175 and 75 with wall_ms from the injected clock, the factory is called once per cold trip and once per case for warm, a cold trip's wall time includes client construction, a prepared receipt with no build_ms, a model section longer than the build, no prepared receipt or an adapter error is a refusal and the CLI exits 1, the trips of two hosts and three sizes tabulate complete through the latency qualification compute and without the second host do not, and the new source holds no topic literal and no import of the compute node -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q fails at the merge base, where the module handler_compaction_latency_run does not exist"
   - id: "req-delegation-rung-keeps-time-for-next-rung"
     statement: "The in-process delegation ladder bounds each rung by the run's remaining budget less the task class's declared next-rung reserve, so a slow or rejected local rung hands off to the next rung inside the run budget instead of ending the run."
-    acceptance:
-      - id: "AC157"
-        statement: "AC157: a ladder whose local rung times out reaches the cheap_cloud rung and completes inside the 240 s run budget, and slow rejected local drafts stop re-drafting and hand off -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_rung_budget_keeps_time_for_next_rung.py -q fails at the merge base"
   - id: "req-context-pack-cite-first-allocator"
     statement: "When the required tiers of a context pack are over budget, the cited entries of every trimmable tier are charged first and only the uncited remainder is shared equally, so a pack whose cited entries fit the budget is built even when one tier's cited entries exceed an equal share; with no citations the selection is unchanged."
-    acceptance:
-      - id: "AC154"
-        statement: "AC154: a compaction_orchestrator build at budget 800 whose open_work tier cites five rows of about 105 tokens each builds OK with every cited row carried and the uncited orchestration_state row trimmed, and cited entries over the whole budget fail TOKEN_BUDGET_EXCEEDED with 'cited entries need' naming the tiers -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k equal_share fails at the merge base with 'open_work: cited entries need 525 tokens, over the tier budget 380'"
   - id: "req-delegate-skill-routing-columns-stored"
     statement: "delegation_events.routed_model and answering_backend are written from the delegate-skill terminal's accepting attempt by both projection writers, and a later terminal that carries none keeps the stored values."
-    acceptance:
-      - id: "AC114"
-        statement: "AC114: the sync and async delegate-skill row builders store the accepting attempt's model_id as routed_model and its backend_id as answering_backend, store neither for a ladder with no accepting attempt or a blank value, and keep stored values across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_routing_columns_omn19448.py -q fails at the merge base"
   - id: req-ingress-contract-io-terminal
     statement: An ingress contract I/O failure returns a correlated failure before any provider call, and both runtime dispatch ports can consume it on its declared canonical topic.
-    acceptance:
-    - id: AC158
-      statement: 'AC158: an unreadable task-class contract returns a single unscored canonical failed terminal with zero model attempts and a FAILED workflow; a replay emits no routing intent.'
-    - id: AC159
-      statement: 'AC159: both deployed-runtime and Market dispatch ports consume the real handler''s pre-dispatch failure on the producer''s contract topic; the optional V1 subscription rejects routed, malformed and uncorrelated terminals.'
-    - id: AC160
-      statement: 'AC160: an isolated Linux process with genuinely exhausted file descriptors can still construct the ingress failure terminal.'
   - id: "req-pool-host-advertises-lane-guards"
     statement: "A pool host's bus capacity advertisement carries a lane-guard:<sha256> entry in its tools for each installed lane guard whose bytes hash to the sha256 that names its directory, so placement can refuse a host that would exit 78 LANE-GUARD-MISSING in seconds; a host with no guard, an altered copy or a misnamed directory advertises none."
-    acceptance:
-      - id: "AC159"
-        statement: "AC159: LocalHostReader.read returns one lane-guard:<sha256> tool per installed lane_guard_host.py whose sha256 equals its directory name, sorted among the other tools, and none for an empty home, an altered copy or a directory that is not a sha256 -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard fails at the merge base, where LocalHostReader takes no home and advertises no lane-guard entry"
   - id: "req-delegation-target-adapters"
     statement: "The existing delegation call effect owns the target adapters (model-call, claude-code, codex, claude-glm) and consumes canonical lab job submissions through runtime routing; harnesses are adapters inside the one effect node and everything else is a handler (operator RULING 2026-10-20T11:52:25Z)."
-    acceptance:
-      - id: "AC163"
-        statement: "AC163: the runtime discovers the existing effect's lab-job handler and dispatches the submit node's ModelEventEnvelope to it; the handler retains the original brief, records reducer transitions, and refuses a second launch for a taken job -- falsifier: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'runtime_discovers or launches_once or wire_models' -q"
-      - id: "AC164"
-        statement: "AC164: coding-session adapters launch a brief on stdin in a worktree at the requested full commit and retain a typed receipt; a replay returns that receipt, and a reused identity with different instructions is refused -- falsifier: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'session_adapter or agent_adapters or exact_commit' -q"
-      - id: "AC162"
-        statement: "AC162: the model adapter uses the model router's complete endpoint and the generic inference handler's wire shape; contract generation parameters survive overrides and unmeasured, ignored or rejected parameters are refused before inference -- falsifier: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'model_adapter or parameters or generation_overrides' -q"
   - id: "req-ticket-contract-schema-hook"
     statement: "A ticket contract that omnibase_core's ModelTicketContract refuses is caught by a pre-commit hook before the push, by the same validation CI's Contract Compliance Check runs."
-    acceptance:
-      - id: "AC160"
-        statement: "AC160: tests/ci/test_ticket_contracts_schema_omn17427.py loads every contracts/OMN-*.yaml with ModelTicketContract, shows a 51-character dod_evidence id is refused, and .pre-commit-config.yaml runs it as hook ticket-contract-schema on contracts/OMN-<n>.yaml -- falsifier: uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py fails at the merge base, where the test file and hook are absent."
   - id: req-omn20303-harness-counterfactual-readback
     statement: A harness terminal whose token-derived saving is projected keeps the same saving and its premium counterfactual in the delegation projection.
   - id: "req-compaction-latency-command-boundary"
     statement: "The TA.12 runner replays a command accepted by the compaction orchestrator, preserves the recorded input identity and model choice, and counts only adapter install verdicts as phase measurements. This prerequisite does not qualify live latency or enable the TA.15 binding."
-    acceptance:
-      - id: "AC180"
-        statement: "AC180: the latency runner carries input_messages_hash, newest_turn, barrier_id and compact_model from the recorded input; its payload validates as ModelContextCompactionRequested on cold, warm-up and warm trips, and a missing recorded input hash is refused before any publish -- falsifier: the focused command-boundary tests fail on the base, which drops those fields and publishes an invalid command."
-      - id: "AC181"
-        statement: "AC181: a native adapter verdict with an otherwise valid prepared timing receipt is a refusal with absent phase timings, never an input to latency qualification -- falsifier: the native-with-prepared regression fails on the base, which records a successful measurement."
   - id: req-delegation-terminal-complete-readback
     statement: The existing terminal migrations and both projection writers are verified together, and lab failure-cause proof refuses an empty window.
-    acceptance:
-    - id: AC182
-      statement: 'AC182: real PostgreSQL applies migrations 0052, 0053 and 0058 and both writers project both terminal families with all eight trace, routing, stop and timing columns plus the declared cause, outcome and verdict; canonical terminals set terminal_ok even without a declared cause, and a failed ladder without an accepting attempt names no answering backend.'
-    - id: AC183
-      statement: 'AC183: the read-only dev-lane query finds at least one failed row after the writer deploy boundary and zero failed rows with a NULL cause; the same query fails for an empty window or a failed row with a NULL cause.'
   - id: req-qwen-tool-call-experiment
     statement: |-
       Report the fixed local Qwen tool-call experiment without shipping a tool-loop implementation or claiming completion of the umbrella integration-pass ticket.
   - id: "req-rehome-landing-tlc-receipt-effect"
     statement: "The landing controller's model-check (TLC) receipt is built and installed by an omnimarket node: publish builds the receipt from a TLC results directory with the controller's own gate and refuses on any violation, and sync installs a published archive into the landing state directory only after the installed gate re-checks it, whole or not at all."
-    acceptance:
-      - id: "AC182"
-        statement: "AC182: node_landing_tlc_receipt_effect is a registered onex.nodes entry point of omnimarket declared once (metadata.yaml and pyproject.toml, not its contract), publish builds a receipt bound to the decision pin and packs it under tag landing-tlc-<pin8>-<model8>, refuses a model check that found a violation, ran nothing or has an unreadable pin, and sync installs a published receipt, leaves a current one alone, replaces one built from another model, refuses a receipt the gate refuses or an archive naming a path outside its directory, and reports a failed release read, in each refusal changing nothing -- falsifier: uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov fails at the merge base, where the node does not exist"
   - id: "req-evidence-wait-per-verifier-run"
     statement: "Every Repo Evidence Dependency poller gives each repo-evidence / dod-verify run its own wait window, so an edited event that restarts the pull_request_target verifier late in the wait no longer times the poller out while the new run is still verifying, and one stuck run still fails closed at its deadline."
-    acceptance:
-      - id: "AC162"
-        statement: "AC162: each of the six Repo Evidence Dependency pollers restarts its 2580 second window when a new repo-evidence / dod-verify run id appears and still times out a single run that never concludes -- falsifier: uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -n 0 --no-cov -k 'restarted_verifier or stuck_verifier' fails at the merge base, where the window is counted from the poller's own start"
   - id: "req-terminal-emit-cleanup-deadline"
     statement: "Kafka session cleanup and thread handoff share the terminal emitter's invocation deadline, and a timed-out coroutine is cancelled on the shared event loop."
-    acceptance:
-      - id: "AC182"
-        statement: "AC182: a terminal emit with a slow broker close caps cleanup by its remaining publish/drain deadline on both publish success and failure, keeps failed events spooled, and cancels the timed-out background coroutine -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips fails at the merge base."
   - id: "req-declared-label-set-undeclared-backend"
     statement: "A declared label set on a backend that does not declare json_schema support sends no provider directive, still refuses an out-of-vocabulary label and records the refusal in attempts, and a payload that omits the new wire fields is read as undeclared."
-    acceptance:
-      - id: "AC182"
-        statement: "AC182: on an undeclared backend the delegate-skill run sends no response_format, fails the garbled label with SCHEMA_VIOLATION naming it, and counts each refused attempt; a backend or call-request payload without the new fields reads as undeclared -- falsifier: uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q fails when an omitted supports_response_format_json_schema defaults to True"
   - id: "req-compaction-build-phase-timings"
     statement: "The compaction build records its phase timings for the TA.12 latency qualification: the context-pack orchestrator times each tier's source read as read_ms, ModelContextPackBuilt.model_section_ms() sums the model-written tiers' reads, the compaction orchestrator times the pack build and carries build_ms on prepared and fallback receipts and model_section_ms on prepared, and ModelCompactionRoundTrip.from_prepared splits a prepared receipt into deterministic_build_ms and model_section_ms."
-    acceptance:
-      - id: "AC145"
-        statement: "AC145: under an injected clock each bound tier's read_ms is the clock delta in milliseconds (an unbound tier None, a raising source still timed), the compaction orchestrator's prepared and fallback receipts carry the build's elapsed build_ms (None when the barrier fails before any build) and prepared carries the package's model_section_ms, and from_prepared gives deterministic_build_ms = build_ms - model_section_ms and refuses a missing timing or a model section longer than the build -- falsifier: the focused tests fail at the merge base, where 23 of them fail because read_ms, build_ms and from_prepared do not exist"
   - id: "req-claims-pending-index"
     statement: "The SQLite claim store carries a partial index over the pending delegate-skill command claims, added once by a store step, so the delegation reaper's pending-claims query reads the index instead of the whole table. The index changes no claim, terminal-slot or reap answer and deletes no row."
-    acceptance:
-      - id: "AC183"
-        statement: "AC183: a fresh store and a store that predates the step both carry delegate_skill_command_claims_pending_idx after one SqliteDatabaseAdapter._connect(), the step is recorded once, and EXPLAIN QUERY PLAN of the adapter's pending-claims statement names the index; a read-only store that predates the step is read with one warning; through DelegationClaimPort over SqliteDatabaseAdapter a redelivered claim loses and is served the recorded terminal, one of two record_terminal calls wins, and stalled_claims returns exactly the overdue pending main claims, the same set as the store with the index dropped; the step leaves the claims row count unchanged (tests/unit/projection/test_omn17427_claims_pending_index.py) -- falsifier: the tests fail at the merge base, where the plan reads SCAN delegate_skill_command_claims with no index."
-      - id: "AC185"
-        statement: "AC185: a fresh store and a store that predates the step both carry delegate_skill_command_claims_correlation_idx after one SqliteDatabaseAdapter._connect(), the step is recorded once, and EXPLAIN QUERY PLAN of SELECT * FROM delegate_skill_command_claims WHERE correlation_id = :correlation_id names the index; DelegationClaimPort.pending_claims(correlation_id=...) returns the same claims with and without the index, for a correlation with exactly one pending delivery and for one reused by two deliveries, which answers an empty list (tests/unit/projection/test_omn17427_claims_pending_index.py) -- falsifier: the index tests fail at 2609fffacaa621dfe9222c33da3dd8faa447928f, where the plan reads SCAN delegate_skill_command_claims; the pending_claims test fails when the results with and without the index differ."
   - id: "req-tick-roll-up-shared-red"
     statement: "The throughput tick's repository status names the real failing check as the unowned shared red, not a roll-up check (CI Summary, ci, CI Tests Gate) that is red only because that check failed."
-    acceptance:
-      - id: "AC183"
-        statement: "AC183: _repo_verdict counts a roll-up check only for a PR whose reds are all roll-ups, so two PRs red on CI Summary and repo-evidence / dod-verify name repo-evidence / dod-verify, two PRs red on CI Summary alone still name CI Summary, and CI Summary shared only through PRs that each carry another red is no shared red -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k roll_up fails at the merge base, where the node names CI Summary"
   - id: "req-retention-run-budget"
     statement: "A scheduled retention run never holds the runtime's event loop for a whole backlog: it yields after a time budget and resumes the backlog on a short retry."
-    acceptance:
-      - id: "AC182"
-        statement: "AC182: a scheduled retention run ends after the first committed batch that finishes past schedule.max_run_seconds (always after one batch), reports backlog_remaining, and the next tick resumes after backlog_retry_seconds instead of run_interval_seconds -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'budget or backlog or retry' fails at the merge base, where a run drains to max_batches in one call and the next tick waits the full interval."
-      - id: "AC186"
-        statement: "AC186: the runtime entry point of NodeRetentionCleanup is handle_async, which runs the run in a worker thread so the event loop keeps running while a batch blocks, and a tick that arrives while a run holds its thread is skipped, not queued -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'handle_async or event_loop_free or skipped_not_queued' fails at the merge base, where the runtime calls the synchronous handle on its loop."
   - id: "req-install-canary-provisioned-python"
     statement: "Both install-canary jobs keep the Python that setup-uv provisioned when they cross the clean-home boundary, so uv resolves the selected interpreter instead of a system or downloaded one."
-    acceptance:
-      - id: "AC187"
-        statement: "AC187: the canary and planted-bad-pin self-test jobs pass UV_PYTHON and UV_PYTHON_INSTALL_DIR into their isolated install environment, and the real uv finds the selected Python offline from that environment -- falsifier: the workflow interpreter selection cases fail on the base with KeyError UV_PYTHON."
   - id: "req-pack-orchestrator-source-order"
     statement: "The context-pack orchestrator gives each artifact its position in its tier's source result as source_priority, so a pack carries a tier's entries in the order the source answered them rather than in content-hash order."
   - id: "req-cc0130-committed-contract"
     statement: "The CC0130 migration makes the OMN-13213 ticket contract resolvable from an immutable commit in the product repository."
-    acceptance:
-      - id: "AC4301"
-        statement: "AC4301: the real ticket-contract prerequisite handler resolves OMN-13213 from HEAD's Git blob without a failure; a working-tree-only copy cannot satisfy it -- falsifier: uv run pytest tests/test_omn17427_cc0130_committed_contract.py -q fails at the merge base, whose commit carries no contracts/OMN-13213.yaml."
   - id: "req-emit-publish-circuit"
     statement: "One slow node_event_emit_effect publish no longer spools healthy publishes: the publish-backoff marker is an on-disk circuit for the publish identity that counts consecutive failed invocations, opens only at unreachable_failure_threshold (default 3) for unreachable_backoff_seconds (default 30, 0 disables), probes after the window, closes on any successful publish or drained backlog record, ignores quarantines, reads an old-shape, malformed or other-identity marker as no failures, retries a clean circuit's retryable current-event publish once within the shared 9 s budget, and reports publish_failure_count and publish_circuit_open on ModelEmitResult."
   - id: "req-moved-contract-omn13213"
     statement: "contracts/OMN-13213.yaml is carried in omnimarket, where the scheduled closer's contract resolver reads it, and loads as omnibase_core's ModelTicketContract with the role placeholder in its branch name."
-    acceptance:
-      - id: "AC186"
-        statement: "AC186: contracts/OMN-13213.yaml loads as ModelTicketContract with ticket_id OMN-13213 and its one dod_evidence item, and names the branch <operator>/omn-13213-d-reclassify-node_emit_daemon-effect-node -- falsifier: uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q fails at the merge base, where the contract is absent"
   - id: "req-tick-base-red-own-branch"
     statement: "The throughput tick's base-branch red counts only check runs whose workflow run belongs to the base branch, and names the real failing check rather than a roll-up, so a release push of the base sha to another branch does not make the base branch read red."
-    acceptance:
-      - id: "AC186"
-        statement: "AC186: _base_red ignores a check row whose workflow run the branch record's runs rows place on another head branch, keeps a row whose run is unlisted, and returns the non-roll-up reds when any exist -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k 'another_branchs_run or base_red_roll_up_beside' fails at the merge base, where a main-push run's CI Summary failure on the dev sha reads as base_branch_red and the verdict names CI Summary"
   - id: "req-step-by-step-prevent-ensure-purpose"
     statement: "The step_by_step_explanation check accepts a correct causal answer walked through with a prevented or ensured result (\", preventing\", \" and preventing\", \", ensuring\", \", meaning\", \" which prevents\") or a purpose clause (\" to ensure that\", \" to prevent\"), and still vetoes an answer that asserts without explaining."
-    acceptance:
-      - id: "AC188"
-        statement: "AC188: the fifteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py, nine of them verbatim Qwen3.8-27B answers from a lab model server, pass step_by_step_explanation, and the seven non-explanations, including \"Preventing outages is the goal\", \"the ensuing outage\" and \"meaningful names\", are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q fails at the merge base"
   - id: "req-create-ticket-pillar-lane-refusal"
     statement: "node_create_ticket refuses --pillar for a pillar whose owner map entry declares assignable_by_lanes false when the caller is a lane (ONEX_LANE or ONEX_REMOTE_LANE, a subagent session, or a headless session), before the ticket-creation guard records anything; an interactive operator session, a pillar without the flag and a ticket with no pillar are unchanged."
-    acceptance:
-      - id: "AC188"
-        statement: "AC188: a lane's create request, and its dry run, naming a pillar whose entry sets assignable_by_lanes false raises refused for a lane with no assignee and no guard input; an interactive session assigns that owner, a lane assigns an unflagged pillar's owner, a lane with no pillar files under the creator, and handler_lane_intake.lane_caller answers the pillar hook's test over eight environments (tests/nodes/node_create_ticket/test_pillar_lane_refusal.py) -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_pillar_lane_refusal.py -q fails at the merge base, where lane_caller does not exist and the file cannot be collected"
   - id: "req-c28-consumer-flow-writer-throughput"
     statement: "The in-process consumer-flow writer reuses one dispatch loop and pool across heartbeats and concurrent dispatch threads, and batches one heartbeat's deltas without losing ordering or replay refusals."
-    acceptance:
-      - id: "AC187"
-        statement: "AC187: twenty heartbeats open one pool, eight concurrent dispatch threads share one loop and pool, a 477-delta heartbeat uses at most five statements, and a 120-pair heartbeat lands every pair in input order through the real PostgreSQL writer with an older replay refused row by row -- falsifier: the focused consumer-flow dispatch and real-PostgreSQL write-path tests fail when the writer creates a loop per message or replaces its batched statements with per-delta writes."
   - id: "req-morning-phase-tools-only-session"
     statement: "A morning phase agent runs as a tools-only session: claude -p with every built-in tool off, exactly one strict MCP server granted as mcp__<server>, dontAsk permission mode and no setting sources, and the morning orchestrator's tools gateway gives each phase only its declared deterministic typed tools, refusing a phase with no tool set before any session starts."
-    acceptance:
-      - id: "AC188"
-        statement: "AC188: handler_agent_session.py --tools-only builds a session with --tools \"\" and one --strict-mcp-config server, refuse_unless_tools_only exits 65 on a shell, a wider grant, a second or foreign server, bypass or acceptEdits modes, or added directories, settings, agents or plugins, no catalog tool takes a command or a free path, the MCP server lists and runs only the phase's tools, and HandlerMorningPhaseTools refuses a phase with no tool set and a committing phase while session-goal has none -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py -q -n 0 --no-cov -p no:randomly fails at the merge base, where the tools package, the gateway and the tools-only transport do not exist"
   - id: "req-in-process-evidence-outcome-verdict"
     statement: "An accepted in-process onex delegate run's delegation_events row states operational_outcome completed and content_verdict usable, as the runtime terminal of an accepted run does, because on that path only the local port's evidence terminal reaches the projection and the bus, and it named neither; a failed in-process run states neither, since the payload does not carry which gate branch refused it."
-    acceptance:
-      - id: "AC188"
-        statement: "AC188: LocalDelegationDispatchPort._project_evidence with quality_passed true publishes operational_outcome completed and content_verdict usable and the delegation projection writes both onto the row; with quality_passed false the payload names neither and the row is not completed/usable -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q fails at the merge base, where the evidence payload has no operational_outcome"
   - id: "req-job-log-window-and-step-reads"
     statement: "The job_log_tail gateway read (onex scm job-log) can read a bounded window of a job log at a byte offset or the region of one named step, besides the last 64 KiB tail, with paging offsets on the result."
-    acceptance:
-      - id: "AC187"
-        statement: "AC187: job_log_tail with offset_bytes keeps exactly [offset, offset+length) of the log and reports total_bytes, start_offset and next_offset; with step it keeps exactly that step's timestamped lines, refuses an unknown step with the job's step names, and returns an empty result for a skipped step after one call; length_bytes without offset_bytes or step is refused; a plain tail read keeps its old fields; the CLI passes --offset-bytes, --length-bytes and --step into the request -- falsifier: uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k 'job_log or read_window or step_second' fails at the merge base, where github_landing/github_log_window.py and the window fields are absent"
   - id: "req-sqlite-open-releases-lock-on-failure"
     statement: "Both local SQLite opens (SqliteDatabaseAdapter._connect and the BYOK credential adapter's _connect) close their connection when a setup step raises, so a failed open never keeps the delegation store locked in a long-lived process such as the review gateway."
-    acceptance:
-      - id: "AC189"
-        statement: "AC189: an open whose store step raises after BEGIN IMMEDIATE, and a credential open whose commit is refused by a reader's SHARED lock, each leave the store free for a BEGIN IMMEDIATE with timeout 0 while the raised exception is still referenced -- falsifier: uv run pytest tests/unit/projection/test_sqlite_connect_releases_lock_on_failure_omn17427.py -q fails at the merge base, where the refused connection keeps RESERVED"
   - id: "req-terminal-emit-test-cleanup-clock"
     statement: "The terminal emitter regression test measures cleanup from the shared session deadline, so topic resolution, enrichment and durable spool writes do not consume its cleanup allowance."
-    acceptance:
-      - id: "AC187"
-        statement: "AC187: test_terminal_emit_close_uses_remaining_budget records exactly one publisher session deadline and asserts finished minus that deadline is below 0.3 seconds; both publish outcomes retain the spool and cancellation assertions, and the background-loop cancellation case passes. The source assertion check fails on the merge base, which times the whole handle call."
   - id: "req-unstated-outcome-pair"
     statement: "A delegation_events row whose terminal states neither operational_outcome nor content_verdict, and whose stored row states neither, carries the pair its own terminal evidence decides: completed/usable for an evidenced success (terminal_ok, a model and an accepted rung), the pair its cause maps to for a typed failure. A stated pair is never replaced, and the async writer reconciles a first write the way the sync writer does."
-    acceptance:
-      - id: "AC190"
-        statement: "AC190: through both projection writers a harness-shaped or local delegate-skill success that declares no pair stores completed/usable, a first-written timeout, provider_error or quality_gate_refused failure stores the pair outcome_for_failure_cause gives, a canonical completed/correct survives a later unpaired success, and an unevidenced success, a non-terminal event, a causeless failure and a half-stated pair are left unchanged (tests/test_omn19448_unstated_outcome_pair.py) -- falsifier: the 7 writer tests fail at the merge base with KeyError operational_outcome, where both columns stay unnamed"
   - id: "req-morning-report-phase-tools"
     statement: "The six morning report phases have phase-owned deterministic typed tools, local readbacks and guarded effects, with actionable ledger refusals and bounded child-process lifetimes."
-    acceptance:
-      - id: "AC4303"
-        statement: "AC4303: all six report phases declare their own lane, ticket and tool guide; the server exposes only the phase's typed tools with no command or free-path input; watcher, ledger and artifact readbacks preserve their scope; publishing refuses a dry run; a refused TERMINAL includes the ledger's reason and records friction once; and a timed-out program leaves no running child -- falsifier: the focused morning report phase and tool guard tests fail against the merge-base implementation."
   - id: req-owner-summary-facts
     statement: Owner-summary facts reads the watcher merges and queue, ledger lane outcomes and M4 rows, omits watcher
       authors, and names unreadable sources in errors.
@@ -553,6 +395,13 @@ requirements:
     statement: "A lab host table whose rows declare the login, the jump host or the key file of their ssh destination (ssh_user, proxy_jump, ssh_identity) is read by lab placement, not refused whole, and a value ssh could read as an option is refused."
   - id: "req-live-unread-receipt-owner-and-reader"
     statement: "A lab-headroom UNKNOWN line for an unreadable host leads with the owner action the probe receipt's LAUNCHER-GAP tag names, says a rerun clears nothing for any gap the launcher recorded (auth refused, name unresolved, sshd refused, no route), and sends the operator to the hosts-probe receipt readings, the read_pool reading the tick itself used, instead of the listing onex_lab_run.py --hosts prints."
+  - id: "req-pr5043-check-mode-receipt"
+    statement: "A host reconciliation check writes its own receipt without replacing the last repair receipt, and receipt readbacks name the mode's path."
+    acceptance:
+      - id: "AC504301"
+        statement: "AC504301: a check run leaves an existing .onex-workspace-reconcile.json byte-identical and writes .onex-workspace-reconcile.check.json -- falsifier: tests/test_host_reconcile_effect.py::test_check_run_leaves_the_repair_receipt_intact fails before the receipt-path change."
+      - id: "AC504302"
+        statement: "AC504302: check and repair runs write parseable receipts at their respective default paths and failure alerts name the same paths -- falsifier: tests/test_host_reconcile_effect.py::test_run_receipt_lock_and_publication and ::test_failures_publish_slack_command_before_completed_event fail when check mode writes to the repair path."
   - id: "req-pr5134-safety-pin-bounded-retry"
     statement: "The Dependency Security Scan installs a pinned safety and retries only a transient exit-1 crash a bounded number of times while a real finding fails at once."
   - id: "req-lock-security-floors"
@@ -842,7 +691,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batch1_omn23278.py -q -n 0 --no-cov --refuse-skips"
         cwd: .
     supersedes_ac_binding:
       - item: "dod-fill-runs-dry"
@@ -1752,7 +1601,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batch2_omn23278.py -q -n 0 --no-cov --refuse-skips"
         cwd: .
     supersedes_ac_binding:
       - item: "dod-omn17427-claude-token-pool-unit"
@@ -2659,7 +2508,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batch3_omn23278.py -q -n 0 --no-cov --refuse-skips"
         cwd: .
     supersedes_ac_binding:
       - item: "dod-omn17427-claude-pool-revoked-unit"
@@ -3604,6 +3453,350 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'dominates or mismatch or conflict or model_outputs'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC130"]
+  - id: "dod-omn-17427-contract-only-retirement-batch-4"
+    description: "Retires the claims of 35 contract-only criteria (batch 4 of the OMN-17427 contract-only retirement) that the live ticket never carried; each retired item still runs its own tests as a regression guard, and this item carries one check of its own."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        cwd: .
+    supersedes_ac_binding:
+      - item: "dod-omn17427-terminal-cleanup-deadline"
+        label: "AC182"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC182 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-terminal-cleanup-deadline still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac141-canonical-baseline"
+        label: "AC152"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC152 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac141-canonical-baseline still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-gateway-read-running-loop"
+        label: "AC111"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC111 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-gateway-read-running-loop still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-closer-box-ticks"
+        label: "AC112"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC112 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-closer-box-ticks still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-private-hosted-minutes-watch"
+        label: "AC108"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC108 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-private-hosted-minutes-watch still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-provenance-reads-core-contract"
+        label: "AC183"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC183 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-provenance-reads-core-contract still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-landing-stall-replay"
+        label: "AC141"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC141 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-landing-stall-replay still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac140-compaction-adapter-verdict"
+        label: "AC140"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC140 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac140-compaction-adapter-verdict still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac109-compaction-pack-build"
+        label: "AC113"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC113 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac109-compaction-pack-build still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac150-pack-tier-source-binding"
+        label: "AC150"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC150 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac150-pack-tier-source-binding still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-compaction-receipts-fold-precedence"
+        label: "AC130"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC130 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-compaction-receipts-fold-precedence still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-receipts-fold-order-independence"
+        label: "AC131"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC131 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-receipts-fold-order-independence still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac93-onex-models-lists-the-catalogue"
+        label: "AC158"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC158 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac93-onex-models-lists-the-catalogue still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-compaction-loss-weight-validation"
+        label: "AC155"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC155 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-compaction-loss-weight-validation still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-compaction-loss-weight-evidence"
+        label: "AC156"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC156 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-compaction-loss-weight-evidence still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac153-customer-ledger-in-memory-bus"
+        label: "AC153"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC153 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac153-customer-ledger-in-memory-bus still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac154-emit-unreachable-backoff"
+        label: "AC154"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC154 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac154-emit-unreachable-backoff still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac182-undeclared-label-set"
+        label: "AC182"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC182 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac182-undeclared-label-set still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac154-compaction-latency-runner"
+        label: "AC154"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC154 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac154-compaction-latency-runner still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-rung-budget-keeps-time-for-next-rung"
+        label: "AC157"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC157 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-rung-budget-keeps-time-for-next-rung still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac154-cite-first-allocator"
+        label: "AC154"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC154 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac154-cite-first-allocator still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac113-delegate-skill-routing-columns"
+        label: "AC114"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC114 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac113-delegate-skill-routing-columns still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ingress-contract-io"
+        label: "AC158"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC158 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ingress-contract-io still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-pre-dispatch-terminal-consumed"
+        label: "AC159"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC159 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-pre-dispatch-terminal-consumed still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-real-emfile-terminal"
+        label: "AC160"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC160 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-real-emfile-terminal still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac159-lane-guard-advertised"
+        label: "AC159"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC159 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac159-lane-guard-advertised still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac163-runtime-lab-submission"
+        label: "AC163"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC163 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac163-runtime-lab-submission still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac161-session-adapters"
+        label: "AC164"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC164 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac161-session-adapters still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac162-generation-routing"
+        label: "AC162"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC162 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac162-generation-routing still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac160-contract-schema-hook"
+        label: "AC160"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC160 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac160-contract-schema-hook still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac180-latency-command-boundary"
+        label: "AC180"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC180 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac180-latency-command-boundary still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac181-latency-install-only"
+        label: "AC181"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC181 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac181-latency-install-only still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-terminal-columns-complete-postgres"
+        label: "AC182"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC182 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-terminal-columns-complete-postgres still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-terminal-columns-complete-postgres"
+        label: "AC183"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC183 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-terminal-columns-complete-postgres still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac182-landing-tlc-receipt"
+        label: "AC182"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC182 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac182-landing-tlc-receipt still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac162-evidence-wait-per-run"
+        label: "AC162"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC162 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac162-evidence-wait-per-run still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac145-compaction-build-timings"
+        label: "AC145"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC145 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac145-compaction-build-timings still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac183-claims-pending-index"
+        label: "AC183"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC183 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac183-claims-pending-index still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac183-claims-pending-index"
+        label: "AC185"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC185 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac183-claims-pending-index still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac183-tick-roll-up-shared-red"
+        label: "AC183"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC183 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac183-tick-roll-up-shared-red still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-retention-run-budget"
+        label: "AC182"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC182 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-retention-run-budget still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-retention-run-budget"
+        label: "AC186"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC186 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-retention-run-budget still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-canary-provisioned-python"
+        label: "AC187"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC187 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-canary-provisioned-python still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-cc0130-committed-contract"
+        label: "AC4301"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4301 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-cc0130-committed-contract still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac188-in-process-outcome-verdict"
+        label: "AC188"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC188 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac188-in-process-outcome-verdict still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac186-moved-contract-omn13213"
+        label: "AC186"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC186 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac186-moved-contract-omn13213 still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac186-tick-base-red-own-branch"
+        label: "AC186"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC186 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac186-tick-base-red-own-branch still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-morning-phase-tools-only"
+        label: "AC188"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC188 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-morning-phase-tools-only still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac188-causal-prevent-ensure"
+        label: "AC188"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC188 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac188-causal-prevent-ensure still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac188-pillar-lane-refusal"
+        label: "AC188"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC188 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac188-pillar-lane-refusal still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac187-c28-consumer-flow-writer"
+        label: "AC187"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC187 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac187-c28-consumer-flow-writer still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac187-job-log-window-and-step-reads"
+        label: "AC187"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC187 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac187-job-log-window-and-step-reads still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac186-sqlite-open-releases-lock"
+        label: "AC189"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC189 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac186-sqlite-open-releases-lock still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac187-terminal-cleanup-test-clock"
+        label: "AC187"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC187 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac187-terminal-cleanup-test-clock still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-ac190-unstated-outcome-pair"
+        label: "AC190"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC190 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac190-unstated-outcome-pair still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
+      - item: "dod-omn17427-morning-report-phase-tools"
+        label: "AC4303"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC4303 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-morning-report-phase-tools still runs its own tests."
+        retired_by: "contractbatch-0750"
+        retired_at: "2026-11-09T08:09:00Z"
   - id: "dod-omn17427-receipts-fold-order-independence"
     description: "The receipts fold is a function of the set received: shuffles and duplicates do not change it, and a later boundary does not revise an earlier activation."
     source: "manual"
@@ -4289,7 +4482,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batches_omn23278.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/ci/test_omn17427_contract_only_retirement_batch5_omn23278.py -q -n 0 --no-cov --refuse-skips"
         cwd: .
     supersedes_ac_binding:
       - item: "dod-omn17427-owner-summary-facts"
@@ -5151,6 +5344,29 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q --no-cov -p no:randomly --refuse-skips -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr5043-preserve-repair-receipt"
+    description: "The real reconciliation effect runs in check mode against temporary local Git repositories and leaves the existing repair receipt unchanged while writing the check receipt. Fails before this PR's receipt-path change."
+    source: "manual"
+    binds_ac: ["AC504301"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_effect.py::test_check_run_leaves_the_repair_receipt_intact -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
+  - id: "dod-omn17427-pr5043-receipt-path-readback"
+    description: "Check and repair effects write their mode's receipt and publish failure alerts naming that path. The check-mode cases fail before this PR's receipt-path change."
+    source: "manual"
+    binds_ac: ["AC504302"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_effect.py::test_run_receipt_lock_and_publication tests/test_host_reconcile_effect.py::test_failures_publish_slack_command_before_completed_event -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
+  - id: "dod-omn17427-pr5043-receipt-deploy-probe"
+    description: "Hosted deployment artifact readback runs the checked-out reconciliation effect against temporary local Git repositories and reads its receipt bytes and failure alert paths. Requires locked Python dependencies and Git, with no broker, database, credentials or lab access. A check effect that overwrites the repair receipt fails this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_effect.py -q --no-cov -p no:randomly --refuse-skips -k 'check_run_leaves_the_repair_receipt_intact or run_receipt_lock_and_publication or failures_publish_slack_command_before_completed_event'"
+        cwd: "."
   - id: "dod-omn17427-pr5134-safety-pin-retry"
     description: "The security-scan workflow pins safety==3.8.1 and retries only the exit-1 crash a bounded number of times while exit 64 fails at once. The three workflow tests fail at the merge base."
     source: "manual"

@@ -227,6 +227,16 @@ def test_floor_fill_schedule_missing_key_refused(key: str, tmp_path: Path) -> No
     assert _install(OVERLAY, tmp_path, "--dry-run")[0] == 0
 
 
+def test_floor_fill_schedule_invalid_value_refusal_names_its_overlay_key(
+    tmp_path: Path,
+) -> None:
+    """An ordinary field failure (the generic 'greater than 0') still names the field on stderr."""
+    code, out, err = _install(overlay(tick_interval_seconds=0), tmp_path, "--dry-run")
+    assert code == 1
+    assert out == ""
+    assert "floor_fill.tick_interval_seconds" in err
+
+
 def test_floor_fill_schedule_host_must_be_available(tmp_path: Path) -> None:
     for name, table in (
         ("away-host", HOSTS),

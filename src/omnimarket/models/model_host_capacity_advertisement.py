@@ -30,6 +30,13 @@ class ModelHostCapacityAdvertisement(BaseModel):
     rank_penalty: float = Field(default=0.0, ge=0.0)
     advertised_at: datetime
     cadence_seconds: int = Field(..., ge=1)
+    #: The capacity inputs and verdict of OMN-23337, recorded on every reading. ``max_units`` is the computed slot
+    #: cap when ``slot_cap_record`` names it; a non-empty ``capacity_refusal`` means the host takes no new unit.
+    mem_total_bytes: int | None = Field(default=None, ge=1)
+    swap_in_kb_s: float | None = Field(default=None, ge=0.0)
+    swap_out_kb_s: float | None = Field(default=None, ge=0.0)
+    slot_cap_record: str = ""
+    capacity_refusal: str = ""
 
     @property
     def load_per_core(self) -> float:

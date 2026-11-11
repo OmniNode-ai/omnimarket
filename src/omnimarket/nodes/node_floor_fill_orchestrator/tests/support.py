@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from omnibase_spi.protocols.lane import ProtocolLaneProcessRunner
+
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
     HandlerFloorFillCandidates,
 )
@@ -26,6 +28,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ProtocolFloorStateStore,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
+    ScriptedBriefs,
     ScriptedClock,
     ScriptedFacts,
     ScriptedLedger,
@@ -63,6 +66,7 @@ OVERLAY: dict[str, Any] = {
         "--attempt",
         "{attempt}",
     ],
+    "line_brief_text": "Work task {task_id} of line {line_id} on {ticket} as {lane}.",
     "reserved_timeout_seconds": 600,
     "sent_window_minutes": 120,
     "command_timeout_seconds": 60,
@@ -75,6 +79,21 @@ OVERLAY: dict[str, Any] = {
     "stopped_max_lanes": 2,
     "stopped_report_chars": 600,
     "stopped_continue_rule": "Continue from the predecessor's head; do not start over.",
+    "stopped_runner_command": [
+        "node-entry",
+        "--lane",
+        "{lane}",
+        "--key",
+        "{key}",
+        "--ticket",
+        "{ticket}",
+        "--attempt",
+        "{attempt}",
+        "--brief",
+        "{brief}",
+    ],
+    "stopped_reports_root": "/scripted/reports",
+    "stopped_brief_directory": "/scripted/briefs",
 }
 
 
@@ -92,9 +111,13 @@ class Harness:
     tickets: ScriptedTickets
     starter: ScriptedStarter
     clock: ScriptedClock
+    briefs: ScriptedBriefs
     extra: dict[str, Any] = field(default_factory=dict)
 
-    def orchestrator(self) -> FloorFillOrchestrator:
+    def orchestrator(
+        self, runner: ProtocolLaneProcessRunner | None = None
+    ) -> FloorFillOrchestrator:
+        """The orchestrator on these seams; ``runner`` replaces the scripted starter (the process seam's real side)."""
         return FloorFillOrchestrator(
             config=self.config,
             store=self.store,
@@ -102,7 +125,8 @@ class Harness:
             pool=self.pool,
             ledger=self.ledger,
             tickets=self.tickets,
-            runner=self.starter,
+            runner=runner or self.starter,
+            briefs=self.briefs,
             clock=self.clock,
             candidates=HandlerFloorFillCandidates(),
             reducer=HandlerFloorFillReducer(),
@@ -129,6 +153,7 @@ def harness(
         tickets=scripted.pop("tickets", None) or ScriptedTickets(),
         starter=scripted.pop("starter", None) or ScriptedStarter(),
         clock=clock,
+        briefs=scripted.pop("briefs", None) or ScriptedBriefs(),
     )
 
 

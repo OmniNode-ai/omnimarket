@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_test_duration_record_check_effect
+node_type: effect
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Refuse a change that adds a test file the committed durations record does not hold,
+  so config/test_file_durations.json cannot drift from the tree. The refusal prints the exact
+  command that times the file and records it; the record operation runs that measurement through
+  an injected timer and writes the entry. Every setting is in policy.yaml. The threshold test
+  test_committed_record_leaves_fewer_than_fifty_test_files_unrecorded stays as the backstop.
+input_model:
+  name: ModelTestDurationRecordCheckRequest
+  module: omnimarket.nodes.node_test_duration_record_check_effect.models.model_test_duration_record_check
+output_model:
+  name: ModelTestDurationRecordCheckResult
+  module: omnimarket.nodes.node_test_duration_record_check_effect.models.model_test_duration_record_check
+handler:
+  module: omnimarket.nodes.node_test_duration_record_check_effect.handlers.handler_test_duration_record_check
+  class: HandlerTestDurationRecordCheck
+  input_model: omnimarket.nodes.node_test_duration_record_check_effect.models.model_test_duration_record_check.ModelTestDurationRecordCheckRequest
+  output_model: omnimarket.nodes.node_test_duration_record_check_effect.models.model_test_duration_record_check.ModelTestDurationRecordCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_test_duration_record_check_effect.handlers.handler_test_duration_record_check:HandlerTestDurationRecordCheck
+  handlers:
+  - operation: check_test_duration_record
+    handler:
+      name: HandlerTestDurationRecordCheck
+      module: omnimarket.nodes.node_test_duration_record_check_effect.handlers.handler_test_duration_record_check
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles:
+  - effects
+inputs:
+  repo_root:
+    type: str
+    required: true
+    description: Repository checkout whose durations record is read.
+  added_files:
+    type: list
+    required: false
+    description: Files the change adds (record operation - the files to time).
+  operation:
+    type: str
+    required: false
+    description: check (default) or record.
+outputs:
+  admitted:
+    type: bool
+  exit_code:
+    type: int
+  added_test_files:
+    type: int
+  unrecorded:
+    type: list
+  recorded:
+    type: list
+  output_lines:
+    type: list
+metadata:
+  transport_type: inmemory
+terminal_event: onex.evt.omnimarket.test-duration-record-check-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.test-duration-record-check-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.test-duration-record-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.test-duration-record-check-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.test-duration-record-check-completed.v1

@@ -7,6 +7,13 @@ facts, the reducer node folds it per pull request and names each one that differ
 decision the script recorded, and one event goes out on the contract's topic: compared, or a typed
 failure. Replay and observe never write. Act is refused unless the overlay enables it, and then
 only an injected writer is ever called; the script keeps landing until the node reads true too.
+
+A landing snapshot step record carries no recorded decision. For a cutover repository the old
+controller rules out of scope (it reads no facts and decides nothing for it), act mode writes that
+record itself, no action, and compares that repository's subjects only; any other tick with no
+recorded decision is refused RECORDED_DECISION_MISSING (OMN-23458). When the record instead
+carries the old controller's finished tick, the compare step uses that controller's real decision
+for the tick, in scope, instead of a synthetic no action (OMN-23665).
 """
 
 from __future__ import annotations
@@ -16,7 +23,10 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
-from omnimarket.models.landing_decision import ModelLandingDecision
+from omnimarket.models.landing_decision import (
+    ModelLandingControllerState,
+    ModelLandingDecision,
+)
 from omnimarket.models.landing_tick import (
     ModelTickReduceInput,
 )
@@ -72,6 +82,8 @@ class HandlerPrLandingTickOrchestrator:
         floor_piece: int | None = None,
         emission_backend: str = "in_memory",
         drill: bool = False,
+        cutover_repository: str | None = None,
+        script_out_of_scope: tuple[str, ...] = (),
     ) -> None:
         self._decider: ProtocolTickDecider = decider or NodePathDecider()
         self._reducer = reducer or HandlerPrLandingTickReducer()
@@ -83,6 +95,8 @@ class HandlerPrLandingTickOrchestrator:
         self._floor_piece = floor_piece
         self._emission_backend = emission_backend
         self._drill = drill
+        self._cutover_repository = cutover_repository
+        self._script_out_of_scope = frozenset(script_out_of_scope)
         self._compared_topic, self._failed_topic = contract_topics()
 
     def _performed_in(
@@ -91,9 +105,11 @@ class HandlerPrLandingTickOrchestrator:
         """Perform the decision's actions, in an enabled act mode only; otherwise none."""
         if request.mode is not EnumTickMode.ACT:
             return 0
-        for action in decision.actions:
-            self._writer.perform(action)
-        return len(decision.actions)
+        return sum(
+            1
+            for action in decision.actions
+            if self._writer.perform(action, request.facts)
+        )
 
     def _failed(
         self,
@@ -134,6 +150,7 @@ class HandlerPrLandingTickOrchestrator:
                         "divergent_subjects": len(result.divergences),
                         "node_actions": result.node_actions,
                         "writes_performed": result.writes_performed,
+                        "recorded_written": int(result.recorded_written),
                     }
                 )
             else:
@@ -162,20 +179,129 @@ class HandlerPrLandingTickOrchestrator:
                 EnumTickFailureReason.ACT_NOT_ENABLED,
                 "the overlay does not enable act mode",
             )
-        if request.recorded_decision is None:
-            return self._failed(
-                request,
-                EnumTickFailureReason.RECORDED_DECISION_MISSING,
-                "no recorded decision to compare with",
+        if request.controller is not None and request.mode in (
+            EnumTickMode.OBSERVE,
+            EnumTickMode.REPLAY,
+            EnumTickMode.ACT,
+        ):
+            try:
+                controller_decision = self._decider.decide(
+                    request.controller.facts, request.fair_share
+                )
+                decision = self._decider.decide(request.facts, request.fair_share)
+            except Exception as exc:
+                return self._failed(
+                    request, EnumTickFailureReason.DECISION_RAISED, type(exc).__name__
+                )
+            scope = self._cutover_repository
+            node_projected = self._projected(decision, scope, request.facts.tick)
+            controller_projected = self._projected(
+                controller_decision, scope, request.facts.tick
             )
+            # the node cannot reproduce what the controller did: a logged row in scope the
+            # recomputed decision does not name would make the comparison unreal
+            missing = sorted(
+                {
+                    (row.kind, row.subject)
+                    for row in request.controller.logged
+                    if scope is None or row.subject.partition("#")[0] == scope
+                }
+                - {
+                    (action.kind, action.subject)
+                    for action in controller_projected.actions
+                }
+            )
+            if missing:
+                kind, subject = missing[0]
+                return self._failed(
+                    request,
+                    EnumTickFailureReason.CONTROLLER_DECISION_UNREPRODUCED,
+                    f"the decision log names {kind} on {subject}, "
+                    "which the recomputed decision does not",
+                )
+            reduced = self._reducer.handle(
+                ModelTickReduceInput(
+                    decision=node_projected, recorded=controller_projected
+                )
+            )
+            divergent_subjects = {d.subject for d in reduced.divergences}
+            compared_prs = tuple(
+                sorted(
+                    {
+                        pr.pr
+                        for pr in request.facts.prs
+                        if scope is None or pr.pr.partition("#")[0] == scope
+                    }
+                )
+            )
+            agreed_prs = tuple(
+                pr for pr in compared_prs if pr not in divergent_subjects
+            )
+            writes = self._performed_in(request, decision)
+            result = ModelTickResult(
+                correlation_id=request.correlation_id,
+                mode=request.mode,
+                status=EnumTickStatus.COMPARED,
+                tick=reduced.tick,
+                equal=reduced.equal,
+                rows=reduced.rows,
+                divergences=reduced.divergences,
+                node_actions=len(decision.actions),
+                recorded_actions=len(controller_projected.actions),
+                writes_performed=writes,
+                recorded_written=False,
+                controller_tick=request.controller.controller_tick,
+                compared_prs=compared_prs,
+                agreed_prs=agreed_prs,
+            )
+            self._publisher.publish(
+                self._compared_topic,
+                ModelTickComparedEvent(
+                    correlation_id=request.correlation_id,
+                    mode=request.mode,
+                    tick=reduced.tick,
+                    equal=reduced.equal,
+                    divergent_subjects=tuple(d.subject for d in reduced.divergences),
+                    node_actions=result.node_actions,
+                    recorded_actions=result.recorded_actions,
+                    writes_performed=writes,
+                    controller_tick=request.controller.controller_tick,
+                    compared_prs=len(compared_prs),
+                    agreed_prs=len(agreed_prs),
+                ),
+            )
+            return result
+        recorded = request.recorded_decision
+        only: str | None = None
+        if recorded is None:
+            only = self._written_record_repository(request)
+            if only is None:
+                return self._failed(
+                    request,
+                    EnumTickFailureReason.RECORDED_DECISION_MISSING,
+                    self._missing_detail(request),
+                )
         try:
             decision = self._decider.decide(request.facts, request.fair_share)
         except Exception as exc:
             return self._failed(
                 request, EnumTickFailureReason.DECISION_RAISED, type(exc).__name__
             )
+        if recorded is None:
+            decision = decision.model_copy(
+                update={
+                    "actions": tuple(
+                        a
+                        for a in decision.actions
+                        if a.subject.partition("#")[0] == only
+                    )
+                }
+            )
+            # the old controller reads no facts and decides nothing for a repository it rules
+            # out of scope: its recorded decision for that repository is no action
+            recorded = decision.model_copy(update={"actions": ()})
         reduced = self._reducer.handle(
-            ModelTickReduceInput(decision=decision, recorded=request.recorded_decision)
+            ModelTickReduceInput(decision=decision, recorded=recorded)
         )
         writes = self._performed_in(request, decision)
         result = ModelTickResult(
@@ -187,8 +313,9 @@ class HandlerPrLandingTickOrchestrator:
             rows=reduced.rows,
             divergences=reduced.divergences,
             node_actions=len(decision.actions),
-            recorded_actions=len(request.recorded_decision.actions),
+            recorded_actions=len(recorded.actions),
             writes_performed=writes,
+            recorded_written=only is not None,
         )
         self._publisher.publish(
             self._compared_topic,
@@ -204,6 +331,80 @@ class HandlerPrLandingTickOrchestrator:
             ),
         )
         return result
+
+    def _projected(
+        self,
+        decision: ModelLandingDecision,
+        scope: str | None,
+        tick: int,
+    ) -> ModelLandingDecision:
+        """The decision's comparison projection (OMN-23665): its in-scope actions, stripped.
+
+        Only the actions whose subject's repository is in scope carry through, each stripped of
+        the brief, lease, attempt and owner state the controller's log does not carry; every other
+        section (and the next state) is emptied and the tick is set on both sides, so the two projections compare on
+        their actions. model_copy runs no validators, so a dispatch worker without its brief
+        is fine.
+        """
+        kept = tuple(
+            action.model_copy(
+                update={
+                    "brief": None,
+                    "cause_brief": None,
+                    "lease_id": None,
+                    "attempts": (),
+                    "members": (),
+                    "owner": None,
+                    "dedupe_key": None,
+                    "head_sha": None,
+                }
+            )
+            for action in decision.actions
+            if scope is None or action.subject.partition("#")[0] == scope
+        )
+        return decision.model_copy(
+            update={
+                "tick": tick,
+                "actions": kept,
+                "observed_actions": (),
+                "recorded_outcomes": (),
+                "degraded": (),
+                "violations": (),
+                "companion_verdicts": (),
+                "observe_only_refused": (),
+                "gates": (),
+                "land_skips": (),
+                "liveness_unread": (),
+                "next_state": ModelLandingControllerState(),
+            }
+        )
+
+    def _written_record_repository(self, request: ModelTickRequest) -> str | None:
+        """The repository whose recorded decision the tick writes, or None when it may not.
+
+        Act mode and observe mode both write it (OMN-23514): the snapshot step's records carry no
+        recorded decision, so observe mode for the cutover repository refused every record. The
+        record is the old controller's no action for a repository it rules out of scope; observe
+        mode still performs nothing.
+        """
+        if (
+            request.mode in (EnumTickMode.ACT, EnumTickMode.OBSERVE)
+            and self._cutover_repository is not None
+            and self._cutover_repository in self._script_out_of_scope
+        ):
+            return self._cutover_repository
+        return None
+
+    def _missing_detail(self, request: ModelTickRequest) -> str:
+        if request.mode is not EnumTickMode.ACT:
+            return "no recorded decision to compare with"
+        if self._cutover_repository is None:
+            return "no recorded decision to compare with, and act mode names no cutover repository"
+        return (
+            f"no recorded decision to compare with, and the cutover repository "
+            f"{self._cutover_repository} is not one the old controller rules out of scope, "
+            "so its decision must be recorded"
+        )
 
 
 __all__: list[str] = [

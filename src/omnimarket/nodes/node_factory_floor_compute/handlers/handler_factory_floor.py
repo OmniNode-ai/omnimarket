@@ -37,6 +37,14 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_limits import (
     compute_limits,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_line_select import (
+    class_rank,
+    coverage,
+    line_id_of,
+    missing_plan_paths,
+    pick_plans,
+    select_extra_lines,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping import (
     PrRecord,
     is_built,
@@ -90,6 +98,8 @@ class _Index:
     proof_by_pr: dict[str, tuple[int, ...]]
     proof_by_ticket: dict[str, tuple[int, ...]]
     proof_by_task: dict[str, tuple[int, ...]]
+    # Gate-state STATUS rows by subject: a gate reads its subject's rows, never a scan of the whole ledger (OMN-23081).
+    gate_rows: dict[str, tuple[ModelFloorLedgerRow, ...]]
     # The merged pull requests shown running on dev (``repo#number``); None when no reader read the records.
     running: frozenset[str] | None
     # When each pull request merged, where the watcher's merge record says.
@@ -184,7 +194,14 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
     proof_by_pr: dict[str, list[int]] = {}
     proof_by_ticket: dict[str, list[int]] = {}
     proof_by_task: dict[str, list[int]] = {}
+    gate_rows: dict[str, list[ModelFloorLedgerRow]] = {}
     for position, row in enumerate(request.ledger):
+        if (
+            row.kind == "STATUS"
+            and row.state == request.config.gate_state
+            and row.subject
+        ):
+            gate_rows.setdefault(row.subject, []).append(row)
         if row.kind == "STATUS" and row.state == request.config.integration_state:
             for pr in row.prs:
                 proof_by_pr.setdefault(pr_key(pr), []).append(position)
@@ -222,6 +239,7 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
         proof_by_pr={key: tuple(value) for key, value in proof_by_pr.items()},
         proof_by_ticket={key: tuple(value) for key, value in proof_by_ticket.items()},
         proof_by_task={key: tuple(value) for key, value in proof_by_task.items()},
+        gate_rows={key: tuple(value) for key, value in gate_rows.items()},
         running=None
         if request.running_evidence is None
         else frozenset(
@@ -483,21 +501,14 @@ def _evidence(
 
 
 def _gate(
-    task: ModelFloorManifestTask, request: ModelFactoryFloorRequest
+    task: ModelFloorManifestTask, request: ModelFactoryFloorRequest, index: _Index
 ) -> tuple[ItemState, str] | None:
     subjects = {task.wave, task.id} - {""}
     template = request.config.gate_wave_subject_template
     if template and task.wave:
         subjects.add(template.format(wave=task.wave))
     row = max(
-        (
-            row
-            for row in request.ledger
-            if row.kind == "STATUS"
-            and row.state == request.config.gate_state
-            and row.subject
-            and row.subject in subjects
-        ),
+        (row for subject in subjects for row in index.gate_rows.get(subject, ())),
         key=_row_key,
         default=None,
     )
@@ -539,7 +550,7 @@ def _manifest_items(
         gate = task.kind == request.config.gate_kind
         evidence: tuple[ItemState, str, EvidenceKind] | None
         if gate:
-            verdict = _gate(task, request)
+            verdict = _gate(task, request, index)
             evidence = None if verdict is None else (verdict[0], verdict[1], "")
         else:
             evidence = _evidence(
@@ -573,7 +584,7 @@ def _manifest_items(
             for dep in task.depends_on
             if dep in by_id
             and by_id[dep].kind == request.config.gate_kind
-            and (verdict := _gate(by_id[dep], request)) is not None
+            and (verdict := _gate(by_id[dep], request, index)) is not None
             and verdict[0] == "stop"
         )
         if state == "done" and not gate and failed:
@@ -779,7 +790,7 @@ def _stations(
 
 
 def _line_id(plan: ModelFloorPlanInput) -> str:
-    return plan.plan_path.rsplit("/", 1)[-1].removesuffix(".md")
+    return line_id_of(plan)
 
 
 def _exempts(
@@ -1180,7 +1191,9 @@ def _blocker(
     return None
 
 
-def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
+def _undrawn(
+    request: ModelFactoryFloorRequest, tokens: tuple[str, ...]
+) -> tuple[ModelFloorLine, ...]:
     """A declared line no plan matched is drawn stopped with its cause, never left out of the record."""
     cause = request.config.undrawn_not_found_cause
     return tuple(
@@ -1220,9 +1233,30 @@ def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
                 causes=(f"{cause}: no plan path contains {token}",),
             ),
         )
-        for token in dict.fromkeys(request.selection.plan_path_contains)
+        for token in dict.fromkeys(tokens)
         if not any(token in plan.plan_path for plan in request.plans)
     )
+
+
+def _undrawn_lines(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
+    """Undrawn declared lines in the overlay's order, then undrawn plans-today plans (class plan, keyed by base name)."""
+    declared = (
+        _undrawn(request, request.selection.plan_path_contains)
+        if "declared" in request.selection.line_classes
+        else ()
+    )
+    paths = missing_plan_paths(request)
+    planned = tuple(
+        line.model_copy(
+            update={
+                "line_id": path.rsplit("/", 1)[-1].removesuffix(".md"),
+                "line_class": "plan",
+            }
+        )
+        for path in paths
+        for line in _undrawn(request, (path,))
+    )
+    return declared + planned
 
 
 def _line(
@@ -1450,25 +1484,49 @@ def _running(
 
 def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloorResult:
     """Compute the floor without reading or mutating anything outside the request."""
-    selected = tuple(
-        plan
-        for plan in request.plans
-        if not request.selection.plan_path_contains
-        or any(text in plan.plan_path for text in request.selection.plan_path_contains)
-    )
-    mapped = tuple(_with_task_map(plan, request) for plan in selected)
+    picks = pick_plans(request)
+    mapped = tuple(_with_task_map(pick.plan, request) for pick in picks)
     selected = tuple(plan for plan, _merged in mapped)
     holds = _holds(request)
     index = _index(request)
-    lines = tuple(_line(plan, holds, request, index, merged) for plan, merged in mapped)
+    plan_lines = tuple(
+        _line(plan, holds, request, index, merged).model_copy(
+            update={"line_class": pick.line_class}
+        )
+        for pick, (plan, merged) in zip(picks, mapped, strict=True)
+    )
     newest = max((row.ts for row in request.ledger), default=None)
-    floor = _floor(request, selected, lines)
-    lines = _running(lines, floor.lanes)
+    floor = _floor(request, selected, plan_lines)
+    plan_lines = _running(plan_lines, floor.lanes)
+    undrawn = _undrawn_lines(request)
+    scopes = {_line_id(plan): _scope(plan) for plan in selected}
+    live = tuple(
+        row
+        for row in request.ledger
+        if row.kind == request.config.line_select.claim_kind
+        and _live_claim((row,), request, index) is not None
+    )
+    extra, ruled = select_extra_lines(
+        request, plan_lines + undrawn, scopes, live, _data_age(request)
+    )
+    drawn = tuple(
+        line.model_copy(update={"ruled_by": ruled[line.line_id]})
+        if line.line_id in ruled
+        else line
+        for line in plan_lines + undrawn
+    )
+    ordered = tuple(
+        sorted(
+            drawn + extra,
+            key=lambda line: class_rank(request, line.line_class),
+        )
+    )
     return ModelFactoryFloorResult(
         schema_id=request.config.schema_id,
         generated_at=_stamp(request.generated_at),
-        lines=with_application_containers(request, lines + _undrawn(request)),
+        lines=with_application_containers(request, ordered),
         floor=floor,
+        coverage=coverage(request, ordered),
         sources=ModelFloorSources(
             watcher_last_tick=_stamp(request.watcher.last_tick),
             ledger_rows=len(request.ledger),

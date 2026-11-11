@@ -1,0 +1,111 @@
+{
+  "path": "local",
+  "generated_at": "2026-11-09T14:28:23Z",
+  "concurrency": 1,
+  "base_url": null,
+  "transcripts": "results/responses/local",
+  "paid_escalation_disabled": true,
+  "records": [
+    {
+      "task_id": "R3b-04",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 152695,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "no answer and no recoverable candidate; rc=1; terminal: status=failed; error_message=no model you chose finished the task; do the task in this session (reason: quality_veto; last error: Inference call exceeded its total deadline: provider call timed out after 120.001s against a resolv; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/result.txt /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/receipt.json /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/run.json state_root=/tmp/ladder-R3b-04-haokddfl",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R3",
+      "complexity_score": 6,
+      "complexity_features": {
+        "input_tokens_estimate": 758,
+        "distinct_sources": 4,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "no answer and no recoverable candidate; rc=1; terminal: status=failed; error_message=no model you chose finished the task; do the task in this session (reason: quality_veto; last error: Inference call exceeded its total deadline: provider call timed out after 120.001s against a resolv; named as the author of this run's output. Each rung's own backend, tier and failure class is recorded under attempts): /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/result.txt /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/receipt.json /tmp/ladder-R3b-04-haokddfl/runs/<uuid>/run.json state_root=/tmp/ladder-R3b-04-haokddfl",
+      "backend": null,
+      "difficulty": null,
+      "task_type": "review",
+      "host": null,
+      "accepted": false,
+      "attempts": [
+        {
+          "backend_id": "local-heavy-reasoning",
+          "tier": "local",
+          "model_id": "Qwen3.8-27B",
+          "acceptance_decision": "climb",
+          "acceptance_reason": "acceptance_criteria_failed",
+          "failure_class": "quality_gate_failed",
+          "quality_gate_passed": false,
+          "error_message": "TASK_MISMATCH: missing specific line citations"
+        },
+        {
+          "backend_id": "local-heavy-reasoning",
+          "tier": "local",
+          "model_id": "Qwen3.8-27B",
+          "acceptance_decision": "climb",
+          "acceptance_reason": "acceptance_criteria_failed",
+          "failure_class": "quality_gate_failed",
+          "quality_gate_passed": false,
+          "error_message": "TASK_MISMATCH: missing specific line citations"
+        },
+        {
+          "backend_id": "local-heavy-reasoning",
+          "tier": "local",
+          "model_id": "Qwen3.8-27B",
+          "acceptance_decision": "climb",
+          "acceptance_reason": "acceptance_criteria_failed",
+          "failure_class": "quality_gate_failed",
+          "quality_gate_passed": false,
+          "error_message": "TASK_MISMATCH: missing specific line citations"
+        },
+        {
+          "backend_id": "openrouter-north-mini-code",
+          "tier": "cheap_frontier",
+          "model_id": "cohere/north-mini-code:free",
+          "acceptance_decision": "terminate",
+          "acceptance_reason": "provider_call_failed",
+          "failure_class": "timeout",
+          "quality_gate_passed": false,
+          "error_message": "Inference call exceeded its total deadline: provider call timed out after 120.001s against a resolved timeout of 120.000s (requested 300.0s, contract ceiling 120.000s) for model cohere/north-mini-code"
+        }
+      ],
+      "escalation_count": null
+    }
+  ]
+}

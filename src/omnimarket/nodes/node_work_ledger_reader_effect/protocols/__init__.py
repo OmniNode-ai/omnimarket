@@ -24,6 +24,7 @@ class ProtocolReaderEventSink(Protocol):
 
 
 __all__ = [
+    "ModelPointQuery",
     "ProtocolLedgerPointRead",
     "ProtocolReaderEventSink",
 ]

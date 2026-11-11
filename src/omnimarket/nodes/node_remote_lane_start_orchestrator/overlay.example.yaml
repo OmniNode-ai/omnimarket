@@ -7,6 +7,9 @@ remote_lane_start:
   # The one shape the node runs; the runner script keeps every other one.
   supported_engines: [claude]
   supported_placements: [lab]
+  # Required. act makes the start. observe places the lane, computes the whole start and
+  # publishes it as an event, and writes nothing else: no CLAIM, no receipt, no ssh, no login draw, no process (OMN-22847).
+  start_mode: act
   # The engine command; {model}, {brief} and {lane} are filled from the request.
   engine_argv: [claude, -p, "{brief}", --model, "{model}", --output-format, stream-json, --verbose]
   engine_environment:
@@ -19,9 +22,54 @@ remote_lane_start:
   receipt_dir: /var/lib/example/remote-lanes
   host_run_root: /var/lib/example/lane-runs
   registry_root_candidates: [/srv/example/registry]
+  registry_marker: example_marker_dir
+  # The repository directory holding the host's lane-closeout command, beside the registry root (optional; empty leaves
+  # the closeout step to the runner script).
+  closeout_tool_repo: example_tools
+  # The variable that closeout command reads the lane's ledger copy path from (all three closeout keys, or none).
+  closeout_ledger_env: EXAMPLE_LEDGER_FILE
+  # The variable that closeout command reads the registry root from (all three closeout keys, or none).
+  closeout_registry_env: EXAMPLE_REGISTRY_ROOT
+  # Where the host keeps installed plugin trees, one directory per tree (optional; empty leaves the step to the runner).
+  plugin_store: $HOME/example-store/plugins
+  # The provisioning steps around the engine, in the remote-lane runner's order (OMN-23528). Each entry is one host call
+  # to the ssh transport effect. phase: before_engine (after the CLAIM, before the worktree and the engine), before_close
+  # (after the engine ended, before the closing row), after_close (after the closing row is durable). fatal: a failure
+  # ends the start with a closing row and no engine (the runner refuses the same ways); otherwise the failure is
+  # recorded in the receipt and the lane goes on (the runner records and echoes it). only_if_engine_started: the runner
+  # runs the step for a lane whose engine started only. stage_file names the file and what it holds (brief or claim_row).
+  # retain_run_artifacts is listed so the receipt shows it: the ssh transport declares it not run until the omnibase-spi
+  # pin carries its request model.
+  provisioning:
+    runtime_config_text: "example_setting = 1"
+    runtime_config_target: config/example/runtime.toml
+    steps:
+      - {step: resolve_registry_root, phase: before_engine, fatal: true, timeout_seconds: 120}
+      - {step: write_runtime_config, phase: before_engine, fatal: false, timeout_seconds: 60}
+      - {step: ship_plugin_trees, phase: before_engine, fatal: true, timeout_seconds: 900}
+      - {step: prepare_run_dirs, phase: before_engine, fatal: true, timeout_seconds: 60}
+      - {step: stage_ledger_snapshot, phase: before_engine, fatal: true, timeout_seconds: 120}
+      - {step: stage_file, phase: before_engine, fatal: true, timeout_seconds: 60, stage_as: brief.md, stage_content: brief}
+      - {step: stage_file, phase: before_engine, fatal: true, timeout_seconds: 60, stage_as: claim-row.txt, stage_content: claim_row}
+      - {step: mirror_ledger, phase: before_engine, fatal: true, timeout_seconds: 60}
+      - {step: stop_lane_guard, phase: before_close, fatal: false, timeout_seconds: 180}
+      - {step: drain_guard_spool, phase: before_close, fatal: false, timeout_seconds: 60}
+      - {step: relay_reports, phase: before_close, fatal: false, timeout_seconds: 300}
+      - {step: read_ledger_outbox, phase: before_close, fatal: false, timeout_seconds: 60, only_if_engine_started: true}
+      - {step: read_lane_changes, phase: before_close, fatal: false, timeout_seconds: 120, only_if_engine_started: true}
+      - {step: closeout_worktrees, phase: before_close, fatal: false, timeout_seconds: 900}
+      - {step: hold_run_dir_guard, phase: after_close, fatal: false, timeout_seconds: 120, only_if_engine_started: true}
+      - {step: retain_run_artifacts, phase: after_close, fatal: false, timeout_seconds: 900, only_if_engine_started: true}
   ssh_argv: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10]
   # Starts the engine in a session of its own; a host with no setsid binary names a shim.
   detach_argv: [setsid]
+  # Put before the host's PATH in every host script (a non-interactive ssh shell lacks the user bin directory).
+  host_path_prefix: "$HOME/.local/bin:/usr/local/bin"
+  # The host's Claude token pool: the engine's login is drawn through this node on the placed host (first
+  # unlimited label in the pool's draw order), and the label drawn rides on the CLAIM as login=<label>.
+  login_pool_module: example.token_pool_node
+  login_pool_python_relative: .example-venv/bin/python
+  login_draw_timeout_seconds: 30
   # The ledger writer's argv prefix; the ledger path from --ledger follows it.
   ledger_append_argv: [example-ledger-writer]
   # bus where the host's ledger of record is the bus (a direct file append is refused there).

@@ -4,8 +4,9 @@
 # ONEX Node Contract
 # Node: NodeAndonThresholdCompute (rebuild piece 7, plan rule 11)
 #
-# Two pure operations, no clock and no file read: the caller supplies the census window
+# Three pure operations, no clock and no file read: the caller supplies the census window
 # counts, the date, the frozen thresholds and one tick's observations.
+#   measure_windows:    ModelWindowMeasureRequest -> ModelWindowMeasureResult (rolling 24 hour counts per class)
 #   compute_thresholds: ModelThresholdComputeRequest -> ModelThresholdComputeResult
 #   scope_burst:        ModelBurstScopeRequest       -> ModelBurstScopeResult
 name: node_andon_threshold_compute
@@ -41,6 +42,12 @@ handler_routing:
         module: omnimarket.nodes.node_andon_threshold_compute.handlers.handler_threshold_compute
       input_model: omnimarket.models.model_andon_threshold.ModelThresholdComputeRequest
       output_model: omnimarket.models.model_andon_threshold.ModelThresholdComputeResult
+    - operation: measure_windows
+      handler:
+        name: HandlerWindowMeasure
+        module: omnimarket.nodes.node_andon_threshold_compute.handlers.handler_window_measure
+      input_model: omnimarket.models.model_andon_threshold.ModelWindowMeasureRequest
+      output_model: omnimarket.models.model_andon_threshold.ModelWindowMeasureResult
     - operation: scope_burst
       handler:
         name: HandlerBurstScope

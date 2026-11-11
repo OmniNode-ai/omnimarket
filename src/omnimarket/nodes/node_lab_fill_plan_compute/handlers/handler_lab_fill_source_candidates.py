@@ -17,6 +17,7 @@ from ..models.model_lab_fill_sources import (
     ModelLabFillSourceCandidatesResult,
     ModelLabFillSourceDiagnostic,
     ModelLabFillSourceOpenPr,
+    ModelLabFillSourceTicketFacts,
 )
 from .handler_lab_fill_source_tickets import TICKET_RE, source_error
 
@@ -32,6 +33,12 @@ def attached_prs(attachments: tuple[ModelLabFillSourceAttachment, ...]) -> list[
         if match:
             found.append((attachment.created_at, match[1] + "#" + match[2]))
     return [pr for _, pr in sorted(found, reverse=True)]
+
+
+def has_delegation_facts(node: ModelLabFillSourceTicketFacts) -> bool:
+    """The ticket mirror's row carried delegation facts (OMN-23312): an assignee, epics above the ticket
+    or a start criterion. A candidate from a row with none keeps its recorded shape."""
+    return bool(node.assignee or node.parents or node.criterion)
 
 
 def open_pr_tickets(prs: tuple[ModelLabFillSourceOpenPr, ...]) -> dict[str, list[str]]:
@@ -92,6 +99,12 @@ class HandlerLabFillSourceCandidates:
                                 ticket_prs=tuple(attached_prs(node.attachments)),
                                 declared_repo=node.declared_repo,
                                 evidence=evidence,
+                                assignee=node.assignee,
+                                parents=node.parents,
+                                state_type=node.state_type
+                                if has_delegation_facts(node)
+                                else "",
+                                criterion=node.criterion,
                             )
                         )
         return ModelLabFillSourceCandidatesResult(

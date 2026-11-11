@@ -16,7 +16,7 @@ by a reader that does not share its code path.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Literal
 
@@ -28,11 +28,14 @@ from omnimarket.models.floor_17a import (
     ModelFloorLane,
     ModelFloorNumber,
     ModelFloorPieceRow,
+    ModelFloorReadiness,
     ModelFloorShadowLine,
     ModelFloorSimple,
     ModelFloorSimpleInput,
+    ModelJoinDef,
     ModelJoinReceipt,
     ModelLabSourceVerdict,
+    ModelOwnerInputs,
     ModelRebuild,
     ModelRedRule,
     ModelShadowReading,
@@ -44,6 +47,9 @@ from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
     WorklistKind,
 )
+
+# The one row that names the open pull requests citing no ticket; the overlay's `causes.titles` may reword it.
+UNTICKETED_PRS_ID = "prs:no-ticket"
 
 
 def _ago(seconds: int | None) -> str:
@@ -58,11 +64,69 @@ def _ago(seconds: int | None) -> str:
     return f"{seconds // 86400} d ago"
 
 
+def _age_span(seconds: int) -> str:
+    """A span in whole minutes from two minutes up, so an age and its bound read in one unit."""
+    return f"{seconds // 60} min" if seconds >= 120 else f"{seconds} s"
+
+
 def _cause_draw(cause: ModelFloorCause | None) -> str:
     """How a row that stands on a cause draws: red with no cause or a red one, grey when the cause is quiet."""
     if cause is None or cause.state == "red":
         return "red"
     return "grey" if cause.state == "quiet" else "amber"
+
+
+def owner_inputs_reading(r: ModelFloorSimpleInput) -> ModelOwnerInputs | None:
+    """Judge the two inputs of "who is on it" by their age (OMN-23388); ``None`` when the overlay declares no judgment.
+
+    The owner map is read through the lab source the overlay names (the overlay store): it is unknown when that source
+    was not reported, was not read, or its read is older than the source's own declared bound. The lane list is the
+    floor record's lanes: unknown when the record was not read or is older than the overlay's bound. Either makes a row
+    with no lane on it read owner unknown, with the age, rather than unowned.
+    """
+    spec = r.overlay.causes.owner_inputs
+    if spec is None:
+        return None
+    reasons: list[str] = []
+    verdict = next(
+        (v for v in (r.lab.verdicts if r.lab else ()) if v.id == spec.owner_map_source),
+        None,
+    )
+    map_age = verdict.age_s if verdict is not None else None
+    map_max = verdict.max_age_s if verdict is not None else None
+    if verdict is None:
+        reasons.append(
+            f"owner map unreadable: source {spec.owner_map_source} not reported"
+        )
+    elif map_age is None:
+        reasons.append(
+            f"owner map unreadable: {verdict.reason or 'the source was not read'}"
+        )
+    elif map_max is not None and map_age > map_max:
+        reasons.append(
+            f"owner map read {_age_span(map_age)} ago, the limit is {_age_span(map_max)}"
+        )
+    lanes_age = (
+        max(int((r.now - r.record_read_at).total_seconds()), 0)
+        if r.record_read_at is not None
+        else None
+    )
+    if lanes_age is None:
+        reasons.append("lane list unreadable: the floor record was not read")
+    elif lanes_age > spec.lanes_max_age_s:
+        reasons.append(
+            f"lane list read {_age_span(lanes_age)} ago, the limit is {_age_span(spec.lanes_max_age_s)}"
+        )
+    return ModelOwnerInputs.model_validate(
+        {
+            "unknown": bool(reasons),
+            "reason": "; ".join(reasons),
+            "owner_map_age_s": map_age,
+            "owner_map_max_age_s": map_max,
+            "lanes_age_s": lanes_age,
+            "lanes_max_age_s": spec.lanes_max_age_s,
+        }
+    )
 
 
 def live_lanes(
@@ -96,13 +160,25 @@ def live_lanes(
     )
 
 
+def _resolved_after_last_seen(cause: ModelFloorCauseIn) -> bool:
+    """True when a STATUS row reported the cause resolved at or after its newest row: it ended, on evidence."""
+    return (
+        cause.resolved_at is not None
+        and cause.last_seen is not None
+        and cause.resolved_at >= cause.last_seen
+    )
+
+
 def judge_worklist_item(
-    item: ModelWorklistItemIn, lanes: tuple[ModelFloorLane, ...]
+    item: ModelWorklistItemIn,
+    lanes: tuple[ModelFloorLane, ...],
+    owner_unknown: bool = False,
 ) -> ModelWorklistItem:
     """An item with its owner state, judged the way every other row judges work under way (OMN-23184).
 
     A live lane on the item (its pull requests, or its ticket, or a lane whose CLAIM says ``owns=floor:worklist:<key>``)
-    owns it; failing that the landing lease on the pull request, then the lease on the cause that holds it; else nobody.
+    owns it; failing that the landing lease on the pull request, then the lease on the cause that holds it; else nobody,
+    or unknown when the lane list or the owner map could not be trusted (``owner_unknown``, OMN-23388).
     """
     on = live_lanes(
         lanes,
@@ -117,7 +193,7 @@ def judge_worklist_item(
     elif item.cause_lease:
         state, owner = "cause_lease", item.cause_lease
     else:
-        state, owner = "unowned", ""
+        state, owner = ("unknown" if owner_unknown else "unowned"), ""
     return ModelWorklistItem.model_validate(
         {
             "kind": item.kind,
@@ -140,13 +216,26 @@ def build_worklist(
     lanes: tuple[ModelFloorLane, ...],
     titles: Mapping[WorklistKind, str],
     page_size: int,
+    owner_unknown: bool = False,
 ) -> tuple[ModelWorklistClass, ...]:
-    """One row per class, every member in pages: unowned first, then oldest first, then by key."""
+    """One row per class, every member in pages: unowned first, then unknown, then oldest first, then by key."""
     out: list[ModelWorklistClass] = []
     for kind in WORKLIST_KINDS:
-        judged = [judge_worklist_item(i, lanes) for i in items if i.kind == kind]
-        judged.sort(key=lambda i: (i.owner_state != "unowned", -(i.age_s or 0), i.key))
+        judged = [
+            judge_worklist_item(i, lanes, owner_unknown)
+            for i in items
+            if i.kind == kind
+        ]
+        judged.sort(
+            key=lambda i: (
+                i.owner_state not in {"unowned", "unknown"},
+                i.owner_state != "unowned",
+                -(i.age_s or 0),
+                i.key,
+            )
+        )
         unowned = sum(1 for i in judged if i.owner_state == "unowned")
+        unknown = sum(1 for i in judged if i.owner_state == "unknown")
         out.append(
             ModelWorklistClass.model_validate(
                 {
@@ -154,7 +243,8 @@ def build_worklist(
                     "title": titles[kind],
                     "total": len(judged),
                     "unowned": unowned,
-                    "owned": len(judged) - unowned,
+                    "unknown": unknown,
+                    "owned": len(judged) - unowned - unknown,
                     "page_size": page_size,
                     "pages": tuple(
                         tuple(judged[n : n + page_size])
@@ -167,29 +257,41 @@ def build_worklist(
 
 
 def worklist_causes(
-    worklist: tuple[ModelWorklistClass, ...],
+    worklist: tuple[ModelWorklistClass, ...], owner_note: str = ""
 ) -> tuple[ModelFloorCause, ...]:
-    """A row per class that holds an item: red while any member has nobody on it, amber when every member has an owner."""
+    """A row per class that holds an item: red while any member has nobody on it (or its owner is unknown), amber when every member has an owner."""
     out: list[ModelFloorCause] = []
     for cls in worklist:
         if cls.total == 0:
             continue
         members = [i for page in cls.pages for i in page]
         unowned = [i for i in members if i.owner_state == "unowned"]
+        unknown = [i for i in members if i.owner_state == "unknown"]
         owners = sorted({i.owner for i in members if i.owner})
-        head = ", ".join(i.key for i in (unowned or members)[:4])
-        more = len(unowned or members) - 4
+        named = unowned or unknown or members
+        head = ", ".join(i.key for i in named[:4])
+        more = len(named) - 4
+        detail = (
+            f"{cls.unowned} of {cls.total} have nobody on them"
+            + (f"; owner unknown for {cls.unknown}" if cls.unknown else "")
+            + f": {head}"
+        )
         out.append(
             ModelFloorCause.model_validate(
                 {
                     "id": f"worklist:{cls.kind}",
                     "title": cls.title,
-                    "detail": f"{cls.unowned} of {cls.total} have nobody on them: {head}"
-                    + (f"; and {more} more." if more > 0 else "."),
+                    "detail": detail + (f"; and {more} more." if more > 0 else "."),
                     "size": cls.total,
                     "size_unit": "work items",
-                    "state": "red" if unowned else "amber",
-                    "work_under_way": not unowned,
+                    "state": "red" if unowned or unknown else "amber",
+                    "work_under_way": not (unowned or unknown),
+                    "owner_state": "unowned"
+                    if unowned
+                    else "unknown"
+                    if unknown
+                    else "owned",
+                    "owner_note": owner_note if unknown else "",
                     "needs_operator": False,
                     "lanes": tuple(owners),
                     "tickets": tuple(
@@ -213,7 +315,23 @@ def unowned_red_causes(document: ModelFloorSimple) -> tuple[str, ...]:
     return tuple(
         c.id
         for c in document.causes
-        if c.state == "red" and not c.members and not c.owners
+        if c.state == "red"
+        and not c.members
+        and not c.owners
+        and c.owner_state != "unknown"
+    )
+
+
+def owner_unknown_red_causes(document: ModelFloorSimple) -> tuple[str, ...]:
+    """The id of every red cause no live lane is on while the owner map or lane list was stale or unread (OMN-23388).
+
+    The board cannot say nobody is on these, so they are named here and left out of ``unowned_red_causes`` and
+    ``uncarried_red_causes``: a stale map would otherwise read as an absent owner.
+    """
+    return tuple(
+        c.id
+        for c in document.causes
+        if c.state == "red" and not c.members and c.owner_state == "unknown"
     )
 
 
@@ -232,6 +350,7 @@ def uncarried_red_causes(
         for c in document.causes
         if c.state == "red"
         and not c.members
+        and c.owner_state != "unknown"
         and not live_lanes(lanes, c.owners, c.prs, c.id)
     )
 
@@ -253,7 +372,7 @@ def check_red_rule(
             if cls is None:
                 violations.append(f"{cause.id} draws with no work list class behind it")
                 continue
-            expected = "red" if cls.unowned else "amber"
+            expected = "red" if cls.unowned or cls.unknown else "amber"
             if cause.state != expected:
                 violations.append(
                     f"{cause.id} draws {cause.state} but {cls.unowned} of its {cls.total} items have nobody on them"
@@ -266,9 +385,9 @@ def check_red_rule(
                         item.prs,
                         f"worklist:{item.key}",
                     )
-                    if item.owner_state == "unowned" and on_it:
+                    if item.owner_state in {"unowned", "unknown"} and on_it:
                         violations.append(
-                            f"{item.key} reads unowned while {', '.join(on_it)} is on it"
+                            f"{item.key} reads {item.owner_state} while {', '.join(on_it)} is on it"
                         )
                     if item.owner_state == "live_lane" and not on_it:
                         violations.append(
@@ -304,6 +423,31 @@ def check_red_rule(
             violations.append(
                 f"{cause.id} draws quiet though it is occurring, needs you or has a lane on it"
             )
+    # Readiness (OMN-23081), read again from the finished document: a piece reads ready only when its own reading works and
+    # every counted join at either end passes, and a counted join that does not pass is a listed row with an owner ticket.
+    all_joins = {j.id: j for p in document.pieces for j in p.joins}
+    for piece in document.pieces:
+        if not piece.ready:
+            continue
+        if piece.status != "working":
+            violations.append(
+                f"piece {piece.piece} reads ready while its own reading is {piece.status.replace('_', ' ')}"
+            )
+        violations.extend(
+            f"piece {piece.piece} reads ready while join {j.id} reads {j.state.replace('_', ' ')}"
+            for j in all_joins.values()
+            if j.counted and not j.passes and piece.piece in (j.from_piece, j.to_piece)
+        )
+    for join in all_joins.values():
+        if not join.counted or join.passes or join.state == "unread":
+            continue
+        row = known.get(f"join:{join.id}")
+        if row is None or not row.listed:
+            violations.append(
+                f"join {join.id} reads {join.state.replace('_', ' ')} and has no row"
+            )
+        elif not row.owners:
+            violations.append(f"join {join.id} has a row and no owner ticket")
     rows: list[tuple[str, str | None, str]] = [
         *((f"piece {p.piece}", p.cause_id, p.draw) for p in document.pieces),
         *((f"lab {line.id}", line.cause_id, line.draw) for line in document.lab_state),
@@ -324,14 +468,23 @@ def check_red_rule(
             with_work += 1
             violations.append(f"{name} draws red with work under way on {owner.id}")
     uncarried = uncarried_red_causes(document, lanes)
+    owner_unknown = owner_unknown_red_causes(document)
+    state = (
+        "NOT WORKING"
+        if violations or uncarried
+        else "UNKNOWN"
+        if owner_unknown
+        else "WORKING"
+    )
     return ModelRedRule.model_validate(
         {
-            "state": "WORKING" if not (violations or uncarried) else "NOT WORKING",
+            "state": state,
             "red_rows": red_rows,
             "red_with_work_under_way": with_work,
             "violations": tuple(violations),
             "unowned_red": unowned_red_causes(document),
             "uncarried_red": uncarried,
+            "owner_unknown_red": owner_unknown,
         }
     )
 
@@ -345,20 +498,30 @@ class HandlerFloorSimple:
         lab = request.lab.verdicts if request.lab is not None else ()
         rows = self._piece_rows(request, lab)
         candidates = self._candidates(request, lab, rows)
+        inputs = owner_inputs_reading(request)
         causes = self._causes(candidates, request)
-        worklist = self._worklist(request)
+        worklist = self._worklist(request, inputs)
         if worklist is not None:
             causes = tuple(
                 sorted(
-                    (*causes, *worklist_causes(worklist)),
+                    (
+                        *causes,
+                        *worklist_causes(
+                            worklist, inputs.reason if inputs is not None else ""
+                        ),
+                    ),
                     key=lambda c: (c.state == "quiet", -c.size, c.id),
                 )
             )
         by_id = {c.id: c for c in causes}
-        pieces = tuple(self._row_draw(r, by_id) for r in rows)
+        pieces = self._integrate(
+            request, tuple(self._row_draw(r, by_id) for r in rows), by_id
+        )
+        readiness = self._readiness(request, pieces)
         lines = tuple(self._lab_line(v, by_id) for v in lab)
         level = self._level(causes)
         sentence, subline = self._words(causes)
+        subline = f"{subline} {readiness.text}".strip()
         document = ModelFloorSimple.model_validate(
             {
                 "generated_at": now,
@@ -369,7 +532,7 @@ class HandlerFloorSimple:
                 "numbers": self._numbers(request),
                 "causes": causes,
                 "causes_shown": ov.causes.max_shown,
-                "rebuild": self._rebuild(request, rows),
+                "rebuild": self._rebuild(request, list(pieces)),
                 "pieces": pieces,
                 "lab_state": lines,
                 "alarms": request.alarms,
@@ -386,6 +549,8 @@ class HandlerFloorSimple:
                 "alarm_heartbeat_at": request.alarm_heartbeat_at,
                 "outside_goal": request.outside_goal,
                 "worklist": worklist,
+                "readiness": readiness,
+                "owner_inputs": inputs,
             }
         )
         return document.model_copy(
@@ -400,12 +565,20 @@ class HandlerFloorSimple:
         return "amber" if any(c.state == "amber" for c in causes) else "green"
 
     @staticmethod
-    def _worklist(r: ModelFloorSimpleInput) -> tuple[ModelWorklistClass, ...] | None:
+    def _worklist(
+        r: ModelFloorSimpleInput, inputs: ModelOwnerInputs | None = None
+    ) -> tuple[ModelWorklistClass, ...] | None:
         """The work list's classes, or ``None`` when the overlay declares none or the sources did not read it."""
         wl = r.overlay.worklist
         if wl is None or r.worklist is None:
             return None
-        return build_worklist(r.worklist, r.lanes, wl.titles, wl.page_size)
+        return build_worklist(
+            r.worklist,
+            r.lanes,
+            wl.titles,
+            wl.page_size,
+            owner_unknown=inputs is not None and inputs.unknown,
+        )
 
     # --- the three numbers --------------------------------------------------------------------------------------------
 
@@ -493,6 +666,7 @@ class HandlerFloorSimple:
             # A piece starts on a go, as step 0, or when its own start criterion reads true (RULING 2026-11-07T12:20:46Z).
             admitted = (
                 (go is not None and n <= go)
+                or n in r.go_pieces
                 or n in ov.rebuild.step0_pieces
                 or (n in criteria and set(criteria[n].after_working) <= working)
             )
@@ -570,7 +744,7 @@ class HandlerFloorSimple:
                             r, n, "error", ov.rebuild.event_window_s
                         ),
                         "joins": tuple(
-                            self._join_row(j, joins.get(j.id), r.now)
+                            self._join_row(r, j, joins.get(j.id))
                             for j in ov.joins
                             if j.from_piece == n
                         ),
@@ -712,12 +886,15 @@ class HandlerFloorSimple:
 
     @staticmethod
     def _join_row(
-        definition: object, receipt: ModelJoinReceipt | None, now: datetime
+        r: ModelFloorSimpleInput,
+        definition: ModelJoinDef,
+        receipt: ModelJoinReceipt | None,
     ) -> ModelFloorJoinRow:
-        jid = getattr(definition, "id", "")
-        label = getattr(definition, "label", "")
-        to_piece = getattr(definition, "to_piece", 0)
-        golden = error = None
+        """One join as drawn: the receipt's state, whether it counts toward READY and whether it passes (OMN-23081)."""
+        now = r.now
+        rd = r.overlay.readiness
+        names = {p.piece: p.name for p in r.overlay.pieces}
+        golden = error = last_run = None
         state = "unread"
         if receipt is not None:
             state = receipt.state
@@ -725,15 +902,206 @@ class HandlerFloorSimple:
                 golden = max(int((now - receipt.golden_at).total_seconds()), 0)
             if receipt.error_at:
                 error = max(int((now - receipt.error_at).total_seconds()), 0)
+            ran = [x for x in (golden, error) if x is not None]
+            last_run = min(ran) if ran else None
+        scope = set(rd.in_scope_pieces)
         return ModelFloorJoinRow.model_validate(
             {
-                "id": jid,
-                "label": label,
-                "to_piece": to_piece,
+                "id": definition.id,
+                "label": definition.label,
+                "to_piece": definition.to_piece,
                 "state": state,
                 "golden_age_s": golden,
                 "error_age_s": error,
+                "from_piece": definition.from_piece,
+                "counted": definition.from_piece in scope
+                and definition.to_piece in scope,
+                "passes": state in rd.passing_join_states,
+                "definition": (
+                    f"{definition.label}: piece {definition.from_piece}, "
+                    f"{names[definition.from_piece].lower()}, to piece {definition.to_piece}, "
+                    f"{names[definition.to_piece].lower()}"
+                ),
+                "last_run_age_s": last_run,
             }
+        )
+
+    @staticmethod
+    def _join_failure(
+        r: ModelFloorSimpleInput,
+        join: ModelFloorJoinRow,
+        rows: list[ModelFloorPieceRow],
+    ) -> tuple[str, str]:
+        """Which side of a join failed, and why: the chain finding that names it, else the piece that does not work, else neither.
+
+        ``from`` is the upstream piece of the join and ``to`` the downstream one. A chain finding blames the side the
+        overlay's ``finding_sides`` gives its code. With no finding the join never ran or ran halfway: the side is the
+        piece whose own reading is not WORKING, and ``neither`` when both read WORKING and no cycle ran the join.
+        """
+        rd = r.overlay.readiness
+        subject = f"{join.id} piece "
+        findings = [
+            f
+            for f in (r.receipts.findings if r.receipts is not None else ())
+            if f.subject.startswith(subject)
+        ]
+        if findings:
+            side = rd.finding_sides.get(findings[0].code, "to")
+            # One line per distinct finding, with how many chains it was found in.
+            counts: dict[str, int] = {}
+            for f in findings:
+                line = f"{f.code}: {f.detail}"
+                counts[line] = counts.get(line, 0) + 1
+            return side, "; ".join(
+                f"{line} (in {n} chains)" if n > 1 else line
+                for line, n in list(counts.items())[:3]
+            )
+        if r.receipts is None:
+            return "neither", "the join receipts could not be read"
+        by_piece = {x.piece: x for x in rows}
+        what = {
+            "not_run": "no golden and no error chain of this join has run",
+            "golden_only": "the golden chain ran and no error chain has",
+            "error_only": "the error chain ran and no golden chain has",
+        }.get(join.state, f"the join reads {join.state}")
+        for side, piece in (("from", join.from_piece), ("to", join.to_piece)):
+            row = by_piece[piece]
+            if row.status != "working":
+                return (
+                    side,
+                    f"{what}; piece {piece}, {row.name.lower()}, is {row.status.replace('_', ' ')}",
+                )
+        return "neither", f"{what}; both pieces read WORKING and no cycle has run both"
+
+    # --- readiness (OMN-23081) ----------------------------------------------------------------------------------------
+
+    def _integrate(
+        self,
+        r: ModelFloorSimpleInput,
+        pieces: tuple[ModelFloorPieceRow, ...],
+        by_id: dict[str, ModelFloorCause],
+    ) -> tuple[ModelFloorPieceRow, ...]:
+        """Add what each join owes the board and say which pieces are READY.
+
+        A piece is READY only when it is in scope, its own reading is WORKING, at least ``min_joins`` joins count for it and
+        every counted join at either of its ends passes. A piece that works and is not ready draws amber and says
+        ``working, not integrated``. Each counted join that does not pass gets its owner tickets, the lanes on it, the side
+        that failed and the reason from its red row.
+        """
+        rd = r.overlay.readiness
+        scope = set(rd.in_scope_pieces)
+        rows = list(pieces)
+        joins: dict[str, ModelFloorJoinRow] = {}
+        for row in rows:
+            for join in row.joins:
+                joins[join.id] = self._join_owed(r, join, rows, by_id)
+        out: list[ModelFloorPieceRow] = []
+        for row in rows:
+            counted = [
+                j
+                for j in joins.values()
+                if j.counted and row.piece in (j.from_piece, j.to_piece)
+            ]
+            blocking = tuple(j.id for j in counted if not j.passes)
+            in_scope = row.piece in scope
+            working = row.status == "working"
+            ready = (
+                in_scope and working and len(counted) >= rd.min_joins and not blocking
+            )
+            if ready:
+                integration = "ready"
+            elif working:
+                integration = "working_not_integrated"
+            elif row.status == "not_started":
+                integration = "not_started"
+            else:
+                integration = "not_working"
+            update: dict[str, object] = {
+                "joins": tuple(joins[j.id] for j in row.joins),
+                "ready": ready,
+                "in_scope": in_scope,
+                "integration": integration,
+                "blocking_joins": blocking,
+                "counted_joins": len(counted),
+            }
+            if integration == "working_not_integrated":
+                if blocking:
+                    why = ", ".join(
+                        f"{j} {joins[j].state.replace('_', ' ')}" for j in blocking
+                    )
+                elif not in_scope:
+                    why = "outside the pieces in scope"
+                else:
+                    why = f"fewer than {rd.min_joins} join to a piece in scope"
+                update["draw"] = "amber"
+                update["text"] = f"working, not integrated ({why}) · {row.text}"
+                update["cause_id"] = f"join:{blocking[0]}" if blocking else None
+            elif ready:
+                update["text"] = (
+                    "READY: reading WORKING and "
+                    + ", ".join(sorted(j.id for j in counted))
+                    + f" pass · {row.text}"
+                )
+            out.append(row.model_copy(update=update))
+        return tuple(out)
+
+    def _join_owed(
+        self,
+        r: ModelFloorSimpleInput,
+        join: ModelFloorJoinRow,
+        rows: list[ModelFloorPieceRow],
+        by_id: dict[str, ModelFloorCause],
+    ) -> ModelFloorJoinRow:
+        cause = by_id.get(f"join:{join.id}")
+        if cause is None:
+            return join
+        side, reason = self._join_failure(r, join, rows)
+        return join.model_copy(
+            update={
+                "cause_id": cause.id,
+                "failed_side": side,
+                "failed_reason": reason,
+                "owners": cause.owners,
+                "lanes": cause.lanes,
+            }
+        )
+
+    @staticmethod
+    def _readiness(
+        r: ModelFloorSimpleInput, pieces: tuple[ModelFloorPieceRow, ...]
+    ) -> ModelFloorReadiness:
+        """The count the board reports: ready pieces, not working ones."""
+        scope = tuple(sorted(r.overlay.readiness.in_scope_pieces))
+        in_scope = [p for p in pieces if p.in_scope]
+        ready = tuple(p.piece for p in in_scope if p.ready)
+        wni = tuple(
+            p.piece for p in in_scope if p.integration == "working_not_integrated"
+        )
+        down = tuple(
+            p.piece for p in in_scope if p.integration in ("not_working", "not_started")
+        )
+        broken = tuple(
+            sorted(
+                {j.id for p in pieces for j in p.joins if j.counted and not j.passes},
+                key=lambda x: int(x[1:]) if x[1:].isdigit() else 99,
+            )
+        )
+        text = (
+            f"{len(ready)} of {len(scope)} pieces in scope are ready"
+            + (f" (pieces {', '.join(map(str, ready))})" if ready else "")
+            + f"; {len(wni)} work but are not integrated"
+            + (f" (pieces {', '.join(map(str, wni))})" if wni else "")
+            + f"; {len(broken)} joins do not pass"
+            + (f" ({', '.join(broken)})" if broken else "")
+            + "."
+        )
+        return ModelFloorReadiness(
+            in_scope=scope,
+            ready=ready,
+            working_not_integrated=wni,
+            not_working=down,
+            broken_joins=broken,
+            text=text,
         )
 
     # --- causes -------------------------------------------------------------------------------------------------------
@@ -758,6 +1126,7 @@ class HandlerFloorSimple:
             owners: tuple[str, ...] = (),
             prs: tuple[str, ...] = (),
             last_seen: datetime | None = None,
+            resolved_at: datetime | None = None,
         ) -> None:
             declared = tuple(dict.fromkeys((*owners, *ov.owners.get(cid, ()))))
             out.append(
@@ -773,6 +1142,7 @@ class HandlerFloorSimple:
                         "prs": prs,
                         "needs_operator": cid in ov.needs_operator,
                         "last_seen": last_seen,
+                        "resolved_at": resolved_at,
                     }
                 )
             )
@@ -789,6 +1159,16 @@ class HandlerFloorSimple:
                     r.pr_class_tickets.get(cls, ()),
                     prs=r.pr_class_prs.get(cls, ()),
                 )
+        if r.unticketed_prs:
+            add(
+                UNTICKETED_PRS_ID,
+                "Pull requests cite no ticket",
+                f"{len(r.unticketed_prs)} open pull requests name no ticket in the title or a Ticket line of the body.",
+                len(r.unticketed_prs),
+                "pull requests",
+                (),
+                prs=r.unticketed_prs,
+            )
         for item in r.stoppages:
             if item.id in ov.ignore_stoppages:
                 continue
@@ -800,7 +1180,9 @@ class HandlerFloorSimple:
                 item.size_unit,
                 item.tickets,
                 last_seen=item.last_seen,
+                resolved_at=item.resolved_at,
             )
+        self._delegation_idle(r, add)
         for name, ok in sorted(r.sources_read.items()):
             if not ok:
                 add(
@@ -836,6 +1218,40 @@ class HandlerFloorSimple:
                 "broken chains",
                 (),
             )
+        for row in rows:
+            for join in row.joins:
+                if not join.counted or join.passes or r.receipts is None:
+                    continue
+                side, reason = self._join_failure(r, join, rows)
+                names = {p.piece: p.name.lower() for p in r.overlay.pieces}
+                side_piece = {
+                    "from": join.from_piece,
+                    "to": join.to_piece,
+                }.get(side)
+                where = (
+                    f"the {side} side, piece {side_piece}, {names[side_piece]}"
+                    if side_piece
+                    else "neither side alone"
+                )
+                state_words = {
+                    "not_run": "has never run",
+                    "golden_only": "has only half run",
+                    "error_only": "has only half run",
+                    "broken": "is broken",
+                }.get(join.state, f"reads {join.state}")
+                ran = (
+                    _ago(join.last_run_age_s)
+                    if join.last_run_age_s is not None
+                    else "never run"
+                )
+                add(
+                    f"join:{join.id}",
+                    f"Join {join.id} {state_words}: {join.label}",
+                    f"{join.definition}. Failed: {where}. {reason}. Last run: {ran}.",
+                    1,
+                    "joins",
+                    (),
+                )
         undelivered = [a for a in r.alarms if a.delivery == "undelivered"]
         if undelivered:
             add(
@@ -864,6 +1280,39 @@ class HandlerFloorSimple:
         return out
 
     @staticmethod
+    def _delegation_idle(r: ModelFloorSimpleInput, add: Callable[..., None]) -> None:
+        """The delegation:idle row (OMN-23313): operator-owned delegation tickets that can start, and who is on them.
+
+        The sources hand over only the tickets the operator owns, under a delegation epic, whose start criterion reads
+        true. A ticket is idle when no live lane is on it (``live_lanes``: its own ticket or a ``parent_ticket=``). The row
+        owns the idle tickets, so it draws red while any has no lane, and owns every ticket once each has one, so it draws
+        amber then. The overlay's ``causes.owners`` entry for the row adds the tickets whose lanes work on the row itself.
+        """
+        spec = r.overlay.causes.delegation_idle
+        if spec is None or not r.delegation_tickets:
+            return
+        tickets = tuple(dict.fromkeys(t.ticket for t in r.delegation_tickets))
+        idle = tuple(t for t in tickets if not live_lanes(r.lanes, (t,)))
+        shown = ", ".join((idle or tickets)[:6])
+        more = len(idle or tickets) - 6
+        tail = f"; and {more} more" if more > 0 else ""
+        detail = (
+            f"{len(idle)} of {len(tickets)} operator-owned delegation tickets can start and have no lane on them: "
+            f"{shown}{tail}."
+            if idle
+            else f"All {len(tickets)} operator-owned delegation tickets that can start have a lane: {shown}{tail}."
+        )
+        add(
+            "delegation:idle",
+            spec.title,
+            detail,
+            len(idle) or len(tickets),
+            "delegation tickets",
+            tickets,
+            owners=idle or tickets,
+        )
+
+    @staticmethod
     def _stoppage_detail(item: ModelFloorCauseIn, r: ModelFloorSimpleInput) -> str:
         """What a stoppage row says: how often, how long ago, whether it is still occurring, and which cost is real.
 
@@ -876,7 +1325,10 @@ class HandlerFloorSimple:
         if item.last_seen is not None:
             age = max(int((r.now - item.last_seen).total_seconds()), 0)
             seen = f"last seen {_ago(age)}"
-            if ov.still_occurring_within_s is not None:
+            if item.resolved_at is not None and _resolved_after_last_seen(item):
+                resolved_age = max(int((r.now - item.resolved_at).total_seconds()), 0)
+                seen += f", resolved {_ago(resolved_age)} by a STATUS row, no row since"
+            elif ov.still_occurring_within_s is not None:
                 seen += (
                     ", still occurring"
                     if age <= ov.still_occurring_within_s
@@ -897,6 +1349,7 @@ class HandlerFloorSimple:
     def _causes(
         candidates: list[ModelFloorCauseIn], r: ModelFloorSimpleInput
     ) -> tuple[ModelFloorCause, ...]:
+        inputs = owner_inputs_reading(r)
         causes: list[ModelFloorCause] = []
         for c in candidates:
             lanes = live_lanes(r.lanes, c.owners, c.prs, c.id)
@@ -910,6 +1363,9 @@ class HandlerFloorSimple:
             occurring = (
                 age <= within if age is not None and within is not None else None
             )
+            # A STATUS row that reported the stoppage resolved after its newest row is the evidence it ended, whatever the window.
+            if _resolved_after_last_seen(c):
+                occurring = False
             # A stoppage that stopped and needs nobody is a fact about the past: listed with its age, not red.
             state = (
                 "quiet"
@@ -928,6 +1384,14 @@ class HandlerFloorSimple:
                         "size_unit": c.size_unit,
                         "state": state,
                         "work_under_way": bool(lanes),
+                        "owner_state": "owned"
+                        if lanes
+                        else "unknown"
+                        if inputs is not None and inputs.unknown
+                        else "unowned",
+                        "owner_note": inputs.reason
+                        if not lanes and inputs is not None and inputs.unknown
+                        else "",
                         "needs_operator": c.needs_operator,
                         "lanes": lanes,
                         "tickets": c.tickets,
@@ -936,6 +1400,7 @@ class HandlerFloorSimple:
                         "last_seen": c.last_seen,
                         "last_seen_age_s": age,
                         "still_occurring": occurring,
+                        "resolved_at": c.resolved_at,
                     }
                 )
             )
@@ -963,6 +1428,14 @@ class HandlerFloorSimple:
                         "size_unit": "lab readings",
                         "state": "red" if red else "amber",
                         "work_under_way": not red,
+                        "owner_state": "unknown"
+                        if any(m.owner_state == "unknown" for m in members)
+                        else "unowned"
+                        if red
+                        else "owned",
+                        "owner_note": next(
+                            (m.owner_note for m in members if m.owner_note), ""
+                        ),
                         "needs_operator": any(m.needs_operator for m in members),
                         "lanes": tuple(sorted({x for m in members for x in m.lanes})),
                         "tickets": (),
@@ -1060,6 +1533,11 @@ class HandlerFloorSimple:
         return "Nothing is holding things up.", subline
 
     @staticmethod
+    def _finished(row: ModelFloorPieceRow) -> bool:
+        """A piece the rebuild is done with: ready when it is in scope, working when it is not."""
+        return row.ready if row.in_scope else row.status == "working"
+
+    @staticmethod
     def _rebuild(
         r: ModelFloorSimpleInput, rows: list[ModelFloorPieceRow]
     ) -> ModelRebuild:
@@ -1073,9 +1551,9 @@ class HandlerFloorSimple:
                 (
                     x.piece
                     for x in rows
-                    if x.piece <= go
+                    if (x.piece <= go or x.piece in r.go_pieces)
                     and x.piece not in ov.rebuild.step0_pieces
-                    and x.status != "working"
+                    and not HandlerFloorSimple._finished(x)
                 ),
                 min(go + 1, max(x.piece for x in rows)),
             )
@@ -1088,7 +1566,11 @@ class HandlerFloorSimple:
         else:
             gate = ""
         status = (
-            "not started"
+            "working, not integrated"
+            if row.integration == "working_not_integrated"
+            else "ready"
+            if row.ready
+            else "not started"
             if row.status == "not_started"
             else row.status.replace("_", " ")
         )
@@ -1103,4 +1585,5 @@ class HandlerFloorSimple:
             headline=headline,
             next_text=next_text,
             go_given_through=go,
+            go_pieces=r.go_pieces,
         )

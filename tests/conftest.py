@@ -1147,6 +1147,41 @@ def _isolate_local_secret_store(
     )
 
 
+# OMN-23631: the input ceilings are an overlay value of node_delegation_code_budget_compute and routing refuses
+# when no root holds that overlay (no packaged value, no fallback). Every test therefore starts with a root that holds
+# the node's test fixture overlay, put in front of the roots the environment already names; a test that sets its own
+# ONEX_SKILL_OVERLAY_ROOTS after this fixture replaces it and brings its own overlay.
+_CODE_BUDGET_FIXTURE_OVERLAY = (
+    Path(__file__).resolve().parent
+    / "nodes"
+    / "node_delegation_code_budget_compute"
+    / "fixtures"
+    / "overlays"
+    / "node_delegation_code_budget_compute"
+    / "overlay.yaml"
+)
+
+
+@pytest.fixture(scope="session")
+def code_budget_overlay_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    root = tmp_path_factory.mktemp("omn23631-code-budget-overlay")
+    target = root / "node_delegation_code_budget_compute" / "overlay.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        _CODE_BUDGET_FIXTURE_OVERLAY.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return root
+
+
+@pytest.fixture(autouse=True)
+def _code_budget_overlay_in_roots(
+    monkeypatch: pytest.MonkeyPatch, code_budget_overlay_root: Path
+) -> None:
+    existing = os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "")
+    roots = [str(code_budget_overlay_root)] + ([existing] if existing else [])
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", os.pathsep.join(roots))
+
+
 @pytest.fixture
 def register_local_secret() -> Callable[[str, str], None]:
     """Register a provider credential in the isolated local store.
@@ -1309,3 +1344,18 @@ def compaction_bus():
     yield factory
     for harness in reversed(harnesses):
         harness.close()
+
+
+@pytest.fixture
+def host_capacity_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """The ``host_capacity`` overlay at the starting values the node ships as its example (OMN-23337)."""
+    example = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_host_capacity_compute/overlay.example.yaml"
+    )
+    root = tmp_path / "overlay_roots"
+    target = root / "host_capacity" / "overlay.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    return target

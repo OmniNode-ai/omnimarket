@@ -20,6 +20,11 @@ requirements:
   acceptance:
   - id: AC4
     statement: 'AC4: the Delegation tab shows one shippable line that is yes only when every scenario''s latest finished scheduled run succeeded (a failed, cancelled, missing, not built or unread scenario makes it no), and the plan''s 23 tickets grouped as done, merged and awaiting the closer, pull request open (red or green), lane running (lane and host) and not started (start condition true or false), with counts at the top and every number and row opening its details -- falsifier: uv run pytest tests/nodes/node_floor_delegation_effect tests/nodes/node_factory_floor_publish_effect/test_delegation_page.py -q --no-cov, whose control plants one failing scenario and expects the page to draw not shippable'
+- id: req-omn23081-readiness
+  statement: A rebuild piece reads ready on the floor only when its own reading works and every join it owns passes.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a rebuild piece reads ready on the floor only when its own reading works and every join it owns passes, and the floor overlay''s readiness block loads on dev -- falsifier: uv run pytest of the readiness controls, which fail on dev where the block and the handler are absent'
 evidence_requirements:
 - kind: tests
   description: The piece measure tests (planted better and planted worse history), the comparison node and the page tests pass
@@ -64,4 +69,22 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_delegation_effect tests/nodes/node_factory_floor_publish_effect/test_delegation_page.py -q --no-cov
+    cwd: .
+- id: dod-omn23081-readiness-tests
+  description: Runs the readiness controls (a piece is ready only when its own reading works and every join it owns passes, the finding count in a join's reason, the join owners of the recorded board), which fail on dev where the readiness block and handler are absent.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_compute/test_readiness_omn23081.py tests/nodes/node_floor_simple_compute/test_unowned_red_floor_omn22862.py -q --no-cov
+    cwd: .
+- id: dod-omn23081-publish-cycle-ssh-reuse
+  description: Runs the tests for the publish cycle's shared ssh connection and the lab host table volumes root, which fail when each ssh call opens its own connection.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_ssh_connection_reuse_omn23081.py tests/unit/lab_work/test_lab_host_table_volumes_root.py -q --no-cov
     cwd: .

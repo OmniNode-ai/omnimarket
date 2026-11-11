@@ -45,7 +45,6 @@ from __future__ import annotations
 import importlib
 import importlib.resources
 import logging
-import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -75,9 +74,11 @@ from omnimarket.handlers.handler_capability_start import (
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.routing.backend_placement import (
     apply_backend_placements,
+    lead_models,
+    lead_refs_in,
     load_bound_bifrost_placements,
+    pick_spread_member,
     spread_groups,
-    spread_pick,
     spread_weights,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
@@ -93,9 +94,13 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
-    load_grounding_budget_by_task_class,
+    grounded_input_budget,
     measure_grounding_input_tokens,
 )
+from omnimarket.handlers.routing.paid_gate import (
+    ALLOW_PAID_ENV as _ALLOW_PAID_ENV,
+)
+from omnimarket.handlers.routing.paid_gate import paid_gate_closed_for
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
     resolve_routing_tiers_path,
@@ -327,38 +332,20 @@ _CLOUD_BLOCKED_POLICY = "blocked"
 # zero-cost local-execution tier exempt from the cloud-blocked routing policy.
 _LOCAL_TIERS = {"local"}
 
+
 # OMN-14225: paid escalation policy = ON by default, METERED + LOGGED (never
 # SILENT). Paid (metered, cost_per_1k_tokens > 0) tiers ARE allowed — the operator's
 # GLM subscription covers them — but every paid escalation is logged prominently
 # (model, task_type, cost_usd, reason) at the execution boundary so it can never
 # happen silently (the original OMN-14097 concern). An operator may opt OUT
 # per-process by setting ONEX_DELEGATION_ALLOW_PAID to a falsy value
-# (0/false/no/off), which fails the ladder closed to the free tiers. This gate is
+# (0/false/no/off), which fails the ladder closed to the free tiers. That is "no
+# METERED escalation", NOT "no escalation at all" (OMN-18308): a free non-local
+# rung (cheap_frontier) stays reachable. It applies to a caller-pinned backend as
+# well as to the ladder. This gate is
 # the single eligibility point ``_tier_allowed_by_contract``, consulted by both the
 # routing reducer (``delta``) and the bus-less escalation loop
 # (``next_eligible_tier``/``first_eligible_tier`` via ``_tier_can_route_task``).
-_ALLOW_PAID_ENV = "ONEX_DELEGATION_ALLOW_PAID"
-_ALLOW_PAID_FALSY = frozenset({"0", "false", "no", "off"})
-
-
-def _paid_escalation_allowed() -> bool:
-    """Return whether paid (metered) escalation is permitted — True by default.
-
-    Paid is ON unless an operator explicitly opts OUT via a falsy
-    ``ONEX_DELEGATION_ALLOW_PAID`` (0/false/no/off). Read at call time (not import
-    time) so a test or an operator can toggle it per-process. "Never silent" is met
-    by the prominent paid-escalation log at the execution boundary, not by blocking.
-    """
-    # OMN-14225: the paid-escalation opt-out is an INTENTIONAL per-process operator
-    # toggle — read at call time (not import time) so an operator or a test can flip
-    # it per process, metered + logged at the execution boundary, never a silent
-    # config path. It is exempted from the delegation env-read scanner via the inline
-    # token below; a contract-config rewrite would defeat the per-process-toggle
-    # design this gate deliberately provides.
-    raw_opt_out = os.environ.get(_ALLOW_PAID_ENV, "")  # ONEX_FLAG_EXEMPT
-    return raw_opt_out.strip().lower() not in _ALLOW_PAID_FALSY
-
-
 def _estimate_prompt_tokens(prompt: str) -> int:
     """Estimate token count from prompt character length (4 chars/token heuristic)."""
     return len(prompt) // 4
@@ -536,53 +523,49 @@ def _select_model_for_task(
             m.backend_ref, task_type, estimated_tokens
         )
     )
-    selected = _select_primary_model_for_task(
+    # OMN-23329: a lead rung is tried ahead of the class's model pin; a request it
+    # cannot take falls through to the tier's own rungs.
+    for models, pin in (
+        (lead_models(tier_models), None),
+        (tier_models, contract_model_ref),
+    ):
+        selected = (
+            _select_primary_model_for_task(
+                models,
+                task_type,
+                estimated_tokens,
+                bifrost_backends,
+                pin,
+                exclude_backend_refs,
+                contract_model_ref_is_explicit_override=(
+                    contract_model_ref_is_explicit_override
+                ),
+                require_credential=require_credential,
+                quota_state=quota_state,
+            )
+            if models
+            else None
+        )
+        if selected is not None:
+            break
+    if selected is None or spread_key is None or not spread_peers:
+        return selected
+    return pick_spread_member(
+        selected,
         tier_models,
         task_type,
         estimated_tokens,
-        bifrost_backends,
-        contract_model_ref,
         exclude_backend_refs,
-        contract_model_ref_is_explicit_override=(
-            contract_model_ref_is_explicit_override
+        spread_peers,
+        spread_member_weights or {},
+        spread_key,
+        lambda ref: (
+            (backend := bifrost_backends.get(ref)) is not None
+            and _backend_routable(
+                backend, require_credential=require_credential, quota_state=quota_state
+            )
         ),
-        require_credential=require_credential,
-        quota_state=quota_state,
     )
-    if selected is None or spread_key is None or not spread_peers:
-        return selected
-    peer_refs = spread_peers.get(selected.backend_ref, ())
-    group: list[ModelTierModel] = [selected]
-    for peer_ref in peer_refs:
-        if peer_ref in exclude_backend_refs:
-            continue
-        backend = bifrost_backends.get(peer_ref)
-        if backend is None or not _backend_routable(
-            backend, require_credential=require_credential, quota_state=quota_state
-        ):
-            continue
-        member = next(
-            (
-                model
-                for model in tier_models
-                if model.backend_ref == peer_ref
-                and task_type in model.use_for
-                and estimated_tokens <= model.max_context_tokens
-            ),
-            None,
-        )
-        if member is not None:
-            group.append(member)
-    if len(group) == 1:
-        return selected
-    member_weights = spread_member_weights or {}
-    return group[
-        spread_pick(
-            spread_key,
-            [1.0]
-            + [member_weights.get(member.backend_ref, 1.0) for member in group[1:]],
-        )
-    ]
 
 
 def _select_primary_model_for_task(
@@ -832,6 +815,11 @@ def _spread_weights_for(config: ModelDelegationConfig) -> dict[str, float]:
     if recorded is None or recorded[0] is not config:
         return {}
     return recorded[1]
+
+
+def lead_backend_refs() -> frozenset[str]:
+    """The lead-placed backends of the bound routing config (OMN-23329)."""
+    return lead_refs_in(_get_config())
 
 
 def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:
@@ -1246,7 +1234,7 @@ def _tier_allowed_by_contract(
     # ONEX_DELEGATION_ALLOW_PAID, in which case the ladder fails closed to the free
     # tiers. Applied first (independent of the contract entry) so the opt-out covers
     # every routing surface. Free tiers (local, cheap_frontier) are always eligible.
-    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+    if paid_gate_closed_for(tier):
         return False
 
     if entry is None:
@@ -2183,9 +2171,7 @@ def resolve_backend_grounding_budget(
     for backend in config.backends:
         if backend.backend_id == backend_id:
             if task_type is not None:
-                class_budget = load_grounding_budget_by_task_class().budget_for(
-                    backend_id, task_type
-                )
+                class_budget = grounded_input_budget(backend_id, task_type)
                 if class_budget is not None:
                     return class_budget
             return backend.max_grounded_input_tokens
@@ -2577,7 +2563,7 @@ def _tier_exclusion_reason(
     Returns ``None`` when the tier is allowed — the two functions are pinned to
     agree by :func:`build_routing_exclusion_report`'s own regression test.
     """
-    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+    if paid_gate_closed_for(tier):
         return EnumRoutingExclusionReason.TIER_PAID_GATE_CLOSED
     if entry is None:
         if tier.name not in _LOCAL_TIERS:
@@ -3150,6 +3136,12 @@ def delta(
             ):
                 continue
 
+            # OMN-18308: a pin outranks task-class tier policy but never the
+            # no-paid opt-out; a pin on a paid rung falls through to the pinned
+            # refusal below instead of routing to it.
+            if requested_backend_ref is not None and paid_gate_closed_for(tier):
+                continue
+
             if requested_backend_ref is not None:
                 # Caller pin precedence is exact and intentionally bypasses
                 # ``use_for`` / task model overrides.  Endpoint, secret, context,
@@ -3404,7 +3396,8 @@ def delta(
             f"{BIFROST_CONTRACT_SURFACE} entry carries a complete endpoint_url "
             f"and model_name, whose declared secret_ref resolves, with enough "
             f"context capacity, and not already excluded by transport-failure "
-            f"memory.\n{report.render()}"
+            f"memory. A paid rung is also refused while "
+            f"{_ALLOW_PAID_ENV} opts out of paid escalation.\n{report.render()}"
         )
     else:
         msg = report.render()

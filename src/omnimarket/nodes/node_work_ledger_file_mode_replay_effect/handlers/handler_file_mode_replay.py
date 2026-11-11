@@ -9,6 +9,14 @@ path), and marks a row replayed only when the publisher reports it published. A 
 refuses leaves the row pending with the reason and the attempt count; a row that can
 never be typed is marked refused with its reason, so the seam counter counts it with
 that reason. Replay is idempotent by row id: the id is the delivery identity downstream.
+
+``replay_from_file`` (OMN-19998) heals a row that was appended and never reached the
+projection (the dual write's emit failed open and left only a failure-log line). It reads
+the named rows, or a time window of rows, from the ledger file of record, queues them by
+row id in the same durable queue (so each is a retry record with its attempts and last
+reason until it is published) and drains exactly those rows. A row the queue already shows
+replayed is reported and not sent again; a requested id the file does not hold is reported
+and nothing is sent for it.
 """
 
 from __future__ import annotations
@@ -16,6 +24,10 @@ from __future__ import annotations
 from typing import Protocol
 
 from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+from omnimarket.nodes.node_work_ledger_file_mode_replay_effect.handlers.ledger_file_rows import (
+    ProtocolLedgerFileRows,
+    select_rows,
+)
 from omnimarket.nodes.node_work_ledger_file_mode_replay_effect.handlers.replay_queue import (
     ProtocolReplayQueue,
 )
@@ -40,15 +52,53 @@ _SPOOL_ONLY = "accepted on the spool, not yet published"
 
 class HandlerFileModeReplay:
     def __init__(
-        self, *, queue: ProtocolReplayQueue, publisher: ProtocolRowPublisher
+        self,
+        *,
+        queue: ProtocolReplayQueue,
+        publisher: ProtocolRowPublisher,
+        file_rows: ProtocolLedgerFileRows | None = None,
     ) -> None:
         self._queue = queue
         self._publisher = publisher
+        self._file_rows = file_rows
 
     def handle(self, request: ModelFileModeReplayRequest) -> ModelFileModeReplayResult:
         if request.operation is EnumReplayOperation.ENQUEUE:
             return self._enqueue(request)
+        if request.operation is EnumReplayOperation.REPLAY_FROM_FILE:
+            return self._replay_from_file(request)
         return self._drain(request)
+
+    def _replay_from_file(
+        self, request: ModelFileModeReplayRequest
+    ) -> ModelFileModeReplayResult:
+        if self._file_rows is None:
+            raise ValueError("replay_from_file needs the ledger file rows injected")
+        chosen, missing = select_rows(
+            self._file_rows,
+            row_ids=request.row_ids,
+            since=request.window_since,
+            until=request.window_until,
+        )
+        already_replayed = self._queue.replayed_row_ids()
+        wanted: set[str] = set()
+        skipped: list[str] = []
+        for row in chosen:
+            row_id = work_ledger_row_id(row)
+            if row_id in already_replayed:
+                skipped.append(row_id)
+                continue
+            self._queue.enqueue(row_id, row)
+            wanted.add(row_id)
+        drained = self._drain(request, only=wanted)
+        return drained.model_copy(
+            update={
+                "operation": request.operation,
+                "selected": len(chosen),
+                "already_replayed": skipped,
+                "not_in_file": missing,
+            }
+        )
 
     def _enqueue(
         self, request: ModelFileModeReplayRequest
@@ -63,11 +113,18 @@ class HandlerFileModeReplay:
             operation=request.operation, enqueued=enqueued, already_queued=already
         )
 
-    def _drain(self, request: ModelFileModeReplayRequest) -> ModelFileModeReplayResult:
+    def _drain(
+        self,
+        request: ModelFileModeReplayRequest,
+        *,
+        only: set[str] | None = None,
+    ) -> ModelFileModeReplayResult:
         replayed: list[str] = []
         still_pending: list[ModelReplayPending] = []
         refused: list[ModelReplayRefused] = []
         for queued in list(self._queue.pending()):
+            if only is not None and queued.row_id not in only:
+                continue
             try:
                 outcome = self._publisher.publish_row(queued.row, request.ledger_id)
             except Exception as exc:  # effect boundary: the bus path failing is a retry

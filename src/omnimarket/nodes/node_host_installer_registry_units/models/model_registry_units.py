@@ -51,9 +51,20 @@ class ModelRegistryUnitsRequest(BaseModel):
     ledger_host_name: str = Field(
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
     )
+    # The remote-lane runner script the alarm starts for each episode it opens. Optional: a configuration that has no
+    # value for it carries no dispatch_command, and the alarm sends no lane (it says so in its row).
+    remote_lane_runner: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
     # The path of the operator's bootstrap env file the lab-state alarm reads two named keys from (the Slack bot token
     # and the alert channel id) when the unit's environment does not hold them. Only the path is persisted, never a value.
     alert_env_file: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
+    # The ledger read command a unit that declares this input persists in place of the read command its contract renders
+    # (OMN-23606): an absolute executable followed by plain words, no shell metacharacters. The factory floor's 14-day
+    # window read took 23.5 s through the rendered command and 15.9 s through the internal ledger source on the launching
+    # Mac (load 12 to 16), which put its 30 s step over the limit. Empty defers to the installing shell, then to the
+    # contract's rendered command.
+    ledger_read_command: str = Field(
+        default="", pattern=r"^(?:/[^\s;&|`$<>()'\"\\]+(?: [^\s;&|`$<>()'\"\\]+)*)?$"
+    )
 
 
 class ModelRegistryUnitsResult(BaseModel):

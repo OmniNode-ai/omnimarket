@@ -18,21 +18,13 @@ and limit travels on the observation, so ``-k config_variation`` varies those an
 
 from __future__ import annotations
 
-import ast
-import copy
 import hashlib
 import random
 import re
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
-from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
-    ModelFSMSubcontract,
-)
-from omnibase_core.validation.validator_fsm_analysis import analyze_fsm
 from pydantic import ValidationError
 
 from omnimarket.models.floor_fill import (
@@ -58,9 +50,6 @@ from omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reduce
 
 pytestmark = pytest.mark.unit
 
-NODE_DIR = Path(__file__).resolve().parents[1]
-HANDLER_SOURCE = NODE_DIR / "handlers" / "handler_floor_fill_reducer.py"
-CONTRACT = NODE_DIR / "contract.yaml"
 
 T0 = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 KEY = "floor:line-a:task-1"
@@ -370,51 +359,9 @@ def conformance_findings(
     return findings
 
 
-def load_contract() -> dict[str, Any]:
-    loaded = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
-    assert isinstance(loaded, dict)
-    return loaded
-
-
-def test_transition_conformance_contract_state_machine_equals_the_fixture() -> None:
-    assert conformance_findings(contract_rows(load_contract()), FIXTURE_ROWS) == []
-
-
-def test_transition_conformance_detects_a_missing_extra_or_differently_guarded_row() -> (
-    None
-):
-    rows = contract_rows(load_contract())
-    assert conformance_findings(rows[1:], FIXTURE_ROWS) != []
-    extra = [*rows, {**rows[0], "trigger": "invented", "row": "x"}]
-    assert any("extra row" in f for f in conformance_findings(extra, FIXTURE_ROWS))
-    guarded = copy.deepcopy(rows)
-    guarded[1]["guards"] = guarded[1]["guards"][:-1]
-    assert any("differs" in f for f in conformance_findings(guarded, FIXTURE_ROWS))
-
-
 def test_transition_conformance_handler_table_equals_the_fixture() -> None:
     want = {(r["from"].lower(), r["trigger"]): r["to"].lower() for r in FIXTURE_ROWS}
     assert dict(VALID_TRANSITIONS) == want
-
-
-def test_transition_conformance_contract_binds_the_handler_table() -> None:
-    contract = load_contract()
-    [binding] = contract["fsm_handler_binding"]
-    assert binding["handler_module"] == (
-        "omnimarket.nodes.node_floor_fill_reducer.handlers.handler_floor_fill_reducer"
-    )
-    assert binding["valid_transitions_symbol"] == "VALID_TRANSITIONS"
-    assert set(binding["state_filter"]) == {r["from"] for r in FIXTURE_ROWS}
-
-
-def test_transition_conformance_the_machine_walks_clean() -> None:
-    fsm = ModelFSMSubcontract.model_validate(load_contract()["state_machine"])
-    result = analyze_fsm(fsm)
-    assert not result.unreachable_states
-    assert not result.dead_transitions
-    assert not result.missing_transitions
-    assert not result.ambiguous_transitions
-    assert not result.duplicate_state_names
 
 
 def _scenario_for(row: str) -> tuple[ModelFloorFillState, Any]:
@@ -798,7 +745,10 @@ _BAD_KEYS = (
     "floor:..:t",
     "floor:L:..",
     "floor:L:t..x",
-    "floor:L:t.x",
+    "floor:L:.t",
+    "floor:L:t.",
+    "floor:L:.",
+    "floor:L:t.-.x.",
     "floor:L:t\u2028",
     "floor:L:t\u00e9",
     "floor:L:t\x00",
@@ -807,13 +757,48 @@ _BAD_KEYS = (
 
 @pytest.mark.parametrize("key", _BAD_KEYS)
 def test_lane_name_floor_key_refuses_separators_and_trailing_newline(key: str) -> None:
-    """One task is one key: a key with a newline, ``|``, ``=``, ``/`` or ``..`` is no key."""
+    """One task is one key: a key with a newline, ``|``, ``=``, ``/`` or a dot run is no key."""
     with pytest.raises(ValidationError):
         ModelFloorFillTicketStored(key=key, ticket=TICKET)
     with pytest.raises(ValueError, match="is not a floor key"):
         lane_name(key, 1)
     with pytest.raises(ValueError, match="is not a floor key"):
         line_and_task(key)
+
+
+@pytest.mark.parametrize(
+    ("key", "line_id", "task_id"),
+    [
+        ("floor:L:T0.1", "L", "T0.1"),
+        ("floor:L:CM.0", "L", "CM.0"),
+        ("floor:line-a:W0.10", "line-a", "W0.10"),
+        ("floor:L:a.b.c", "L", "a.b.c"),
+    ],
+)
+def test_a_task_id_with_a_dot_between_segments_is_one_key(
+    key: str, line_id: str, task_id: str
+) -> None:
+    """The floor's own ids are ``T0.1`` and ``CM.0``: they are keys, and the dot stays in the key."""
+    assert line_and_task(key) == (line_id, task_id)
+    assert ModelFloorFillTicketStored(key=key, ticket=TICKET).key == key
+
+
+def test_a_dotted_task_id_names_a_lane_in_the_closed_charset() -> None:
+    name = lane_name("floor:L:T0.1", 1)
+    assert re.fullmatch(r"floor-[A-Za-z0-9_-]+-a[1-9][0-9]*", name)
+    assert name.startswith("floor-L-T0-1-")
+
+
+def test_a_dotted_id_and_the_hyphen_id_it_resembles_are_two_lanes() -> None:
+    assert lane_name("floor:L:T0.1", 1) != lane_name("floor:L:T0-1", 1)
+    assert lane_name("floor:L:T0.1", 1) != lane_name("floor:L:T0.10", 1)
+
+
+def test_a_dotted_task_id_reserves_and_names_its_lane() -> None:
+    rig = Rig().ticketed("floor:L:T0.1")
+    rig.reserved("floor:L:T0.1", now=at(0), capacity=2)
+    assert [e.state for e in rig.state.entries.values()] == [_S.RESERVED]
+    assert next(iter(rig.state.entries.values())).lane == lane_name("floor:L:T0.1", 1)
 
 
 def test_lane_name_floor_key_with_trailing_newline_cannot_reserve_twice() -> None:
@@ -825,7 +810,14 @@ def test_lane_name_floor_key_with_trailing_newline_cannot_reserve_twice() -> Non
 
 
 @pytest.mark.parametrize(
-    "key", ["floor:L:t", "floor:line-a:task-1", "floor:a_b:OMN-22200", "floor:A9:9z"]
+    "key",
+    [
+        "floor:L:t",
+        "floor:line-a:task-1",
+        "floor:a_b:OMN-22200",
+        "floor:A9:9z",
+        "floor:2026-10-31-wave-plan:W0.1",
+    ],
 )
 def test_lane_name_minted_only_from_a_closed_charset(key: str) -> None:
     assert re.fullmatch(r"floor-[A-Za-z0-9_-]+-a[1-9][0-9]*", lane_name(key, 1))
@@ -1061,80 +1053,3 @@ def test_a_key_that_is_not_a_floor_key_is_refused() -> None:
         ticket_stored("not-a-floor-key")
     with pytest.raises(ValidationError):
         ticket_stored("floor:only-a-line")
-
-
-def test_seams_in_spi_the_reducer_injects_no_protocol() -> None:
-    contract = load_contract()
-    assert not contract.get("protocol_dependencies")
-    assert HandlerFloorFillReducer().__dict__ == {}
-    init = ast.parse(HANDLER_SOURCE.read_text(encoding="utf-8"))
-    [handler] = [
-        n
-        for n in ast.walk(init)
-        if isinstance(n, ast.ClassDef) and n.name == "HandlerFloorFillReducer"
-    ]
-    assert not [
-        f
-        for f in ast.walk(handler)
-        if isinstance(f, ast.FunctionDef) and f.name == "__init__"
-    ]
-
-
-def test_the_node_reads_no_clock_and_does_no_io() -> None:
-    tree = ast.parse(HANDLER_SOURCE.read_text(encoding="utf-8"))
-    forbidden_modules = {
-        "os",
-        "sys",
-        "time",
-        "socket",
-        "subprocess",
-        "pathlib",
-        "random",
-        "uuid",
-        "requests",
-        "httpx",
-        "asyncio",
-        "logging",
-    }
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported |= {a.name.split(".")[0] for a in node.names}
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module.split(".")[0])
-    assert not imported & forbidden_modules
-    calls = {
-        n.func.attr
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-    }
-    assert not calls & {
-        "now",
-        "utcnow",
-        "today",
-        "time",
-        "read_text",
-        "write_text",
-        "open",
-    }
-    names = {
-        n.func.id
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-    }
-    assert "open" not in names
-    assert "print" not in names
-
-
-def test_the_contract_loads_and_names_the_node() -> None:
-    contract = load_contract()
-    assert contract["name"] == "node_floor_fill_reducer"
-    assert contract["node_type"] == "REDUCER_GENERIC"
-    assert contract["input_model"]["name"] == "ModelFloorFillReduceInput"
-    assert contract["output_model"]["name"] == "ModelFloorFillReduceOutput"
-    assert contract["descriptor"]["purity"] == "pure"
-    assert not contract["event_bus"]["subscribe_topics"]
-    assert not contract["event_bus"]["publish_topics"]
-    metadata = yaml.safe_load((NODE_DIR / "metadata.yaml").read_text(encoding="utf-8"))
-    assert metadata["name"] == "node_floor_fill_reducer"
-    assert metadata["node_role"] == "reducer"

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of overlay.yaml: every name, path, command and number is made up.
+alarm_name: disk-watermark-page
+retry_budget: 3
+backoff_seconds: [600, 1200]
+alarm_to_repair_latency_seconds: 300
+state_file: $HOME/.local/state/onex/host-repair/state.json
+brief_dir: $HOME/.local/state/onex/host-repair/briefs
+repair_ticket: OMN-0
+parent_lane: parent-lane
+lane_prefix: hostrepair
+measure_separator: "---FINDMNT---"
+measure_timeout_seconds: 60
+measure_argv: [ssh, "{host}", "df -P; echo ---FINDMNT---; findmnt -rn"]
+dispatch_timeout_seconds: 120
+dispatch_argv: [onex-remote-lane, run, --lane, "{lane}", --brief, "{brief_file}", --ticket, "{ticket}", --parent, "{parent}", --repair-target, "{target}"]
+escalate_argv: [onex-ledger-msg, --to, parent-lane, --text, "{row}"]
+brief_template: |
+  ROUTE: band=B2 model=sonnet effort=high
+  Repair {host}: {alarm} read {used_percent}% used at {read_at}. Attempt {attempt} of {budget}.
+  df on {host}:
+  {df}
+  findmnt on {host}:
+  {findmnt}

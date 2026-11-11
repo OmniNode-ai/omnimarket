@@ -5,8 +5,10 @@
 # The one store behind admission, stops and the holder (rebuild plan section 7.5): the epoch, the
 # reservations and consumed reservations, the holder record, step keys, safety and stop state, and
 # the order. Every compare is evaluated inside one transaction of the store. This node is the store's
-# effect with its in-memory twin; the Postgres backend is a later step and the overlay naming it is
-# refused. It holds no start by itself: nothing calls it from a start path until the admission effect
+# effect with its in-memory twin and its Postgres backend (OMN-23055: schema only by the migrations
+# beside this contract and declared in scripts/application-relation-ownership.yaml, one row lock per request;
+# the store opens its own connection from the overlay's DSN variable, so the contract declares no db_io
+# projection binding). It holds no start by itself: nothing calls it from a start path until the admission effect
 # (step 0 row 4) is built and its drill passes.
 name: node_gate_store_effect
 contract_name: node_gate_store_effect
@@ -44,6 +46,12 @@ cli_handlers:
     handler:
       name: HandlerGateStoreJoinJ6
       module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6
+  # The J6 run (OMN-22936) is the join's caller: it runs from the publish cycle's join_j6 step
+  # (runtime_join_j6), in process, and answers each piece 6 golden reading with a stop and piece 7's chain.
+  - operation: join_j6_run
+    handler:
+      name: HandlerGateStoreJoinJ6Run
+      module: omnimarket.nodes.node_gate_store_effect.handlers.handler_gate_store_join_j6_run
 
 descriptor:
   node_archetype: effect
@@ -103,4 +111,4 @@ overlay:
 
 metadata:
   ticket: OMN-22478
-  transport_type: inmemory
+  transport_type: database

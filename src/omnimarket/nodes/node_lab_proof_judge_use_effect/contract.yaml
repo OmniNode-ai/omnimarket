@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Proof Judge Use Effect (OMN-23642)
+#
+# Records a lab proof judge use (a not-applicable class applied to a change, or a refusal with no
+# substitute proof) two ways: one event on the bus and one ledger row naming the change, head,
+# class and substitute proof ids. It runs from the pool driver's CLI, not inside a runtime.
+name: node_lab_proof_judge_use_effect
+contract_name: node_lab_proof_judge_use_effect
+node_name: node_lab_proof_judge_use_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Records a lab proof judge use. When the judge applies its declared not-applicable class to a
+  change, or refuses a change that qualifies but has no substitute proof, the use is recorded as
+  one event on the bus and one ledger row. The event and the row are idempotent: a repeat of the
+  same use is the same event id and the same ledger request id.
+
+handler:
+  module: omnimarket.nodes.node_lab_proof_judge_use_effect.handlers.handler_lab_proof_judge_use
+  class: HandlerLabProofJudgeUse
+  input_model: omnimarket.nodes.node_lab_proof_judge_use_effect.models.model_lab_proof_judge_use_record.ModelLabProofJudgeUseRecord
+
+# HandlerLabProofJudgeUse takes the overlay, host, appender and publisher as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: []
+  purity: impure
+  idempotent: true
+  side_effects: [event-publish, ledger-append]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelLabProofJudgeUseRecord
+  module: omnimarket.nodes.node_lab_proof_judge_use_effect.models.model_lab_proof_judge_use_record
+  description: "A typed use record: repo, pr, head, class, outcome, nodes, receipt ids, observed_at."
+output_model:
+  name: ModelLabProofJudgeUseResult
+  module: omnimarket.nodes.node_lab_proof_judge_use_effect.models.model_lab_proof_judge_use_result
+  description: "Whether the event was published, the ledger status, the row text and the event id."
+
+terminal_event: onex.evt.omnimarket.lab-proof-judge-use-recorded.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The node runs from the pool driver's CLI, not inside a runtime; no subscribe or publish topics.
+topics:
+  lab_proof_judge_use_recorded: onex.evt.omnimarket.lab-proof-judge-use-recorded.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-proof-judge-use-recorded.v1
+
+dependency_ownership:
+  overlay: "Owned by the pool driver's CLI verb, which loads the node overlay from ONEX_SKILL_OVERLAY_ROOTS and constructs the handler in process."
+  host: "Owned by the pool driver, which names the lab host the use is recorded for."
+  appender: "Owned by the pool driver, which supplies the reading appender or none."
+  publisher: "Owned by the pool driver, which supplies the use-event publisher or none."
+
+overlay:
+  node: node_lab_proof_judge_use_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_lab_proof_judge_use_effect.overlay.ModelLabProofJudgeUseOverlay
+
+metadata:
+  ticket: OMN-23642
+  transport_type: inmemory
