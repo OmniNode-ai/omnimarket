@@ -17,10 +17,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
+from omnimarket.models.merge_sweep.model_merge_sweep_request import (
     ModelMergeSweepRequest,
-    ModelPRInfo,
 )
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot import (
     HandlerPrSnapshot,
     _checks_pass,

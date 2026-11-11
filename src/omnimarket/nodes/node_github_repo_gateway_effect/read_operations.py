@@ -47,6 +47,9 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
 from omnimarket.models.model_github_gateway_io import (
     DEFAULT_LOG_TAIL_BYTES,
     MAX_TEXT_CHARS,
@@ -89,7 +92,6 @@ from omnimarket.models.model_github_gateway_io import (
 from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     GitHubReadTransportProtocol,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 # A runaway paging guard: MAX_LIST_LIMIT items need at most 3 pages of 100.
 _MAX_PAGES = 10

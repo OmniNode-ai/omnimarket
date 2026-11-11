@@ -21,6 +21,9 @@ from click.testing import CliRunner
 from pydantic import ValidationError
 
 from omnimarket.handlers.scm.scm_cli import scm_group
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
@@ -38,7 +41,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_job_log_cache
     ModelJobLogCachePolicy,
 )
 from omnimarket.nodes.node_job_log_filler_effect.handlers import adapter_job_log_readers
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
     BytesExchange,
     RecordedGatewayTransport,

@@ -19,6 +19,9 @@ from omnimarket.handlers.scm.handler_gateway_read_client import (
     GATEWAY_BUS_LANE_ENV,
     read_over_bus,
 )
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
 from omnimarket.models.model_gateway_node_skew import GatewayReadError
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
@@ -39,7 +42,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
 from omnimarket.nodes.node_job_log_filler_effect.protocols.protocol_job_log_reader import (
     JobLogCacheMissError,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 
 def _request(

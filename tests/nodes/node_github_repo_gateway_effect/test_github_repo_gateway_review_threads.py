@@ -18,6 +18,9 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.github_landing.github_landing_requests import review_threads_request
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
     MAX_TEXT_CHARS,
@@ -26,7 +29,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelGithubGatewayResponse,
     ModelPrReviewThreadsResult,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
     REPO,
     JsonExchange,

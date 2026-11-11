@@ -39,6 +39,9 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
 from omnimarket.models.model_github_gateway_io import (
     DEFAULT_LOG_TAIL_BYTES,
     EnumGithubGatewayOperation,
@@ -69,7 +72,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     GitHubReadTransportProtocol,
     RealGitHubReadTransport,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 _HANDLER_ID = "node_github_repo_gateway_effect"
 _JOB_LOG_OPERATIONS = frozenset(

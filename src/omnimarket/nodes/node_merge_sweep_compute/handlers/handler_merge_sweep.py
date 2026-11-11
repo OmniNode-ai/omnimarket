@@ -20,12 +20,25 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
-
+from omnimarket.models.merge_sweep.enum_failure_category import EnumFailureCategory
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
+from omnimarket.models.merge_sweep.model_classified_pr import ModelClassifiedPR
+from omnimarket.models.merge_sweep.model_failure_history_entry import (
+    ModelFailureHistoryEntry,
+)
+from omnimarket.models.merge_sweep.model_failure_history_summary import (
+    ModelFailureHistorySummary,
+)
+from omnimarket.models.merge_sweep.model_merge_sweep_request import (
+    ModelMergeSweepRequest,
+)
+from omnimarket.models.merge_sweep.model_merge_sweep_result import (
+    ModelMergeSweepResult,
+)
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.contract_topics import contract_topic
 
 if TYPE_CHECKING:
@@ -41,247 +54,6 @@ TOPIC_MERGE_SWEEP_START: str = contract_topic(
 TOPIC_MERGE_SWEEP_COMPLETED: str = contract_topic(
     _CONTRACT, "publish_topics", "merge-sweep-completed.v1"
 )
-
-
-class EnumPRTrack(StrEnum):
-    """Classification track for a PR."""
-
-    A_UPDATE = "A-update"
-    A_MERGE = "A"
-    A_RESOLVE = "A-resolve"
-    B_POLISH = "B"
-    SKIP = "skip"
-
-
-class EnumFailureCategory(StrEnum):
-    """Standardized failure category strings for cross-run failure history."""
-
-    CI_TEST = "ci_test"
-    CI_LINT = "ci_lint"
-    CI_GATE = "ci_gate"
-    PR_TITLE = "pr_title"
-    CONFLICT = "conflict"
-    CHANGES_REQUESTED = "changes_requested"
-    THREADS_BLOCKED = "threads_blocked"
-    BRANCH_STALE = "branch_stale"
-    SCAN_FAILED = "scan_failed"
-    POLISH_FAILED = "polish_failed"
-    NEEDS_HUMAN = "needs_human"
-
-
-class ModelPRInfo(BaseModel):
-    """Minimal PR representation for classification."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    number: int
-    title: str
-    repo: str
-    mergeable: str  # MERGEABLE | CONFLICTING | UNKNOWN
-    merge_state_status: str  # BEHIND | BLOCKED | CLEAN | DIRTY | DRAFT | UNKNOWN
-    is_draft: bool = False
-    review_decision: str | None = None  # APPROVED | CHANGES_REQUESTED | None
-    required_checks_pass: bool = True
-    required_checks_failed: bool = Field(
-        default=False,
-        description=(
-            "At least one required status context has a terminal failure conclusion. "
-            "Pending or queued checks are not failures."
-        ),
-    )
-    required_checks_pending: bool = Field(
-        default=False,
-        description=(
-            "At least one required status context is queued, pending, in progress, "
-            "or otherwise missing a terminal conclusion."
-        ),
-    )
-    labels: list[str] = Field(default_factory=list)
-    review_bot_gate_passed: bool | None = Field(
-        default=None,
-        description=(
-            "State of the review-bot/all-findings-resolved commit status. "
-            "None = not yet set (treated as pending). "
-            "True = all findings resolved by bot. False = findings still open."
-        ),
-    )
-    required_approving_review_count: int | None = Field(
-        default=None,
-        description=(
-            "Branch-protection required approving review count for the base branch. "
-            "0 or None means protection does not require approval and reviewDecision "
-            "may be blank on solo-dev repos; >0 means an APPROVED review is required "
-            "before merge-sweep may enqueue. Populated per-repo per-sweep from "
-            "`gh api repos/.../branches/main/protection`. [OMN-9106]"
-        ),
-    )
-    head_sha: str | None = Field(
-        default=None,
-        description=(
-            "Current HEAD commit SHA from headRefOid. "
-            "Used by stall detector to distinguish a force-push (new sha = not stalled) "
-            "from a genuinely frozen PR (same sha across consecutive snapshots). [OMN-9404]"
-        ),
-    )
-    pr_node_id: str | None = Field(
-        default=None,
-        description=(
-            "GitHub GraphQL node ID for the pull request. "
-            "Lets the triage orchestrator emit auto-merge commands without "
-            "performing its own GitHub lookup."
-        ),
-    )
-    head_ref_name: str | None = Field(
-        default=None,
-        description=(
-            "GitHub head ref name for this PR. "
-            "Lets the triage orchestrator emit rebase/auto-merge commands "
-            "without performing its own GitHub lookup."
-        ),
-    )
-    base_ref_name: str | None = Field(
-        default=None,
-        description=(
-            "GitHub base ref name for this PR. "
-            "Lets the triage orchestrator emit rebase/conflict commands "
-            "without performing its own GitHub lookup."
-        ),
-    )
-    failing_run_id_github: str | None = Field(
-        default=None,
-        description=(
-            "Most recent failing GitHub Actions run ID derived from status checks. "
-            "Lets the triage orchestrator emit CI rerun/fix commands without "
-            "performing its own GitHub lookup."
-        ),
-    )
-    failing_job_name: str | None = Field(
-        default=None,
-        description=(
-            "First failing check/job name derived from status checks. "
-            "Lets the triage orchestrator emit CI fix commands without "
-            "performing its own GitHub lookup."
-        ),
-    )
-    open_thread_comment_ids: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Open review-thread comment GraphQL IDs. "
-            "Lets the triage orchestrator emit thread-reply commands without "
-            "performing its own GitHub lookup."
-        ),
-    )
-    changed_file_paths: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Changed file paths for the PR. "
-            "Lets the triage orchestrator emit conflict-hunk commands without "
-            "performing its own GitHub lookup."
-        ),
-    )
-
-
-class ModelClassifiedPR(BaseModel):
-    """A PR with its classification track."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    pr: ModelPRInfo
-    track: EnumPRTrack
-    reason: str
-    failure_categories: list[str] = Field(default_factory=list)
-
-
-class ModelFailureHistoryEntry(BaseModel):
-    """Cross-run failure tracking for a single PR."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    first_seen: str
-    last_seen: str
-    consecutive_failures: int = 0
-    total_failures: int = 0
-    total_polishes: int = 0
-    last_failure_categories: list[str] = Field(default_factory=list)
-    last_result: str | None = None
-    last_run_id: str | None = None
-    runs_seen: list[str] = Field(default_factory=list)
-
-
-class ModelFailureHistorySummary(BaseModel):
-    """Aggregate failure history stats for ModelSkillResult."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    total_tracked: int = 0
-    stuck_prs: int = 0
-    chronic_prs: int = 0
-    recidivist_prs: int = 0
-    cleaned_merged: int = 0
-
-
-class ModelMergeSweepRequest(BaseModel):
-    """Input for the merge sweep handler."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    prs: list[ModelPRInfo]
-    require_approval: bool = True
-    merge_method: str = "squash"
-    max_total_merges: int = 0
-    skip_polish: bool = False
-    failure_history: dict[str, ModelFailureHistoryEntry] = Field(default_factory=dict)
-    run_id: str = ""
-    use_lifecycle_ordering: bool = Field(
-        default=False,
-        description=(
-            "When True, reorder Track A PRs via the lifecycle pipeline "
-            "(triage → reducer) for dependency-optimal merge order."
-        ),
-    )
-
-
-class ModelMergeSweepResult(BaseModel):
-    """Output of the merge sweep handler."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    classified: list[ModelClassifiedPR] = Field(default_factory=list)
-    status: str = "nothing_to_merge"
-    failure_history_summary: ModelFailureHistorySummary = Field(
-        default_factory=ModelFailureHistorySummary
-    )
-
-    @property
-    def track_a_update(self) -> list[ModelClassifiedPR]:
-        return [c for c in self.classified if c.track == EnumPRTrack.A_UPDATE]
-
-    @property
-    def track_a_merge(self) -> list[ModelClassifiedPR]:
-        return [c for c in self.classified if c.track == EnumPRTrack.A_MERGE]
-
-    @property
-    def track_a_resolve(self) -> list[ModelClassifiedPR]:
-        return [c for c in self.classified if c.track == EnumPRTrack.A_RESOLVE]
-
-    @property
-    def track_b_polish(self) -> list[ModelClassifiedPR]:
-        return [c for c in self.classified if c.track == EnumPRTrack.B_POLISH]
-
-    @property
-    def skipped(self) -> list[ModelClassifiedPR]:
-        return [c for c in self.classified if c.track == EnumPRTrack.SKIP]
-
-
-# Legacy aliases for backward compatibility with existing tests
-PRTrack = EnumPRTrack
-FailureCategory = EnumFailureCategory
-PRInfo = ModelPRInfo
-ClassifiedPR = ModelClassifiedPR
-FailureHistoryEntry = ModelFailureHistoryEntry
-FailureHistorySummary = ModelFailureHistorySummary
-MergeSweepRequest = ModelMergeSweepRequest
-MergeSweepResult = ModelMergeSweepResult
 
 
 class NodeMergeSweep:

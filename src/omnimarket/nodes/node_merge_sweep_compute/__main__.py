@@ -36,6 +36,13 @@ from omnimarket.cli.output.registry import resolve_handler
 from omnimarket.cli.reporting import build_report_from_merge_sweep_result
 from omnimarket.handlers.runtime_paths import runtime_dir
 from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.models.merge_sweep.model_failure_history_entry import (
+    ModelFailureHistoryEntry,
+)
+from omnimarket.models.merge_sweep.model_merge_sweep_request import (
+    ModelMergeSweepRequest,
+)
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
     GitHubHttpClient,
@@ -44,9 +51,6 @@ from omnimarket.nodes.node_merge_sweep_compute.branch_protection import (
     BranchProtectionCache,
 )
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    ModelFailureHistoryEntry,
-    ModelMergeSweepRequest,
-    ModelPRInfo,
     NodeMergeSweep,
 )
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubPrFetchProtocol

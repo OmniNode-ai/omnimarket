@@ -14,13 +14,15 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
     ModelMergedPrResult,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
     REPO,
     JsonExchange,

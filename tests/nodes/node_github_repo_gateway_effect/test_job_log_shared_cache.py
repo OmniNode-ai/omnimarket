@@ -177,10 +177,12 @@ def test_unreadable_cache_fails_closed_without_network(tmp_path, damage):
     import os
     import time
 
+    from omnimarket.models.github_landing.model_github_transport_error import (
+        GitHubTransportError,
+    )
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         JobLogCacheTransport,
     )
-    from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
     transport = RecordedGatewayTransport(
         [BytesExchange(get(PATH), 200, b"failure\n", 64 * 1024 * 1024, "window")]
@@ -249,11 +251,13 @@ def test_completed_step_metadata_is_reused_with_cached_bytes(tmp_path):
 def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
     import json
 
+    from omnimarket.models.github_landing.model_github_transport_error import (
+        GitHubTransportError,
+    )
     from omnimarket.models.model_github_gateway_io import ModelJobLogTailResult
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         JobLogCacheTransport,
     )
-    from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
     # Recorded real red job's cached geometry: the last 16384 of 117426 bytes.
     root = tmp_path / "job-logs"
@@ -298,10 +302,12 @@ def test_legacy_partial_log_supplies_only_covered_bytes(tmp_path):
 
 
 def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
+    from omnimarket.models.github_landing.model_github_transport_error import (
+        GitHubTransportError,
+    )
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
         JobLogCacheTransport,
     )
-    from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
     transport = RecordedGatewayTransport(
         [
@@ -321,10 +327,12 @@ def test_failed_download_is_not_cached_and_can_be_retried(tmp_path):
 
 def test_stream_ceiling_never_publishes_an_incomplete_cache(tmp_path, monkeypatch):
     from omnimarket.github_landing import github_landing_transport
+    from omnimarket.models.github_landing.model_github_transport_error import (
+        GitHubTransportError,
+    )
     from omnimarket.nodes.node_github_repo_gateway_effect.handlers import (
         handler_github_repo_gateway as handler_job_log_cache,
     )
-    from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
     monkeypatch.setattr(github_landing_transport, "MAX_LOG_READ_BYTES", 16)
     monkeypatch.setattr(handler_job_log_cache, "MAX_LOG_READ_BYTES", 16)

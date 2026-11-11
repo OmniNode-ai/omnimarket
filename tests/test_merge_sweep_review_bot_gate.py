@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
+from omnimarket.models.merge_sweep.model_merge_sweep_request import (
     ModelMergeSweepRequest,
-    ModelPRInfo,
+)
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     NodeMergeSweep,
 )
 

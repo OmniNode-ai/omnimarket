@@ -19,6 +19,9 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.scm.handler_scm_dispatch import SCM_VERBS
 from omnimarket.handlers.scm.scm_cli import scm_group
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
@@ -29,7 +32,6 @@ from omnimarket.models.model_github_gateway_io import (
 from omnimarket.nodes.node_github_repo_gateway_effect.handlers import (
     handler_github_repo_gateway as gateway,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
     BytesExchange,
     RecordedGatewayTransport,

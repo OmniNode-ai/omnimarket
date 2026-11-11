@@ -20,8 +20,8 @@ from omnimarket.models.cli_report import (
     ModelMarketCliReport,
     ModelMarketCliStep,
 )
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    EnumPRTrack,
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
+from omnimarket.models.merge_sweep.model_merge_sweep_result import (
     ModelMergeSweepResult,
 )
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_phase_result import (

@@ -19,7 +19,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
+from omnimarket.models.merge_sweep.model_merge_sweep_result import (
     ModelMergeSweepResult,
 )
 

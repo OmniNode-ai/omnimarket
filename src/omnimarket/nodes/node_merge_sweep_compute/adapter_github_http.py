@@ -20,10 +20,10 @@ from typing import Any
 
 from omnimarket.github_api import GitHubApiError
 from omnimarket.github_api import GitHubHttpTransport as _SharedGitHubHttpTransport
-from omnimarket.nodes.node_merge_sweep_compute.protocols import (
-    GitHubPrFetchProtocol,
+from omnimarket.models.github_landing.model_github_transport_error import (
     GitHubTransportError,
 )
+from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubPrFetchProtocol
 
 
 class GitHubHttpClient(_SharedGitHubHttpTransport, GitHubPrFetchProtocol):

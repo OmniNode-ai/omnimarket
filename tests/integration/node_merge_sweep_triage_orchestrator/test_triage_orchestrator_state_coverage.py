@@ -46,12 +46,10 @@ from uuid import UUID, uuid4
 import pytest
 import yaml
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    EnumPRTrack,
-    ModelClassifiedPR,
-    ModelMergeSweepResult,
-    ModelPRInfo,
-)
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
+from omnimarket.models.merge_sweep.model_classified_pr import ModelClassifiedPR
+from omnimarket.models.merge_sweep.model_merge_sweep_result import ModelMergeSweepResult
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage import (
     TOPIC_AUTO_MERGE_ARM,
     TOPIC_CI_FIX,

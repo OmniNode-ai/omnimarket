@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    EnumPRTrack,
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
+from omnimarket.models.merge_sweep.model_failure_history_entry import (
     ModelFailureHistoryEntry,
+)
+from omnimarket.models.merge_sweep.model_merge_sweep_request import (
     ModelMergeSweepRequest,
-    ModelPRInfo,
+)
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     NodeMergeSweep,
 )
 

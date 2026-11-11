@@ -36,6 +36,16 @@ from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_
 
 from omnimarket.handlers.runtime_paths import runtime_dir
 from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.models.github_landing.model_github_transport_error import (
+    GitHubTransportError,
+)
+from omnimarket.models.merge_sweep.model_failure_history_entry import (
+    ModelFailureHistoryEntry,
+)
+from omnimarket.models.merge_sweep.model_merge_sweep_request import (
+    ModelMergeSweepRequest,
+)
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
     GitHubHttpClient,
@@ -46,12 +56,8 @@ from omnimarket.nodes.node_merge_sweep_compute.branch_protection import (
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     TOPIC_MERGE_SWEEP_COMPLETED,
     TOPIC_MERGE_SWEEP_START,
-    ModelFailureHistoryEntry,
-    ModelMergeSweepRequest,
-    ModelPRInfo,
     NodeMergeSweep,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
