@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel
@@ -56,7 +57,7 @@ def _golden(result: ModelLabDiskWatermarkReading, publisher: object) -> None:
 
 def _run(
     tmp_path: Path,
-    publisher: object,
+    publisher: Any,
     *,
     used_bytes: int = 50 * GIB,
     tolerance: float = 2,
@@ -65,7 +66,7 @@ def _run(
     overlay = write_overlay(
         tmp_path, overlay_document(paths, tolerance_percent=tolerance)
     )
-    return handler(tmp_path, publisher, used_bytes=used_bytes).handle(  # type: ignore[arg-type]
+    return handler(tmp_path, publisher, used_bytes=used_bytes).handle(
         ModelLabDiskWatermarkRequest(host_name="pool-a", overlay_file=str(overlay))
     )
 
@@ -140,7 +141,7 @@ def test_an_unreadable_volume_is_a_typed_failure_then_the_error_is_raised(
     def unreadable(path: str) -> object:
         raise FileNotFoundError(path)
 
-    failing.usage = unreadable  # type: ignore[assignment]
+    cast(Any, failing).usage = unreadable
     with pytest.raises(FileNotFoundError):
         failing.handle(
             ModelLabDiskWatermarkRequest(host_name="pool-a", overlay_file=str(overlay))

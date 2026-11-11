@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -36,13 +37,12 @@ pytestmark = pytest.mark.unit
 
 
 def _read(
-    tmp_path: Path, **kwargs: object
+    tmp_path: Path, held: Sequence[Path] = ()
 ) -> tuple[ModelHostDiskRead, InMemoryHostDiskPublisher]:
     paths = make_host(tmp_path)
     overlay = write_overlay(tmp_path, overlay_document(paths))
     publisher = InMemoryHostDiskPublisher()
-    held = kwargs.get("held", ())
-    result = handler(tmp_path, publisher, held=held).handle(  # type: ignore[arg-type]
+    result = handler(tmp_path, publisher, held=held).handle(
         ModelLabDiskWatermarkRequest(host_name="pool-a", overlay_file=str(overlay))
     )
     assert isinstance(result.host_disk, ModelHostDiskRead)

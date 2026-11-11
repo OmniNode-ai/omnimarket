@@ -228,11 +228,3 @@ PROJECTION_ROUTING_FEEDBACK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-r
 PROJECTION_ROUTING_FEEDBACK_MALFORMED_DLQ_TOPIC_V1 = "onex.dlq.omnimarket.projection-routing-feedback-malformed.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml dlq_topics
 REVIEW_FINDING_DISPOSITION_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-finding-disposition-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)
 REVIEW_PASS_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-pass-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)
-
-# OMN-23865: the host disk reading. The read and failed topics are published by node_lab_disk_watermark_effect (contract.yaml
-# publish_topics) and the read topic is consumed by node_projection_host_disk (contract.yaml subscribe_topics); the applied topic is
-# that projection's terminal event. The requested topic is the command a reading is asked on; OMN-23866's orchestrator publishes it.
-HOST_DISK_READ_TOPIC_V1 = "onex.evt.omnimarket.host-disk-read.v1"  # onex-topic-allow: canonical topic registry; declared in node_lab_disk_watermark_effect contract.yaml publish_topics + node_projection_host_disk subscribe_topics
-HOST_DISK_READ_FAILED_TOPIC_V1 = "onex.evt.omnimarket.host-disk-read-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_lab_disk_watermark_effect contract.yaml publish_topics
-HOST_DISK_READ_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.host-disk-read-requested.v1"  # onex-topic-allow: canonical topic registry; the request the chain tests publish, the orchestrator of OMN-23866 owns its publisher
-PROJECTION_HOST_DISK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-host-disk-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_host_disk contract.yaml publish_topics

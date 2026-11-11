@@ -12,10 +12,6 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.events.topics import (
-    HOST_DISK_READ_FAILED_TOPIC_V1,
-    HOST_DISK_READ_TOPIC_V1,
-)
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_watermark import (
     HandlerLabDiskWatermark,
     Usage,
@@ -30,10 +26,20 @@ from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
     ProcessReferences,
 )
 
+NODES = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "nodes"
 GIB = 1024**3
 NOW = datetime(2026, 11, 11, 21, 0, 0, tzinfo=UTC)
-READ_TOPIC = HOST_DISK_READ_TOPIC_V1
-FAILED_TOPIC = HOST_DISK_READ_FAILED_TOPIC_V1
+_PUBLISHED = yaml.safe_load(
+    (NODES / "node_lab_disk_watermark_effect" / "contract.yaml").read_text()
+)["event_bus"]["publish_topics"]
+READ_TOPIC = next(t for t in _PUBLISHED if t.endswith("host-disk-read.v1"))
+FAILED_TOPIC = next(t for t in _PUBLISHED if t.endswith("host-disk-read-failed.v1"))
+APPLIED_TOPIC = yaml.safe_load(
+    (NODES / "node_projection_host_disk" / "contract.yaml").read_text()
+)["terminal_event"]
+REQUESTED_TOPIC = yaml.safe_load(
+    (NODES / "node_lab_disk_watermark_effect" / "contract.yaml").read_text()
+)["externally_produced_topics"][0]["topic"]
 DF_LINES = "\n".join(
     json.dumps(row)
     for row in (

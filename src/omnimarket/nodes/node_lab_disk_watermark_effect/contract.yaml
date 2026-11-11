@@ -54,6 +54,10 @@ event_bus:
 terminal_event: onex.evt.omnimarket.host-disk-read.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.host-disk-read-failed.v1
+# The request a reading is asked on. Its publisher is the orchestrator of the next ticket, which is not in this repository yet.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.host-disk-read-requested.v1
+    producer: "the host disk orchestrator of the next ticket"
 descriptor:
   node_archetype: effect
   purity: effectful

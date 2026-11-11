@@ -13,7 +13,6 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.topics import HOST_DISK_READ_FAILED_TOPIC_V1
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
     ALL_CLASSES,
 )
@@ -25,6 +24,7 @@ from omnimarket.nodes.node_projection_host_disk.handlers.handler_host_disk_write
 from omnimarket.nodes.node_projection_host_disk.handlers.handler_projection_host_disk import (
     HandlerProjectionHostDisk,
 )
+from tests.nodes.node_lab_disk_watermark_effect.host_disk_inputs import FAILED_TOPIC
 
 from .host_disk_events import GIB, T0, TOPIC, StandInDatabase, later, reading
 
@@ -35,12 +35,10 @@ CONTRACT = Path(
 ).with_name("contract.yaml")
 
 
-def _apply(
-    writer: HostDiskProjectionWriter, db: StandInDatabase, event: Any
-) -> dict[str, Any]:
+def _apply(writer: HostDiskProjectionWriter, db: Any, event: Any) -> dict[str, Any]:
     data = json.loads(event.model_dump_json())
     data["_meta"] = {"injected": "by the runtime"}
-    return asyncio.run(writer._project_event(TOPIC, data, db))  # type: ignore[arg-type]
+    return asyncio.run(writer._project_event(TOPIC, data, db))
 
 
 def test_the_fold_makes_one_row_per_class_and_volume_and_is_deterministic() -> None:
@@ -116,7 +114,7 @@ def test_two_hosts_keep_their_own_rows() -> None:
 
 def test_the_writer_refuses_a_topic_it_does_not_consume() -> None:
     with pytest.raises(ValueError, match="does not consume topic"):
-        HostDiskProjectionWriter().build_request(HOST_DISK_READ_FAILED_TOPIC_V1, {})
+        HostDiskProjectionWriter().build_request(FAILED_TOPIC, {})
 
 
 def test_the_writer_refuses_a_malformed_reading() -> None:

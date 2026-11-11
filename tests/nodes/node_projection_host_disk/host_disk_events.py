@@ -7,7 +7,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from omnimarket.events.topics import HOST_DISK_READ_TOPIC_V1
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
     ALL_CLASSES,
     ModelDiskClassReading,
@@ -15,9 +14,10 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_read
     ModelHostDiskRead,
     ModelHostDiskVolume,
 )
+from tests.nodes.node_lab_disk_watermark_effect.host_disk_inputs import READ_TOPIC
 
 T0 = datetime(2026, 11, 11, 21, 0, 0, tzinfo=UTC)
-TOPIC = HOST_DISK_READ_TOPIC_V1
+TOPIC = READ_TOPIC
 GIB = 1024**3
 
 

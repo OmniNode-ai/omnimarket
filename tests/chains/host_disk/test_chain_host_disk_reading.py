@@ -19,16 +19,12 @@ import json
 import os
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import BaseModel
 
-from omnimarket.events.topics import (
-    HOST_DISK_READ_REQUESTED_TOPIC_V1,
-    PROJECTION_HOST_DISK_APPLIED_TOPIC_V1,
-)
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.adapter_host_disk_bus import (
     LaneBusHostDiskPublisher,
 )
@@ -48,9 +44,11 @@ from omnimarket.nodes.node_projection_host_disk.models import (
 )
 from tests.chains.chain_assert import ChainRecorder, assert_chain
 from tests.nodes.node_lab_disk_watermark_effect.host_disk_inputs import (
+    APPLIED_TOPIC,
     FAILED_TOPIC,
     GIB,
     READ_TOPIC,
+    REQUESTED_TOPIC,
     handler,
     make_host,
     overlay_document,
@@ -101,9 +99,7 @@ async def _on_the_bus(
     request = ModelLabDiskWatermarkRequest(
         host_name="pool-a", overlay_file=str(overlay), correlation_id=key
     )
-    await recorder.publish(
-        HOST_DISK_READ_REQUESTED_TOPIC_V1, request, correlation_id=key
-    )
+    await recorder.publish(REQUESTED_TOPIC, request, correlation_id=key)
     publisher = _BusPublisher(asyncio.get_running_loop(), recorder, key, refuse=refuse)
     node = handler(tmp_path, publisher, used_bytes=used_bytes)
     return recorder, await asyncio.to_thread(node.handle, request)
@@ -119,10 +115,11 @@ async def test_golden_chain_requested_published_applied_in_memory(
     # the projection consumes the bytes the bus carried, not the model the node built
     history = await recorder._bus.get_event_history(limit=100)
     raw = next(json.loads(bytes(m.value)) for m in history if m.topic == READ_TOPIC)
-    writer, db = HostDiskProjectionWriter(), StandInDatabase()
-    outcome = await writer._project_event(READ_TOPIC, raw, db)  # type: ignore[arg-type]
+    writer = HostDiskProjectionWriter()
+    db: Any = StandInDatabase()
+    outcome = await writer._project_event(READ_TOPIC, raw, db)
     await recorder.publish(
-        PROJECTION_HOST_DISK_APPLIED_TOPIC_V1,
+        APPLIED_TOPIC,
         writer.applied(outcome),
         correlation_id=key,
     )
@@ -168,15 +165,13 @@ async def test_error_chain_unreadable_volume_publishes_the_failure_in_memory(
     request = ModelLabDiskWatermarkRequest(
         host_name="pool-a", overlay_file=str(overlay), correlation_id=key
     )
-    await recorder.publish(
-        HOST_DISK_READ_REQUESTED_TOPIC_V1, request, correlation_id=key
-    )
+    await recorder.publish(REQUESTED_TOPIC, request, correlation_id=key)
     node = handler(tmp_path, _BusPublisher(asyncio.get_running_loop(), recorder, key))
 
     def unreadable(path: str) -> Any:
         raise FileNotFoundError(path)
 
-    node.usage = unreadable  # type: ignore[assignment]
+    cast(Any, node).usage = unreadable
     with pytest.raises(FileNotFoundError):
         await asyncio.to_thread(node.handle, request)
     assert_chain(
@@ -286,8 +281,8 @@ def test_golden_chain_on_the_real_dev_broker(tmp_path: Path) -> None:
     assert [c.class_name for c in event.classes] == list(ALL_CLASSES)
     outcome = asyncio.run(
         HostDiskProjectionWriter()._project_event(
-            READ_TOPIC, payload, StandInDatabase()
-        )  # type: ignore[arg-type]
+            READ_TOPIC, payload, cast(Any, StandInDatabase())
+        )
     )
     assert outcome["rows_upserted"] == len(ALL_CLASSES) + 1
 

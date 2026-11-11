@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -75,7 +76,7 @@ def test_a_declared_root_that_is_not_there_is_unread_with_its_reason(
 ) -> None:
     paths = make_host(tmp_path)
     document = overlay_document(paths, docker=False)
-    document["hosts"][0]["class_roots"][1]["path"] = str(tmp_path / "gone")  # type: ignore[index]
+    cast(Any, document)["hosts"][0]["class_roots"][1]["path"] = str(tmp_path / "gone")
     overlay = write_overlay(tmp_path, document)
     result = handler(tmp_path, InMemoryHostDiskPublisher()).handle(
         ModelLabDiskWatermarkRequest(host_name="pool-a", overlay_file=str(overlay))
@@ -150,7 +151,7 @@ def test_the_install_takes_its_interval_from_the_overlay(
 def test_an_overlay_with_an_unknown_class_root_name_is_refused(tmp_path: Path) -> None:
     paths = make_host(tmp_path)
     document = overlay_document(paths)
-    document["hosts"][0]["class_roots"][0]["name"] = "downloads"  # type: ignore[index]
+    cast(Any, document)["hosts"][0]["class_roots"][0]["name"] = "downloads"
     overlay = write_overlay(tmp_path, document)
     with pytest.raises(ValueError, match=r"class_roots\.0\.name"):
         handler(tmp_path, InMemoryHostDiskPublisher()).handle(

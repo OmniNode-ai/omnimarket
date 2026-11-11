@@ -27,9 +27,9 @@ pytestmark = pytest.mark.unit
 
 
 def _apply(
-    writer: HostDiskProjectionWriter, db: StandInDatabase, data: dict[str, Any]
+    writer: HostDiskProjectionWriter, db: Any, data: dict[str, Any]
 ) -> dict[str, Any]:
-    return asyncio.run(writer._project_event(TOPIC, data, db))  # type: ignore[arg-type]
+    return asyncio.run(writer._project_event(TOPIC, data, db))
 
 
 def test_golden_chain_reading_in_rows_and_applied_event_out() -> None:
