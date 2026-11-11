@@ -24,6 +24,19 @@ handler:
   class: HandlerDelegationCompletionRateRun
   input_model: omnimarket.nodes.node_delegation_completion_rate_effect.models.model_delegation_rate_run.ModelDelegationRateCommand
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: completion_rate_run
+      handler:
+        name: HandlerDelegationCompletionRateRun
+        module: omnimarket.nodes.node_delegation_completion_rate_effect.handlers.handler_delegation_completion_rate_run
+    # OMN-23756: the paid rung burn reading (credit balance, spend since switch-on, hours left), read only.
+    - operation: paid_rung_burn_read
+      handler:
+        name: HandlerPaidRungBurnRead
+        module: omnimarket.nodes.node_delegation_completion_rate_effect.handlers.handler_paid_rung_burn_read
+
 # HandlerDelegationCompletionRateRun takes the overlays, the host, the row source, the appender and the clock as constructor
 # parameters, so the node runs through its own CLI, not handler_routing.
 
