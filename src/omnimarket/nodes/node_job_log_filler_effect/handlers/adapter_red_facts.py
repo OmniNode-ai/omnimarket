@@ -18,13 +18,17 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
+from omnimarket.models.scm import ModelScmLocalReadRequest, ModelScmLocalReadResult
 from omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler import (
     OVERLAY_FILE_ENV,
     OVERLAY_ID,
@@ -233,9 +237,67 @@ def answer_red_facts(
     )
 
 
+def answer_red_facts_read(
+    request: ModelScmLocalReadRequest, checks: ModelScmLocalReadResult
+) -> ModelScmLocalReadResult:
+    """The already-read PR_CHECKS head, answered from the red-facts store."""
+    if not checks.answered:
+        return checks.model_copy(update={"read": request.read})
+    head = checks.result.get("head_sha")
+    if not isinstance(head, str) or not head or request.pr_number is None:
+        return ModelScmLocalReadResult(
+            read=request.read,
+            repo=request.repo,
+            pr_number=request.pr_number,
+            answered=False,
+            unanswered_reason="the watcher record has no head commit",
+        )
+    raw = checks.result.get("read_at")
+    read_at: datetime | None = None
+    if isinstance(raw, str) and raw:
+        try:
+            read_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            read_at = None
+        else:
+            read_at = read_at if read_at.tzinfo else read_at.replace(tzinfo=UTC)
+    head_age_seconds = (
+        max(0, int((datetime.now(UTC) - read_at).total_seconds()))
+        if read_at is not None
+        else None
+    )
+    try:
+        store = RedFactsStore.from_overlay(load_red_facts_overlay())
+        answer = answer_red_facts(
+            store=store,
+            repo=request.repo,
+            pr_number=request.pr_number,
+            head_sha=head,
+            head_age_seconds=head_age_seconds,
+        )
+    except (NodeOverlayError, ValueError, OSError) as exc:
+        return ModelScmLocalReadResult(
+            read=request.read,
+            repo=request.repo,
+            pr_number=request.pr_number,
+            answered=False,
+            unanswered_reason=f"the red-facts store is unreadable: {exc}",
+        )
+    return ModelScmLocalReadResult(
+        read=request.read,
+        repo=request.repo,
+        pr_number=request.pr_number,
+        answered=True,
+        source="watcher",
+        watcher_tick=checks.watcher_tick,
+        result=answer.model_dump(mode="json"),
+    )
+
+
 __all__ = [
     "RedFactsStore",
     "answer_red_facts",
+    "answer_red_facts_read",
     "build_record",
     "load_red_facts_overlay",
 ]
