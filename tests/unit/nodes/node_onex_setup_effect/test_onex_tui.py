@@ -833,3 +833,22 @@ async def test_typing_setup_still_opens_the_config_form() -> None:
         await pilot.press("backspace", "enter")
         await pilot.pause()
         assert isinstance(app.screen, SetupScreen)
+
+
+def test_the_welcome_banner_is_centred_with_its_tips_kept_aligned() -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import welcome_banner
+
+    banner = welcome_banner()
+    assert banner.justify == "center"
+    tips = [line for line in banner.plain.splitlines() if "/" in line]
+    assert len({len(line) for line in tips}) == 1  # one block width, so aligned
+
+
+async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:
+    app = _app(_Runner([]))
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        lines = [str(line.text) for line in app.query_one("#output").lines]
+        tagline = next(line for line in lines if "costs least" in line)
+        left = len(tagline) - len(tagline.lstrip())
+        assert left > 20  # centred, not pinned to the left edge

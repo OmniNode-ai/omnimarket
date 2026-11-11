@@ -16,6 +16,7 @@ import json
 import shlex
 import subprocess
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Protocol
@@ -42,6 +43,7 @@ from textual.widgets import (
     Switch,
 )
 from textual.widgets.option_list import Option
+from textual.worker import Worker
 
 from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokListedModel,
@@ -216,6 +218,12 @@ def display_path(path: Path) -> str:
         return str(path)
 
 
+def _stop(process: asyncio.subprocess.Process) -> None:
+    """End a cancelled onex run so it does not keep working in the background."""
+    if process.returncode is None:
+        process.kill()
+
+
 class HandlerOnexCommand:
     """Runs the installed `onex` beside this interpreter, as a user would."""
 
@@ -242,8 +250,12 @@ class HandlerOnexCommand:
             process.stdin.write(stdin.encode())
             await process.stdin.drain()
             process.stdin.close()
-        async for raw in process.stdout:
-            emit(raw.decode(errors="replace").rstrip("\n"))
+        try:
+            async for raw in process.stdout:
+                emit(raw.decode(errors="replace").rstrip("\n"))
+        except asyncio.CancelledError:
+            _stop(process)
+            raise
         return await process.wait()
 
     async def capture(
@@ -258,7 +270,13 @@ class HandlerOnexCommand:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        out, err = await process.communicate(None if stdin is None else stdin.encode())
+        try:
+            out, err = await process.communicate(
+                None if stdin is None else stdin.encode()
+            )
+        except asyncio.CancelledError:
+            _stop(process)
+            raise
         return (
             await process.wait(),
             out.decode(errors="replace"),
@@ -767,7 +785,6 @@ def _big_word(word: str, gradient: tuple[str, ...], banner: Text) -> None:
     rows = ["  ".join(font[c][r] for c in word) for r in range(3)]
     width = max(len(row) for row in rows)
     for row in rows:
-        banner.append("  ")
         for column, char in enumerate(row):
             banner.append(
                 char, style=f"bold {gradient[column * len(gradient) // width]}"
@@ -776,19 +793,26 @@ def _big_word(word: str, gradient: tuple[str, ...], banner: Text) -> None:
 
 
 def welcome_banner() -> Text:
-    """The design file's greeting, banner words, tagline and tips."""
+    """The design file's greeting, banner words, tagline and tips, centred.
+
+    Every line is centred on its own; the tips are padded to one width first so
+    they stay aligned with each other as a block.
+    """
     design = tui_design()
-    banner = Text(f"\n  {design.banner.greeting}\n\n", style=_style("muted", "italic"))
+    banner = Text(justify="center")
+    banner.append(f"\n{design.banner.greeting}\n\n", style=_style("muted", "italic"))
     for index, word in enumerate(design.banner.words):
         if index:
             banner.append("\n")
         _big_word(word.text, design.gradients[word.gradient], banner)
-    banner.append(f"\n  {design.banner.tagline}\n\n", style=_style("muted", "italic"))
-    width = max(len(tip.key) for tip in design.banner.tips) + 3
+    banner.append(f"\n{design.banner.tagline}\n\n", style=_style("muted", "italic"))
+    key_width = max(len(tip.key) for tip in design.banner.tips) + 3
+    line_width = max(len(tip.text) for tip in design.banner.tips) + key_width + 2
     for tip in design.banner.tips:
-        banner.append(f"  {design.glyphs.tip} ", style=_style("primary"))
-        banner.append(f"{tip.key:<{width}}", style=_style("secondary", "bold"))
-        banner.append(f"{tip.text}\n", style=_style("foreground"))
+        banner.append(f"{design.glyphs.tip} ", style=_style("primary"))
+        banner.append(f"{tip.key:<{key_width}}", style=_style("secondary", "bold"))
+        pad = line_width - key_width - 2 - len(tip.text)
+        banner.append(f"{tip.text}{' ' * pad}\n", style=_style("foreground"))
     return banner
 
 
@@ -804,8 +828,8 @@ class OnexTui(App[int]):
     #status { height: 1; padding: 0 1; background: $panel; color: $text-muted; }
     """
     BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit", priority=True),
-        Binding("escape", "close_palette", "Close", show=False),
+        Binding("ctrl+c", "interrupt", "Cancel or quit", priority=True),
+        Binding("escape", "escape", "Close or cancel", show=False),
         Binding("tab", "complete", "Complete", show=False, priority=True),
         Binding("down", "palette_down", show=False),
         Binding("up", "palette_up", show=False),
@@ -848,6 +872,9 @@ class OnexTui(App[int]):
         self._load_status = load_status or globals()["load_status"]
         self._status = ModelTuiStatus(workspace=display_path(Path.cwd()))
         self._last_run = ""
+        self._active_task: Worker[None] | None = None
+        self._task_started = 0.0
+        self._ticker: Timer | None = None
         self._history: list[str] = []
         self._recall = 0
 
@@ -861,7 +888,7 @@ class OnexTui(App[int]):
         yield Static(id="status")
 
     async def on_mount(self) -> None:
-        self.query_one("#output", RichLog).write(welcome_banner())
+        self.query_one("#output", RichLog).write(welcome_banner(), expand=True)
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
@@ -893,7 +920,14 @@ class OnexTui(App[int]):
         ]
         if self._last_run:
             parts += [sep, (self._last_run, _style("accent"))]
-        parts += [sep, ("/ commands  ctrl+c quit", _style("muted"))]
+        if self._active_task is not None:
+            seconds = int(time.monotonic() - self._task_started)
+            parts += [
+                sep,
+                (f"working {seconds}s  ·  esc cancels", _style("warning", "bold")),
+            ]
+        else:
+            parts += [sep, ("/ commands  ctrl+c quit", _style("muted"))]
         self.query_one("#status", Static).update(Text.assemble(*parts))
 
     def _write(self, text: str | Text) -> None:
@@ -931,6 +965,42 @@ class OnexTui(App[int]):
         palette.display = palette.option_count > 0
         if palette.option_count:
             palette.highlighted = 0
+
+    def action_escape(self) -> None:
+        """Esc closes the palette, or else cancels the running task."""
+        palette = self.query_one("#palette", OptionList)
+        if palette.display:
+            palette.display = False
+        elif self._active_task is not None:
+            self._active_task.cancel()
+
+    def action_interrupt(self) -> None:
+        """Ctrl+C cancels the running task; with nothing running it quits."""
+        if self._active_task is not None:
+            self._active_task.cancel()
+        else:
+            self.exit(0)
+
+    def _start_task(self, work: Awaitable[None]) -> None:
+        self._task_started = time.monotonic()
+        self._ticker = self.set_interval(1, self._render_status)
+        self._active_task = self.run_worker(
+            self._guarded(work), group="task", exclusive=True, exit_on_error=False
+        )
+        self._render_status()
+
+    async def _guarded(self, work: Awaitable[None]) -> None:
+        try:
+            await work
+        except asyncio.CancelledError:
+            seconds = int(time.monotonic() - self._task_started)
+            self._write(Text(f"cancelled after {seconds}s", style=_style("muted")))
+            raise
+        finally:
+            self._active_task = None
+            if self._ticker is not None:
+                self._ticker.stop()
+            self._render_status()
 
     def action_close_palette(self) -> None:
         self.query_one("#palette", OptionList).display = False
@@ -1019,7 +1089,15 @@ class OnexTui(App[int]):
         self._history.append(text)
         self._recall = len(self._history)
         if not text.startswith("/"):
-            await self._delegate(text)
+            if self._active_task is not None:
+                self._write(
+                    Text(
+                        "a task is still running: Esc or Ctrl+C cancels it",
+                        style=_style("warning"),
+                    )
+                )
+                return
+            self._start_task(self._delegate(text))
             return
         try:
             words = shlex.split(text[1:])

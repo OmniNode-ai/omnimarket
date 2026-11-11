@@ -4467,6 +4467,7 @@
   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_contract.py": 0.03,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_model_step.py": 10.27,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py": 6.19,
+  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_cancel.py": 5.2,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_secrets_keyboard.py": 8.4,
   "tests/unit/nodes/node_onex_setup_effect/test_setup_banner.py": 1.0,
   "tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py": 3.27,
