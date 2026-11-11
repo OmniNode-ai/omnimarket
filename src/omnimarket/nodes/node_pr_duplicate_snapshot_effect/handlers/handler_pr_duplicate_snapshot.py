@@ -42,6 +42,9 @@ from omnimarket.models.model_pr_duplicate_guard import (
     ModelPrDuplicateSnapshotRequest,
     ModelPrDuplicateSnapshotResult,
     ModelPrTouch,
+    ModelReplacedPrFacts,
+    ModelSpanCommits,
+    validate_replaces,
 )
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     OpenPrFactsUnreadableError,
@@ -66,6 +69,9 @@ _GIT_LOCATION_ENV: Final[frozenset[str]] = frozenset(
 )
 _FILE_HEADER = re.compile(r"^diff --git a/(.+) b/\1$")
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@")
+_HUNK_RANGES = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+_BLAME_LINE = re.compile(r"^([0-9a-f]{40}) \d+ \d+")
+_SHA_PREFIX: Final[int] = 12
 _BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@+-]*$")
 
 
@@ -252,6 +258,159 @@ def new_branch_touch(
     )
 
 
+def _attribute(
+    repo_dir: Path,
+    base_ref: str,
+    sha: str,
+    touch: ModelPrTouch,
+    new_touch: ModelPrTouch,
+) -> ModelPrTouch:
+    """``touch`` with, for each hunk the new branch also changes, the commits that introduced its lines.
+
+    Only hunks whose pre-image lines overlap one of the new branch's own spans are read, so a 200-commit bundle
+    costs one blame per overlap. A hunk that only deletes lines has no lines to blame and stays unattributed;
+    so does one whose blame fails: an overlap nobody can attribute is counted, never set aside.
+    """
+    mine = {f.path: f for f in new_touch.files}
+    files: list[ModelFileTouch] = []
+    for theirs in touch.files:
+        other = mine.get(theirs.path)
+        if other is None or not other.spans or not theirs.spans:
+            files.append(theirs)
+            continue
+        text = _git(
+            repo_dir,
+            "diff",
+            "-U0",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-renames",
+            f"{base_ref}...{sha}",
+            "--",
+            theirs.path,
+            timeout=DIFF_TIMEOUT_S,
+        )
+        parts: list[ModelSpanCommits] = []
+        for line in (text or "").splitlines():
+            hunk = _HUNK_RANGES.match(line)
+            if hunk is None:
+                continue
+            old_start = int(hunk[1])
+            old_count = 1 if hunk[2] is None else int(hunk[2])
+            new_start = int(hunk[3])
+            new_count = 1 if hunk[4] is None else int(hunk[4])
+            if old_count == 0:
+                continue
+            old = (old_start, old_start + old_count - 1)
+            if not any(a[0] <= old[1] and old[0] <= a[1] for a in other.spans):
+                continue
+            commits = (
+                _blame(repo_dir, sha, theirs.path, new_start, new_start + new_count - 1)
+                if new_count > 0
+                else ()
+            )
+            parts.append(ModelSpanCommits(start=old[0], end=old[1], commits=commits))
+        files.append(theirs.model_copy(update={"attributed": tuple(parts)}))
+    return ModelPrTouch(files=tuple(files))
+
+
+def _blame(
+    repo_dir: Path, sha: str, path: str, first: int, last: int
+) -> tuple[str, ...]:
+    """The 12-character shas that last changed lines ``first``..``last`` of ``path`` at ``sha``; empty when unread."""
+    text = _git(
+        repo_dir,
+        "blame",
+        "--porcelain",
+        "-L",
+        f"{first},{last}",
+        sha,
+        "--",
+        path,
+        timeout=DIFF_TIMEOUT_S,
+    )
+    if text is None:
+        return ()
+    found: list[str] = []
+    for line in text.splitlines():
+        match = _BLAME_LINE.match(line)
+        if match and match[1][:_SHA_PREFIX] not in found:
+            found.append(match[1][:_SHA_PREFIX])
+    return tuple(found)
+
+
+def _replaced_facts(
+    state: dict[str, object],
+    replaces: tuple[str, ...],
+    repo: str,
+    clone: Path | None,
+) -> tuple[ModelReplacedPrFacts, ...]:
+    """What the node reads of each ``replaces`` entry: its state from the watcher state, its commits from git.
+
+    The caller's word is never the source: the entry is looked up in the same state the open pull requests come
+    from, and a pull request that state does not hold is ``state=None`` (the guard refuses it as unreadable).
+    """
+    prs = state["prs"]
+    assert isinstance(prs, dict)
+    out: list[ModelReplacedPrFacts] = []
+    for item in validate_replaces(replaces):
+        name, _, number_text = item.partition("#")
+        number = int(number_text)
+        if name.casefold() != repo.casefold():
+            out.append(ModelReplacedPrFacts(repo=name, number=number))
+            continue
+        record = prs.get(f"{name.split('/')[-1]}#{number}")
+        facts = record.get("facts") if isinstance(record, dict) else None
+        state_name = facts.get("state") if isinstance(facts, dict) else None
+        if not isinstance(facts, dict) or state_name not in (
+            "OPEN",
+            "CLOSED",
+            "MERGED",
+        ):
+            out.append(ModelReplacedPrFacts(repo=name, number=number))
+            continue
+        merged = state_name == "MERGED" or bool(facts.get("merged_at"))
+        commits: tuple[str, ...] = ()
+        if state_name == "CLOSED" and not merged and clone is not None:
+            commits = _own_commits(
+                clone,
+                str(facts.get("head_sha") or ""),
+                number,
+                str(facts.get("base") or ""),
+            )
+        out.append(
+            ModelReplacedPrFacts(
+                repo=name,
+                number=number,
+                state=state_name,
+                merged=merged,
+                commits=commits,
+            )
+        )
+    return tuple(out)
+
+
+def _own_commits(clone: Path, sha: str, number: int, base: str) -> tuple[str, ...]:
+    """The 12-character shas of a pull request's own commits: its head past its base branch, newest first."""
+    if not sha:
+        return ()
+    if not _resolves(clone, sha):
+        _git(
+            clone,
+            "fetch",
+            "--no-tags",
+            "--quiet",
+            "origin",
+            f"refs/pull/{number}/head",
+            timeout=FETCH_TIMEOUT_S,
+        )
+    base_ref = _base_ref(clone, base or None)
+    if base_ref is None or not _resolves(clone, sha):
+        return ()
+    text = _git(clone, "rev-list", "--no-color", sha, f"^{base_ref}")
+    return tuple(line[:_SHA_PREFIX] for line in (text or "").split() if line)
+
+
 def _load_watcher(path: Path | None, now: datetime) -> dict[str, object]:
     if path is None or not path.is_file():
         raise DuplicateGuardUncheckedError(
@@ -374,6 +533,7 @@ def _open_prs(
     *,
     worktree: Path | None = None,
     new_head: str | None = None,
+    attribute_against: ModelPrTouch | None = None,
 ) -> tuple[ModelOpenPr, ...]:
     prs = state["prs"]
     assert isinstance(prs, dict)
@@ -416,6 +576,8 @@ def _open_prs(
         if wanted and clone is not None and sha and _resolves(clone, sha):
             base_ref = _base_ref(clone, pr_base)
             touch = _diff(clone, base_ref, sha) if base_ref else None
+            if touch is not None and base_ref and attribute_against is not None:
+                touch = _attribute(clone, base_ref, sha, touch, attribute_against)
         out.append(
             ModelOpenPr(
                 number=int(str(facts["number"])),
@@ -636,6 +798,7 @@ def read_request(
     worktree: Path | None = None,
     now: datetime | None = None,
     open_prs_source: ProtocolOpenPrFactsSource | None = None,
+    replaces: tuple[str, ...] = (),
 ) -> ModelPrDuplicateGuardRequest:
     """The fold's request for one new pull request, or ``DuplicateGuardUncheckedError``."""
     moment = now or datetime.now(UTC)
@@ -646,9 +809,24 @@ def read_request(
     lane_dir = worktree or Path.cwd()
     dirs = (lane_dir, where)
     head = _new_head(head_ref, dirs)
-    open_prs = _open_prs(state, repo, base, where, worktree=lane_dir, new_head=head)
     contained = _contained_tips(state, repo, head, dirs) if head else {}
     diff_base = _stack_base(contained, base, dirs)
+    # Only a caller that names a replaced pull request pays for reading the new branch's diff first and blaming
+    # the overlaps; without ``replaces`` the reads and their order are exactly what they were.
+    early_touch = (
+        new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base)
+        if replaces
+        else None
+    )
+    open_prs = _open_prs(
+        state,
+        repo,
+        base,
+        where,
+        worktree=lane_dir,
+        new_head=head,
+        attribute_against=early_touch,
+    )
     return ModelPrDuplicateGuardRequest(
         repo=repo,
         head_ref=head_ref,
@@ -658,12 +836,14 @@ def read_request(
         lane=lane,
         cause=cause,
         now=moment,
-        touch=new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base),
+        touch=early_touch
+        or new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base),
         judged_commits=judged_commits(dirs, head, base, diff_base, contained.values()),
         judged_base=diff_base[:12] if diff_base else None,
         open_prs=open_prs,
         ledger_text=ledger_text,
         generated_paths=load_generated_paths(),
+        replaced=_replaced_facts(state, replaces, repo, where) if replaces else (),
     )
 
 
@@ -694,6 +874,7 @@ class HandlerPrDuplicateSnapshot:
                 clone=Path(request.clone) if request.clone else None,
                 worktree=Path(request.worktree) if request.worktree else None,
                 open_prs_source=self._open_prs_source,
+                replaces=request.replaces,
             )
         except DuplicateGuardUncheckedError as exc:
             return ModelPrDuplicateSnapshotResult(unchecked_reason=str(exc))

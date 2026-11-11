@@ -11,7 +11,8 @@ the bus publisher of tick_bus_publisher for redpanda. This module holds no Kafka
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+import os
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
@@ -48,6 +49,7 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
     EnumTickBackend,
     ModelTickOrchestratorOverlay,
     ModelTickTopicSelection,
+    resolved_consumer_group,
 )
 
 
@@ -116,7 +118,11 @@ class RedpandaSnapshotSource:
                 )
                 continue
             out.append(
-                ModelTickSnapshot(facts=record.facts, provenance=record.provenance)
+                ModelTickSnapshot(
+                    facts=record.facts,
+                    provenance=record.provenance,
+                    controller=record.controller,
+                )
             )
         self._skipped = tuple(skipped)
         return tuple(out)
@@ -141,6 +147,7 @@ _REQUIRED_FIELDS: dict[EnumTickBackend, tuple[str, ...]] = {
     EnumTickBackend.INMEMORY: (),
     EnumTickBackend.REDPANDA: (
         "consumer_group",
+        "host_env",
         "snapshot_topic",
         "poll_timeout_s",
         "emission_journal",
@@ -179,6 +186,7 @@ def build_snapshot_source(
     *,
     inmemory: InMemorySnapshotSource | None = None,
     topic_reader_factory: TopicReaderFactory | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> ProtocolTickSnapshotSource:
     if overlay.backend is EnumTickBackend.INMEMORY:
         if inmemory is None:
@@ -191,9 +199,15 @@ def build_snapshot_source(
         and overlay.poll_timeout_s
     ):
         raise ValueError("backend redpanda needs its overlay fields")
+    assert (
+        overlay.join_timeout_s is not None
+    )  # the overlay validator requires it for redpanda
     selection = ModelTickTopicSelection(
         topic=overlay.snapshot_topic,
-        consumer_group=overlay.consumer_group,
+        consumer_group=resolved_consumer_group(
+            overlay, os.environ if environ is None else environ
+        ),
+        join_timeout_s=overlay.join_timeout_s,
         bus_lane=overlay.bus_lane,
         workspace_root=overlay.workspace_root,
         bootstrap_servers=overlay.bootstrap_servers,
@@ -258,6 +272,7 @@ def run_snapshots(
                 facts=snapshot.facts,
                 recorded_decision=snapshot.decision,
                 fair_share=snapshot.fair_share,
+                controller=snapshot.controller,
             )
         )
         for snapshot in source.snapshots()

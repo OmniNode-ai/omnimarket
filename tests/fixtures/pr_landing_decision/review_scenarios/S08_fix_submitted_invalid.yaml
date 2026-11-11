@@ -12,7 +12,7 @@ ticks:
   - tla: [Dispatch]
     expect:
       actions: ["dispatch_worker acme/app#1 real_red"]
-      engine: {acme/app#1: codex_high}
+      engine: {acme/app#1: claude_sonnet}
   - tla: [WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
     events:
       - worker_result: {pr: acme/app#1, kind: fix_submitted, head: h2, evidence: none}
