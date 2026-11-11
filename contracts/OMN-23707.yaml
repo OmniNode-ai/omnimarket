@@ -54,8 +54,6 @@ dod_evidence:
 - id: dod-omn-23707-integration-proof
   description: The pushed head's tick and unit tests ran on a lab host and exited 0, and the unit installed from the branch ran one tick.
   source: manual
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
   checks:
   - check_type: command
