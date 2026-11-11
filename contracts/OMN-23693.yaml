@@ -36,13 +36,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23693-ac2-neighbours
-  description: The existing overlay store and declared clone tick tests still pass (a command check, because they pass at the base too and so cannot be a failing control).
+  description: The existing overlay store and declared clone tick tests still pass (run together with the disarm test file, so the bound check fails at the base).
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store tests/nodes/node_canonical_clone_refresh_effect -q --no-cov -p no:randomly
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py tests/unit/nodes/node_overlay_store tests/nodes/node_canonical_clone_refresh_effect -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn23693-ac3-replay
   description: 'The hosted part of AC3: the recorded arm and cancel events of each tick entrypoint end with a cancel; the lab replay (the overlay store tick test followed by a 130 second test, exit 1 with no summary at the base, 0 with the change) is read from the pull request body.'
