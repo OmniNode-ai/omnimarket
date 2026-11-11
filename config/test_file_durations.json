@@ -760,6 +760,7 @@
   "tests/nodes/node_context_pack_builder_compute/test_handler_context_pack_builder.py": 0.02,
   "tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py": 0.17,
   "tests/nodes/node_context_pack_orchestrator/test_contract.py": 0.02,
+  "tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py": 0.1,
   "tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py": 0.47,
   "tests/nodes/node_context_pack_orchestrator/test_runtime_tier_sources.py": 0.03,
   "tests/nodes/node_context_pack_orchestrator/test_session_source_projection_pack.py": 0.05,
