@@ -927,6 +927,50 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-snapshot/last-run.json
     state_directory: .onex_state/landing-snapshot
+  # The lane host pool snapshot writer on a Linux pool host (OMN-23664; node_lane_host_pool_snapshot_effect): every 60 s one pass
+  # reads the lab hosts' capacity advertisements, the lab host table, the open lane claims and each host's token pool, writes the
+  # snapshot file the lane start and the fill read with its read-time record, and publishes the record on the dev bus lane. The
+  # overlay (node_lane_host_pool_snapshot_effect in the overlays repository) names every path, route, bound and topic; this unit
+  # holds none of it.
+  lane-host-pool-snapshot-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-lane-host-pool-snapshot
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_host_pool_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_lane_host_pool_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
+      OMNIBASE_PATH: "{registry_root}"
+      # The advertisement command runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      # The open lane claims are read over the bus, never from the ledger file: the overlay's ledger_read names this variable.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/lane-host-pool-snapshot/last-run.json
+    state_directory: .onex_state/lane-host-pool-snapshot
   # The cutover repositories' landing facts (OMN-23514; node_pr_landing_watcher_facts_effect of OMN-23507): every 60 s
   # one pass reads the PR watcher state and writes the overlay's repositories' open pull requests (omnimemory only) to
   # the facts file the cutover snapshot unit reads. It reads and writes local files only: no GitHub call, no bus.
