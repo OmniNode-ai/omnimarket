@@ -22,6 +22,9 @@ from typing import Any
 from pydantic import ValidationError
 
 from omnimarket.models.model_dev_deploy_reading import (
+    ModelDeployAgentFacts,
+    ModelDeployAgentRule,
+    ModelDeploySource,
     ModelLabPassReceiptFact,
     ModelLineageFact,
     ModelRuntimeMerge,
@@ -31,6 +34,7 @@ from omnimarket.nodes.node_dev_deploy_reading_effect.models.model_dev_deploy_rea
     ModelDevDeployFacts,
 )
 from omnimarket.nodes.node_dev_deploy_reading_effect.overlay import (
+    ModelDeployAgentSettings,
     ModelDevDeployReadingOverlay,
     ModelMergeSettings,
     ModelProbeSettings,
@@ -379,7 +383,7 @@ class RuntimeProbeSource:
         self._fetch = fetch
         self._run = run
 
-    def _provenance(self) -> dict[str, Any]:
+    def build_record(self) -> dict[str, Any]:
         s = self._settings
         host = self._environ.get(s.ssh_host_env, "").strip()
         if not host:
@@ -425,7 +429,7 @@ class RuntimeProbeSource:
                 json.loads(self._fetch(s.health_url, s.timeout_seconds)),
                 s.health_ok_path,
             )
-            observed = _walk(self._provenance(), s.sha_path)
+            observed = _walk(self.build_record(), s.sha_path)
             if not isinstance(healthy, bool):
                 raise ValueError("the health answer's serving flag is not a boolean")
             fact = ModelRuntimeProbeFact(
@@ -451,6 +455,104 @@ class RuntimeProbeSource:
         return (fact,), None
 
 
+class DeployAgentSource:
+    """What the deploy agent itself reports and what the running runtime's build record names (OMN-23655).
+
+    Three read-only reads: the agent's ``/health`` (the job in flight, the newest finished job), its ``/queue`` (the commands
+    ahead) and the runtime's build provenance (the commit of the merge's repository, and when the build was made). A half
+    that cannot be read is named, never a zero: a queue that could not be read carries its reason and no count.
+    """
+
+    def __init__(
+        self,
+        settings: ModelDeployAgentSettings,
+        probe: ModelProbeSettings,
+        environ: Mapping[str, str],
+        fetch: Fetch = http_get,
+        run: Runner = run_process,
+    ) -> None:
+        self._settings = settings
+        self._fetch = fetch
+        self._provenance = RuntimeProbeSource(probe, environ, fetch, run)
+
+    def _queue(self) -> tuple[int | None, str | None]:
+        s = self._settings
+        try:
+            document = json.loads(self._fetch(s.queue_url, s.timeout_seconds))
+            ahead = document["commands_ahead"]
+            reason = document.get("control_topic_lag_reason") or ""
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            return None, f"queue unreadable: {type(exc).__name__}"
+        if isinstance(ahead, bool) or not isinstance(ahead, int) or ahead < 0:
+            return None, reason or "queue snapshot has no commands_ahead count"
+        if reason:
+            return None, reason
+        return ahead, None
+
+    def read_facts(
+        self, provenance_section: str, source_repo: str
+    ) -> tuple[ModelDeployAgentFacts | None, str | None]:
+        s = self._settings
+        try:
+            health = json.loads(self._fetch(s.health_url, s.timeout_seconds))
+            active = health["active_job"]
+            last = health["last_result"]
+            document = self._provenance.build_record()
+            build_time = _utc(document["build_time"])
+            if provenance_section == "siblings":
+                running = _walk(
+                    document,
+                    ("per_repo_vcs_provenance", "siblings", source_repo, "vcs_ref"),
+                )
+            else:
+                running = _walk(document, ("infra_vcs_ref",))
+            ahead, ahead_reason = self._queue()
+            return (
+                ModelDeployAgentFacts(
+                    running_sha=running,
+                    build_time=build_time,
+                    in_flight_job_id=None
+                    if active is None
+                    else active["correlation_id"],
+                    in_flight_started_at=None
+                    if active is None
+                    else _utc(active["started_at"]),
+                    commands_ahead=ahead,
+                    commands_ahead_unread_reason=ahead_reason,
+                    last_job_id=None if last is None else last["correlation_id"],
+                    last_job_status=None if last is None else last["status"],
+                    last_job_completed_at=None
+                    if last is None
+                    else _utc(last["completed_at"]),
+                ),
+                None,
+            )
+        except ValidationError:
+            return (
+                None,
+                "deploy agent source unreadable: a fact is not in its declared shape",
+            )
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            subprocess.SubprocessError,
+        ) as exc:
+            return None, f"deploy agent source unreadable: {type(exc).__name__}"
+
+    def source(self, provenance_section: str, source_repo: str) -> ModelDeploySource:
+        facts, reason = self.read_facts(provenance_section, source_repo)
+        return ModelDeploySource(
+            rule=ModelDeployAgentRule(
+                idle_grace_seconds=self._settings.idle_grace_seconds
+            ),
+            facts=facts,
+            unread_reason=reason,
+        )
+
+
 class LabDevDeployFacts:
     """All three sources together. The probe expects the newest runtime-affecting merge past its deadline."""
 
@@ -471,8 +573,43 @@ class LabDevDeployFacts:
         self._lineage = GitLineageSource(overlay.merges, environ, run)
         self._lineage_rule = overlay.lineage
         self._required_lane = overlay.thresholds.required_lane
+        self._overlay = overlay
+        self._deploy = DeployAgentSource(
+            overlay.deploy_agent, overlay.probe, environ, fetch, run
+        )
+
+    def _read_deploy_agent(self, now: datetime) -> ModelDevDeployFacts:
+        """The deploy-agent rule's facts: containment of each runtime-affecting merge in the running build, no receipts read."""
+        merges, merges_error = self._merges.read(now)
+        agent = self._overlay.deploy_agent
+        deploy = self._deploy.source(agent.provenance_section, agent.source_repo)
+        lineage: list[ModelLineageFact] = []
+        probes: tuple[ModelRuntimeProbeFact, ...] = ()
+        probes_error: str | None
+        if deploy.facts is None:
+            probes_error = f"no running sha to expect: {deploy.unread_reason}"
+        else:
+            probes, probes_error = self._probe.read(now, deploy.facts.running_sha)
+            if merges_error is None:
+                lineage = [
+                    self._lineage.pair(merge.sha, deploy.facts.running_sha)
+                    for merge in merges
+                    if merge.runtime_affecting
+                ]
+        return ModelDevDeployFacts(
+            merges=merges,
+            receipts=(),
+            probes=probes,
+            lineage=tuple(lineage),
+            receipts_unread_reason=merges_error
+            and f"merges unreadable ({merges_error})",
+            probes_unread_reason=probes_error,
+            deploy_source=deploy,
+        )
 
     def read(self, now: datetime) -> ModelDevDeployFacts:
+        if self._overlay.source_rule == "deploy_agent":
+            return self._read_deploy_agent(now)
         merges, merges_error = self._merges.read(now)
         receipts, receipts_error = self._receipts.read()
         settled = sorted(
@@ -532,6 +669,7 @@ class LabDevDeployFacts:
 
 
 __all__ = [
+    "DeployAgentSource",
     "GitLineageSource",
     "GitRuntimeMergeSource",
     "LabDevDeployFacts",

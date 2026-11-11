@@ -30,6 +30,10 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.handlers.tick_unit_arguments import (
+    add_tick_arguments,
+    write_tick_heartbeat,
+)
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot import (
     HandlerPrLandingSnapshot,
 )
@@ -37,6 +41,7 @@ from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors i
     SnapshotSourceError,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_sources import (
+    build_controller_source,
     build_snapshot_ports,
     resolve_path,
 )
@@ -68,6 +73,7 @@ def run_once(
     facts, write, recorder, publisher_ = build_snapshot_ports(
         overlay, now=now, publisher=publisher
     )
+    controller = build_controller_source(overlay, now=now)
     try:
         tick = facts.current_tick()
     except SnapshotSourceError as exc:
@@ -92,6 +98,7 @@ def run_once(
         write_source=write,
         recorder=recorder,
         publisher=publisher_,
+        controller_source=controller,
     ).handle(request)
     line: dict[str, object] = {
         "status": result.status.value,
@@ -100,6 +107,11 @@ def run_once(
         "prs": len(result.record.facts.prs) if result.record else 0,
         "node_ids_filled": result.node_ids_filled,
         "run_ids_filled": result.run_ids_filled,
+        "controller_tick": (
+            result.record.controller.controller_tick
+            if result.record and result.record.controller
+            else None
+        ),
     }
     if result.status is EnumSnapshotStatus.RECORDED:
         chain.success(
@@ -126,11 +138,12 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start check: exit 0 and print one status line without loading an overlay, reading the bus or writing a file",
     )
+    add_tick_arguments(parser)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    """--probe exits 0 after one status line, before loading the overlay or running the pass."""
+    """--probe exits 0 after one status line; a pass accepts --omni-home and --state-dir and writes last-run.json, the unit heartbeat."""
     parser = _parser()
     args = parser.parse_args(argv)
     if args.probe:
@@ -143,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         code, line = run_once(overlay)
     except (NodeOverlayError, ValueError) as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}
+    write_tick_heartbeat(args.state_dir, code=code, line=line)
     sys.stdout.write(json.dumps(line, sort_keys=True) + "\n")
     return code
 

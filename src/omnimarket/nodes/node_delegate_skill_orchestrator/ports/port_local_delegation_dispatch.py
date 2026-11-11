@@ -124,6 +124,7 @@ from omnimarket.enums.enum_delegation_context_strategy import (
     EnumDelegationContextStrategy,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
@@ -274,6 +275,9 @@ from omnimarket.models.delegation.wire.model_probe_ladder import (
     PROBE_LADDER_SOURCE_SURFACES,
     ModelProbeLadder,
     probe_ladder_admitted,
+)
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeRungCredentialed,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
@@ -1495,11 +1499,24 @@ class _ProbeLadderWalk:
             )
             for rung in ladder.rungs
         )
+        # OMN-23511: the rungs that declare their credential absent. The port
+        # never attempts them -- no provider call, the same skip production
+        # takes for a rung whose credential has no value (OMN-23170).
+        self._credential_absent = frozenset(
+            rung.backend_id
+            for rung in ladder.rungs
+            if isinstance(rung, ModelProbeRungCredentialed)
+            and rung.credential is EnumProbeRungCredential.DECLARED_ABSENT
+        )
         self._cursor = 0
 
     @property
     def length(self) -> int:
         return len(self._rungs)
+
+    def credential_absent(self, backend_id: str) -> bool:
+        """Whether this rung of the walk declares its credential absent."""
+        return backend_id in self._credential_absent
 
     def first(self) -> ModelResolvedDelegationBackend:
         self._cursor = 0
@@ -2548,6 +2565,19 @@ class LocalDelegationDispatchPort:
                 else "provider_quota"
             )
             route_skip_reason = scope_reason
+            # OMN-23511: a probe rung that declares its credential absent is
+            # never attempted -- no provider call, the same skip production
+            # takes for a rung whose credential has no value (OMN-23170).
+            if (
+                route_skip_reason is None
+                and probe_walk is not None
+                and probe_walk.credential_absent(backend.backend_id)
+            ):
+                route_skip_reason = (
+                    f"credential absent: probe rung {backend.backend_id} "
+                    "declares no credential"
+                )
+                skip_rule = EnumEscalationCause.CREDENTIAL_MISSING.value
             if route_skip_reason is None:
                 route_skip_reason = size_band_skip_reason(backend)
                 if route_skip_reason is not None:
