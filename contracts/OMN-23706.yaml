@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The declared, undeclared, missing and model-validation tests at the pushed head; on the dev head the reader takes no declared value so each declared test fails with a TypeError.
-  command: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_units.py -q --no-cov -n 0 -p no:randomly tests/test_worktree_reconcile_effect.py
+  command: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_units.py -q --no-cov -n 0 -p no:randomly tests/test_worktree_reconcile_effect.py
 emergency_bypass:
   enabled: false
   justification: ''
@@ -31,7 +31,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_schedule.py -q --no-cov -n 0 -p no:randomly -k declared
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_schedule.py -q --no-cov -n 0 -p no:randomly -k declared
     cwd: .
 - id: dod-omn-23706-ac2
   description: 'The error chain: undeclared unreadable file keeps the tree and counts a failure; a missing file still raises; a relative declared path is refused by the model.'
@@ -40,7 +40,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_units.py -q --no-cov -n 0 -p no:randomly -k 'undeclared or missing or absolute'
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_units.py -q --no-cov -n 0 -p no:randomly -k 'undeclared or missing or absolute'
     cwd: .
 - id: dod-omn23706-ac3-overlay-seam
   description: The host overlay's declared value reaches the unit reader through the scheduled tick (the in-process half of AC3; the lab half is the unbound integration item).
@@ -49,7 +49,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov -n 0 -p no:randomly -k hands_the_overlay
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov -n 0 -p no:randomly -k hands_the_overlay
     cwd: .
 - id: dod-omn-23706-integration-proof
   description: The pushed head's reader tests ran on a lab host and exited 0, and the unit installed from the branch ran one clean tick.
