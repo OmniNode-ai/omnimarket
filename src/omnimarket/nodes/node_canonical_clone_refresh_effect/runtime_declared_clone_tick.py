@@ -158,35 +158,39 @@ def main(argv: list[str] | None = None) -> int:
     deadline = load_node_timeouts(NODE).get("declared_clone_tick_seconds")
     if deadline:
         faulthandler.dump_traceback_later(float(deadline), exit=True)
+    # A tick run in-process must not leave the process-ending timer armed.
     try:
-        overlay = load_structured_overlay(NODE, ModelDeclaredCloneTickOverlay, env)
-        host = host_name(overlay, env)
-        topics = load_declared_clone_topics()
-        table = resolve_lab_hosts_table()
-        repo_dir = resolve_overlay_key(f"repos.{topics.repo_role}")
-        handler = HandlerDeclaredCloneRefresh(
-            table, repo_dir, TransportSubprocess(local_host_name=host)
-        )
-    except (NodeOverlayError, ValueError) as exc:
-        sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
-        write_evidence(args.state_dir, "", None, EXIT_INDETERMINATE)
-        return EXIT_INDETERMINATE
+        try:
+            overlay = load_structured_overlay(NODE, ModelDeclaredCloneTickOverlay, env)
+            host = host_name(overlay, env)
+            topics = load_declared_clone_topics()
+            table = resolve_lab_hosts_table()
+            repo_dir = resolve_overlay_key(f"repos.{topics.repo_role}")
+            handler = HandlerDeclaredCloneRefresh(
+                table, repo_dir, TransportSubprocess(local_host_name=host)
+            )
+        except (NodeOverlayError, ValueError) as exc:
+            sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
+            write_evidence(args.state_dir, "", None, EXIT_INDETERMINATE)
+            return EXIT_INDETERMINATE
 
-    def open_bus() -> Any:
-        return open_lab_run_bus(
-            bus=overlay.bus_kind,
-            lane=overlay.bus_lane,
-            kafka_bootstrap=None,
-            **{_REGISTRY_KW: args.registry_root},
-        )
+        def open_bus() -> Any:
+            return open_lab_run_bus(
+                bus=overlay.bus_kind,
+                lane=overlay.bus_lane,
+                kafka_bootstrap=None,
+                **{_REGISTRY_KW: args.registry_root},
+            )
 
-    return tick(
-        overlay=overlay,
-        env=env,
-        state_dir=args.state_dir,
-        open_bus=open_bus,
-        handler=handler,
-    )
+        return tick(
+            overlay=overlay,
+            env=env,
+            state_dir=args.state_dir,
+            open_bus=open_bus,
+            handler=handler,
+        )
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 
 if __name__ == "__main__":
