@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """What a host lets the worktree reconcile node remove (the policy a host overlay sets)."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ModelWorktreeReconcilePolicy(BaseModel):
@@ -21,3 +21,27 @@ class ModelWorktreeReconcilePolicy(BaseModel):
     # remove, is held at KEEP with the rule's reason, so a host can be limited to
     # the merged class by its overlay.
     merged_only: bool = False
+    # What a systemd EnvironmentFile the run user cannot open holds, declared by the host overlay: key = the file's absolute
+    # path, value = the absolute paths it holds that matter to the live-path set (empty: it holds none). Nothing is read
+    # with elevated rights and no file mode changes; an unreadable file the host does not declare still fails the snapshot.
+    unreadable_environment_files: dict[str, tuple[str, ...]] = Field(
+        default_factory=dict
+    )
+
+    @field_validator("unreadable_environment_files")
+    @classmethod
+    def _declared_files_and_paths_are_absolute(
+        cls, declared: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        for file, paths in declared.items():
+            if not file.startswith("/"):
+                raise ValueError(
+                    f"unreadable_environment_files key is not an absolute path: {file}"
+                )
+            for path in paths:
+                if not path.startswith("/"):
+                    raise ValueError(
+                        f"unreadable_environment_files[{file}] holds a path"
+                        f" that is not absolute: {path}"
+                    )
+        return declared
