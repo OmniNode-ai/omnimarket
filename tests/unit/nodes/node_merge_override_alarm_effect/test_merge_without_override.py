@@ -27,6 +27,7 @@ from tests.unit.nodes.node_merge_override_alarm_effect.support import (
 
 pytestmark = pytest.mark.unit
 KEY = f"merge-override:{REPO}#{PR}:{HEAD}"
+FINDING_TOPIC = "onex.evt.omnimarket.merge-override-finding.v1"
 
 
 def test_merge_without_override_emits_finding_command_and_open_row(
@@ -50,6 +51,9 @@ def test_merge_without_override_emits_finding_command_and_open_row(
     [finding] = rig.publisher.on(FINDING_SUFFIX)
     assert finding["verdict"] == "merge_without_override"
     assert finding["idempotency_key"] == KEY
+    assert [t for t, _ in rig.publisher.calls if t.endswith(FINDING_SUFFIX)] == [
+        FINDING_TOPIC
+    ]
     [open_row] = rig.rows("merge_override_open_findings")
     assert open_row["finding_key"] == KEY
     [verdict_row] = rig.rows("merge_override_verdicts")
