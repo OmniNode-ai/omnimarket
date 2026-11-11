@@ -4395,6 +4395,7 @@
   "tests/unit/nodes/node_lab_proof_judge_compute/test_golden_chain_lab_proof_judge.py": 1.87,
   "tests/unit/nodes/node_lab_proof_judge_compute/test_live_probe.py": 1.89,
   "tests/unit/nodes/node_lab_proof_judge_compute/test_overlay.py": 1.76,
+  "tests/unit/nodes/node_lab_proof_judge_compute/test_pool_judge_command_overlay.py": 1.7,
   "tests/unit/nodes/node_lab_proof_judge_compute/test_probe_chain_lab_proof_judge.py": 1.66,
   "tests/unit/nodes/node_lab_proof_judge_compute/test_test_selection.py": 1.77,
   "tests/unit/nodes/node_lab_proof_judge_use_effect/test_declared_use_topic.py": 1.63,
