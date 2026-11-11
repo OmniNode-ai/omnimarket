@@ -260,5 +260,13 @@
     "basis": "Each file the record did not hold, summed from its measured pytest per-test seconds (junit) in serial runs of those files with -m 'not kafka' --timeout=300 --no-cov -p no:xdist -p no:randomly; existing entries left as they were.",
     "runner": "lab host h051, lane landing-L35549; the next CI refresh replaces these entries",
     "base_sha": "a49d7447850bf6282e652873f35c2d96ff91c3f0"
+  },
+  "supplement_omn23666": {
+    "ticket": "OMN-23666",
+    "recorded_on": "2026-11-11",
+    "files_added": 11,
+    "basis": "files the record did not hold on dev 366791312e15, 8 from other merges and 3 this change's own node tests, each the sum of its measured pytest setup, call and teardown durations from a focused run with --store-durations --no-cov -p no:randomly, written by the record command of node_test_duration_record_check_effect; existing entries left as they were",
+    "runner": "lab host h202, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "366791312e152a0fbc39daa5494452a8d88a6af4"
   }
 }
