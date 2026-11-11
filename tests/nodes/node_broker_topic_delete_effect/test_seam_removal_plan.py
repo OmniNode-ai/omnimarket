@@ -16,6 +16,9 @@ from omnimarket.nodes.node_broker_topic_delete_effect.models.model_topic_delete 
     ModelDeleteTarget,
     ModelTopicDeleteCommand,
 )
+from omnimarket.nodes.node_broker_topic_removal_effect.handlers.handler_broker_topic_removal import (
+    load_topics as load_removal_topics,
+)
 from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
     EnumRemovalMode,
     EnumTopicClass,
@@ -79,3 +82,11 @@ def test_removal_plan_candidates_validate_as_delete_command() -> None:
 def test_topic_classes_are_the_four_both_nodes_document() -> None:
     """The shared enum holds exactly the four classes; a change on either side fails here."""
     assert {member.value for member in EnumTopicClass} == EXPECTED_CLASSES
+
+
+def test_the_removal_plan_ends_on_the_topic_this_seam_reads_the_plan_from() -> None:
+    """The removal node's terminal event is the run-completed topic its plan chain ends on."""
+    assert (
+        load_removal_topics()["broker_topic_removal_run_completed"]
+        == "onex.evt.omnimarket.broker-topic-removal-run-completed.v1"
+    )

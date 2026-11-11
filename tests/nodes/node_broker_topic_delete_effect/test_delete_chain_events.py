@@ -180,3 +180,11 @@ def test_named_break_the_golden_assertion_turns_red_when_the_broker_is_unreadabl
     events = asyncio.run(_publish(world, _payload(world, "clean", "group")))
     with pytest.raises(AssertionError):
         assert_golden_chain(events)
+
+
+def test_the_terminal_event_of_the_contract_is_the_run_completed_topic() -> None:
+    """The contract's terminal event is the topic the golden chain ends on."""
+    assert (
+        TOPICS["broker_topic_delete_run_completed"]
+        == "onex.evt.omnimarket.broker-topic-delete-run-completed.v1"
+    )
