@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from omnimarket.nodes.node_delegation_code_step_order_effect.handlers.handler_code_step_order import (
@@ -139,3 +140,22 @@ def test_every_engine_disabled(tmp_path: Path) -> None:
     assert result.ok is False
     assert result.refusal == EnumCodeStepRefusal.NO_ENABLED_STEP
     assert result.steps == ()
+
+
+def test_cli_exit_code_is_three_on_a_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The entry point the lane step runs exits 3 and prints the typed refusal; it never prints a default order."""
+    import io
+
+    from omnimarket.nodes.node_delegation_code_step_order_effect.__main__ import main
+
+    request = ModelCodeStepOrderRequest(
+        task_class="code_generation",
+        task_class_contracts_path=str(tmp_path / "absent.yaml"),
+        routing_tiers_path=str(tmp_path / "absent.yaml"),
+        overlay_path=str(tmp_path / "absent.yaml"),
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(request.model_dump_json()))
+    assert main() == 3
+    assert '"contract_unreadable"' in capsys.readouterr().out
