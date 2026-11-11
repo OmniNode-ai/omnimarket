@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23839
+title: Move omnimarket to the newest infrastructure and shared-library builds
+summary: omnimarket moves its omnibase-infra dev merge tag to dev-20261111190933-a349fbf4478e (omnibase_infra#5894, which carries the infra move to core 6cbe67b216fe and, beneath it, the migration 004 of omnibase_infra#5893) and its omnibase-core dev merge tag to dev-20261111160725-6cbe67b216fe (core 0.47.75, the routing order models of omnibase_core#2309), relocks, and records the infra commit in INFRA_CORE_TAGS. The ticket text named infra 13566fb25491 as the infra build; that build still pins core cd128b790ec6, so the pair with core 6cbe67b216fe starts at the next infra merge tag that carries omnibase_infra#5894.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23839-pair
+  statement: omnimarket's infra and core pins, uv.lock and the INFRA_CORE_TAGS table name one recorded pair.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket pins omnibase-infra to dev-20261111155731-13566fb25491 and omnibase-core to dev-20261111160725-6cbe67b216fe with one INFRA_CORE_TAGS row for the infra commit -- falsifier: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q fails on a pin pair with no recorded row'
+  - id: AC2
+    statement: 'AC2: the new pair imports the routing order models and the infra migration 004, and a core-only bump is still named as the conflict -- falsifier: uv run pytest tests/ci/test_core_pin_pair_6cbe67b216fe_omn23755.py -q fails on the old core pin'
+- id: req-omn23839-gate
+  statement: The sibling gate on the open market change that waited on the pair reads green after dev is merged in.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: the Sibling Release Compatibility Gate on the open market change that waited on this pair passes after dev is merged in, read from its check state -- falsifier: that gate stays red with the conflicting-URLs or missing-migration finding'
+evidence_requirements:
+- kind: tests
+  description: The focused pin tests pass at the pushed head.
+  command: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q -n 0 --no-cov -p no:cacheprovider && uv run pytest tests/ci/test_core_pin_pair_6cbe67b216fe_omn23755.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23839-ac1
+  description: 'AC1: pyproject.toml, uv.lock and INFRA_CORE_TAGS agree on the recorded pair, and the newest-pair test names it'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23839-ac2
+  description: 'AC2: the pinned core ships the routing order models and a core-only bump is still named as the conflict'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_core_pin_pair_6cbe67b216fe_omn23755.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23839-ac3
+  description: 'AC3: integrated: the sibling gate reads the new pair as co-resolving, shown here by the lock and the pair table agreeing'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q -n 0 --no-cov -p no:cacheprovider -k the_core_pin_is_the_one_the_infra_pin_names
+    cwd: .
