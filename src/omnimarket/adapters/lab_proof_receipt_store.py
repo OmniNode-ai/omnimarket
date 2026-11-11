@@ -10,6 +10,7 @@ its path. The store is the CLI's only I/O: the pure handlers read no disk.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from omnimarket.nodes.node_lab_proof_judge_compute.models.model_substitute_receipt import (
@@ -18,7 +19,7 @@ from omnimarket.nodes.node_lab_proof_judge_compute.models.model_substitute_recei
 
 
 def _load(path: Path) -> ModelSubstituteReceipt:
-    raw = path.read_text()  # node-purity-ok: OMN-23642 disk boundary
+    raw = path.read_text()
     return ModelSubstituteReceipt.model_validate(json.loads(raw))
 
 
@@ -28,6 +29,16 @@ class DirectoryReceiptStore:
     def __init__(self, root: Path, subdir: str) -> None:
         self._root = root
         self._subdir = subdir
+
+    @classmethod
+    def from_env(cls, root_env: str, subdir: str) -> DirectoryReceiptStore:
+        """Build the store from the root directory named by environment variable ``root_env``."""
+        root = os.environ.get(root_env, "").strip()
+        if not root:
+            raise ValueError(
+                f"{root_env} is not set; the substitute receipts live under it"
+            )
+        return cls(Path(root), subdir)
 
     def _node_dir(self, node: str) -> Path:
         return self._root / self._subdir / node
@@ -62,5 +73,5 @@ class DirectoryReceiptStore:
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{receipt.receipt_id}.receipt.json"
         body = receipt.model_dump_json(indent=2) + "\n"
-        path.write_text(body)  # node-purity-ok: OMN-23642 disk boundary
+        path.write_text(body)
         return str(path)
