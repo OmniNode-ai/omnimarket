@@ -56,7 +56,7 @@ descriptor:
   idempotent: true
   timeout_ms: 600000
   side_effects:
-    - the file_sources profile reads the projection's sources and writes the projection JSON atomically where the floor and the fill dispatcher read it
+    - the file_sources profile reads the projection's sources and writes the projection JSON atomically where the floor and the fill dispatcher read it; the schedule overlay's state_home, when set, replaces OMNI_HOME as the directory every one of those home-relative paths is read and written under (the runtime's own data volume, because its OMNI_HOME is not writable by the runtime user)
 
 input_subscriptions:
   - topic: "onex.intent.platform.runtime-tick.v1"

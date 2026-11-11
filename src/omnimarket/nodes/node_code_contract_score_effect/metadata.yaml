@@ -1,0 +1,23 @@
+name: node_code_contract_score_effect
+version: "1.0.0"
+description: "Scores a code draft by the ticket contract's own bound checks run in a scratch worktree at the base commit (OMN-23626)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_code_contract_score_effect: "omnimarket.nodes.node_code_contract_score_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["code-eval", "contract-score", "effect", "OMN-23626"]
+pack: "delegation"
+display_name: "Code Contract Score Effect"
+node_role: "effect"
