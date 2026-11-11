@@ -18,7 +18,14 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from omnibase_infra.enums import EnumInfraTransportType
+from omnibase_infra.errors import (
+    InfraConnectionError,
+    InfraTimeoutError,
+    ModelTimeoutErrorContext,
+)
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.container.container_tenant_read_dependencies import (
     InMemoryTenantProjectionReader,
 )
@@ -378,7 +385,7 @@ def test_the_bus_request_takes_the_workspace_root_from_the_environment_it_is_giv
         correlation_id=UUID(int=1), kind=EnumTenantReadKind.SAVINGS, tenant_id=TENANT
     )
     for environment, expected in (
-        ({"WS": "/from/the/mapping"}, "/from/the/mapping"),
+        ({"WS": "/from/the/mapping"}, Path("/from/the/mapping")),
         ({}, None),
     ):
         seen.clear()
@@ -391,4 +398,51 @@ def test_the_bus_request_takes_the_workspace_root_from_the_environment_it_is_giv
         )
         with pytest.raises(_StopError):
             request(command, 1.0)
-        assert seen[0].get("omnibase_path") == expected
+        assert set(seen[0]) == {"bus", "bus_lane", "kafka_bootstrap", "omnibase_path"}
+        assert seen[0]["bus"] == OVERLAY.bus
+        assert seen[0]["bus_lane"] == OVERLAY.bus_lane
+        assert seen[0]["omnibase_path"] == expected
+
+
+def _build_bus_error(error_class: type[Exception]) -> Exception:
+    """One of the bus errors the real broker raises, built the way its class allows."""
+    if error_class is InfraTimeoutError:
+        return error_class(
+            "no tenant read terminal",
+            ModelTimeoutErrorContext(
+                transport_type=EnumInfraTransportType.KAFKA, operation="read"
+            ),
+        )
+    return error_class("no tenant read terminal")
+
+
+@pytest.mark.parametrize(
+    "error_class",
+    [TimeoutError, LabRunBusError, InfraTimeoutError, InfraConnectionError],
+    ids=lambda error_class: error_class.__name__,
+)
+def test_the_bus_request_answers_the_lane_when_the_bus_raises_a_typed_error(
+    monkeypatch: pytest.MonkeyPatch,
+    error_class: type[Exception],
+) -> None:
+    """The bus errors the real broker raises are answered, never re-raised: the lane survives with a non-completed answer."""
+
+    def fake_open_bus(bus_opts: dict[str, object]) -> object:
+        raise _build_bus_error(error_class)
+
+    monkeypatch.setattr(adapter_r8_bus_request, "_open_bus", fake_open_bus)
+    settings = load_lane_settings(CONTRACT_PATH)
+    assert settings.bus is not None
+    command = ModelTenantReadCommand(
+        correlation_id=UUID(int=1), kind=EnumTenantReadKind.SAVINGS, tenant_id=TENANT
+    )
+    request = build_bus_request(
+        OVERLAY,
+        savings_node=settings.bus.savings_node,
+        delegations_node=settings.bus.delegations_node,
+        workspace_env="WS",
+        environment={"WS": "/from/the/mapping"},
+    )
+    answer = request(command, 1.0)
+    assert answer.completed is False
+    assert answer.reason.startswith("no tenant read terminal")

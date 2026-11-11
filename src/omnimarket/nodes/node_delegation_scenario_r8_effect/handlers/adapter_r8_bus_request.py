@@ -13,9 +13,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from importlib import resources
+from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_infra.errors import InfraConnectionError, InfraTimeoutError
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
@@ -62,13 +64,13 @@ def build_bus_request(
     def request(
         command: ModelTenantReadCommand, timeout_s: float
     ) -> ModelTenantReadAnswer:
+        omnibase_path = environment.get(workspace_env, "").strip()
         bus_opts: dict[str, Any] = {
             "bus": overlay.bus,
             "bus_lane": overlay.bus_lane,
+            "kafka_bootstrap": None,
+            "omnibase_path": Path(omnibase_path) if omnibase_path else None,
         }
-        omnibase_path = environment.get(workspace_env, "").strip()
-        if omnibase_path:
-            bus_opts["omnibase_path"] = omnibase_path
 
         async def call() -> ModelScmTerminal:
             async with _open_bus(bus_opts) as opened:
@@ -81,7 +83,12 @@ def build_bus_request(
 
         try:
             terminal = asyncio.run(call())
-        except (TimeoutError, LabRunBusError) as exc:
+        except (
+            TimeoutError,
+            LabRunBusError,
+            InfraTimeoutError,
+            InfraConnectionError,
+        ) as exc:
             return ModelTenantReadAnswer(
                 completed=False,
                 reason=f"no tenant read terminal: {exc or type(exc).__name__}",
