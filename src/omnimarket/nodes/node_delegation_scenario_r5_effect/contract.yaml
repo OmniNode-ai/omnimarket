@@ -85,9 +85,15 @@ runtime:
   # inmemory: scripted registry and delegator, no network (the default profile). real: the model registry's own add and list
   # handlers and the delegation skill handler against OpenRouter, on the paid probe key read from `openrouter_probe_key_env`.
   model_backend: inmemory
+  # ONEX_SCENARIO_R5_MODEL_BACKEND, when set in the unit's environment file (`.config/onex/scenario-r5.env`) to `real` or
+  # `inmemory`, overrides model_backend for that one run; unset keeps the contract's value; any other value is a refusal
+  # (the scheduled tick exits 65 and records `refused`). The contract file itself stays at the scripted default.
+  model_backend_env: ONEX_SCENARIO_R5_MODEL_BACKEND
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r5_legs.yaml
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
   # The variable that carries the one paid OpenRouter probe key. The value is read at run time only and is never printed,
   # logged, put in an event or a ledger row; an empty variable in the real backend makes the run red, never skipped.
   openrouter_probe_key_env: ONEX_SCENARIO_R5_OPENROUTER_PROBE_KEY
@@ -96,7 +102,7 @@ schedule:
   unit_name: onex-delegation-scenario-r5
   state_directory: .onex_state/delegation-scenario-r5
   timeout_seconds: 900
-  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND]
   # The key variable is loaded from this file under the home directory when it exists; it never sits in the unit.
   environment_file: .config/onex/scenario-r5.env
   cadence:

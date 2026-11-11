@@ -6,7 +6,7 @@
 ``probe``  the same reads, writing nothing.
 
 Exit codes: 0 the join ran (a golden or an error join is a recorded result); 1 the ledger could not be read; 3 a deployment fact
-is missing (INDETERMINATE).
+is missing or the join's node is not one the floor reads (INDETERMINATE).
 """
 
 from __future__ import annotations
@@ -21,8 +21,12 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.emission_sink import JsonlEmissionSink
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
+    load_runtime,
+)
 from omnimarket.nodes.node_join_j16_effect.handlers.handler_join_j16 import (
     HandlerJoinJ16,
+    refuse_unread_floor_node,
 )
 from omnimarket.nodes.node_join_j16_effect.models import ModelJoinJ16Command
 from omnimarket.nodes.node_join_j16_effect.overlay import NODE_NAME, load_overlay
@@ -34,6 +38,7 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 
 def _run(args: argparse.Namespace) -> int:
     overlay = load_overlay()
+    refuse_unread_floor_node(overlay.join.to_node, load_runtime().pipeline_chains)
     home = os.environ.get(overlay.emission.home_env, "").strip()
     if not home:
         raise ValueError(
