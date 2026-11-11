@@ -129,6 +129,24 @@ shadow_schedule:
     persistent: true
     description: hourly at minute 20 UTC, after the reading writer's window rows of the previous hour
 
+# The scheduled drill: a run with an injected fault that writes a row with drill=yes, which no operational
+# reading reads. Twice a day keeps the newest error event under 12 hours old, inside the floor's 24 hour window.
+# The injected fault makes the run exit 1 on purpose, so systemd must count exit 1 as success for this unit.
+drill_schedule:
+  verb: "nightly --fault unreadable-repo"
+  unit_name: onex-code-graph-drill
+  description: ONEX scheduled code graph drill (piece 1 error event; an injected fault, drill=yes)
+  timer_description: ONEX code graph drill tick
+  log_stem: code-graph-drill
+  state_directory: .onex_state/code-graph
+  timeout_seconds: 3600
+  success_exit_status: [1]
+  cadence:
+    on_calendar: "*-*-* 00,12:25:00 UTC"
+    randomized_delay: 120s
+    persistent: true
+    description: twice a day at 00:25 and 12:25 UTC, a run with an unreadable repository so the error event stays fresh
+
 overlay:
   node: node_code_graph_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

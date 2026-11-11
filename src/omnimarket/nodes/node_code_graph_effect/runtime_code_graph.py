@@ -71,7 +71,11 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 
 LATEST_RESULT = "code-graph-latest.json"
 #: The contract block each ``schedule --unit`` names.
-SCHEDULE_BLOCKS = {"nightly": "schedule", "shadow": "shadow_schedule"}
+SCHEDULE_BLOCKS = {
+    "nightly": "schedule",
+    "shadow": "shadow_schedule",
+    "drill": "drill_schedule",
+}
 
 
 def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
@@ -252,7 +256,7 @@ def _schedule(arguments: Sequence[str]) -> int:
             "--unit",
             choices=sorted(SCHEDULE_BLOCKS),
             default="nightly",
-            help="the nightly graph (default) or the pull request check in shadow",
+            help="the nightly graph (default), the pull request check in shadow, or the scheduled drill",
         )
         if verb == "install":
             sub.add_argument(
