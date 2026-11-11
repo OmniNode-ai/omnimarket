@@ -228,6 +228,8 @@ class OnexTui(App[int]):
         self._load_status = load_status or globals()["load_status"]
         self._status = ModelTuiStatus(workspace=str(Path.cwd()))
         self._last_run = ""
+        self._history: list[str] = []
+        self._recall = 0
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="output", wrap=True, markup=False, highlight=False)
@@ -305,11 +307,26 @@ class OnexTui(App[int]):
         palette = self.query_one("#palette", OptionList)
         if palette.display:
             palette.action_cursor_down()
+        else:
+            self._recall_entry(+1)
 
     def action_palette_up(self) -> None:
         palette = self.query_one("#palette", OptionList)
         if palette.display:
             palette.action_cursor_up()
+        else:
+            self._recall_entry(-1)
+
+    def _recall_entry(self, step: int) -> None:
+        """Arrow keys walk earlier entries; past the newest is an empty line."""
+        if not self._history:
+            return
+        self._recall = max(0, min(len(self._history), self._recall + step))
+        prompt = self.query_one("#prompt", Input)
+        prompt.value = (
+            self._history[self._recall] if self._recall < len(self._history) else ""
+        )
+        prompt.cursor_position = len(prompt.value)
 
     def action_complete(self) -> None:
         palette = self.query_one("#palette", OptionList)
@@ -334,6 +351,8 @@ class OnexTui(App[int]):
         self.action_close_palette()
         if not text:
             return
+        self._history.append(text)
+        self._recall = len(self._history)
         if not text.startswith("/"):
             await self._delegate(text)
             return

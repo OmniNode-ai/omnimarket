@@ -261,3 +261,23 @@ async def test_slash_quit_exits() -> None:
         await pilot.press("enter")
         await pilot.pause()
     assert app.return_code == 0
+
+
+async def test_up_and_down_recall_earlier_entries_when_the_palette_is_closed() -> None:
+    """Earlier tasks and commands come back with the arrow keys, newest first."""
+    app = _app(_Runner([], captured=_DELEGATED))
+    async with app.run_test() as pilot:
+        for entry in ("first", "second"):
+            for key in entry:
+                await pilot.press(key)
+            await pilot.press("enter")
+            await pilot.pause()
+        prompt = app.query_one("#prompt")
+        await pilot.press("up")
+        assert prompt.value == "second"
+        await pilot.press("up")
+        assert prompt.value == "first"
+        await pilot.press("down")
+        assert prompt.value == "second"
+        await pilot.press("down")
+        assert prompt.value == ""
