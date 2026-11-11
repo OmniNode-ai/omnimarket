@@ -300,7 +300,9 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-ac11-claude-settings
   description: 'Gateway enable/rerun/disable: atomic backup and merge, conflicts refused, no-op rerun,
-    disable restores only still-owned values and keeps later edits.'
+    disable restores only still-owned values and keeps later edits. The ownership journal holds the compact
+    "phase":"enabled" text the legacy delegation runner stands down on, and the saved hook mask is never
+    written, so disable leaves the user''s bit-11 choice as it was.'
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
@@ -313,7 +315,9 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-ac12-claude-requests
   description: Gateway protocol, streaming, outage, auth and bypass controls fail visibly without direct
-    fallback. Actual Claude captures are the local actual-claude item.
+    fallback; per request the gateway walks its ordered native-Messages ladder, serving from the next
+    backend under that backend's model with its own receipt, never calling a non-native backend and never
+    retrying a client error. Actual Claude captures are the local actual-claude item.
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
@@ -321,8 +325,8 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_claude_gateway.py
-      tests/e2e/test_claude_gateway_hook.py tests/e2e/test_claude_gateway_evidence.py -q --no-cov -n 0
-      -p no:randomly
+      tests/unit/nodes/node_llm_delegation_call_effect/test_claude_gateway_ladder.py tests/e2e/test_claude_gateway_hook.py
+      tests/e2e/test_claude_gateway_evidence.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-portable-controls
   description: Pure inventory/schema and isolated connection-store controls remain portable; they do not

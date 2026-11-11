@@ -78,6 +78,23 @@ def build_local_gateway_application(
             "complex_reasoning", backend_id=config.backend_id, store=credential_store
         )
 
+    def resolve_fallbacks() -> list[ModelResolvedDelegationBackend]:
+        """Each ladder entry through the same canonical routing; unresolvable ones
+        are left out here and the gateway never calls them."""
+        found: list[ModelResolvedDelegationBackend] = []
+        for backend_id in config.fallback_backend_ids:
+            try:
+                found.append(
+                    resolve_delegation_backend(
+                        "complex_reasoning",
+                        backend_id=backend_id,
+                        store=credential_store,
+                    )
+                )
+            except Exception:  # an unresolvable entry is skipped, never guessed
+                continue
+        return found
+
     def record_sync(receipt: ModelClaudeGatewayReceipt) -> None:
         now = datetime.now(UTC)
         run_id = str(receipt.run_id)
@@ -129,6 +146,7 @@ def build_local_gateway_application(
     return build_gateway_app(
         config,
         resolve_backend=resolve,
+        resolve_fallbacks=resolve_fallbacks,
         read_secret=credential_store.get_secret,
         record=record,
         transport=transport,

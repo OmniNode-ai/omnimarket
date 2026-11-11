@@ -233,3 +233,26 @@ def test_invalid_gateway_url_is_refused(url: str) -> None:
 def test_enable_requires_complete_choices() -> None:
     with pytest.raises(ValidationError):
         ModelClaudeGatewaySettingsRequest(action="enable")
+
+
+def test_single_switch_journal_seam_and_bit_11_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23413 one Claude switch. The legacy omniclaude delegation runner stands
+    down while ~/.onex/claude_gateway.json holds the compact text
+    "phase":"enabled" (delegation_hook_runner._gateway_owns_session). A journal
+    written with spaces, or left "enabled" after disable, would route every Agent
+    call twice or never again. The user's saved hook mask is never written, so
+    disable leaves their own bit-11 choice as it was."""
+    mask_file = tmp_path / ".omnibase" / ".env"
+    mask_file.parent.mkdir()
+    mask_file.write_bytes(b"ONEX_HOOKS_MASK=0x7ff7ff\n")
+    monkeypatch.setenv("OMNIBASE_ENV_FILE", str(mask_file))
+    journal = tmp_path / ".onex" / "claude_gateway.json"
+    owner = handler(tmp_path)
+    assert owner.handle(request()).enabled
+    assert '"phase":"enabled"' in journal.read_text()
+    assert owner.handle(request(action="disable")).status == "success"
+    assert '"phase":"enabled"' not in journal.read_text()
+    assert '"phase":"disabled"' in journal.read_text()
+    assert mask_file.read_bytes() == b"ONEX_HOOKS_MASK=0x7ff7ff\n"

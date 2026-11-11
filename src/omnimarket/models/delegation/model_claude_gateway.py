@@ -5,10 +5,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelClaudeGatewayConfig(BaseModel):
@@ -21,6 +21,16 @@ class ModelClaudeGatewayConfig(BaseModel):
     bind_port: int = Field(default=8181, ge=1, le=65535)
     max_request_bytes: int = Field(default=32 * 1024 * 1024, ge=1, le=32 * 1024 * 1024)
     max_event_bytes: int = Field(default=8 * 1024 * 1024, ge=1, le=8 * 1024 * 1024)
+    # Ordered native-Messages backends tried after backend_id, per request, when
+    # the one before it is unreachable or overloaded (OMN-23413).
+    fallback_backend_ids: tuple[str, ...] = Field(default=(), max_length=8)
+
+    @model_validator(mode="after")
+    def validate_ladder(self) -> Self:
+        ladder = (self.backend_id, *self.fallback_backend_ids)
+        if any(not item for item in ladder) or len(set(ladder)) != len(ladder):
+            raise ValueError("Each gateway backend appears once in the ladder")
+        return self
 
 
 class ModelClaudeGatewayReceipt(BaseModel):

@@ -199,8 +199,19 @@ def hook_command() -> None:
     "--host", default="127.0.0.1", type=click.Choice(["127.0.0.1", "::1", "localhost"])
 )
 @click.option("--port", default=8181, type=click.IntRange(1, 65535))
+@click.option(
+    "--fallback-backend-id",
+    "fallback_backend_ids",
+    multiple=True,
+    help="Another native Messages backend tried, in the order given, when the one before it is down. Repeatable.",
+)
 def gateway_command(
-    backend_id: str, model: str, credential_ref: str, host: str, port: int
+    backend_id: str,
+    model: str,
+    credential_ref: str,
+    host: str,
+    port: int,
+    fallback_backend_ids: tuple[str, ...],
 ) -> None:
     """Serve an authenticated local gateway using ONEX routing and evidence."""
     from omnimarket.handlers.claude_gateway import serve_local_gateway
@@ -212,14 +223,15 @@ def gateway_command(
             credential_ref=credential_ref,
             bind_host=host,
             bind_port=port,
+            fallback_backend_ids=fallback_backend_ids,
         )
     except ValidationError:
         raise click.ClickException(
-            "Provide a valid native backend, model and gateway credential reference."
+            "Provide a valid native backend, model, gateway credential reference and distinct fallback backends."
         ) from None
     shown_host = f"[{host}]" if host == "::1" else host
     click.echo(
-        f"Gateway: http://{shown_host}:{port}\nBackend: {backend_id}\nModel: {model}\nPrice: unknown"
+        f"Gateway: http://{shown_host}:{port}\nBackend: {backend_id}\nFallbacks: {', '.join(fallback_backend_ids) or 'none'}\nModel: {model}\nPrice: unknown"
     )
     try:
         serve_local_gateway(config)

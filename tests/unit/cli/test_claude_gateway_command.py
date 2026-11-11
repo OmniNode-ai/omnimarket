@@ -191,3 +191,43 @@ def test_start_uses_claude_after_successful_status(
     result = CliRunner().invoke(cli.claude_group, ["start", "--", "--version"])
     assert result.exit_code == 7
     assert launches == [["claude", "--version"]]
+
+
+def test_gateway_serves_the_ordered_fallback_ladder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-23413: repeated --fallback-backend-id reaches the served config in the
+    order given; a repeated backend is refused before anything is served."""
+    import omnimarket.handlers.claude_gateway as composition
+
+    served: list[object] = []
+    monkeypatch.setattr(composition, "serve_local_gateway", served.append)
+    base = [
+        "gateway",
+        "--backend-id",
+        "native-a",
+        "--model",
+        "claude-fixture",
+        "--credential-ref",
+        "gateway.fixture",
+    ]
+    ok = CliRunner().invoke(
+        cli.claude_group,
+        [
+            *base,
+            "--fallback-backend-id",
+            "native-b",
+            "--fallback-backend-id",
+            "native-c",
+        ],
+    )
+    assert ok.exit_code == 0, ok.output
+    assert [getattr(c, "fallback_backend_ids", None) for c in served] == [
+        ("native-b", "native-c")
+    ]
+    assert "Fallbacks: native-b, native-c" in ok.output
+    repeated = CliRunner().invoke(
+        cli.claude_group, [*base, "--fallback-backend-id", "native-a"]
+    )
+    assert repeated.exit_code != 0
+    assert len(served) == 1

@@ -15,7 +15,7 @@ import hmac
 import json
 import re
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import suppress
 from typing import Literal, cast
 from urllib.parse import urlsplit
@@ -55,6 +55,14 @@ _ERROR = {
     },
 }
 _SSE_ERROR = ("event: error\ndata: " + json.dumps(_ERROR) + "\n\n").encode()
+# Upstream answers that let the next native backend in the ladder take the request.
+# Other client errors (400, 401, 403, 413, 422) fail visibly instead.
+_FALLBACK_STATUS = frozenset((404, 408, 429))
+
+
+def _fallback_eligible(status: int | None) -> bool:
+    """None is a transport failure before any upstream response."""
+    return status is None or status in _FALLBACK_STATUS or 500 <= status <= 599
 
 
 def _json_object(raw: bytes) -> dict[str, JsonValue]:
@@ -152,11 +160,12 @@ async def _bounded_response(response: httpx.Response, limit: int) -> bytes:
 
 
 def _endpoint(
-    backend: ModelResolvedDelegationBackend, config: ModelClaudeGatewayConfig
+    backend: ModelResolvedDelegationBackend, backend_id: str, model: str | None
 ) -> str:
+    """The native Messages URI of one ladder entry; model is pinned for the primary."""
     endpoint = backend.endpoint_ref
     parts = urlsplit(endpoint)
-    if backend.backend_id != config.backend_id or backend.model_id != config.model:
+    if backend.backend_id != backend_id or model not in (None, backend.model_id):
         raise ValueError("Routing selection mismatch")
     if (
         parts.scheme not in ("http", "https")
@@ -181,6 +190,7 @@ def build_gateway_app(
     read_secret: Callable[[str], Awaitable[str | None]],
     record: Callable[[ModelClaudeGatewayReceipt], Awaitable[None]],
     transport: httpx.AsyncBaseTransport | None = None,
+    resolve_fallbacks: Callable[[], Sequence[ModelResolvedDelegationBackend]] = tuple,
 ) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -200,14 +210,45 @@ def build_gateway_app(
         except Exception:
             raise HTTPException(401, "Gateway authentication failed") from None
 
-    async def ready_route() -> None:
+    async def routes(
+        version: str, beta: str | None
+    ) -> list[tuple[ModelResolvedDelegationBackend, str, dict[str, str]]]:
+        """The usable native ladder, primary first. An entry that cannot serve native
+        Messages, or whose credential is absent, is left out and never called."""
         try:
-            backend = resolve_backend()
-            _endpoint(backend, config)
-            if backend.secret_ref and not await read_secret(backend.secret_ref):
-                raise ValueError("Upstream credential absent")
+            offered = {item.backend_id: item for item in resolve_fallbacks()}
         except Exception:
-            raise HTTPException(503, "Native gateway route is unavailable") from None
+            offered = {}
+        usable: list[tuple[ModelResolvedDelegationBackend, str, dict[str, str]]] = []
+        for backend_id in (config.backend_id, *config.fallback_backend_ids):
+            primary = backend_id == config.backend_id
+            try:
+                backend = resolve_backend() if primary else offered[backend_id]
+                endpoint = _endpoint(
+                    backend, backend_id, config.model if primary else None
+                )
+                headers = {
+                    key: value
+                    for key, value in backend.extra_headers.items()
+                    if key.lower() not in _FORBIDDEN_HEADERS
+                }
+                headers["content-type"] = "application/json"
+                headers["anthropic-version"] = version
+                if beta is not None:
+                    headers["anthropic-beta"] = beta
+                if backend.secret_ref:
+                    upstream_key = await read_secret(backend.secret_ref)
+                    if not upstream_key:
+                        raise ValueError("Upstream credential absent")
+                    headers["x-api-key"] = upstream_key
+            except Exception:
+                continue
+            usable.append((backend, endpoint, headers))
+        return usable
+
+    async def ready_route() -> None:
+        if not await routes("2023-06-01", None):
+            raise HTTPException(503, "Native gateway route is unavailable")
 
     @app.get("/onex/gateway/protocol")
     async def protocol(request: Request) -> dict[str, JsonValue]:
@@ -249,40 +290,26 @@ def build_gateway_app(
                 raise ValueError("Invalid stream choice")
         except (ValueError, UnicodeDecodeError):
             raise HTTPException(400, "Unsupported native model or request") from None
-        try:
-            backend = resolve_backend()
-            endpoint = _endpoint(backend, config)
-            headers = {
-                key: value
-                for key, value in backend.extra_headers.items()
-                if key.lower() not in _FORBIDDEN_HEADERS
-            }
-            headers["content-type"] = "application/json"
-            headers["anthropic-version"] = request.headers.get(
-                "anthropic-version", "2023-06-01"
-            )
-            if "anthropic-beta" in request.headers:
-                headers["anthropic-beta"] = request.headers["anthropic-beta"]
-            if backend.secret_ref:
-                upstream_key = await read_secret(backend.secret_ref)
-                if not upstream_key:
-                    raise ValueError("Upstream credential absent")
-                headers["x-api-key"] = upstream_key
-        except Exception:
-            raise HTTPException(503, "Native gateway route is unavailable") from None
+        ladder = await routes(
+            request.headers.get("anthropic-version", "2023-06-01"),
+            request.headers.get("anthropic-beta"),
+        )
+        if not ladder:
+            raise HTTPException(503, "Native gateway route is unavailable")
 
         run_id = uuid4()
         started = time.monotonic()
         prompt_hash = hashlib.sha256(raw).hexdigest()
-        observation = _Observation(model=config.model, limit=config.max_event_bytes)
+        backend = ladder[0][0]
+        observation = _Observation(model=backend.model_id, limit=config.max_event_bytes)
         output = hashlib.sha256()
 
         async def receipt(status: Literal["completed", "failed", "cancelled"]) -> None:
             await record(
                 ModelClaudeGatewayReceipt(
                     run_id=run_id,
-                    model=config.model,
-                    backend_id=config.backend_id,
+                    model=backend.model_id,
+                    backend_id=backend.backend_id,
                     status=status,
                     in_tokens=_count(observation.usage.get("input_tokens")),
                     out_tokens=_count(observation.usage.get("output_tokens")),
@@ -299,22 +326,50 @@ def build_gateway_app(
                 )
             )
 
-        client = httpx.AsyncClient(
-            transport=transport,
-            timeout=backend.timeout_ms / 1000,
-            follow_redirects=False,
-            trust_env=False,
-        )
+        client: httpx.AsyncClient | None = None
         response: httpx.Response | None = None
         transferred = False
         try:
-            url = endpoint + "/count_tokens" if count_tokens else endpoint
-            response = await client.send(
-                client.build_request("POST", url, headers=headers, content=bytes(raw)),
-                stream=True,
-            )
-            if response.status_code != 200:
-                raise ValueError("Upstream request refused")
+            for index, (backend, endpoint, headers) in enumerate(ladder):
+                observation = _Observation(
+                    model=backend.model_id, limit=config.max_event_bytes
+                )
+                # The primary's bytes go upstream untouched; a fallback serves the
+                # same request under its own model id, every other field kept.
+                content = (
+                    bytes(raw)
+                    if backend.model_id == config.model
+                    else json.dumps({**body, "model": backend.model_id}).encode()
+                )
+                client = httpx.AsyncClient(
+                    transport=transport,
+                    timeout=backend.timeout_ms / 1000,
+                    follow_redirects=False,
+                    trust_env=False,
+                )
+                url = endpoint + "/count_tokens" if count_tokens else endpoint
+                last = index == len(ladder) - 1
+                try:
+                    response = await client.send(
+                        client.build_request(
+                            "POST", url, headers=headers, content=content
+                        ),
+                        stream=True,
+                    )
+                except httpx.TransportError:
+                    if last:
+                        raise
+                    await client.aclose()
+                    continue
+                if response.status_code == 200:
+                    break
+                if last or not _fallback_eligible(response.status_code):
+                    raise ValueError("Upstream request refused")
+                await response.aclose()
+                await client.aclose()
+                response = None
+            if response is None or client is None:
+                raise ValueError("No native backend answered")
             if count_tokens:
                 data = await _bounded_response(response, config.max_event_bytes)
                 if _count(_json_object(data).get("input_tokens")) is None:
@@ -385,7 +440,8 @@ def build_gateway_app(
             if not transferred:
                 if response is not None:
                     await response.aclose()
-                await client.aclose()
+                if client is not None:
+                    await client.aclose()
 
     @app.post("/v1/messages")
     async def messages(request: Request) -> Response:
@@ -405,10 +461,14 @@ class HandlerClaudeGateway:
         self,
         *,
         resolve_backend: Callable[[], ModelResolvedDelegationBackend] | None = None,
+        resolve_fallbacks: Callable[
+            [], Sequence[ModelResolvedDelegationBackend]
+        ] = tuple,
         read_secret: Callable[[str], Awaitable[str | None]] | None = None,
         record: Callable[[ModelClaudeGatewayReceipt], Awaitable[None]] | None = None,
     ) -> None:
         self._resolve = resolve_backend
+        self._fallbacks = resolve_fallbacks
         self._secrets = read_secret
         self._record = record
         if any(
@@ -433,6 +493,7 @@ class HandlerClaudeGateway:
             application = build_gateway_app(
                 request,
                 resolve_backend=self._resolve,
+                resolve_fallbacks=self._fallbacks,
                 read_secret=self._secrets,
                 record=self._record,
             )
