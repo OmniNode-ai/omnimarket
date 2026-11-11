@@ -18,18 +18,17 @@ Exit codes: 0 answered; 3 a deployment fact is missing (INDETERMINATE: ... on st
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections.abc import Sequence
 from datetime import datetime
-from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.nodes.node_lab_proof_judge_compute.adapters.receipt_store import (
+from omnimarket.handlers.adapter_lab_proof_receipt_store import (
     DirectoryReceiptStore,
+    receipt_store_from_env,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_lab_proof_judge_compute.handlers.handler_changed_path_live import (
     HandlerChangedPathLive,
 )
@@ -65,14 +64,9 @@ from omnimarket.nodes.node_lab_proof_judge_compute.overlay import (
 
 
 def _store(overlay: ModelLabProofJudgeOverlay) -> DirectoryReceiptStore:
-    root_env = overlay.substitute_receipts.root_env
-    raw = os.environ.get(root_env, "")  # node-purity-ok: OMN-23642 CLI boundary
-    root = raw.strip()
-    if not root:
-        raise ValueError(
-            f"{root_env} is not set; the substitute receipts live under it"
-        )
-    return DirectoryReceiptStore(Path(root), overlay.substitute_receipts.subdir)
+    return receipt_store_from_env(
+        overlay.substitute_receipts.root_env, overlay.substitute_receipts.subdir
+    )
 
 
 def _answer(result: BaseModel) -> int:

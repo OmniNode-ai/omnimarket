@@ -57,7 +57,6 @@ dod_evidence:
     description: The judge run on a lab host at the head of omnimarket 5689 reads NOT-APPLICABLE with its substitute proof; the lane's runtime report holds that reading (the pool judge is a lab command, so no hosted runner can run this check).
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC4]
     checks:
       - check_type: command
         check_value: 'grep -F "NOT_APPLICABLE" "$OMNI_HOME/.claude_scratch/reports/labna-3410/runtime-reading.txt"'
@@ -66,8 +65,16 @@ dod_evidence:
     description: Runs the two nodes' tests at the pushed head on a lab host through the lab work runner; hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound check.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC4]
     checks:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23642 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute tests/unit/nodes/node_lab_proof_judge_use_effect -q --no-cov -n 0 -p no:randomly'
+        cwd: .
+  - id: dod-omn23642-runtime-reading-hosted
+    description: Hosted proxy for the integrated criterion. Through the node's own command, the measured case reads NOT_APPLICABLE with its substitute receipt at the head, the same change with no receipt reads FAIL, and a receipt for another head does not count. The reading on a lab host at the head of omnimarket 5689 is the unbound local item above; a hosted runner cannot reach a lab host. The node is absent at the merge base.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_lab_proof_judge_compute/test_golden_chain_lab_proof_judge.py -q --no-cov -n 0 -p no:randomly
         cwd: .

@@ -1,24 +1,28 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""DirectoryReceiptStore: the lab proof judge's substitute-receipt store on disk.
+"""The on-disk substitute-receipt store for the lab proof judge (OMN-23642).
 
-Receipts live under ``<root>/<subdir>/<node>/*.receipt.json``. ``read`` returns
-the receipts for a (repo, node) pair; ``write`` persists one receipt and returns
-its path. The store is the CLI's only I/O: the pure handlers read no disk.
+The disk and environment I/O the lab proof judge's CLI performs, moved out of
+the node's own directory so the node stays pure. Receipts live under
+``<root>/<subdir>/<node>/*.receipt.json``; ``read`` returns the receipts for a
+(repo, node) pair and ``write`` persists one receipt and returns its path.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from omnimarket.nodes.node_lab_proof_judge_compute.models.model_substitute_receipt import (
     ModelSubstituteReceipt,
 )
 
+__all__ = ["DirectoryReceiptStore", "receipt_store_from_env"]
+
 
 def _load(path: Path) -> ModelSubstituteReceipt:
-    raw = path.read_text()  # node-purity-ok: OMN-23642 disk boundary
+    raw = path.read_text()
     return ModelSubstituteReceipt.model_validate(json.loads(raw))
 
 
@@ -62,5 +66,16 @@ class DirectoryReceiptStore:
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{receipt.receipt_id}.receipt.json"
         body = receipt.model_dump_json(indent=2) + "\n"
-        path.write_text(body)  # node-purity-ok: OMN-23642 disk boundary
+        path.write_text(body)
         return str(path)
+
+
+def receipt_store_from_env(root_env: str, subdir: str) -> DirectoryReceiptStore:
+    """Build the store from the deployment's ``root_env`` variable and ``subdir``."""
+    raw = os.environ.get(root_env, "")
+    root = raw.strip()
+    if not root:
+        raise ValueError(
+            f"{root_env} is not set; the substitute receipts live under it"
+        )
+    return DirectoryReceiptStore(Path(root), subdir)
