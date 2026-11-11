@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-23844
+title: Refresh the settings store snapshot from the current settings repository on every lab machine
+summary: The declared overlay store refresh units (systemd and launchd) took ONEX_SKILL_OVERLAY_ROOTS from the plugin copy of the overlays only, so the read overlay that lists which overlays a host keeps was the frozen one and the delegation_routing document never reached a host's store snapshot. Both units now default to the overlays clone first and the plugin copy second, the form the factory floor publisher declares, and the loader unit already reads the same clone.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23844-refresh-roots
+  statement: The overlay store refresh units render the overlays clone as their first overlay root and keep the plugin copy as the fallback, and still refuse a worktree path.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the declared overlay store refresh units (the Linux systemd one and the macOS launchd one) default their overlay roots to the overlays repository clone first and the plugin copy second -- falsifier: set the default back to the plugin directory only and `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k default` fails'
+  - id: AC2
+    statement: 'AC2: the refresh unit and the loader unit render the same overlays clone as their first root -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k same_clone` fails when the refresh default is the plugin directory only'
+  - id: AC3
+    statement: 'AC3: the rendered Linux unit text carries the overlays clone before the plugin directory in its environment line -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k rendered` fails at the base'
+  - id: AC4
+    statement: 'AC4: integrated: on one lab host the refresh unit installed from this change through onex-host-install writes the delegation_routing document into the local store snapshot on its next tick -- falsifier: the lab receipt on this ticket names the host, the revision and the snapshot file read back, read back with onex ticket read'
+evidence_requirements:
+- kind: tests
+  description: The focused test file at the pushed head; its default, same_clone and rendered tests fail at origin/dev where both refresh units name the plugin copy only.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23844-ac1-default-roots
+  description: Both refresh units declare the overlays clone first and the plugin copy second as their default overlay roots. Fails at origin/dev.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly -k default
+    cwd: .
+- id: dod-omn23844-ac2-same-clone
+  description: The refresh unit and the loader unit name the same overlays clone as their first root. Fails at origin/dev.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly -k same_clone
+    cwd: .
+- id: dod-omn23844-ac3-ac4-rendered
+  description: The installed Linux unit text carries the overlays clone before the plugin directory in its environment line, so the tick reads the current read overlay on the host. Fails at origin/dev. The running-host half of AC4 (the snapshot file on a lab host after an install from this branch) is the local Done gate item below.
+  source: manual
+  binds_ac:
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly -k rendered
+    cwd: .
+- id: dod-omn23844-ac4-integration-proof
+  description: The pushed head ran the focused tests on a lab host through the lab work runner and exited 0. The snapshot readback on the installed host is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23844 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
