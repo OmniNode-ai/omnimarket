@@ -32,6 +32,9 @@ class EnumSnapshotFailureReason(StrEnum):
     WRITE_FACTS_UNREAD = "write_facts_unread"
     TICK_MISMATCH = "tick_mismatch"
     TICK_ALREADY_RECORDED = "tick_already_recorded"
+    CONTROLLER_STATE_UNREAD = "controller_state_unread"
+    CONTROLLER_TICK_OPEN = "controller_tick_open"
+    CONTROLLER_STATE_STALE = "controller_state_stale"
 
 
 class ModelPrWriteFacts(BaseModel):

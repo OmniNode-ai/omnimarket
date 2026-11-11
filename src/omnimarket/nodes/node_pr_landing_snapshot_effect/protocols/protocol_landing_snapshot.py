@@ -8,6 +8,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
+from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
 from omnimarket.models.landing_decision import ModelLandingFacts
 from omnimarket.nodes.node_pr_landing_snapshot_effect.models.model_landing_snapshot import (
     ModelLandingTickRecord,
@@ -33,6 +34,16 @@ class ProtocolLandingWriteFactsSource(Protocol):
         ...
 
 
+class ProtocolLandingControllerSource(Protocol):
+    """The old controller's last finished tick during the cutover period (OMN-23665)."""
+
+    name: str
+
+    def read_carry(self) -> ModelLandingControllerCarry:
+        """The finished tick's facts and logged actions; raises SnapshotSourceError (or a typed subclass) when unread, open or stale."""
+        ...
+
+
 class ProtocolLandingTickRecorder(Protocol):
     """Keeps every tick's record; a record is never replaced by a later tick's."""
 
@@ -46,6 +57,7 @@ class ProtocolLandingSnapshotPublisher(Protocol):
 
 
 __all__: list[str] = [
+    "ProtocolLandingControllerSource",
     "ProtocolLandingFactsSource",
     "ProtocolLandingSnapshotPublisher",
     "ProtocolLandingTickRecorder",
