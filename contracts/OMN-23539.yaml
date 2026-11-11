@@ -10,6 +10,8 @@ requirements:
   - id: req-omn23539-tick-bus-publisher
     statement: The tick orchestrator's compared and compare-failed events go to the publisher the overlay selects, in-memory by default and the declared bus publisher for redpanda.
     acceptance:
+      - id: AC1
+        statement: "AC1: the developer principal bindings in omnibase_infra declare produce on the tick orchestrator's compared and compare-failed topics, the committed derived grants file is the derivation node's output, and the discovery test counts the rows the derivation gives (212, 208 before) -- falsifier: the grant derive tests with the bindings of the merge base"
       - id: AC2
         statement: "AC2: the tick orchestrator publishes its compared and compare-failed events through the declared bus publisher chosen by an overlay value, with in-memory as the default for tests, and a golden chain and an error chain test -- falsifier: the publisher selection test with the overlay value unset and set"
       - id: AC3
@@ -23,6 +25,25 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: dod-omn23539-ac1-grants-seam
+    description: >-
+      The omnimarket side of AC1's seam. The topics the dev grants cover (spelled in the test) are exactly the tick orchestrator contract's publish_topics, and a cutover tick run with publish_backend redpanda sends its compared events through the bus publisher only on topics the grants cover; a topic outside them is detected. It fails without the merged change of omnimarket#5746 (named by the Binds-Merged-Fix trailer of this pull request: the bus publisher is absent at that change's parent) and when a publish topic of the contract is renamed (measured in this lane, see the pull request comment). The grants themselves are declared in omnibase_infra; their proof is the unbound item below.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_compared_grants_seam.py -q --no-cov -p no:randomly -p no:cacheprovider
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23539-ac1-declared-grants
+    description: >-
+      AC1's grants half runs in omnibase_infra and is already met there on dev (merged as omnibase_infra#5880, whose own contracts/OMN-23539.yaml declares AC1 and binds this same test run): the developer principal bindings declare produce on the compared and compare-failed topics, the committed derived grants file is the derivation node's output, and the discovery test counts 212 rows. The hosted check carries only this repository, so this is an unbound local_done_gate item that names the tests proving it there. With the bindings and derived file of that change's merge base the same tests fail (5 failed, 174 passed; the discovery count reads 208), measured in this lane.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_broker_grant_derive_compute/test_developer_principal_grants_omn19975.py tests/scripts/test_lab_principal_issuer_omn20150.py tests/scripts/test_lab_principal_issuer_read_only_role_omn22478.py tests/integration/nodes/test_broker_grant_derive_contract_discovery_omn19939.py -q -p no:cacheprovider
+        cwd: ${OMNI_HOME}/omnibase_infra
   - id: dod-omn23539-ac2-publisher-selection
     description: >-
       With publish_backend unset the runtime builds the in-memory publisher and never constructs the bus publisher; with publish_backend redpanda it builds BusTickPublisher on the overlay's lane; run_once publishes the same events the handler publishes, each on a topic of the contract's publish_topics; publish_backend redpanda with no broker is refused.
