@@ -5,7 +5,8 @@
 ``resolve`` returns the overlay's budget for a task class and refuses a class the overlay does not name. ``size`` takes the
 drafts measured for a class, keeps the ones that completed, and returns the slowest completed duration times the overlay's margin,
 rounded up to the overlay's step; it refuses with too few completed samples and over the overlay's ceiling. A draft that timed out
-is never a sample: its duration is the budget that cut it off, not what the draft needed. No clock, no I/O, no value of its own.
+is never a sample: its duration is the budget that cut it off, not what the draft needed. ``input_ceiling`` returns the overlay's input
+ceiling for a backend and task class and refuses a pair the overlay does not name (OMN-23631). No clock, no I/O, no value of its own.
 """
 
 from __future__ import annotations
@@ -16,11 +17,43 @@ from omnimarket.models.model_delegation_code_budget import (
     EnumCodeBudgetRefusal,
     ModelCodeBudgetRequest,
     ModelCodeBudgetResult,
+    input_ceiling_overlay_key,
 )
 
 
 class HandlerDelegationCodeBudget:
     def handle(self, request: ModelCodeBudgetRequest) -> ModelCodeBudgetResult:
+        if request.operation == "input_ceiling":
+            backend = request.backend or ""
+            key = input_ceiling_overlay_key(backend, request.task_class)
+            tokens = request.overlay.input_ceilings.get(backend, {}).get(
+                request.task_class
+            )
+            if tokens is None:
+                return ModelCodeBudgetResult(
+                    operation="input_ceiling",
+                    task_class=request.task_class,
+                    call_budget_s=None,
+                    source="overlay",
+                    refusal=EnumCodeBudgetRefusal.UNNAMED_INPUT_CEILING,
+                    completed_samples=0,
+                    detail=f"No input ceiling named at overlay key {key}",
+                    backend=backend,
+                    overlay_key=key,
+                )
+            return ModelCodeBudgetResult(
+                operation="input_ceiling",
+                task_class=request.task_class,
+                call_budget_s=None,
+                source="overlay",
+                refusal=None,
+                completed_samples=0,
+                detail="",
+                backend=backend,
+                input_ceiling_tokens=tokens,
+                overlay_key=key,
+            )
+
         if request.operation == "resolve":
             if request.task_class not in request.overlay.class_budgets_s:
                 return ModelCodeBudgetResult(

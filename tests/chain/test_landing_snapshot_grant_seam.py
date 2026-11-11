@@ -143,6 +143,7 @@ def _selection(group: str) -> ModelTickTopicSelection:
         consumer_group=group,
         bus_lane="dev",
         workspace_root="/ws",
+        join_timeout_s=1.0,
     )
 
 

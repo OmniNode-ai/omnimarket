@@ -61,6 +61,7 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     ModelScenarioSchedule,
     ProtocolScenarioEventSink,
 )
+from omnimarket.handlers.delegation_scenario_settings import ProtocolSettingStore
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference.task_class_authority import resolve_size_band_thresholds
 from omnimarket.models.delegation.model_paid_rung_decision import (
@@ -428,6 +429,8 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    settings_store: ProtocolSettingStore | None = None,
+    settings_home: Path | None = None,
 ) -> HandlerScenarioR3:
     """The production wiring: the registry home, the bus commands and the contract's leg backend."""
     runtime = load_runtime()
@@ -437,6 +440,8 @@ def build_runner(
         contract_path=CONTRACT_PATH,
         env=env,
         trigger=trigger,
+        settings_store=settings_store,
+        settings_home=settings_home,
     )
     assert isinstance(built, HandlerScenarioR3)
     return built

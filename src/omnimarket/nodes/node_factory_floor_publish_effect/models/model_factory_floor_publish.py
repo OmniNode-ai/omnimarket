@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -188,9 +189,23 @@ class ModelPublishStep(BaseModel):
     fresh_relpath: str | None = None
     fresh_seconds: int | None = Field(default=None, gt=0)
     rollup: ModelFrictionRollupStepSettings | None = None
+    # Variables this step's program runs with in place of the unit's (OMN-23606): a module, command or capture step only.
+    # The floor's 14-day window read cannot be answered by the bus source (the answer is far past the read node's bound),
+    # so a host whose ledger record is the bus spent 5 to 14 s on a refused read before the reader took the file, while the
+    # tracker and friction steps need the bus read command the unit declares.
+    environment: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPublishStep:
+        for key in self.environment:
+            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+                raise ValueError(
+                    f"step {self.name} names the environment variable {key!r}, which is not an upper-case name"
+                )
+        if self.environment and self.kind not in ("module", "command", "capture"):
+            raise ValueError(
+                f"step {self.name} of kind {self.kind} runs no program, so it takes no environment"
+            )
         if (self.fresh_relpath is None) != (self.fresh_seconds is None):
             raise ValueError(
                 f"step {self.name} names fresh_relpath and fresh_seconds together or neither"

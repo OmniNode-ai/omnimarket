@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.landing_controller_carry import ModelLandingControllerDecisions
 from omnimarket.models.landing_decision import ModelLandingDecision, ModelLandingFacts
 from omnimarket.models.landing_tick import (
     ModelTickDivergence,
@@ -33,6 +34,29 @@ class EnumTickFailureReason(StrEnum):
     ACT_NOT_ENABLED = "act_not_enabled"
     RECORDED_DECISION_MISSING = "recorded_decision_missing"
     DECISION_RAISED = "decision_raised"
+    CONTROLLER_TICK_MISSING = "controller_tick_missing"
+
+
+class EnumTickSkipReason(StrEnum):
+    """Why the snapshot source skipped one record instead of reading it."""
+
+    UNPARSEABLE_RECORD = "unparseable_record"
+
+
+class ModelTickSkippedRecord(BaseModel):
+    """One record the snapshot source could not parse: skipped and named, so the rest of the read stands (OMN-23529).
+
+    The record topic is shared, so a record a newer or older producer shape wrote (a field this reader does
+    not know) is skipped with this row instead of failing the whole read.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    position: int = Field(ge=0, description="The record's place in the read, from 0.")
+    reason: EnumTickSkipReason
+    detail: str = Field(
+        description="The first validation errors as location: error type, so the shape that differs is named."
+    )
 
 
 class ModelTickSnapshot(BaseModel):
@@ -53,6 +77,13 @@ class ModelTickSnapshot(BaseModel):
         description="Whether the script shared free slots across repositories.",
     )
     provenance: str = Field(default="", description="Where the snapshot came from.")
+    controller: ModelLandingControllerDecisions | None = Field(
+        default=None,
+        description=(
+            "The old controller's finished tick the record's state was carried from, with its "
+            "decision rows only, never its facts; None outside the cutover period (OMN-23665)."
+        ),
+    )
 
 
 class ModelTickRequest(BaseModel):
@@ -65,6 +96,13 @@ class ModelTickRequest(BaseModel):
     facts: ModelLandingFacts
     recorded_decision: ModelLandingDecision | None = None
     fair_share: bool = True
+    controller: ModelLandingControllerDecisions | None = Field(
+        default=None,
+        description=(
+            "The old controller's finished tick carried on the record; when set, the "
+            "comparison runs against that controller's decision (OMN-23665)."
+        ),
+    )
 
 
 class ModelTickResult(BaseModel):
@@ -93,6 +131,18 @@ class ModelTickResult(BaseModel):
             "comparison covers that repository's subjects only (OMN-23458)."
         ),
     )
+    controller_tick: int | None = Field(
+        default=None,
+        description="The controller's finished tick compared; None when the record carried no carry.",
+    )
+    compared_prs: tuple[str, ...] = Field(
+        default=(),
+        description="The pull requests of the compared scope, sorted (OMN-23665).",
+    )
+    agreed_prs: tuple[str, ...] = Field(
+        default=(),
+        description="The compared pull requests no divergence names (OMN-23665).",
+    )
     failure_reason: EnumTickFailureReason | None = None
     failure_detail: str = ""
 
@@ -110,6 +160,9 @@ class ModelTickComparedEvent(BaseModel):
     node_actions: int
     recorded_actions: int | None
     writes_performed: int
+    controller_tick: int | None = None
+    compared_prs: int = 0
+    agreed_prs: int = 0
 
 
 class ModelTickFailedEvent(BaseModel):
@@ -127,10 +180,12 @@ class ModelTickFailedEvent(BaseModel):
 __all__: list[str] = [
     "EnumTickFailureReason",
     "EnumTickMode",
+    "EnumTickSkipReason",
     "EnumTickStatus",
     "ModelTickComparedEvent",
     "ModelTickFailedEvent",
     "ModelTickRequest",
     "ModelTickResult",
+    "ModelTickSkippedRecord",
     "ModelTickSnapshot",
 ]

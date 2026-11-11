@@ -34,6 +34,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
+    field_validator,
     model_serializer,
     model_validator,
 )
@@ -44,6 +45,7 @@ from omnimarket.events.pr_landing_github.model_github_quota_reading import (
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
 )
+from omnimarket.models.model_pr_duplicate_guard import validate_replaces
 from omnimarket.models.model_repo_write_lease import (
     ModelRepoWriteLease,
 )
@@ -84,6 +86,7 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
         "conclusion",
         "output",
     ),
+    EnumRepoWriteOperation.PR_CREATE: ("replaces",),
     EnumRepoWriteOperation.PR_THREAD_REPLY: ("thread_comment_id",),
     EnumRepoWriteOperation.PR_THREAD_RESOLVE: ("review_thread_id",),
 }
@@ -111,6 +114,7 @@ class EnumRepoWriteRefusal(StrEnum):
     GITHUB_REFUSED = "github_refused"
     CREDENTIAL_UNAVAILABLE = "credential_unavailable"
     TRANSPORT_ERROR = "transport_error"
+    IDEMPOTENCY_KEY_CONFLICT = "idempotency_key_conflict"
 
 
 _PR_SCOPED = frozenset(
@@ -283,6 +287,14 @@ class ModelRepoWriteRequest(BaseModel):
         "(`onex scm pr-threads` lists them). Refused unless the thread already "
         "has a reply from the fixing lane.",
     )
+    replaces: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description="pr_create: pull requests of the same repository, as OWNER/REPO#N, that this change "
+        "replaces. The duplicate check read each one's state itself and set aside only the overlaps it alone "
+        "introduced; the write carries the list so the handoff and landing sides can read it. None leaves the "
+        "field out of the envelope.",
+    )
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
@@ -293,6 +305,13 @@ class ModelRepoWriteRequest(BaseModel):
         default=False,
         description="Force dry_run even where the contract's mode is enforce.",
     )
+
+    @field_validator("replaces")
+    @classmethod
+    def _replaces_are_pull_request_refs(
+        cls, value: tuple[str, ...] | None
+    ) -> tuple[str, ...] | None:
+        return None if value is None else validate_replaces(value)
 
     @model_validator(mode="after")
     def _operation_fields(self) -> ModelRepoWriteRequest:
@@ -381,6 +400,8 @@ class ModelRepoWriteRequest(BaseModel):
         data: dict[str, Any] = handler(self)
         if self.lease is None:
             data.pop("lease", None)
+        if self.replaces is None:
+            data.pop("replaces", None)
         for owner, names in _OPERATION_ONLY_FIELDS.items():
             if owner is not self.operation:
                 for name in names:

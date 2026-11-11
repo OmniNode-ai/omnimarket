@@ -17,6 +17,13 @@ description: >-
   with the reason and the attempt count; a row that can never be typed is marked refused
   with its reason. The queue store and the publisher are injected; the overlay names the
   backend (inmemory or file) and the queue file.
+  replay_from_file re-emits rows the ledger file holds and the projection never received
+  (the dual write's emit failed open): it takes row ids or a stamp window, reads those rows
+  from the ledger file of record and its archive, queues them by row id as retry records,
+  and drains exactly those rows through the work-ledger emit path under the replay source
+  the overlay names. A row already replayed is reported, not sent again; a requested id
+  the file does not hold is reported and nothing is sent for it. The overlay names the
+  ledger file, its archive directory and the replay source.
 input_model:
   name: ModelFileModeReplayRequest
   module: omnimarket.nodes.node_work_ledger_file_mode_replay_effect.models.model_file_mode_replay
@@ -39,6 +46,10 @@ dependencies:
   dependency_type: protocol
   description: publishes a queued row through the work-ledger emit path, injected by the caller.
   required: true
+- name: ProtocolLedgerFileRows
+  dependency_type: protocol
+  description: the ledger file of record (and its archive splits) that replay_from_file reads rows from; injected by the caller, required for that operation only.
+  required: false
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -64,3 +75,4 @@ metadata:
   - OMN-21849
   related_tickets:
   - OMN-21849
+  - OMN-23667

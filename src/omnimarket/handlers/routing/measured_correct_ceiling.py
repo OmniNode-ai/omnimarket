@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT
 """Grounding budgets and measured correct ceilings per backend and task class.
 
-OMN-20486 declared per-task-class grounding budgets. OMN-22220 adds the
-measured correct ceiling: the largest input a backend was measured to answer a
-class correctly. Both are read from ``configs/grounding_budget_by_task_class.yaml``
-and shared by the routing reducer, the bus workflow and the local dispatch port.
+OMN-20486 declared per-task-class grounding budgets, read from
+``configs/grounding_budget_by_task_class.yaml``. OMN-22220 added the measured
+correct ceiling: the largest input a backend was measured to answer a class
+correctly. Since OMN-23631 the ceiling is an overlay value, the key
+``delegation.code_budget.input_ceilings.<backend>.<task_class>`` of
+``node_delegation_code_budget_compute``, read through that node's
+``input_ceiling`` operation; there is no packaged value and no fallback. A
+install with no overlay root naming the code budget overlay (a customer's clean install) declares no ceilings, so
+none applies; an overlay that is present but unreadable or invalid raises :class:`NodeOverlayError`, never a default.
+The overlay is read on every call, so a changed ceiling is in force on the next routing.
 
 A rung is not offered a task above its ceiling, and an answer from above the
 ceiling that the class scorer did not pass is refused by the gate.
@@ -14,10 +20,15 @@ ceiling that the class scorer did not pass is refused by the gate.
 from __future__ import annotations
 
 import importlib.resources
+from collections.abc import Mapping
 from functools import lru_cache
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
 from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
     ModelGroundingBudgetByTaskClass,
 )
@@ -25,6 +36,15 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
+from omnimarket.models.model_delegation_code_budget import (
+    EnumCodeBudgetRefusal,
+    ModelCodeBudgetOverlay,
+    ModelCodeBudgetRequest,
+    input_ceiling_overlay_key,
+)
+from omnimarket.nodes.node_delegation_code_budget_compute.handlers.handler_delegation_code_budget import (
+    HandlerDelegationCodeBudget,
+)
 
 # OMN-18297: the divisor of the character-based input measurement. It is the
 # repo's existing estimator (``estimate_tokens``, node_context_artifact_resolver
@@ -34,6 +54,9 @@ from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGat
 # same units so the comparison is like-for-like, and both numbers are recorded
 # on the receipt so a reader never has to guess which one a budget refers to.
 _GROUNDING_TOKEN_CHARS_PER_TOKEN: int = 4
+
+#: The node whose overlay carries the input ceilings (OMN-23631).
+CODE_BUDGET_OVERLAY_ID = "node_delegation_code_budget_compute"
 
 
 def measure_grounding_input_tokens(text: str) -> int:
@@ -45,7 +68,7 @@ def measure_grounding_input_tokens(text: str) -> int:
 
 @lru_cache(maxsize=1)
 def load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
-    """Load the packaged per-task-class budgets and ceilings (OMN-20486, OMN-22220)."""
+    """Load the packaged per-task-class budgets (OMN-20486)."""
     resource = importlib.resources.files("omnimarket").joinpath(
         "configs/grounding_budget_by_task_class.yaml"
     )
@@ -53,16 +76,61 @@ def load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
     return ModelGroundingBudgetByTaskClass.model_validate(data)
 
 
+def measured_correct_ceiling(
+    backend_ref: str, task_type: str, environ: Mapping[str, str] | None = None
+) -> int | None:
+    """The overlay's input ceiling for a backend and class, or ``None`` when it names none.
+
+    Read through ``node_delegation_code_budget_compute``'s ``input_ceiling``
+    operation. A pair the overlay does not name has no ceiling (it was never
+    measured), and an install no overlay root names the overlay on declares no
+    ceilings at all. An overlay that is present but unreadable or invalid raises
+    :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`, never a default. A backend that is not named
+    (an empty reference) has no ceiling.
+    """
+    if not backend_ref:
+        return None
+    try:
+        overlay = load_structured_overlay(
+            CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
+        )
+    except NodeOverlayNotFoundError:
+        return None
+    result = HandlerDelegationCodeBudget().handle(
+        ModelCodeBudgetRequest(
+            operation="input_ceiling",
+            task_class=task_type,
+            backend=backend_ref,
+            overlay=overlay,
+        )
+    )
+    if result.refusal is EnumCodeBudgetRefusal.UNNAMED_INPUT_CEILING:
+        return None
+    return result.input_ceiling_tokens
+
+
+def grounded_input_budget(backend_id: str, task_type: str) -> int | None:
+    """The class budget for ``backend_id``, bounded by its measured correct ceiling (OMN-22220).
+
+    ``None`` when no budget is declared and no ceiling is named.
+    """
+    declared = load_grounding_budget_by_task_class().budget_for(backend_id, task_type)
+    ceiling = measured_correct_ceiling(backend_id, task_type)
+    if ceiling is None:
+        return declared
+    return ceiling if declared is None else min(declared, ceiling)
+
+
 def exceeds_measured_correct_ceiling(
     backend_ref: str | None, task_type: str, input_tokens: int
 ) -> bool:
     """Whether ``input_tokens`` is above the backend's measured ceiling for the class.
 
-    ``False`` when no ceiling is declared: an unmeasured pair is not refused here.
+    ``False`` when the overlay names no ceiling for the pair: an unmeasured pair is not refused here.
     """
     if backend_ref is None:
         return False
-    ceiling = load_grounding_budget_by_task_class().ceiling_for(backend_ref, task_type)
+    ceiling = measured_correct_ceiling(backend_ref, task_type)
     return ceiling is not None and input_tokens > ceiling
 
 
@@ -86,9 +154,8 @@ def refuse_above_measured_correct_ceiling(
     input_tokens = measure_grounding_input_tokens(request_text)
     if not exceeds_measured_correct_ceiling(backend_ref, task_class, input_tokens):
         return result
-    ceiling = load_grounding_budget_by_task_class().ceiling_for(
-        backend_ref or "", task_class
-    )
+    ceiling = measured_correct_ceiling(backend_ref or "", task_class)
+    key = input_ceiling_overlay_key(backend_ref or "", task_class)
     criteria = verdict.failed_criteria + verdict.undetermined_criteria
     return result.model_copy(
         update={
@@ -96,8 +163,8 @@ def refuse_above_measured_correct_ceiling(
             "fail_category": "rubric_failed",
             "failure_reasons": (
                 f"above_measured_correct_ceiling: input {input_tokens} tokens > "
-                f"{backend_ref} {task_class} ceiling {ceiling}; scorer "
-                f"{verdict.outcome}",
+                f"{backend_ref} {task_class} ceiling {ceiling} (overlay key {key}); "
+                f"scorer {verdict.outcome}",
                 *(f"rubric_failed: {criterion}" for criterion in criteria),
             ),
             "fallback_recommended": True,
@@ -106,8 +173,11 @@ def refuse_above_measured_correct_ceiling(
 
 
 __all__ = [
+    "CODE_BUDGET_OVERLAY_ID",
     "exceeds_measured_correct_ceiling",
+    "grounded_input_budget",
     "load_grounding_budget_by_task_class",
     "measure_grounding_input_tokens",
+    "measured_correct_ceiling",
     "refuse_above_measured_correct_ceiling",
 ]

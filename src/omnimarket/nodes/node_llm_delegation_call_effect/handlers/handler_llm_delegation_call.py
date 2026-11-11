@@ -64,6 +64,9 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_backend_by_endpoint,
     token_limit_field_for_endpoint,
 )
+from omnimarket.handlers.routing.routing_tiers_path import (
+    load_delegation_routing_overlay,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     record_local_byok_model,
@@ -344,6 +347,8 @@ def _compute_cost(
       0. a price the BYOK catalogue declares for this endpoint and model (OMN-20154:
          a free model inside a metered tier is booked at its own zero, never at
          the tier's rate)
+      0b. the price the routing overlay declares for an eval arm on this endpoint
+         and model (OMN-23751)
       1. routing_tiers.yaml registry lookup by tier name (authoritative)
       2. _FALLBACK_PRICE_PER_1M[tier_name] (hardcoded mirror of registry values)
       3. _FALLBACK_PRICE_PER_1M["default"] (generic catch-all)
@@ -354,10 +359,22 @@ def _compute_cost(
     if byok_backend_provider(provider) is not None:
         model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
         if model_price is None:
+            # OMN-23751: an eval arm on the registered key keeps the arm's model
+            # and is booked at the arm's declared price.
+            model_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
+                endpoint_url, model_id
+            )
+        if model_price is None:
             return Decimal("0"), Decimal("0"), Decimal("0"), EnumCostBasis.UNKNOWN
         declared_price: tuple[Decimal, Decimal] | None = model_price
     else:
         declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
+        if declared_price is None:
+            # OMN-23751: an eval arm is booked at its own declared price, never at
+            # the rate of the ladder tier it is labelled with.
+            declared_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
+                endpoint_url, model_id
+            )
     registry_price = (
         declared_price
         if declared_price is not None

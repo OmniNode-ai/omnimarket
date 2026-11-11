@@ -70,6 +70,7 @@ performed; no worker is dispatched in a draining repo.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -148,6 +149,10 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
     EnumLabCheckVerdict,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
+    EnumLivenessRead,
+    ModelLandingLivenessUnread,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,
@@ -266,6 +271,7 @@ class _Tick:
     )
     released: set[str] = field(default_factory=set)
     skips: dict[str, EnumLandingLandSkipReason] = field(default_factory=dict)
+    liveness_files: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def emit(self, action: ModelLandingAction) -> None:
         if repo_of(action.subject) in self.observe:
@@ -672,16 +678,14 @@ def _eligibility_reruns(t: _Tick) -> None:
 def _allowed_worker_engine(
     requested: EnumLandingEngine, available: set[EnumLandingEngine]
 ) -> EnumLandingEngine | None:
+    if requested is EnumLandingEngine.CODEX_HIGH:
+        return None  # Codex reviews and never works a lane (operator ruling 2026-11-05); a recorded rung of it is skipped
     decision = resolve_lane_model(
         requested_engine=requested.value, lane_kind="landing-worker"
     )
-    if decision.model is None:
+    if decision.model is None or decision.engine != "claude":
         return None
-    engine = (
-        EnumLandingEngine.CODEX_HIGH
-        if decision.engine == "codex"
-        else EnumLandingEngine(f"claude_{decision.model}")
-    )
+    engine = EnumLandingEngine(f"claude_{decision.model}")
     return engine if engine in available else None
 
 
@@ -1687,6 +1691,11 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
         t.skips[p.pr] = SKIP_FOR_VERDICT[reading.verdict]
         return
+    undeclared = _liveness_undeclared(p)
+    if undeclared:
+        t.skips[p.pr] = EnumLandingLandSkipReason.LIVENESS_UNDECLARED
+        t.liveness_files[p.pr] = undeclared
+        return
     if p.runtime:
         in_open_companion = any(
             c.state is EnumLandingPrState.OPEN
@@ -1707,6 +1716,46 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
             kind=EnumLandingActionKind.MERGE, subject=p.pr, head_sha=p.head_sha
         )
     )
+
+
+def _liveness_undeclared(p: ModelLandingPrFacts) -> tuple[str, ...]:
+    """The undeclared installer sources a liveness read made on this exact head names (OMN-23529).
+
+    An unreadable read, a read of another head and an absent read hold nothing.
+    """
+    fact = p.liveness
+    if fact is None or fact.read is not EnumLivenessRead.READ:
+        return ()
+    if fact.head_sha != p.head_sha:
+        return ()
+    return tuple(sorted(set(fact.undeclared_sources)))
+
+
+def _liveness_unread(t: _Tick) -> tuple[ModelLandingLivenessUnread, ...]:
+    """Open PRs whose liveness read was not made: unreadable, of another head, or absent where expected."""
+    rows: list[ModelLandingLivenessUnread] = []
+    for p in sorted(t.prs.values(), key=lambda p: p.pr):
+        if p.state is not EnumLandingPrState.OPEN:
+            continue
+        fact = p.liveness
+        if fact is None:
+            if t.facts.policy.liveness_read_expected:
+                rows.append(
+                    ModelLandingLivenessUnread(
+                        pr=p.pr, head_sha=p.head_sha, detail="no liveness read"
+                    )
+                )
+            continue
+        if fact.read is EnumLivenessRead.UNREADABLE:
+            detail = fact.detail
+        elif fact.head_sha != p.head_sha:
+            detail = f"liveness read of another head {fact.head_sha}"
+        else:
+            continue
+        rows.append(
+            ModelLandingLivenessUnread(pr=p.pr, head_sha=p.head_sha, detail=detail)
+        )
+    return tuple(rows)
 
 
 def _stale_cancelled(p: ModelLandingPrFacts) -> bool:
@@ -1997,6 +2046,45 @@ def _shared_verdict_rerun(
     return True
 
 
+_REF_PATTERN = re.compile(r"[A-Za-z0-9_.-]+#[0-9]+")
+
+
+def _short_ref(ref: str) -> str:
+    """``repo#n`` of a ref given as ``owner/repo#n`` or ``repo#n``."""
+    return ref.rpartition("/")[2]
+
+
+def _external_judgement_stands(t: _Tick, p: ModelLandingPrFacts) -> bool:
+    """A worker judged an external blocker at this head and it still stands (OMN-22921).
+
+    The controller's worker gate ``external:<ref>``: the judgement is at this very head, its kind is a
+    declared one, the ref names another pull request or issue that ``blocker_refs`` reads open, and the
+    kind is unbounded or the judgement is younger than the policy's ``external_gate_hours``. An unknown
+    ref gates nothing. Omnimemory 713 (recorded 2026-11-11): judged against 725, open; the controller held
+    it while the node dispatched a worker for a hygiene red no worker can fix.
+    """
+    policy = t.facts.policy
+    own = _short_ref(p.pr)
+    for judged in p.external_judged:
+        ref = _short_ref(judged.ref)
+        if (
+            judged.head_sha != p.head_sha
+            or judged.kind not in policy.external_blocker_kinds
+            or ref == own
+            or _REF_PATTERN.fullmatch(ref) is None
+            or not any(
+                _short_ref(b.ref) == ref and b.state.lower() == "open"
+                for b in p.blocker_refs
+            )
+        ):
+            continue
+        if judged.kind in policy.external_blocker_unbounded_kinds:
+            return True
+        if t.now - judged.judged_at < timedelta(hours=policy.external_gate_hours):
+            return True
+    return False
+
+
 def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
     if p.state is not EnumLandingPrState.OPEN:
         return
@@ -2071,6 +2159,8 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
     suppressed = rec.outcome in BLOCKED_OUTCOMES and rec.blocker_fingerprint == fp
     if suppressed or parked:
         return
+    if needs_worker and _external_judgement_stands(t, p):
+        return  # a worker judged an external blocker at this head and it still stands: no worker
     if (
         p.ci is EnumLandingCi.RED
         and p.red_class in RERUNNABLE_RED_CLASSES
@@ -2367,6 +2457,7 @@ def _decision(
             and EnumLandingSuspension.GATE in p.suspensions
         ),
         land_skips=land_skips,
+        liveness_unread=_liveness_unread(t),
         next_state=next_state,
     )
 
@@ -2389,6 +2480,11 @@ def _land_skips(
                 reason=reason,
                 gate_reasons=(
                     p.gate_reasons if reason is EnumLandingLandSkipReason.GATE else ()
+                ),
+                files=(
+                    t.liveness_files.get(pr, ())
+                    if reason is EnumLandingLandSkipReason.LIVENESS_UNDECLARED
+                    else ()
                 ),
             )
         )

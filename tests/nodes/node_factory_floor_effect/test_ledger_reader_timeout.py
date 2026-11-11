@@ -44,6 +44,7 @@ def test_a_reader_that_runs_past_the_limit_is_refused_naming_the_limit(
             window_days=14,
             cut_chars=1200,
             timeout_seconds=77,
+            source="file",
             plugin_root=tmp_path,
             plugin_root_env="CLAUDE_PLUGIN_ROOT",
             ledger_rows_file=None,
