@@ -23,12 +23,12 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
-from omnimarket.models.landing_decision import ModelLandingDecision
+from omnimarket.models.landing_decision import (
+    ModelLandingControllerState,
+    ModelLandingDecision,
+)
 from omnimarket.models.landing_tick import (
     ModelTickReduceInput,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
-    ModelLandingControllerState,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
