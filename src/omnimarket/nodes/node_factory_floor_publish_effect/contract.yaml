@@ -388,6 +388,20 @@ runtime:
     timeout_seconds: 30
     module: omnimarket.nodes.node_join_j16_effect
     args: ["run"]
+  # OMN-23022: join J0 (piece 17 to piece 1). One run per cycle reads the floor record the previous cycle wrote and writes piece 17's
+  # join_j0 chain to the emission journal: a success when the record is fresh and draws the code graph's row, a typed failure when it
+  # does not. A second pair of chains under its own id feeds the same reader a deliberately corrupt payload, so piece 17 ends in a typed
+  # failure and the code graph holds a typed upstream_ refusal with no start: the join's error chain. With no step here J0 read only half
+  # run on the served board (the golden chain ran, no error chain had; measured 2026-11-11). A control that the reader accepts exits 1.
+  # Not required: when it fails the floor still reads and J0 stays unpassed. It reads one file and appends to the journal, so it joins
+  # the concurrent group and adds nothing to the longest declared path.
+  - name: join_j0
+    concurrent: true
+    kind: module
+    required: false
+    timeout_seconds: 30
+    module: omnimarket.nodes.node_join_j0_effect
+    args: ["run"]
   # OMN-19998: the factory floor record's four unresolved ledger reads (TERMINAL blocked, partial, handed-off and STATUS handed-off=,
   # each across the live ledger and every archive roll) are this step's, not the floor step's. Measured on the launching Mac
   # 2026-11-10 (cProfile, three runs each): the floor step took 231 s, 207 s of it five ledger reads in series, four of them these.
