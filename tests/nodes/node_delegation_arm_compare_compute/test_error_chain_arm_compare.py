@@ -102,7 +102,7 @@ def test_error_chain_a_result_holding_a_verdict_and_a_failure_is_refused() -> No
 
 def test_error_chain_an_outcome_value_outside_the_enum_is_refused() -> None:
     with pytest.raises(ValidationError):
-        ModelArmTaskOutcome(task_key="t", outcome="maybe")  # type: ignore[arg-type]
+        ModelArmTaskOutcome.model_validate({"task_key": "t", "outcome": "maybe"})
 
 
 @pytest.mark.asyncio
