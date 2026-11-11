@@ -27,6 +27,7 @@ from omnimarket.handlers.handler_harness_eval import (
     normalize_observation,
     summarize,
 )
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     HandlerHarnessEvalProcess,
 )
@@ -249,6 +250,7 @@ def main() -> int:
             reasoning_effort=(receipt.get("config") or {}).get("effort"),
             max_tokens=(receipt.get("context") or {}).get("output"),
             failure_kind=failure_kind,
+            size_band=EnumSizeBand.S,
         )
         transcript = ""
         if receipts and (receipts[0].parent / "transcript.jsonl").exists():

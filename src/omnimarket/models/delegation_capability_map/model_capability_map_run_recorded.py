@@ -37,7 +37,7 @@ class ModelCapabilityMapRunRecorded(BaseModel):
     observed_at: AwareDatetime
     rows: tuple[ModelCapabilityVerdictRow, ...] = ()
     assignments: tuple[ModelCapabilityServingAssignment, ...] = ()
-    line: ModelCapabilityLine = Field(default_factory=ModelCapabilityLine)
+    line: ModelCapabilityLine
 
     @model_validator(mode="after")
     def _one_tenant(self) -> Self:

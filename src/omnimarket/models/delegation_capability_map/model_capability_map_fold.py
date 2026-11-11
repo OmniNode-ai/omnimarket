@@ -38,7 +38,7 @@ class ModelCapabilityMapFoldRequest(BaseModel):
     map_run_id: str = Field(min_length=1)
     rows: tuple[ModelCapabilityVerdictRow, ...] = ()
     assignments: tuple[ModelCapabilityServingAssignment, ...] = ()
-    line: ModelCapabilityLine = Field(default_factory=ModelCapabilityLine)
+    line: ModelCapabilityLine
 
 
 class ModelCapabilityMapFoldResult(BaseModel):

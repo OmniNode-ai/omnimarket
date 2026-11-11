@@ -45,6 +45,9 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.handlers.handler_capability_line_overlay import (
+    resolve_capability_line,
+)
 from omnimarket.inference.task_class_authority import (
     ModelTaskClassAuthority,
     load_task_class_authority,
@@ -285,6 +288,7 @@ def build_grid_map_run(
         observed_at=observed_at,
         rows=tuple(rows),
         assignments=tuple(assignments),
+        line=resolve_capability_line(),
     )
     return run, {
         "verdict_rows": len(rows),

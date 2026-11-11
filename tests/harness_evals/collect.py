@@ -18,6 +18,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from omnimarket.handlers.handler_capability_line_overlay import (
+    resolve_capability_line,
+)
 from omnimarket.handlers.handler_harness_eval import (
     ModelHarnessObservation,
     build_harness_capability_run,
@@ -194,6 +197,7 @@ def main() -> int:
         observed_at=now,
         suite_revision=digest,
         harness_revision=harness_revision,
+        line=resolve_capability_line(),
     )
     write("capability-map-run.json", capability.model_dump(mode="json"))
     write(
