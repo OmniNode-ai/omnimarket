@@ -266,9 +266,9 @@ def test_grounded_input_budget_follows_the_overlay(
     assert grounded_input_budget(_CODER, _TASK) == _LOWERED
 
     # OMN-23631: local-heavy-reasoning code_generation has no packaged budget any more
-    # (it was 32000), so a class the overlay does not name has none.
+    # (it was 32000); its budget is the overlay's value for the pair.
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(code_budget_overlay_root))
-    assert grounded_input_budget("local-heavy-reasoning", _TASK) is None
+    assert grounded_input_budget("local-heavy-reasoning", _TASK) == 32000
     assert (
         load_grounding_budget_by_task_class().budget_for("local-heavy-reasoning", _TASK)
         is None

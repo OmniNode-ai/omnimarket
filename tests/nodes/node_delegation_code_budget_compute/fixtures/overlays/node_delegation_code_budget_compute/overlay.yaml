@@ -14,6 +14,7 @@ input_ceilings:
     refactor: 65536
     validator_generation: 65536
     test: 65536
+    code_review: 65536
     research: 65536
     reasoning: 65536
     complex_reasoning: 65536
@@ -30,6 +31,7 @@ input_ceilings:
     context_selection: 65536
     context_compaction: 65536
   local-heavy-reasoning:
+    code_generation: 32000
     research: 8192
     reasoning: 8192
     complex_reasoning: 8192

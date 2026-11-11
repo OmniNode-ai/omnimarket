@@ -201,9 +201,9 @@ def test_dispatch_budget_of_a_local_backend_is_the_overlay_ceiling(
         routing.resolve_backend_grounding_budget(_HEAVY, "research") == _SERVED_WINDOW
     )
     with pytest.raises(
-        InputLimitNotDeclaredError, match=f"{_KEY}.{_HEAVY}.code_generation"
+        InputLimitNotDeclaredError, match=f"{_KEY}.{_HEAVY}.no_such_class"
     ):
-        routing.resolve_backend_grounding_budget(_HEAVY, "code_generation")
+        routing.resolve_backend_grounding_budget(_HEAVY, "no_such_class")
 
 
 def test_no_packaged_local_limit_remains() -> None:
