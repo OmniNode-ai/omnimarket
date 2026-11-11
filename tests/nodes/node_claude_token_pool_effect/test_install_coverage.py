@@ -11,6 +11,7 @@ a host without it answers NodeOverlayNotFoundError for), and a host the overlay 
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -37,7 +38,7 @@ def _overlay() -> ModelRotationOverlay:
     )
 
 
-def _nothing_runs(command):  # type: ignore[no-untyped-def]
+def _nothing_runs(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(list(command), 0, "", "")
 
 
