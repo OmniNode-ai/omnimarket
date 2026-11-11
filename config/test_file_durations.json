@@ -142,6 +142,7 @@
   "tests/ci/test_moved_contract_omn13213_omn17427.py": 0.01,
   "tests/ci/test_moved_ticket_contracts_present_omn21296.py": 0.78,
   "tests/ci/test_nightly_chain_skip_guard.py": 0.11,
+  "tests/ci/test_no_lab_values_in_product_source_omn19184.py": 0.17,
   "tests/ci/test_no_stale_rebuild_classifier.py": 8.15,
   "tests/ci/test_occ_callers_removed_omn20073.py": 0.45,
   "tests/ci/test_omn15797_rls_read_tenant_seam_gate.py": 13.71,

@@ -1,26 +1,25 @@
 ---
-# models_registry.yaml — A/B compare model registry.
+# models_registry.yaml — A/B compare model registry, the neutral package default.
 #
+# OMN-19184: this file declares no lab host, no lab-only served model id and no lab
+# endpoint. A deployment supplies its registry as the whole file at
+# <root>/node_ab_compare_orchestrator/overlay.yaml under a root listed in
+# ONEX_SKILL_OVERLAY_ROOTS, or names a file in ONEX_AB_COMPARE_MODELS_REGISTRY; the
+# overlay has the shape of this file. With neither, this file's entries below skip
+# every model whose endpoint or model id is not declared.
 # OMN-10645: per-entry `endpoint:` LAN literals removed. The handler reads
 # `endpoint_env` at runtime; if the named env var is unset/empty AND no
-# `endpoint:` literal is declared (the case for all local lab models), the
-# orchestrator skips that model with a clear log line. Cloud entries with a
-# stable public URL may keep an `endpoint:` literal.
+# `endpoint:` literal is declared, the orchestrator skips that model with a clear
+# log line. Cloud entries with a stable public URL may keep an `endpoint:` literal.
 # OMN-20173: GLM Coding Plan is not an A/B comparison target.
 #
 # endpoint_env names the env var that supplies the OpenAI-compatible base URL.
 # model_id_env names the env var that supplies the model identifier.
 # model_id_default is the fallback when the env var is unset; "" = skip the
-# model rather than using a hardcoded ID. A lab entry whose endpoint serves one
-# model declares that model's served id here: the dev runtime sets the endpoint
-# URL variables and no *_MODEL_NAME variable, so an empty default skipped every
-# lab model and the completed event came back PARTIAL with no rows.
-#
-# Lab models, read from the live endpoints (GET /v1/models):
-#   qwen3-coder-30b    LLM_CODER_URL, the primary lab host
-#   qwen3.8-27b-h202   LLM_LAB_H202_URL, the second lab host serving the same model
-# The deepseek and qwen3-next entries below name endpoints whose hardware is
-# retired or down; they stay skipped until their model id is declared.
+# model rather than using a hardcoded ID. A deployment whose endpoint serves one
+# model declares that model's served id in its overlay: the dev runtime sets the
+# endpoint URL variables and no *_MODEL_NAME variable, so an empty default skips
+# the model and the completed event comes back PARTIAL with no rows.
 # protocol must currently be openai_compatible for orchestrator execution.
 # requires_key names the API-key env var; models with missing keys are skipped.
 
@@ -31,7 +30,7 @@ models:
     endpoint_env: LLM_CODER_URL
     protocol: openai_compatible
     model_id_env: LLM_CODER_MODEL_NAME
-    model_id_default: "Qwen3.8-27B"
+    model_id_default: ""
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
     location: local
@@ -69,14 +68,3 @@ models:
     cost_per_1k_output: 0.0
     location: local
     context_window: 8192
-
-  - id: qwen3.8-27b-h202
-    display_name: "Qwen3.8-27B (lab h202)"
-    endpoint_env: LLM_LAB_H202_URL
-    protocol: openai_compatible
-    model_id_env: LLM_LAB_H202_MODEL_NAME
-    model_id_default: "Qwen3.8-27B"
-    cost_per_1k_input: 0.0
-    cost_per_1k_output: 0.0
-    location: local
-    context_window: 131072
