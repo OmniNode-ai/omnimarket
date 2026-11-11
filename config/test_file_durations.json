@@ -1089,6 +1089,7 @@
   "tests/nodes/node_factory_floor_publish_effect/test_friction_rollup_step.py": 0.59,
   "tests/nodes/node_factory_floor_publish_effect/test_join_j16_step.py": 0.6,
   "tests/nodes/node_factory_floor_publish_effect/test_join_j2_step.py": 0.15,
+  "tests/nodes/node_factory_floor_publish_effect/test_join_j5_step_log.py": 2.31,
   "tests/nodes/node_factory_floor_publish_effect/test_join_refusal_step.py": 0.14,
   "tests/nodes/node_factory_floor_publish_effect/test_merged_running_page.py": 0.17,
   "tests/nodes/node_factory_floor_publish_effect/test_mvp_launch_reads_step.py": 11.83,
