@@ -807,8 +807,8 @@ class OnexTui(App[int]):
         Binding("ctrl+c", "quit", "Quit", priority=True),
         Binding("escape", "close_palette", "Close", show=False),
         Binding("tab", "complete", "Complete", show=False, priority=True),
-        Binding("down", "palette_down", show=False, priority=True),
-        Binding("up", "palette_up", show=False, priority=True),
+        Binding("down", "palette_down", show=False),
+        Binding("up", "palette_up", show=False),
     ]
 
     def __init__(
