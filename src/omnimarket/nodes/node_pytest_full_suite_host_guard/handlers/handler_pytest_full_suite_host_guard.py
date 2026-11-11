@@ -19,16 +19,6 @@ WORKROOT_COLUMN = 7
 _MODE_COLUMN = 11
 _ROW_COLUMNS = 15
 
-# Legacy env override -> host-table row label. An override REPLACES the row it names; it never ADDS a
-# hostname to the designated set. That distinction is load-bearing: under a table listing several hosts,
-# an override that merely appended a name could no longer DE-designate the local machine, silently
-# inverting the OMN-15059 guard that `test_guard_refuses_full_suite_escalation_on_non_200_host` proves
-# by forcing a nonsense hostname.
-_LEGACY_OVERRIDE_BY_LABEL = {
-    "h200": "PREPUSH_200_HOSTNAME",
-    "h201c": "PREPUSH_201_GATE_RUNNER_HOSTNAME",
-}
-
 
 def override_var(label: str) -> str:
     """Per-row override env var name, matching prepush_dispatch.sh."""
@@ -113,16 +103,25 @@ def apply_login_rows(
 
 
 def designated_hostnames(
-    table_text: str, env_overrides: dict[str, str]
+    table_text: str,
+    env_overrides: dict[str, str],
+    legacy_override_by_label: dict[str, str] | None = None,
 ) -> tuple[str, ...]:
-    """Authorizing identities of the table, with the row overrides applied."""
+    """Authorizing identities of the table, with the row overrides applied.
+
+    A legacy override REPLACES the row it names; it never ADDS a hostname to the designated set. That
+    distinction is load-bearing: under a table listing several hosts, an override that merely appended
+    a name could no longer DE-designate the local machine, silently inverting the OMN-15059 guard.
+    ``legacy_override_by_label`` maps a row label to the env var whose value replaces that row's
+    hostname, and means empty when None.
+    """
     names: list[str] = []
     for line in table_text.splitlines():
         fields = line.split("#", 1)[0].split("\t")
         if len(fields) <= _MODE_COLUMN or fields[_MODE_COLUMN] != "authorizing":
             continue
         label, hostname = fields[0], fields[2]
-        legacy = _LEGACY_OVERRIDE_BY_LABEL.get(label)
+        legacy = (legacy_override_by_label or {}).get(label)
         if legacy and env_overrides.get(legacy):
             hostname = env_overrides[legacy]
         names.append(env_overrides.get(override_var(label)) or hostname)
@@ -232,7 +231,9 @@ class HandlerPytestFullSuiteHostGuard:
             table = apply_login_rows(
                 table, rows, request.login, home=request.login_home
             )
-        names = designated_hostnames(table, request.env_overrides)
+        names = designated_hostnames(
+            table, request.env_overrides, request.legacy_override_by_label
+        )
         fields = authorizing_row(table, request.host)
         message = full_suite_host_violation_message(
             host=request.host,

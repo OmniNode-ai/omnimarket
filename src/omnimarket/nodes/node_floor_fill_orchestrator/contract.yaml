@@ -99,6 +99,7 @@ overlay:
     - url
     - plans_root
     - runner_command
+    - line_brief_text
     - reserved_timeout_seconds
     - sent_window_minutes
     - command_timeout_seconds

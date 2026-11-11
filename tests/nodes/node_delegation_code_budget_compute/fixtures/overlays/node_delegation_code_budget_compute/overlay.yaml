@@ -8,3 +8,9 @@ sizing_margin: 1.5
 round_up_to_s: 60
 min_completed_samples: 3
 ceiling_s: 600
+input_ceilings:
+  local-coder:
+    code_generation: 8169
+  fixture-backend:
+    code_generation: 1000
+    test: 2000

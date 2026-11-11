@@ -12,7 +12,7 @@ description: >-
   name, kept in a durable store; a repeated alarm inside the backoff dispatches nothing, a repeat after it dispatches
   the next attempt up to the retry budget and then writes one escalation row. A reading below the page mark ends the
   episode. Budget, backoff, latency bound, brief, measure, dispatch and escalation commands are rows of the node
-  overlay, never of this node (OMN-23389, R13 of the h053 cascade plan).
+  overlay, never of this node (OMN-23389, R13 of the full-disk cascade plan).
 input_model:
   name: ModelHostRepairRequest
   module: omnimarket.nodes.node_lab_host_repair_dispatch_effect.models.model_host_repair

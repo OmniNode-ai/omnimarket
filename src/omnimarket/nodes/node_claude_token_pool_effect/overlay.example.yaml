@@ -26,6 +26,18 @@ events_file: token-rotations.jsonl
 spread:
   enabled: true
   in_use_longer_than_seconds: 3600
+# Account steering for NEW lane starts. enabled is the switch: off, a lane start draws as it did before
+# the block existed. On, the lane start runs verdict_argv (the command that prints the usage verdict
+# node's result as JSON), passes its drain_labels to resolve, and counts the lanes running under each
+# label from the open CLAIM rows no older than open_claim_max_age_seconds. max_lanes_per_label is the
+# hard cap resolve holds those counts against; left out, a label carries any number of lanes. The
+# values below are examples: the deployed ones are the operator's, in the overlays repository.
+steering:
+  enabled: true
+  max_lanes_per_label: 4
+  verdict_argv: [onex-example-verdict, --json]
+  verdict_timeout_seconds: 20
+  open_claim_max_age_seconds: 21600
 unit_environment: {}
 schedule:
   interval_seconds: 300

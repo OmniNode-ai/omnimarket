@@ -8,6 +8,7 @@ omnibase_spi if the pilot's bar passes and the node is adopted.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
@@ -75,4 +76,26 @@ class ProtocolFailureRecorder(Protocol):
         self, correlation_id: str, error_code: str, detail: str
     ) -> None:
         """Append one failure row."""
+        ...
+
+
+@runtime_checkable
+class ProtocolConnectionAudit(Protocol):
+    """Record every connection a run makes to an address outside loopback and the allowed hosts."""
+
+    def start(self, allowed_hosts: tuple[str, ...]) -> None:
+        """Begin recording."""
+        ...
+
+    def stop(self) -> tuple[str, ...]:
+        """Stop; return the sorted distinct ``host:port`` of each outside connection."""
+        ...
+
+
+@runtime_checkable
+class ProtocolPilotResultSink(Protocol):
+    """Where the run's measured result goes: the measurement node's result port."""
+
+    def write(self, measured_at: datetime, metrics: dict[str, float]) -> None:
+        """Write the result; raise OSError when it did not land."""
         ...

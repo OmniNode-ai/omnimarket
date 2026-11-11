@@ -1,0 +1,105 @@
+Parsing file CreateTicketDraft.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file TLC.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CreateTicketDraft
+Computing initial states...
+Error: Invariant DoneHasTerminal is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 1)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 2: <Start line 137, col 3 to line 141, col 102 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "find" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 0)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 3: <FindFail line 170, col 3 to line 171, col 104 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 1
+/\ pc = ( <<c1, 1>> :> "fail" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 0)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 4: <FailTerm line 293, col 3 to line 302, col 96 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 1
+/\ pc = ( <<c1, 1>> :> "done" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 0)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+40 states generated, 28 distinct states found, 16 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 3 (minimum is 2, the maximum 5 and the 95th percentile is 5).
+exit=12

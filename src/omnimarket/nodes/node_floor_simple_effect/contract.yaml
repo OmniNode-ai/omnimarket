@@ -143,13 +143,18 @@ runtime:
     # OMN-23601: the piece 17 chain the J16 join (node_join_j16_effect) writes for its answer to a piece 16 failure. A join into
     # piece 17 reads only the chains named here, so a refusal written under a node that is not named reads as no answer at all.
     - node_floor_simple_effect:join_j16
+    # OMN-23022: the piece 17 chain the J0 join (node_join_j0_effect) writes: the floor record read as the code graph's row is drawn
+    # on it (golden) and the same read of a deliberately corrupt payload (the join's error chain).
+    - node_floor_simple_effect:join_j0
   # Joins that end at a node of this piece (OMN-22864). J0 (piece 17 to piece 1) asked piece 1 for a typed refusal of every
   # piece 17 failure, and no node of piece 1 can give one: the code graph and the ledger rows that stand for piece 1 run under
-  # their own correlation ids and never receive a piece 17 failure. J0 ends at the last node that emits a typed outcome for
-  # it, the cycle: the cycle must end in a success or a typed failure within the chain deadline. Every other join is unchanged.
+  # their own correlation ids and never receive a piece 17 failure. J0 ends at a node of piece 17 that emits a typed outcome for
+  # it, within the chain deadline. The cycle chain ended it golden only and never ended it in an error (OMN-23022): the join has
+  # its own chain now, node_join_j0_effect's join_j0, which ends in a success when the floor record draws the code graph's row and
+  # in a typed failure when the record cannot be read, with the code graph's typed upstream_ refusal beside it. Every other join is unchanged.
   join_ends:
     - join: J0
-      node: node_floor_simple_effect:run_floor_simple_cycle
+      node: node_floor_simple_effect:join_j0
   # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
   # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:

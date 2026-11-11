@@ -59,7 +59,7 @@
  },
  "facts": {
   "available_engines": [
-   "codex_high",
+   "claude_sonnet",
    "claude_sonnet",
    "claude_sonnet"
   ],
@@ -80,7 +80,7 @@
    "cause_attempt_budget": 2,
    "cause_diagnosis_engine": "claude_sonnet",
    "cause_engine_ladder": [
-    "codex_high",
+    "claude_sonnet",
     "claude_sonnet"
    ],
    "cause_lease_seconds": 5400,
@@ -96,7 +96,7 @@
    "cluster_min_members": 3,
    "cluster_min_members_floor": 2,
    "engine_ladder": [
-    "codex_high",
+    "claude_sonnet",
     "claude_sonnet",
     "claude_sonnet"
    ],
