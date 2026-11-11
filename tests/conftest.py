@@ -1177,8 +1177,15 @@ def code_budget_overlay_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def _code_budget_overlay_in_roots(
     monkeypatch: pytest.MonkeyPatch, code_budget_overlay_root: Path
 ) -> None:
-    existing = os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "")
-    roots = [str(code_budget_overlay_root)] + ([existing] if existing else [])
+    # OMN-23826: load_delegation_routing_overlay reads the delegation_routing document under these roots before the
+    # DELEGATION_ROUTING_OVERLAY_PATH pin, so a host whose roots hold the house document would route every test through
+    # it; the ambient roots that hold one are left out. A test that wants one names its own root.
+    ambient = [
+        root
+        for root in os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "").split(os.pathsep)
+        if root and not (Path(root) / "delegation_routing" / "overlay.yaml").is_file()
+    ]
+    roots = [str(code_budget_overlay_root), *ambient]
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", os.pathsep.join(roots))
 
 
