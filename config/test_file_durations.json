@@ -3781,6 +3781,7 @@
   "tests/unit/delegation/test_output_only_raw_response_carrier.py": 21.24,
   "tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py": 2.22,
   "tests/unit/delegation/test_paid_escalation_gate_omn14225.py": 0.08,
+  "tests/unit/delegation/test_paid_rungs_overlay.py": 3.08,
   "tests/unit/delegation/test_per_attempt_secret_ref_omn22474.py": 1.0,
   "tests/unit/delegation/test_pin_policy_consumer_omn17427.py": 0.04,
   "tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py": 1.94,

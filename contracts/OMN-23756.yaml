@@ -1,0 +1,88 @@
+schema_version: 1.0.0
+ticket_id: OMN-23756
+title: Cheap paid OpenRouter models join the delegation ladder through the routing overlay, switched off by default, with a spending cap and a burn reading
+summary: "The delegation routing overlay contract gains a paid_rungs section: hosted models ordinary routing may select, in metered tiers the routing authority places after a named ladder tier and inserts into every class order that carries that tier, behind one switch that is off by default. A rung in a free_local tier, an explicit_pin_only, customer-surface or GLM rung, and a switch set without its switch-on time and usage baseline are refused. Before a paid tier is offered its spend since switch-on is read from the provider's own usage accounting (the credits endpoint, key by reference); at or over spend_cap_usd, or when the reading fails, the paid tiers are skipped with a typed exclusion reason and the ladder continues. A call on a paid rung is booked at its declared price and the provider's reported usage.cost is recorded on the delegation completed event. build_paid_rung_burn_reading answers how fast the credit goes. The house values live in the private overlays repository with the switch off."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23756-paid-rungs-on-the-ladder
+  statement: The routing overlay places metered paid rungs on the ladder behind one switch, refuses a rung that would be booked at zero or reach a customer path, skips the paid tiers once measured spend reaches the cap, books each call at its declared price with the provider's own cost recorded, and reports the burn.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the routing overlay refuses a paid rung placed in a tier whose cost model is free_local, and the catalog check refuses a paid rung slug absent from the provider model list -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k "free_local or absent" in omnimarket'
+  - id: AC2
+    statement: 'AC2: with the switch off no paid tier enters any class order and no paid backend is appended, so no paid rung is selected -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k switch_off in omnimarket'
+  - id: AC3
+    statement: 'AC3: when measured spend reaches the cap, or the spend reading fails, the paid tiers are skipped with a typed exclusion reason and the ladder continues to the next tier -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k cap in omnimarket'
+  - id: AC4
+    statement: 'AC4: a call on a paid rung is booked at the rung''s declared price and the provider''s own reported cost is recorded on the delegation completed event -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k booked in omnimarket'
+  - id: AC5
+    statement: 'AC5: the burn reading reports balance, spend since switch-on, dollars per hour, calls and tokens per model and projected hours to empty from a credits reading and the per-call records -- falsifier: uv run pytest tests/unit/delegation/test_paid_rungs_overlay.py -q -k burn in omnimarket'
+  - id: AC6
+    statement: 'AC6: integrated: in a local process with the switch on, ladder resolution places both paid tiers after cheap_cloud and one smoke call per paid tier at most 200 output tokens answers on the declared route with its cost booked -- falsifier: the smoke receipt comment on the ticket names per paid tier the backend id, served model and booked cost, read back with onex ticket read'
+evidence_requirements:
+- kind: tests
+  description: The paid rungs overlay, placement, cap, booking and burn tests, beside the eval arms tests they build on.
+  command: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py tests/unit/delegation/test_eval_arms_overlay.py tests/unit/delegation/test_eval_arms_bifrost_merge.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23756-ac1-refusals
+  description: A paid rung in a free_local tier and an absent slug are refused, with the other leak and misbooking shapes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -k "free_local or absent or refuses" -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23756-ac2-switch-off
+  description: Switch off places nothing, appends nothing and leaves every class order as packaged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -k switch -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23756-ac3-cap
+  description: Cap reached or spend unreadable closes the paid tiers with a typed reason; the next tier is offered.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -k cap -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23756-ac4-booking
+  description: A paid rung call is booked at its declared price and usage.cost is read as the provider's own figure.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -k booked -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23756-ac5-burn
+  description: The burn reading computes balance, spend since switch-on, rate, per-model counts and projections.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -k burn -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23756-integration-proof
+  description: The pushed head ran the focused tests on a lab host through the lab work runner. The runtime half of AC6 (the switch-on dry run with one smoke call per paid tier) is read from the smoke receipt recorded on the ticket.
+  source: manual
+  binds_ac:
+  - AC6
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23756 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_paid_rungs_overlay.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
