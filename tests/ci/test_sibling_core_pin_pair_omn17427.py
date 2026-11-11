@@ -40,6 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 8b4382a1606d: omnibase_infra#5818 vendors node_projection_delegation 0068; core pin unchanged.
 # 0ddea3131fd0: omnibase_infra#5833 vendors the gate store migrations (OMN-23055); core is unchanged.
 # 440ae9e031dc: omnibase_infra#5815 (OMN-18595, OMN-23424) moves infra to core cd128b790ec6, which carries the ticket validator (omnibase_core#2281).
+# 13566fb25491: omnibase_infra#5893 vendors the context_roi 004 coding-trial columns; core is unchanged.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
@@ -51,6 +52,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("8b4382a1606d", "dev-20261108014124-2fe30fd9dc47"),
     ("440ae9e031dc", "dev-20261109065232-cd128b790ec6"),
     ("0ddea3131fd0", "dev-20261109065232-cd128b790ec6"),
+    ("13566fb25491", "dev-20261109065232-cd128b790ec6"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -120,8 +122,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra 0ddea3131fd0 and core cd128b790ec6."""
+    """The lock moves with the newest recorded row: infra 13566fb25491 and core cd128b790ec6."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261110074352-0ddea3131fd0"
+    assert infra_tag == "dev-20261111155731-13566fb25491"
