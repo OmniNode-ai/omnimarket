@@ -118,6 +118,9 @@ class ModelLabWorkCommandFailure(BaseModel):
     kind: WorkKind = "other"
     duration_seconds: float = 0.0
     error_message: str = Field(default="", max_length=2000)
+    #: The command envelope's own correlation id, echoed so a caller that put
+    #: its run's id on the command can match the terminal to the run.
+    correlation_id: str = ""
 
 
 class ProtocolWorkHandler(Protocol):
@@ -394,7 +397,12 @@ class LabWorkHost:
         try:
             request = ModelLabWorkUnitRequest.model_validate(payload)
         except ValidationError as exc:
-            await self._publish_failure(command_id, "", f"not a lab work unit: {exc}")
+            await self._publish_failure(
+                command_id,
+                "",
+                f"not a lab work unit: {exc}",
+                correlation_id=_uuid_or_none(raw.get("correlation_id")),
+            )
             return
         age = self._age(raw)
         if age is not None and age > self._max_age:
@@ -424,6 +432,7 @@ class LabWorkHost:
                 f"{type(exc).__name__}: {exc}",
                 request=request,
                 duration_seconds=time.monotonic() - started,
+                correlation_id=_uuid_or_none(raw.get("correlation_id")),
             )
             return
         finally:
@@ -461,8 +470,10 @@ class LabWorkHost:
         *,
         request: ModelLabWorkUnitRequest | None = None,
         duration_seconds: float = 0.0,
+        correlation_id: uuid.UUID | None = None,
     ) -> None:
         failure = ModelLabWorkCommandFailure(
+            correlation_id=str(correlation_id) if correlation_id else "",
             work_unit_id=work_unit_id,
             host=self._host,
             error_message=message[:2000],
@@ -474,7 +485,7 @@ class LabWorkHost:
         )
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=failure.model_dump(mode="json"),
-            correlation_id=uuid.uuid4(),
+            correlation_id=correlation_id or uuid.uuid4(),
             parent_envelope_id=command_id,
             event_type=event_type_for(self._topics.failure),
         )

@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeCodeEvalTrialReducer
+#
+# The pure decision core of the code eval trial run: given the stored run row
+# (None before the run request) and one message (run request, unit answer, unit
+# failure, score answer or nudge) with the time and the leg's free hosts, return
+# the next row, the transition taken (or why the message was dropped) and the
+# emissions: scores to send, units to place, one row per verdict, and the closed
+# event on the leg where the close rule holds. Definition-B:
+#
+#   handle(ModelCodeEvalReduceInput) -> ModelCodeEvalReduceOutput
+#
+# Stateless and deterministic: no clock read (time comes from the message), no
+# I/O, no language model. The row and its guards are the model in
+# formal/code_eval_trial (design-review verdict approve-with-notes, omnimarket
+# pull request 5836). The orchestrator calls it in process, so the reducer has no
+# bus surface: no event_bus, no handler_routing.
+name: "node_code_eval_trial_reducer"
+contract_name: "node_code_eval_trial_reducer"
+node_name: "node_code_eval_trial_reducer"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: "REDUCER_GENERIC"
+# Experimental until the orchestrator calls this handler in the runtime.
+lifecycle: experimental
+description: >
+  Pure definition-B reducer for the code eval trial run. Classifies how a unit
+  ended (rule 2), queues and sends one score at a time, places a try only after
+  its task's control reads pass, ends a sequence at the first pass or at the
+  largest attempt budget, expires a lost unit or score on the nudge, drops a
+  message that names nothing in flight, and closes the run exactly once, only
+  when every control has its verdict and every sequence has ended.
+input_model:
+  name: "ModelCodeEvalReduceInput"
+  module: "omnimarket.nodes.node_code_eval_trial_reducer.models"
+  description: "The stored run row (None before the run request), one message, the time and the free hosts."
+output_model:
+  name: "ModelCodeEvalReduceOutput"
+  module: "omnimarket.nodes.node_code_eval_trial_reducer.models"
+  description: "The next row, the transition taken or the drop reason, and the emissions."
+metadata:
+  description: "Pure transition function of the code eval trial run row."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-11"
+  tags:
+    - reducer
+    - code-eval
+    - pure
+  related_tickets:
+    - "OMN-23627"
