@@ -88,10 +88,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # filesystem, so a host timer runs it with python -m; it publishes events
     # but subscribes to no topic and has no onex.nodes entry point.
     "node_lab_daemon_sync_effect",
-    # OMN-22341: the hook-events by-correlation read is reached only through its
-    # contract-declared HTTP mount, so it subscribes to no topic and has no
-    # onex.nodes entry point.
-    "node_hook_events_by_correlation_read_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
@@ -729,4 +725,38 @@ def test_declared_subscribing_node_entry_points_are_registered() -> None:
         "these nodes declare an onex.nodes entry point and subscribe to a bus topic, "
         "but pyproject.toml's onex.nodes table has no line for them, so the runtime "
         "never loads them: " + ", ".join(offenders)
+    )
+
+
+def _http_mounted_nodes_without_registration() -> list[str]:
+    """Nodes whose contract declares an http_mount, yet pyproject.toml's
+    onex.nodes table has no line for them.
+
+    The runtime mounts a contract's http_mount only for a contract it
+    discovered through the onex.nodes table, so such a node's HTTP mount is
+    never installed (OMN-22341).
+    """
+    with _PYPROJECT.open("rb") as f:
+        registered = set(
+            tomllib.load(f)["project"]["entry-points"]["onex.nodes"].keys()
+        )
+    offenders: list[str] = []
+    for contract_path in sorted(_NODES_DIR.glob("*/contract.yaml")):
+        node_dir = contract_path.parent
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(contract, dict):
+            continue
+        if contract.get("http_mount") and node_dir.name not in registered:
+            offenders.append(node_dir.name)
+    return offenders
+
+
+def test_http_mounted_node_entry_points_are_registered() -> None:
+    offenders = _http_mounted_nodes_without_registration()
+
+    assert offenders == [], (
+        "these nodes declare an http_mount in their contract, but "
+        "pyproject.toml's onex.nodes table has no line for them, so the runtime "
+        "never discovers their contract and never mounts them (OMN-22341): "
+        + ", ".join(offenders)
     )
