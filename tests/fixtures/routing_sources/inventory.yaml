@@ -220,8 +220,6 @@ not_routing_resolution_sites:
     reason: locates the secret reading overlay directory so the install verb can pin its root in the scheduler unit; the overlay holds the reading schedule and declared consumers and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
-  - site: "src/omnimarket/nodes/node_factory_floor_effect/source_loader.py:find_node_overlay('lab_hosts')"
-    reason: locates the lab host table the floor reads for each machine's cap and whether it is in repair when neither the table variable nor the floor overlay names a file; it is a display read and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_claude_pool_refill_effect/handlers/handler_claude_pool_refill.py:find_node_overlay('lab_hosts')"
     reason: locates the lab host table whose ssh targets the Claude pool refill copies a token to; the hosts it reaches are the ones the table names and it selects no backend, model or tier for delegated work
   - site: "src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py:find_node_overlay('repos')"
