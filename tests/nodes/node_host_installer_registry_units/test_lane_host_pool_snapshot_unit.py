@@ -76,9 +76,7 @@ def test_the_unit_is_declared_on_systemd_and_reads_the_overlay_home_clone() -> N
     assert unit["entry_file"] == ENTRY
     assert unit["schedule"]["run_timeout_s"] < 60
     assert unit["probe_argv"] == ["--probe"]
-    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == (
-        "{registry_root}/overlays/overlays"
-    )
+    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == ("{overlays_root}")
     assert unit["environment"]["OMNIBASE_PATH"] == "{registry_root}"
     assert unit["environment"]["PATH"].startswith(
         "{registry_root}/omnibase_infra/scripts"

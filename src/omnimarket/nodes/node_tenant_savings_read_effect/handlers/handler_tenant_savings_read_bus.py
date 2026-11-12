@@ -9,6 +9,9 @@ is the broker access rule on the command topic, never a field of the command.
 
 from __future__ import annotations
 
+from omnimarket.handlers.container.container_overlay_dependencies import (
+    packaged_factory,
+)
 from omnimarket.handlers.tenant_projection_read.timestamps import (
     NOT_CONFIGURED_DETAIL,
     UNAVAILABLE_DETAIL,
@@ -28,6 +31,9 @@ from omnimarket.nodes.node_tenant_savings_read_effect.models.model_tenant_saving
     ModelTenantSavings,
 )
 from omnimarket.protocols.protocol_clock import ProtocolClock
+from omnimarket.protocols.protocol_logical_secret_resolver import (
+    ProtocolLogicalSecretResolver,
+)
 from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
     ProjectionMissingError,
     ProjectionNotConfiguredError,
@@ -35,6 +41,7 @@ from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
     ProtocolTenantDelegationProjectionReader,
 )
 
+PACKAGE = "omnimarket.nodes.node_tenant_savings_read_effect"
 KIND = EnumTenantReadKind.SAVINGS
 
 
@@ -45,9 +52,28 @@ class HandlerTenantSavingsReadBus:
         self,
         *,
         reader: ProtocolTenantDelegationProjectionReader | None = None,
+        secret_resolver: ProtocolLogicalSecretResolver | None = None,
         clock: ProtocolClock | None = None,
     ) -> None:
-        self._reader = reader
+        """Build the bus handler.
+
+        Args:
+            reader: A bound projection reader. The runtime hands the handler
+                with no arguments, so with no ``reader`` the reader is built
+                from a secret resolver.
+            secret_resolver: The runtime hands it, or the handler reads the
+                lane's rendered resolver config; with none the handler answers
+                ``not_configured``.
+            clock: The clock the completed body's ``as_of`` reads; defaults to
+                the host clock.
+        """
+        self._reader = (
+            reader
+            if reader is not None
+            else packaged_factory(PACKAGE, "config", "reader_factory")(
+                PACKAGE, secret_resolver
+            )
+        )
         self._clock: ProtocolClock = clock or SystemClock()
 
     async def handle(
