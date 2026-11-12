@@ -33,7 +33,7 @@ ROOTS = "ONEX_SKILL_OVERLAY_ROOTS"
 REFRESH_UNITS = ("overlay-store-refresh", "overlay-store-refresh-systemd")
 LOADER_UNIT = "overlay-store-load-systemd"
 # The clone first, then the plugin copy, matching the factory floor publisher's declared form.
-CLONE_THEN_PLUGIN = "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+CLONE_THEN_PLUGIN = "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
 
 
 @pytest.fixture(autouse=True)
