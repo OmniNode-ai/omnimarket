@@ -54,6 +54,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_broker_topic_removal_effect/test_removal_chain_events.py tests/nodes/node_broker_topic_removal_effect/test_seam_listing_evidence.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn23697-ac3-terminal-topic
+  description: The terminal event topic test passes at the pushed head. The test is added by this pull request, so the merge-base control cannot find it and reads red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_broker_topic_removal_effect/test_removal_chain_events.py::test_terminal_event_topic_is_the_declared_run_completed_topic -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn23697-ac4-adapters
   description: The adapter tests that read the topic listing pass at the pushed head. The run against the live dev broker on the lab is the unbound local item below.
   source: manual

@@ -66,7 +66,7 @@ def test_each_unit_is_declared_every_minute_and_runs_its_node(
     assert declared["entry_file"] == f"src/omnimarket/nodes/{node}/__main__.py"
     assert declared["run_timeout_s"] < 60
     assert declared["environment"]["ONEX_SKILL_OVERLAY_ROOTS"].startswith(
-        "{registry_root}/overlays/overlays"
+        "{overlays_root}"
     )
 
 
@@ -76,8 +76,7 @@ def test_the_cutover_snapshot_unit_pins_its_own_overlay_and_the_first_does_not()
     units = load_units()
     pin = units["landing-snapshot-cutover"]["environment"][PIN_ENV]
     assert pin == (
-        "{registry_root}/overlays/overlays/"
-        "node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+        "{overlays_root}/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
     )
     assert (
         PIN_ENV
