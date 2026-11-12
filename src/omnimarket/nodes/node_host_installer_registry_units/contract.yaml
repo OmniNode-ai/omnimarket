@@ -1386,9 +1386,15 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SILENT_FAILURE_ALARM_CONFIG
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SILENT_FAILURE_ALARM_CONFIG: "{home}/.local/state/omni/silent-failure-alarm/config.json"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The alarm reads the lab host table (which hosts are unavailable) through the overlay roots alone; the config
+      # owner's copy is no longer a source (OMN-23950), so the unit names the overlays clone first, then the plugin copy.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     # The configuration the alarm reads from ONEX_SILENT_FAILURE_ALARM_CONFIG (OMN-22778), written by the installer so a
     # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home}, {registry_root} and {ledger_path}
     # (the request's, else the registry's own ledger file). Each input is a request field, else the installing shell's
