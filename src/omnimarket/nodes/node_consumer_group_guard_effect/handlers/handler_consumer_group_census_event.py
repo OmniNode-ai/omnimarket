@@ -15,12 +15,12 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from omnimarket.events.consumer_group_state import (
+    ModelGroupCensusEvent,
+)
 from omnimarket.models.consumer_group_guard import ModelConsumerGroupGuardRequest
 from omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_consumer_group_guard import (
     list_group_states,
-)
-from omnimarket.nodes.node_consumer_group_state_reducer.models.model_group_state import (
-    ModelGroupCensusEvent,
 )
 from omnimarket.nodes.node_runtime_coverage_effect.handlers.handler_runtime_coverage import (
     resolve_broker,

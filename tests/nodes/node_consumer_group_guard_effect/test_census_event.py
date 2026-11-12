@@ -124,16 +124,17 @@ def test_renamed_field_is_refused() -> None:
         )
 
 
-def test_contract_lists_census_topic_and_routes_new_operation() -> None:
+def test_contract_routes_census_operation_and_declares_no_unpublished_topic() -> None:
     contract = yaml.safe_load(
         Path(
             "src/omnimarket/nodes/node_consumer_group_guard_effect/contract.yaml"
         ).read_text()
     )
+    # No code publishes the census yet, so the contract must not declare it (publish-parity gate).
     publish_topics = contract["event_bus"]["publish_topics"]
-    assert "onex.evt.omnimarket.consumer-group-census.v1" in publish_topics
+    assert "onex.evt.omnimarket.consumer-group-census.v1" not in publish_topics
     externally_consumed = contract["externally_consumed_topics"]
-    assert "onex.evt.omnimarket.consumer-group-census.v1" in externally_consumed
+    assert "onex.evt.omnimarket.consumer-group-census.v1" not in externally_consumed
     handlers = contract["handler_routing"]["handlers"]
     census = next(
         h for h in handlers if h["operation"] == "consumer_group_census_event_effect"

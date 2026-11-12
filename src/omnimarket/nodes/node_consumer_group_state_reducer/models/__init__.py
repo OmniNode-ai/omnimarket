@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-from omnimarket.nodes.node_consumer_group_state_reducer.models.model_group_state import (
+from omnimarket.events.consumer_group_state import (
     ModelGroupCensusEvent,
     ModelGroupState,
     ModelGroupStateRecord,

@@ -13,9 +13,14 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from collections.abc import Callable, Mapping
 from typing import Literal
 
+from omnimarket.events.consumer_group_state import decision_digest
+from omnimarket.nodes.node_consumer_group_reap_effect.adapters.kafka_group_admin import (
+    KafkaGroupAdmin,
+)
 from omnimarket.nodes.node_consumer_group_reap_effect.models.model_group_reap import (
     EnumReapRefusal,
     ModelGroupReapCommand,
@@ -24,17 +29,18 @@ from omnimarket.nodes.node_consumer_group_reap_effect.models.model_group_reap im
 )
 from omnimarket.nodes.node_consumer_group_reap_effect.overlay import (
     ModelGroupReapOverlay,
+    load_overlay,
 )
 from omnimarket.nodes.node_consumer_group_reap_effect.protocols import (
     BrokerHealth,
     GroupDeleter,
     GroupLister,
 )
-from omnimarket.nodes.node_consumer_group_state_reducer.models.model_group_state import (
-    decision_digest,
-)
 from omnimarket.nodes.node_consumer_group_state_reducer.overlay import (
     ModelGroupStateOverlay,
+)
+from omnimarket.nodes.node_consumer_group_state_reducer.overlay import (
+    load_overlay as load_policy_overlay,
 )
 
 # Outcomes that mean the group changed under us rather than that the broker is unwell.
@@ -44,27 +50,64 @@ _BENIGN_ERRORS = ("GROUP_ID_NOT_FOUND", "NON_EMPTY_GROUP")
 BrokerResolver = Callable[[str], tuple[object, str, Mapping[str, str]]]
 
 
+def _default_resolve_broker(lane: str) -> tuple[object, str, Mapping[str, str]]:
+    from omnimarket.nodes.node_runtime_coverage_effect.handlers.handler_runtime_coverage import (
+        resolve_broker,
+    )
+
+    return resolve_broker(lane)
+
+
 class HandlerGroupReap:
     """Delete the due groups a reducer named, only on a command that proves the reducer decided them."""
 
     def __init__(
         self,
         *,
-        policy: ModelGroupStateOverlay,
-        overlay: ModelGroupReapOverlay,
-        lister: GroupLister,
-        deleter: GroupDeleter,
-        health: BrokerHealth,
-        sleeper: Callable[[float], None],
-        resolve_broker: BrokerResolver,
+        policy: ModelGroupStateOverlay | None = None,
+        overlay: ModelGroupReapOverlay | None = None,
+        lister: GroupLister | None = None,
+        deleter: GroupDeleter | None = None,
+        health: BrokerHealth | None = None,
+        sleeper: Callable[[float], None] | None = None,
+        resolve_broker: BrokerResolver | None = None,
     ) -> None:
-        self._policy = policy
-        self._overlay = overlay
-        self._lister = lister
-        self._deleter = deleter
-        self._health = health
-        self._sleeper = sleeper
-        self._resolve_broker = resolve_broker
+        # Every argument is optional so the runtime can build the handler with no arguments; an
+        # absent one resolves on first use, so a missing overlay surfaces as a typed "failed"
+        # outcome of the run, never as a crash at wiring time.
+        self._policy_arg = policy
+        self._overlay_arg = overlay
+        self._lister_arg = lister
+        self._deleter_arg = deleter
+        self._health_arg = health
+        self._sleeper_arg = sleeper
+        self._resolve_broker_arg = resolve_broker
+
+    @property
+    def _policy(self) -> ModelGroupStateOverlay:
+        return self._policy_arg or load_policy_overlay()
+
+    @property
+    def _overlay(self) -> ModelGroupReapOverlay:
+        return self._overlay_arg or load_overlay()
+
+    def _admin(self) -> KafkaGroupAdmin:
+        return KafkaGroupAdmin(self._overlay.request_timeout_seconds)
+
+    def _lister(self, config: Mapping[str, str]) -> dict[str, str]:
+        return (self._lister_arg or self._admin().list_groups)(config)
+
+    def _deleter(self, config: Mapping[str, str], names: list[str]) -> dict[str, str]:
+        return (self._deleter_arg or self._admin().delete_groups)(config, names)
+
+    def _health(self, config: Mapping[str, str]) -> str:
+        return (self._health_arg or self._admin().check_health)(config)
+
+    def _sleeper(self, seconds: float) -> None:
+        (self._sleeper_arg or time.sleep)(seconds)
+
+    def _resolve_broker(self, lane: str) -> tuple[object, str, Mapping[str, str]]:
+        return (self._resolve_broker_arg or _default_resolve_broker)(lane)
 
     def _decided_by_reducer(self, command: ModelGroupReapCommand) -> bool:
         """The single check that a command came from a reducer; a file-decided command is refused."""
