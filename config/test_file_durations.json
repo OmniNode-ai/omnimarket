@@ -4536,6 +4536,7 @@
   "tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py": 0.97,
   "tests/unit/nodes/node_glm_allowance_compute/test_glm_allowance.py": 0.24,
   "tests/unit/nodes/node_glm_usage_record_compute/test_glm_usage_record.py": 0.08,
+  "tests/unit/nodes/node_hook_spool_reconcile_effect/test_hook_spool_reconcile.py": 2.82,
   "tests/unit/nodes/node_host_drain_effect/test_backends.py": 3.0,
   "tests/unit/nodes/node_host_drain_effect/test_chain.py": 2.67,
   "tests/unit/nodes/node_host_drain_effect/test_cli.py": 2.79,
