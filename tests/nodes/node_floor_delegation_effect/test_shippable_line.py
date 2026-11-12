@@ -102,7 +102,7 @@ def test_a_scenario_that_could_not_be_read_is_unread_never_a_pass() -> None:
     assert doc.shippable is False
 
 
-def test_a_read_older_than_its_limit_is_unread_even_when_it_was_green() -> None:
+def test_a_read_older_than_its_limit_is_not_a_pass_even_when_it_was_green() -> None:
     reads = list(all_reads("success"))
     reads[4] = read(
         "R5",
@@ -110,7 +110,7 @@ def test_a_read_older_than_its_limit_is_unread_even_when_it_was_green() -> None:
         read_minutes_ago=RT.scenario_reads_max_age_seconds // 60 + 5,
     )
     doc = _build(tuple(reads))
-    assert next(s for s in doc.scenarios if s.id == "R5").state == "unread"
+    assert next(s for s in doc.scenarios if s.id == "R5").state == "stale"
     assert doc.shippable is False
 
 

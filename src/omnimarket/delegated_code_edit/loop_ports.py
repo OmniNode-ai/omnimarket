@@ -30,6 +30,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import cast
 from urllib.parse import urlparse
@@ -47,6 +48,7 @@ from omnimarket.delegation.rubric.tool_use_transcript import (
     declared_tools_from_schemas,
     recorded_calls_request,
 )
+from omnimarket.handlers import delegate_retry_cause as retry_causes
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     DelegatePinViolationError,
@@ -204,14 +206,7 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
     null_terminal = "terminal_payload" in result and result["terminal_payload"] is None
     if null_terminal:
         failures.append("terminal_payload is null")
-    retry_cause = ""
-    if (
-        receipt.get("status") == "timeout"
-        or receipt.get("terminal_failure_cause") == "timeout"
-    ):
-        retry_cause = "timed out"
-    elif receipt.get("terminal_failure_cause") == "no_terminal" or null_terminal:
-        retry_cause = "had no terminal"
+    retry_cause = retry_causes.delegate_retry_cause(receipt, null_terminal)
     return _DelegateReceipt(
         model=str(receipt.get("model") or ""),
         tokens_in=tokens(metrics.get("input_tokens")),
@@ -243,6 +238,7 @@ class DelegatedCodeEditPorts:
         self._onex = onex
         self._state_root = state_root
         self._delegate_flags = delegate_flags
+        self._queue_demoted = False
         self._pin = pin
         self._run_delegate = run_delegate or _run_subprocess
         self._max_tokens = max_tokens
@@ -633,8 +629,11 @@ class DelegatedCodeEditPorts:
             "--response-contract",
             json.dumps(response_contract, separators=(",", ":")),
         ]
+        flags = (
+            IN_PROCESS_DELEGATE_FLAGS if self._queue_demoted else self._delegate_flags
+        )
         flags_start = len(argv)
-        argv += [*self._delegate_flags, "--state-root", str(self._state_root)]
+        argv += [*flags, "--state-root", str(self._state_root)]
         if self._pin is not None:
             argv += ["--backend-id", self._pin.backend_id]
         if self._max_tokens is not None:
@@ -650,18 +649,18 @@ class DelegatedCodeEditPorts:
         reply, retry_cause = self._delegate_attempt(argv)
         deployed_lane = any(
             flag == "--locus" and value == "deployed-lane"
-            for flag, value in zip(
-                self._delegate_flags, self._delegate_flags[1:], strict=False
-            )
+            for flag, value in pairwise(flags)
         )
         if not retry_cause or not deployed_lane:
             return reply
+        if retry_cause == retry_causes.QUEUED_NOT_STARTED_CAUSE:
+            self._queue_demoted = True
         # OMN-21396: deployed-lane retries succeeded 0/32 after timeout and
         # 0/12 after no terminal; in-process retries succeeded 17/28 and 10/10.
         retry_argv = [
             *argv[:flags_start],
             *IN_PROCESS_DELEGATE_FLAGS,
-            *argv[flags_start + len(self._delegate_flags) :],
+            *argv[flags_start + len(flags) :],
         ]
         retry, _ = self._delegate_attempt(retry_argv)
         if retry.ok:
