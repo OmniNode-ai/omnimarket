@@ -629,6 +629,7 @@ node_dev_deploy_reading_compute = "omnimarket.nodes.node_dev_deploy_reading_comp
 node_dev_deploy_reading_effect = "omnimarket.nodes.node_dev_deploy_reading_effect"
 node_dev_merge_redeploy_trigger_effect = "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect"
 node_dev_roll_request_compute = "omnimarket.nodes.node_dev_roll_request_compute"
+node_dev_roll_verify_compute = "omnimarket.nodes.node_dev_roll_verify_compute"
 node_dev_runtime_mutation_guard_effect = "omnimarket.nodes.node_dev_runtime_mutation_guard_effect"
 node_dev_tag_lineage_effect = "omnimarket.nodes.node_dev_tag_lineage_effect"
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
