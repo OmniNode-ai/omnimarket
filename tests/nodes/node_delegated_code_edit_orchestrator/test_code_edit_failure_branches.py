@@ -50,8 +50,10 @@ pytestmark = pytest.mark.unit
 def test_turn_bounds_run_exactly_the_budget_then_check(
     max_turns: int, passes: bool
 ) -> None:
+    # The draft writes a file in turn 1: a loop that changed nothing ends no_change (OMN-23930).
     ports = FakePorts(
-        [_reply(n, _a("ls")) for n in range(1, max_turns + 2)],
+        [_reply(1, _a("write", file_path="src/m.py", content=FIX))]
+        + [_reply(n, _a("ls")) for n in range(2, max_turns + 2)],
         check_passes=[passes],
     )
     request = _request(max_turns=max_turns)
@@ -86,6 +88,7 @@ def test_check_failure_is_in_the_next_prompt_and_can_be_fixed(tool: str) -> None
         ],
         check_passes=[False, True],
         check_output=failure,
+        preexisting_diff=True,
     )
 
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
@@ -170,7 +173,10 @@ def test_onex_delegate_refusal_is_feedback_and_two_refusals_stop(
             self.prompts.append(prompt)
             return delegate_ports.delegate(request, prompt, response_contract, turn)
 
-    ports = RefusingPorts([_reply(2, _a("finish"))], check_passes=[True])
+    ports = RefusingPorts(
+        [_reply(2, _a("write", file_path="src/m.py", content=FIX), _a("finish"))],
+        check_passes=[True],
+    )
     request = _request(max_turns=40)
 
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
@@ -188,7 +194,7 @@ def test_onex_delegate_refusal_is_feedback_and_two_refusals_stop(
     receipt = ports.receipts[request.correlation_id]
     assert receipt["turns"][0]["ok"] is False
     assert receipt["turns"][0]["actions"] == []
-    assert ports.writes == []
+    assert ports.writes == (["src/m.py"] if recover else [])
 
 
 @pytest.mark.parametrize(
@@ -273,7 +279,7 @@ def test_check_infrastructure_failure_is_terminal_and_receipted() -> None:
                 name=check.name, status="infra_error", output_tail="missing binary"
             )
 
-    ports = BrokenCheckPorts([_reply(1, _a("finish"))])
+    ports = BrokenCheckPorts([_reply(1, _a("finish"))], preexisting_diff=True)
     request = _request()
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
     assert result.status == EnumCodeEditStatus.INFRA_ERROR
