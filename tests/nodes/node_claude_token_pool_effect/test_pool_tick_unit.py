@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -32,17 +33,21 @@ MODULE = "omnimarket.nodes.node_claude_token_pool_effect.runtime_claude_pool_tic
 
 def _result(
     *,
-    outcome: str = "kept",
+    outcome: Literal[
+        "kept", "swapped", "unmanaged", "no_usable", "planned", "spread"
+    ] = "kept",
     host: str = "h101",
     rank: int = 1,
-    marks_state: str = "applied",
+    marks_state: Literal[
+        "applied", "unchanged", "unreadable", "stale", "is_source"
+    ] = "applied",
 ) -> ModelClaudeTokenRotationResult:
     return ModelClaudeTokenRotationResult(
         host=host,
         rank=rank,
-        outcome=outcome,  # type: ignore[arg-type]
+        outcome=outcome,
         in_use_state="usable",
-        marks_sync=ModelRotationMarksSync(state=marks_state),  # type: ignore[arg-type]
+        marks_sync=ModelRotationMarksSync(state=marks_state),
     )
 
 
