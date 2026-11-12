@@ -8030,6 +8030,7 @@
       "partitioning": [],
       "producer": "node_projection_overlay_store",
       "readers": [
+        "node_floor_emissions_publish_effect",
         "node_floor_owner_map_publish_effect",
         "node_floor_projection_read_effect",
         "node_floor_simple_effect",
