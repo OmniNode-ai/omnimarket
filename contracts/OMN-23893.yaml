@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-23893
+title: Add medium and large past tasks to the local-model coding suite
+summary: Grows the committed suite benchmarks/code_eval_suite/suite.v1.json with merged tickets of the contract repositories whose size band is medium or large by the declared size rule (found with the file and line limits of the first search widened), each checked by the merged scorer node control (checks fail at the base, pass with the merged change). The census node counts the grown file per band and repository against the line read from its overlay; no code changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23893-suite
+  statement: The suite holds medium and large tasks whose control holds, and the census node counts them.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every task added to the committed suite names its repository, merge commit, base commit, ticket contract, diff size, size band and bound checks, and carries a control verdict of pass -- falsifier: the suite reader refuses a task whose control verdict is not pass, shown by the existing reader test failing when a task with a failing verdict is planted in the grown suite file'
+  - id: AC2
+    statement: 'AC2: the count of tasks per size band and per repository, the excluded tasks with their reason and the shortfall per band over the grown suite are answered by the census node and equal a recount of the suite file by hand -- falsifier: the committed-suite test turns red when one count in the node''s answer is planted wrong'
+  - id: AC3
+    statement: 'AC3: the medium and large tasks added were found by the plan''s declared size rule over merged ticket contracts with runnable checks, and the count per band is stated on this ticket beside the number the comparison step asks for -- falsifier: a band count on the ticket that differs from the census node''s count over the committed file'
+  - id: AC4
+    statement: 'AC4: integrated: the census node run in the dev runtime from its branch over the grown suite answers the same counts as the recount -- falsifier: the answer read from the dev bus by its correlation id beside the recount, recorded on this ticket'
+evidence_requirements:
+- kind: tests
+  description: The census node's tests over the grown committed suite.
+  command: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23893-ac1-reader
+  description: The suite reader refuses a task whose control verdict is not pass; the grown suite file validates as the node request.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_failing_controls.py tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23893-ac2-recount
+  description: The test recounts every task of the grown suite from the raw rows and the node answers the same counts; a planted wrong count turns it red.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23893-ac4-hosted-proxy
+  description: 'Hosted proxy for the integrated criterion: the golden chain answers the exact census through the handler on the in-memory bus. The reading on a lab host from the pushed head is the unbound local item below; a hosted runner cannot reach a lab host.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_golden_chain_code_eval_suite_census.py -q --no-cov -p no:cacheprovider
+    cwd: .
+  execution_scope: hosted_and_local
+- id: dod-omn23893-integration-proof
+  description: On a lab host, from the pushed head, the grown suite is published as a request on the dev bus and the answer event is read back by its correlation id. Hosted CI cannot reach a lab host, so this unbound check belongs to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23893 --kind test -- uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute -q --no-cov
+    cwd: .
