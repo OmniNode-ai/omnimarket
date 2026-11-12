@@ -529,6 +529,7 @@ node_contract_seams_orchestrator = "omnimarket.nodes.node_contract_seams_orchest
 node_contract_seams_reducer = "omnimarket.nodes.node_contract_seams_reducer"
 node_contract_serialize_compute = "omnimarket.nodes.node_contract_serialize_compute"
 node_contract_sweep = "omnimarket.nodes.node_contract_sweep"
+node_contract_topic_reader_compute = "omnimarket.nodes.node_contract_topic_reader_compute"
 node_contractor_integration_note_effect = "omnimarket.nodes.node_contractor_integration_note_effect"
 node_controller_fix_plan_compute = "omnimarket.nodes.node_controller_fix_plan_compute"
 node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
