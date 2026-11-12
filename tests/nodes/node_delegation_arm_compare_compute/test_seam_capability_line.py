@@ -21,6 +21,9 @@ from omnimarket.models.delegation_arm_compare.model_arm_compare_overlay import (
 from omnimarket.models.delegation_capability_map.model_capability_line import (
     ModelCapabilityLine,
 )
+from omnimarket.models.delegation_capability_map.model_capability_map_overlay import (
+    ModelCapabilityMapOverlay,
+)
 from omnimarket.nodes.node_delegation_arm_compare_compute.handlers.handler_delegation_arm_compare import (
     HandlerDelegationArmCompare,
 )
@@ -43,15 +46,13 @@ CAPABILITY_MAP_EXAMPLE = (
 )
 
 
-def test_the_example_line_equals_the_capability_map_line_today() -> None:
+def test_the_example_line_equals_the_capability_map_example_line_today() -> None:
     document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
-    capability_document = yaml.safe_load(
-        CAPABILITY_MAP_EXAMPLE.read_text(encoding="utf-8")
+    capability_example = ModelCapabilityMapOverlay.model_validate(
+        yaml.safe_load(CAPABILITY_MAP_EXAMPLE.read_text(encoding="utf-8"))
     )
     example = ModelArmCompareOverlay.model_validate(document)
-    assert example.line == ModelCapabilityLine.model_validate(
-        capability_document["line"]
-    )
+    assert example.line == capability_example.line
     assert set(document["line"]) == set(ModelCapabilityLine.model_fields)
 
 

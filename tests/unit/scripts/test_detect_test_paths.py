@@ -932,13 +932,16 @@ def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() 
     assert selection.matrix == list(range(1, 21))
 
 
-def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
-    None
-):
-    # tests/unit/nodes/ alone is over 900 recorded seconds and under the
-    # narrowed-selection bound: one path, at least three shards. tests/nodes/
-    # outgrew the bound (it selects the full suite), so the selector is asked
-    # about this mid-weight path over the real durations record.
+def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count(
+    tmp_path: Path,
+) -> None:
+    # One path of 1000 recorded seconds is over 900 and under the
+    # narrowed-selection bound: one path, ceil(1000/360) = 3 shards. The test
+    # writes its own durations file so it does not move with the real record.
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "test_file_durations.json").write_text(
+        json.dumps({"tests/unit/nodes/test_mid_weight.py": 1000.0})
+    )
     from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
         HandlerTestSelectionSelector,
     )
@@ -948,7 +951,7 @@ def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count
 
     decision = HandlerTestSelectionSelector(None, load_policy()).handle(
         ModelSelectorRequest(
-            selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT)
+            selected_paths=("tests/unit/nodes/",), repo_root=str(tmp_path)
         )
     )
     assert decision.split_count is not None
