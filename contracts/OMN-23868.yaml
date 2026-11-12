@@ -44,12 +44,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_cli_chain.py tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_runtime.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn23868-ac3
+  description: AC3 is read in the running runtime on a lab host (the unbound integration-proof item below); the bound check here is the runtime test, which has the landing tick orchestrator answer a request read from the request topic on the in-process runtime bus, and it fails at a base that has no rerun request path.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_runtime.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn23868-integration-proof
   description: Observed in the running runtime on a lab host from the branch, not by hosted CI; the receipt names the host, the revision and the answer read from the dev bus.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23868-rerun --kind test -- uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_runtime.py tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_cli_chain.py -q --no-cov -n 0 -p no:randomly
