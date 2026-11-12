@@ -296,3 +296,77 @@ def test_error_chain_overlay_invalid_writes_nothing(tmp_path: Path) -> None:
     assert result.status == "refused"
     assert result.reason == "overlay-invalid"
     assert not any(fs.rglob("*"))
+
+
+def test_inline_content_install_writes_rendered_bytes(tmp_path: Path) -> None:
+    doc = fixture_document()
+    entry = doc["units"]["serve"]["files"][0]
+    entry.pop("source")
+    entry["content"] = TEMPLATE
+    overlay = make_overlay_with_doc(tmp_path, doc, "overlay.yaml")
+    host = FakeHost()
+    fs = tmp_path / "fs"
+    result = handler(host, fs).handle(
+        request(overlay, "serve", "install", units_file="overlay.yaml")
+    )
+    assert result.status == "success", result.stderr
+    assert (
+        fs / "etc/systemd/system/serve.service"
+    ).read_bytes() == rendered_template().encode()
+
+
+def test_inline_content_and_source_is_refused(tmp_path: Path) -> None:
+    doc = fixture_document()
+    entry = doc["units"]["serve"]["files"][0]
+    entry["content"] = TEMPLATE
+    overlay = make_overlay_with_doc(tmp_path, doc, "overlay.yaml")
+    host = FakeHost()
+    fs = tmp_path / "fs"
+    result = handler(host, fs).handle(
+        request(overlay, "serve", "install", units_file="overlay.yaml")
+    )
+    assert result.status == "refused"
+    assert result.reason == "overlay-invalid"
+    assert not any(fs.rglob("*"))
+
+
+def test_model_refuses_file_with_neither_source_nor_content() -> None:
+    doc = fixture_document()
+    entry = doc["units"]["serve"]["files"][0]
+    entry.pop("source")
+    with pytest.raises(ValidationError):
+        ModelNetUnitsOverlay.model_validate(doc)
+
+
+def test_inline_content_digest_pin_is_checked(tmp_path: Path) -> None:
+    doc = fixture_document()
+    entry = doc["units"]["serve"]["files"][0]
+    entry.pop("source")
+    entry["content"] = TEMPLATE
+    entry["sha256"] = "0" * 64
+    overlay = make_overlay_with_doc(tmp_path, doc, "overlay.yaml")
+    host = FakeHost()
+    fs = tmp_path / "fs"
+    result = handler(host, fs).handle(
+        request(overlay, "serve", "install", units_file="overlay.yaml")
+    )
+    assert result.status == "refused"
+    assert result.reason == "digest-mismatch"
+    assert not any(fs.rglob("*"))
+
+
+def test_inline_content_serving_restart_refused(tmp_path: Path) -> None:
+    doc = fixture_document()
+    entry = doc["units"]["serve"]["files"][0]
+    entry.pop("source")
+    entry["content"] = TEMPLATE
+    entry["values"]["RESTART_POLICY"] = "on-failure"
+    overlay = make_overlay_with_doc(tmp_path, doc, "overlay.yaml")
+    host = FakeHost()
+    fs = tmp_path / "fs"
+    result = handler(host, fs).handle(
+        request(overlay, "serve", "install", units_file="overlay.yaml")
+    )
+    assert result.status == "refused"
+    assert result.reason == "serving-restart-policy"
+    assert not any(fs.rglob("*"))
