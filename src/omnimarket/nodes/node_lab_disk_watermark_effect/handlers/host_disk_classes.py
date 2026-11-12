@@ -20,7 +20,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
+from omnimarket.events.host_disk_reading import (
     ALL_CLASSES,
     ModelDiskClassReading,
     ModelDiskGroup,

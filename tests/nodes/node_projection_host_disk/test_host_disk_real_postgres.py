@@ -21,6 +21,7 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.events.host_disk_reading import ModelHostDiskRead
 from omnimarket.nodes.node_projection_host_disk.handlers import (
     handler_host_disk_writer as writer_module,
 )
@@ -193,3 +194,8 @@ def test_replaying_the_same_readings_twice_yields_identical_rows(
         )
         == first
     )
+
+
+@pytest.mark.integration
+def test_the_writer_reads_the_shared_reading_model() -> None:
+    assert writer_module.ModelHostDiskRead is ModelHostDiskRead

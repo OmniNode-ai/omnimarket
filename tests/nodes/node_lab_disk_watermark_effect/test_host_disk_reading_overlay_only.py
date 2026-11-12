@@ -11,14 +11,14 @@ from typing import Any, cast
 import pytest
 import yaml
 
+from omnimarket.events.host_disk_reading import (
+    ModelHostDiskRead,
+)
 from omnimarket.nodes.node_lab_disk_watermark_effect import (
     handlers as handlers_package,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports import (
     InMemoryHostDiskPublisher,
-)
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
-    ModelHostDiskRead,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     ModelLabDiskWatermarkRequest,

@@ -9,16 +9,16 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.events.host_disk_reading import (
+    ALL_CLASSES,
+    ModelHostDiskRead,
+)
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_classes import (
     parse_docker_size,
     volume_for,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports import (
     InMemoryHostDiskPublisher,
-)
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
-    ALL_CLASSES,
-    ModelHostDiskRead,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     ModelLabDiskWatermarkRequest,

@@ -16,6 +16,13 @@ from typing import NamedTuple
 
 import yaml
 
+from omnimarket.events.host_disk_reading import (
+    FILESYSTEM_CLASSES,
+    FailureReason,
+    ModelHostDiskRead,
+    ModelHostDiskReadFailed,
+    ModelHostDiskVolume,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayNotFoundError,
     load_structured_overlay,
@@ -30,13 +37,6 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_classes 
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports import (
     ProtocolHostDiskPublisher,
-)
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
-    FILESYSTEM_CLASSES,
-    FailureReason,
-    ModelHostDiskRead,
-    ModelHostDiskReadFailed,
-    ModelHostDiskVolume,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     Level,

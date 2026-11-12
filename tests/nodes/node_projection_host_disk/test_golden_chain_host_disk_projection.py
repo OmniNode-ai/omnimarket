@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
+from omnimarket.events.host_disk_reading import (
     ALL_CLASSES,
 )
 from omnimarket.nodes.node_projection_host_disk.handlers.handler_host_disk_writer import (

@@ -25,13 +25,13 @@ import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.adapter_host_disk_bus import (
-    LaneBusHostDiskPublisher,
-)
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
+from omnimarket.events.host_disk_reading import (
     ALL_CLASSES,
     ModelHostDiskRead,
     ModelHostDiskReadFailed,
+)
+from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.adapter_host_disk_bus import (
+    LaneBusHostDiskPublisher,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     ModelLabDiskWatermarkRequest,

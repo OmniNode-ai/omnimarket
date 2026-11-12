@@ -10,12 +10,12 @@ from typing import Any, cast
 import pytest
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports import (
-    InMemoryHostDiskPublisher,
-)
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
+from omnimarket.events.host_disk_reading import (
     ModelHostDiskRead,
     ModelHostDiskReadFailed,
+)
+from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports import (
+    InMemoryHostDiskPublisher,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     ModelLabDiskWatermarkReading,

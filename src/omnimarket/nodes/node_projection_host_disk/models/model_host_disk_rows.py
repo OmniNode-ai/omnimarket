@@ -16,7 +16,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
+from omnimarket.events.host_disk_reading import (
     DiskClassName,
     NonEmptyStr,
 )

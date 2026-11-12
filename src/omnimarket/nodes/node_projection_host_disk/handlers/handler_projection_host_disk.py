@@ -13,7 +13,7 @@ nothing while every watermark reads healthy (rule 7a, OMN-18769).
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_host_disk_reading import (
+from omnimarket.events.host_disk_reading import (
     ModelHostDiskRead,
 )
 from omnimarket.nodes.node_projection_host_disk.models import (
