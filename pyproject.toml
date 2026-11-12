@@ -582,6 +582,7 @@ node_delegation_readiness_verdict_effect = "omnimarket.nodes.node_delegation_rea
 node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_receipt_verdict_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
+node_delegation_routing_order_compute = "omnimarket.nodes.node_delegation_routing_order_compute"
 node_delegation_routing_overlay_check_compute = "omnimarket.nodes.node_delegation_routing_overlay_check_compute"
 node_delegation_routing_reducer = "omnimarket.nodes.node_delegation_routing_reducer"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
