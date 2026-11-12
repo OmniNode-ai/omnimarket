@@ -1,0 +1,117 @@
+---
+# Every margin, confidence, power and n this node answers with is a value read from an
+# overlay key (delegation.capability_map.line) by the handler itself; the contract holds none.
+name: node_delegation_arm_compare_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Paired comparison of the two arms of the context injection A/B (OMN-20017). Pairs the
+  two arms' per-task outcomes by task key -- never by position, a task one arm did not
+  answer counts as a failure -- and calls the exact paired test of ranges/compare.py,
+  answering ModelComparisonResult with EnumComparisonVerdict. The margin, confidence and
+  power come from the overlay key delegation.capability_map.line, read by the handler
+  itself. A negative control that reproduces the gain cancels it: the verdict reads
+  NO_DIFFERENCE and control_cancelled_gain is true. A malformed request ends as a typed
+  failure and never a verdict. No second statistical test, no second verdict enum, no
+  clock, no model call.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_arm_compare
+      handler:
+        name: HandlerDelegationArmCompare
+        module: omnimarket.nodes.node_delegation_arm_compare_compute.handlers.handler_delegation_arm_compare
+
+handler:
+  module: omnimarket.nodes.node_delegation_arm_compare_compute.handlers.handler_delegation_arm_compare
+  class: HandlerDelegationArmCompare
+  input_model: omnimarket.models.delegation_arm_compare.model_arm_compare_request.ModelArmCompareRequest
+  output_model: omnimarket.models.delegation_arm_compare.model_arm_compare_result.ModelArmCompareResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles: [main]
+
+inputs:
+  comparison_id:
+    type: str
+    required: true
+    description: The identity of this comparison; the control's carries the :control suffix.
+  eval_run_id:
+    type: str
+    required: true
+    description: The eval run the two arms belong to.
+  size_band:
+    type: str
+    required: true
+    description: The size band both arms ran at.
+  budget_label:
+    type: str
+    required: true
+    description: The attempt budget both arms ran under.
+  arm_a_model:
+    type: str
+    required: true
+    description: The model of arm A; it must differ from arm B's.
+  arm_b_model:
+    type: str
+    required: true
+    description: The model of arm B, the arm judged against A.
+  outcomes_a:
+    type: tuple
+    required: true
+    description: Arm A's per-task outcomes, one row per task key.
+  outcomes_b:
+    type: tuple
+    required: true
+    description: Arm B's per-task outcomes over the same tasks.
+  control_outcomes_a:
+    type: tuple
+    required: false
+    description: The negative control's arm A outcomes; empty when the run has none.
+  control_outcomes_b:
+    type: tuple
+    required: false
+    description: The negative control's arm B outcomes; empty when the run has none.
+
+outputs:
+  result:
+    type: object
+  control:
+    type: object
+  control_cancelled_gain:
+    type: bool
+  failure:
+    type: str
+  detail:
+    type: str
+
+terminal_event: onex.evt.omnimarket.delegation-arm-compare-measured.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-arm-compare-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-arm-compare-measured.v1
+
+# The trial driver and the dashboard read the measurement from this topic.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-arm-compare-measured.v1
+
+published_events:
+  - event_type: DelegationArmCompareMeasured
+    topic: onex.evt.omnimarket.delegation-arm-compare-measured.v1
+    description: >
+      The exact paired verdict of two arms at one size band and budget, the negative
+      control that did or did not reproduce the gain, or the typed failure that stopped it.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-arm-compare-requested.v1

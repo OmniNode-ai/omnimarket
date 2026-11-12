@@ -22,6 +22,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from omnimarket.models.floor_17a import ModelNodeEmission
+from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 
 # The floor's join fold reads a failure with no start as a refusal only with this prefix.
 UPSTREAM_PREFIX = "upstream_"
@@ -94,6 +95,7 @@ class ChainEmitter:
         correlation_id: str | None = None,
         backend: str = "real",
         drill: bool = False,
+        origin: ChainOrigin | None = None,
     ) -> None:
         self._sink = sink
         self._node = node
@@ -102,6 +104,9 @@ class ChainEmitter:
         self.correlation_id = correlation_id or uuid4().hex
         self._backend = backend
         self._drill = drill
+        # The kind of work the chain is (OMN-23862). A caller that says nothing is ``unknown``, which never counts as real
+        # work; a drill is a drill. Only a caller that knows its chain came from a real unit of work says ``real``.
+        self._origin: ChainOrigin = origin or ("drill" if drill else "unknown")
         self._started = False
         self._closed = False
 
@@ -164,6 +169,7 @@ class ChainEmitter:
                     "emitted_at": self._clock(),
                     "backend": self._backend,
                     "drill": self._drill,
+                    "origin": self._origin,
                     **extra,
                 }
             )

@@ -616,6 +616,167 @@ def spool_drain(directory: Path | None = None) -> list[dict[str, object]]:
 
 
 # ----------------------------------------------------------------------------------------------
+# The end record: how a killed lane ended and where its work is (read only).
+# ----------------------------------------------------------------------------------------------
+
+END_RECORD_SCHEMA = 1
+CAUSE_OOM_KILL = "oom_kill"
+CAUSE_RUNTIME_MAX = "runtime_max"
+CAUSE_SIGNAL = "signal"
+CAUSE_EXIT_CODE = "exit_code"
+TREE_DEPTHS = (1, 2)
+RECORD_STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def classify_end(
+    rc: int,
+    verdict: str | None,
+    deadline_hit: bool,
+    stopped_by_signal: int | None,
+    oom_kills: int,
+) -> str | None:
+    """How the command ended: ``oom_kill``, ``runtime_max``, ``signal``, ``exit_code``, or None for a clean exit."""
+    if verdict == "oom-kill" or oom_kills > 0:
+        return CAUSE_OOM_KILL
+    if deadline_hit:
+        return CAUSE_RUNTIME_MAX
+    if rc < 0 or stopped_by_signal is not None:
+        return CAUSE_SIGNAL
+    if rc != 0:
+        return CAUSE_EXIT_CODE
+    return None
+
+
+def find_trees(worktrees_dir: str, lane: str, max_trees: int) -> list[str]:
+    """The outermost git trees under ``<worktrees_dir>/<lane>`` (depth 1 or 2, the layout the closeout inventory
+    reads), sorted, at most ``max_trees``; empty when the lane directory is missing."""
+    lane_dir = Path(worktrees_dir) / lane
+    found: list[str] = []
+    if not lane_dir.is_dir():
+        return found
+    for root, dirs, files in os.walk(lane_dir):
+        depth = len(Path(root).relative_to(lane_dir).parts)
+        if depth in TREE_DEPTHS and ".git" in (*dirs, *files):
+            found.append(root)
+            dirs[:] = []
+        elif depth >= TREE_DEPTHS[-1]:
+            dirs[:] = []
+        else:
+            dirs[:] = [d for d in dirs if d != ".git"]
+    return sorted(found)[:max_trees]
+
+
+def read_tree(
+    path: str, git_timeout_s: int, run: Any = subprocess.run
+) -> dict[str, object]:
+    """One tree's branch, last pushed head, unpushed commit count and changed file count. Reads only: every
+    command is a ``git --no-optional-locks`` read (symbolic-ref, rev-parse, rev-list, status), so the tree is unchanged."""
+    out: dict[str, object] = {
+        "path": path,
+        "branch": "",
+        "last_pushed_head": "",
+        "unpushed_commits": 0,
+        "changed_files": 0,
+        "readable": True,
+        "error": "",
+    }
+
+    def git(*argv: str) -> Any:
+        return run(
+            ["git", "--no-optional-locks", "-C", path, *argv],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=git_timeout_s,
+        )
+
+    try:
+        branch = git("symbolic-ref", "-q", "--short", "HEAD")
+        out["branch"] = (branch.stdout or "").strip() if branch.returncode == 0 else ""
+        upstream = git("rev-parse", "-q", "--verify", "@{u}")
+        pushed = upstream
+        if upstream.returncode != 0 and out["branch"]:
+            pushed = git(
+                "rev-parse", "-q", "--verify", f"refs/remotes/origin/{out['branch']}"
+            )
+        out["last_pushed_head"] = (
+            (pushed.stdout or "").strip() if pushed.returncode == 0 else ""
+        )
+        count_args = (
+            ["@{u}..HEAD"]
+            if upstream.returncode == 0
+            else ["HEAD", "--not", "--remotes"]
+        )
+        count = git("rev-list", "--count", *count_args)
+        status = git("status", "--porcelain")
+        if count.returncode != 0 or status.returncode != 0:
+            raise ValueError("git could not read the tree")
+        out["unpushed_commits"] = int((count.stdout or "0").strip())
+        out["changed_files"] = len(
+            [ln for ln in (status.stdout or "").splitlines() if ln.strip()]
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        out.update(
+            {
+                "readable": False,
+                "error": type(exc).__name__,
+                "unpushed_commits": 0,
+                "changed_files": 0,
+            }
+        )
+    return out
+
+
+def build_end_record(
+    *,
+    unit: str,
+    lane: str,
+    host: str,
+    mode: str,
+    cause: str,
+    rc: int,
+    signal: int | None,
+    mem_peak_bytes: int | None,
+    mem_limit_bytes: int,
+    mem_enforced: bool,
+    runtime_s: float,
+    runtime_limit_s: int,
+    ended_at: str,
+    trees: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "schema_version": END_RECORD_SCHEMA,
+        "unit": unit,
+        "lane": lane,
+        "host": host,
+        "mode": mode,
+        "cause": cause,
+        "exit": end_exit_code(rc),
+        "signal": signal,
+        "mem_peak_bytes": mem_peak_bytes,
+        "mem_limit_bytes": mem_limit_bytes,
+        "mem_enforced": mem_enforced,
+        "runtime_s": runtime_s,
+        "runtime_limit_s": runtime_limit_s,
+        "ended_at": ended_at,
+        "trees": trees,
+    }
+
+
+def write_end_record(record_dir: str, unit: str, record: dict[str, object]) -> str:
+    """``<record_dir>/<unit>.json``, written atomically (a temp file in the same directory, then a rename)."""
+    directory = Path(record_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{unit}.json"
+    held = directory / f".{unit}.json.tmp"
+    held.write_text(
+        json.dumps(record, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    os.replace(held, path)
+    return str(path)
+
+
+# ----------------------------------------------------------------------------------------------
 # run: start the command in its scope and end everything with it.
 # ----------------------------------------------------------------------------------------------
 
@@ -706,8 +867,18 @@ class _TreeTracker(threading.Thread):
             self.stop.wait(self.interval_s)
 
 
-def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -> int:
-    """Run ``command`` bounded by ``limits``; return the exit code the shell would see."""
+def run_guarded(
+    unit: str,
+    limits: Limits,
+    command: list[str],
+    lane: str = "",
+    end_record: dict[str, Any] | None = None,
+) -> int:
+    """Run ``command`` bounded by ``limits``; return the exit code the shell would see.
+
+    ``end_record`` (record_dir, worktrees_dir, git_timeout_s, max_trees) switches on the end record: a command
+    that ended by a memory kill, the runtime limit, a signal or a non-zero exit leaves one typed record in
+    ``record_dir``; a clean exit leaves none."""
     if not command:
         sys.stderr.write("lane_guard_host: no command after --" + "\n")
         return EXIT_USAGE
@@ -838,6 +1009,43 @@ def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -
                 "oom_kills": max(watch.oom_kills, 1 if verdict == "oom-kill" else 0),
             }
         )
+    cause = classify_end(
+        rc,
+        verdict,
+        bool(deadline_hit),
+        stop_signal[0] if stop_signal else None,
+        watch.oom_kills if watch else 0,
+    )
+    end_info["cause"] = cause
+    if cause is not None and end_record is not None:
+        try:
+            trees = [
+                read_tree(tree, int(end_record["git_timeout_s"]))
+                for tree in find_trees(
+                    str(end_record["worktrees_dir"]), lane, int(end_record["max_trees"])
+                )
+            ]
+            record = build_end_record(
+                unit=unit,
+                lane=lane,
+                host=os.uname().nodename,
+                mode=mode,
+                cause=cause,
+                rc=rc,
+                signal=-rc if rc < 0 else None,
+                mem_peak_bytes=watch.peak if watch else None,
+                mem_limit_bytes=limits.mem_bytes,
+                mem_enforced=bool(enforced["memory"]),
+                runtime_s=round(ended - started, 1),
+                runtime_limit_s=limits.runtime_s,
+                ended_at=time.strftime(RECORD_STAMP, time.gmtime(ended)),
+                trees=trees,
+            )
+            end_info["end_record"] = write_end_record(
+                str(end_record["record_dir"]), unit, record
+            )
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+            end_info["end_record_error"] = type(exc).__name__
     _emit("LANE-GUARD-END", end_info)
     return end_exit_code(rc)
 
@@ -865,6 +1073,10 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--cpu-pct", type=int, default=DEFAULT_CPU_PCT)
     run.add_argument("--tasks-max", type=int, default=TASKS_MAX)
     run.add_argument("--kind", choices=KINDS, default="lane")
+    run.add_argument("--record-dir", default=None)
+    run.add_argument("--worktrees-dir", default=None)
+    run.add_argument("--git-timeout-s", type=int, default=None)
+    run.add_argument("--max-trees", type=int, default=None)
     reap = sub.add_parser("reap")
     reap.add_argument("--unit", required=True)
     sub.add_parser("probe")
@@ -893,7 +1105,21 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             sys.stderr.write(f"lane_guard_host: {exc}" + "\n")
             return EXIT_USAGE
-        return run_guarded(ns.unit, limits, command, ns.lane)
+        end_record: dict[str, Any] | None = None
+        if ns.record_dir is not None:
+            if None in (ns.worktrees_dir, ns.git_timeout_s, ns.max_trees):
+                sys.stderr.write(
+                    "lane_guard_host: --record-dir needs --worktrees-dir, --git-timeout-s and --max-trees"
+                    + "\n"
+                )
+                return EXIT_USAGE
+            end_record = {
+                "record_dir": ns.record_dir,
+                "worktrees_dir": ns.worktrees_dir,
+                "git_timeout_s": ns.git_timeout_s,
+                "max_trees": ns.max_trees,
+            }
+        return run_guarded(ns.unit, limits, command, ns.lane, end_record)
     if ns.cmd == "reap":
         if not ns.unit.startswith(UNIT_PREFIX):
             sys.stderr.write(
