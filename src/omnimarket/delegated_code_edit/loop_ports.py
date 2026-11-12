@@ -48,6 +48,7 @@ from omnimarket.delegation.rubric.tool_use_transcript import (
     declared_tools_from_schemas,
     recorded_calls_request,
 )
+from omnimarket.handlers import delegate_retry_cause as retry_causes
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     DelegatePinViolationError,
@@ -74,7 +75,6 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
 )
 
 _DELEGATE_TIMEOUT_SECONDS = 900
-QUEUED_NOT_STARTED_CAUSE = "was queued and never started"
 PRE_RUN_SCHEMA = "delegated-code-edit-pre-run.v1"
 _MAX_MANIFEST_FILES = 50_000
 _MAX_COUNTED_BYTES = 1_000_000
@@ -206,16 +206,7 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
     null_terminal = "terminal_payload" in result and result["terminal_payload"] is None
     if null_terminal:
         failures.append("terminal_payload is null")
-    retry_cause = ""
-    if (
-        receipt.get("status") == "timeout"
-        or receipt.get("terminal_failure_cause") == "timeout"
-    ):
-        retry_cause = "timed out"
-    elif receipt.get("terminal_class") == "queued_not_started":
-        retry_cause = QUEUED_NOT_STARTED_CAUSE
-    elif receipt.get("terminal_failure_cause") == "no_terminal" or null_terminal:
-        retry_cause = "had no terminal"
+    retry_cause = retry_causes.delegate_retry_cause(receipt, null_terminal)
     return _DelegateReceipt(
         model=str(receipt.get("model") or ""),
         tokens_in=tokens(metrics.get("input_tokens")),
@@ -662,7 +653,7 @@ class DelegatedCodeEditPorts:
         )
         if not retry_cause or not deployed_lane:
             return reply
-        if retry_cause == QUEUED_NOT_STARTED_CAUSE:
+        if retry_cause == retry_causes.QUEUED_NOT_STARTED_CAUSE:
             self._queue_demoted = True
         # OMN-21396: deployed-lane retries succeeded 0/32 after timeout and
         # 0/12 after no terminal; in-process retries succeeded 17/28 and 10/10.
@@ -823,7 +814,6 @@ def score_transcript(
 
 __all__ = [
     "IN_PROCESS_DELEGATE_FLAGS",
-    "QUEUED_NOT_STARTED_CAUSE",
     "DelegatedCodeEditPorts",
     "check_fingerprint",
     "deployed_lane_delegate_flags",

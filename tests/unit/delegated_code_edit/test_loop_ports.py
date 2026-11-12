@@ -18,12 +18,12 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 
 from omnimarket.delegated_code_edit.loop_ports import (
     IN_PROCESS_DELEGATE_FLAGS,
-    QUEUED_NOT_STARTED_CAUSE,
     DelegatedCodeEditPorts,
     check_fingerprint,
     deployed_lane_delegate_flags,
     score_transcript,
 )
+from omnimarket.handlers.delegate_retry_cause import QUEUED_NOT_STARTED_CAUSE
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     RESPONSE_CONTRACT,
     DelegatePinViolationError,

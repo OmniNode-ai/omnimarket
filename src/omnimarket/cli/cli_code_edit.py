@@ -51,6 +51,7 @@ from omnimarket.delegated_code_edit.loop_ports import (
     DelegatePinUnresolvedError,
     deployed_lane_delegate_flags,
 )
+from omnimarket.handlers.code_edit_loop_options import loop_limit_options
 from omnimarket.handlers.code_edit_request_builder import (
     announced_delegate_pin,
     build_code_edit_request,
@@ -183,24 +184,7 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     "the file path is appended to each (e.g. 'uv run ruff check --select I "
     "--fix', then 'uv run ruff format'). Omitted: no format tool.",
 )
-@click.option(
-    "--max-turns",
-    type=click.IntRange(1, 40),
-    default=None,
-    help="The round limit; omitted, the node's overlay decides, else the request model's default.",
-)
-@click.option(
-    "--check-timeout-s",
-    type=click.IntRange(1, 1800),
-    default=None,
-    help="The check time limit in seconds; omitted, the node's overlay decides, else the request model's default.",
-)
-@click.option(
-    "--wall-budget-s",
-    type=click.IntRange(1, 7200),
-    default=None,
-    help="The wall budget in seconds; omitted, the node's overlay decides, else no limit.",
-)
+@loop_limit_options
 @click.option(
     "--ticket-contract",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
