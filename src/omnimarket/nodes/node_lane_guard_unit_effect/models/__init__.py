@@ -5,6 +5,7 @@
 from omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit import (
     EnumLaneGuardOperation,
     ModelLaneGuardMember,
+    ModelLaneGuardOverlay,
     ModelLaneGuardUnitRequest,
     ModelLaneGuardUnitResult,
 )
@@ -12,6 +13,7 @@ from omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit i
 __all__ = [
     "EnumLaneGuardOperation",
     "ModelLaneGuardMember",
+    "ModelLaneGuardOverlay",
     "ModelLaneGuardUnitRequest",
     "ModelLaneGuardUnitResult",
 ]

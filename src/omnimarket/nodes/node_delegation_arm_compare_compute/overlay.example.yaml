@@ -1,0 +1,8 @@
+# Synthetic values. A deployment's real overlay lives in the overlays repository
+# (overlays/node_delegation_arm_compare_compute/overlay.yaml). The schema is ModelArmCompareOverlay;
+# no key has a default. The block below is the value of the overlay key delegation.capability_map.line.
+line:                          # delegation.capability_map.line
+  floor: 0.9
+  margin: 0.07
+  confidence: 0.95
+  power: 0.8

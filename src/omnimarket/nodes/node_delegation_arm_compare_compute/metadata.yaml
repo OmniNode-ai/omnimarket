@@ -1,0 +1,19 @@
+name: node_delegation_arm_compare_compute
+version: "1.0.0"
+description: "Paired comparison of two delegation arms by the exact McNemar test, with a negative control — no LLM calls, no clock, no I/O but the overlay"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_arm_compare_compute: "omnimarket.nodes.node_delegation_arm_compare_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "evaluation", "comparison", "paired", "negative-control", "deterministic"]
+pack: "core"
+display_name: "Delegation Arm Compare"
+node_role: "compute"

@@ -29,6 +29,10 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.rules_overlay_root_declared import (
+    OverlayRootRefusedError,
+    refuse_undeclared_overlay_root,
+)
 from omnimarket.models.model_code_graph import (
     EnumGraphFault,
     EnumShadowOutcome,
@@ -71,7 +75,11 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 
 LATEST_RESULT = "code-graph-latest.json"
 #: The contract block each ``schedule --unit`` names.
-SCHEDULE_BLOCKS = {"nightly": "schedule", "shadow": "shadow_schedule"}
+SCHEDULE_BLOCKS = {
+    "nightly": "schedule",
+    "shadow": "shadow_schedule",
+    "drill": "drill_schedule",
+}
 
 
 def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
@@ -252,7 +260,7 @@ def _schedule(arguments: Sequence[str]) -> int:
             "--unit",
             choices=sorted(SCHEDULE_BLOCKS),
             default="nightly",
-            help="the nightly graph (default) or the pull request check in shadow",
+            help="the nightly graph (default), the pull request check in shadow, or the scheduled drill",
         )
         if verb == "install":
             sub.add_argument(
@@ -275,6 +283,15 @@ def _schedule(arguments: Sequence[str]) -> int:
             raise NodeOverlayError(
                 "the overlay file cannot be found to pin its root in the unit"
             )
+        try:
+            refuse_undeclared_overlay_root(
+                found.parent.parent,
+                host=args.host,
+                omni_root=Path(args.workspace_root),
+            )
+        except OverlayRootRefusedError as exc:
+            sys.stderr.write(f"{exc}\n")
+            return 1
         result = scheduler.install(
             args.host,
             omni_root=Path(args.workspace_root),

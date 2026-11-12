@@ -239,6 +239,31 @@ class FileSamples:
         tmp.replace(self._path)
 
 
+class FileGrowthStreaks:
+    """Each group's count of consecutive growth samples, one JSON object written whole through a temporary file."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+
+    def load(self) -> dict[str, int]:
+        try:
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(raw, dict) or not all(
+            isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
+            for k, v in raw.items()
+        ):
+            return {}
+        return dict(raw)
+
+    def save(self, streaks: Mapping[str, int]) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(dict(streaks), sort_keys=True), encoding="utf-8")
+        tmp.replace(self._path)
+
+
 class FileRunRecords:
     """The run record the floor reads: one JSON object per finished run, one line each, appended."""
 
@@ -398,6 +423,7 @@ class CommandLaneDispatcher:
 
 __all__ = [
     "CommandLaneDispatcher",
+    "FileGrowthStreaks",
     "FileHeldState",
     "FileManifestCache",
     "FileRunRecords",

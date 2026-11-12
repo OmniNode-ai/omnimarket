@@ -15,23 +15,38 @@ and leaves the previous report in place; a row naming no recorded cause stays un
 from __future__ import annotations
 
 import json
+import shlex
 import sys
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 
 import omnimarket.nodes.node_friction_rollup_compute as rollup_package
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.nodes.node_factory_floor_effect.source_loader import load_stoppages
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+    PublishRefusedError,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
     HandlerFactoryFloorPublish,
     load_runtime,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source import (
+    HandlerFrictionRollupSource,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
     ModelPublishStep,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerRowSource,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLedgerQuery
+from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointAnswer
 
 pytestmark = pytest.mark.unit
 
@@ -40,27 +55,43 @@ OVERLAY = Path(rollup_package.__file__).parent / "overlay.example.yaml"
 OVERLAY_ENV = "ONEX_FRICTION_CLASS_OVERLAY"
 READ_ENV = "ONEX_LEDGER_BUS_READ_COMMAND"
 
-# A stand-in for the bus read command: one typed rows query on stdin, one JSON answer on stdout, from the rows in argv[1].
-# ``TRUNCATE`` in argv[2] answers with a cursor, as a bus read does when more rows matched than it returned.
+# A stand-in for the bus read command that runs the read node's own handler (the real request model, the real paged rows
+# answer, the real answer bound) over the rows in argv[1], with the bound set to argv[2] bytes: one typed query JSON on stdin, one
+# JSON answer on stdout. Like the ``onex ledger query`` command, an answer the node refuses or errors exits 1. Each request is
+# appended to the file in argv[3], so a test reads what the step asked for. A request the node's own model refuses exits 2 with
+# its reason (OMN-23606: a request with no correlation id).
 FAKE_READ = """
 import json, sys
-from datetime import datetime
-request = json.loads(sys.stdin.read())
-def when(text):
-    return datetime.fromisoformat(text.replace("Z", "+00:00"))
-since, until = when(request["since"]), when(request["until"])
-shown = []
-for line in open(sys.argv[1], encoding="utf-8"):
-    cells = line.split(" | ")
-    if len(cells) < 2 or cells[1] not in request["kinds"]:
-        continue
-    if since <= when(cells[0]) < until:
-        shown.append({"raw_row": line.rstrip("\\n"), "projected_at": cells[0]})
-answer = {"status": "ok", "matched": len(shown), "rows": shown[: request["limit"]]}
-if len(sys.argv) > 2 and sys.argv[2] == "TRUNCATE":
-    answer["next_cursor"] = "more"
-print(json.dumps(answer))
+from datetime import UTC, datetime
+from omnimarket.models.work_ledger_query import ModelWorkLedgerAnswerBound, ModelWorkLedgerQueryRequest
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query import HandlerWorkLedgerQuery
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_inmemory import InMemoryWorkLedgerQueryReader
+text = sys.stdin.read()
+with open(sys.argv[3], "a", encoding="utf-8") as log:
+    log.write(text.replace("\\n", " ") + "\\n")
+try:
+    request = ModelWorkLedgerQueryRequest.model_validate_json(text)
+except ValueError as exc:
+    print(f"the request is not a work ledger query: {exc}", file=sys.stderr)
+    sys.exit(2)
+reader = InMemoryWorkLedgerQueryReader(now=lambda: datetime.now(UTC))
+for number, line in enumerate(open(sys.argv[1], encoding="utf-8")):
+    reader.ingest({"row_id": f"row-{number}", "raw_row": line.rstrip("\\n")})
+node = HandlerWorkLedgerQuery(reader=reader, now=lambda: datetime.now(UTC))
+bound = int(sys.argv[2])
+node._answer_bound = ModelWorkLedgerAnswerBound(
+    broker_max_request_size=bound + 1000, envelope_headroom_bytes=0, max_answer_bytes=bound
+)
+answer = node.handle(request)
+if answer.status != "ok":
+    print(f"Work-ledger read refused ({answer.status}): {answer.error or answer.refusal}", file=sys.stderr)
+    sys.exit(1)
+print(answer.model_dump_json())
 """
+
+# The answer bound the stand-in enforces: the whole planted window does not fit under it, a page of a few rows does.
+TIGHT_BOUND = 9000
+LOOSE_BOUND = 917516
 
 # One phrase of each measured row's own text, and the class the shipped rules must give the row that carries it.
 MEASURED = {
@@ -100,17 +131,27 @@ def row(minute: int, lane: str, text: str, *, cls: str | None = None) -> str:
     return " | ".join([*cells, text])
 
 
+def status_row(minute: int, lane: str, text: str) -> str:
+    stamp = (NOW - timedelta(hours=2, minutes=-minute)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"{stamp} | STATUS | lane={lane} | ticket=OMN-22478 | {text}"
+
+
 def ledger_text() -> str:
     rows = [row(i, f"lane-{i}", text) for i, text in enumerate(MEASURED.values())]
     rows.append(row(40, "lane-unmatched", UNMATCHED))
     rows.append(
         row(41, "lane-written", "A writer that named its class.", cls="tick-liveness")
     )
+    # STATUS rows the floor does not draw (most of the ledger's volume), and the one that resolves a class.
+    rows.extend(
+        status_row(m, f"lane-s{m}", "a status line " + "x" * 300) for m in range(50, 90)
+    )
+    rows.append(status_row(95, "alarm", "healthy again | resolved=tick-liveness"))
     return "\n".join(rows) + "\n"
 
 
 def environ(
-    tmp_path: Path, overlay: Path | None = OVERLAY, *, read_tail: str = ""
+    tmp_path: Path, overlay: Path | None = OVERLAY, *, bound: int = LOOSE_BOUND
 ) -> dict[str, str]:
     """The environment that routes the ledger reads through a real read command over the planted rows."""
     rows = tmp_path / "bus" / "planted_rows.txt"
@@ -118,14 +159,34 @@ def environ(
     rows.write_text(ledger_text(), encoding="utf-8")
     script = rows.parent / "fake_read.py"
     script.write_text(FAKE_READ, encoding="utf-8")
-    env = {READ_ENV: f"{sys.executable} {script} {rows} {read_tail}".strip()}
+    env = {
+        READ_ENV: f"{sys.executable} {script} {rows} {bound} {request_log(tmp_path)}"
+    }
     if overlay is not None:
         env[OVERLAY_ENV] = str(overlay)
     return env
 
 
-def friction_step() -> ModelPublishStep:
-    return next(s for s in load_runtime().steps if s.name == "friction_classed")
+def request_log(tmp_path: Path) -> Path:
+    return tmp_path / "bus" / "requests.log"
+
+
+def requests_sent(tmp_path: Path) -> list[dict[str, object]]:
+    log = request_log(tmp_path)
+    return (
+        [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        if log.exists()
+        else []
+    )
+
+
+def friction_step(**rollup: object) -> ModelPublishStep:
+    """The contract's friction step, with the named settings of its rollup block replaced (a test's own page size or budget)."""
+    step = next(s for s in load_runtime().steps if s.name == "friction_classed")
+    if not rollup:
+        return step
+    assert step.rollup is not None
+    return step.model_copy(update={"rollup": step.rollup.model_copy(update=rollup)})
 
 
 def run_step(
@@ -182,7 +243,7 @@ def test_golden_the_contract_step_names_the_overlay_and_every_setting_it_reads()
     step = friction_step()
     assert step.kind == "friction_rollup"
     assert step.required is False
-    assert step.concurrent is True  # inside the 240 s cycle bound
+    assert step.concurrent is True  # inside the 255 s cycle bound
     rollup = step.rollup
     assert rollup is not None
     assert rollup.class_overlay_id == "node_friction_rollup_compute"
@@ -257,12 +318,169 @@ def test_error_a_failed_bus_read_refuses_and_keeps_the_previous_report(
     assert previous.read_text(encoding="utf-8") == '{"classes": ["previous"]}'
 
 
-def test_error_a_truncated_bus_read_is_refused_never_rolled_short(
+def test_golden_every_bus_read_carries_a_correlation_id_the_read_node_accepts(
     tmp_path: Path,
 ) -> None:
-    status, detail, _ = run_step(tmp_path, environ(tmp_path, read_tail="TRUNCATE"))
+    """OMN-23606: the read node's request model requires a UUID correlation id (the stand-in validates each request as that
+    model and exits 2 on one that fails it). The step sent none, so every read exited 2 and the floor's friction step failed
+    on every cycle; the contract's default command mints an id itself and hid the gap."""
+    status, detail, path = run_step(tmp_path, environ(tmp_path))
+    assert (status, detail) == ("ok", "")
+    assert classes_of(path)["tick-liveness"] == 1
+    sent = requests_sent(tmp_path)
+    assert sent
+    assert all(request["correlation_id"] for request in sent)
+
+
+def test_golden_the_step_asks_for_only_the_rows_the_floor_draws_one_page_at_a_time(
+    tmp_path: Path,
+) -> None:
+    status, detail, path = run_step(
+        tmp_path, environ(tmp_path), step=friction_step(ledger_page_size=7)
+    )
+    assert (status, detail) == ("ok", "")
+    sent = requests_sent(tmp_path)
+    # 20 measured FRICTION rows + 2 = 20 rows at 7 a page is 3 pages; the one resolved= STATUS row is one page.
+    assert [(r["kinds"], r.get("term")) for r in sent] == [
+        (["FRICTION"], None),
+        (["FRICTION"], None),
+        (["FRICTION"], None),
+        (["STATUS"], "resolved="),
+    ]
+    assert all(r["page_size"] == 7 and r["query"] == "rows" for r in sent)
+    assert "cursor" not in sent[0]
+    assert sent[1]["cursor"]
+    assert sent[2]["cursor"]
+    assert "cursor" not in sent[3]
+    seen = classes_of(path)
+    assert seen["unclassified"] == 1
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["totals"]["friction_rows"] == len(MEASURED) + 2
+    tick = next(c for c in report["classes"] if c["class"] == "tick-liveness")
+    assert tick["resolved_at"]  # the resolved= STATUS row reached the rollup
+
+
+def test_golden_the_signals_block_is_written_unread_never_as_counts_of_rows_not_read(
+    tmp_path: Path,
+) -> None:
+    _status, _detail, path = run_step(tmp_path, environ(tmp_path))
+    signals = json.loads(path.read_text(encoding="utf-8"))["signals"]
+    assert signals["read"] is False
+    assert "CORRECTION" in signals["reason"]
+
+
+def test_control_an_answer_over_the_nodes_bound_refuses_the_old_window_read_and_the_paged_step_completes(
+    tmp_path: Path,
+) -> None:
+    """The failing control of OMN-23606. Under a bound the planted window does not fit, a read of the whole window as the
+    step used to send it (every kind, a row limit, no page) is refused by the node itself, and the paged step still reads the
+    same window to the end."""
+    env = environ(tmp_path, bound=TIGHT_BOUND)
+    old_route = CommandLedgerRowSource(shlex.split(env[READ_ENV]), 60, 5000)
+    refused = old_route.read(
+        ModelLedgerQuery(
+            since=NOW - timedelta(hours=24),
+            until=NOW,
+            row_type="STATUS",
+            correlation_id=str(uuid.uuid4()),
+        )
+    )
+    assert refused.rows == ()
+    assert refused.error is not None
+    assert refused.error.startswith("read-command-exit-1")
+
+    status, detail, path = run_step(
+        tmp_path, env, step=friction_step(ledger_page_size=5)
+    )
+    assert (status, detail) == ("ok", "")
+    assert classes_of(path)["tick-liveness"] == 1
+
+
+def test_error_a_page_the_node_refuses_as_too_large_is_unread_and_keeps_the_previous_report(
+    tmp_path: Path,
+) -> None:
+    step = friction_step(
+        ledger_page_size=200
+    )  # 200 rows of the planted STATUS text do not fit under the tight bound
+    assert step.output_relpath is not None
+    previous = tmp_path / "home" / step.output_relpath
+    previous.parent.mkdir(parents=True)
+    previous.write_text('{"classes": ["previous"]}', encoding="utf-8")
+    status, detail, _ = run_step(tmp_path, environ(tmp_path, bound=1500), step=step)
     assert status == "failed"
-    assert "read-answer-truncated" in detail
+    assert "is unread" in detail
+    assert "read-command-exit-1" in detail
+    assert previous.read_text(encoding="utf-8") == '{"classes": ["previous"]}'
+
+
+def test_error_a_cursor_still_open_after_the_declared_page_count_is_unread_never_zero_friction(
+    tmp_path: Path,
+) -> None:
+    step = friction_step(ledger_page_size=3, ledger_max_pages=2)
+    assert step.output_relpath is not None
+    status, detail, path = run_step(tmp_path, environ(tmp_path), step=step)
+    assert status == "failed"
+    assert "2 pages and the cursor is still open" in detail
+    assert not path.exists()  # no report from the pages that did arrive
+
+
+def test_error_a_spent_time_budget_is_unread_and_stops_reading(
+    tmp_path: Path,
+) -> None:
+    step = friction_step(ledger_page_size=3, ledger_time_budget_seconds=5)
+    ticks = iter([0.0, 1.0, 2.0, 6.0, 7.0, 8.0])
+    home = tmp_path / "home"
+    home.mkdir()
+    assert step.rollup is not None
+    with pytest.raises(PublishRefusedError) as raised:
+        HandlerFrictionRollupSource().handle(
+            step.rollup,
+            now=NOW,
+            environ=environ(tmp_path),
+            monotonic=lambda: next(ticks),
+        )
+    assert "5 s time budget ended before page 3" in str(raised.value)
+    assert len(requests_sent(tmp_path)) == 2
+
+
+def test_error_a_page_runs_under_the_time_left_of_the_budget() -> None:
+    """The last page may not outlive the budget: its timeout is cut to what is left, rounded up to a whole second."""
+    seen: list[int] = []
+
+    class Spy:
+        def __init__(self, argv: list[str], timeout: int) -> None:
+            seen.append(timeout)
+
+        def read(self, query: ModelPointQuery) -> ModelPointAnswer:
+            return ModelPointAnswer(lines=())
+
+    step = friction_step(ledger_time_budget_seconds=80)
+    ticks = iter([0.0, 5.0, 45.5, 50.0, 60.0])
+    assert step.rollup is not None
+    with patch(
+        "omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_friction_rollup_source.CommandPointRead",
+        Spy,
+    ):
+        HandlerFrictionRollupSource().handle(
+            step.rollup,
+            now=NOW,
+            environ={READ_ENV: "true", OVERLAY_ENV: str(OVERLAY)},
+            monotonic=lambda: next(ticks),
+        )
+    assert seen == [60, 35]  # 75 s left: the declared page timeout; 34.5 s left: 35 s
+
+
+def test_golden_the_contract_declares_every_paging_value_and_they_fit_the_step_limit() -> (
+    None
+):
+    step = friction_step()
+    assert step.rollup is not None
+    rollup = step.rollup
+    assert rollup.ledger_page_size >= 1
+    assert rollup.ledger_max_pages >= 1
+    assert [read.kinds for read in rollup.ledger_reads] == [("FRICTION",), ("STATUS",)]
+    assert rollup.ledger_time_budget_seconds < step.timeout_seconds
+    assert rollup.ledger_page_timeout_seconds <= rollup.ledger_time_budget_seconds
 
 
 def test_error_an_overlay_with_a_pattern_that_does_not_compile_fails_the_step(

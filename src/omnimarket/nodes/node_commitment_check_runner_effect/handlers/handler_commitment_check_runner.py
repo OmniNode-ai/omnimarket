@@ -160,6 +160,7 @@ class HandlerCommitmentCheckRunner:
                 ran_at=now,
             )
         commitments, malformed = fold_commitments(read.rows, self._commitment_rules)
+        read_count = len(commitments)
         due = self._due(commitments, now)
         outcomes: list[ModelCommitmentCheckOutcome] = []
         started = 0
@@ -172,6 +173,9 @@ class HandlerCommitmentCheckRunner:
             outcome = self._check_one(commitment, now, command.correlation_id)
             outcomes.append(outcome)
             started += 1 if outcome.ran else 0
+        live = sum(
+            1 for c in commitments if c.status is not EnumCommitmentStatus.WITHDRAWN
+        )
         return ModelCommitmentCheckResult(
             correlation_id=command.correlation_id,
             status="completed",
@@ -179,6 +183,8 @@ class HandlerCommitmentCheckRunner:
             outcomes=tuple(outcomes),
             malformed=tuple(malformed),
             deferred=deferred,
+            read=read_count,
+            live=live,
         )
 
     def _past_budget(self, began: datetime) -> bool:
@@ -291,6 +297,8 @@ def events_of(
             topics["commitment_check_completed"],
             {
                 "correlation_id": result.correlation_id,
+                "read": result.read,
+                "live": result.live,
                 "checked": sum(1 for o in result.outcomes if o.ran),
                 "refused": sum(1 for o in result.outcomes if not o.ran),
                 "malformed": len(result.malformed),

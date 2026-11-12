@@ -5,6 +5,33 @@ summary: A pure compute node groups recorded delegation failures by their record
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn18538-ac1-accepted-20261112t0745z:
+    - label: AC1
+      criterion_hash: 2f9e9f82aa591a5984e41d355686c54e2bb9b235497153249acaee7d8bf1fb55
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0745Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0745Z-c1
+    dod-omn18538-ac2-accepted-20261112t0745z:
+    - label: AC2
+      criterion_hash: 784524826393a04e2f125bfff3b44c89c414457a9453871f1e09d3859bd22aa8
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0745Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0745Z-c1
+    dod-omn18538-ac3-accepted-20261112t0745z:
+    - label: AC3
+      criterion_hash: 092970ff5b33b90d72398b656995e1fe1dea25c9b9612b5fa185881d8923175d
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0745Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0745Z-c1
+    dod-omn18538-ac4-accepted-20261112t0745z:
+    - label: AC4
+      criterion_hash: b87233295dd3603403a9a8aaab232e275671facd1faa10b5f6a45bb07bb7c7a2
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0745Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0745Z-c1
+    dod-omn18538-ac5-accepted-20261112t0745z:
+    - label: AC5
+      criterion_hash: 288707f57611261fcf10956cc51a1e8d9670347931e3eef043feb730aaf8c0cf
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0745Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0745Z-c1
 requirements:
 - id: req-omn18538-failure-explanation
   statement: node_delegation_failure_explanation_compute takes recorded failures from held surfaces, groups them by recorded cause, and returns an account per group marked commentary, with an explicit unknown group for failures that carry no cause.
@@ -87,4 +114,49 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-18538 --kind test -- uv run --frozen pytest tests/nodes/node_delegation_failure_explanation_compute -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn18538-ac1-accepted-20261112t0745z
+  description: 'AC1: Every input field of the node maps to an existing run_trace column or client-verdict field.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_failure_explanation_compute/test_failure_explanation.py::test_ac1_every_input_field_comes_from_a_surface_that_exists_today -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn18538-ac2-accepted-20261112t0745z
+  description: 'AC2: Every output and every group carries the commentary_not_evidence_v1 marker with is_evidence false.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_failure_explanation_compute/test_failure_explanation.py::test_ac2_every_output_and_every_group_carries_the_marker -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn18538-ac3-accepted-20261112t0745z
+  description: 'AC3: An explanation output planted in the receipt request and in the client verdict is refused.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_failure_explanation_compute/test_failure_explanation.py::test_ac3_planted_explanation_in_an_evidence_position_is_refused -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn18538-ac4-accepted-20261112t0745z
+  description: 'AC4: An injected narrator naming another category does not move the group keys.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_failure_explanation_compute/test_failure_explanation.py::test_ac4_failing_control_generated_text_does_not_become_a_group_key -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn18538-ac5-accepted-20261112t0745z
+  description: 'AC5: A failure with no recorded cause is grouped and worded as unknown.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_failure_explanation_compute/test_failure_explanation.py::test_ac5_a_failure_with_no_recorded_cause_is_unknown_and_says_so -q --no-cov -p no:randomly
     cwd: .

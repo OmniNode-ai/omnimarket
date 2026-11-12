@@ -64,6 +64,40 @@ def probe(
     }
 
 
+def rule(
+    receipt_covers_descendant: bool = False,
+    probe_accepts_descendant: bool = False,
+    max_commits_between: int = 200,
+    receipt_cover_window_seconds: int = 86400,
+) -> dict[str, Any]:
+    """The overlay's lineage rule; both switches are off in the good request, so the exact-sha rules stand alone."""
+    return {
+        "receipt_covers_descendant": receipt_covers_descendant,
+        "probe_accepts_descendant": probe_accepts_descendant,
+        "max_commits_between": max_commits_between,
+        "receipt_cover_window_seconds": receipt_cover_window_seconds,
+    }
+
+
+def lineage_fact(
+    base: str,
+    head: str,
+    relation: str = "ancestor",
+    commits_between: int | None = 1,
+    runtime_affecting_between: tuple[str, ...] = (),
+    unread_reason: str | None = None,
+) -> dict[str, Any]:
+    """What the clone says of one pair; an ancestor reads its commit count, other relations carry none."""
+    return {
+        "base_sha": base,
+        "head_sha": head,
+        "relation": relation,
+        "commits_between": commits_between if relation == "ancestor" else None,
+        "runtime_affecting_between": list(runtime_affecting_between),
+        "unread_reason": unread_reason,
+    }
+
+
 def good() -> dict[str, Any]:
     """Two runtime-affecting merges past their deadline, both receipted inside it, one non-runtime merge, a fresh passing probe."""
     return {
@@ -81,6 +115,8 @@ def good() -> dict[str, Any]:
             receipt(SHA_B, "2026-11-08T09:59:59Z"),
         ],
         "probes": [probe()],
+        "lineage_rule": rule(),
+        "lineage": [],
         "receipts_unread_reason": None,
         "probes_unread_reason": None,
     }

@@ -182,6 +182,7 @@ class HandlerGateStoreJoinJ6Run:
             clock=self._clock,
             correlation_id=cid,
             backend=self._backend,
+            origin="probe",
         )
         chain.start()
         rig = self._golden_rig()
@@ -309,6 +310,7 @@ class HandlerGateStoreJoinJ6Run:
             correlation_id=cid,
             backend=self._backend,
             drill=True,
+            origin="drill",
         )
         chain.start()
         chain.failure(_FENCE_CLOSED_CODE, stop.detail)

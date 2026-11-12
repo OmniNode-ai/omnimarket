@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-23893
+title: Add medium and large past tasks to the local-model coding suite
+summary: >-
+  The committed suite benchmarks/code_eval_suite/suite.v1.json is rebuilt from the merged tickets whose controls hold, with the widened size search (40 files, 3000 changed lines) and the plan's declared size rule, and the census node counts it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23893-suite
+  statement: The committed suite is rebuilt with medium and large tasks and the census node counts them.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every task added to the committed suite names its repository, merge commit, base commit, ticket contract, diff size, size band and bound checks, and carries a control verdict of pass -- falsifier: the suite reader refuses a task whose control verdict is not pass, shown by the existing reader test failing when a task with a failing verdict is planted in the grown suite file'
+  - id: AC2
+    statement: 'AC2: the count of tasks per size band and per repository, the excluded tasks with their reason and the shortfall per band over the grown suite are answered by the census node and equal a recount of the suite file by hand -- falsifier: the committed-suite test turns red when one count in the node''s answer is planted wrong'
+  - id: AC3
+    statement: 'AC3: the medium and large tasks added were found by the plan''s declared size rule over merged ticket contracts with runnable checks, and the count per band is stated on this ticket beside the number the comparison step asks for -- falsifier: a band count on the ticket that differs from the census node''s count over the committed file'
+  - id: AC4
+    statement: 'AC4: integrated: the census node run in the dev runtime from its branch over the grown suite answers the same counts as the recount -- falsifier: the answer read from the dev bus by its correlation id beside the recount, recorded on this ticket'
+evidence_requirements:
+- kind: tests
+  description: The node's golden chain, error chain, failing-control, overlay, seam and committed-suite tests.
+  command: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23893-ac1-control
+  description: 'A task whose control is fail_check, any fail_* verdict or unscorable never reaches the candidates or an admitted count, and a task model refuses a pass with a source and an unscorable without one. It reads red at the merge base, where the node does not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_failing_controls.py tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23893-ac2-committed-suite
+  description: 'The committed suite file validates as the node request, every task in it is recounted by the test from the raw rows (per band, per repository, per band and repository, excluded reasons) and the node answers the same counts; a planted wrong count turns it red.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23893-ac3-grown
+  description: 'The committed suite has grown beyond the first version: the medium and large band counts are strictly greater than the first suite file, and every admitted medium or large task has files_changed >= 1 and a non-empty checks list.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider -k grown
+    cwd: .
+- id: dod-deploy-omn23893-census-topics-declared
+  description: 'Hosted structural probe: the node''s contract declares the command topic and the answer topic at the checked-out head. It fails at the merge base, which holds no such node.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -F 'code-eval-suite-census-requested.v1' src/omnimarket/nodes/node_code_eval_suite_census_compute/contract.yaml && grep -F 'code-eval-suite-census-measured.v1' src/omnimarket/nodes/node_code_eval_suite_census_compute/contract.yaml
+    cwd: .
+- id: dod-omn23893-ac4-integration-proof
+  description: On a lab host, from the pushed head, the committed suite is published as a request on the dev bus and the answer event is read back by the request's correlation id. Hosted CI cannot reach a lab host, so this unbound check belongs to the local Done gate; AC4 is read there and in the PR's lab comment. The hosted proxy for AC4 is the item below it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23893 --kind test -- uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute -q --no-cov'
+    cwd: .
+- id: dod-omn23893-ac4-hosted-proxy
+  description: 'Hosted proxy for the integrated criterion. Through the node handler on the in-memory bus the golden request answers the exact census and the contract declares the command topic and the answer topic. The reading on a lab host from the pushed head is the unbound local item above this one; a hosted runner cannot reach a lab host. The grown committed suite check reads red at the merge base, where the suite holds the first version.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_golden_chain_code_eval_suite_census.py -q --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider -k grown
+    cwd: .
