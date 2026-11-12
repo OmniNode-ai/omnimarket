@@ -20,6 +20,9 @@ dependencies:
   - "httpx>=0.27.0"
   - "PyYAML>=6.0"
   - "packaging>=24.0"
+  - "omnibase-infra>=0.38.75,<0.39.0"
+  - "rich>=13.0.0"
+  - "textual>=8.2"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "onboarding", "setup", "cli"]
