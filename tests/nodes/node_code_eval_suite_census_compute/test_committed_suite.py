@@ -41,6 +41,10 @@ FAIL_CHECK = EnumCodeScoreVerdict.FAIL_CHECK
 UNSCORABLE = EnumCodeScoreVerdict.UNSCORABLE
 FALSIFIER_NOT_HELD = EnumCodeScoreSource.FALSIFIER_NOT_HELD
 
+# Counts of the first suite file (91 small, 13 medium, 0 large).
+FIRST_VERSION_MEDIUM = 13
+FIRST_VERSION_LARGE = 0
+
 
 def _raw() -> dict[str, object]:
     return json.loads(SUITE.read_text(encoding="utf-8"))
@@ -138,6 +142,17 @@ def test_every_task_is_well_formed_and_paths_are_hygiene_clean() -> None:
             assert not p.startswith("contracts/")
             assert not p.startswith(".github/")
         assert not set(t["check_files"]) & set(t["held_paths"])
+
+
+def test_committed_suite_grown_beyond_the_first_version() -> None:
+    raw = _raw()
+    recount = _recount(raw)
+    assert recount["by_band"]["M"] > FIRST_VERSION_MEDIUM
+    assert recount["by_band"]["L"] > FIRST_VERSION_LARGE
+    for t in raw["tasks"]:
+        if t["control"] == "pass" and t["band"] in ("M", "L"):
+            assert t["files_changed"] >= 1
+            assert t["checks"]
 
 
 def test_a_wrong_committed_band_count_is_caught() -> None:
