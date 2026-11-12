@@ -34,6 +34,7 @@ descriptor:
   idempotent: true
   side_effects: []
   runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.pr-handoff-install-proof-decided.v1
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1

@@ -1004,6 +1004,7 @@ node_pr_duplicate_guard_compute = "omnimarket.nodes.node_pr_duplicate_guard_comp
 node_pr_duplicate_snapshot_effect = "omnimarket.nodes.node_pr_duplicate_snapshot_effect"
 node_pr_handoff_decision_compute = "omnimarket.nodes.node_pr_handoff_decision_compute"
 node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"
+node_pr_handoff_install_proof_compute = "omnimarket.nodes.node_pr_handoff_install_proof_compute"
 node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
 node_pr_handoff_orchestrator = "omnimarket.nodes.node_pr_handoff_orchestrator"
 node_pr_head_stage_compute = "omnimarket.nodes.node_pr_head_stage_compute"
