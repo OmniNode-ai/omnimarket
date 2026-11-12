@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_contract_document import (
+from omnimarket.models.model_effect_contract_document import (
     ModelEffectContractDocument,
 )
 from omnimarket.nodes.node_effect_backends_load_effect.models.model_effect_backends_load_request import (

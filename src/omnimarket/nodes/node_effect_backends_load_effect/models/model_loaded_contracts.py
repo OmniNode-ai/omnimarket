@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_contract_document import (
+from omnimarket.models.model_effect_contract_document import (
     ModelEffectContractDocument,
 )
 

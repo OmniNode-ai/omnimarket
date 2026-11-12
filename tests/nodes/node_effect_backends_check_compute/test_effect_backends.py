@@ -14,14 +14,14 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_effect_backends_check_compute.handlers.handler_effect_backends import (
-    HandlerEffectBackends,
-)
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_request import (
+from omnimarket.models.model_effect_backends_request import (
     ModelEffectBackendsRequest,
 )
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_contract_document import (
+from omnimarket.models.model_effect_contract_document import (
     ModelEffectContractDocument,
+)
+from omnimarket.nodes.node_effect_backends_check_compute.handlers.handler_effect_backends import (
+    HandlerEffectBackends,
 )
 from omnimarket.nodes.node_effect_backends_load_effect.handlers.handler_effect_backends_loader import (
     HandlerEffectBackendsLoader,

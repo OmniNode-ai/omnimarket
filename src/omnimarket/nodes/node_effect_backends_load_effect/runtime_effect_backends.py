@@ -24,14 +24,14 @@ from typing import cast
 
 from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 
-from omnimarket.nodes.node_effect_backends_check_compute.handlers.handler_effect_backends import (
-    HandlerEffectBackends,
-)
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_report import (
+from omnimarket.models.model_effect_backends_report import (
     ModelEffectBackendsReport,
 )
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_request import (
+from omnimarket.models.model_effect_backends_request import (
     ModelEffectBackendsRequest,
+)
+from omnimarket.nodes.node_effect_backends_check_compute.handlers.handler_effect_backends import (
+    HandlerEffectBackends,
 )
 from omnimarket.nodes.node_effect_backends_load_effect.handlers.handler_effect_backends_loader import (
     HandlerEffectBackendsLoader,

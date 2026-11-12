@@ -17,16 +17,16 @@ a non-blank string. It is on both backends when it also names a real ``factory``
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backend_entry import (
+from omnimarket.models.model_effect_backend_entry import (
     ModelEffectBackendEntry,
 )
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_report import (
+from omnimarket.models.model_effect_backends_report import (
     ModelEffectBackendsReport,
 )
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_request import (
+from omnimarket.models.model_effect_backends_request import (
     ModelEffectBackendsRequest,
 )
-from omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_contract_document import (
+from omnimarket.models.model_effect_contract_document import (
     ModelEffectContractDocument,
 )
 
