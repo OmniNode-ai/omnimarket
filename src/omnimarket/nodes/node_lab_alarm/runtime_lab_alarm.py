@@ -13,6 +13,7 @@
 
 Exit codes: 0 OK, 2 ALARM, 3 INDETERMINATE (a group or the manifest could not be read, or no baseline yet),
 1 the command was refused (a schedule verb exits with its own result's code), 4 the run record the floor reads could not be written.
+An alarm delivery (the overlay's ``alarm_delivery``) that failed or could not run exits 2, as an alarm that was not delivered is one.
 1 the command was refused. An effects-held ALARM whose lane did not start exits 2 and names ``escalation=failed``.
 """
 
@@ -80,6 +81,15 @@ from omnimarket.nodes.node_lab_alarm.overlay import (
     ModelLabAlarmOverlay,
     load_overlay,
 )
+from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
+    HandlerLabAlarmDeliver,
+)
+from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import (
+    load_overlay as load_delivery_overlay,
+)
+from omnimarket.nodes.node_lab_alarm_deliver_effect.runtime_lab_alarm_deliver import (
+    build_handler as build_delivery_handler,
+)
 
 _EXIT_RECORD_UNWRITABLE = 4
 _EXIT = {
@@ -98,6 +108,13 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerLabAlarmDeliver | None:
+    """The alarm delivery the overlay turns on; its own overlay must then load, or the run is refused."""
+    if overlay.alarm_delivery is None or not overlay.alarm_delivery.enabled:
+        return None
+    return build_delivery_handler(load_delivery_overlay())
+
+
 def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
     return HandlerBrokerLag(
         overlay=overlay,
@@ -107,6 +124,7 @@ def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
         streaks=InMemoryGrowthStreaks(),
         records=InMemoryRunRecords(),
         clock=_utc_now,
+        delivery=_delivery_for(overlay),
     )
 
 
@@ -132,6 +150,7 @@ def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
         ),
         records=FileRunRecords(Path(overlay.lag.record_path)),
         clock=_utc_now,
+        delivery=_delivery_for(overlay),
     )
 
 
@@ -177,8 +196,12 @@ def run(
     )
     for alarm in result.alarms:
         out(f"ALARM {alarm}\n")
+    for entry in result.delivery:
+        out(f"DELIVERY {entry}\n")
     if result.failure.startswith("record-unwritable"):
         return _EXIT_RECORD_UNWRITABLE
+    if "delivery-failed" in result.failure or "delivery-unavailable" in result.failure:
+        return _EXIT[EnumBrokerLagOutcome.ALARM]
     return _EXIT[result.outcome]
 
 
@@ -336,8 +359,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="the root the unit reads overlays from",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    handler: HandlerBrokerLag | None = None
     try:
         overlay = load_overlay()
+        if args.verb in ("broker-lag", "probe"):
+            handler = build_handler(overlay)
     except NodeOverlayError as exc:
         sys.stderr.write(f"LAB-ALARM-REFUSED {exc}\n")
         return 1
@@ -355,7 +381,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_effects_held(
             args.verb, EnumEffectsHeldFault(args.fault), overlay=overlay
         )
-    return run(args.verb, EnumLabAlarmFault(args.fault), overlay=overlay)
+    return run(
+        args.verb, EnumLabAlarmFault(args.fault), overlay=overlay, handler=handler
+    )
 
 
 if __name__ == "__main__":
