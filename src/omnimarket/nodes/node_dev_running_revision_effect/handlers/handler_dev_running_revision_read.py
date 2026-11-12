@@ -10,14 +10,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from omnimarket.nodes.node_dev_running_revision_compute.handlers.handler_dev_running_revision import (
-    read_running_revision,
-)
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_policy import (
+from omnimarket.models.running_revision.model_running_revision_policy import (
     ModelRunningRevisionPolicy,
 )
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_refused import (
+from omnimarket.models.running_revision.model_running_revision_refused import (
     ModelRunningRevisionRefused,
+)
+from omnimarket.nodes.node_dev_running_revision_compute.handlers.handler_dev_running_revision import (
+    read_running_revision,
 )
 from omnimarket.nodes.node_dev_running_revision_effect.models.enum_dev_running_revision_failure_reason import (
     EnumDevRunningRevisionFailureReason,

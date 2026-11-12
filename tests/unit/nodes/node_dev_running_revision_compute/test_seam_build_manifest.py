@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_dev_running_revision_compute.models import (
+from omnimarket.models.running_revision import (
     ModelBranchInstall,
     ModelBuildManifest,
     ModelBuildRevision,

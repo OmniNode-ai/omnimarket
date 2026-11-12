@@ -12,11 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
-from omnimarket.nodes.node_dev_running_revision_compute.handlers import (
-    HandlerDevRunningRevision,
-    read_running_revision,
-)
-from omnimarket.nodes.node_dev_running_revision_compute.models import (
+from omnimarket.models.running_revision import (
     EnumRunningRevisionRedReason,
     EnumRunningRevisionRefusalReason,
     EnumRunningRevisionStatus,
@@ -29,6 +25,10 @@ from omnimarket.nodes.node_dev_running_revision_compute.models import (
     ModelRunningRevisionPolicy,
     ModelRunningRevisionReading,
     ModelRunningRevisionRefused,
+)
+from omnimarket.nodes.node_dev_running_revision_compute.handlers import (
+    HandlerDevRunningRevision,
+    read_running_revision,
 )
 from tests.unit.nodes.node_dev_running_revision_compute.conftest import (
     NOW,

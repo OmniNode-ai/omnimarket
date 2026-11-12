@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_dev_running_revision_compute.models.enum_running_revision_refusal_reason import (
+from omnimarket.models.running_revision.enum_running_revision_refusal_reason import (
     EnumRunningRevisionRefusalReason,
 )
 

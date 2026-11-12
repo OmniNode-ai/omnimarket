@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_facts import (
+from omnimarket.models.running_revision.model_running_revision_facts import (
     ModelRunningRevisionFacts,
 )
 

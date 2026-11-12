@@ -19,11 +19,11 @@ from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from
 from omnibase_infra.runtime.core_runtime.dlq_resolver import derive_canonical_dlq_topic
 from omnibase_infra.runtime.core_runtime.routing_map_builder import build_routing_map
 
+from omnimarket.models.running_revision import (
+    ModelRunningRevisionPolicy,
+)
 from omnimarket.nodes.node_dev_running_revision_compute.handlers import (
     HandlerDevRunningRevision,
-)
-from omnimarket.nodes.node_dev_running_revision_compute.models import (
-    ModelRunningRevisionPolicy,
 )
 
 ROOT = Path(__file__).resolve().parents[4]

@@ -9,19 +9,19 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from omnimarket.nodes.node_dev_running_revision_compute.models.enum_running_revision_red_reason import (
+from omnimarket.models.running_revision.enum_running_revision_red_reason import (
     EnumRunningRevisionRedReason,
 )
-from omnimarket.nodes.node_dev_running_revision_compute.models.enum_running_revision_status import (
+from omnimarket.models.running_revision.enum_running_revision_status import (
     EnumRunningRevisionStatus,
 )
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_merge_to_running import (
+from omnimarket.models.running_revision.model_merge_to_running import (
     ModelMergeToRunning,
 )
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_oldest_not_running import (
+from omnimarket.models.running_revision.model_oldest_not_running import (
     ModelOldestNotRunning,
 )
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_repository_reading import (
+from omnimarket.models.running_revision.model_repository_reading import (
     ModelRepositoryReading,
 )
 

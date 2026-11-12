@@ -19,17 +19,17 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_lab_facts import (
-    Runner,
-    run_process,
-)
-from omnimarket.nodes.node_dev_running_revision_compute.models import (
+from omnimarket.models.running_revision import (
     ModelBuildManifest,
     ModelBuildRevision,
     ModelDevMerge,
     ModelRepositoryMergeHistory,
     ModelRunningBuild,
     ModelRunningRevisionFacts,
+)
+from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_lab_facts import (
+    Runner,
+    run_process,
 )
 from omnimarket.nodes.node_dev_running_revision_effect.overlay import (
     ModelRunningRevisionSourceSettings,

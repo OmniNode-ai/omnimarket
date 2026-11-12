@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from omnimarket.nodes.node_dev_running_revision_compute.models import (
+from omnimarket.models.running_revision import (
     ModelRunningRevisionFacts,
 )
 from omnimarket.nodes.node_dev_running_revision_effect.protocols.protocol_running_revision_source import (

@@ -9,10 +9,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_reading import (
+from omnimarket.models.running_revision.model_running_revision_reading import (
     ModelRunningRevisionReading,
 )
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_refused import (
+from omnimarket.models.running_revision.model_running_revision_refused import (
     ModelRunningRevisionRefused,
 )
 from omnimarket.nodes.node_dev_running_revision_effect.models.enum_dev_running_revision_failure_reason import (

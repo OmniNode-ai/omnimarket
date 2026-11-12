@@ -9,7 +9,7 @@ or admission.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_dev_running_revision_compute.models import (
+from omnimarket.models.running_revision import (
     EnumRunningRevisionRedReason,
     EnumRunningRevisionRefusalReason,
     EnumRunningRevisionStatus,

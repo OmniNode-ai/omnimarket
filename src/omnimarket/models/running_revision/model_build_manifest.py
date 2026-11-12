@@ -8,10 +8,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_branch_install import (
+from omnimarket.models.running_revision.model_branch_install import (
     ModelBranchInstall,
 )
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_build_revision import (
+from omnimarket.models.running_revision.model_build_revision import (
     ModelBuildRevision,
 )
 

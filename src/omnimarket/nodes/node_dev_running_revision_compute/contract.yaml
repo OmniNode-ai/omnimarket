@@ -33,16 +33,16 @@ description: >
   contradict themselves are refused as a whole. No clock, no I/O.
 input_model:
   name: "ModelRunningRevisionFacts"
-  module: "omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_facts"
+  module: "omnimarket.models.running_revision.model_running_revision_facts"
   description: "The build history and each repository's merge history."
 output_model:
   name: "ModelRunningRevisionReading"
-  module: "omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_reading"
+  module: "omnimarket.models.running_revision.model_running_revision_reading"
   description: "Per-repository readings, merge times, median and red reasons."
 handler:
   module: "omnimarket.nodes.node_dev_running_revision_compute.handlers.handler_dev_running_revision"
   class: "HandlerDevRunningRevision"
-  input_model: "omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_facts.ModelRunningRevisionFacts"
+  input_model: "omnimarket.models.running_revision.model_running_revision_facts.ModelRunningRevisionFacts"
 event_bus:
   version:
     major: 1
@@ -67,7 +67,7 @@ handler_routing:
         module: "omnimarket.nodes.node_dev_running_revision_compute.handlers.handler_dev_running_revision"
       event_model:
         name: "ModelRunningRevisionFacts"
-        module: "omnimarket.nodes.node_dev_running_revision_compute.models.model_running_revision_facts"
+        module: "omnimarket.models.running_revision.model_running_revision_facts"
       topic: onex.cmd.omnimarket.dev-running-revision-requested.v1
       description: "One reading tick: build history and merge histories."
 # The read and refused events are the results a caller of the reading awaits (the topic graph gate counts

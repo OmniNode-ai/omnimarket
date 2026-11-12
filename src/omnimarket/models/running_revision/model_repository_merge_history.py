@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_dev_running_revision_compute.models.model_dev_merge import (
+from omnimarket.models.running_revision.model_dev_merge import (
     ModelDevMerge,
 )
 
