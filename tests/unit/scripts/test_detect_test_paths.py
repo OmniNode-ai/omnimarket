@@ -935,10 +935,8 @@ def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() 
 def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
     None
 ):
-    # One heavy path, at least three shards. The test is given its own durations
-    # record so its claim does not move with the real one.
-    # OMN-23719: a node change no longer selects all of tests/nodes/, so the selector
-    # is asked about that one heavy path directly.
+    # One mid-weight path, at least three shards. The test is given its own
+    # durations record so its claim does not move with the real one.
     from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
         HandlerTestSelectionSelector,
     )
@@ -956,9 +954,11 @@ def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count
             return self._durations
 
     estimate = 3.5 * policy.target_shard_seconds
-    durations = {f"tests/nodes/node_x/test_{i}.py": estimate / 7 for i in range(7)}
+    durations = {f"tests/unit/nodes/node_x/test_{i}.py": estimate / 7 for i in range(7)}
     decision = HandlerTestSelectionSelector(_FixedDurations(durations), policy).handle(
-        ModelSelectorRequest(selected_paths=("tests/nodes/",), repo_root=str(REPO_ROOT))
+        ModelSelectorRequest(
+            selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT)
+        )
     )
     assert decision.split_count is not None
     assert 3 <= decision.split_count <= 5
