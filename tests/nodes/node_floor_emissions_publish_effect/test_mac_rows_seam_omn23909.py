@@ -16,7 +16,10 @@ from typing import cast
 import pytest
 import yaml
 
-from omnimarket.handlers.emission_mirror import InMemoryEmissionMirror
+from omnimarket.handlers.emission_mirror import (
+    EmissionMirrorRefusedError,
+    InMemoryEmissionMirror,
+)
 from omnimarket.handlers.emission_sink import ChainEmitter, JsonlEmissionSink
 from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 from omnimarket.models.floor_projection import (
@@ -115,3 +118,21 @@ def test_control_a_renamed_topic_breaks_the_seam() -> None:
         renamed.topic_failure,
         PROJECTION.snapshot_topic,
     } != set(FLOOR_EMISSION_ROW_TOPICS)
+
+
+class RefusingMirror:
+    def publish(self, event: object) -> None:
+        raise EmissionMirrorRefusedError(
+            MIRROR.topic_start, PermissionError("topic authorization failed")
+        )
+
+
+def test_golden_chain_a_refused_copy_names_a_topic_the_rows_grant(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sink = JsonlEmissionSink(tmp_path / "e.jsonl", RefusingMirror())
+    write_chain(sink, "real", "a")
+    written = capsys.readouterr().err
+    assert f"emission mirror refused: topic={MIRROR.topic_start} " in written
+    assert MIRROR.topic_start in FLOOR_EMISSION_ROW_TOPICS
+    assert "error=PermissionError" in written
