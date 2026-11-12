@@ -153,7 +153,11 @@ class HandlerCodeEvalTrialOrchestrator:
         return list(result.emitted)
 
     async def handle_async(self, request: BaseModel) -> ModelHandlerOutput[None]:
-        """Runtime entrypoint: the leg's emissions as publishable handler output."""
+        """Runtime entrypoint: the leg's emissions as publishable handler output.
+
+        The runtime publishes each returned event on the topics this node's contract
+        declares under event_bus.publish_topics.
+        """
         events = await self.handle(request)
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),
