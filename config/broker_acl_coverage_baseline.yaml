@@ -141,6 +141,7 @@ nodes:
   node_ci_state_verdict_compute: 2
   node_ci_summary_registry_compute: 1
   node_claim_index_compute: 2
+  node_classify_eval_compute: 2
   node_claude_code_binding_install_effect: 2
   node_claude_code_binding_render_compute: 2
   node_claude_code_history_read_effect: 2
@@ -276,6 +277,7 @@ nodes:
   node_design_to_plan: 3
   node_dev_deploy_reading_compute: 2
   node_dev_roll_request_compute: 1
+  node_dev_roll_verify_compute: 1
   node_dev_tag_lineage_effect: 2
   node_developer_lane_admission_compute: 2
   node_dirty_canonical_sweep: 3
@@ -373,7 +375,7 @@ nodes:
   node_host_drift_check_effect: 2
   node_host_gap_unit_effect: 2
   node_host_install_state_reducer: 2
-  node_host_installer_registry_units: 2
+  node_host_installer_registry_units: 4
   node_host_installer_serve_units: 2
   node_host_pool_alarm_effect: 2
   node_host_power_effect: 2
@@ -544,7 +546,7 @@ nodes:
   node_pr_landing_orchestrator: 13
   node_pr_landing_rerun_request_compute: 1
   node_pr_landing_snapshot_effect: 3
-  node_pr_landing_tick_orchestrator: 5
+  node_pr_landing_tick_orchestrator: 6
   node_pr_landing_tick_reducer: 2
   node_pr_landing_watcher_facts_effect: 3
   node_pr_lifecycle_inventory_compute: 2
