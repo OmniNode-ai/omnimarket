@@ -8,18 +8,23 @@ and the watcher's ``[name, status, conclusion, completed_at]`` rows. ``edge_fire
 change-control check is a stale grade and earns the one whole-run rerun (the landing decision caps it at one per
 head; a red that survives it goes to a worker). ``cancelled`` is the head's cancelled check copies, passed only
 under a decision node that declares the stale-refresh seam (OMN-20508): with no failed name and one of them, the
-red is the cancelled copies', never ``product``.
+red is the cancelled copies', never ``product``. ``stale_fleet`` is a red whose failing check's job log names
+runner label sets carried ONLY by offline runners, once fleet-status reads those labels carried by an online
+runner: it earns the controller's one whole-run rerun per head and never a fix worker.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import (
     REVIEWER_POOL_RE,
     SUMMARY_CHECK_RE,
     is_cascade_check,
+)
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_stale_fleet import (
+    is_stale_fleet,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_landing_red_class import (
     EnumLandingRedClass,
@@ -40,6 +45,8 @@ def classify_red(
     edge_fired: bool = False,
     annotations: Mapping[str, str | None] | None = None,
     cancelled: Iterable[str] = (),
+    failure_logs: Mapping[str, str | None] | None = None,
+    online_runner_labels: Sequence[Sequence[str]] | None = None,
 ) -> str:
     """The ci-watch red class of one head, from its red check names and its runs."""
     names = [str(n) for n in red]
@@ -80,6 +87,8 @@ def classify_red(
         return "cascade"
     if edge_fired and any(is_cascade_check(n, runs, annotations) for n in real):
         return "cascade"
+    if is_stale_fleet(real, failure_logs, online_runner_labels):
+        return "stale_fleet"
     return "product"
 
 
@@ -96,6 +105,8 @@ class HandlerClassifyLandingRed:
                     edge_fired=request.edge_fired,
                     annotations=request.annotations,
                     cancelled=request.cancelled,
+                    failure_logs=request.failure_logs,
+                    online_runner_labels=request.online_runner_labels,
                 )
             ),
             worker_reds=tuple(n for n in request.red if not REVIEWER_POOL_RE.search(n)),
