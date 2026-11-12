@@ -291,6 +291,30 @@ def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
     return flattened
 
 
+def _is_malformed_v2_terminal(payload: dict[str, object]) -> bool:
+    """Reject a v2 terminal whose routing identity or pricing binding is broken.
+
+    A v2 terminal is malformed when it carries a routing disposition but lacks
+    the producer's backend identity, when its pricing manifest version is not a
+    positive integer, or when a routed terminal's quality evaluation names a
+    URL as the evaluating provider. Such a terminal must not win the receipt
+    wait even if its correlation id matches the dispatch.
+    """
+    if "routing_disposition" not in payload:
+        return False
+    if not payload.get("backend_ref"):
+        return True
+    pricing_version = payload.get("pricing_manifest_version")
+    if not isinstance(pricing_version, int) or pricing_version <= 0:
+        return True
+    evaluation = payload.get("quality_bar_evaluation")
+    if isinstance(evaluation, dict):
+        provider = evaluation.get("provider")
+        if isinstance(provider, str) and "://" in provider:
+            return True
+    return False
+
+
 def _short_topic_alias(topic: str) -> str | None:
     """Derive the '{producer}.{event-name}' alias DispatchResultApplier stamps
     onto ``ModelEventEnvelope.event_type`` (see
