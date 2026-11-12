@@ -71,6 +71,10 @@ def _request(tmp_path: Path, **kw: Any) -> ModelRegistryUnitsRequest:
         "runtime_ssh_host": "lab-user@runtime.example.test",
         "appender_root": str(tmp_path / "appender"),
         "host_table_path": str(tmp_path / "hosts.yaml"),
+        # The alarm reads the lab host table through the overlay roots, which the unit declares (OMN-23950).
+        "path_overrides": {
+            "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays" / "overlays")
+        },
     }
     fields.update(kw)
     return ModelRegistryUnitsRequest(**fields)
@@ -202,7 +206,10 @@ def test_alarm_config_install_writes_where_the_unit_reads_it(tmp_path: Path) -> 
         _request(
             tmp_path,
             mode="install",
-            path_overrides={"ONEX_SILENT_FAILURE_ALARM_CONFIG": str(elsewhere)},
+            path_overrides={
+                "ONEX_SILENT_FAILURE_ALARM_CONFIG": str(elsewhere),
+                "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays" / "overlays"),
+            },
         )
     )
     assert result.exit_code == 0, result.stderr
