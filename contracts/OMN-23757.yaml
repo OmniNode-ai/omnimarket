@@ -1,0 +1,52 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23757"
+title: "The landing snapshot step's record journal keeps only the newest records its overlay declares"
+summary: "node_pr_landing_snapshot_effect reads an optional overlay value record_journal_max_records: with it, a read parses only that many of the newest records and an append that leaves more rewrites the journal to that many; without it the journal stays unbounded and every pass line names the missing key. The decision of what to keep is a pure compute in the node's handlers."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn23757-journal-retention"
+    statement: |-
+      The record journal of the landing snapshot step stays bounded by a declared overlay value, a pass over a legacy oversized journal parses only the declared count, and a missing value keeps the old behaviour with the key named.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: with record_journal_max_records set the journal never holds more than that many records after an append, keeps the newest, and a read parses only that many -- falsifier: the new retention tests, run at the merge base"
+      - id: "AC2"
+        statement: "AC2: with the value absent the journal is unbounded as before and the pass line carries journal_retention=unset and the missing key -- falsifier: the new absent-key test and the updated already_recorded line test, run at the merge base"
+      - id: "AC3"
+        statement: "AC3: the overlay refuses a count below one, and a corrupt row in the kept tail is refused, never skipped -- falsifier: the new error-chain tests, run at the merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "The retention tests, the snapshot step's existing tests and the tick orchestrator's tests, which read the records from the bus and are unchanged."
+    command: "uv run pytest tests/nodes/node_pr_landing_snapshot_effect tests/nodes/node_pr_landing_tick_orchestrator -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23757-retention"
+    description: "The golden tests (bounded journal, legacy oversized journal trimmed and still deduped) and the error tests (count below one, corrupt tail row) pass. At the merge base the overlay has no such key and the module the tests import does not exist, so they fail there."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_landing_snapshot_effect/test_record_journal_retention.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23757-seam"
+    description: "The tick orchestrator's tests and the snapshot step's existing tests pass unchanged in meaning (the one changed assertion adds the typed retention fields to the already_recorded line)."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_landing_snapshot_effect tests/nodes/node_pr_landing_tick_orchestrator -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23757-integration-proof"
+    description: "The retention tests run on a lab host at the pull request's head, through the lab-work node; recorded in the pull request's Lab comment. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound item. The live read on the launching Mac (the unit's pass line carrying journal_retention=bounded, and its records.jsonl at no more than the declared count) is the install step after the overlays pull request lands."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-23757 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_record_journal_retention.py -q --no-cov"
+        cwd: "."
