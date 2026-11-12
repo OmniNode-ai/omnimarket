@@ -51,8 +51,19 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.host-registry-unit-requested.v1
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.host-registry-unit-requested.v1]
-  publish_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
-externally_consumed_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
+  # OMN-23991: the serve command topics, so boot provisioning creates them. `node_repo_state_query_effect` and
+  # `node_canonical_clone_refresh_effect` (host serve processes) read these two command topics and declare no event_bus
+  # block, so nothing created them; they are listed here, as node_pr_landing_snapshot_effect lists the tick-facts topic,
+  # and never as a subscription: a subscription would make the runtime wire a handler to every request under its own
+  # group. The host installer itself publishes nothing on them.
+  publish_topics:
+    - onex.evt.omnimarket.host-registry-unit-completed.v1
+    - onex.cmd.omnimarket.repo-state-query-requested.v1
+    - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-registry-unit-completed.v1
+  - onex.cmd.omnimarket.repo-state-query-requested.v1
+  - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
 descriptor:
   node_archetype: effect
   purity: effectful

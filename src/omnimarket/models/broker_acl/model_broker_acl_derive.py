@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Contract topics, declared principals and the rows derived from them (OMN-19998, issue L1-04).
+
+The principals overlay names which broker login runs which nodes; a node's rows follow from the topics its contract
+declares (event_bus.subscribe_topics and publish_topics). Every key is required; an unknown key is refused.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.models.broker_acl.model_broker_acl_overlay import (
+    ModelBrokerAclFinding,
+    ModelBrokerAclRow,
+)
+
+
+class EnumTopicDirection(StrEnum):
+    PUBLISH = "publish"
+    SUBSCRIBE = "subscribe"
+
+
+class ModelContractTopicUse(BaseModel):
+    """One topic one node's contract declares, and whether the node publishes or subscribes to it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    node: str = Field(min_length=1)
+    topic: str = Field(min_length=1)
+    direction: EnumTopicDirection
+
+
+class ModelNodePrincipal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    principal: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    nodes: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelBrokerAclPrincipalsOverlay(BaseModel):
+    """The declared principals: which login runs which nodes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    scope: str = Field(min_length=1)
+    ticket: str = Field(min_length=1)
+    why: str = Field(min_length=1)
+    principals: tuple[ModelNodePrincipal, ...] = Field(min_length=1)
+
+
+class ModelBrokerAclDeriveRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    scope: str = Field(min_length=1)
+    topic_uses: tuple[ModelContractTopicUse, ...]
+    principals: ModelBrokerAclPrincipalsOverlay
+    declared_rows: tuple[ModelBrokerAclRow, ...] = ()
+
+
+class ModelBrokerAclDeriveResult(BaseModel):
+    """Derived rows, sorted; a topic no row covers is listed and refuses the check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    scope: str
+    status: Literal["derived", "refused"]
+    rows: tuple[ModelBrokerAclRow, ...] = ()
+    contract_topics: int = Field(default=0, ge=0)
+    derived_rows: int = Field(default=0, ge=0)
+    uncovered_topics: tuple[str, ...] = ()
+    findings: tuple[ModelBrokerAclFinding, ...] = ()

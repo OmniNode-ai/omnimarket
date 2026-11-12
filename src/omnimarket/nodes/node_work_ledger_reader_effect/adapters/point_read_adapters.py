@@ -55,6 +55,8 @@ def _request(query: ModelPointQuery, correlation_id: str) -> dict[str, object]:
         request["lanes"] = list(query.lanes)
     if query.lane:
         request["lane"] = query.lane
+    if query.ticket:
+        request["ticket"] = query.ticket
     if query.since is not None:
         request["since"] = _stamp(query.since)
     if query.until is not None:
