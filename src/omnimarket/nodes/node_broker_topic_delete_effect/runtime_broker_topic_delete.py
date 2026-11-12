@@ -41,6 +41,7 @@ from omnimarket.nodes.node_broker_topic_delete_effect.overlay import (
 )
 from omnimarket.nodes.node_broker_topic_delete_effect.protocols import (
     BrokerAdminError,
+    ProtocolBrokerTopicAdmin,
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.adapters.declared_topics import (
     ContractFileDeclaredTopics,
@@ -63,12 +64,20 @@ def build_handler(
     from omnimarket.nodes.node_broker_topic_delete_effect.adapters.kafka_admin import (
         KafkaBrokerTopicAdmin,
     )
+    from omnimarket.nodes.node_broker_topic_delete_effect.adapters.rpk_admin import (
+        RpkSuperuserTopicAdmin,
+    )
 
     _required(overlay.contracts.registry_root_env, environ)
+    admin: ProtocolBrokerTopicAdmin = (
+        RpkSuperuserTopicAdmin(overlay, environ)
+        if overlay.superuser is not None
+        else KafkaBrokerTopicAdmin(overlay)
+    )
     return HandlerBrokerTopicDelete(
         overlay=overlay,
         declared=ContractFileDeclaredTopics(overlay.contracts, environ),
-        admin=KafkaBrokerTopicAdmin(overlay),
+        admin=admin,
         clock=lambda: datetime.now(UTC),
     )
 

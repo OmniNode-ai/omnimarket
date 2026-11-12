@@ -161,6 +161,9 @@ units:
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The workspace root the floor_emissions step's emission mirror opens its lane's bus with (OMN-23877): the mirror
+      # reads it from $OMNIBASE_PATH alone, and without it every mirror was refused with "no workspace root is set".
+      OMNIBASE_PATH: "{registry_root}"
       # The landing controller's state directory: the floor's running comparison reads its decisions file (OMN-23018).
       LANDING_STATE_DIR: "{home}/.local/state/omni/landing"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json

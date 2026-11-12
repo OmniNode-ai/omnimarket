@@ -816,6 +816,7 @@ node_knowledge_health_probe_effect = "omnimarket.nodes.node_knowledge_health_pro
 node_knowledge_query_federation_orchestrator = "omnimarket.nodes.node_knowledge_query_federation_orchestrator"
 node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
 node_lab_alarm = "omnimarket.nodes.node_lab_alarm"
+node_lab_alarm_deliver_effect = "omnimarket.nodes.node_lab_alarm_deliver_effect"
 node_lab_check_run_effect = "omnimarket.nodes.node_lab_check_run_effect"
 node_lab_claude_token_effect = "omnimarket.nodes.node_lab_claude_token_effect"
 node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
