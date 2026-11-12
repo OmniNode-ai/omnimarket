@@ -1511,6 +1511,7 @@
   "tests/nodes/node_lab_alarm/test_effects_held_chain_events.py": 10.89,
   "tests/nodes/node_lab_alarm/test_lab_alarm_chain_events.py": 0.173,
   "tests/nodes/node_lab_alarm/test_lab_alarm_cli_binding.py": 10.25,
+  "tests/nodes/node_lab_alarm/test_lab_alarm_growth_persistence.py": 8.6,
   "tests/nodes/node_lab_alarm/test_lab_alarm_manifest_fallback.py": 0.17,
   "tests/nodes/node_lab_alarm/test_lab_alarm_overlay_without_effects_held.py": 10.43,
   "tests/nodes/node_lab_alarm/test_lab_alarm_run_record.py": 0.056,

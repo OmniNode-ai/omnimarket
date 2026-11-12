@@ -43,6 +43,7 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ManifestUnreachableError,
     ManifestUnreadableError,
     ProtocolGroupLagReader,
+    ProtocolGrowthStreakStore,
     ProtocolManifestCache,
     ProtocolManifestSource,
     ProtocolRunRecordStore,
@@ -204,7 +205,13 @@ class HandlerBrokerLag:
         records: ProtocolRunRecordStore,
         clock: Callable[[], datetime],
         manifest_cache: ProtocolManifestCache | None = None,
+        streaks: ProtocolGrowthStreakStore | None = None,
     ) -> None:
+        if overlay.lag.growth is not None and streaks is None:
+            raise ValueError(
+                "the overlay declares lag.growth, so a growth streak store is required"
+            )
+        self._streaks = streaks
         self._manifest_cache = manifest_cache
         self._overlay = overlay
         self._manifest = manifest
@@ -376,11 +383,34 @@ class HandlerBrokerLag:
                 notes,
             )
         alarms: list[str] = []
-        for reading in readings:
+        waiting: list[str] = []
+        rule = self._overlay.lag.growth
+        stored = self._streaks.load() if rule is not None and self._streaks else {}
+        streaks: dict[str, int] = {}
+        for index, reading in enumerate(readings):
             before = reading.previous_lag
             if reading.state is EnumGroupState.READ and before is not None:
-                if reading.lag is not None and reading.lag > before:
-                    alarms.append(f"{reading.group}: lag grew {before}->{reading.lag}")
+                if rule is None:
+                    if reading.lag is not None and reading.lag > before:
+                        alarms.append(
+                            f"{reading.group}: lag grew {before}->{reading.lag}"
+                        )
+                elif (
+                    reading.lag is not None and reading.lag - before >= rule.min_growth
+                ):
+                    run = stored.get(reading.group, 0) + 1
+                    streaks[reading.group] = run
+                    planted = (
+                        request.fault is EnumLabAlarmFault.PLANTED_LAG and index == 0
+                    )
+                    if run >= rule.persist_runs or planted:
+                        alarms.append(
+                            f"{reading.group}: lag grew {before}->{reading.lag} for {run} samples in a row"
+                        )
+                    else:
+                        waiting.append(
+                            f"{reading.group}: lag grew {before}->{reading.lag}, run {run} of {rule.persist_runs}"
+                        )
             elif reading.state is EnumGroupState.NEVER_COMMITTED and before is not None:
                 alarms.append(
                     f"{reading.group}: held {before}, now never-committed (offsets vanished)"
@@ -391,13 +421,16 @@ class HandlerBrokerLag:
             groups,
             readings,
             tuple(alarms),
-            never,
+            (*never, *waiting),
             outcome,
             sample,
             previous,
             drill,
-            "growth across two consecutive samples, and only growth; a high flat lag is not an alarm",
+            "growth across two consecutive samples, and only growth; a high flat lag is not an alarm"
+            if rule is None
+            else f"growth of {rule.min_growth} or more in {rule.persist_runs} consecutive samples, and only that; a high flat lag is not an alarm",
             notes,
+            streaks,
         )
 
     def _indeterminate(
@@ -497,6 +530,7 @@ class HandlerBrokerLag:
         drill: bool,
         rule: str,
         notes: tuple[str, ...] = (),
+        streaks: Mapping[str, int] | None = None,
     ) -> ModelBrokerLagResult:
         # A drill never moves the baseline, and a pass that could not read every group keeps none.
         keep = (
@@ -506,6 +540,8 @@ class HandlerBrokerLag:
         )
         if keep:
             self._samples.save(sample)
+            if self._streaks is not None:
+                self._streaks.save(streaks or {})
         failure = ""
         if outcome is EnumBrokerLagOutcome.ALARM:
             failure = "alarm:" + ";".join(alarms)
