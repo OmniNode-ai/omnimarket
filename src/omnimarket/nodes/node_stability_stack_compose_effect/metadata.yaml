@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stability_stack_compose_effect
+version: "0.1.0"
+description: "Executes one step of a declared stability stack's install or remove plan and answers ok, failed or refused"
+pack: stability_stack
+node_role: effect
+display_name: "Stability Stack Compose Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_stability_stack_compose_effect: "omnimarket.nodes.node_stability_stack_compose_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "stability-stack", "compose", "OMN-23968"]

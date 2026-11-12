@@ -2445,6 +2445,8 @@
   "tests/nodes/test_model_work_receipt_join.py": 0.17,
   "tests/nodes/test_nl_to_ticket_pipeline.py": 0.03,
   "tests/nodes/test_node_order_advance_effect_contract.py": 0.17,
+  "tests/nodes/node_stability_stack_compose_effect/test_golden_chain_stability_stack_compose_effect.py": 0.5,
+  "tests/nodes/node_stability_stack_plan_compute/test_golden_chain_stability_stack_plan_compute.py": 0.5,
   "tests/nodes/test_omn15797_retention_cleanup_tenant_seam.py": 0.04,
   "tests/nodes/test_omn17427_file_retention.py": 0.26,
   "tests/nodes/test_omn17427_retention_cleanup_batched.py": 0.53,
