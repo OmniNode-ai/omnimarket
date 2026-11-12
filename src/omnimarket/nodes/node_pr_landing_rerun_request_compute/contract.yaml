@@ -66,16 +66,7 @@ event_bus:
     patch: 0
   subscribe_topics:
     - "onex.cmd.omnimarket.pr-landing-rerun-decision-requested.v1"
-  # OMN-23964: the request flow's topic, so boot provisioning creates it. `onex scm rerun-request` (a verb, not a
-  # node) publishes it and the landing tick's own topic reader consumes it; the tick contract declares it only as a
-  # consumed event, and boot provisioning creates a loaded contract's subscribe and publish topics only. It is
-  # listed here, as node_pr_landing_snapshot_effect lists the tick-facts topic, and never as a subscription: a
-  # subscription would make the runtime wire a handler to every request under its own group. The decision node
-  # itself publishes nothing on it.
-  publish_topics:
-    - "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
-externally_consumed_topics:
-  - "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
+  publish_topics: []
 runtime_profiles:
   - main
 descriptor:

@@ -62,21 +62,21 @@ def test_every_rerun_request_topic_is_boot_provisioned(role: str) -> None:
     assert topic in _boot_provision_topics()
 
 
-def test_the_request_topic_is_not_a_tick_publish_or_subscribe_topic() -> None:
+def test_the_request_topic_is_a_tick_publish_topic_and_never_a_subscription() -> None:
     contract = _contract(TICK_DIR)
     bus = contract["event_bus"]
 
     request_topic = contract["rerun_request"]["command_topic"]
-    assert request_topic not in bus["publish_topics"]
+    assert request_topic in bus["publish_topics"]
+    assert request_topic in contract["externally_consumed_topics"]
     assert request_topic not in bus["subscribe_topics"]
 
 
-def test_the_rerun_compute_contract_provisions_and_declares_the_request_topic() -> None:
+def test_the_rerun_compute_contract_declares_no_request_topic() -> None:
     contract = _contract(RERUN_COMPUTE_DIR)
     request_topic = "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
 
-    assert contract["event_bus"]["publish_topics"] == [request_topic]
-    assert contract["externally_consumed_topics"] == [request_topic]
+    assert contract["event_bus"]["publish_topics"] == []
     assert request_topic not in contract["event_bus"]["subscribe_topics"]
 
 
