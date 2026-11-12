@@ -38,6 +38,11 @@ Rules this handler enforces:
   in the asked-for state. workflow_dispatch has no GitHub-side record, so only
   the in-process record guards a retry. check_run_create likewise only has
   the in-process record; a restart can create another check run.
+- **Allowed labels.** pr_label adds and removes labels on a pull request, pinned to
+  the expected head like pr_edit. Every label must be in the ``allowed_labels`` set of
+  the node's overlay (``overlay.py``); one that is not, or an overlay that cannot be
+  read, is refused ``label_not_allowed`` before any GitHub call, in either mode. A label
+  already in the asked-for state is not sent again and the result is ``replayed``.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -109,6 +114,7 @@ from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_github_token_is_actor,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.inference.secret_store_resolver import (
     SecretStoreConfigurationError,
     resolve_api_key_async,
@@ -138,10 +144,18 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_config import (
     ModelRepoWriteCredentialChoice,
 )
+from omnimarket.nodes.node_github_repo_write_effect.overlay import (
+    ModelRepoWriteOverlay,
+    load_overlay,
+)
 from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolGithubRepoWriteTransport,
     ProtocolLeaseFence,
     ProtocolPrClaimLookup,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
+    add_labels_request,
+    remove_label_request,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_review_post import (
     create_pull_request_review_request,
@@ -426,7 +440,9 @@ class HandlerGithubRepoWriteEffect:
         config: ModelRepoWriteConfig | None = None,
         clock: Callable[[], float] = time.time,
         quota_readings: GithubQuotaReadings | None = None,
+        overlay: ModelRepoWriteOverlay | None = None,
     ) -> None:
+        self._write_overlay = overlay
         self._transport = transport
         self._fence = fence_port
         if deadline_seconds is None:
@@ -451,6 +467,39 @@ class HandlerGithubRepoWriteEffect:
         self._done: OrderedDict[
             tuple[str, str, str], tuple[dict[str, str], ModelRepoWriteCompleted]
         ] = OrderedDict()
+
+    def _label_refusal(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | None:
+        """Refuse a pr_label naming a label the overlay does not allow, before any call.
+
+        The overlay is read the first time a pr_label needs it, so no other
+        operation depends on it; one that cannot be read refuses the label
+        write, never falls back to a value here.
+        """
+        if request.operation is not EnumRepoWriteOperation.PR_LABEL:
+            return None
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.LABEL_NOT_ALLOWED,
+                f"no allowed-label overlay is configured for pr_label: {exc}",
+            )
+        allowed = set(self._write_overlay.pr_label.allowed_labels)
+        refused = sorted(
+            {*(request.add_labels or ()), *(request.remove_labels or ())} - allowed
+        )
+        if not refused:
+            return None
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.LABEL_NOT_ALLOWED,
+            f"label(s) {', '.join(refused)} are not in the node's allowed pr_label "
+            "set; no call made",
+        )
 
     # --- quota ----------------------------------------------------------------
 
@@ -493,6 +542,9 @@ class HandlerGithubRepoWriteEffect:
         if refused is not None:
             return refused
         refused = self._claim_refusal(request)
+        if refused is not None:
+            return refused
+        refused = self._label_refusal(request)
         if refused is not None:
             return refused
         mode = (
@@ -734,6 +786,8 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_thread_reply(run)
         if op is EnumRepoWriteOperation.PR_THREAD_RESOLVE:
             return await _pr_thread_resolve(run)
+        if op is EnumRepoWriteOperation.PR_LABEL:
+            return await _pr_label(run)
         if op is EnumRepoWriteOperation.PR_REVIEW_POST:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
@@ -1045,6 +1099,29 @@ async def _pr_thread_resolve(run: _Run) -> ModelRepoWriteCompleted:
     return run.completed(html_url=url, head_sha=head_sha)
 
 
+async def _pr_label(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    number = c.pr_number or 0
+    pr = await run.expect_pr_head()
+    labels = pr.get("labels")
+    current = {
+        name
+        for label in (labels if isinstance(labels, list) else [])
+        if isinstance(label, dict) and isinstance(name := label.get("name"), str)
+    }
+    to_add = [label for label in (c.add_labels or ()) if label not in current]
+    to_remove = [label for label in (c.remove_labels or ()) if label in current]
+    if to_add:
+        await run.send(add_labels_request(c.repo, number, to_add))
+    for label in to_remove:
+        await run.send(remove_label_request(c.repo, number, label))
+    return run.completed(
+        replayed=not (to_add or to_remove),
+        html_url=_str_at(pr, "html_url"),
+        head_sha=_str_at(pr, "head", "sha"),
+    )
+
+
 def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
     body: dict[str, object] = {
         "name": c.name,
@@ -1101,6 +1178,19 @@ def planned_requests(
         in (EnumRepoWriteOperation.PR_CREATE, EnumRepoWriteOperation.WORKFLOW_DISPATCH)
         else []
     )
+    if op is EnumRepoWriteOperation.PR_LABEL:
+        return (
+            pull_request_request(c.repo, n),
+            *(
+                (add_labels_request(c.repo, n, list(c.add_labels)),)
+                if c.add_labels
+                else ()
+            ),
+            *(
+                remove_label_request(c.repo, n, label)
+                for label in c.remove_labels or ()
+            ),
+        )
     if op is EnumRepoWriteOperation.PR_CREATE:
         return (
             *tip,

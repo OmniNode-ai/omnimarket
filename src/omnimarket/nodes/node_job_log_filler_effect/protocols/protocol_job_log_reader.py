@@ -25,7 +25,12 @@ class ProtocolJobLogReader(Protocol):
     cache_path: str | None
 
     def read(
-        self, repo: str, job_id: int, *, cache_only: bool
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
     ) -> ModelJobLogTailResult: ...
 
 

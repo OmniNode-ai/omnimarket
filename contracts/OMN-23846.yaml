@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23846
+title: 'Failure notes per red commit, read locally: the failing step and lines without a GitHub read'
+summary: After the job-log filler holds a red job's log it writes one typed record per repository, pull request, head and job (check, job id, failing step, capped digest lines, cache path). A new local verb, onex scm red-facts, answers from the record with no gateway publish and no budget charge; a new head reads not_filled. The per-lane gateway miss allowance moves from the budget node's contract into an overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23846-red-facts
+  statement: A lane learns the failing step and lines of its red head from a local record, spending no GitHub read.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: one filler pass over a watcher-state fixture with a red job writes one record per red head and job carrying the failing step and failure lines, and a new head of the same pull request reads not_filled instead of the old head''s record -- falsifier: uv run pytest tests/nodes/node_job_log_filler_effect/test_red_facts_record.py -q fails at the merge base, where no record is written'
+  - id: AC2
+    statement: 'AC2: onex scm red-facts answers from the record with zero gateway publishes and zero budget charges, and the per-lane miss allowance is read from an overlay with no value left in the budget node''s contract -- falsifier: the verb tests in tests/unit/handlers/scm/test_onex_scm_red_facts.py and the budget seam test fail when the verb falls through to job-log, and a scan finds gateway_cache_misses_per_lane in that contract.yaml'
+  - id: AC3
+    statement: 'AC3: integrated: on the host running the filler unit, a lab lane reads one real red head''s record through onex scm red-facts and the lane''s charge log shows zero charges for that read -- falsifier: the lane''s charge log shows a charge for the read, or the verb prints not_filled for a red head older than one filler pass'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of this change pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_red_facts_record.py tests/unit/handlers/scm/test_onex_scm_red_facts.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23846-ac1
+  description: The record tests pass at the head; at the merge base the module and the store do not exist, so the file fails to import.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_red_facts_record.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23846-ac2
+  description: The verb tests (zero bus opens, head moved, unreadable overlay), the budget seam test (no charge for red-facts, one for job-log) and the overlay scan pass.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/handlers/scm/test_onex_scm_red_facts.py tests/nodes/node_lane_github_budget_effect/test_lane_github_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23846-ac3
+  description: 'Read on the filler host after install from the branch: the verb answers a real red head and the lane''s call log holds no charge for it; the receipt is quoted in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23846-integration-proof
+  description: Run this pull request's focused tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the running read on the filler host is quoted in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23846 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_red_facts_record.py tests/unit/handlers/scm/test_onex_scm_red_facts.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

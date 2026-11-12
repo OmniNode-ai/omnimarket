@@ -96,7 +96,12 @@ def test_node_is_registered_and_its_contract_binds_the_handler() -> None:
     assert hints["request"] is model(binding["input_model"])
     assert hints["return"] is model(binding["output_model"])
     assert contract["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]
-    assert contract["event_bus"]["publish_topics"] == [COMPARED_TOPIC, FAILED_TOPIC]
+    assert contract["event_bus"]["publish_topics"] == [
+        COMPARED_TOPIC,
+        FAILED_TOPIC,
+        "onex.evt.omnimarket.pr-landing-rerun-completed.v1",
+        "onex.evt.omnimarket.pr-landing-rerun-failed.v1",
+    ]
     assert contract["runtime_dispatch"]["terminal_events"] == {
         "success": COMPARED_TOPIC,
         "failure": FAILED_TOPIC,

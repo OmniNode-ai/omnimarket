@@ -117,6 +117,9 @@ class MirrorMarksSource:
                     label=row["label"],
                     until=row.get("until"),
                     revoked=bool(row.get("revoked")),
+                    fingerprint=row.get("fingerprint"),
+                    revoked_at=row.get("revoked_at"),
+                    limited_at=row.get("limited_at"),
                 )
                 for row in body["tokens"]
             )
