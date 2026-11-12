@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -80,9 +81,9 @@ def test_replace_command_without_new_until_is_refused() -> None:
         ModelLimitRecheckCommand(
             label="alpha",
             fingerprint="4d2430e0",
-            expected_until="2026-11-13T11:00:00Z",  # type: ignore[arg-type]
+            expected_until=datetime(2026, 11, 13, 11, 0, 0, tzinfo=UTC),
             action="replace",
-            probed_at="2026-11-11T23:00:05Z",  # type: ignore[arg-type]
+            probed_at=datetime(2026, 11, 11, 23, 0, 5, tzinfo=UTC),
         )
 
 

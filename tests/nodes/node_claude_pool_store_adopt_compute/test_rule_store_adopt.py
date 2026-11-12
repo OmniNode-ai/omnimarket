@@ -13,6 +13,7 @@ from omnimarket.nodes.node_claude_pool_store_adopt_compute.models import (
     ModelHeldLabel,
     ModelStoreAdoptPolicy,
     ModelStoreAdoptRequest,
+    ModelStoreAdoptResult,
     ModelStoreToken,
 )
 
@@ -33,13 +34,13 @@ def decide(
     held_rows: tuple[ModelHeldLabel, ...],
     store: tuple[ModelStoreToken, ...] = (),
     policy: ModelStoreAdoptPolicy | None = POLICY,
-):  # type: ignore[no-untyped-def]
+) -> ModelStoreAdoptResult:
     return HandlerStoreAdopt().handle(
         ModelStoreAdoptRequest(store_tokens=store, held=held_rows, policy=policy)
     )
 
 
-def outcome(result, label: str) -> str:  # type: ignore[no-untyped-def]
+def outcome(result: ModelStoreAdoptResult, label: str) -> str:
     return next(d.outcome for d in result.decisions if d.label == label)
 
 

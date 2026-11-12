@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 import pytest
 
@@ -43,8 +44,10 @@ def _request(
     )
 
 
-def _answer(verdict: str, reset_at: datetime | None = None) -> ModelLimitProbeAnswer:
-    return ModelLimitProbeAnswer(verdict=verdict, reset_at=reset_at, probed_at=NOW)  # type: ignore[arg-type]
+def _answer(
+    verdict: Literal["ok", "limited", "error"], reset_at: datetime | None = None
+) -> ModelLimitProbeAnswer:
+    return ModelLimitProbeAnswer(verdict=verdict, reset_at=reset_at, probed_at=NOW)
 
 
 def test_without_the_overlay_block_nothing_is_decided() -> None:

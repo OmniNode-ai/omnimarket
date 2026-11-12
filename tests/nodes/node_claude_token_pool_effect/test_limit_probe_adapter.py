@@ -150,10 +150,10 @@ def test_control_a_hung_probe_process_is_an_error_not_a_hang(
         adapter_limit_probe as module,
     )
 
-    seen: dict[str, float | None] = {}
+    seen: dict[str, object] = {}
 
     def hung(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        seen["timeout"] = kwargs.get("timeout")  # type: ignore[assignment]
+        seen["timeout"] = kwargs.get("timeout")
         raise subprocess.TimeoutExpired(cmd="probe", timeout=1)
 
     monkeypatch.setattr(module.subprocess, "run", hung)

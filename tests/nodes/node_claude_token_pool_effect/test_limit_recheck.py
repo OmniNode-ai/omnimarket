@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -69,8 +69,10 @@ class FakeProbe:
         return self.answers[label]
 
 
-def answer(verdict: str, reset_at: datetime | None = None) -> ModelLimitProbeAnswer:
-    return ModelLimitProbeAnswer(verdict=verdict, reset_at=reset_at, probed_at=NOW)  # type: ignore[arg-type]
+def answer(
+    verdict: Literal["ok", "limited", "error"], reset_at: datetime | None = None
+) -> ModelLimitProbeAnswer:
+    return ModelLimitProbeAnswer(verdict=verdict, reset_at=reset_at, probed_at=NOW)
 
 
 class _Source:
