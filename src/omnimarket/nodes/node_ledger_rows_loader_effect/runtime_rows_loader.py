@@ -19,7 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from omnimarket.events.work_ledger_reader import (
+from omnimarket.models.model_work_ledger_reader import (
     EnumReaderQuery,
     ModelReaderRequest,
 )
