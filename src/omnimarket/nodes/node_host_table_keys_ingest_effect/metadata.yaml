@@ -20,6 +20,7 @@ capabilities:
   side_effect_class: external_io
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "redis>=5.0.0"
 authors:
 - OmniNode Platform Team
 license: MIT
