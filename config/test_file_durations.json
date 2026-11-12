@@ -4220,6 +4220,7 @@
   "tests/unit/models/test_lab_host_row_volumes_root_omn22788.py": 0.021,
   "tests/unit/models/test_lane_commit_signing_overlay_omn22993.py": 0.7,
   "tests/unit/models/test_lane_time_box_overlay_omn23999.py": 0.7,
+  "tests/unit/models/test_llm_endpoints_overlay_document_omn24017.py": 3.4,
   "tests/unit/models/test_node_overlay_documents_omn22478.py": 0.34,
   "tests/unit/models/test_registry_overlay_documents_omn22478.py": 0.17,
   "tests/unit/models/test_runtime_lane_env_overlay_omn22632.py": 0.5,
