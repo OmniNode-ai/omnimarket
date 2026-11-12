@@ -70,7 +70,8 @@ class ModelNetUnitFile(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    source: str
+    source: str = ""
+    content: str = ""
     destination: str
     mode: str
     sha256: str = ""
@@ -78,6 +79,12 @@ class ModelNetUnitFile(BaseModel):
     render: str = ""
     values: dict[str, str] = Field(default_factory=dict)
     encoding: str = ""
+
+    @model_validator(mode="after")
+    def _check_source_or_content(self) -> ModelNetUnitFile:
+        if bool(self.source) == bool(self.content):
+            raise ValueError("a file declares exactly one of source and content")
+        return self
 
 
 class ModelNetUnitDeclaration(BaseModel):
