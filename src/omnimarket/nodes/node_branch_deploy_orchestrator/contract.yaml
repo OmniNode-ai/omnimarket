@@ -1,0 +1,138 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Branch deploy ORCHESTRATOR (OMN-24027)
+#
+# Composes one branch deploy over the bus: deploy the PR head through the deploy agent, record the hot patch in the
+# install reducer, verify build provenance and health, and roll back on a failed verification. Each step is a typed
+# step event the reducer folds into the install record; the orchestrator sends nothing further for a deploy until the
+# reducer's record for the step comes back. No I/O, no clock of its own.
+---
+name: node_branch_deploy_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Branch deploy orchestrator. On a deploy request it sends the deploy command to the deploy agent, waits for the job
+  to complete, probes the runtime for health and provenance, and rolls back on a failed verification. Every step is
+  published as a reducer command carrying the last record the reducer returned; the deploy ends with one terminal
+  event naming the final state and the digests. A result or record for a deploy it does not know, or in the wrong
+  phase, is ignored. Every setting comes from the node overlay.
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.cmd.omnimarket.branch-deploy-requested.v1
+      message_category: command
+      operation: branch_deploy_request
+      event_model:
+        name: ModelBranchDeployRequest
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.models.model_branch_deploy_orchestrator
+      handler:
+        name: HandlerBranchDeployOrchestrator
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator
+    - topic: onex.evt.omnimarket.branch-deploy-command-completed.v1
+      message_category: event
+      operation: branch_deploy_command_result
+      event_model:
+        name: ModelBranchDeployCommandResult
+        module: omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command
+      handler:
+        name: HandlerBranchDeployOrchestrator
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator
+    - topic: onex.evt.omnimarket.branch-deploy-probe-completed.v1
+      message_category: event
+      operation: branch_deploy_probe_result
+      event_model:
+        name: ModelBranchDeployProbeResult
+        module: omnimarket.nodes.node_branch_deploy_probe_effect.models.model_branch_deploy_probe
+      handler:
+        name: HandlerBranchDeployOrchestrator
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator
+    - topic: onex.evt.omnimarket.host-install-state-updated.v1
+      message_category: event
+      operation: host_install_state_record
+      event_model:
+        name: ModelHostInstallRecord
+        module: omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state
+      handler:
+        name: HandlerBranchDeployOrchestrator
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator
+    - topic: onex.evt.deploy.rebuild-completed.v1
+      message_category: event
+      operation: deploy_job_completed
+      event_model:
+        name: ModelDeployJobCompleted
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.models.model_branch_deploy_orchestrator
+      handler:
+        name: HandlerBranchDeployOrchestrator
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator
+    - topic: onex.evt.deploy.rebuild-rejected.v1
+      message_category: event
+      operation: deploy_job_rejected
+      event_model:
+        name: ModelDeployJobRejected
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.models.model_branch_deploy_orchestrator
+      handler:
+        name: HandlerBranchDeployOrchestrator
+        module: omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator
+
+handler:
+  module: omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator
+  class: HandlerBranchDeployOrchestrator
+  input_model: omnimarket.nodes.node_branch_deploy_orchestrator.models.model_branch_deploy_orchestrator.ModelBranchDeployRequest
+
+input_model:
+  name: ModelBranchDeployRequest
+  module: omnimarket.nodes.node_branch_deploy_orchestrator.models.model_branch_deploy_orchestrator
+  description: "One deploy of one open PR's head to the dev runtime."
+output_model:
+  name: ModelBranchDeployCompleted
+  module: omnimarket.nodes.node_branch_deploy_orchestrator.models.model_branch_deploy_orchestrator
+  description: "How the deploy ended: the final state and the digests."
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles: [workers]
+
+terminal_event: onex.evt.omnimarket.branch-deploy-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.branch-deploy-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.branch-deploy-requested.v1
+    - onex.evt.omnimarket.branch-deploy-command-completed.v1
+    - onex.evt.omnimarket.branch-deploy-probe-completed.v1
+    - onex.evt.omnimarket.host-install-state-updated.v1
+    - onex.evt.deploy.rebuild-completed.v1
+    - onex.evt.deploy.rebuild-rejected.v1
+  publish_topics:
+    - onex.cmd.omnimarket.branch-deploy-command-requested.v1
+    - onex.cmd.omnimarket.branch-deploy-probe-requested.v1
+    - onex.evt.omnimarket.host-install-step.v1
+    - onex.evt.omnimarket.branch-deploy-completed.v1
+
+externally_produced_topics:
+  - topic: onex.evt.deploy.rebuild-completed.v1
+    producer: "the deploy agent (scripts/deploy-agent), not a node contract"
+  - topic: onex.evt.deploy.rebuild-rejected.v1
+    producer: "the deploy agent (scripts/deploy-agent), not a node contract"
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.branch-deploy-completed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Branch deploy orchestrator"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-24027"

@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Branch deploy probe EFFECT
+#
+# Reads the running runtime's build provenance and health after a deploy job ends. The node takes a typed request,
+# runs the runtime probe source reused from node_dev_deploy_reading_effect through an injected port, and maps what it
+# read to a typed result. It reports the observed sha; it does not judge it.
+---
+name: node_branch_deploy_probe_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Branch deploy probe effect. Reads the running runtime's health answer and the build commit its provenance records,
+  through the runtime probe source reused from node_dev_deploy_reading_effect. A read carries the observed sha and the
+  health flag; an unread probe is unreadable with its reason cut to the overlay bound. The node reports the observed
+  sha; it does not judge it.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelBranchDeployProbeRequest
+        module: omnimarket.nodes.node_branch_deploy_probe_effect.models.model_branch_deploy_probe
+      handler:
+        name: HandlerBranchDeployProbe
+        module: omnimarket.nodes.node_branch_deploy_probe_effect.handlers.handler_branch_deploy_probe
+
+handler:
+  module: omnimarket.nodes.node_branch_deploy_probe_effect.handlers.handler_branch_deploy_probe
+  class: HandlerBranchDeployProbe
+  input_model: omnimarket.nodes.node_branch_deploy_probe_effect.models.model_branch_deploy_probe.ModelBranchDeployProbeRequest
+
+input_model:
+  name: ModelBranchDeployProbeRequest
+  module: omnimarket.nodes.node_branch_deploy_probe_effect.models.model_branch_deploy_probe
+  description: "The correlation id, the deploy phase, and the sha the running build is expected to record."
+output_model:
+  name: ModelBranchDeployProbeResult
+  module: omnimarket.nodes.node_branch_deploy_probe_effect.models.model_branch_deploy_probe
+  description: "The result: correlation id, phase, status, observed sha, health flag, expected sha, and detail."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+  side_effects: [ssh-read, http-read]
+
+terminal_event: onex.evt.omnimarket.branch-deploy-probe-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.branch-deploy-probe-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.branch-deploy-probe-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.branch-deploy-probe-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.branch-deploy-probe-completed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Branch deploy probe effect"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-24027"
