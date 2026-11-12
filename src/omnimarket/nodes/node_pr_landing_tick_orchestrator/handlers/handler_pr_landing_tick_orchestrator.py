@@ -173,6 +173,7 @@ class HandlerPrLandingTickOrchestrator:
             correlation_id=request.correlation_id.hex,
             backend=self._emission_backend,
             drill=self._drill,
+            origin="real",
         )
 
     def _compare(self, request: ModelTickRequest) -> ModelTickResult:

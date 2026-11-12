@@ -13,6 +13,10 @@ from omnimarket.handlers.handler_harness_eval import (
     build_harness_run,
     summarize,
 )
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
+from omnimarket.models.delegation_capability_map.model_capability_line import (
+    ModelCapabilityLine,
+)
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run import (
     eval_run_id,
 )
@@ -36,6 +40,7 @@ def observation(item="a", **kwargs):
         duration_s=60,
         passed=True,
         harness_succeeded=True,
+        size_band=EnumSizeBand.S,
         **kwargs,
     )
 
@@ -132,6 +137,7 @@ def test_capability_projection_reuses_bounds_and_never_pools_harnesses():
         observed_at=datetime.now(UTC),
         suite_revision="fixed-v1",
         harness_revision="adapter-sha",
+        line=ModelCapabilityLine(floor=0.9, margin=0.07, confidence=0.95, power=0.8),
     )
     result = HandlerProjectionDelegationCapabilityMap().handle(run)
     assert len(result.cells) == 2

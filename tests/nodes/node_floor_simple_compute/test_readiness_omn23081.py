@@ -80,6 +80,8 @@ def receipts(
                     "golden_at": NOW - timedelta(minutes=10) if ran else None,
                     "error_at": NOW - timedelta(minutes=20) if ran else None,
                     "state": state,
+                    # Real work crossed every join that ran (OMN-23862); the tests of that rule are in test_real_work_omn23862.
+                    "real_golden_at": NOW - timedelta(minutes=10) if ran else None,
                 }
             )
         )

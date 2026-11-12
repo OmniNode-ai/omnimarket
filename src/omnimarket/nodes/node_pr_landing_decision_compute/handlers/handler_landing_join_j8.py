@@ -27,6 +27,7 @@ import yaml
 
 from omnimarket.handlers.emission_sink import ProtocolEmissionSink
 from omnimarket.models.floor_17a import ModelNodeEmission
+from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
     decide_landing,
 )
@@ -75,8 +76,11 @@ class HandlerLandingJoinJ8:
         policy: ModelJoinJ8Policy | None = None,
         clock: Callable[[], datetime] | None = None,
         backend: Literal["in_memory", "real"] = "real",
+        origin: ChainOrigin = "probe",
     ) -> None:
         self._sink = sink
+        # The kind of work the answer is (OMN-23877): the join's own check says probe; the live run, on one real head, says real.
+        self._origin = origin
         self._policy = policy if policy is not None else load_join_j8_policy()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._backend = backend
@@ -178,6 +182,7 @@ class HandlerLandingJoinJ8:
                     "emitted_at": self._clock(),
                     "backend": self._backend,
                     "drill": False,
+                    "origin": self._origin,
                     **extra,
                 }
             )

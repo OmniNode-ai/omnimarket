@@ -35,6 +35,9 @@ from omnimarket.models.delegation_capability_map.model_capability_grid import (
     ModelCapabilityGridModel,
     ModelCapabilityGridRequest,
 )
+from omnimarket.models.delegation_capability_map.model_capability_line import (
+    ModelCapabilityLine,
+)
 from omnimarket.nodes.node_projection_delegation_capability_map.handlers import (
     HandlerCapabilityGridRun,
     HandlerDelegationCapabilityMap,
@@ -115,6 +118,9 @@ def _fold(rows, request: ModelCapabilityGridRequest):
                 )
                 for m in request.models
                 for c in request.configurations
+            ),
+            line=ModelCapabilityLine(
+                floor=0.9, margin=0.07, confidence=0.95, power=0.8
             ),
         )
     )
@@ -209,9 +215,21 @@ def test_grid_items_band_each_distinct_prompt_once() -> None:
     assert skipped == {"duplicate_prompt": 1, "size_band_task_class_unavailable": 1}
 
 
-def test_build_grid_map_run_writes_rows_whose_three_serving_fields_are_non_empty() -> (
-    None
-):
+@pytest.fixture
+def capability_line_overlay(tmp_path, monkeypatch):
+    """The capability map overlay a lab driver reads its class line from."""
+    root = tmp_path / "capability_line_overlay_root"
+    node = root / "node_projection_delegation_capability_map"
+    node.mkdir(parents=True)
+    (node / "overlay.yaml").write_text(
+        "line:\n  floor: 0.9\n  margin: 0.07\n  confidence: 0.95\n  power: 0.8\n"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+
+
+def test_build_grid_map_run_writes_rows_whose_three_serving_fields_are_non_empty(
+    capability_line_overlay,
+) -> None:
     request = _request(_REQUIRED_N + 2)
     grades = {
         (item.item_key, _MODEL.backend_id): ModelCapabilityGridGrade(
@@ -245,7 +263,7 @@ def test_build_grid_map_run_writes_rows_whose_three_serving_fields_are_non_empty
 
 
 def test_grid_run_command_writes_rows_with_the_three_serving_fields(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, capability_line_overlay
 ) -> None:
     from omnimarket.models.delegation_capability_map.model_capability_map_run_recorded import (
         ModelCapabilityMapRunRecorded,
