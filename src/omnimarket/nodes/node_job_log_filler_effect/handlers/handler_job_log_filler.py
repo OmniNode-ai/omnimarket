@@ -23,6 +23,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, MutableMapping
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -30,12 +31,17 @@ from uuid import uuid4
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_github_gateway_io import ModelJobLogTailResult
 from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
     cache_policy,
 )
 from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_job_log_readers import (
     BusJobLogReader,
     InMemoryJobLogReader,
+)
+from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
+    RedFactsStore,
+    build_record,
 )
 from omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler import (
     OVERLAY_FILE_ENV,
@@ -188,7 +194,9 @@ class HandlerJobLogFiller:
         state_reader: Callable[[], Mapping[str, Any]] | None = None,
         held: MutableMapping[int, float] | None = None,
         clock: Callable[[], float] = time.time,
+        record_store: RedFactsStore | None = None,
     ) -> None:
+        self._record_store = record_store
         self._held: MutableMapping[int, float] = {} if held is None else held
         self._clock = clock
         self._overlay = overlay
@@ -221,6 +229,7 @@ class HandlerJobLogFiller:
                 if self._reader_factory
                 else build_reader(overlay, request.profile)
             )
+            store = self._record_store or RedFactsStore.from_overlay(overlay)
         except Exception as exc:
             return ModelJobLogFillResult(
                 correlation_id=request.correlation_id,
@@ -252,10 +261,21 @@ class HandlerJobLogFiller:
         deadline = now + overlay.pass_budget_seconds
         budget_exhausted = False
         memo = self._held
+        records_written = 0
+        records_failed = 0
+        record_stamp = datetime.fromtimestamp(now, UTC)
+
+        def needs_record(run: ModelMergeRelevantRun) -> bool:
+            """A red job with no record yet; its log is read again even when the memo holds it."""
+            return run.reason is EnumJobLogFillReason.RED and not store.has(
+                run.repo, run.pr_number, run.head_sha, run.job_id
+            )
+
         remembered = [
             r
             for r in runs
             if now - memo.get(r.job_id, -math.inf) < overlay.reprobe_seconds
+            and not needs_record(r)
         ]
         remembered_ids = {r.job_id for r in remembered}
         to_probe = [r for r in runs if r.job_id not in remembered_ids]
@@ -264,19 +284,47 @@ class HandlerJobLogFiller:
             for r in remembered
         )
 
+        def record(run: ModelMergeRelevantRun, log: ModelJobLogTailResult) -> None:
+            nonlocal records_written, records_failed
+            try:
+                store.write(
+                    build_record(
+                        repo=run.repo,
+                        pr_number=run.pr_number,
+                        head_sha=run.head_sha,
+                        job_name=run.job_name,
+                        job_id=run.job_id,
+                        text=log.text,
+                        total_bytes=log.total_bytes,
+                        cache_path=reader.cache_path,
+                        overlay=overlay,
+                        now=record_stamp,
+                    )
+                )
+                with lock:
+                    records_written += 1
+            except Exception:
+                with lock:
+                    records_failed += 1
+
         def work(run: ModelMergeRelevantRun) -> ModelJobLogFillItem | None:
             nonlocal live_reads, deferred, budget_exhausted
+            tail = overlay.red_facts_tail_bytes if needs_record(run) else None
             with lock:
                 if self._clock() >= deadline:
                     budget_exhausted = True
                     deferred += 1
                     return None
             try:
-                tail = reader.read(run.repo, run.job_id, cache_only=True)
+                cached = reader.read(
+                    run.repo, run.job_id, cache_only=True, tail_bytes=tail
+                )
+                if tail is not None:
+                    record(run, cached)
                 return ModelJobLogFillItem(
                     run=run,
                     outcome=EnumJobLogFillOutcome.ALREADY_CACHED,
-                    total_bytes=tail.total_bytes,
+                    total_bytes=cached.total_bytes,
                 )
             except JobLogCacheMissError:
                 pass
@@ -288,9 +336,13 @@ class HandlerJobLogFiller:
                     return None
                 live_reads += 1
             try:
-                filled = reader.read(run.repo, run.job_id, cache_only=False)
+                filled = reader.read(
+                    run.repo, run.job_id, cache_only=False, tail_bytes=tail
+                )
             except Exception as exc:
                 return self._failed(run, exc)
+            if tail is not None:
+                record(run, filled)
             return ModelJobLogFillItem(
                 run=run,
                 outcome=EnumJobLogFillOutcome.FILLED,
@@ -334,6 +386,8 @@ class HandlerJobLogFiller:
             deferred=deferred,
             budget_exhausted=budget_exhausted,
             stale_skipped=stale,
+            records_written=records_written,
+            records_failed=records_failed,
             items=tuple(items),
         )
 

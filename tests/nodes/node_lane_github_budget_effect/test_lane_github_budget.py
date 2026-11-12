@@ -17,6 +17,7 @@ import pytest
 
 from omnimarket.nodes.node_lane_github_budget_effect.handlers.handler_lane_github_budget import (
     HandlerLaneGithubBudget,
+    gateway_cache_misses_per_lane,
     quota_consumers,
 )
 from omnimarket.nodes.node_lane_github_budget_effect.models.model_lane_github_budget import (
@@ -154,6 +155,18 @@ def test_cache_hits_spend_no_lane_budget_and_misses_refuse_by_lane(policy):
     assert len(network.read_text().splitlines()) == 2
 
 
+def test_red_facts_is_a_local_verb_that_spends_no_unit_and_asks_no_gateway(policy):
+    """Seam (OMN-23832): one red head's failing line costs a lane zero charges; job-log costs one."""
+    config, env, _network = policy
+    for _ in range(3):
+        read = call(config, env, "onex", "scm", "red-facts", "o/r#1")
+        assert read.code == 0
+    assert not Path(config["spent"]).exists()  # no charge for any of the three reads
+    # The control: the same learning through job-log falls into the gateway path and is charged.
+    assert call(config, env, "onex", "scm", "job-log", "o/r", "--job-id", "3").code == 0
+    assert int(Path(config["spent"]).read_text()) == 1
+
+
 def test_shared_cache_serializes_lanes_and_failure_is_not_cached(policy):
     config, env, network = policy
     configs = [
@@ -283,6 +296,9 @@ def test_installed_wrapper_enforces_policy_and_preserves_host_tool(tmp_path):
         "ONEX_LANE_HOST": "host-a",
         "ONEX_REGISTRY_ROOT": str(tmp_path),
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "ONEX_LANE_GITHUB_BUDGET_OVERLAY": os.environ[
+            "ONEX_LANE_GITHUB_BUDGET_OVERLAY"
+        ],
         "TEST_NETWORK": str(network),
     }
     done = subprocess.run(
@@ -432,7 +448,15 @@ def test_contract_retains_the_same_read_budget():
     )
     assert contract["policy"] == POLICY
     assert POLICY["raw_gh_read_budget"] == 0
-    assert POLICY["gateway_cache_misses_per_lane"] == 8
+    # OMN-23832: the allowance is an overlay value; the contract holds none.
+    assert "gateway_cache_misses_per_lane" not in POLICY
+    assert (
+        "gateway_cache_misses_per_lane"
+        not in (
+            ROOT / "src/omnimarket/nodes/node_lane_github_budget_effect/contract.yaml"
+        ).read_text()
+    )
+    assert gateway_cache_misses_per_lane() == 8
 
 
 def test_an_unwritable_call_log_refuses_before_any_network_attempt(policy):
@@ -470,6 +494,9 @@ def test_the_preflight_login_probe_is_never_refused_as_a_read(tmp_path):
         "ONEX_LANE_HOST": "host-a",
         "ONEX_REGISTRY_ROOT": str(tmp_path),
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "ONEX_LANE_GITHUB_BUDGET_OVERLAY": os.environ[
+            "ONEX_LANE_GITHUB_BUDGET_OVERLAY"
+        ],
         "TEST_NETWORK": str(network),
         "TEST_LOGGED_OUT": str(tmp_path / "logged-out"),
     }
@@ -616,6 +643,9 @@ def test_the_login_probe_reaches_a_host_shim_that_walks_path_for_the_real_gh(tmp
         "ONEX_LANE_HOST": "host-a",
         "ONEX_REGISTRY_ROOT": str(tmp_path),
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "ONEX_LANE_GITHUB_BUDGET_OVERLAY": os.environ[
+            "ONEX_LANE_GITHUB_BUDGET_OVERLAY"
+        ],
     }
     done = subprocess.run(
         ["bash", "-c", "\n".join(setup_lines())],

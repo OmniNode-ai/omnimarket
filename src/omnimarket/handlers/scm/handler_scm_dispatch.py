@@ -36,11 +36,13 @@ from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmBusReceipt,
-    ModelScmLocalVerb,
     ModelScmRefusedVerb,
     ModelScmTerminal,
     ModelScmTopics,
     ModelScmVerb,
+)
+from omnimarket.models.scm.model_scm_local_verbs import (
+    SCM_LOCAL_VERBS as SCM_LOCAL_VERBS,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 
@@ -195,33 +197,6 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         node=_W,
         operation="check_run_create",
         replaces="gh api --method POST /repos/{o}/{r}/check-runs",
-    ),
-)
-
-#: Verbs no node contract has an operation for: answered from the canonical
-#: clones and the watcher state alone. The measured gh read refusals they
-#: replace (the shared call log) are PR commit lists, file contents, one commit
-#: and one commit's check runs.
-SCM_LOCAL_VERBS: Final[tuple[ModelScmLocalVerb, ...]] = (
-    ModelScmLocalVerb(
-        verb="pr-commits",
-        read=EnumScmLocalRead.PR_COMMITS,
-        replaces="gh api repos/<o>/<r>/pulls/<n>/commits",
-    ),
-    ModelScmLocalVerb(
-        verb="file-read",
-        read=EnumScmLocalRead.FILE_CONTENTS,
-        replaces="gh api repos/<o>/<r>/contents/<path>",
-    ),
-    ModelScmLocalVerb(
-        verb="commit-view",
-        read=EnumScmLocalRead.COMMIT_VIEW,
-        replaces="gh api repos/<o>/<r>/commits/<ref>",
-    ),
-    ModelScmLocalVerb(
-        verb="commit-checks",
-        read=EnumScmLocalRead.COMMIT_CHECKS,
-        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
     ),
 )
 
