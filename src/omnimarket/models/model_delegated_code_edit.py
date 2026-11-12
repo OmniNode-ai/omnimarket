@@ -171,6 +171,13 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         "command. Empty: no format tool.",
     )
     max_turns: int = Field(default=20, ge=1, le=MAX_TURNS_CEILING)
+    wall_budget_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        le=7200,
+        description="Wall seconds the loop may use; None means no limit. The loop starts no "
+        "turn that its slowest turn so far would not finish inside this budget.",
+    )
     max_no_change_finishes: int = Field(
         default=2,
         ge=1,
