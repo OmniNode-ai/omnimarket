@@ -70,7 +70,7 @@ dod_evidence:
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23893 --kind test -- uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute -q --no-cov'
     cwd: .
 - id: dod-omn23893-ac4-hosted-proxy
-  description: 'Hosted proxy for the integrated criterion. Through the node handler on the in-memory bus the golden request answers the exact census and the contract declares the command topic and the answer topic. The reading on a lab host from the pushed head is the unbound local item above this one; a hosted runner cannot reach a lab host. The node is absent at the merge base.'
+  description: 'Hosted proxy for the integrated criterion. Through the node handler on the in-memory bus the golden request answers the exact census and the contract declares the command topic and the answer topic. The reading on a lab host from the pushed head is the unbound local item above this one; a hosted runner cannot reach a lab host. The grown committed suite check reads red at the merge base, where the suite holds the first version.'
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
@@ -78,4 +78,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_golden_chain_code_eval_suite_census.py -q --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider -k grown
     cwd: .
