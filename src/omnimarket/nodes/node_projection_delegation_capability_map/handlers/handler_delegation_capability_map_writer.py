@@ -139,6 +139,7 @@ class HandlerDelegationCapabilityMapWriter(BaseProjectionRunner):
             "map_run_id": run.map_run_id,
             "cells": len(result.cells),
             "folded_rows": result.folded_row_count,
+            "line_not_configured": result.line_not_configured,
             "inadmissible": {
                 entry.reason.value: entry.count for entry in result.inadmissible
             },

@@ -16,6 +16,9 @@ watcher_state_path: $OMNIBASE_PATH/.claude_scratch/pr-watcher/state.json
 watcher_max_age_seconds: 900
 owner: OmniNode-ai
 record_journal: $OMNIBASE_PATH/.onex_state/landing-snapshot/records.jsonl
+# the journal keeps the newest records only (OMN-23757): its one use is the already-recorded check, the broker holds the rest;
+# 30 facts ticks of 120 s is an hour, four times the 900 s staleness bound
+record_journal_max_records: 30
 emission_journal: $OMNIBASE_PATH/.onex_state/floor-simple/emissions.jsonl
 # below the dev broker's payload limit of 1,048,588 bytes
 record_max_bytes: 1000000
