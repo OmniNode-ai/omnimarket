@@ -10,11 +10,10 @@ import json
 import logging
 import os
 import signal
-import socket
 import sys
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -32,19 +31,11 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
-from omnimarket.handlers.node_overlay_reader import (
-    OVERLAY_ROOTS_ENV,
-    NodeOverlayError,
-    find_node_overlay,
-    load_structured_overlay,
-)
 from omnimarket.handlers.runtime_delivery_host import KeptPools
 from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
-from omnimarket.models.node_overlays.model_projection_read_binding_overlay import (
-    ModelProjectionReadBindingOverlay,
-)
+from omnimarket.projection import read_binding_host_overlay as _host_overlay
 from omnimarket.projection.dlq import (
     build_dlq_envelope,
     correlation_id_from_payload,
@@ -81,10 +72,6 @@ PROJECTION_RUNTIME_BINDING_OVERLAY_ENV = "OMNIMARKET_PROJECTION_RUNTIME_BINDING_
 # claim store and evidence store follow, so a reader's credentials never become
 # their write principal. See projection_read_binding_from_overlay_env().
 PROJECTION_READ_BINDING_OVERLAY_ENV = "OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY"
-# The node overlay id whose overlay.yaml carries the per-host projection read
-# binding (OMN-23994). Only this module names the OMNIMARKET_PROJECTION_*_OVERLAY
-# variables and the node overlay id.
-PROJECTION_READ_BINDING_HOST_OVERLAY_ID = "node_projection_read_effect"
 # Why projection_read_binding_from_overlay_env() returned None, for a refusal an
 # operator reads. Built here so the variable names stay owned by this module.
 PROJECTION_READ_BINDING_UNSET_DETAIL = (
@@ -354,81 +341,29 @@ class ProjectionReadBindingOverlayError(RuntimeError):
         self.cause_type = cause_type
 
 
-def local_host_short_name() -> str:
-    """The local host name without any domain suffix (OMN-23994)."""
-    return socket.gethostname().split(".", 1)[0]
-
-
-def projection_read_binding_from_host_overlay(
-    host: str | None = None,
-    environ: Mapping[str, str] | None = None,
-) -> ModelProjectionRuntimeBinding | None:
-    """The projection read binding the node overlay names for ``host``.
-
-    ``host`` defaults to :func:`local_host_short_name`. Returns ``None`` when no
-    overlay file is found or no row names the host (never a default binding).
-    A found overlay that does not load raises
-    :class:`ProjectionReadBindingOverlayError` naming the roots variable, the
-    file and the load error's class, and never falls back (OMN-23994).
-    """
-    env = os.environ if environ is None else environ
-    path = find_node_overlay(PROJECTION_READ_BINDING_HOST_OVERLAY_ID, env)
-    if path is None:
-        return None
-    try:
-        overlay = load_structured_overlay(
-            PROJECTION_READ_BINDING_HOST_OVERLAY_ID,
-            ModelProjectionReadBindingOverlay,
-            env,
-        )
-    except NodeOverlayError as exc:
-        raise ProjectionReadBindingOverlayError(
-            OVERLAY_ROOTS_ENV, str(path), type(exc).__name__
-        ) from exc
-    wanted = (host if host is not None else local_host_short_name()).casefold()
-    for row in overlay.bindings:
-        if row.host.casefold() == wanted:
-            return ModelProjectionRuntimeBinding(
-                kafka_bootstrap_servers=row.kafka_bootstrap_servers,
-                kafka_consumer_group=row.kafka_consumer_group,
-                database_url_secret_ref=row.database_url_secret_ref,
-                source=f"overlay:{path}#{row.host}",
-            )
-    return None
-
-
 def projection_read_binding_from_overlay_env() -> ModelProjectionRuntimeBinding | None:
     """Resolve the binding projection READS go through, or ``None``.
 
-    (1) The read overlay's binding when ``OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY``
-    is set. (2) Otherwise :func:`projection_runtime_binding_from_overlay_env`
-    exactly, when it returns a binding. (3) Otherwise the per-host binding the
-    ``node_projection_read_effect`` node overlay names for the local host
-    (:func:`projection_read_binding_from_host_overlay`), or ``None`` when no row
-    names this host (OMN-23994). Only the read resolvers (the projection read
-    node and the local dashboard) call this. The delegate-skill claim store and
-    evidence store keep calling the runtime resolver, so a read binding that
-    logs in as a reader can never become their write principal (OMN-20159).
-
-    A read variable that is set but names a missing or invalid file raises
-    :class:`ProjectionReadBindingOverlayError`; it never falls back to the
-    runtime binding. With the read variable unset, a broken runtime overlay
-    raises its own load error, as it always has. A blank value is unset, as it
-    is for the runtime variable.
+    Order: the read overlay, the runtime binding, the host row of the
+    ``node_projection_read_effect`` overlay (OMN-23994). The claim and evidence
+    stores keep the runtime resolver, so a reader's login is never their write
+    principal (OMN-20159). A set read variable naming a bad file raises
+    :class:`ProjectionReadBindingOverlayError`, never falling back; a blank
+    value is unset.
     """
     overlay_path = os.environ.get(PROJECTION_READ_BINDING_OVERLAY_ENV, "").strip()
-    if overlay_path:
-        try:
-            return load_projection_runtime_binding_overlay(overlay_path)
-        except (OSError, yaml.YAMLError, RuntimeError, ValueError) as exc:
-            # ValueError covers pydantic's ValidationError.
-            raise ProjectionReadBindingOverlayError(
-                PROJECTION_READ_BINDING_OVERLAY_ENV, overlay_path, type(exc).__name__
-            ) from exc
-    runtime = _projection_runtime_binding_from_overlay_env()
-    if runtime is not None:
-        return runtime
-    return projection_read_binding_from_host_overlay()
+    if not overlay_path:
+        return (
+            _projection_runtime_binding_from_overlay_env()
+            or _host_overlay.projection_read_binding_from_host_overlay()
+        )
+    try:
+        return load_projection_runtime_binding_overlay(overlay_path)
+    except (OSError, yaml.YAMLError, RuntimeError, ValueError) as exc:
+        # ValueError covers pydantic's ValidationError.
+        raise ProjectionReadBindingOverlayError(
+            PROJECTION_READ_BINDING_OVERLAY_ENV, overlay_path, type(exc).__name__
+        ) from exc
 
 
 def deterministic_correlation_id(topic: str, partition: int, offset: int) -> str:
