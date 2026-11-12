@@ -9,6 +9,7 @@ travels in the call's environment only; the answer this returns names a verdict 
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import subprocess
@@ -59,8 +60,16 @@ _MONTHS = {
 ProbeRunner = Callable[[Sequence[str], str, dict[str, str]], tuple[int, str]]
 
 
+#: Seconds the call may overrun the probe's own deadline before the runner gives up on the process.
+_OVERRUN_SECONDS = 60.0
+
+
 def _run_module(
-    argv: Sequence[str], stdin: str, env: dict[str, str]
+    argv: Sequence[str],
+    stdin: str,
+    env: dict[str, str],
+    *,
+    timeout: float | None = None,
 ) -> tuple[int, str]:
     try:
         done = subprocess.run(
@@ -70,8 +79,10 @@ def _run_module(
             text=True,
             env=env,
             check=False,
-            timeout=None,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired:
+        return 124, ""
     except OSError as exc:
         return 127, type(exc).__name__
     return done.returncode, done.stdout
@@ -122,14 +133,16 @@ class HeadlessLimitProbe:
         secret: Callable[[str], SecretStr | None],
         settings: ModelLimitProbeSettings,
         lane_overlay_yaml: Callable[[], str],
-        run: ProbeRunner = _run_module,
+        run: ProbeRunner | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         python: str = sys.executable,
     ) -> None:
         self._secret = secret
         self._settings = settings
         self._lane_overlay_yaml = lane_overlay_yaml
-        self._run = run
+        self._run: ProbeRunner = run or functools.partial(
+            _run_module, timeout=settings.timeout_seconds + _OVERRUN_SECONDS
+        )
         self._now = now
         self._python = python
 

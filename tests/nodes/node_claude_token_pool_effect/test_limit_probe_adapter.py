@@ -139,3 +139,29 @@ def test_the_token_is_redacted_from_a_receipt_before_it_is_read() -> None:
 )
 def test_parse_reset(text: str, expected: datetime | None) -> None:
     assert parse_reset(text, SETTINGS, NOW) == expected
+
+
+def test_control_a_hung_probe_process_is_an_error_not_a_hang(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    from omnimarket.nodes.node_claude_token_pool_effect.handlers import (
+        adapter_limit_probe as module,
+    )
+
+    seen: dict[str, float | None] = {}
+
+    def hung(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen["timeout"] = kwargs.get("timeout")  # type: ignore[assignment]
+        raise subprocess.TimeoutExpired(cmd="probe", timeout=1)
+
+    monkeypatch.setattr(module.subprocess, "run", hung)
+    got = HeadlessLimitProbe(
+        secret=lambda _label: SecretStr(TOKEN),
+        settings=SETTINGS,
+        lane_overlay_yaml=lambda: "dependencies: []\n",
+        now=lambda: NOW,
+    ).probe("onexbot")
+    assert got.verdict == "error"
+    assert seen["timeout"] == SETTINGS.timeout_seconds + 60.0
