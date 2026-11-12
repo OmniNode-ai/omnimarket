@@ -18,6 +18,7 @@ class EnumReaderQuery(StrEnum):
     INBOX = "inbox"
     HOLDS = "holds"
     OPEN_CLAIMS = "open-claims"
+    OPEN_RULINGS = "open-rulings"
 
 
 class EnumReaderStatus(StrEnum):
@@ -53,6 +54,7 @@ class ModelReaderRequest(BaseModel):
     reader: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
     query: EnumReaderQuery
     lane: str | None = Field(default=None, pattern=_LANE)
+    ticket: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9]*-[0-9]+$")
     read_parity: bool = False
 
 

@@ -15,7 +15,7 @@ lifecycle: experimental
 runtime_profiles: [effects]
 
 description: >
-  Answers one read by one named ledger reader (inbox, holds, open-claims) from the bus-fed work
+  Answers one read by one named ledger reader (inbox, holds, open-claims, open-rulings) from the bus-fed work
   ledger query node. A reader named in the overlay's moved_readers never reads the file: the
   node's answer is ok when its watermark is within max_watermark_age_seconds, stale when older,
   and unreadable when the node does not answer. A reader not named there is told not-moved and
