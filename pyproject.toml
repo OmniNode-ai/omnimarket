@@ -1108,6 +1108,7 @@ node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
 node_projection_freshness_alert_effect = "omnimarket.nodes.node_projection_freshness_alert_effect"
 node_projection_hook_ledger = "omnimarket.nodes.node_projection_hook_ledger"
+node_projection_host_disk = "omnimarket.nodes.node_projection_host_disk"
 node_projection_infra_routing_decisions = "omnimarket.nodes.node_projection_infra_routing_decisions"
 node_projection_instruction_eval = "omnimarket.nodes.node_projection_instruction_eval"
 node_projection_intent_classification = "omnimarket.nodes.node_projection_intent_classification"
@@ -1610,9 +1611,9 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-# OMN-23892: infra#5896 (OMN-23858) grants the runtime account the four merge override tables in every shipped topology profile;
+# OMN-23865: infra#5901 (OMN-23896) grants the runtime account the two host disk tables in every shipped topology profile;
 # the core pin is unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261111211012-df3f14f5e6b9" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261112010628-aa87c2dd6abe" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.

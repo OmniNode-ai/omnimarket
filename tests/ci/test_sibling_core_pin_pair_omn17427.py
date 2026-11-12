@@ -44,6 +44,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 6e29faa59eeb: omnibase_infra#5883 adds tenant_id to ModelCiBusLane; core is unchanged.
 # a349fbf4478e: omnibase_infra#5894 (OMN-23838) moves infra to core 6cbe67b216fe, which carries the delegation routing order models (omnibase_core#2309).
 # df3f14f5e6b9: omnibase_infra#5896 (OMN-23858) grants the runtime account the four merge override tables; core is unchanged.
+# aa87c2dd6abe: omnibase_infra#5901 (OMN-23896) grants the runtime account the two host disk tables; core is unchanged.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
@@ -59,6 +60,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("25ae57b628a4", "dev-20261109065232-cd128b790ec6"),
     ("a349fbf4478e", "dev-20261111160725-6cbe67b216fe"),
     ("df3f14f5e6b9", "dev-20261111160725-6cbe67b216fe"),
+    ("aa87c2dd6abe", "dev-20261111160725-6cbe67b216fe"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -128,8 +130,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra df3f14f5e6b9 and core 6cbe67b216fe."""
+    """The lock moves with the newest recorded row: infra aa87c2dd6abe and core 6cbe67b216fe."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261111211012-df3f14f5e6b9"
+    assert infra_tag == "dev-20261112010628-aa87c2dd6abe"
