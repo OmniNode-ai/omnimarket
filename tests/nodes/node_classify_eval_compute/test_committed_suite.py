@@ -19,6 +19,7 @@ from omnimarket.models.eval_classify.enum_classify import (
     EnumIntegrationClass,
 )
 from omnimarket.models.eval_classify.model_classify_eval import ModelClassifyEvalRequest
+from omnimarket.models.eval_classify.model_classify_task import ModelClassifyEvalTask
 from omnimarket.nodes.node_classify_eval_compute.handlers.handler_classify_eval import (
     HandlerClassifyEval,
 )
@@ -36,7 +37,7 @@ CODE_SUITE = (
 C = EnumIntegrationClass
 
 
-def _build() -> tuple[tuple[object, ...], dict[C, int]]:
+def _build() -> tuple[tuple[ModelClassifyEvalTask, ...], dict[C, int]]:
     result = HandlerClassifyEval(
         overlay=overlay(per_class_n=dict.fromkeys(C, 1), min_total=5)
     ).handle(
@@ -54,17 +55,17 @@ def test_the_set_holds_unique_tasks_of_every_class_and_its_counts_match_a_recoun
     None
 ):
     tasks, drawn = _build()
-    assert len({t.task_id for t in tasks}) == len(tasks)  # type: ignore[attr-defined]
-    assert {t.label for t in tasks} == set(C)  # type: ignore[attr-defined]
-    assert drawn == dict(Counter(t.label for t in tasks))  # type: ignore[attr-defined]
+    assert len({t.task_id for t in tasks}) == len(tasks)
+    assert {t.label for t in tasks} == set(C)
+    assert drawn == dict(Counter(t.label for t in tasks))
 
 
 def test_no_task_text_carries_an_answer_cell() -> None:
     tasks, _ = _build()
     for t in tasks:
-        text = " ".join([t.title, t.runs, t.evidence, t.merged_at])  # type: ignore[attr-defined]
+        text = " ".join([t.title, t.runs, t.evidence, t.merged_at])
         for cell in ("state:", "step:", "owner:"):
-            assert cell not in text, t.task_id  # type: ignore[attr-defined]
+            assert cell not in text, t.task_id
 
 
 def test_the_code_suite_document_is_not_a_classify_set() -> None:

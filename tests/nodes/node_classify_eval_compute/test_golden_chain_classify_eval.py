@@ -159,3 +159,16 @@ def test_golden_contract_declares_the_topics() -> None:
         contract["terminal_event"] == "onex.evt.omnimarket.classify-eval-completed.v1"
     )
     assert contract["handler"]["class"] == "HandlerClassifyEval"
+
+
+def test_golden_contract_outputs_match_the_result_fields_and_the_sink_is_declared() -> (
+    None
+):
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    result = _build()
+    assert set(contract["outputs"]) == set(type(result).model_fields)
+    assert contract["outputs"]["suite_id"] == {"type": "str"}
+    assert contract["outputs"]["operation"] == {"type": "str"}
+    assert contract["externally_consumed_topics"] == [
+        "onex.evt.omnimarket.classify-eval-completed.v1"
+    ]

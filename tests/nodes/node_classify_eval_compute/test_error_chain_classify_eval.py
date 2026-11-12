@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -14,9 +15,11 @@ from omnimarket.models.eval_classify.enum_classify import (
     EnumIntegrationClass,
 )
 from omnimarket.models.eval_classify.model_classify_eval import (
+    ModelClassifyAnswer,
     ModelClassifyEvalRequest,
     ModelClassifyEvalResult,
 )
+from omnimarket.models.eval_classify.model_classify_task import ModelClassifyEvalTask
 from omnimarket.nodes.node_classify_eval_compute.handlers.handler_classify_eval import (
     HandlerClassifyEval,
 )
@@ -33,15 +36,17 @@ C = EnumIntegrationClass
 F = EnumClassifyEvalFailure
 
 
-def _build(text: str, **overlay_kwargs: object) -> ModelClassifyEvalResult:
-    return HandlerClassifyEval(overlay=overlay(**overlay_kwargs)).handle(  # type: ignore[arg-type]
+def _build(text: str, **overlay_kwargs: Any) -> ModelClassifyEvalResult:
+    return HandlerClassifyEval(overlay=overlay(**overlay_kwargs)).handle(
         ModelClassifyEvalRequest(
             operation=EnumClassifyOperation.BUILD_SET, suite_id="s", ledger_text=text
         )
     )
 
 
-def _score(tasks: tuple, answers: tuple) -> ModelClassifyEvalResult:  # type: ignore[type-arg]
+def _score(
+    tasks: tuple[ModelClassifyEvalTask, ...], answers: tuple[ModelClassifyAnswer, ...]
+) -> ModelClassifyEvalResult:
     return HandlerClassifyEval().handle(
         ModelClassifyEvalRequest(
             operation=EnumClassifyOperation.SCORE_ANSWERS,

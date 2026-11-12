@@ -101,3 +101,7 @@ metadata:
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.classify-eval-requested.v1
+
+# Sink declaration (contract topic graph closure): the terminal event leaves the node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.classify-eval-completed.v1
