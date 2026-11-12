@@ -43,6 +43,10 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_de
     NODE,
     DevMergeRedeployHost,
 )
+from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_dev_merge_redeploy_unit import (
+    DevMergeUnitInstaller,
+    ModelDevMergeUnitResult,
+)
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_trigger import (
     HandlerDevMergeRedeployTrigger,
 )
@@ -182,6 +186,82 @@ def serve_command(
     except LabRunBusError as exc:
         click.echo(f"bus: {exc}", err=True)
         sys.exit(EXIT_BUS)
+
+
+@group.group("unit")
+@click.pass_context
+def unit_group(ctx: click.Context) -> None:
+    """Render, install, remove and read the serve unit the overlay's unit block declares."""
+    ctx.ensure_object(dict)
+
+
+_host_option = click.option(
+    "--host", "host", required=True, help="The declared host to act on."
+)
+_omni_root_option = click.option(
+    "--omni-root",
+    type=click.Path(path_type=Path, file_okay=False),
+    required=True,
+    help="The registry root on the host ($OMNI_HOME in the overlay).",
+)
+_overlay_root_option = click.option(
+    "--overlay-root",
+    type=click.Path(path_type=Path, file_okay=False),
+    required=True,
+    help="The overlay root the unit reads the overlay from (ONEX_SKILL_OVERLAY_ROOTS).",
+)
+
+
+def _installer() -> DevMergeUnitInstaller:
+    try:
+        policy = load_structured_overlay(NODE, ModelDevMergeRedeployPolicy)
+    except NodeOverlayError as exc:
+        click.echo(f"overlay: {exc}", err=True)
+        sys.exit(EXIT_OVERLAY)
+    return DevMergeUnitInstaller(policy=policy, home=Path.home())
+
+
+def _finish(result: ModelDevMergeUnitResult) -> None:
+    click.echo(result.stdout, nl=False)
+    click.echo(result.stderr, err=True, nl=False)
+    sys.exit(result.exit_code)
+
+
+@unit_group.command("render")
+@_host_option
+@_omni_root_option
+@_overlay_root_option
+def unit_render(host: str, omni_root: Path, overlay_root: Path) -> None:
+    """Print the unit file for a declared host."""
+    _finish(_installer().render(host, omni_root=omni_root, overlay_root=overlay_root))
+
+
+@unit_group.command("install")
+@_host_option
+@_omni_root_option
+@_overlay_root_option
+@click.option("--dry-run", is_flag=True, help="Render and check; write nothing.")
+def unit_install(host: str, omni_root: Path, overlay_root: Path, dry_run: bool) -> None:
+    """Probe the lane, write the unit, reload the manager and enable the service now."""
+    _finish(
+        _installer().install(
+            host, omni_root=omni_root, overlay_root=overlay_root, dry_run=dry_run
+        )
+    )
+
+
+@unit_group.command("uninstall")
+@_host_option
+def unit_uninstall(host: str) -> None:
+    """The rollback: stop and disable the service and remove its unit file."""
+    _finish(_installer().uninstall(host))
+
+
+@unit_group.command("status")
+@_host_option
+def unit_status(host: str) -> None:
+    """Read whether the service is enabled and active."""
+    _finish(_installer().status(host))
 
 
 if __name__ == "__main__":

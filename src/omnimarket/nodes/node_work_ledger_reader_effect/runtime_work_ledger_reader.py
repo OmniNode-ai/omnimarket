@@ -63,6 +63,7 @@ def main(
         "--query", required=True, choices=[q.value for q in EnumReaderQuery]
     )
     parser.add_argument("--lane")
+    parser.add_argument("--ticket")
     parser.add_argument("--parity", action="store_true")
     parser.add_argument("--window-hours", type=int)
     args = parser.parse_args(argv)
@@ -78,6 +79,7 @@ def main(
             reader=args.reader,
             query=EnumReaderQuery(args.query),
             lane=args.lane,
+            ticket=args.ticket,
             read_parity=args.parity,
             window_hours=args.window_hours,
         )

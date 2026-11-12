@@ -43,6 +43,7 @@ from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt
     HandlerFloorReceipt,
 )
 from omnimarket.nodes.node_host_reading_effect import runtime_host_reading
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
     FLOOR_SIMPLE,
     JOIN_J2,
@@ -53,7 +54,7 @@ from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish im
 
 pytestmark = pytest.mark.unit
 
-RT = load_runtime()
+RT = load_runtime().with_limits(TEST_LIMITS)
 NOW = datetime(2026, 11, 8, 5, 30, tzinfo=UTC)
 
 

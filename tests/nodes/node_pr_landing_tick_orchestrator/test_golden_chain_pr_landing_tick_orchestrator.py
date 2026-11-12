@@ -101,6 +101,7 @@ def test_node_is_registered_and_its_contract_binds_the_handler() -> None:
         FAILED_TOPIC,
         "onex.evt.omnimarket.pr-landing-rerun-completed.v1",
         "onex.evt.omnimarket.pr-landing-rerun-failed.v1",
+        "onex.cmd.omnimarket.pr-landing-rerun-requested.v1",
     ]
     assert contract["runtime_dispatch"]["terminal_events"] == {
         "success": COMPARED_TOPIC,

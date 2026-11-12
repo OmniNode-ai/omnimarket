@@ -35,6 +35,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
 from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish import (
     main,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -88,6 +89,7 @@ def _home(tmp_path: Path) -> Path:
 
 def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
     return ModelFactoryFloorPublishOverlay(
+        limits=TEST_LIMITS,
         ssh_target="lab-web",
         remote_dir=str(tmp_path / "site"),
         serve_url="http://example.invalid:8088/",
@@ -148,6 +150,7 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             bus_lane="dev",
             ssh_target=target,
             remote_dir="/srv/site",
@@ -161,6 +164,7 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             bus_lane="dev",
             ssh_target="lab-web",
             remote_dir=path,
@@ -443,7 +447,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
 def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_not() -> (
     None
 ):
-    steps = {s.name: s for s in load_runtime().steps}
+    steps = {s.name: s for s in load_runtime().with_limits(TEST_LIMITS).steps}
     assert [n for n, s in steps.items() if s.concurrent] == [
         "hosts",
         "pool",
@@ -504,7 +508,9 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
     result = HandlerFactoryFloorPublish(
         Overlapping({"--json": (0, b"[]", b"")})
     ).handle(request, environ=PLUGIN)
-    assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
+    assert [s.name for s in result.steps] == [
+        s.name for s in load_runtime().with_limits(TEST_LIMITS).steps
+    ]
     # This home has neither the friction report nor the runtime read overlay, and PLUGIN names no ledger path, so the
     # classed friction rollup refuses with no default.
     assert [s.name for s in result.steps if s.status != "ok"] == [
@@ -1927,9 +1933,12 @@ def test_canary_is_published_after_the_last_file_of_the_page_is_served(
 
 
 def test_the_floor_step_defers_the_canary_to_the_publish() -> None:
-    steps = {step.name: step for step in load_runtime().steps}
+    steps = {step.name: step for step in load_runtime().with_limits(TEST_LIMITS).steps}
     assert "--defer-canary" in steps["floor_simple"].args
-    after = {step.name: step for step in load_runtime().after_publish_steps}
+    after = {
+        step.name: step
+        for step in load_runtime().with_limits(TEST_LIMITS).after_publish_steps
+    }
     assert after["floor_canary"].required
     assert "--publish-canary" in after["floor_canary"].args
 
