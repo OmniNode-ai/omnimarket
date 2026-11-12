@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.code_eval_suite.enum_suite_census_failure import (
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
+from omnimarket.models.eval_suite_census.enum_suite_census_failure import (
     EnumSuiteCensusFailure,
 )
-from omnimarket.models.delegation.model_size_band import EnumSizeBand
 
 
 class ModelCodeEvalSuiteCandidate(BaseModel):

@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.models.code_eval_suite.enum_suite_census_failure import (
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
+from omnimarket.models.eval_suite_census.enum_suite_census_failure import (
     EnumSuiteCensusFailure,
 )
-from omnimarket.models.code_eval_suite.model_suite_census_request import (
+from omnimarket.models.eval_suite_census.model_suite_census_request import (
     ModelCodeEvalSuiteCensusRequest,
 )
-from omnimarket.models.code_eval_suite.model_suite_census_result import (
+from omnimarket.models.eval_suite_census.model_suite_census_result import (
     ModelCodeEvalSuiteCensus,
 )
-from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.nodes.node_code_eval_suite_census_compute.handlers.handler_code_eval_suite_census import (
     HandlerCodeEvalSuiteCensus,
 )
