@@ -17,6 +17,7 @@ All test names contain "host_overlay" so ``-k host_overlay`` selects the chain t
 
 from __future__ import annotations
 
+import socket
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -164,8 +165,8 @@ def _set_host(
     monkeypatch: pytest.MonkeyPatch,
     host: str,
 ) -> None:
-    """Monkeypatch runner.local_host_short_name to return the given host."""
-    monkeypatch.setattr(runner, "local_host_short_name", lambda: host)
+    """Make the local host's name the given one, where the resolver reads it."""
+    monkeypatch.setattr(socket, "gethostname", lambda: f"{host}.local.example")
 
 
 def _set_overlay_roots(
