@@ -61,6 +61,9 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     bound_error,
     parse_turn_reply,
 )
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.pin_receipt import (
+    pin_violation,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
     EnumToolCallStatus,
     ModelRubricExecutionResult,
@@ -158,51 +161,6 @@ def check_fingerprint(exit_code: int | None, output: str) -> str:
     ).hexdigest()
 
 
-def pin_violation(receipt_path: Path, pin: ModelDelegatePin) -> str:
-    """Why a finished turn was not served by ``pin``'s backend and host, or "".
-
-    Reads the delegate receipt: the run's resolved backend, its own pin
-    verdict, and the backend and host of every attempt. A turn whose receipt
-    cannot be read, or names no backend, is unverifiable and counts as a
-    violation, because the pin is only worth what the receipt can prove.
-    """
-    try:
-        raw = json.loads(receipt_path.read_text())
-    except (OSError, ValueError, UnicodeError, RecursionError):
-        return f"the delegate receipt {receipt_path} is unreadable"
-    if not isinstance(raw, dict):
-        return f"the delegate receipt {receipt_path} is not an object"
-    receipt = cast("dict[str, object]", raw)
-    problems: list[str] = []
-    if receipt.get("backend_pin_honoured") is False:
-        problems.append("the delegate reported its backend pin not honoured")
-    backend_id = receipt.get("backend_id")
-    if not backend_id:
-        problems.append("the receipt names no backend")
-    elif backend_id != pin.backend_id:
-        problems.append(f"backend {backend_id!r}")
-    for attempt in _attempts(receipt):
-        attempt_backend = attempt.get("backend_id")
-        attempt_host = attempt.get("host")
-        if attempt_backend and attempt_backend != pin.backend_id:
-            problems.append(f"an attempt on backend {attempt_backend!r}")
-        if attempt_host and attempt_host != pin.host:
-            problems.append(f"an attempt on host {attempt_host}")
-    return "; ".join(dict.fromkeys(problems))
-
-
-def _attempts(receipt: dict[str, object]) -> list[dict[str, object]]:
-    inner = receipt.get("receipt")
-    result = inner.get("result") if isinstance(inner, dict) else None
-    terminal = result.get("terminal_payload") if isinstance(result, dict) else None
-    payload = terminal.get("payload") if isinstance(terminal, dict) else None
-    for holder in (payload, result):
-        attempts = holder.get("attempts") if isinstance(holder, dict) else None
-        if isinstance(attempts, list):
-            return [a for a in attempts if isinstance(a, dict)]
-    return []
-
-
 @dataclass(frozen=True)
 class _DelegateReceipt:
     model: str = ""
@@ -210,6 +168,7 @@ class _DelegateReceipt:
     tokens_out: int = 0
     failure: str = ""
     retry_cause: str = ""
+    vetoed: bool = False
 
 
 def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
@@ -263,6 +222,7 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
             if value and (text := " ".join(str(value).split()))
         ),
         retry_cause=retry_cause,
+        vetoed=receipt.get("terminal_failure_reason") == "quality_veto",
     )
 
 
@@ -683,6 +643,10 @@ class DelegatedCodeEditPorts:
             argv += ["--caller-lane", request.caller_lane]
         if request.ticket:
             argv += ["--ticket", request.ticket]
+        if request.traffic_class is not None:
+            argv += ["--traffic-class", request.traffic_class.value]
+        if request.source_surface:
+            argv += ["--source-surface", request.source_surface]
         reply, retry_cause = self._delegate_attempt(argv)
         deployed_lane = any(
             flag == "--locus" and value == "deployed-lane"
@@ -766,9 +730,14 @@ class DelegatedCodeEditPorts:
             )
             if receipt.failure:
                 reason += f" | receipt: {receipt.failure}"
+            # A pinned run whose answer a gate refused is the model's unusable
+            # reply: it is fed back for another turn, not counted as a delegate
+            # that never answered (the loop reads raw_text to tell the two apart).
+            refused = receipt.vetoed and self._pin is not None
             return ModelTurnReply(
                 run_id=run_id,
                 ok=False,
+                raw_text=bound_error(reason) if refused else "",
                 tokens_in=receipt.tokens_in,
                 tokens_out=receipt.tokens_out,
                 model=receipt.model,
