@@ -20,33 +20,48 @@ description: >
   for an install it does not know, or in the wrong phase, is ignored. Every setting comes from the node overlay.
 
 handler_routing:
-  routing_strategy: payload_type_match
+  routing_strategy: topic_match
   handlers:
-    - event_model:
+    - topic: onex.cmd.omnimarket.host-install-requested.v1
+      message_category: command
+      operation: host_install_request
+      event_model:
         name: ModelHostInstallRequest
         module: omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_orchestrator
       handler:
         name: HandlerHostInstallOrchestrator
         module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
-    - event_model:
+    - topic: onex.evt.omnimarket.host-registry-unit-completed.v1
+      message_category: event
+      operation: host_registry_unit_result
+      event_model:
         name: ModelRegistryUnitsResult
         module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
       handler:
         name: HandlerHostInstallOrchestrator
         module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
-    - event_model:
+    - topic: onex.evt.omnimarket.host-install-file-completed.v1
+      message_category: event
+      operation: host_install_file_result
+      event_model:
         name: ModelHostInstallFileResult
         module: omnimarket.nodes.node_host_install_file_effect.models.model_host_install_file
       handler:
         name: HandlerHostInstallOrchestrator
         module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
-    - event_model:
+    - topic: onex.evt.omnimarket.host-install-readback-completed.v1
+      message_category: event
+      operation: host_install_readback_result
+      event_model:
         name: ModelHostInstallReadbackResult
         module: omnimarket.nodes.node_host_install_readback_compute.models.model_host_install_readback
       handler:
         name: HandlerHostInstallOrchestrator
         module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
-    - event_model:
+    - topic: onex.evt.omnimarket.host-install-state-updated.v1
+      message_category: event
+      operation: host_install_state_record
+      event_model:
         name: ModelHostInstallRecord
         module: omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state
       handler:

@@ -17,9 +17,11 @@ import logging
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
+import yaml
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel
@@ -57,13 +59,27 @@ from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_u
 
 HANDLER_ID = "host-install-orchestrator"
 
-TOPIC_REGISTRY_REQUESTED = "onex.cmd.omnimarket.host-registry-unit-requested.v1"  # onex-topic-allow: contract-declared
-TOPIC_FILE_REQUESTED = "onex.cmd.omnimarket.host-install-file-requested.v1"  # onex-topic-allow: contract-declared
-TOPIC_READBACK_REQUESTED = "onex.cmd.omnimarket.host-install-readback-requested.v1"  # onex-topic-allow: contract-declared
-TOPIC_STEP = (
-    "onex.evt.omnimarket.host-install-step.v1"  # onex-topic-allow: contract-declared
-)
-TOPIC_COMPLETED = "onex.evt.omnimarket.host-install-completed.v1"  # onex-topic-allow: contract-declared
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _publish_topic(suffix: str) -> str:
+    """Return the one publish topic the node contract declares for ``suffix``; fail loud if absent."""
+    with open(_CONTRACT_PATH) as fh:
+        data = yaml.safe_load(fh) or {}
+    publishes = (data.get("event_bus") or {}).get("publish_topics") or []
+    matches = [t for t in publishes if t.endswith(suffix)]
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected exactly one publish topic ending {suffix!r} in {_CONTRACT_PATH}, found {matches}"
+        )
+    return str(matches[0])
+
+
+TOPIC_REGISTRY_REQUESTED = _publish_topic("host-registry-unit-requested.v1")
+TOPIC_FILE_REQUESTED = _publish_topic("host-install-file-requested.v1")
+TOPIC_READBACK_REQUESTED = _publish_topic("host-install-readback-requested.v1")
+TOPIC_STEP = _publish_topic("host-install-step.v1")
+TOPIC_COMPLETED = _publish_topic("host-install-completed.v1")
 
 logger = logging.getLogger(__name__)
 
