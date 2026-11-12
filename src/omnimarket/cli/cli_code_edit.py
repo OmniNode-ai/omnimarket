@@ -50,21 +50,18 @@ from omnimarket.delegated_code_edit.loop_ports import (
     DelegatedCodeEditPorts,
     DelegatePinUnresolvedError,
     deployed_lane_delegate_flags,
-    resolve_delegate_pin,
 )
-from omnimarket.handlers.code_edit_contract_checks import (
-    declared_checks_from_contract,
-)
-from omnimarket.handlers.code_edit_loop_overlay import (
-    load_code_edit_loop_overlay,
+from omnimarket.handlers.code_edit_request_builder import (
+    announced_delegate_pin,
+    build_code_edit_request,
+    request_from_file,
+    request_from_receipt,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     EnumCodeEditStatus,
     HandlerDelegatedCodeEditOrchestrator,
     LoopReceiptExistsError,
     ModelDeclaredCheck,
-    ModelDelegatedCodeEditRequest,
-    ModelDelegatePin,
     ResumeRefusedError,
 )
 
@@ -303,96 +300,32 @@ def run_command(
         for flag, present in conflicts.items():
             if present:
                 raise click.ClickException(f"--resume conflicts with {flag}")
-        try:
-            receipt = json.loads(
-                (state_root / "runs" / str(resume_id) / "loop_receipt.json").read_text()
-            )
-            if not isinstance(receipt, dict):
-                raise ValueError("receipt is not an object")
-            request = ModelDelegatedCodeEditRequest.model_validate(receipt["request"])
-        except (OSError, ValueError, KeyError, UnicodeError, RecursionError) as exc:
-            raise click.ClickException(f"unreadable receipt: {exc}") from exc
-    elif request_path is not None:
-        try:
-            request = ModelDelegatedCodeEditRequest.model_validate_json(
-                request_path.read_text()
-            )
-        except ValueError as exc:
-            raise click.ClickException(f"unreadable request: {exc}") from exc
-        if new_correlation:
-            request = request.model_copy(update={"correlation_id": str(uuid.uuid4())})
-    else:
-        if worktree is None or task_file is None or not writable:
-            raise click.ClickException(
-                "without --request, give --worktree, --task-file and at least one --writable"
-            )
-        overlay = load_code_edit_loop_overlay()
-        fields = ModelDelegatedCodeEditRequest.model_fields
-        resolved_max_turns = (
-            max_turns
-            if max_turns is not None
-            else overlay.max_turns
-            if overlay
-            else fields["max_turns"].default
-        )
-        resolved_check_timeout = (
-            check_timeout_s
-            if check_timeout_s is not None
-            else overlay.check_timeout_seconds
-            if overlay
-            else ModelDeclaredCheck.model_fields["timeout_seconds"].default
-        )
-        resolved_max_no_change = (
-            overlay.max_no_change_finishes
-            if overlay
-            else fields["max_no_change_finishes"].default
-        )
-        if ticket_contract is not None:
-            contract_checks = declared_checks_from_contract(
-                ticket_contract, resolved_check_timeout
-            )
-            checks = contract_checks + tuple(parse_check(spec) for spec in check_specs)
-            extra_targets = tuple(
-                target
-                for check in contract_checks
-                for target in check.targets
-                if (worktree / target).is_file()
-            )
-            context_paths = context_paths + extra_targets
+    try:
+        if resume_id is not None:
+            request = request_from_receipt(state_root, resume_id)
+        elif request_path is not None:
+            request = request_from_file(request_path, new_correlation)
         else:
-            if not check_specs:
-                raise click.ClickException(
-                    "without --request or --ticket-contract, give at least one --check"
-                )
-            checks = tuple(parse_check(spec) for spec in check_specs)
-        try:
-            request = ModelDelegatedCodeEditRequest(
-                correlation_id=str(uuid.uuid4()),
-                file_list=read_file_list(file_list_path),
-                task=task_file.read_text(),
-                workspace_root=str(worktree.resolve()),
-                writable_globs=writable,
+            request = build_code_edit_request(
+                worktree=worktree,
+                task_file=task_file,
+                writable=writable,
                 context_paths=context_paths,
-                checks=checks,
-                formatter=tuple(tuple(shlex.split(step)) for step in formatter),
-                max_turns=resolved_max_turns,
-                max_no_change_finishes=resolved_max_no_change,
+                file_list=read_file_list(file_list_path),
+                cli_checks=tuple(parse_check(spec) for spec in check_specs),
+                formatter=formatter,
+                max_turns=max_turns,
+                check_timeout_s=check_timeout_s,
+                ticket_contract=ticket_contract,
                 caller_lane=caller_lane,
                 ticket=ticket,
             )
-        except ValueError as exc:
-            raise click.ClickException(f"invalid request: {exc}") from exc
-    pin: ModelDelegatePin | None = None
-    if backend_id is not None:
-        try:
-            pin = resolve_delegate_pin(backend_id)
-        except DelegatePinUnresolvedError as exc:
-            raise click.ClickException(f"cannot pin turns: {exc}") from exc
-        click.echo(
-            f"delegate pin: backend_id={pin.backend_id} host={pin.host} "
-            f"endpoint={pin.endpoint_url} model={pin.model_name or '?'}",
-            err=True,
-        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    try:
+        pin = announced_delegate_pin(backend_id)
+    except DelegatePinUnresolvedError as exc:
+        raise click.ClickException(f"cannot pin turns: {exc}") from exc
     ports = DelegatedCodeEditPorts(
         onex=_resolve_onex(onex_path, omnibase_path),
         state_root=state_root.resolve(),
