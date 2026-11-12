@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelProvider,
@@ -52,6 +52,9 @@ class ModelModelStatus(BaseModel):
     tried_first: bool = False
     #: OMN-21346: the model tried first, when ``tried_first``.
     first_model: str | None = None
+    #: OMN-23413: model -> the base URL of the server it runs on, for models
+    #: added by URL, so a screen can ask that server what it is and knows.
+    endpoints: dict[str, str] = Field(default_factory=dict)
 
 
 #: How a model is billed: ``free`` (local, a free tier, an OpenRouter ``:free`` id

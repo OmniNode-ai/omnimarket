@@ -13,20 +13,24 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shlex
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
-from typing import Protocol
+from typing import ClassVar, Protocol, TypeVar, cast
+from urllib.parse import urlparse
 
 import click
+from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import BaseModel, ConfigDict, SecretStr
 from rich.align import Align
 from rich.console import Group
 from rich.markdown import Markdown
 from rich.text import Text
+from textual import on
 from textual.app import App, ComposeResult, SuspendNotSupported
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.theme import Theme
@@ -38,17 +42,32 @@ from textual.widgets import (
     OptionList,
     RichLog,
     Select,
-    SelectionList,
     Static,
     Switch,
+    Tab,
+    Tabs,
 )
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
+from omnimarket.handlers.local_model_details import read_local_details
+from omnimarket.handlers.model_catalog import (
+    EMPTY_INDEX,
+    ModelsDevIndex,
+    catalog_entry,
+    load_models_dev,
+    stored_entries,
+)
 from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokListedModel,
     ModelByokModelListing,
     list_byok_models,
+)
+from omnimarket.models.model_catalog_entry import Deployment, ModelCatalogEntry
+from omnimarket.models.model_local_server_details import ModelLocalServerDetails
+from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
+    ModelTable,
+    entry_key,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_command import (
     HandlerOnexCommand,
@@ -94,6 +113,20 @@ def _entry(provider: str) -> ModelSetupPickerProvider | None:
 def _label(provider: str) -> str:
     entry = _entry(provider)
     return entry.label if entry else provider
+
+
+def _row_label(provider: str, server: str | None = None) -> str:
+    """The provider's label, and the server's name when the server said it."""
+    if not server:
+        return _label(provider)
+    return tui_design().model_table.server_label.format(
+        provider=_label(provider), server=server
+    )
+
+
+def _say(name: str, **parts: object) -> str:
+    """A model screen's sentence from tui_design.yaml, its parts filled in."""
+    return tui_design().words[name].format(**parts)
 
 
 def _hint(provider: str) -> str:
@@ -305,6 +338,17 @@ def _last_line(out: str, err: str) -> str:
     return lines[-1] if lines else "no output"
 
 
+def _stopped_by(out: str, err: str) -> str:
+    """The one step that stopped a setup run, with its fix, else the last line."""
+    for document in reversed(_json_rows(out)):
+        steps = document.get("observations")
+        for step in steps if isinstance(steps, list) else ():
+            if isinstance(step, dict) and step.get("status") not in ("success", None):
+                fix = str(step.get("fix") or "").split(". The ")[0]
+                return f"{step.get('step')} — {fix or step.get('status')}"
+    return _last_line(out, err)
+
+
 def _step_detail(evidence: dict[str, object]) -> str:
     """The one evidence value worth a glance: a folder, or what a model step set."""
     for key in ("workspace",):
@@ -322,39 +366,129 @@ def _discovered_models(text: str) -> tuple[str | None, list[str]]:
     models = document.get("models")
     found = [str(m) for m in models] if isinstance(models, list) else []
     message = document.get("message")
-    return (None if found else str(message or "no models found")), found
-
-
-def model_row_label(model: ModelByokListedModel) -> str:
-    """One picker row: id, then whatever the provider published about the model."""
-    parts = [model.id]
-    if model.name != model.id:
-        parts.append(model.name)
-    if model.context_tokens:
-        tokens = model.context_tokens
-        parts.append(
-            f"{tokens // 1_000_000}M ctx"
-            if tokens >= 1_000_000
-            else f"{tokens // 1000}K ctx"
-        )
-    if model.input_usd_per_million is not None:
-        if model.input_usd_per_million == 0 and not model.output_usd_per_million:
-            parts.append("free")
-        else:
-            out = model.output_usd_per_million
-            parts.append(
-                f"${model.input_usd_per_million:.2f} in"
-                + (f" / ${out:.2f} out" if out is not None else "")
-                + " per 1M"
-            )
-    return "   ".join(parts)
+    return (None if found else str(message or _say("none_found"))), found
 
 
 ListModels = Callable[[str, str], ModelByokModelListing]
+#: Reads the models.dev index (cached under the ONEX home); tests pass a fixture.
+LoadIndex = Callable[[], ModelsDevIndex]
 
 
-class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
+def _default_index() -> ModelsDevIndex:
+    return load_models_dev(user_config_path().parent)
+
+
+#: Asks the server at a base URL about its models; tests pass a fixture.
+ReadServer = Callable[[str, tuple[str, ...]], dict[str, ModelLocalServerDetails]]
+
+
+def _default_read_server(
+    base: str, models: tuple[str, ...]
+) -> dict[str, ModelLocalServerDetails]:
+    return read_local_details(base, models)
+
+
+def _safe_server(
+    read: ReadServer, base: str, models: tuple[str, ...]
+) -> dict[str, ModelLocalServerDetails]:
+    """Supplemental only: a server that does not answer leaves its details unknown."""
+    try:
+        return read(base, models)
+    except Exception:  # the stored list still shows without it
+        return {}
+
+
+def _safe_index(load: LoadIndex) -> ModelsDevIndex:
+    """Supplemental only: any failure leaves every enriched field unknown."""
+    try:
+        return load()
+    except Exception:  # the provider's own list still shows without it
+        return EMPTY_INDEX
+
+
+def _listed_entry(
+    provider: str, model: ModelByokListedModel, index: ModelsDevIndex
+) -> ModelCatalogEntry:
+    """A hosted provider's model: the provider's own context and price first."""
+    return catalog_entry(
+        provider,
+        model.id,
+        deployment="cloud",
+        index=index,
+        provider_label=_label(provider),
+        name=model.name if model.name != model.id else None,
+        context_tokens=model.context_tokens,
+        input_usd_per_million=model.input_usd_per_million,
+        output_usd_per_million=model.output_usd_per_million,
+    )
+
+
+def _server_entry(
+    provider: str,
+    model_id: str,
+    index: ModelsDevIndex,
+    said: ModelLocalServerDetails | None = None,
+) -> ModelCatalogEntry:
+    """A model a user-run server listed: local, so no API price applies; what the
+    server itself said names it and states its context and capabilities."""
+    return catalog_entry(
+        provider,
+        model_id,
+        deployment="local",
+        index=index,
+        provider_label=_row_label(provider, said.server if said else None),
+        context_tokens=said.context_tokens if said else None,
+        capabilities=said.capabilities if said else None,
+    )
+
+
+_ResultT = TypeVar("_ResultT")
+
+
+def _tab_strip(current: str) -> Tabs:
+    """The same strip on /config, /model and /delegation, the current one lit."""
+    strip = Tabs(
+        *(Tab(spec.label, id=f"tab-{spec.id}") for spec in tui_design().tabs),
+        active=f"tab-{current}",
+        id="tabs",
+    )
+    strip.can_focus = False
+    return strip
+
+
+class _TabbedScreen(ModalScreen[_ResultT]):
+    """A screen that is one tab of three: Tab and Shift+Tab move between them."""
+
+    TAB: ClassVar[str] = ""
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("tab", "tab(1)", "Next", priority=True, show=False),
+        Binding("shift+tab", "tab(-1)", "Previous", priority=True, show=False),
+        # Tab moves between the tabs, so the arrows move between a form's
+        # fields; a list or an open picker keeps its own arrows.
+        Binding("down", "app.focus_next", "Next field", show=False),
+        Binding("up", "app.focus_previous", "Previous field", show=False),
+    ]
+
+    def action_tab(self, step: int) -> None:
+        order: list[str] = [spec.id for spec in tui_design().tabs]
+        self._leave(order[(order.index(self.TAB) + step) % len(order)])
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        target = (event.tab.id or "").removeprefix("tab-")
+        if target and target != self.TAB:
+            self._leave(target)
+
+    def _leave(self, target: str) -> None:
+        app = self.app
+        self.dismiss(cast(_ResultT, None))
+        if isinstance(app, OnexTui):
+            app.call_later(app.open_tab, target)
+
+
+class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     """Provider, then its key or URL, then any number of its models; repeat per provider."""
+
+    TAB = "config"
 
     CSS = """
     SetupScreen { align: center middle; }
@@ -372,20 +506,25 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     ]
 
     def __init__(
-        self, runner: ProtocolTuiRunner, list_models: ListModels | None = None
+        self,
+        runner: ProtocolTuiRunner,
+        list_models: ListModels | None = None,
+        load_index: LoadIndex | None = None,
+        read_server: ReadServer | None = None,
     ) -> None:
         super().__init__()
         self._runner = runner
         self._list_models: ListModels = list_models or list_byok_models
+        self._load: LoadIndex = load_index or _default_index
+        self._read_server: ReadServer = read_server or _default_read_server
         self._basket: dict[str, ModelTuiSetupChoice] = {}
-        self._rows: list[tuple[str, str]] = []
-        self._ticked: set[str] = set()
         self._find_timer: Timer | None = None
         self._loading = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
-            yield Label("Models for delegation: provider, key or URL, then models")
+            yield _tab_strip(self.TAB)
+            yield Label(_say("config_title"))
             choices = _picker()
             first = next((e for e in choices if e.selected), choices[0])
             yield Select(
@@ -394,28 +533,27 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
                 allow_blank=False,
                 id="provider",
             )
-            yield Input(placeholder="API key", password=True, id="key")
+            yield Input(placeholder=_say("key_placeholder"), password=True, id="key")
             yield Input(
-                value=_default_url(first.provider), placeholder="Server URL", id="url"
+                value=_default_url(first.provider),
+                placeholder=_say("url_placeholder"),
+                id="url",
             )
-            yield Input(placeholder="Filter models", id="filter")
-            yield SelectionList[str](id="found")
-            yield Input(placeholder="Or type a model id", id="model")
             yield Static("", id="note")
-            yield Static("Selected: none yet (at least one is needed)", id="basket")
-            yield Static(
-                "Space ticks a model  ·  Add keeps this provider's picks  ·  "
-                "Ctrl+S saves  ·  Esc goes back",
-                id="keys",
+            yield ModelTable(
+                selectable=True,
+                provider_labels={e.provider: e.label for e in choices},
+                id="found",
             )
+            yield Static(_say("basket_empty"), id="basket")
+            yield Static(tui_design().model_table.help["config"], id="keys")
             with Horizontal(id="buttons"):
-                yield Button("Find models", id="find")
                 yield Button("Add", id="add")
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", id="cancel")
 
     def on_mount(self) -> None:
-        self.query_one("#filter").display = False
+        self.query_one("#found").display = False
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._schedule_find()
@@ -437,6 +575,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
 
     def on_select_changed(self, event: Select.Changed) -> None:
         self._show_fields()
+        self.query_one("#key" if _hosted(self._provider()) else "#url", Input).focus()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._show_rows([])
         self._schedule_find()
@@ -466,7 +605,7 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         note = self.query_one("#note", Static)
         provider = self._provider()
         wanted = self._source()
-        note.update(f"loading {_label(provider)} models…")
+        note.update(_say("loading", provider=_label(provider)))
         self._loading = True
         try:
             await self._fetch(note, provider, wanted)
@@ -479,71 +618,70 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         if _hosted(provider):
             key = self._value("key")
             if not key:
-                note.update(f"enter your {_label(provider)} API key first")
+                note.update(_say("key_first", provider=_label(provider)))
                 return
-            listing = await asyncio.to_thread(self._list_models, provider, key)
-            rows = [(m.id, model_row_label(m)) for m in listing.models]
+            listing, index = await asyncio.gather(
+                asyncio.to_thread(self._list_models, provider, key),
+                asyncio.to_thread(self._load_index),
+            )
+            entries = [_listed_entry(provider, m, index) for m in listing.models]
             message = listing.message
         else:
-            _, out, err = await self._runner.capture(
-                ("models", "discover", "--url", self._value("url"), "--json")
+            (_, out, err), index = await asyncio.gather(
+                self._runner.capture(
+                    ("models", "discover", "--url", self._value("url"), "--json")
+                ),
+                asyncio.to_thread(self._load_index),
             )
             message, found = _discovered_models(out or err)
-            rows = [(model, model) for model in found]
+            said = await asyncio.to_thread(
+                _safe_server, self._read_server, self._value("url"), tuple(found)
+            )
+            entries = [
+                _server_entry(provider, model, index, said.get(model))
+                for model in found
+            ]
         if self._source() != wanted:  # the key, URL or provider changed meanwhile
             return
-        self._show_rows(rows)
-        note.update(message or f"{len(rows)} found: tick any number, then Add")
+        self._show_rows(entries)
+        if entries:
+            self.query_one("#found", ModelTable).focus_rows()
+        note.update(message or _say("found", count=len(entries)))
 
-    def _show_rows(self, rows: list[tuple[str, str]]) -> None:
-        """New results: forget earlier ticks, show the filter for a long list."""
-        self._rows = rows
-        self._ticked = set()
-        self.query_one("#filter", Input).value = ""
-        self.query_one("#filter").display = len(rows) > 10
-        self._render_rows()
+    def _load_index(self) -> ModelsDevIndex:
+        return _safe_index(self._load)
 
-    def _render_rows(self) -> None:
-        words = self._value("filter").lower().split()
-        shown = [
-            (label, model_id, model_id in self._ticked)
-            for model_id, label in self._rows
-            if all(word in label.lower() for word in words)
-        ]
-        listing = self.query_one("#found", SelectionList)
-        with listing.prevent(SelectionList.SelectedChanged):
-            listing.clear_options()
-            listing.add_options(shown)
-        listing.display = bool(self._rows)
+    def _show_rows(self, entries: list[ModelCatalogEntry]) -> None:
+        """New results: forget earlier ticks; the table shows only a read list."""
+        table = self.query_one("#found", ModelTable)
+        table.set_ticked(())
+        table.set_entries(entries)
+        table.display = bool(entries)
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "filter":
-            self._render_rows()
-        elif event.input.id in ("key", "url"):
+        if event.input.id in ("key", "url"):
             self._schedule_find()
 
-    def on_selection_list_selected_changed(
-        self, event: SelectionList.SelectedChanged[str]
-    ) -> None:
-        listing = event.selection_list
-        visible = {
-            str(listing.get_option_at_index(i).value)
-            for i in range(listing.option_count)
-        }
-        self._ticked = (self._ticked - visible) | {str(v) for v in listing.selected}
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Enter in the key or URL field moves on to the list, loading it if needed."""
+        if event.input.id not in ("key", "url"):
+            return
+        table = self.query_one("#found", ModelTable)
+        if table.entries:
+            table.focus_rows()
+        else:
+            self.run_worker(self._find(), exclusive=True, group="find")
 
     def _add_current(self) -> bool:
         provider = self._provider()
-        chosen = [model_id for model_id, _ in self._rows if model_id in self._ticked]
-        typed = self._value("model")
-        if typed and typed not in chosen:
-            chosen.append(typed)
+        table = self.query_one("#found", ModelTable)
+        chosen = [entry.model_id for entry in table.ticked]
         if not chosen:
             return False
         key = self._value("key")
         if _hosted(provider) and not key:
             self.query_one("#note", Static).update(
-                f"{_label(provider)} needs an API key"
+                _say("needs_key", provider=_label(provider))
             )
             return False
         earlier = self._basket.get(provider)
@@ -554,13 +692,14 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             models=models,
             key=SecretStr(key) if key else None,
         )
-        self._ticked = set()
-        self._render_rows()
-        self.query_one("#model", Input).value = ""
+        table.set_ticked(())
         self.query_one("#basket", Static).update(
-            "Selected: "
-            + "   ·   ".join(
-                f"{c.provider}: {', '.join(c.models)}" for c in self._basket.values()
+            _say(
+                "basket",
+                choices="   ·   ".join(
+                    f"{c.provider}: {', '.join(c.models)}"
+                    for c in self._basket.values()
+                ),
             )
         )
         return True
@@ -569,16 +708,13 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         note = self.query_one("#note", Static)
         if event.button.id == "cancel":
             self.dismiss(None)
-        elif event.button.id == "find":
-            note.update("finding models…")
-            await self._find()
         elif event.button.id == "add":
             if self._loading:
-                note.update("still loading models… tick them once they appear")
+                note.update(_say("still_loading"))
             elif self._add_current():
-                note.update("added; pick another provider, or Save")
+                note.update(_say("added"))
             else:
-                note.update("tick or type a model first")
+                note.update(_say("tick_first"))
         elif event.button.id == "save":
             self.action_save()
 
@@ -586,9 +722,11 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         """Save what is ticked or added; refuse with nothing chosen."""
         self._add_current()
         if not self._basket:
+            warning = tui_design().delegation.nothing_ticked
             self.query_one("#note", Static).update(
-                "select at least one model before saving"
+                Text(warning, style=_style("warning"))
             )
+            self.app.notify(warning, severity="warning")
             return
         self.dismiss(tuple(self._basket.values()))
 
@@ -596,164 +734,376 @@ class SetupScreen(ModalScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         self.dismiss(None)
 
 
-class ModelTuiDelegationChoice(BaseModel):
-    """Claude Code delegation on (through an ONEX gateway) or off."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    target: str
-    on: bool
-    gateway_url: str = ""
-    model: str = ""
-    credential_ref: str = ""
-
-    def argv(self) -> tuple[str, ...]:
-        if not self.on:
-            return ("claude", "disable", "--yes")
-        return (
-            "claude",
-            "enable",
-            "--gateway-url",
-            self.gateway_url,
-            "--model",
-            self.model,
-            "--credential-ref",
-            self.credential_ref,
-            "--yes",
-        )
-
-
-class DelegationScreen(ModalScreen[ModelTuiDelegationChoice | None]):
-    """Pick a client, then switch its delegation on or off."""
-
-    CSS = """
-    DelegationScreen { align: center middle; }
-    #deleg { width: 72; height: auto; border: round $accent; padding: 1 2; background: $panel; }
-    #deleg Select, #deleg Input { margin-bottom: 1; }
-    #switch-row { height: auto; margin-bottom: 1; }
-    #switch-row Label { padding: 1 1 0 0; }
-    #gateway { height: auto; }
-    #dnote { color: $text-muted; margin-bottom: 1; }
-    #dbuttons { height: auto; align-horizontal: right; }
-    """
-    BINDINGS = [Binding("escape", "cancel", "Cancel")]
-
-    def __init__(self, enabled: bool) -> None:
-        super().__init__()
-        self._enabled = enabled
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="deleg"):
-            yield Label("Delegation")
-            yield Select(
-                [("Claude Code", "claude")],
-                value="claude",
-                allow_blank=False,
-                id="target",
-            )
-            with Horizontal(id="switch-row"):
-                yield Label("Delegate Claude Code requests")
-                yield Switch(value=self._enabled, id="on")
-            with Vertical(id="gateway"):
-                yield Input(placeholder="ONEX gateway URL", id="gateway-url")
-                yield Input(placeholder="Model the gateway serves", id="gateway-model")
-                yield Input(placeholder="Credential reference", id="credential-ref")
-            yield Static(
-                "On: new Claude Code sessions route through your ONEX gateway. "
-                "Off: ONEX settings are removed; your own edits stay.",
-                id="dnote",
-            )
-            with Horizontal(id="dbuttons"):
-                yield Button("Save", variant="primary", id="dsave")
-                yield Button("Cancel", id="dcancel")
-
-    def on_mount(self) -> None:
-        self.query_one("#gateway").display = self._enabled
-
-    def on_switch_changed(self, event: Switch.Changed) -> None:
-        self.query_one("#gateway").display = event.value
-
-    def _value(self, widget_id: str) -> str:
-        return self.query_one(f"#{widget_id}", Input).value.strip()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "dcancel":
-            self.dismiss(None)
-            return
-        on = self.query_one("#on", Switch).value
-        fields = ("gateway-url", "gateway-model", "credential-ref")
-        if on and not all(self._value(f) for f in fields):
-            self.query_one("#dnote", Static).update(
-                "To turn it on, fill the gateway URL, model and credential reference."
-            )
-            return
-        self.dismiss(
-            ModelTuiDelegationChoice(
-                target=str(self.query_one("#target", Select).value),
-                on=on,
-                gateway_url=self._value("gateway-url"),
-                model=self._value("gateway-model"),
-                credential_ref=self._value("credential-ref"),
-            )
-        )
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-
-class ModelPickScreen(ModalScreen[tuple[str, str] | None]):
-    """Pick the model every task tries first."""
-
-    CSS = """
-    ModelPickScreen { align: center middle; }
-    #pick { width: 72; height: auto; max-height: 20; border: round $accent; padding: 1 2; background: $panel; }
-    """
-    BINDINGS = [Binding("escape", "cancel", "Cancel")]
-
-    def __init__(self, choices: list[tuple[str, str, bool]]) -> None:
-        super().__init__()
-        self._choices = choices
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="pick"):
-            yield Label("Choose the model every task tries first  (Esc to close)")
-            yield OptionList(
-                *(
-                    Option(
-                        f"{model}  ·  {provider}"
-                        + (f"  {tui_design().glyphs.done} current" if first else ""),
-                        id=f"{provider}\t{model}",
-                    )
-                    for provider, model, first in self._choices
-                ),
-                id="models",
-            )
-
-    def on_mount(self) -> None:
-        self.query_one("#models", OptionList).focus()
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        provider, _, model = str(event.option.id).partition("\t")
-        self.dismiss((provider, model))
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-
-def _model_choices(text: str) -> list[tuple[str, str, bool]]:
-    """(provider, model, is first) for every set-up model in `models list --json`."""
-    choices: list[tuple[str, str, bool]] = []
+def _json_rows(text: str) -> list[dict[str, object]]:
+    """Every JSON object line of a command's stdout."""
+    rows: list[dict[str, object]] = []
     for line in text.splitlines():
         try:
             row = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(row, dict) or not row.get("set_up"):
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def _deployment(provider: str) -> Deployment:
+    """A hosted API is cloud; a server the user gives by URL is local."""
+    try:
+        return "cloud" if _hosted(provider) else "local"
+    except Exception:  # a provider the picker does not list runs by URL
+        return "local"
+
+
+class ModelTuiSelection(BaseModel):
+    """The models the user selected, in delegation order, as catalogue rows."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelCatalogEntry, ...] = ()
+    #: (provider, model) tried first, when one is chosen.
+    first: tuple[str, str] | None = None
+    #: entry key -> connection id, for selected models the gateway can serve.
+    gateway: dict[str, str] = {}
+    #: entry key -> (connection to register, server URL), for selected models on
+    #: a server that answers Anthropic Messages but is not a connection yet.
+    connect: dict[str, tuple[str, str]] = {}
+
+    def serves_gateway(self, key: str) -> bool:
+        return key in self.gateway or key in self.connect
+
+
+def server_models(rows: list[dict[str, object]]) -> dict[str, list[tuple[str, str]]]:
+    """Base URL -> (provider, model) for every stored model run on a server by URL."""
+    found: dict[str, list[tuple[str, str]]] = {}
+    for row in rows:
+        endpoints = row.get("endpoints")
+        if not row.get("set_up") or not isinstance(endpoints, dict):
             continue
-        for model in row.get("models") or []:
-            first = bool(row.get("tried_first")) and model == row.get("first_model")
-            choices.append((str(row["provider"]), str(model), first))
-    return choices
+        for model, base in endpoints.items():
+            found.setdefault(str(base), []).append((str(row["provider"]), str(model)))
+    return found
+
+
+def selected_models(
+    rows: list[dict[str, object]],
+    connections: list[dict[str, object]],
+    index: ModelsDevIndex,
+    servers: Mapping[tuple[str, str], ModelLocalServerDetails] | None = None,
+    bases: Mapping[tuple[str, str], str] | None = None,
+) -> ModelTuiSelection:
+    """`models list --json` rows and `models connections --json` as one table."""
+    entries = list(
+        stored_entries(
+            rows,
+            index=index,
+            deployment_of=_deployment,
+            label_of=_row_label,
+            servers=servers,
+        )
+    )
+    first = next(
+        (
+            (str(r["provider"]), str(r["first_model"]))
+            for r in rows
+            if r.get("tried_first") and r.get("first_model")
+        ),
+        None,
+    )
+    seen = {entry_key(e) for e in entries}
+    gateway: dict[str, str] = {}
+    for connection in connections:
+        provider = str(connection.get("provider") or "")
+        models = connection.get("models")
+        for model in models if isinstance(models, list) else ():
+            entry = catalog_entry(
+                provider,
+                str(model),
+                deployment=_deployment(provider),
+                index=index,
+                provider_label=_label(provider),
+                status="untested",
+            )
+            key = entry_key(entry)
+            if key not in seen:
+                entries.append(entry)
+                seen.add(key)
+            if connection.get("native_messages"):
+                gateway[key] = str(connection.get("connection_id"))
+    connect: dict[str, tuple[str, str]] = {}
+    for entry in entries:
+        pair = (entry.provider, entry.model_id)
+        said = (servers or {}).get(pair)
+        base = (bases or {}).get(pair)
+        key = entry_key(entry)
+        if said and said.native_messages and base and key not in gateway:
+            connect[key] = (
+                _connection_name(said.server or entry.provider, base),
+                base,
+            )
+    return ModelTuiSelection(
+        entries=tuple(entries), first=first, gateway=gateway, connect=connect
+    )
+
+
+def _connection_name(kind: str, base: str) -> str:
+    """A stable connection id for a server: its kind and port, e.g. ollama-11434."""
+    parsed = urlparse(base)
+    name = re.sub(
+        r"[^a-z0-9_-]+", "-", f"{kind}-{parsed.port or parsed.hostname}".lower()
+    )
+    return (name if name[:1].isalpha() else f"m{name}")[:64]
+
+
+class ModelTuiDelegationChoice(BaseModel):
+    """Claude Code delegation on or off, and the onex commands that do it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    on: bool
+    mode: str
+    commands: tuple[tuple[str, ...], ...]
+
+
+class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
+    """Your selected models and one switch; nothing is typed (OMN-23413 AC25)."""
+
+    CSS = """
+    DelegationScreen { align: center middle; }
+    #deleg { width: 90%; max-width: 150; height: 90%; border: round $accent; padding: 0 2; background: $panel; }
+    #deleg Select { margin-bottom: 0; }
+    #switch-row { height: auto; }
+    #switch-row Label { padding: 1 1 0 0; }
+    #dnote { color: $text-muted; height: auto; }
+    #dkeys { color: $text-muted; height: 1; }
+    #dbuttons { height: 3; dock: bottom; align-horizontal: right; }
+    """
+    TAB = "delegation"
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("space", "flip", "Switch", show=False),
+        Binding("m", "next_mode", "Mode", show=False),
+    ]
+
+    def __init__(self, selection: ModelTuiSelection, enabled: bool) -> None:
+        super().__init__()
+        self._selection = selection
+        self._enabled = enabled
+
+    def compose(self) -> ComposeResult:
+        words = tui_design().delegation
+        modes = words.modes
+        capable = any(
+            self._selection.serves_gateway(k)
+            for k in map(entry_key, self._selection.entries)
+        )
+        start = next(
+            (
+                m.id
+                for m in modes
+                if m.needs_gateway_model == (self._enabled and capable)
+            ),
+            modes[0].id,
+        )
+        with Vertical(id="deleg"):
+            yield _tab_strip(self.TAB)
+            yield Label(Text(words.title, style=_style("primary", "bold")))
+            yield Select(
+                [(m.label, m.id) for m in modes],
+                value=start,
+                allow_blank=False,
+                id="mode",
+            )
+            yield Static("", id="mdetail")
+            with Horizontal(id="switch-row"):
+                yield Label(words.switch_label)
+                yield Switch(value=self._enabled, id="on")
+            yield Label(Text(words.table_title, style=_style("muted")))
+            yield ModelTable(
+                selectable=False,
+                provider_labels={e.provider: e.label for e in _picker()},
+                id="selected",
+            )
+            yield Static("", id="dnote")
+            yield Static(tui_design().model_table.help["delegation"], id="dkeys")
+            with Horizontal(id="dbuttons"):
+                yield Button("Save", variant="primary", id="dsave")
+                yield Button("Cancel", id="dcancel")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#selected", ModelTable)
+        table.set_entries(self._selection.entries)
+        table.focus_rows()
+        self._describe_mode()
+        words = tui_design().delegation
+        note = self.query_one("#dnote", Static)
+        if not self._selection.entries:
+            note.update(Text(words.no_models, style=_style("warning")))
+            return
+        capable = [
+            e.model_id
+            for e in self._selection.entries
+            if self._selection.serves_gateway(entry_key(e))
+        ]
+        if capable:
+            note.update(f"{words.gateway_marker}: {', '.join(capable)}")
+
+    def _describe_mode(self) -> None:
+        wanted = str(self.query_one("#mode", Select).value)
+        mode = next(m for m in tui_design().delegation.modes if m.id == wanted)
+        self.query_one("#mdetail", Static).update(
+            Text(mode.detail, style=_style("muted"))
+        )
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        self._describe_mode()
+
+    def action_flip(self) -> None:
+        switch = self.query_one("#on", Switch)
+        switch.value = not switch.value
+
+    def action_next_mode(self) -> None:
+        order = [m.id for m in tui_design().delegation.modes]
+        select = self.query_one("#mode", Select)
+        select.value = order[(order.index(str(select.value)) + 1) % len(order)]
+
+    def _choice(self) -> ModelTuiDelegationChoice | str:
+        """The commands to run, or the reason nothing can be switched."""
+        words = tui_design().delegation
+        on = self.query_one("#on", Switch).value
+        wanted = str(self.query_one("#mode", Select).value)
+        mode = next(m for m in words.modes if m.id == wanted)
+        fill: dict[str, str] = {}
+        first: tuple[tuple[str, ...], ...] = ()
+        if on and not self._selection.entries:
+            return words.no_models
+        if on and mode.needs_gateway_model:
+            pick = next(
+                (
+                    e
+                    for e in self._selection.entries
+                    if self._selection.serves_gateway(entry_key(e))
+                ),
+                None,
+            )
+            if pick is None:
+                return words.no_gateway_model
+            key = entry_key(pick)
+            if key in self._selection.gateway:
+                fill = {
+                    "connection": self._selection.gateway[key],
+                    "model": pick.model_id,
+                }
+            else:
+                name, url = self._selection.connect[key]
+                fill = {"connection": name, "model": pick.model_id, "url": url}
+                first = (words.connect,)
+        steps = (*first, *mode.enable) if on else mode.disable
+        return ModelTuiDelegationChoice(
+            on=on,
+            mode=mode.id,
+            commands=tuple(
+                tuple(part.format(**fill) for part in step) for step in steps
+            ),
+        )
+
+    def action_save(self) -> None:
+        choice = self._choice()
+        if isinstance(choice, str):
+            self.query_one("#dnote", Static).update(
+                Text(choice, style=_style("warning"))
+            )
+            return
+        self.dismiss(choice)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "dcancel":
+            self.dismiss(None)
+        else:
+            self.action_save()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ModelPickScreen(_TabbedScreen[tuple[str, str] | None]):
+    """Auto, or the model every task tries first, from the one model table."""
+
+    TAB = "model"
+
+    CSS = """
+    ModelPickScreen { align: center middle; }
+    #pick { width: 90%; max-width: 150; height: 90%; border: round $accent; padding: 0 2; background: $panel; }
+    #pnote { color: $text-muted; height: auto; }
+    #pkeys { color: $text-muted; height: 1; }
+    #auto { width: auto; margin-bottom: 0; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("a", "auto", "Auto", show=False),
+    ]
+
+    def __init__(self, selection: ModelTuiSelection) -> None:
+        super().__init__()
+        self._selection = selection
+
+    def compose(self) -> ComposeResult:
+        words = tui_design().model_table
+        first = self._selection.first
+        current = f"{first[1]} ({_label(first[0])})" if first else words.auto_label
+        with Vertical(id="pick"):
+            yield _tab_strip(self.TAB)
+            yield Label(
+                Text(
+                    _say("model_title"),
+                    style=_style("primary", "bold"),
+                )
+            )
+            yield Static(
+                Text(_say("model_now", current=current), style=_style("success")),
+                id="pnow",
+            )
+            yield Button(words.auto_label + "  (A)", id="auto")
+            yield ModelTable(
+                selectable=False,
+                provider_labels={e.provider: e.label for e in _picker()},
+                id="models",
+            )
+            yield Static("", id="pnote")
+            yield Static(words.help["model"], id="pkeys")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#models", ModelTable)
+        table.set_entries(self._selection.entries)
+        table.query_one("DataTable").focus()
+
+    @on(ModelTable.Chosen)
+    def _chosen(self, event: ModelTable.Chosen) -> None:
+        entry = event.entry
+        if entry.status in ("failed", "unavailable"):
+            reason = (
+                entry.status_reason
+                or tui_design().model_table.status[entry.status].text
+            )
+            self.query_one("#pnote", Static).update(
+                Text(
+                    _say("cannot_be_first", model=entry.model_id, reason=reason),
+                    style=_style("warning"),
+                )
+            )
+            return
+        self.dismiss((entry.provider, entry.model_id))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "auto":
+            self.action_auto()
+
+    def action_auto(self) -> None:
+        self.dismiss(("", ""))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
 
 
 def _big_word(word: str, gradient: tuple[str, ...]) -> Text:
@@ -836,8 +1186,12 @@ class OnexTui(App[int]):
         runner: ProtocolTuiRunner | None = None,
         load_status: Callable[[], Awaitable[ModelTuiStatus]] | None = None,
         list_models: ListModels | None = None,
+        load_index: LoadIndex | None = None,
+        read_server: ReadServer | None = None,
     ) -> None:
         super().__init__()
+        self._load_index: LoadIndex = load_index or _default_index
+        self._read_server: ReadServer = read_server or _default_read_server
         tokens = tui_design().theme
         self.register_theme(
             Theme(
@@ -1006,7 +1360,9 @@ class OnexTui(App[int]):
         if len(self.screen_stack) < 2:
             return False
         focused = self.focused
-        if key == "tab":
+        if key == "tab" and isinstance(self.screen, _TabbedScreen):
+            self.screen.action_tab(1)  # /config, /model, /delegation: next tab
+        elif key == "tab":
             self.screen.focus_next()
         elif isinstance(focused, OptionList):
             getattr(focused, f"action_cursor_{key}")()
@@ -1127,6 +1483,10 @@ class OnexTui(App[int]):
         if entry.path[:1] in (("models",), ("claude",)):
             self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
+    async def open_tab(self, name: str) -> None:
+        """Open /config, /model or /delegation, as Tab on one of them asks."""
+        await self._shortcut(name)
+
     async def _shortcut(self, action: str) -> None:
         if action == "quit":
             self.exit(0)
@@ -1136,13 +1496,18 @@ class OnexTui(App[int]):
             self.query_one("#output", RichLog).clear()
         elif action == "config":
             self.push_screen(
-                SetupScreen(self._runner, self._list_models), self._apply_setup
+                SetupScreen(
+                    self._runner, self._list_models, self._load_index, self._read_server
+                ),
+                self._apply_setup,
             )
         elif action == "model":
             await self._pick_model()
         elif action == "delegation":
+            selection = await self._load_selection()
             self.push_screen(
-                DelegationScreen(self._status.gateway), self._apply_delegation
+                DelegationScreen(selection, self._status.gateway),
+                self._apply_delegation,
             )
 
     async def _apply_setup(
@@ -1228,40 +1593,102 @@ class OnexTui(App[int]):
                 )
         return ok
 
+    async def _load_selection(self) -> ModelTuiSelection:
+        """The selected models, read through the CLI's own JSON (no second engine)."""
+        (_, listed, _), (_, connected, _) = await asyncio.gather(
+            self._runner.capture(("models", "list", "--json")),
+            self._runner.capture(("models", "connections", "--json")),
+        )
+        documents = _json_rows(connected)
+        connections = documents[-1].get("connections") if documents else None
+        rows = _json_rows(listed)
+        by_server = server_models(rows)
+        index, *answers = await asyncio.gather(
+            asyncio.to_thread(_safe_index, self._load_index),
+            *(
+                asyncio.to_thread(
+                    _safe_server,
+                    self._read_server,
+                    base,
+                    tuple(model for _, model in pairs),
+                )
+                for base, pairs in by_server.items()
+            ),
+        )
+        servers = {
+            (provider, model): said[model]
+            for (base, pairs), said in zip(by_server.items(), answers, strict=True)
+            for provider, model in pairs
+            if model in said
+        }
+        bases = {pair: base for base, pairs in by_server.items() for pair in pairs}
+        return selected_models(
+            rows,
+            [c for c in connections if isinstance(c, dict)]
+            if isinstance(connections, list)
+            else [],
+            index,
+            servers,
+            bases,
+        )
+
     async def _apply_delegation(self, choice: ModelTuiDelegationChoice | None) -> None:
         if choice is None:
             return
-        argv = choice.argv()
-        self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
-        code = await self._runner.stream(argv, self._write)
+        glyphs = tui_design().glyphs
+        words = tui_design().delegation
         state = "on" if choice.on else "off"
-        self._write(f"exit {code}" if code else f"Claude Code delegation is {state}.")
+        for argv in choice.commands:
+            code, out, err = await self._runner.capture(argv)
+            if code:
+                reason = _stopped_by(out, err)
+                self._write(
+                    Text(
+                        f"{glyphs.failed} "
+                        + words.not_switched.format(state=state, reason=reason),
+                        style=_style("error"),
+                    )
+                )
+                break
+        else:
+            mode = next(m for m in words.modes if m.id == choice.mode)
+            done = (
+                words.switched_on.format(mode=mode.label)
+                if choice.on
+                else words.switched_off
+            )
+            self._write(Text(f"{glyphs.done} {done}", style=_style("success")))
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
     async def _pick_model(self) -> None:
-        _, out, _ = await self._runner.capture(("models", "list", "--json"))
-        choices = _model_choices(out)
-        if not choices:
-            self._write("No model is set up yet. Type /config to connect one.")
+        selection = await self._load_selection()
+        if not selection.entries:
+            self._write(_say("nothing_set_up"))
             return
-        self.push_screen(ModelPickScreen(choices), self._apply_model)
+        self.push_screen(ModelPickScreen(selection), self._apply_model)
 
     async def _apply_model(self, picked: tuple[str, str] | None) -> None:
         if picked is None:
             return
         provider, model = picked
-        code, out, err = await self._runner.capture(
-            ("models", "first", provider, model)
+        auto = not provider
+        argv = (
+            ("models", "first", "--clear")
+            if auto
+            else ("models", "first", provider, model)
         )
+        code, out, err = await self._runner.capture(argv)
         glyphs = tui_design().glyphs
+        chosen = (
+            tui_design().model_table.auto_label
+            if auto
+            else _say("now_first", model=model, provider=_label(provider))
+        )
         self._write(
-            Text(
-                f"{glyphs.done} {model} is now tried first ({_label(provider)})",
-                style=_style("success"),
-            )
+            Text(f"{glyphs.done} {chosen}", style=_style("success"))
             if not code
             else Text(
-                f"{glyphs.failed} could not make {model} first: {_last_line(out, err)}",
+                f"{glyphs.failed} " + _say("first_failed", reason=_last_line(out, err)),
                 style=_style("error"),
             )
         )

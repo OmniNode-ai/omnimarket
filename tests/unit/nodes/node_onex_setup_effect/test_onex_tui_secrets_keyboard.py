@@ -23,7 +23,13 @@ from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     OnexTui,
     SetupScreen,
 )
-from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import _root, _Runner
+from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
+    _hosted_listing,
+    _index,
+    _root,
+    _Runner,
+    _wait_for_models,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -34,8 +40,20 @@ async def _status() -> ModelTuiStatus:
     return ModelTuiStatus(workspace="~/ws", model="m", gateway=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """models.dev and local servers come from fixtures: no test reaches the network."""
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
+    monkeypatch.setattr(cli_tui, "_default_index", _index)
+    monkeypatch.setattr(cli_tui, "_default_read_server", lambda _base, _models: {})
+
+
 def _app(runner: _Runner) -> OnexTui:
-    return OnexTui(root=_root, runner=runner, load_status=_status)
+    list_models, _ = _hosted_listing()
+    return OnexTui(
+        root=_root, runner=runner, load_status=_status, list_models=list_models
+    )
 
 
 def _screen_text(app: OnexTui) -> str:
@@ -53,14 +71,18 @@ async def _type[T](pilot: Pilot[T], text: str) -> None:
 
 
 async def _focus[T](
-    pilot: Pilot[T], app: OnexTui, widget_id: str, limit: int = 20
+    pilot: Pilot[T], app: OnexTui, widget_id: str, limit: int = 20, key: str = "up"
 ) -> None:
-    """Tab until ``widget_id`` has focus: proves it is reachable by keyboard."""
+    """Down until ``widget_id`` has focus: proves it is reachable by keyboard.
+
+    In /config, /model and /delegation Tab moves between the three tabs, so the
+    arrow keys move between a form's fields.
+    """
     for _ in range(limit):
         if app.focused is not None and app.focused.id == widget_id:
             return
-        await pilot.press("tab")
-    raise AssertionError(f"#{widget_id} is not reachable with Tab")
+        await pilot.press(key)
+    raise AssertionError(f"#{widget_id} is not reachable with the arrow keys")
 
 
 async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
@@ -84,10 +106,11 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
         assert app.screen.query_one("#provider").value == "openrouter"
         await _focus(pilot, app, "key")
         await _type(pilot, _SENTINEL)
-        await _focus(pilot, app, "model")
-        await _type(pilot, "qwen/qwen3")
-        await _focus(pilot, app, "save")
-        await pilot.press("enter")
+        await _wait_for_models(pilot)
+        assert app.focused is not None
+        assert app.focused.id == "mt-rows"  # the list takes the keyboard on load
+        await pilot.press("space")  # tick the highlighted model
+        await pilot.press("ctrl+s")
         await pilot.pause()
         await pilot.pause()
 

@@ -14,11 +14,17 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from omnimarket.inference import local_byok_credential_adapter as store
 from omnimarket.inference.local_byok_credential_adapter import (
     LOCAL_CREDENTIAL_MODEL_TABLE,
     LOCAL_CREDENTIAL_TABLE,
 )
-from omnimarket.projection.sqlite_database import default_evidence_db_path
+
+
+def _default_path() -> Path:
+    # The adapter owns where the credential store lives; read it through the
+    # adapter so every reader and writer resolves the same file.
+    return store.default_evidence_db_path()
 
 
 def read_credentials(db_path: Path) -> sqlite3.Connection:
@@ -41,7 +47,7 @@ def legacy_scope(conn: sqlite3.Connection) -> str:
 
 def registered_providers(*, db_path: Path | None = None) -> tuple[str, ...]:
     """Providers with a provider-global credential, in name order, read-only."""
-    path = db_path if db_path is not None else default_evidence_db_path()
+    path = db_path if db_path is not None else _default_path()
     if not path.is_file():
         return ()
     conn = read_credentials(path)
@@ -60,7 +66,7 @@ def registered_providers(*, db_path: Path | None = None) -> tuple[str, ...]:
 def credential_models(provider: str, *, db_path: Path | None = None) -> tuple[str, ...]:
     """The ordered models stored with ``provider``'s credential, read-only."""
     normalized = provider.strip().lower()
-    path = db_path if db_path is not None else default_evidence_db_path()
+    path = db_path if db_path is not None else _default_path()
     if not normalized or not path.is_file():
         return ()
     conn = read_credentials(path)

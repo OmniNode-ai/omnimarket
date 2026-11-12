@@ -68,3 +68,8 @@ internal_targets:
   gemini_cli: "cli://gemini"
   ui_component_prefix: "in-memory://ui_component/"
   secret_reference_prefix: "secret://onex/"
+
+models_dev:
+  # Open model catalogue (OMN-23413): supplemental model metadata for the
+  # onex model explorer, read through configs/model_catalog.yaml.
+  api_url: "https://models.dev/api.json"

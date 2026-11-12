@@ -15,6 +15,7 @@ import click
 from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import ValidationError
 
+from omnimarket.handlers.setup_gateway_record import read_setup_gateway_binding
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.models.delegation.model_claude_gateway import ModelClaudeGatewayConfig
 from omnimarket.nodes.node_claude_code_binding_install_effect.handlers.gateway_probe import (
@@ -242,25 +243,49 @@ def gateway_command(
 @claude_group.command("enable")
 @click.option(
     "--gateway-url",
-    required=True,
-    help="The ONEX gateway base URL (HTTPS or loopback HTTP).",
+    default=None,
+    help="The ONEX gateway base URL (HTTPS or loopback HTTP). Default: the gateway onex setup started.",
 )
 @click.option(
-    "--model", required=True, help="A Claude-compatible model served by this gateway."
+    "--model",
+    default=None,
+    help="A Claude-compatible model served by this gateway. Default: the one setup chose from your selected models.",
 )
 @click.option(
     "--credential-ref",
-    required=True,
-    help="Gateway credential reference in the ONEX secret store.",
+    default=None,
+    help="Gateway credential reference in the ONEX secret store. Default: the one setup minted.",
 )
 @click.option(
     "--yes", is_flag=True, help="Accept the gateway destination, model and API billing."
 )
 @click.option("--json", "json_output", is_flag=True)
 def enable_command(
-    gateway_url: str, model: str, credential_ref: str, yes: bool, json_output: bool
+    gateway_url: str | None,
+    model: str | None,
+    credential_ref: str | None,
+    yes: bool,
+    json_output: bool,
 ) -> None:
-    """Enable gateway routing for newly launched Claude Code sessions."""
+    """Enable gateway routing for newly launched Claude Code sessions.
+
+    With no flags, the gateway onex setup started from your selected models is
+    used; with none set up, nothing is enabled and the fix is printed.
+    """
+    given = (gateway_url, model, credential_ref)
+    if any(given) and not all(given):
+        raise click.ClickException(
+            "Give all of --gateway-url, --model and --credential-ref, or none of them to use the gateway onex setup started."
+        )
+    if not any(given):
+        bound = read_setup_gateway_binding(user_config_path().parent)
+        if bound is None:
+            raise click.ClickException(
+                "No gateway is set up, so Claude Code cannot be delegated: select a model in onex tui (/config), then turn delegation on in /delegation."
+            )
+        gateway_url, model, credential_ref = bound
+    if gateway_url is None or model is None or credential_ref is None:  # narrowed above
+        raise click.ClickException("No gateway to enable.")
     helper = shlex.join(
         [
             str(Path(sys.executable).absolute()),

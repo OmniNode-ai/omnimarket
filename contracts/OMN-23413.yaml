@@ -161,6 +161,21 @@ requirements:
       traverse the gateway, preserve protocol and streaming/cancellation/errors, and join per-request
       metadata to actual receipts and dashboard projections. Outage/auth/routing errors fail visibly without
       direct fallback. Capability checks and direct-bypass controls must detect deliberate breaks.'
+- id: req-omn23413-ac22
+  statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
+  acceptance:
+  - id: AC22
+    statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
+- id: req-omn23413-ac25
+  statement: '/delegation needs no typed input and refuses without a model. It shows the selected models with the same table and one switch: through the delegation hook, or through the gateway setup starts for a selected model whose connection speaks native Anthropic Messages. With no selected model nothing is enabled and the reason is shown. onex claude enable with no flags uses the gateway setup started.'
+  acceptance:
+  - id: AC25
+    statement: '/delegation needs no typed input and refuses without a model. It shows the selected models with the same table and one switch: through the delegation hook, or through the gateway setup starts for a selected model whose connection speaks native Anthropic Messages. With no selected model nothing is enabled and the reason is shown. onex claude enable with no flags uses the gateway setup started.'
+- id: req-omn23413-ac27
+  statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+  acceptance:
+  - id: AC27
+    statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -463,4 +478,34 @@ dod_evidence:
       rev-parse HEAD)" --lane dod-integration-proof-23413 --kind test -- env PYTHONDONTWRITEBYTECODE=1
       uv run --frozen pytest tests/integration/test_setup_registered_endpoint_postgres.py -m integration
       -q --no-cov
+    cwd: .
+- id: dod-omn23413-ac22-config-model-table
+  description: '/config lists the provider''s models with full details, ticks any number, and names a local model by its server.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC22
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/handlers/test_local_model_details.py -q --no-cov -n 0 -p no:randomly -k "config or server or ticked or searchable or key"'
+    cwd: .
+- id: dod-omn23413-ac25-delegation-no-typed-input
+  description: '/delegation shows the selection, switches through the hook or the setup gateway, and refuses without a model; onex claude enable defaults to setup''s gateway.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC25
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/cli/test_claude_gateway_command.py -q --no-cov -n 0 -p no:randomly -k "delegation or gateway_mode or enable"'
+    cwd: .
+- id: dod-omn23413-ac27-one-catalogue
+  description: 'One catalogue for every screen, data-driven words, unknown never free, and /model first or Auto.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC27
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly -k "catalog or literal or provider or model_lists or stored or price or cache or json"'
     cwd: .

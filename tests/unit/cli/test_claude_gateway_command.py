@@ -238,3 +238,61 @@ def test_gateway_serves_the_ordered_fallback_ladder(
     )
     assert repeated.exit_code != 0
     assert len(served) == 1
+
+
+def _setup_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An ONEX home whose user config sits where onex looks for it."""
+    home = tmp_path / ".onex"
+    home.mkdir()
+    monkeypatch.setattr(cli, "user_config_path", lambda: home / "config.yaml")
+    return home
+
+
+def test_enable_with_no_flags_uses_the_gateway_setup_started(
+    calls: list[ModelClaudeGatewaySettingsRequest],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing is typed: the URL, model and credential come from setup's record."""
+    home = _setup_home(tmp_path, monkeypatch)
+    (home / "gateway-process.json").write_text(
+        json.dumps(
+            {
+                "url": "http://127.0.0.1:8282",
+                "credential_ref": "setup.gateway.fixture",
+                "selection": {"connection_id": "lab", "model": "qwen-fixture"},
+            }
+        )
+    )
+    result = CliRunner().invoke(cli.claude_group, ["enable", "--yes", "--json"])
+    assert result.exit_code == 0, result.output
+    assert [(c.gateway_url, c.model, c.credential_ref) for c in calls] == [
+        ("http://127.0.0.1:8282", "qwen-fixture", "setup.gateway.fixture")
+    ]
+
+
+def test_enable_with_no_flags_and_no_setup_refuses_and_writes_nothing(
+    calls: list[ModelClaudeGatewaySettingsRequest],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a selected model there is no gateway, so Claude Code is not bound."""
+    _setup_home(tmp_path, monkeypatch)
+    result = CliRunner().invoke(cli.claude_group, ["enable", "--yes"])
+    assert result.exit_code != 0
+    assert "select a model" in result.output
+    assert calls == []
+
+
+def test_enable_refuses_some_flags_without_the_others(
+    calls: list[ModelClaudeGatewaySettingsRequest],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup_home(tmp_path, monkeypatch)
+    result = CliRunner().invoke(
+        cli.claude_group, ["enable", "--model", "claude-fixture", "--yes"]
+    )
+    assert result.exit_code != 0
+    assert "or none of them" in result.output
+    assert calls == []

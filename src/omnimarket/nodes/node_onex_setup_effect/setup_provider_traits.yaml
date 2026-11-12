@@ -21,13 +21,6 @@ picker:
   - provider: gemini
     label: Google Gemini
     hint: Create a key at aistudio.google.com/apikey.
-  - provider: ollama
-    label: Ollama
-    default_port: 11434
-    selected: true
-    hint: >-
-      Ollama listens on port 11434 of its machine. For a server elsewhere, set
-      OLLAMA_HOST=0.0.0.0:11434 there and use its address.
   - provider: openai
     label: OpenAI
     hint: Create a key under API keys in your OpenAI dashboard.
@@ -35,8 +28,10 @@ picker:
     label: OpenRouter
     hint: Create a key at openrouter.ai/keys.
   - provider: local
-    label: vLLM
-    default_port: 8000
+    label: Local model
+    default_port: 11434
+    selected: true
     hint: >-
-      A vLLM server you run, or any OpenAI-compatible one (LM Studio, llama.cpp, MLX).
-      Enter its address, for example http://<host>:8000.
+      Any model server that speaks the OpenAI API: Ollama (port 11434), vLLM
+      (8000), llama.cpp, LM Studio or MLX. Enter its address; its models load
+      on their own and the server is named from its answer.

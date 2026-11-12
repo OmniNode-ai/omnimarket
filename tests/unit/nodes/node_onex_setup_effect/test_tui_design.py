@@ -52,10 +52,11 @@ def test_the_shipped_design_loads_and_names_every_shortcut_action() -> None:
         "help",
         "quit",
     }
-    setup = design.shortcut_for(["setup"])
     leave = design.shortcut_for(["exit"])
-    assert setup is not None
-    assert setup.action == "config"
+    # /config replaced the setup command, so "setup" is neither a shortcut
+    # nor an alias any more: it is listed as a replaced command.
+    assert design.shortcut_for(["setup"]) is None
+    assert design.replaces(("setup",))
     assert leave is not None
     assert leave.action == "quit"
     assert design.shortcut_for(["nope"]) is None

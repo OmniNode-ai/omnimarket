@@ -93,3 +93,138 @@ help: >-
 # changing; a key shorter than min_key_length is never sent.
 auto_find_seconds: 0.8
 min_key_length: 8
+
+# The model table every model screen shows: /config (tick models), /model
+# (pick the first or Auto) and /delegation (read-only). Columns, words and
+# colours are read here; the screens hold none of them (OMN-23413 AC20, AC27).
+model_table:
+  columns:
+    - {key: pick, title: " "}
+    - {key: provider, title: Provider}
+    - {key: model, title: Model}
+    - {key: context, title: Ctx}
+    - {key: price, title: "Price $/1M (in / out)"}
+    - {key: status, title: Status}
+    - {key: capabilities, title: Capabilities}
+  # Price words: an unknown price is never shown as free.
+  price_local: Local
+  # The I details view: its title, each row's name, and the words it uses.
+  details:
+    title: Model details
+    provider: Provider
+    model: Model
+    name: Name
+    runs: Runs
+    context: Context
+    max_output: Max output
+    input: Input
+    output: Output
+    cache_read: Cache read
+    cache_write: Cache write
+    per_million: per 1M
+    pricing: Pricing
+    tiered: changes with context size or tier
+    status: Status
+    why: Why
+    metadata: Metadata
+    fetched: "models.dev, fetched {at}"
+    stale: "(stale: could not refresh)"
+    "yes": "Yes"
+    "no": "No"
+  # A model on the user's own server: the provider, then the server that answered.
+  server_label: "{provider} · {server}"
+  # Shown for any value no source states (price, context, capabilities).
+  unknown_mark: "-"
+  price_unknown: "-"
+  price_variable: Variable
+  # Shown after a price that changes with context size or another tier.
+  price_tier_mark: "*"
+  ticked: "●"
+  unticked: "○"
+  status:
+    ready: {text: Ready, colour: success}
+    listed: {text: Available, colour: secondary}
+    untested: {text: Untested, colour: warning}
+    failed: {text: Failed, colour: error}
+    unavailable: {text: Unavailable, colour: muted}
+  deployment:
+    local: {text: Local, colour: success}
+    cloud: {text: Cloud, colour: secondary}
+  # Capability badges: a supported capability is a coloured badge; unknown is dim.
+  capability_colours: [primary, secondary, success, accent, warning, error]
+  filters: [all, local, cloud]
+  filter_labels: {all: All, local: Local, cloud: Cloud}
+  sorts: [name, context, input, output]
+  sort_labels: {name: Name, context: Context, input: Input price, output: Output price}
+  search_placeholder: Search models, providers or capabilities
+  auto_label: "Auto: ONEX picks per task (cost and availability)"
+  help:
+    config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Esc back"
+    model: "Tab next screen · Enter selects · A auto · I details · / search · F filter · S sort · Esc back"
+    delegation: "Tab next screen · Space switches · M mode · I details · Ctrl+S saves · Esc back"
+
+# /delegation (OMN-23413 AC25, AC26): nothing is typed. Each mode names the onex
+# commands it runs; "{connection}" and "{model}" are filled from the selected
+# model that can serve it. The screen holds no command, bit or word of its own.
+delegation:
+  title: Claude Code delegation
+  switch_label: Delegate Claude Code work to your selected models
+  table_title: Your selected models (from /config), in the order delegation tries them
+  modes:
+    - id: hook
+      label: "Subagent tasks: the delegation hook routes them across your models"
+      detail: "Claude Code keeps its own model for the conversation. When it hands a task to a subagent, the ONEX hook sends that task to your selected models, in order, and returns the answer. Works with any selected model."
+      needs_gateway_model: false
+      enable:
+        - [setup, --yes, --no-interactive, --json, --component, claude-plugin, --component, claude-hooks]
+        - [hooks, enable, post_skill_delegation_enforcer]
+      disable:
+        - [hooks, disable, post_skill_delegation_enforcer]
+    - id: gateway
+      label: "All Claude Code requests: through the ONEX gateway"
+      detail: "Every Claude Code request, the conversation included, goes to a local ONEX gateway that answers with one of your models instead of Anthropic. Needs a selected model whose connection speaks the Anthropic Messages API."
+      needs_gateway_model: true
+      enable:
+        - [setup, --yes, --no-interactive, --json, --component, claude-gateway, --gateway-connection, "{connection}", --gateway-model, "{model}"]
+      disable:
+        - [claude, disable, --yes]
+  switched_on: "Claude Code delegation is on: {mode}."
+  switched_off: "Claude Code delegation is off."
+  not_switched: "Claude Code delegation was not switched {state}: {reason}"
+  nothing_ticked: "Tick at least one model first: click it, or press Space on it."
+  # Registers a server that speaks Anthropic Messages as a connection, so the
+  # gateway can use it; run first when the chosen model has no connection yet.
+  connect: [models, connect, "{connection}", --url, "{url}", --model, "{model}", --native-messages, --no-test, --yes, --json]
+  no_models: "Select a model with /config first: Claude delegation needs at least one selected model."
+  no_gateway_model: "None of your selected models' servers answers Anthropic Messages, which the gateway needs. Use the delegation hook, or select a model on such a server (Ollama does) with /config."
+  gateway_marker: Gateway
+
+# /config, /model and /delegation are three tabs of one place: Tab and
+# Shift+Tab move between them, and a click on a tab opens it.
+tabs:
+  - {id: config, label: "  Config  "}
+  - {id: model, label: "  Model  "}
+  - {id: delegation, label: "  Delegation  "}
+
+# Every word the /config, /model and /delegation screens show; {name} parts
+# are filled in. The screens hold no sentence of their own (OMN-23413 AC27).
+words:
+  config_title: "Models for delegation: provider, key or URL, then models"
+  key_placeholder: "API key"
+  url_placeholder: "Server URL"
+  basket_empty: "Selected: none yet (at least one is needed)"
+  basket: "Selected: {choices}"
+  loading: "loading {provider} models…"
+  key_first: "enter your {provider} API key first"
+  found: "{count} found: tick any number (Space), then Add or Ctrl+S"
+  none_found: "no models found"
+  needs_key: "{provider} needs an API key"
+  still_loading: "still loading models… tick them once they appear"
+  added: "added; pick another provider, or Save"
+  tick_first: "tick a model first (Space)"
+  model_title: "Choose the model every task tries first"
+  model_now: "Now: {current}"
+  cannot_be_first: "{model} cannot be tried first: {reason}"
+  nothing_set_up: "No model is set up yet. Type /config to connect one."
+  now_first: "{model} is now tried first ({provider})"
+  first_failed: "could not change the first model: {reason}"

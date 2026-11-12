@@ -35,6 +35,7 @@ from omnimarket.handlers.handler_endpoint_connections import (
     ModelEndpointConnection,
     ModelEndpointConnectionRequest,
 )
+from omnimarket.handlers.setup_gateway_record import gateway_record_path
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.local_deployment.tenant_identity import read_local_tenant_identity
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_dashboard import (
@@ -66,7 +67,7 @@ class HandlerSetupGateway:
         store: LocalByokCredentialStore | None = None,
     ) -> None:
         self._home = onex_home or user_config_path().parent
-        self._state = self._home / "gateway-process.json"
+        self._state = gateway_record_path(self._home)
         self._store = store or LocalByokCredentialStore()
 
     def _settings(

@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# model_catalog.yaml (OMN-23413): how the model explorer merges what it knows
+# about a model. Data only: handlers/model_catalog.py holds no provider,
+# capability or source list of its own.
+#
+# Precedence, highest first: the provider's own list (which models exist, their
+# ids, and the provider's published context and price); the canonical pricing
+# contract; models.dev for supplemental metadata; real pinned tests for status.
+# A model that only a catalogue lists is never shown as available.
+
+models_dev:
+  # Key in configs/service_endpoints.yaml; the URL is never a literal in source.
+  endpoint: models_dev.api_url
+  # Cached under the ONEX home folder; older than this is refetched, and a
+  # failed refetch keeps the cache, shown as stale.
+  cache_file: cache/models_dev.json
+  max_age_hours: 24
+  timeout_seconds: 10
+
+# ONEX provider id -> models.dev provider id, for the hosted providers /config
+# offers (setup_provider_traits.yaml). Ollama and vLLM run on the user's own
+# server, so models.dev states nothing about them: their unknowns stay unknown.
+provider_ids:
+  openrouter: openrouter
+  openai: openai
+  gemini: google
+
+# Capability shown in the table -> how models.dev states it. `field`: a boolean
+# on the model; `input`: a value in modalities.input; `cost`: a priced field
+# (present means supported). Absent in models.dev means unknown, never "no".
+capabilities:
+  - {label: Tools, field: tool_call}
+  - {label: Reason, field: reasoning}
+  - {label: Vision, input: image}
+  - {label: JSON, field: structured_output}
+  - {label: Files, field: attachment}
+  - {label: Cache, cost: cache_read}
+
+# A server the user runs (Ollama, vLLM) is asked directly what it is and what it
+# knows about each model: models.dev states nothing about a local model. Every
+# value is optional; what the server does not say stays unknown ("-").
+local_servers:
+  timeout_seconds: 3
+  max_parallel: 8
+  # Ollama: POST <base><show_path> {"model": id}. The answer names the model's
+  # architecture; its context is model_info["<architecture><context_suffix>"].
+  ollama:
+    server: Ollama
+    show_path: /api/show
+    architecture_key: general.architecture
+    context_suffix: .context_length
+    # Ollama capability -> the table's capability label.
+    capabilities: {tools: Tools, thinking: Reason, vision: Vision}
+  # Any OpenAI-compatible server: GET <base><models_path>; each row's owner
+  # names the server, and vLLM states the context as max_model_len.
+  openai_models:
+    models_path: /v1/models
+    context_field: max_model_len
+    # owned_by -> the server's name, shown beside the provider.
+    owners: {vllm: vLLM, llamacpp: llama.cpp}
+  # Anthropic Messages: POST <base><path> with an empty JSON body. A server that
+  # has the route refuses the body as invalid; one without it answers one of
+  # absent_statuses. Nothing is generated. A server that has the route can serve
+  # Claude Code through the ONEX gateway.
+  anthropic_messages:
+    path: /v1/messages
+    absent_statuses: [404, 405]

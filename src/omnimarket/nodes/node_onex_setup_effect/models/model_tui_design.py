@@ -104,6 +104,88 @@ class ModelTuiGlyphs(BaseModel):
     failed: str = Field(min_length=1)
 
 
+class ModelTuiTableColumn(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: Literal[
+        "pick", "provider", "model", "context", "price", "capabilities", "status"
+    ]
+    title: str
+
+
+class ModelTuiWord(BaseModel):
+    """A word shown in the table and the theme colour token it is drawn in."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text: str = Field(min_length=1)
+    colour: str = Field(min_length=1)
+
+
+class ModelTuiModelTable(BaseModel):
+    """The one model table /config, /model and /delegation all show (OMN-23413)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    columns: tuple[ModelTuiTableColumn, ...] = Field(min_length=1)
+    price_local: str
+    server_label: str
+    details: dict[str, str]
+    unknown_mark: str = Field(min_length=1)
+    price_unknown: str
+    price_variable: str
+    price_tier_mark: str
+    ticked: str = Field(min_length=1)
+    unticked: str = Field(min_length=1)
+    status: dict[str, ModelTuiWord]
+    deployment: dict[str, ModelTuiWord]
+    capability_colours: tuple[str, ...] = Field(min_length=1)
+    filters: tuple[str, ...] = Field(min_length=1)
+    filter_labels: dict[str, str]
+    sorts: tuple[str, ...] = Field(min_length=1)
+    sort_labels: dict[str, str]
+    search_placeholder: str
+    auto_label: str
+    help: dict[str, str]
+
+
+class ModelTuiDelegationMode(BaseModel):
+    """One way to delegate Claude Code work, and the onex commands that switch it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(min_length=1)
+    label: str
+    detail: str
+    needs_gateway_model: bool
+    enable: tuple[tuple[str, ...], ...] = Field(min_length=1)
+    disable: tuple[tuple[str, ...], ...] = Field(min_length=1)
+
+
+class ModelTuiDelegation(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str
+    switch_label: str
+    table_title: str
+    modes: tuple[ModelTuiDelegationMode, ...] = Field(min_length=1)
+    switched_on: str
+    switched_off: str
+    not_switched: str
+    nothing_ticked: str
+    connect: tuple[str, ...] = Field(min_length=1)
+    no_models: str
+    no_gateway_model: str
+    gateway_marker: str
+
+
+class ModelTuiTabSpec(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: EnumTuiAction
+    label: str = Field(min_length=1)
+
+
 class ModelTuiDesign(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -115,6 +197,11 @@ class ModelTuiDesign(BaseModel):
     aliases: dict[str, str]
     #: CLI command paths a shortcut replaces: the TUI neither lists nor runs them.
     replaced_commands: tuple[tuple[str, ...], ...] = ()
+    model_table: ModelTuiModelTable
+    delegation: ModelTuiDelegation
+    tabs: tuple[ModelTuiTabSpec, ...] = Field(min_length=1)
+    #: The model screens' sentences, by name; ``{name}`` parts are filled in.
+    words: dict[str, str]
     glyphs: ModelTuiGlyphs
     prompt_placeholder: str
     help: str
@@ -147,6 +234,21 @@ class ModelTuiDesign(BaseModel):
                 raise ValueError(f"alias {alias!r} names no shortcut {target!r}")
             if (alias,) in self.replaced_commands:
                 raise ValueError(f"alias {alias!r} is a replaced command")
+        table = self.model_table
+        tokens = set(ModelTuiTheme.model_fields)
+        for name, shown in (*table.status.items(), *table.deployment.items()):
+            if shown.colour not in tokens:
+                raise ValueError(
+                    f"model_table word {name!r}: no colour {shown.colour!r}"
+                )
+        for colour in table.capability_colours:
+            if colour not in tokens:
+                raise ValueError(
+                    f"model_table capability colour {colour!r} is no token"
+                )
+        for wanted in ("ready", "listed", "untested", "failed", "unavailable"):
+            if wanted not in table.status:
+                raise ValueError(f"model_table status has no word for {wanted!r}")
         return self
 
     def replaces(self, path: tuple[str, ...]) -> bool:

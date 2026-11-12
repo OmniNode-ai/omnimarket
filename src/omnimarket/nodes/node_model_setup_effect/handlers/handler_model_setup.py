@@ -1064,6 +1064,13 @@ class HandlerModelSetup:
             models=models,
             tried_first=tried_first,
             first_model=choice[1] if tried_first and choice is not None else None,
+            endpoints={
+                str(e["model_name"]): str(e["endpoint_url"]).removesuffix(
+                    "/v1/chat/completions"
+                )
+                for e in local_entries
+                if e.get("endpoint_url")
+            },
         )
 
     # -- the test ----------------------------------------------------------
