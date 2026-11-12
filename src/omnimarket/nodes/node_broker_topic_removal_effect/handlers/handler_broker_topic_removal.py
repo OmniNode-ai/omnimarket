@@ -19,6 +19,10 @@ from typing import Literal
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.events.topic_never_produced import (
+    ModelNeverProducedRequest,
+    ModelTopicEvidence,
+)
 from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
     EnumRemovalMode,
     EnumTopicClass,
@@ -42,10 +46,6 @@ from omnimarket.nodes.node_broker_topic_removal_effect.protocols import (
 )
 from omnimarket.nodes.node_topic_never_produced_compute.handlers.handler_topic_never_produced import (
     HandlerTopicNeverProduced,
-)
-from omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced import (
-    ModelNeverProducedRequest,
-    ModelTopicEvidence,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
