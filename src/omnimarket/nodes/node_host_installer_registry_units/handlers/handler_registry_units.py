@@ -12,6 +12,7 @@ renders a user service and timer for a Linux pool host instead of a plist (OMN-2
 
 from __future__ import annotations
 
+import difflib
 import fcntl
 import hashlib
 import json
@@ -1072,7 +1073,61 @@ class HandlerRegistryUnits:
             out += f"installed revision {recorded.get('revision')} of {recorded.get('project')}\n"
         except (OSError, ValueError):
             out += f"no install record at {record}\n"
+        text, differs = self.unit_text_lines(request, unit, record)
+        out += text
+        if differs:
+            failed = 1
         return self.result(request, failed, out=out)
+
+    def unit_text_lines(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any], record: Path
+    ) -> tuple[str, bool]:
+        """Compare the installed service and timer files with the text the installer renders now.
+
+        One line per file: IN SYNC, DIFFERS FROM RENDER (then every differing line) or NOT COMPARED with its reason.
+        The project the render names is the request's override, else the one the install record names (a unit
+        installed from a branch is judged against that branch), else the canonical clone.
+        """
+        label = str(unit["label"])
+        unit_dir = Path(request.home) / ".config/systemd/user"
+        project = self.project_for(request, unit)[0]
+        if not request.project_path:
+            try:
+                recorded = json.loads(record.read_text(encoding="utf-8")).get("project")
+            except (OSError, ValueError):
+                recorded = None
+            if recorded:
+                project = Path(str(recorded))
+        try:
+            uv = shutil.which("uv")
+            if uv is None:
+                raise ValueError("uv is not on PATH")
+            service, timer = self.render_systemd(
+                request, unit, project, uv, self.interpreter_for(unit)
+            )
+        except (OSError, ValueError) as exc:
+            return f"UNIT TEXT NOT COMPARED {label}: {exc}\n", False
+        out, differs = "", False
+        for suffix, rendered in ((".service", service), (".timer", timer)):
+            path = unit_dir / f"{label}{suffix}"
+            try:
+                installed = path.read_text(encoding="utf-8")
+            except OSError:
+                out += f"UNIT TEXT NOT COMPARED {path}: unreadable\n"
+                continue
+            if installed == rendered:
+                out += f"UNIT TEXT IN SYNC {path}\n"
+                continue
+            differs = True
+            out += f"UNIT DIFFERS FROM RENDER {path}\n"
+            for line in difflib.unified_diff(
+                installed.splitlines(), rendered.splitlines(), lineterm="", n=0
+            ):
+                if line.startswith(("---", "+++", "@@")):
+                    continue
+                kind = "installed" if line.startswith("-") else "rendered"
+                out += f"  {kind}: {line[1:]}\n"
+        return out, differs
 
     def head_of(self, project: Path) -> str:
         head = self.run(["git", "-C", str(project), "rev-parse", "HEAD"])
