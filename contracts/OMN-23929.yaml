@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23929
+title: The tenant read bus handlers build their analytics reader from a secret resolver
+summary: >-
+  HandlerTenantSavingsReadBus and HandlerTenantDelegationsReadBus are built by the runtime with no constructor arguments, so each held no projection reader and answered not_configured at the top of every read. Each now takes an optional secret_resolver and builds its Postgres projection reader from it, naming the logical secret its own contract declares in config.analytics_dsn_secret. When it is handed none it reads the lane's rendered resolver config (the path the runtime already carries in ONEX_SECRET_RESOLVER_CONFIG_PATH) and builds the resolver only when that config maps the secret. With neither, the handler still answers the typed not_configured failure. The kernel-side hand-off the node contracts describe was measured blocked in omnibase_infra (the kernel file is under the shrink-only file-shape ratchet and carries an unrelated handler-DI finding that fails any commit touching it), so the handler obtains the resolver itself; a later kernel hand-off is still accepted through the same argument.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23929-tenant-read-resolver
+  statement: Each tenant read bus handler builds its projection reader from a secret resolver, handed or read from the lane's rendered resolver config, and answers the typed not_configured failure when it has none.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the runtime builds the tenant savings bus handler and the tenant delegations bus handler with a secret resolver when the lane maps the analytics database secret -- falsifier: uv run --frozen pytest tests/nodes/test_tenant_read_bus_resolver_omn23929.py -q -k runtime_config_path fails at the merge base, where a handler built with no arguments answers not_configured'
+  - id: AC2
+    statement: 'AC2: each bus handler builds its projection reader from the resolver it is given, and answers a typed not_configured failure when it is given none -- falsifier: uv run --frozen pytest tests/nodes/test_tenant_read_bus_resolver_omn23929.py -q fails at the merge base'
+  - id: AC3
+    statement: 'AC3: integrated: with both changes running in the dev runtime, the R8 unit on h053 reads the totals before the run and last-run.json shows no totals_read_before failure -- falsifier: last-run.json still reads not_configured after the runtime image revision includes this change'
+evidence_requirements:
+- kind: tests
+  description: The resolver-reader tests, the existing bus read tests and the bus seam test.
+  command: uv run --frozen pytest tests/nodes/test_tenant_read_bus_resolver_omn23929.py tests/nodes/node_tenant_savings_read_effect/test_bus_read.py tests/nodes/node_tenant_delegations_read_effect/test_bus_read.py tests/nodes/test_tenant_read_bus_seam.py -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23929-resolver-reader-tests
+  description: 'A handler handed a resolver completes a read and asks it for omnidash.analytics.db_url; a handler handed none reads the rendered resolver config named by ONEX_SECRET_RESOLVER_CONFIG_PATH and completes only when that config maps the secret; an unset, unreadable or non-mapping config answers not_configured without raising. At the merge base the handlers take no secret_resolver and the control tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_tenant_read_bus_resolver_omn23929.py tests/nodes/node_tenant_savings_read_effect/test_bus_read.py tests/nodes/node_tenant_delegations_read_effect/test_bus_read.py tests/nodes/test_tenant_read_bus_seam.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23929-integration-proof
+  description: 'The resolver-reader tests run on a lab host at the pushed head (they fail at the merge base), and after the dev runtime rebuilds from this change the R8 unit on h053 has run and last-run.json holds no totals_read_before failure. Hosted CI cannot reach the lab or the runtime rebuild, so only the local Done gate runs these checks.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23929 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_tenant_read_bus_resolver_omn23929.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: bash -c 'ssh h053 "cat .local/state/omni/delegation-scenario-r8/last-run.json" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(1 if \"totals before\" in json.dumps(d) else 0)"'
+    cwd: .

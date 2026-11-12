@@ -10,6 +10,12 @@ ask for a tenant is the broker access rule on the command topic, never a field o
 
 from __future__ import annotations
 
+from omnimarket.handlers.tenant_projection_read.analytics_postgres import (
+    ProtocolLogicalSecretResolver,
+)
+from omnimarket.handlers.tenant_projection_read.resolver_reader import (
+    reader_for_node,
+)
 from omnimarket.handlers.tenant_projection_read.timestamps import (
     NOT_CONFIGURED_DETAIL,
     UNAVAILABLE_DETAIL,
@@ -45,9 +51,29 @@ class HandlerTenantDelegationsReadBus:
         self,
         *,
         reader: ProtocolTenantDelegationProjectionReader | None = None,
+        secret_resolver: ProtocolLogicalSecretResolver | None = None,
         clock: ProtocolClock | None = None,
     ) -> None:
-        self._reader = reader
+        """Build the bus handler.
+
+        Args:
+            reader: A bound projection reader. The runtime hands the handler
+                with no arguments, so with no ``reader`` the reader is built
+                from a secret resolver.
+            secret_resolver: The runtime hands it, or the handler reads the
+                lane's rendered resolver config; with none the handler answers
+                ``not_configured``.
+            clock: The clock the completed body's timestamps read; defaults
+                to the host clock.
+        """
+        self._reader = (
+            reader
+            if reader is not None
+            else reader_for_node(
+                "omnimarket.nodes.node_tenant_delegations_read_effect",
+                secret_resolver,
+            )
+        )
         self._clock: ProtocolClock = clock or SystemClock()
 
     async def handle(

@@ -2410,6 +2410,7 @@
   "tests/nodes/test_sibling_pin_train_floor.py": 0.038,
   "tests/nodes/test_skill_tree_node_contract_inputs.py": 0.08,
   "tests/nodes/test_sweep_corpus_git_enumeration.py": 0.27,
+  "tests/nodes/test_tenant_read_bus_resolver_omn23929.py": 1.87,
   "tests/nodes/test_tenant_read_bus_seam.py": 1.58,
   "tests/nodes/test_tenant_read_dispatch_key_seam.py": 2.38,
   "tests/nodes/test_work_contract_bindings.py": 0.17,

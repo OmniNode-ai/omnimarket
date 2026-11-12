@@ -101,7 +101,7 @@ dependencies:
     type: "service"
     class_name: "SecretResolver"
     module: "omnibase_infra.runtime.secret_resolver"
-    description: "Built by omnibase_infra's service_kernel from the lane's rendered resolver config when it maps the logical name in config.analytics_dsn_secret. Absent means every read answers 503 not configured."
+    description: "Handed to the bus handler's constructor, or built by the bus handler from the lane's rendered resolver config (ONEX_SECRET_RESOLVER_CONFIG_PATH) when it maps the logical name in config.analytics_dsn_secret. Absent means every read answers 503 not configured, and the bus handler answers not_configured."
     required: false
 capabilities:
   - name: "tenant_savings.read"
