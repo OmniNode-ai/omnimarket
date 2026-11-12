@@ -10,7 +10,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     resolve_byok_provider_backend,
 )
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
+from omnimarket.models.model_endpoint_models import (
     ModelEndpointModelsRequest,
 )
 

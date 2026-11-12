@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from omnimarket.handlers.routing.customer_key_terminus import house_credential_refs
 from omnimarket.inference import local_byok_credential_adapter as credentials
+from omnimarket.nodes.node_model_setup_effect import connection_storage as connections
 
 
 def test_only_registered_named_credential_is_excluded_from_house_set(
@@ -13,7 +14,7 @@ def test_only_registered_named_credential_is_excluded_from_house_set(
 ):
     db = tmp_path / "delegation.sqlite"
     monkeypatch.setattr(credentials, "default_evidence_db_path", lambda: db)
-    reference = credentials.register_named_connection(
+    reference = connections.register_named_connection(
         "customer",
         "openai_compatible",
         "https://customer.example",
@@ -35,7 +36,7 @@ def test_only_registered_named_credential_is_excluded_from_house_set(
     assert reference not in refs
     assert "llm.platform.api_key" in refs
     assert "cred_localinstall_openai_compatible_not_registered" in refs
-    credentials.remove_named_connection("customer", db_path=db)
+    connections.remove_named_connection("customer", db_path=db)
     assert reference in house_credential_refs(backends)
 
 
@@ -52,7 +53,7 @@ def test_named_byok_requires_matching_canonical_binding(tmp_path, monkeypatch):
 
     db = tmp_path / "delegation.sqlite"
     monkeypatch.setattr(credentials, "default_evidence_db_path", lambda: db)
-    reference = credentials.register_named_connection(
+    reference = connections.register_named_connection(
         "customer",
         "openai_compatible",
         "https://customer.example",
@@ -61,7 +62,7 @@ def test_named_byok_requires_matching_canonical_binding(tmp_path, monkeypatch):
         db_path=db,
     )
     connection = ModelEndpointConnection.model_validate(
-        credentials.read_named_connections(db_path=db)[0]
+        connections.read_named_connections(db_path=db)[0]
     )
     route = ModelResolvedDelegationBackend(
         backend_id=connection.backend_id("dynamic"),

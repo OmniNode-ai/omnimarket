@@ -18,6 +18,7 @@ from omnibase_core.cli.cli_user_config import read_user_config, user_config_path
 from pydantic import SecretStr
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers import setup_model_connections
 from omnimarket.handlers.delegation_first_choice import read_first_choice
 from omnimarket.handlers.handler_endpoint_connections import (
     HandlerModelConnections,
@@ -251,11 +252,8 @@ class HandlerSetupEnvironment:
                         )
                     )
                 continue
-            statuses = model_keys.list_providers(
-                provider=desired.registration_provider,
-                url=desired.url,
-                models=desired.models,
-                read_only=True,
+            statuses = setup_model_connections.provider_status(
+                desired.registration_provider, desired.url, desired.models
             )
             current = statuses[0] if statuses else None
             test = current.last_test if current else None
@@ -373,7 +371,9 @@ class HandlerSetupEnvironment:
                             "its URL and credential were preserved. Use a separate ONEX profile."
                         )
                 if desired.registration_provider == "local" and len(desired.models) > 1:
-                    tests = model_keys.add_local_endpoint(desired.url, desired.models)
+                    tests = setup_model_connections.add_local_endpoint(
+                        desired.url, desired.models
+                    )
                     if not tests or any(test.status != "passed" for test in tests):
                         raise ValueError(
                             "The selected endpoint models did not pass pinned delegation"

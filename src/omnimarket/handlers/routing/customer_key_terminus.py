@@ -74,7 +74,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.network_bindings import network_host
-from omnimarket.inference.local_byok_credential_adapter import read_named_connections
+from omnimarket.nodes.node_model_setup_effect.connection_storage import (
+    read_named_connections,
+)
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, HOUSE_TENANT_UUID
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 

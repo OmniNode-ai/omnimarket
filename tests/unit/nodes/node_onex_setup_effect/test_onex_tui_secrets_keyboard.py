@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from textual.pilot import Pilot
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     DelegationScreen,
@@ -45,18 +46,20 @@ def _pane_text(app: OnexTui) -> str:
     return "\n".join(str(line) for line in app.query_one("#output").lines)
 
 
-async def _type(pilot: object, text: str) -> None:
+async def _type[T](pilot: Pilot[T], text: str) -> None:
     names = {" ": "space", "/": "slash", "-": "minus"}
     for key in text:
-        await pilot.press(names.get(key, key))  # type: ignore[attr-defined]
+        await pilot.press(names.get(key, key))
 
 
-async def _focus(pilot: object, app: OnexTui, widget_id: str, limit: int = 20) -> None:
+async def _focus[T](
+    pilot: Pilot[T], app: OnexTui, widget_id: str, limit: int = 20
+) -> None:
     """Tab until ``widget_id`` has focus: proves it is reachable by keyboard."""
     for _ in range(limit):
         if app.focused is not None and app.focused.id == widget_id:
             return
-        await pilot.press("tab")  # type: ignore[attr-defined]
+        await pilot.press("tab")
     raise AssertionError(f"#{widget_id} is not reachable with Tab")
 
 

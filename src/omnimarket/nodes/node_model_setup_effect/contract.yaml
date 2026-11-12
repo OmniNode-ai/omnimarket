@@ -58,7 +58,7 @@ handler_routing:
         name: HandlerEndpointProbe
         module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_probe
       handler_module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_probe
-      event_model: omnimarket.nodes.node_model_setup_effect.models.model_endpoint_probe.ModelEndpointProbeRequest
+      event_model: omnimarket.models.model_endpoint_probe.ModelEndpointProbeRequest
     - operation: model_setup.connections
       handler:
         name: HandlerEndpointConnections
@@ -70,7 +70,7 @@ handler_routing:
         name: HandlerEndpointModels
         module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models
       handler_module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models
-      event_model: omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models.ModelEndpointModelsRequest
+      event_model: omnimarket.models.model_endpoint_models.ModelEndpointModelsRequest
 
 descriptor:
   node_archetype: effect

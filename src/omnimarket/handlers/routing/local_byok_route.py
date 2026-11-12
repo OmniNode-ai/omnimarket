@@ -73,7 +73,6 @@ from omnimarket.handlers.routing.routing_tiers_path import (
 )
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
-    read_named_connections,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
@@ -83,6 +82,9 @@ from omnimarket.inference.local_byok_credential_adapter import (
 from omnimarket.inference.provider_quota_state import (
     ModelProviderQuotaSnapshot,
     quota_block_for_backend,
+)
+from omnimarket.nodes.node_model_setup_effect.connection_storage import (
+    read_named_connections,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
     ModelEndpointConnection,

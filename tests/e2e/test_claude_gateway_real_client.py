@@ -98,7 +98,10 @@ async def test_real_claude_tool_cycle_uses_gateway_and_preserves_scope(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool: str
 ) -> None:
     claude = shutil.which("claude")
-    assert claude, "This explicit proof requires an installed Claude Code binary"
+    if not claude:
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("This explicit proof requires an installed Claude Code binary")
+        pytest.skip("This explicit proof requires an installed Claude Code binary")
     onex = str(Path(sys.executable).parent / "onex")
     home, workspace, state = (
         tmp_path / "home",

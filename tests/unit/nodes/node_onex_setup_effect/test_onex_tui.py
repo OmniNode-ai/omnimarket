@@ -22,6 +22,7 @@ from pathlib import Path
 
 import click
 import pytest
+from textual.pilot import Pilot
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     ModelTuiStatus,
@@ -343,10 +344,10 @@ def test_a_folder_under_home_is_shown_with_a_tilde(
     assert display_path(Path("/opt/elsewhere")) == "/opt/elsewhere"
 
 
-async def _type(pilot: object, text: str) -> None:
+async def _type[T](pilot: Pilot[T], text: str) -> None:
     names = {" ": "space", "/": "slash", ":": "colon", ".": "full_stop", "-": "minus"}
     for key in text:
-        await pilot.press(names.get(key, key))  # type: ignore[attr-defined]
+        await pilot.press(names.get(key, key))
 
 
 async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
@@ -364,17 +365,19 @@ async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
         assert any(text.startswith("/models connections") for text in shown)
 
 
-async def _press(pilot: object, app: OnexTui, button_id: str) -> None:
+async def _press[T](pilot: Pilot[T], app: OnexTui, button_id: str) -> None:
     app.screen.query_one(f"#{button_id}").press()
-    await pilot.pause()  # type: ignore[attr-defined]
+    await pilot.pause()
 
 
-async def _open_config(pilot: object, app: OnexTui, command: str = "/config") -> None:
+async def _open_config[T](
+    pilot: Pilot[T], app: OnexTui, command: str = "/config"
+) -> None:
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
     await _type(pilot, command)
-    await pilot.press("enter")  # type: ignore[attr-defined]
-    await pilot.pause()  # type: ignore[attr-defined]
+    await pilot.press("enter")
+    await pilot.pause()
     assert isinstance(app.screen, SetupScreen)
 
 

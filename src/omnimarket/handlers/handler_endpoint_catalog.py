@@ -4,12 +4,12 @@
 
 from pydantic import SecretStr
 
-from omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models import (
-    HandlerEndpointModels,
-)
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
+from omnimarket.models.model_endpoint_models import (
     ModelEndpointModelsRequest,
     ModelEndpointModelsResult,
+)
+from omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models import (
+    HandlerEndpointModels,
 )
 
 

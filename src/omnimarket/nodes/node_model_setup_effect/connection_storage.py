@@ -9,10 +9,31 @@ capability composes its primitives without duplicating credential storage.
 from __future__ import annotations
 
 import re
+import sqlite3
 from collections.abc import Sequence
 from pathlib import Path
 
 from omnimarket.inference import local_byok_credential_adapter as storage
+from omnimarket.nodes.node_model_setup_effect.credential_read_adapter import (
+    read_credentials,
+)
+
+
+def _ensure_named_connection_columns(conn: sqlite3.Connection) -> None:
+    """Add the named-connection columns and index the first time one is written."""
+    table = storage.LOCAL_CREDENTIAL_TABLE
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for column in ("connection_id", "base_url"):
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+    if "native_messages" not in columns:
+        conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN native_messages INTEGER NOT NULL DEFAULT 0"
+        )
+    conn.execute(
+        f"CREATE UNIQUE INDEX IF NOT EXISTS local_connection_id ON {table}(connection_id) "
+        "WHERE connection_id IS NOT NULL"
+    )
 
 
 def read_named_connections(
@@ -22,7 +43,7 @@ def read_named_connections(
     path = db_path if db_path is not None else storage.default_evidence_db_path()
     if not path.is_file():
         return ()
-    conn = storage.read_local_credentials(path)
+    conn = read_credentials(path)
     try:
         columns = {
             row["name"]
@@ -80,7 +101,7 @@ def register_named_connection(
     if not chosen:
         raise ValueError("Choose at least one model")
     # Keep URL validation at the public connection boundary, before any DB write.
-    from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
+    from omnimarket.models.model_endpoint_models import (
         ModelEndpointModelsRequest,
     )
 
@@ -117,7 +138,7 @@ def register_named_connection(
         and existing["models"] == chosen
         and existing["native_messages"] == native
     ):
-        reader = storage.read_local_credentials(path)
+        reader = read_credentials(path)
         try:
             prior = reader.execute(
                 f"SELECT secret_ref, secret_value FROM {storage.LOCAL_CREDENTIAL_TABLE} WHERE connection_id = ?",
@@ -131,6 +152,8 @@ def register_named_connection(
             reader.close()
     conn = storage.open_local_credentials(path)
     try:
+        _ensure_named_connection_columns(conn)
+        conn.commit()
         conn.execute("BEGIN IMMEDIATE")
         prior = conn.execute(
             f"SELECT secret_ref, secret_value, base_url, provider FROM {storage.LOCAL_CREDENTIAL_TABLE} WHERE connection_id = ?",

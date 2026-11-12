@@ -14,12 +14,12 @@ import pytest
 from click.testing import CliRunner
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.models.model_endpoint_models import (
+    ModelEndpointModelsRequest,
+)
 from omnimarket.nodes.node_model_setup_effect.cli_catalog import discover_command
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models import (
     HandlerEndpointModels,
-)
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
-    ModelEndpointModelsRequest,
 )
 
 pytestmark = pytest.mark.unit

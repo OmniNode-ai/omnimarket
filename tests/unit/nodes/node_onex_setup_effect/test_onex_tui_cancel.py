@@ -17,6 +17,7 @@ import asyncio
 from collections.abc import Callable
 
 import pytest
+from textual.pilot import Pilot
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus, OnexTui
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import _root
@@ -66,10 +67,10 @@ def _log(app: OnexTui) -> str:
     return "\n".join(str(line) for line in app.query_one("#output").lines)
 
 
-async def _ask(pilot: object, text: str) -> None:
+async def _ask[T](pilot: Pilot[T], text: str) -> None:
     for key in text:
-        await pilot.press("space" if key == " " else key)  # type: ignore[attr-defined]
-    await pilot.press("enter")  # type: ignore[attr-defined]
+        await pilot.press("space" if key == " " else key)
+    await pilot.press("enter")
 
 
 @pytest.mark.parametrize("key", ["escape", "ctrl+c"])

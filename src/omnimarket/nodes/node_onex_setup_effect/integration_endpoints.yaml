@@ -1,0 +1,7 @@
+# OMN-23413: third-party addresses `onex setup` contacts, read by
+# handlers/setup_contract_values.py. This is the node's integration catalog for
+# the URL authority gate: no address is a literal in source. LLM endpoints are not
+# listed here; they come from the routing overlay.
+
+# Claude Code's own vendor installer, run only when the user selects Claude.
+claude_code_installer_url: "https://claude.ai/install.sh"

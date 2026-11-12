@@ -33,10 +33,12 @@ from omnimarket.handlers.routing.local_byok_route import (
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     local_model_tests_path,
-    read_named_connections,
     registered_local_byok_providers,
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
+)
+from omnimarket.nodes.node_model_setup_effect.connection_storage import (
+    read_named_connections,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
     ModelEndpointConnection,

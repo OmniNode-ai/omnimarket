@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
+from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command import (
@@ -36,7 +37,7 @@ class HandlerSetupCompletion:
     def __init__(
         self,
         *,
-        onex_home: Path,
+        onex_home: Path | None = None,
         executable: Path | None = None,
         timeout_seconds: float = 10,
         name: str = "completion-audio",
@@ -46,8 +47,8 @@ class HandlerSetupCompletion:
             raise ValueError("Completion component identity must be a safe file name")
         self.name = name
         self._kind = kind
-        self._home = onex_home
-        self._marker = onex_home / f"{name}.json"
+        self._home = onex_home or user_config_path().parent
+        self._marker = self._home / f"{name}.json"
         self._tool = "say" if kind == "audio" else "osascript"
         selected = shutil.which(self._tool)
         self._executable = executable or (Path(selected) if selected else None)

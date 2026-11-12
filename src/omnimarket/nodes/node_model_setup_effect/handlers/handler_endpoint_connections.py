@@ -14,12 +14,17 @@ from pydantic import SecretStr
 from omnimarket.handlers.delegation_first_choice import first_choice_path
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
-    read_named_connections,
-    register_named_connection,
-    remove_named_connection,
 )
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
+)
+from omnimarket.models.model_endpoint_models import (
+    ModelEndpointModelsRequest,
+)
+from omnimarket.nodes.node_model_setup_effect.connection_storage import (
+    read_named_connections,
+    register_named_connection,
+    remove_named_connection,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models import (
     HandlerEndpointModels,
@@ -31,9 +36,6 @@ from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection i
     ModelEndpointConnection,
     ModelEndpointConnectionRequest,
     ModelEndpointConnectionResult,
-)
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
-    ModelEndpointModelsRequest,
 )
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 

@@ -701,9 +701,9 @@ def _write_model_list(provider: str, models: tuple[str, ...]) -> tuple[str, ...]
     return written.models
 
 
-def model_handler(*, read_only: bool = False) -> HandlerModelSetup:
+def model_handler() -> HandlerModelSetup:
     """The setup effect with the model-list write it is handed (it imports no other node)."""
-    return HandlerModelSetup(write_model_list=_write_model_list, read_only=read_only)
+    return HandlerModelSetup(write_model_list=_write_model_list)
 
 
 def add_key(
@@ -761,43 +761,9 @@ def add_key(
     return result
 
 
-def list_providers(
-    *,
-    provider: ModelProvider | None = None,
-    url: str | None = None,
-    models: tuple[str, ...] = (),
-    read_only: bool = False,
-) -> tuple[ModelModelStatus, ...]:
+def list_providers() -> tuple[ModelModelStatus, ...]:
     """Each provider: set up or not, its models and its last test result."""
-    return (
-        model_handler(read_only=read_only)
-        .handle(
-            ModelModelSetupRequest(
-                operation="status",
-                provider=provider,
-                url=url,
-                models=models,
-            )
-        )
-        .providers
-    )
-
-
-def add_local_endpoint(
-    url: str | None, models: tuple[str, ...]
-) -> tuple[ModelModelTestResult, ...]:
-    """Register and prove each model using the canonical local endpoint owner."""
-    return (
-        model_handler()
-        .handle(
-            ModelModelSetupRequest(
-                operation="add_local",
-                url=url,
-                models=models,
-            )
-        )
-        .tests
-    )
+    return model_handler().handle(ModelModelSetupRequest(operation="status")).providers
 
 
 def _usable(status: ModelModelStatus) -> bool:

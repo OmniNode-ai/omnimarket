@@ -8,11 +8,11 @@ from getpass import getpass
 import click
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.models.model_endpoint_models import (
+    ModelEndpointModelsRequest,
+)
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models import (
     HandlerEndpointModels,
-)
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
-    ModelEndpointModelsRequest,
 )
 
 

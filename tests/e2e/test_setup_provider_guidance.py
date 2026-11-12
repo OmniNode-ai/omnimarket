@@ -17,10 +17,10 @@ from click.testing import CliRunner
 from pydantic import SecretStr
 
 from omnimarket.handlers.routing import byok_provider_backends as registry
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
+from omnimarket.models.model_endpoint_models import (
     ModelEndpointModelsResult,
 )
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_probe import (
+from omnimarket.models.model_endpoint_probe import (
     ModelEndpointProbeRequest,
     ModelEndpointProbeResult,
 )

@@ -10,9 +10,7 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
-    ModelProvider,
-)
+from omnimarket.models.model_provider_name import ModelProvider
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     setup_provider_traits,
 )

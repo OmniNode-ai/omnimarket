@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 
 from omnimarket.inference import local_byok_credential_adapter as store
+from omnimarket.nodes.node_model_setup_effect import connection_storage as connections
+from omnimarket.nodes.node_model_setup_effect import credential_read_adapter as reads
 
 
 def test_connections_keep_keys_models_and_legacy_registration_separate(
@@ -23,7 +25,7 @@ def test_connections_keep_keys_models_and_legacy_registration_separate(
     legacy = store.register_local_byok_credential(
         "openai_compatible", "legacy-key", models=("legacy",), db_path=db
     )
-    first = store.register_named_connection(
+    first = connections.register_named_connection(
         "one",
         "openai_compatible",
         "https://one.example",
@@ -31,7 +33,7 @@ def test_connections_keep_keys_models_and_legacy_registration_separate(
         "first-key",
         db_path=db,
     )
-    second = store.register_named_connection(
+    second = connections.register_named_connection(
         "two",
         "openai_compatible",
         "https://two.example",
@@ -43,17 +45,13 @@ def test_connections_keep_keys_models_and_legacy_registration_separate(
         store.resolve_local_byok_credential_ref("openai_compatible", db_path=db)
         == legacy
     )
-    assert store.resolve_local_byok_credential_models(
-        "openai_compatible", db_path=db, read_only=True
-    ) == ("legacy",)
-    assert store.registered_local_byok_providers(db_path=db, read_only=True) == (
-        "openai_compatible",
-    )
+    assert reads.credential_models("openai_compatible", db_path=db) == ("legacy",)
+    assert reads.registered_providers(db_path=db) == ("openai_compatible",)
     assert first != second != legacy
     reader = store.LocalByokCredentialStore(db_path=db)
     assert asyncio.run(reader.get_secret(first)) == "first-key"
     assert asyncio.run(reader.get_secret(second)) == "second-key"
-    assert [r["models"] for r in store.read_named_connections(db_path=db)] == [
+    assert [r["models"] for r in connections.read_named_connections(db_path=db)] == [
         ("new-model", "backup"),
         ("new-model",),
     ]
@@ -61,12 +59,12 @@ def test_connections_keep_keys_models_and_legacy_registration_separate(
     store.revoke_local_byok_credential("openai_compatible", db_path=db)
     assert asyncio.run(reader.get_secret(first)) == "first-key"
     assert asyncio.run(reader.get_secret(second)) == "second-key"
-    assert store.registered_local_byok_providers(db_path=db, read_only=True) == ()
+    assert reads.registered_providers(db_path=db) == ()
 
 
 def test_changed_server_cannot_reuse_old_key(tmp_path: Path) -> None:
     db = tmp_path / "credentials.sqlite"
-    first = store.register_named_connection(
+    first = connections.register_named_connection(
         "one",
         "openai_compatible",
         "https://one.example",
@@ -76,7 +74,7 @@ def test_changed_server_cannot_reuse_old_key(tmp_path: Path) -> None:
     )
     before = db.read_bytes()
     with pytest.raises(ValueError, match="credential"):
-        store.register_named_connection(
+        connections.register_named_connection(
             "one",
             "openai_compatible",
             "https://other.example",
@@ -85,18 +83,18 @@ def test_changed_server_cannot_reuse_old_key(tmp_path: Path) -> None:
             db_path=db,
         )
     assert db.read_bytes() == before
-    assert store.read_named_connections(db_path=db)[0]["secret_ref"] == first
+    assert connections.read_named_connections(db_path=db)[0]["secret_ref"] == first
 
 
 def test_keyless_connections_do_not_become_provider_credentials(tmp_path: Path) -> None:
     db = tmp_path / "credentials.sqlite"
-    store.register_named_connection(
+    connections.register_named_connection(
         "local-server", "local", "http://127.0.0.1:9999", ("custom",), None, db_path=db
     )
     assert store.registered_local_byok_providers(db_path=db) == ()
-    assert store.read_named_connections(db_path=db)[0]["secret_ref"] is None
-    assert store.remove_named_connection("local-server", db_path=db)
-    assert store.read_named_connections(db_path=db) == ()
+    assert connections.read_named_connections(db_path=db)[0]["secret_ref"] is None
+    assert connections.remove_named_connection("local-server", db_path=db)
+    assert connections.read_named_connections(db_path=db) == ()
 
 
 def test_old_database_listing_is_read_only(tmp_path: Path) -> None:
@@ -109,13 +107,9 @@ def test_old_database_listing_is_read_only(tmp_path: Path) -> None:
             "INSERT INTO local_inference_credentials VALUES ('ref','openai','key','now','old')"
         )
     before = (db.read_bytes(), db.stat().st_mtime_ns, db.stat().st_mode)
-    assert store.read_named_connections(db_path=db) == ()
-    assert store.registered_local_byok_providers(db_path=db, read_only=True) == (
-        "openai",
-    )
-    assert store.resolve_local_byok_credential_models(
-        "openai", db_path=db, read_only=True
-    ) == ("old",)
+    assert connections.read_named_connections(db_path=db) == ()
+    assert reads.registered_providers(db_path=db) == ("openai",)
+    assert reads.credential_models("openai", db_path=db) == ("old",)
     assert (db.read_bytes(), db.stat().st_mtime_ns, db.stat().st_mode) == before
 
 

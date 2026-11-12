@@ -12,14 +12,14 @@ import httpx
 
 from omnimarket.handlers.routing.byok_model_discovery import models_request_headers
 from omnimarket.inference.provider_response_error import provider_message_from_text
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
-    ModelTransportResponse,
-    post_chat_completion,
-)
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_probe import (
+from omnimarket.models.model_endpoint_probe import (
     ModelEndpointProbe,
     ModelEndpointProbeRequest,
     ModelEndpointProbeResult,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    ModelTransportResponse,
+    post_chat_completion,
 )
 
 

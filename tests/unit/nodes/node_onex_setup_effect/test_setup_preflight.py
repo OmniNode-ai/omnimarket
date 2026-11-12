@@ -161,11 +161,14 @@ def test_collector_reads_rosetta_and_vm_from_sysctl(
     from omnimarket.nodes.node_onex_setup_effect.handlers import (
         handler_setup_preflight as preflight,
     )
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_command_request import (
+        ModelSetupCommandRequest,
+    )
 
     asked: list[tuple[str, ...]] = []
 
-    def answer(_self: object, request: object) -> SimpleNamespace:
-        argv = request.argv  # type: ignore[attr-defined]
+    def answer(_self: object, request: ModelSetupCommandRequest) -> SimpleNamespace:
+        argv = request.argv
         asked.append(argv)
         code, out = answers[argv[-1]]
         return SimpleNamespace(returncode=code, stdout=out)

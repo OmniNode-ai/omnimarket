@@ -74,6 +74,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
 )
 from omnimarket.models.delegation.llm_cost_routing import ModelLlmModelRegistryLoader
+from omnimarket.nodes.node_model_setup_effect import credential_read_adapter
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
     ModelProvider,
@@ -856,7 +857,9 @@ class HandlerModelSetup:
             return self._ollama_routes_configured()
         if provider == LOCAL_URL_PROVIDER:
             return self._local_url_entry() is not None
-        return provider in registered_local_byok_providers(read_only=self._read_only)
+        if self._read_only:
+            return provider in credential_read_adapter.registered_providers()
+        return provider in registered_local_byok_providers()
 
     def _ollama_routes_configured(self) -> bool:
         try:
@@ -923,7 +926,7 @@ class HandlerModelSetup:
         db_path: Path | None = None,
     ) -> ModelModelTestResult:
         """Run the same pinned delegation and verify its actual route and receipt."""
-        from omnimarket.inference.local_byok_credential_adapter import (
+        from omnimarket.nodes.node_model_setup_effect.connection_storage import (
             read_named_connections,
         )
         from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
@@ -1036,13 +1039,12 @@ class HandlerModelSetup:
         if provider == LOCAL_URL_PROVIDER:
             models = tuple(str(e["model_name"]) for e in local_entries)
         else:
-            models = (
-                resolve_local_byok_credential_models(
-                    provider, read_only=self._read_only
-                )
-                if set_up
-                else ()
+            read_models = (
+                credential_read_adapter.credential_models
+                if self._read_only
+                else resolve_local_byok_credential_models
             )
+            models = read_models(provider) if set_up else ()
         # OMN-21346: the choice counts only while it still routes: its model is
         # still in the list, and a key's last test did not fail.
         choice = read_first_choice()

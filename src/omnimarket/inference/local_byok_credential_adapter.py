@@ -65,18 +65,7 @@ from pathlib import Path
 from typing import Final
 
 from omnimarket.handlers.routing import byok_provider_backends
-from omnimarket.nodes.node_model_setup_effect.connection_storage import (
-    read_named_connections as read_named_connections,
-)
-from omnimarket.nodes.node_model_setup_effect.connection_storage import (
-    register_named_connection as register_named_connection,
-)
-from omnimarket.nodes.node_model_setup_effect.connection_storage import (
-    remove_named_connection as remove_named_connection,
-)
-from omnimarket.projection.sqlite_database import (
-    default_evidence_db_path as default_evidence_db_path,
-)
+from omnimarket.projection.sqlite_database import default_evidence_db_path
 
 #: The local install's tenant identity. A machine running ``onex delegate`` with
 #: no gateway has exactly one principal, so the id is a constant rather than a
@@ -273,7 +262,7 @@ def register_local_byok_credential(
     conn = open_local_credentials(resolved_path)
     try:
         conn.execute(
-            f"DELETE FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND connection_id IS NULL",
+            f"DELETE FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND {_legacy_scope(conn)}",
             (normalized,),
         )
         conn.execute(
@@ -345,7 +334,7 @@ def revoke_local_byok_credential(provider: str, *, db_path: Path | None = None) 
     conn = open_local_credentials(resolved_path)
     try:
         cursor = conn.execute(
-            f"DELETE FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND connection_id IS NULL",
+            f"DELETE FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND {_legacy_scope(conn)}",
             (normalized,),
         )
         conn.commit()
@@ -376,7 +365,7 @@ def resolve_local_byok_credential_ref(
     conn = open_local_credentials(resolved_path)
     try:
         row = conn.execute(
-            f"SELECT secret_ref FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND connection_id IS NULL "
+            f"SELECT secret_ref FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND {_legacy_scope(conn)} "
             "ORDER BY registered_at DESC LIMIT 1",
             (normalized,),
         ).fetchone()
@@ -402,7 +391,7 @@ def resolve_local_byok_credential_plan(
     conn = open_local_credentials(resolved_path)
     try:
         row = conn.execute(
-            f"SELECT plan FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND connection_id IS NULL "
+            f"SELECT plan FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? AND {_legacy_scope(conn)} "
             "ORDER BY registered_at DESC LIMIT 1",
             (normalized,),
         ).fetchone()
@@ -412,7 +401,7 @@ def resolve_local_byok_credential_plan(
 
 
 def resolve_local_byok_credential_models(
-    provider: str, *, db_path: Path | None = None, read_only: bool = False
+    provider: str, *, db_path: Path | None = None
 ) -> tuple[str, ...]:
     """Return the ordered models stored with the credential for ``provider``.
 
@@ -428,24 +417,8 @@ def resolve_local_byok_credential_models(
     resolved_path = db_path if db_path is not None else default_evidence_db_path()
     if not resolved_path.is_file():
         return ()
-    conn = (
-        read_local_credentials(resolved_path)
-        if read_only
-        else open_local_credentials(resolved_path)
-    )
+    conn = open_local_credentials(resolved_path)
     try:
-        if (
-            read_only
-            and not conn.execute(
-                f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})"
-            ).fetchall()
-        ):
-            return ()
-        if read_only and "model" not in {
-            row["name"]
-            for row in conn.execute(f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})")
-        }:
-            return ()
         row = conn.execute(
             f"SELECT secret_ref, model FROM {LOCAL_CREDENTIAL_TABLE} "
             f"WHERE provider = ? AND {_legacy_scope(conn)} ORDER BY registered_at DESC LIMIT 1",
@@ -453,18 +426,11 @@ def resolve_local_byok_credential_models(
         ).fetchone()
         if row is None:
             return ()
-        listed = []
-        if (
-            not read_only
-            or conn.execute(
-                f"PRAGMA table_info({LOCAL_CREDENTIAL_MODEL_TABLE})"
-            ).fetchall()
-        ):
-            listed = conn.execute(
-                f"SELECT model FROM {LOCAL_CREDENTIAL_MODEL_TABLE} "
-                "WHERE secret_ref = ? ORDER BY position",
-                (row["secret_ref"],),
-            ).fetchall()
+        listed = conn.execute(
+            f"SELECT model FROM {LOCAL_CREDENTIAL_MODEL_TABLE} "
+            "WHERE secret_ref = ? ORDER BY position",
+            (row["secret_ref"],),
+        ).fetchall()
     finally:
         conn.close()
     if listed:
@@ -550,10 +516,7 @@ def record_local_byok_model(
 
 
 def registered_local_byok_providers(
-    *,
-    db_path: Path | None = None,
-    registration_order: bool = False,
-    read_only: bool = False,
+    *, db_path: Path | None = None, registration_order: bool = False
 ) -> tuple[str, ...]:
     """Return registered providers, sorted or in registration order.
 
@@ -563,19 +526,8 @@ def registered_local_byok_providers(
     resolved_path = db_path if db_path is not None else default_evidence_db_path()
     if not resolved_path.is_file():
         return ()
-    conn = (
-        read_local_credentials(resolved_path)
-        if read_only
-        else open_local_credentials(resolved_path)
-    )
+    conn = open_local_credentials(resolved_path)
     try:
-        if (
-            read_only
-            and not conn.execute(
-                f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})"
-            ).fetchall()
-        ):
-            return ()
         rows = conn.execute(
             f"SELECT provider FROM {LOCAL_CREDENTIAL_TABLE} WHERE {_legacy_scope(conn)} ORDER BY registered_at, rowid"
         ).fetchall()
@@ -645,24 +597,10 @@ class LocalByokCredentialStore:
         # fact worth refusing on, and re-tightening it first would make every
         # read look clean.
         mode_at_open = stat.S_IMODE(self._db_path.stat().st_mode)
-        conn = read_local_credentials(self._db_path)
-        try:
-            columns = {
-                row["name"]
-                for row in conn.execute(f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})")
-            }
-            if not {"secret_ref", "secret_value"} <= columns:
-                return None
-            row = conn.execute(
-                f"SELECT secret_value FROM {LOCAL_CREDENTIAL_TABLE} "
-                "WHERE secret_ref = ?",
-                (key,),
-            ).fetchone()
-        finally:
-            conn.close()
-        if row is None:
-            return None
-        value = str(row["secret_value"])
+        # OMN-23413: a read never creates, migrates or chmods the file.
+        from omnimarket.nodes.node_model_setup_effect import credential_read_adapter
+
+        value = credential_read_adapter.secret_value(self._db_path, key)
         if not value:
             return None
         # OMN-18695: refuse to hand back a credential out of a file others can
@@ -782,6 +720,7 @@ __all__: list[str] = [
     "MODEL_CHOSEN_BY_CUSTOMER",
     "LocalByokCredentialError",
     "LocalByokCredentialStore",
+    "default_evidence_db_path",
     "local_byok_key_test_failed",
     "local_credential_registered_at",
     "local_model_tests_path",
@@ -797,14 +736,6 @@ __all__: list[str] = [
     "revoke_local_byok_credential",
     "set_local_byok_credential_models",
 ]
-
-_normalize_models = normalize_credential_models
-
-_write_models = write_credential_models
-
-_LOCAL_CREDENTIAL_DDL = LOCAL_CREDENTIAL_DDL
-
-_LOCAL_CREDENTIAL_MODEL_DDL = LOCAL_CREDENTIAL_MODEL_DDL
 
 
 # OMN-23413: the secret-store I/O boundary stays in this adapter (imperative-contract guard).
@@ -826,7 +757,7 @@ def open_local_credentials(db_path: Path) -> sqlite3.Connection:
     # already -- tightening an existing file is the point, not a side effect.
     db_path.touch(mode=0o600, exist_ok=True)
     db_path.chmod(0o600)
-    conn = _sqlite_connect(str(db_path))
+    conn = sqlite3.connect(str(db_path))  # no-contract-check: secret-store boundary
     # OMN-17427: close on setup failure so its traceback cannot retain a write lock.
     try:
         conn.row_factory = sqlite3.Row
@@ -855,18 +786,6 @@ def open_local_credentials(db_path: Path) -> sqlite3.Connection:
             conn.execute(
                 f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model_chosen_by TEXT"
             )
-        for column in ("connection_id", "base_url"):
-            if column not in columns:
-                conn.execute(
-                    f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN {column} TEXT"
-                )
-        if "native_messages" not in columns:
-            conn.execute(
-                f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN native_messages INTEGER NOT NULL DEFAULT 0"
-            )
-        conn.execute(
-            f"CREATE UNIQUE INDEX IF NOT EXISTS local_connection_id ON {LOCAL_CREDENTIAL_TABLE}(connection_id) WHERE connection_id IS NOT NULL"
-        )
         # OMN-21059: a credential stored with the single ``model`` column becomes a
         # list of one at position 0, keeping its recorded chooser. Idempotent: a
         # credential that already has list rows is left as it is.
@@ -881,16 +800,4 @@ def open_local_credentials(db_path: Path) -> sqlite3.Connection:
     except BaseException:
         conn.close()
         raise
-    return conn
-
-
-def _sqlite_connect(target: str, *, uri: bool = False) -> sqlite3.Connection:
-    # The one direct connection of this secret-store adapter, read-write or read-only.
-    return sqlite3.connect(target, uri=uri)  # no-contract-check: secret-store boundary
-
-
-def read_local_credentials(db_path: Path) -> sqlite3.Connection:
-    """Read existing credential metadata without creating, migrating or chmodding it."""
-    conn = _sqlite_connect(db_path.absolute().as_uri() + "?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
     return conn

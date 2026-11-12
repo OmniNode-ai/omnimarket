@@ -7,7 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
-from .model_endpoint_models import ModelEndpointModelsRequest
+from omnimarket.models.model_endpoint_models import ModelEndpointModelsRequest
+
 from .model_model_setup_result import ModelModelTestResult
 
 

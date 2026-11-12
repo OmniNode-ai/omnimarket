@@ -11,11 +11,11 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import 
 
 
 def test_token_parameter_retry_and_provider_reason_redaction() -> None:
+    from omnimarket.models.model_endpoint_probe import (
+        ModelEndpointProbeRequest,
+    )
     from omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_probe import (
         HandlerEndpointProbe,
-    )
-    from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_probe import (
-        ModelEndpointProbeRequest,
     )
 
     calls = []
@@ -62,11 +62,11 @@ def test_token_parameter_retry_and_provider_reason_redaction() -> None:
 
 
 def test_expired_batch_budget_does_not_launch_remaining_models() -> None:
+    from omnimarket.models.model_endpoint_probe import (
+        ModelEndpointProbeRequest,
+    )
     from omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_probe import (
         HandlerEndpointProbe,
-    )
-    from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_probe import (
-        ModelEndpointProbeRequest,
     )
 
     now = [0.0]

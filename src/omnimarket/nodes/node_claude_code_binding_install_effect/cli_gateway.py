@@ -80,14 +80,13 @@ def _consent(yes: bool, json_output: bool, prompt: str) -> None:
         raise click.Abort()
 
 
-@click.group("claude")
-def claude_group() -> None:  # stub-ok: Click group
-    """Route Claude Code model requests through an ONEX gateway."""
-
-
-@claude_group.group("hooks")
-def gateway_hooks_group() -> None:  # stub-ok: Click group
-    """Install or inspect the optional gateway guards for Claude Code."""
+claude_group = click.Group(
+    "claude", help="Route Claude Code model requests through an ONEX gateway."
+)
+gateway_hooks_group = click.Group(
+    "hooks", help="Install or inspect the optional gateway guards for Claude Code."
+)
+claude_group.add_command(gateway_hooks_group)
 
 
 def _hooks_action(action: str, *, yes: bool, json_output: bool) -> None:
