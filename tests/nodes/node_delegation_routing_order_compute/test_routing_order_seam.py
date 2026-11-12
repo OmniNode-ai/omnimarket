@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import tomllib
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -35,7 +36,7 @@ from omnibase_core.models.delegation.model_delegation_routing_order_request impo
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
-from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
 from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
@@ -93,8 +94,11 @@ class WiredBus:
 
 @pytest_asyncio.fixture
 async def wired() -> AsyncIterator[WiredBus]:
-    contracts = tuple(c for c in discover_contracts().contracts if c.name == NODE)
-    assert len(contracts) == 1, f"{NODE} is not discovered from the installed package"
+    contracts = tuple(
+        discover_contracts_from_paths([NODE_DIR / "contract.yaml"]).contracts
+    )
+    assert len(contracts) == 1, f"{NODE} contract did not load"
+    assert contracts[0].name == NODE, f"{NODE} contract did not load"
     bus = EventBusInmemory(environment="local", group="delegation-routing-order-wiring")
     await bus.start()
     harness = WiredBus(bus)
@@ -181,6 +185,13 @@ async def test_a_command_on_another_topic_gets_no_answer(wired: WiredBus) -> Non
 def test_topics_are_pinned_to_the_names_the_step_reads() -> None:
     assert COMMAND_TOPIC == "onex.cmd.omnimarket.delegation-routing-order-requested.v1"
     assert RESOLVED_TOPIC == "onex.evt.omnimarket.delegation-routing-order-read.v1"
+
+
+def test_the_node_is_declared_as_an_entry_point() -> None:
+    pyproject = Path(__file__).resolve().parents[3] / "pyproject.toml"
+    with pyproject.open("rb") as fh:
+        data = tomllib.load(fh)
+    assert NODE in data["project"]["entry-points"]["onex.nodes"]
 
 
 if os.environ.get(REDPANDA_FLAG) == "1":
