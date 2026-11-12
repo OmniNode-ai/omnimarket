@@ -19,8 +19,8 @@ description: >
   ledger query node. A reader named in the overlay's moved_readers never reads the file: the
   node's answer is ok when its watermark is within max_watermark_age_seconds, stale when older,
   and unreadable when the node does not answer. A reader not named there is told not-moved and
-  keeps its own read, which is that reader's rollback. Every read emits a golden (answered) or
-  error (refused) event.
+  keeps its own read, which is that reader's rollback. A rows read answers every row of a window
+  from the query node, page by page. Every read emits a golden (answered) or error (refused) event.
 
 handler:
   module: omnimarket.nodes.node_work_ledger_reader_effect.handlers.handler_work_ledger_reader

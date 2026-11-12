@@ -5,7 +5,7 @@
 Measured on the launching Mac 2026-11-10 (cProfile, three runs each): the factory floor step took 231 s against its 30 s limit,
 207 s of it five ledger reads in series (the window read and four unresolved reads). Seams pinned here, each failing when either side
 changes shape: the step's module and record path against the floor's contract, the step's freshness against the floor's age bound,
-and the floor step's limit and the longest declared path against the cycle bound, which stays 240 s.
+and the floor step's limit and the longest declared path against the cycle bound, which is 255 s since the floor step limit went 30 to 45 s.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def test_the_step_costs_the_cycle_nothing_past_its_group() -> None:
     assert STEP.timeout_seconds == max(s.timeout_seconds for s in group)
 
 
-def test_the_floor_step_has_the_measured_time_plus_headroom_under_the_unchanged_bound() -> (
+def test_the_floor_step_has_the_measured_time_plus_headroom_under_the_cycle_bound() -> (
     None
 ):
     """Break: a floor limit raised to pay for slow reads (it was 75 s under a 285 s bound) fails here, not on the served page."""
