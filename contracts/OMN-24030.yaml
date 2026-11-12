@@ -36,6 +36,7 @@ dod_evidence:
   - id: "dod-omn24030-deploy-probe"
     description: "Deploy probe: the guard contract GitHub serves at the checked-out commit carries the host drift reader group protection, which the merge base does not."
     source: "manual"
+    binds_ac: [AC3]
     checks:
       - check_type: "command"
         check_value: >-
@@ -52,7 +53,6 @@ dod_evidence:
   - id: "dod-omn24030-live-read"
     description: "On the lab host h053 the host drift check reads only new events: events_read in its last-run.json is under 500 two ticks after the guard host runs the merged contract."
     source: "manual"
-    binds_ac: [AC3]
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
