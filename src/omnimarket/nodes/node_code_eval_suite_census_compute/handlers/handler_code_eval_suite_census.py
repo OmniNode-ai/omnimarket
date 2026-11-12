@@ -33,7 +33,7 @@ from omnimarket.models.code_eval_suite.model_suite_task import (
     ModelCodeEvalSuiteTask,
 )
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
-from omnimarket.nodes.node_code_contract_score_effect.models import (
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
 )
