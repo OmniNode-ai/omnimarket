@@ -19,6 +19,9 @@ from omnimarket.models.model_contract_topics import (
     ModelContractTopicRequest,
     ModelContractTopicRule,
 )
+from omnimarket.nodes.node_contract_topic_reader_compute import (
+    NodeContractTopicReaderCompute,
+)
 from omnimarket.nodes.node_contract_topic_reader_compute.handlers.handler_contract_topic_reader import (
     HandlerContractTopicReader,
 )
@@ -261,3 +264,31 @@ def test_contract_topic_reader_determinism() -> None:
     report2 = _run_handler((doc_b, doc_a))
 
     assert report1 == report2
+
+
+def test_contract_topic_reader_the_contract_names_exactly_the_two_topics() -> None:
+    contract_path = NodeContractTopicReaderCompute.contract_path
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+
+    assert contract["event_bus"]["subscribe_topics"] == [
+        "onex.cmd.omnimarket.contract-topic-read-requested.v1"
+    ]
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.contract-topic-read-completed.v1"
+    ]
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.contract-topic-read-completed.v1"
+    )
+    assert contract["lifecycle"] == "experimental"
+
+
+def test_contract_topic_reader_the_node_entry_point_equals_the_handler() -> None:
+    request = ModelContractTopicRequest(
+        rule=RULE,
+        documents=(_make_doc("a", CONTRACT),),
+    )
+
+    assert NodeContractTopicReaderCompute().handle(
+        request
+    ) == HandlerContractTopicReader().handle(request)
