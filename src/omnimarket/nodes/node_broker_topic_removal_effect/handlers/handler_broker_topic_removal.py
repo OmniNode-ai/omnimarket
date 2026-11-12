@@ -19,7 +19,7 @@ from typing import Literal
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.topic_never_produced import (
+from omnimarket.models.topic_never_produced import (
     ModelNeverProducedRequest,
     ModelTopicEvidence,
 )

@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.events.topic_never_produced import (
+from omnimarket.models.topic_never_produced import (
     ModelNeverProducedRule,
     ModelTopicEvidence,
 )
