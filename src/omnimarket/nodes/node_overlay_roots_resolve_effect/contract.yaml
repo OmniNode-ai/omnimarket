@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeOverlayRootsResolveEffect
+#
+# The single resolver of the overlay root list (OMN-24032):
+#
+#   handle(ModelOverlayRootsRequest) -> ModelOverlayRootsResult
+#
+# It resolves the ordered overlay root list: (1) the overlay STORE root (the
+# snapshot directory each host keeps, named by the store-read overlay under the
+# first bootstrap root that holds it, or the home fallback), (2) the CANONICAL
+# overlays clone(s) (the overlays repository clone beside the registry root),
+# (3) the DECLARED roots (ONEX_SKILL_OVERLAY_ROOTS, in their given order). The
+# retired path <registry root>/overlays/overlays is never produced as a store
+# or canonical clone. It reads the filesystem through an injected probe, so it
+# is called in process and has no event_bus.
+name: "node_overlay_roots_resolve_effect"
+contract_name: "node_overlay_roots_resolve_effect"
+node_name: "node_overlay_roots_resolve_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Resolve the ordered overlay root list: the store root (named by the store-read
+  overlay under the first bootstrap root that holds it, or the home fallback),
+  the canonical overlays clone(s) beside the registry root, and the declared
+  roots in their given order. Reads the filesystem through an injected probe;
+  an absent root is named in the finding, never an exception.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: resolve_overlay_roots
+    handler:
+      name: HandlerOverlayRootsResolve
+      module: omnimarket.nodes.node_overlay_roots_resolve_effect.handlers.handler_overlay_roots_resolve
+    input_model: omnimarket.models.overlay_roots.model_overlay_roots.ModelOverlayRootsRequest
+    output_model: omnimarket.models.overlay_roots.model_overlay_roots.ModelOverlayRootsResult
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+metadata:
+  ticket: OMN-24032
+config:
+  overlay_file_name: overlay.yaml
+  store_read_overlay_id: node_overlay_store_read_effect
+  store_snapshot_key: snapshot_root
+  store_home_relpath: .local/state/onex/overlay-store
+  canonical_clone_relpaths: [overlays/overlays, overlay-store-reader/overlays/overlays]
