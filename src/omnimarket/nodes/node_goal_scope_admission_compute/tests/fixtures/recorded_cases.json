@@ -1,0 +1,2045 @@
+{
+ "cases": [
+  {
+   "candidates": {
+    "omnibase_infra#5685": {
+     "body": "",
+     "title": "fix(OMN-19998): recorded"
+    },
+    "omnibase_infra#5731": {
+     "body": "",
+     "title": "fix(OMN-22622): recorded"
+    },
+    "omnibase_infra#5732": {
+     "body": "",
+     "title": "fix(OMN-22607): recorded"
+    },
+    "omnibase_infra#5733": {
+     "body": "",
+     "title": "fix(OMN-22617): recorded"
+    },
+    "omnibase_infra#5734": {
+     "body": "",
+     "title": "fix(OMN-22635): recorded"
+    },
+    "omnibase_infra#5735": {
+     "body": "",
+     "title": "fix(OMN-22644): recorded"
+    },
+    "omnibase_infra#5736": {
+     "body": "",
+     "title": "fix(OMN-22638): recorded"
+    },
+    "internal-a#1449": {
+     "body": "",
+     "title": "fix(OMN-22611): recorded"
+    },
+    "internal-a#1451": {
+     "body": "",
+     "title": "fix(OMN-22624): recorded"
+    },
+    "internal-a#1455": {
+     "body": "",
+     "title": "fix(OMN-22639): recorded"
+    },
+    "omniclaude#3189": {
+     "body": "",
+     "title": "fix(OMN-22615): recorded"
+    },
+    "internal-b#1694": {
+     "body": "",
+     "title": "fix(OMN-22614): recorded"
+    },
+    "omnimarket#5060": {
+     "body": "",
+     "title": "fix(OMN-22526): recorded"
+    },
+    "omnimarket#5069": {
+     "body": "",
+     "title": "fix(OMN-22506): recorded"
+    },
+    "omnimarket#5074": {
+     "body": "",
+     "title": "fix(OMN-22527): recorded"
+    },
+    "omnimarket#5086": {
+     "body": "",
+     "title": "fix(OMN-22522): recorded"
+    },
+    "omnimarket#5111": {
+     "body": "",
+     "title": "fix(OMN-22512): recorded"
+    },
+    "omnimarket#5128": {
+     "body": "",
+     "title": "fix(OMN-22525): recorded"
+    },
+    "omnimarket#5150": {
+     "body": "",
+     "title": "fix(OMN-17427): recorded"
+    },
+    "omnimarket#5176": {
+     "body": "",
+     "title": "fix(OMN-22612): recorded"
+    },
+    "omnimarket#5179": {
+     "body": "",
+     "title": "fix(OMN-22613): recorded"
+    },
+    "omnimarket#5180": {
+     "body": "",
+     "title": "fix(OMN-22628): recorded"
+    },
+    "omnimarket#5183": {
+     "body": "",
+     "title": "fix(OMN-22641): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnibase_infra#5685": [
+      "ticket",
+      "OMN-19998<OMN-22478"
+     ],
+     "omnibase_infra#5731": [
+      "ticket",
+      "OMN-22622<OMN-22478"
+     ],
+     "omnibase_infra#5732": [
+      "ticket",
+      "OMN-22607<OMN-22478"
+     ],
+     "omnibase_infra#5733": [
+      "ticket",
+      "OMN-22617<OMN-22478"
+     ],
+     "omnibase_infra#5734": [
+      "ticket",
+      "OMN-22635<OMN-22478"
+     ],
+     "omnibase_infra#5735": [
+      "ticket",
+      "OMN-22644<OMN-22478"
+     ],
+     "omnibase_infra#5736": [
+      "ticket",
+      "OMN-22638<OMN-22478"
+     ],
+     "internal-a#1449": [
+      "ticket",
+      "OMN-22611<OMN-22478"
+     ],
+     "internal-a#1451": [
+      "ticket",
+      "OMN-22624<OMN-22478"
+     ],
+     "internal-a#1455": [
+      "ticket",
+      "OMN-22639<OMN-22478"
+     ],
+     "omniclaude#3189": [
+      "ticket",
+      "OMN-22615<OMN-22478"
+     ],
+     "internal-b#1694": [
+      "ticket",
+      "OMN-22614<OMN-22478"
+     ],
+     "omnimarket#5060": [
+      "ticket",
+      "OMN-22526<OMN-22478"
+     ],
+     "omnimarket#5069": [
+      "ticket",
+      "OMN-22506<OMN-22478"
+     ],
+     "omnimarket#5074": [
+      "ticket",
+      "OMN-22527<OMN-22478"
+     ],
+     "omnimarket#5086": [
+      "ticket",
+      "OMN-22522<OMN-22478"
+     ],
+     "omnimarket#5111": [
+      "ticket",
+      "OMN-22512<OMN-22478"
+     ],
+     "omnimarket#5128": [
+      "ticket",
+      "OMN-22525<OMN-22478"
+     ],
+     "omnimarket#5176": [
+      "ticket",
+      "OMN-22612<OMN-22478"
+     ],
+     "omnimarket#5179": [
+      "ticket",
+      "OMN-22613<OMN-22478"
+     ],
+     "omnimarket#5180": [
+      "ticket",
+      "OMN-22628<OMN-22478"
+     ],
+     "omnimarket#5183": [
+      "ticket",
+      "OMN-22641<OMN-22478"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19998": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22506": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22512": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22522": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22525": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22526": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22527": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22607": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22611": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22612": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22613": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22614": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22615": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22617": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22622": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22624": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22628": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22635": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22638": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22639": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22641": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22644": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22656": {
+     "parent": "OMN-22644",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "recorded_2026-11-06_on_their_tickets_alone",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::recorded_pull_requests_on_their_tickets_alone",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnibase_infra#5700": {
+     "body": "",
+     "title": "fix(OMN-1): recorded"
+    },
+    "omnimarket#9001": {
+     "body": "",
+     "title": "fix(OMN-22656): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnimarket#9001": [
+      "ticket",
+      "OMN-22656<OMN-22644<OMN-22478"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-1": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19998": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22506": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22512": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22522": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22525": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22526": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22527": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22607": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22611": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22612": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22613": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22614": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22615": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22617": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22622": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22624": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22628": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22635": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22638": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22639": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22641": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22644": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22656": {
+     "parent": "OMN-22644",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "grandchild_through_its_chain",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::a_grandchild_is_admitted_through_its_chain",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnibase_infra#5731": {
+     "body": "",
+     "title": "fix(OMN-22622): recorded"
+    },
+    "omnibase_infra#5732": {
+     "body": "",
+     "title": "fix(OMN-22607): recorded"
+    },
+    "omnibase_infra#5733": {
+     "body": "",
+     "title": "fix(OMN-22617): recorded"
+    },
+    "omnibase_infra#5734": {
+     "body": "",
+     "title": "fix(OMN-22635): recorded"
+    },
+    "omnibase_infra#5735": {
+     "body": "",
+     "title": "fix(OMN-22644): recorded"
+    },
+    "omnibase_infra#5736": {
+     "body": "",
+     "title": "fix(OMN-22638): recorded"
+    },
+    "internal-a#1449": {
+     "body": "",
+     "title": "fix(OMN-22611): recorded"
+    },
+    "internal-a#1451": {
+     "body": "",
+     "title": "fix(OMN-22624): recorded"
+    },
+    "internal-a#1455": {
+     "body": "",
+     "title": "fix(OMN-22639): recorded"
+    },
+    "omniclaude#3189": {
+     "body": "",
+     "title": "fix(OMN-22615): recorded"
+    },
+    "internal-b#1694": {
+     "body": "",
+     "title": "fix(OMN-22614): recorded"
+    },
+    "omnimarket#5176": {
+     "body": "",
+     "title": "fix(OMN-22612): recorded"
+    },
+    "omnimarket#5179": {
+     "body": "",
+     "title": "fix(OMN-22613): recorded"
+    },
+    "omnimarket#5180": {
+     "body": "",
+     "title": "fix(OMN-22628): recorded"
+    },
+    "omnimarket#5183": {
+     "body": "",
+     "title": "fix(OMN-22641): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {},
+    "unread": [
+     "omnibase_infra#5731",
+     "omnibase_infra#5732",
+     "omnibase_infra#5733",
+     "omnibase_infra#5734",
+     "omnibase_infra#5735",
+     "omnibase_infra#5736",
+     "internal-a#1449",
+     "internal-a#1451",
+     "internal-a#1455",
+     "omniclaude#3189",
+     "internal-b#1694",
+     "omnimarket#5176",
+     "omnimarket#5179",
+     "omnimarket#5180",
+     "omnimarket#5183"
+    ]
+   },
+   "facts": {},
+   "max_depth": 6,
+   "name": "unreadable_linear_holds_everything_unread",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::an_unreadable_linear_holds_what_the_lists_hold",
+   "unread_tickets": {
+    "OMN-22607": "Linear unreadable for OMN-22607: URLError",
+    "OMN-22611": "Linear unreadable for OMN-22611: URLError",
+    "OMN-22612": "Linear unreadable for OMN-22612: URLError",
+    "OMN-22613": "Linear unreadable for OMN-22613: URLError",
+    "OMN-22614": "Linear unreadable for OMN-22614: URLError",
+    "OMN-22615": "Linear unreadable for OMN-22615: URLError",
+    "OMN-22617": "Linear unreadable for OMN-22617: URLError",
+    "OMN-22622": "Linear unreadable for OMN-22622: URLError",
+    "OMN-22624": "Linear unreadable for OMN-22624: URLError",
+    "OMN-22628": "Linear unreadable for OMN-22628: URLError",
+    "OMN-22635": "Linear unreadable for OMN-22635: URLError",
+    "OMN-22638": "Linear unreadable for OMN-22638: URLError",
+    "OMN-22639": "Linear unreadable for OMN-22639: URLError",
+    "OMN-22641": "Linear unreadable for OMN-22641: URLError",
+    "OMN-22644": "Linear unreadable for OMN-22644: URLError"
+   }
+  },
+  {
+   "candidates": {
+    "omnibase_infra#5735": {
+     "body": "",
+     "title": "fix(OMN-22644): recorded"
+    },
+    "omnibase_infra#5736": {
+     "body": "",
+     "title": "fix(OMN-22638): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnibase_infra#5736": [
+      "ticket",
+      "OMN-22638<OMN-22478"
+     ]
+    },
+    "unread": [
+     "omnibase_infra#5735"
+    ]
+   },
+   "facts": {
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19998": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22506": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22512": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22522": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22525": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22526": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22527": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22607": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22611": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22612": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22613": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22614": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22615": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22617": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22622": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22624": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22628": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22635": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22638": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22639": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22641": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22644": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22656": {
+     "parent": "OMN-22644",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "one_broken_ticket_leaves_only_that_one_unread",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::a_read_that_fails_for_one_ticket",
+   "unread_tickets": {
+    "OMN-22644": "Linear returned no issue for OMN-22644"
+   }
+  },
+  {
+   "candidates": {
+    "r#1": {
+     "body": "",
+     "title": "fix(OMN-17427): recorded"
+    },
+    "r#2": {
+     "body": "",
+     "title": "fix(OMN-30): recorded"
+    },
+    "r#3": {
+     "body": "",
+     "title": "fix(OMN-40): recorded"
+    },
+    "r#4": {
+     "body": "",
+     "title": "fix(OMN-41): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "r#4": [
+      "ticket",
+      "OMN-41<OMN-42<OMN-22478"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19998": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22506": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22512": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22522": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22525": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22526": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22527": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22607": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22611": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22612": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22613": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22614": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22615": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22617": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22622": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22624": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22628": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22635": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22638": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22639": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22641": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22644": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22656": {
+     "parent": "OMN-22644",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-30": {
+     "parent": "OMN-31",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-31": {
+     "parent": "OMN-30",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-40": {
+     "parent": "OMN-41",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-41": {
+     "parent": "OMN-42",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-42": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 2,
+   "name": "cycle_no_parent_and_bounded_depth",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::a_ticket_with_no_parent_and_a_cycle",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnibase_infra#9103": {
+     "body": "",
+     "title": "fix(OMN-22664): recorded"
+    },
+    "omnibase_infra#9104": {
+     "body": "",
+     "title": "fix(OMN-22669): recorded"
+    },
+    "omniclaude#9105": {
+     "body": "",
+     "title": "fix(OMN-22391): recorded"
+    },
+    "omnimarket#5150": {
+     "body": "",
+     "title": "fix(OMN-17427): recorded"
+    },
+    "omnimarket#9101": {
+     "body": "",
+     "title": "fix(OMN-22663): recorded"
+    },
+    "omnimarket#9102": {
+     "body": "",
+     "title": "fix(OMN-22667): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnibase_infra#9103": [
+      "ticket",
+      "OMN-22664<OMN-21288"
+     ],
+     "omnibase_infra#9104": [
+      "ticket",
+      "OMN-22669<OMN-21288"
+     ],
+     "omniclaude#9105": [
+      "ticket",
+      "OMN-22391<OMN-21288"
+     ],
+     "omnimarket#9101": [
+      "ticket",
+      "OMN-22663<OMN-22478"
+     ],
+     "omnimarket#9102": [
+      "ticket",
+      "OMN-22667<OMN-22478"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20768": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21288": {
+     "parent": "OMN-20768",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22391": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": "OMN-17427",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22663": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22664": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22667": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22669": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "rebuild_pieces_and_one_runtime_two_roots",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::rebuild_piece_and_one_runtime",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnibase_infra#9103": {
+     "body": "",
+     "title": "fix(OMN-22664): recorded"
+    },
+    "omnibase_infra#9104": {
+     "body": "",
+     "title": "fix(OMN-22669): recorded"
+    },
+    "omniclaude#9105": {
+     "body": "",
+     "title": "fix(OMN-22391): recorded"
+    },
+    "omnimarket#9101": {
+     "body": "",
+     "title": "fix(OMN-22663): recorded"
+    },
+    "omnimarket#9102": {
+     "body": "",
+     "title": "fix(OMN-22667): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnimarket#9101": [
+      "ticket",
+      "OMN-22663<OMN-22478"
+     ],
+     "omnimarket#9102": [
+      "ticket",
+      "OMN-22667<OMN-22478"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20768": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21288": {
+     "parent": "OMN-20768",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22391": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": "OMN-17427",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22663": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22664": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22667": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22669": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "one_runtime_without_second_root",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::positive_control_without_the_second_root",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "internal-a#1520": {
+     "body": "",
+     "title": "fix(OMN-20655): recorded"
+    },
+    "internal-a#1525": {
+     "body": "",
+     "title": "fix(OMN-20655): recorded"
+    },
+    "omnimarket#5150": {
+     "body": "",
+     "title": "fix(OMN-17427): recorded"
+    },
+    "omnimarket#5440": {
+     "body": "",
+     "title": "fix(OMN-20655): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {},
+    "unread": []
+   },
+   "facts": {
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20655": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "closer_fixes_closer_root_False",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288",
+    "OMN-22847",
+    "OMN-19998"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::the_closer_fixes",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "internal-a#1520": {
+     "body": "",
+     "title": "fix(OMN-20655): recorded"
+    },
+    "internal-a#1525": {
+     "body": "",
+     "title": "fix(OMN-20655): recorded"
+    },
+    "omnimarket#5150": {
+     "body": "",
+     "title": "fix(OMN-17427): recorded"
+    },
+    "omnimarket#5440": {
+     "body": "",
+     "title": "fix(OMN-20655): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "internal-a#1520": [
+      "ticket",
+      "OMN-20655"
+     ],
+     "internal-a#1525": [
+      "ticket",
+      "OMN-20655"
+     ],
+     "omnimarket#5440": [
+      "ticket",
+      "OMN-20655"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20655": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "closer_fixes_closer_root_True",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288",
+    "OMN-22847",
+    "OMN-19998",
+    "OMN-20655"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::the_closer_fixes",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnimarket#5787": {
+     "body": "",
+     "title": "fix(OMN-23635): recorded"
+    },
+    "omnimarket#5789": {
+     "body": "",
+     "title": "fix(OMN-23626): recorded"
+    },
+    "omnimarket#5792": {
+     "body": "",
+     "title": "fix(OMN-23644): recorded"
+    },
+    "omnimarket#5794": {
+     "body": "",
+     "title": "fix(OMN-23629): recorded"
+    },
+    "omnimarket#9201": {
+     "body": "",
+     "title": "fix(OMN-24001): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {},
+    "unread": []
+   },
+   "facts": {
+    "OMN-19432": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19787": {
+     "parent": "OMN-19432",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23626": {
+     "parent": "OMN-19787",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23629": {
+     "parent": "OMN-19787",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23631": {
+     "parent": "OMN-19787",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23635": {
+     "parent": "OMN-23631",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23644": {
+     "parent": "OMN-23629",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-24001": {
+     "parent": "OMN-19432",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "eval_fixes_evals_root_False",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288",
+    "OMN-22847",
+    "OMN-19998",
+    "OMN-20655"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::the_eval_pull_requests",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnimarket#5787": {
+     "body": "",
+     "title": "fix(OMN-23635): recorded"
+    },
+    "omnimarket#5789": {
+     "body": "",
+     "title": "fix(OMN-23626): recorded"
+    },
+    "omnimarket#5792": {
+     "body": "",
+     "title": "fix(OMN-23644): recorded"
+    },
+    "omnimarket#5794": {
+     "body": "",
+     "title": "fix(OMN-23629): recorded"
+    },
+    "omnimarket#9201": {
+     "body": "",
+     "title": "fix(OMN-24001): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnimarket#5787": [
+      "ticket",
+      "OMN-23635<OMN-23631<OMN-19787"
+     ],
+     "omnimarket#5789": [
+      "ticket",
+      "OMN-23626<OMN-19787"
+     ],
+     "omnimarket#5792": [
+      "ticket",
+      "OMN-23644<OMN-23629<OMN-19787"
+     ],
+     "omnimarket#5794": [
+      "ticket",
+      "OMN-23629<OMN-19787"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-19432": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19787": {
+     "parent": "OMN-19432",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23626": {
+     "parent": "OMN-19787",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23629": {
+     "parent": "OMN-19787",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23631": {
+     "parent": "OMN-19787",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23635": {
+     "parent": "OMN-23631",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23644": {
+     "parent": "OMN-23629",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-24001": {
+     "parent": "OMN-19432",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "eval_fixes_evals_root_True",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288",
+    "OMN-22847",
+    "OMN-19998",
+    "OMN-20655",
+    "OMN-19787"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::the_eval_pull_requests",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "a#1": {
+     "body": "Ticket: OMN-22512 (its criteria moved here)\n\nTicket: OMN-19998\n",
+     "title": "a title with no ticket"
+    },
+    "a#2": {
+     "body": "mentions OMN-22478 in prose",
+     "title": "a title with no ticket"
+    },
+    "a#3": {
+     "body": "",
+     "title": "a title with no ticket"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "a#1": [
+      "ticket",
+      "OMN-22512<OMN-22478"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-19998": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22512": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "declared_ticket_from_body_line",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_goal_scope_ticket_rule.py::the_declared_ticket_is_the_titles_first_then_the_bodys_ticket_line",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnibase_infra#5772": {
+     "body": "",
+     "title": "fix(OMN-23201): recorded"
+    },
+    "omnibase_infra#5780": {
+     "body": "",
+     "title": "fix(OMN-23210): recorded"
+    },
+    "omniclaude#3209": {
+     "body": "",
+     "title": "fix(OMN-23202): recorded"
+    },
+    "omniclaude#3210": {
+     "body": "",
+     "title": "fix(OMN-23203): recorded"
+    },
+    "omniclaude#3211": {
+     "body": "",
+     "title": "fix(OMN-23211): recorded"
+    },
+    "omnimarket#9001": {
+     "body": "",
+     "title": "fix(OMN-23220): recorded"
+    },
+    "omnimarket#9002": {
+     "body": "",
+     "title": "fix(OMN-23221): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnibase_infra#5772": [
+      "project",
+      "Factory"
+     ],
+     "omniclaude#3209": [
+      "project",
+      "Factory"
+     ],
+     "omniclaude#3210": [
+      "project",
+      "Factory"
+     ],
+     "omnimarket#9001": [
+      "project",
+      "Factory"
+     ],
+     "omnimarket#9002": [
+      "project",
+      "Renamed Factory"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-23201": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23202": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23203": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23210": {
+     "parent": null,
+     "project_id": "80cdd8d6-62ec-4340-bb21-a6c38953219c",
+     "project_name": "Sprint 2026-11-09"
+    },
+    "OMN-23211": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23220": {
+     "parent": null,
+     "project_id": "00000000-0000-0000-0000-000000000000",
+     "project_name": "Factory"
+    },
+    "OMN-23221": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Renamed Factory"
+    }
+   },
+   "max_depth": 6,
+   "name": "project_listed_by_id_or_name",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": {
+    "project_ids": [
+     "ae87f221-ad60-49fe-aeae-b4417960ff90"
+    ],
+    "project_names": [
+     "Factory"
+    ]
+   },
+   "source": "test_landing_ticket_project_scope.py::a_pull_request_whose_ticket_is_in_a_listed_project",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnibase_infra#5772": {
+     "body": "",
+     "title": "fix(OMN-23201): recorded"
+    },
+    "omnibase_infra#5780": {
+     "body": "",
+     "title": "fix(OMN-23210): recorded"
+    },
+    "omniclaude#3209": {
+     "body": "",
+     "title": "fix(OMN-23202): recorded"
+    },
+    "omniclaude#3210": {
+     "body": "",
+     "title": "fix(OMN-23203): recorded"
+    },
+    "omniclaude#3211": {
+     "body": "",
+     "title": "fix(OMN-23211): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {},
+    "unread": []
+   },
+   "facts": {
+    "OMN-23201": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23202": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23203": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23210": {
+     "parent": null,
+     "project_id": "80cdd8d6-62ec-4340-bb21-a6c38953219c",
+     "project_name": "Sprint 2026-11-09"
+    },
+    "OMN-23211": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23220": {
+     "parent": null,
+     "project_id": "00000000-0000-0000-0000-000000000000",
+     "project_name": "Factory"
+    },
+    "OMN-23221": {
+     "parent": null,
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Renamed Factory"
+    }
+   },
+   "max_depth": 6,
+   "name": "project_scope_off_holds_every_one",
+   "roots": [
+    "OMN-22478"
+   ],
+   "scope": null,
+   "source": "test_landing_ticket_project_scope.py::failing_control_without_the_overlay",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnibase_infra#5829": {
+     "body": "",
+     "title": "fix(OMN-23235): recorded"
+    },
+    "internal-a#1520": {
+     "body": "",
+     "title": "fix(OMN-20655): recorded"
+    },
+    "omnimarket#4849": {
+     "body": "",
+     "title": "fix(OMN-21933): recorded"
+    },
+    "omnimarket#5445": {
+     "body": "",
+     "title": "fix(OMN-14172): recorded"
+    },
+    "omnimarket#5455": {
+     "body": "",
+     "title": "fix(OMN-21968): recorded"
+    },
+    "omnimarket#5511": {
+     "body": "",
+     "title": "fix(OMN-20689): recorded"
+    },
+    "omnimarket#5521": {
+     "body": "",
+     "title": "fix(OMN-23228): recorded"
+    },
+    "omnimarket#5534": {
+     "body": "",
+     "title": "fix(OMN-23219): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnibase_infra#5829": [
+      "ticket",
+      "OMN-23235<OMN-22867<OMN-22478"
+     ],
+     "internal-a#1520": [
+      "ticket",
+      "OMN-20655"
+     ],
+     "omnimarket#4849": [
+      "ticket",
+      "OMN-21933<OMN-21288"
+     ],
+     "omnimarket#5455": [
+      "ticket",
+      "OMN-21968<OMN-20413<OMN-19998"
+     ],
+     "omnimarket#5521": [
+      "project",
+      "Factory@OMN-23180"
+     ]
+    },
+    "unread": []
+   },
+   "facts": {
+    "OMN-14172": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-17229": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-17232": {
+     "parent": "OMN-17229",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "00000000-0000-0000-0000-0000000000aa",
+     "project_name": "Ready"
+    },
+    "OMN-18925": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19998": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20413": {
+     "parent": "OMN-19998",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20655": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20689": {
+     "parent": "OMN-17427",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21288": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21876": {
+     "parent": "OMN-17232",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21899": {
+     "parent": "OMN-21876",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21908": {
+     "parent": "OMN-21899",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21933": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21968": {
+     "parent": "OMN-20413",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22867": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23180": {
+     "parent": "OMN-18925",
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23219": {
+     "parent": "OMN-21908",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23228": {
+     "parent": "OMN-23180",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23235": {
+     "parent": "OMN-22867",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "parent_chain_roots_and_factory_ancestor",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288",
+    "OMN-22847",
+    "OMN-19998",
+    "OMN-20655"
+   ],
+   "scope": {
+    "project_ids": [
+     "ae87f221-ad60-49fe-aeae-b4417960ff90"
+    ],
+    "project_names": [
+     "Factory"
+    ]
+   },
+   "source": "test_scope_parent_chain.py::the_whole_recorded_world_in_one_tick",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnimarket#5455": {
+     "body": "",
+     "title": "fix(OMN-21968): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {},
+    "unread": []
+   },
+   "facts": {
+    "OMN-14172": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-17229": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-17232": {
+     "parent": "OMN-17229",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-17427": {
+     "parent": null,
+     "project_id": "00000000-0000-0000-0000-0000000000aa",
+     "project_name": "Ready"
+    },
+    "OMN-18925": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-19998": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20413": {
+     "parent": "OMN-19998",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20655": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-20689": {
+     "parent": "OMN-17427",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21288": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21876": {
+     "parent": "OMN-17232",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21899": {
+     "parent": "OMN-21876",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21908": {
+     "parent": "OMN-21899",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21933": {
+     "parent": "OMN-21288",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21968": {
+     "parent": "OMN-20413",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22478": {
+     "parent": null,
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-22867": {
+     "parent": "OMN-22478",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23180": {
+     "parent": "OMN-18925",
+     "project_id": "ae87f221-ad60-49fe-aeae-b4417960ff90",
+     "project_name": "Factory"
+    },
+    "OMN-23219": {
+     "parent": "OMN-21908",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23228": {
+     "parent": "OMN-23180",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-23235": {
+     "parent": "OMN-22867",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 1,
+   "name": "parent_chain_max_depth_one",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288",
+    "OMN-22847",
+    "OMN-19998",
+    "OMN-20655"
+   ],
+   "scope": {
+    "project_ids": [
+     "ae87f221-ad60-49fe-aeae-b4417960ff90"
+    ],
+    "project_names": [
+     "Factory"
+    ]
+   },
+   "source": "test_scope_parent_chain.py::the_walk_stops_at_the_rules_max_depth",
+   "unread_tickets": {}
+  },
+  {
+   "candidates": {
+    "omnimarket#5445": {
+     "body": "",
+     "title": "fix(OMN-14172): recorded"
+    },
+    "omnimarket#5455": {
+     "body": "",
+     "title": "fix(OMN-21968): recorded"
+    }
+   },
+   "expected": {
+    "admitted": {
+     "omnimarket#5455": [
+      "ticket",
+      "OMN-21968<OMN-20413<OMN-19998"
+     ]
+    },
+    "unread": [
+     "omnimarket#5445"
+    ]
+   },
+   "facts": {
+    "OMN-20413": {
+     "parent": "OMN-19998",
+     "project_id": "",
+     "project_name": ""
+    },
+    "OMN-21968": {
+     "parent": "OMN-20413",
+     "project_id": "",
+     "project_name": ""
+    }
+   },
+   "max_depth": 6,
+   "name": "partial_facts_unknown_ticket_is_unread",
+   "roots": [
+    "OMN-22478",
+    "OMN-21288",
+    "OMN-22847",
+    "OMN-19998",
+    "OMN-20655"
+   ],
+   "scope": {
+    "project_ids": [
+     "ae87f221-ad60-49fe-aeae-b4417960ff90"
+    ],
+    "project_names": [
+     "Factory"
+    ]
+   },
+   "source": "test_scope_parent_chain.py::a_ticket_the_mirror_lacks",
+   "unread_tickets": {}
+  }
+ ],
+ "source": "copied from the plugin's goal-scope tests (test_goal_scope_ticket_rule, test_landing_ticket_project_scope, test_scope_parent_chain); expected sets produced by the plugin's admit_by_scope at origin/main fd9ca770cd13 with a reader that answers from the case's own facts"
+}

@@ -11,8 +11,15 @@ assertion is the headline fix: the /experiments panels failed with
 
 from __future__ import annotations
 
+import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote_plus
+from uuid import uuid4
 
+import asyncpg
+import pytest
 import yaml
 
 from omnimarket.events.context_roi import (
@@ -311,3 +318,207 @@ class TestContextRoiContractWiring:
             "run_id",
         ):
             assert required_column in cfg.columns
+
+
+def _dsn() -> str:
+    password = os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    )
+    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+    port = os.environ.get("INTEGRATION_POSTGRES_PORT", "5432")
+    user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
+    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+    return f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
+
+
+async def _connect_or_skip() -> asyncpg.Connection:
+    if not os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    ):
+        pytest.skip(
+            "no Postgres password set -- skipping the OMN-23628 write-path gate"
+        )
+    try:
+        return await asyncpg.connect(_dsn())
+    except (OSError, asyncpg.PostgresError) as exc:
+        pytest.skip(f"no reachable Postgres for the OMN-23628 write-path gate: {exc}")
+    raise AssertionError("unreachable")
+
+
+@asynccontextmanager
+async def _migrated_omn23628() -> AsyncIterator[tuple[asyncpg.Connection, str]]:
+    connection = await _connect_or_skip()
+    schema = f"omn23628_{uuid4().hex[:12]}"
+    try:
+        await connection.execute(f"CREATE SCHEMA {schema}")
+        await connection.execute(f"SET search_path TO {schema}")
+        migrations_dir = (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_projection_context_roi/migrations"
+        )
+        for name in (
+            "001_create_context_roi_scores.sql",
+            "002_add_factor_subset_hash_and_routing_source.sql",
+            "004_add_code_eval_trial_columns.sql",
+        ):
+            await connection.execute((migrations_dir / name).read_text())
+        yield connection, schema
+    finally:
+        await connection.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await connection.close()
+
+
+class TestContextRoiProjectionOmni23628:
+    def test_replayed_terminal_changes_no_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        row = ModelAttemptReductionRow(
+            run_id="run-001",
+            correlation_id="c-replay",
+            task_id="task-A",
+            run_order=1,
+            context_factor_subset="golden_exemplar",
+            context_pack_hash="abc123",
+            attempt_count=1,
+            first_pass_success=True,
+            final_success=True,
+            failure_stage=EnumFailureStage.NONE,
+            prompt_tokens=100,
+            completion_tokens=50,
+            estimated_cost=0.0,
+            model_id="qwen3-coder-30b",
+            provider="local",
+            endpoint_ref="local-coder",
+            check_verdict="pass",
+            row_kind="try",
+            try_end="2026-06-11T00:00:00+00:00",
+            suite_digest="sha256:suite",
+            size_band="S",
+            sequence_id="seq-1",
+            try_ordinal=1,
+            diff_hash="sha256:diff",
+            max_turns=4,
+            try_timeout_s=30.0,
+            generation_s=12.5,
+            env_sync_s=1.0,
+            check_s=2.0,
+        )
+        result = ModelContextRoiRunResult(run_id="run-001", rows=(row,))
+        HANDLER.project(result, db)
+        first_rows = db.query("context_roi_scores")
+        assert len(first_rows) == 1
+        first = first_rows[0]
+        HANDLER.project(result, db)
+        second_rows = db.query("context_roi_scores")
+        assert len(second_rows) == 1
+        second = second_rows[0]
+        for key in first:
+            if key == "updated_at":
+                continue
+            assert first[key] == second[key], (
+                f"{key} changed on replay: {first[key]!r} -> {second[key]!r}"
+            )
+
+    def test_old_row_still_deserialises(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        legacy = ModelAttemptReductionRow(
+            run_id="run-001",
+            correlation_id="c-legacy",
+            task_id="task-A",
+            run_order=1,
+            context_factor_subset="golden_exemplar",
+            context_pack_hash="abc123",
+            attempt_count=1,
+            first_pass_success=True,
+            final_success=True,
+            failure_stage=EnumFailureStage.NONE,
+            prompt_tokens=100,
+            completion_tokens=50,
+            estimated_cost=0.0,
+            model_id="qwen3-coder-30b",
+            provider="local",
+            endpoint_ref="local-coder",
+        )
+        result = ModelContextRoiRunResult(run_id="run-001", rows=(legacy,))
+        HANDLER.project(result, db)
+        row = db.query("context_roi_scores")[0]
+        assert row["check_verdict"] is None
+        assert row["unscorable_source"] is None
+        assert row["row_kind"] == "try"
+        assert row["size_band"] == "S"
+        assert row["try_ordinal"] == 0
+        assert row["max_turns"] == 0
+        assert row["try_timeout_s"] == 0.0
+        assert row["generation_s"] == 0.0
+        assert row["env_sync_s"] == 0.0
+        assert row["check_s"] == 0.0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_real_postgres_write_path_omn23628() -> None:
+    async with _migrated_omn23628() as (connection, schema):
+        legacy_sql = (
+            f"INSERT INTO {schema}.context_roi_scores "
+            "(run_id, correlation_id, task_id, run_order, context_factor_subset, "
+            "context_pack_hash, attempt_count, first_pass_success, final_success, "
+            "failure_stage, prompt_tokens, completion_tokens, estimated_cost, model_id, "
+            "provider, endpoint_ref) "
+            "VALUES ('run-001', 'c-legacy', 'task-A', 1, 'golden_exemplar', 'abc123', 1, "
+            "true, true, 'none', 100, 50, 0.0, 'qwen3-coder-30b', 'local', 'local-coder')"
+        )
+        await connection.execute(legacy_sql)
+        row = await connection.fetchrow(f"SELECT * FROM {schema}.context_roi_scores")
+        assert row is not None
+        assert row["row_kind"] == "try"
+        assert row["size_band"] == "S"
+        assert row["try_ordinal"] == 0
+        assert row["check_verdict"] is None
+
+        full_sql = (
+            f"INSERT INTO {schema}.context_roi_scores "
+            "(run_id, correlation_id, task_id, run_order, context_factor_subset, "
+            "context_pack_hash, attempt_count, first_pass_success, final_success, "
+            "failure_stage, prompt_tokens, completion_tokens, estimated_cost, model_id, "
+            "provider, endpoint_ref, check_verdict, unscorable_source, row_kind, try_end, "
+            "suite_digest, size_band, sequence_id, try_ordinal, diff_hash, max_turns, "
+            "try_timeout_s, generation_s, env_sync_s, check_s) "
+            "VALUES ('run-001', 'c-full', 'task-A', 1, 'golden_exemplar', 'abc123', 1, "
+            "true, true, 'none', 100, 50, 0.0, 'qwen3-coder-30b', 'local', 'local-coder', "
+            "'pass', NULL, 'try', '2026-06-11T00:00:00+00:00', 'sha256:suite', 'S', "
+            "'seq-1', 1, 'sha256:diff', 4, 30.0, 12.5, 1.0, 2.0)"
+        )
+        await connection.execute(full_sql)
+        row = await connection.fetchrow(
+            f"SELECT * FROM {schema}.context_roi_scores WHERE correlation_id = 'c-full'"
+        )
+        assert row is not None
+        assert row["check_verdict"] == "pass"
+        assert row["row_kind"] == "try"
+        assert row["try_end"] == "2026-06-11T00:00:00+00:00"
+        assert row["suite_digest"] == "sha256:suite"
+        assert row["size_band"] == "S"
+        assert row["sequence_id"] == "seq-1"
+        assert row["try_ordinal"] == 1
+        assert row["diff_hash"] == "sha256:diff"
+        assert row["max_turns"] == 4
+        assert row["try_timeout_s"] == 30.0
+        assert row["generation_s"] == 12.5
+        assert row["env_sync_s"] == 1.0
+        assert row["check_s"] == 2.0
+
+        upsert_sql = (
+            f"INSERT INTO {schema}.context_roi_scores "
+            "(run_id, correlation_id, task_id, run_order, context_factor_subset, "
+            "context_pack_hash, attempt_count, first_pass_success, final_success, "
+            "failure_stage, prompt_tokens, completion_tokens, estimated_cost, model_id, "
+            "provider, endpoint_ref) "
+            "VALUES ('run-001', 'c-conflict', 'task-A', 1, 'golden_exemplar', 'abc123', 1, "
+            "true, true, 'none', 100, 50, 0.0, 'qwen3-coder-30b', 'local', 'local-coder') "
+            "ON CONFLICT (correlation_id) DO UPDATE SET final_success = EXCLUDED.final_success"
+        )
+        await connection.execute(upsert_sql)
+        await connection.execute(upsert_sql)
+        count = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.context_roi_scores WHERE correlation_id = 'c-conflict'"
+        )
+        assert count == 1

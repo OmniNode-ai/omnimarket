@@ -8,5 +8,12 @@ from omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_
 from omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_mint import (
     HandlerFloorTaskTicketMint,
 )
+from omnimarket.nodes.node_floor_task_ticket_effect.handlers.handler_floor_task_ticket_mint_bus import (
+    HandlerFloorTaskTicketMintBus,
+)
 
-__all__ = ["HandlerFloorTaskTicketEntryCheck", "HandlerFloorTaskTicketMint"]
+__all__ = [
+    "HandlerFloorTaskTicketEntryCheck",
+    "HandlerFloorTaskTicketMint",
+    "HandlerFloorTaskTicketMintBus",
+]
