@@ -721,6 +721,7 @@ node_github_webhook_ingress_effect = "omnimarket.nodes.node_github_webhook_ingre
 node_glm_allowance_compute = "omnimarket.nodes.node_glm_allowance_compute"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
 node_goal_run_stop_compute = "omnimarket.nodes.node_goal_run_stop_compute"
+node_goal_scope_admission_compute = "omnimarket.nodes.node_goal_scope_admission_compute"
 node_goal_verification_orchestrator = "omnimarket.nodes.node_goal_verification_orchestrator"
 node_golden_chain_generator = "omnimarket.nodes.node_golden_chain_generator"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
