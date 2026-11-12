@@ -32,6 +32,7 @@ handler:
   input_model: omnimarket.nodes.node_effect_backends_load_effect.models.model_effect_backends_load_request.ModelEffectBackendsLoadRequest
 descriptor:
   node_archetype: effect
+  runtime_profiles: [effects]
   purity: side_effecting
   idempotent: true
   timeout_ms: 60000

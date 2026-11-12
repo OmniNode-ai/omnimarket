@@ -31,6 +31,7 @@ handler:
   input_model: omnibase_core.models.validation.model_dev_tag_lineage_request.ModelDevTagLineageRequest
 descriptor:
   node_archetype: effect
+  runtime_profiles: [effects]
   purity: side_effecting
   idempotent: true
   timeout_ms: 120000
