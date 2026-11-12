@@ -23,7 +23,7 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Protocol, runtime_checkable
 
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_row import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_row import (
     ModelCodeEvalRunRow,
 )
 

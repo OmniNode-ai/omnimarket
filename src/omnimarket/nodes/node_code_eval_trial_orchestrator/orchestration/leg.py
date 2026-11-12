@@ -20,27 +20,40 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from omnimarket.lab_work.bus import ModelLabWorkCommandFailure
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
-    ModelCodeScored,
-    ModelCodeScoreOverlay,
+from omnimarket.models.code_eval_trial import (
+    ModelCodeEvalMessage,
+    ModelCodeEvalReduceInput,
+    ModelNudgeMessage,
+    ModelResolvedTask,
+    ModelRunRequestedMessage,
+    ModelScoreAnsweredMessage,
+    ModelUnitAnsweredMessage,
+    ModelUnitFailedMessage,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_overlay import (
+from omnimarket.models.code_eval_trial.model_code_eval_overlay import (
     ModelCodeEvalRunnerOverlay,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_nudge import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_nudge import (
     ModelCodeEvalRunNudge,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
     ModelCodeEvalCandidate,
     ModelCodeEvalRunRequest,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_row import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_row import (
     ModelCodeEvalRunRow,
     ModelCodeEvalSettings,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_task_material import (
+from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
     ModelCodeEvalTaskMaterial,
     task_key_for,
+)
+from omnimarket.models.model_code_score import (
+    ModelCodeScored,
+    ModelCodeScoreOverlay,
+)
+from omnimarket.models.model_lab_work_unit import (
+    ModelLabWorkUnitReceipt,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.builders import (
     build_result_row,
@@ -53,19 +66,6 @@ from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.ports impo
 )
 from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
     HandlerCodeEvalTrialReducer,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import (
-    ModelCodeEvalMessage,
-    ModelCodeEvalReduceInput,
-    ModelNudgeMessage,
-    ModelResolvedTask,
-    ModelRunRequestedMessage,
-    ModelScoreAnsweredMessage,
-    ModelUnitAnsweredMessage,
-    ModelUnitFailedMessage,
-)
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
-    ModelLabWorkUnitReceipt,
 )
 
 

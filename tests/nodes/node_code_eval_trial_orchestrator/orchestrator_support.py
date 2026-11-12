@@ -23,15 +23,29 @@ from pydantic import BaseModel
 
 from omnimarket.events.context_roi import ModelContextRoiRunResult
 from omnimarket.lab_work.bus import ModelLabWorkCommandFailure
-from omnimarket.models.model_delegated_code_edit import (
-    EnumCodeEditStatus,
-    ModelCodeEditResult,
+from omnimarket.models.code_eval_trial.model_code_eval_overlay import (
+    ModelCodeEvalRunnerOverlay,
 )
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_closed import (
+    ModelCodeEvalRunClosed,
+)
+from omnimarket.models.code_eval_trial.model_code_eval_run_nudge import (
+    ModelCodeEvalRunNudge,
+)
+from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
+    ModelCodeEvalArm,
+    ModelCodeEvalCandidate,
+    ModelCodeEvalRunRequest,
+)
+from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
+    ModelCodeEvalTaskMaterial,
+    task_key_for,
+)
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
 )
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+from omnimarket.models.model_code_score import (
     ModelCodeScoreCheckFile,
     ModelCodeScoreContractRef,
     ModelCodeScored,
@@ -40,26 +54,17 @@ from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score im
     ModelCodeScoreTimings,
     ModelCodeScoreVerdict,
 )
+from omnimarket.models.model_delegated_code_edit import (
+    EnumCodeEditStatus,
+    ModelCodeEditResult,
+)
+from omnimarket.models.model_lab_work_unit import (
+    EnumLabWorkUnitStatus,
+    ModelLabWorkUnitReceipt,
+    ModelLabWorkUnitRequest,
+)
 from omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator import (
     HandlerCodeEvalTrialOrchestrator,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_overlay import (
-    ModelCodeEvalRunnerOverlay,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
-    ModelCodeEvalRunClosed,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_nudge import (
-    ModelCodeEvalRunNudge,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request import (
-    ModelCodeEvalArm,
-    ModelCodeEvalCandidate,
-    ModelCodeEvalRunRequest,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_task_material import (
-    ModelCodeEvalTaskMaterial,
-    task_key_for,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.free_hosts import (
     StaticFreeHosts,
@@ -67,11 +72,6 @@ from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.free_hosts
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.leg import (
     CodeEvalLegConfig,
     CodeEvalLegPorts,
-)
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
-    EnumLabWorkUnitStatus,
-    ModelLabWorkUnitReceipt,
-    ModelLabWorkUnitRequest,
 )
 
 T0 = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)

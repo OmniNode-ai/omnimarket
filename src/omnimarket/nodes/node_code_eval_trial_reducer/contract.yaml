@@ -42,16 +42,16 @@ description: >
   when every control has its verdict and every sequence has ended.
 input_model:
   name: "ModelCodeEvalReduceInput"
-  module: "omnimarket.nodes.node_code_eval_trial_reducer.models"
+  module: "omnimarket.models.code_eval_trial"
   description: "The stored run row (None before the run request), one message, the time and the free hosts."
 output_model:
   name: "ModelCodeEvalReduceOutput"
-  module: "omnimarket.nodes.node_code_eval_trial_reducer.models"
+  module: "omnimarket.models.code_eval_trial"
   description: "The next row, the transition taken or the drop reason, and the emissions."
 handler:
   module: "omnimarket.nodes.node_code_eval_trial_reducer.handlers.handler_code_eval_trial_reducer"
   class: "HandlerCodeEvalTrialReducer"
-  input_model: "omnimarket.nodes.node_code_eval_trial_reducer.models.ModelCodeEvalReduceInput"
+  input_model: "omnimarket.models.code_eval_trial.ModelCodeEvalReduceInput"
 metadata:
   description: "Pure transition function of the code eval trial run row."
   author: "OmniNode Team"

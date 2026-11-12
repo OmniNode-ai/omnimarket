@@ -14,10 +14,10 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
     ModelCodeEvalCandidate,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_task_material import (
+from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
     ModelCodeEvalTaskMaterial,
 )
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreVerdict,
 )
 

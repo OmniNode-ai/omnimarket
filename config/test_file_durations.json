@@ -530,6 +530,7 @@
   "tests/merge_control/test_omn18902_process_gate_and_rerun_rescue.py": 0.17,
   "tests/merge_control/test_outage_circuit_breaker.py": 0.1,
   "tests/merge_control/test_reason_code_classifier.py": 0.17,
+  "tests/models/test_code_eval_trial_shared_models.py": 2.69,
   "tests/models/test_model_host_desired_state.py": 0.17,
   "tests/models/test_model_host_layer.py": 0.17,
   "tests/models/test_model_overlay_host_roles.py": 0.17,

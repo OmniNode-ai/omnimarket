@@ -17,15 +17,15 @@ from datetime import datetime
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_lab_pool_place import (
+    EnumPlacementDecision,
+    ModelLabPoolPlaceRequest,
+)
 from omnimarket.nodes.node_lab_fill_orchestrator.handlers.handler_lab_fill_host_readings import (
     LabHostReadings,
 )
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_pool_place import (
     HandlerLabPoolPlace,
-)
-from omnimarket.nodes.node_lab_placement_compute.models.model_lab_pool_place import (
-    EnumPlacementDecision,
-    ModelLabPoolPlaceRequest,
 )
 
 

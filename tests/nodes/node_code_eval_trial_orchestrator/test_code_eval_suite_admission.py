@@ -17,7 +17,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
     ModelCodeEvalCandidate,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.suite_reader import (

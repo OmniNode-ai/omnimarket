@@ -12,15 +12,15 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
+from omnimarket.models.code_eval_trial import (
+    ModelScoreAnsweredMessage,
+)
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
 )
 from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
     CodeEvalConfigurationError,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import (
-    ModelScoreAnsweredMessage,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.support import (
     Run,
@@ -35,7 +35,7 @@ pytestmark = pytest.mark.unit
 
 
 def _unit(unit_id: str):
-    from omnimarket.nodes.node_code_eval_trial_reducer.models import ModelUnitToPlace
+    from omnimarket.models.code_eval_trial import ModelUnitToPlace
 
     return ModelUnitToPlace(
         unit_id=unit_id,

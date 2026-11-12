@@ -16,12 +16,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
+    ModelCodeEvalRunRequest,
+)
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request import (
-    ModelCodeEvalRunRequest,
 )
 
 

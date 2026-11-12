@@ -12,12 +12,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
+    ModelCodeEvalCandidate,
+)
+from omnimarket.models.model_code_score import (
     ModelCodeScoreCheckFile,
     ModelCodeScoreContractRef,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request import (
-    ModelCodeEvalCandidate,
 )
 
 

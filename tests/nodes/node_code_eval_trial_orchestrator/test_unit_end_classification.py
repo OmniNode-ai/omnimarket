@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
-    EnumCodeScoreSource,
-    EnumCodeScoreVerdict,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import (
+from omnimarket.models.code_eval_trial import (
     ModelUnitAnsweredMessage,
     ModelUnitFailedMessage,
+)
+from omnimarket.models.enum_code_score import (
+    EnumCodeScoreSource,
+    EnumCodeScoreVerdict,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.support import (
     Run,
@@ -33,7 +33,7 @@ def placed_try() -> tuple[Run, object]:
     run, _ = start(1, 1)
     control = run.feed(
         __import__(
-            "omnimarket.nodes.node_code_eval_trial_reducer.models", fromlist=["x"]
+            "omnimarket.models.code_eval_trial", fromlist=["x"]
         ).ModelScoreAnsweredMessage(
             task_key="task-0", verdict=EnumCodeScoreVerdict.PASS
         )
@@ -138,7 +138,7 @@ def test_scored_verdicts_are_published_with_the_band_and_loop_status() -> None:
     run.feed(accepted_unit(unit, loop_status="checks_failed"))
     out = run.feed(
         __import__(
-            "omnimarket.nodes.node_code_eval_trial_reducer.models", fromlist=["x"]
+            "omnimarket.models.code_eval_trial", fromlist=["x"]
         ).ModelScoreAnsweredMessage(
             task_key="task-0",
             model_arm="model-0",

@@ -29,17 +29,17 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel
 
-from omnimarket.models.model_host_capacity_advertisement import (
-    ModelHostCapacityAdvertisement,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_ingress import (
+from omnimarket.models.code_eval_trial.model_code_eval_ingress import (
     run_id_of,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_closed import (
     ModelCodeEvalRunClosed,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_row import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_row import (
     ModelCodeEvalRunRow,
+)
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.leg import (
     CodeEvalLegConfig,

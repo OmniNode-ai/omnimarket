@@ -8,16 +8,16 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.models.model_delegated_code_edit import ModelCodeEditResult
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
+from omnimarket.models.code_eval_trial import ModelVerdictRow
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreVerdict,
+)
+from omnimarket.models.model_delegated_code_edit import ModelCodeEditResult
+from omnimarket.models.model_lab_work_unit import (
+    ModelLabWorkUnitRequest,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.builders import (
     trial_columns,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import ModelVerdictRow
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
-    ModelLabWorkUnitRequest,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.orchestrator_support import (
     RUN_ID,

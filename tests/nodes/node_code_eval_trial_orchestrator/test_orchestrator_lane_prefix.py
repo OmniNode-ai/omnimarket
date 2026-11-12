@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_ingress import (
+from omnimarket.models.code_eval_trial.model_code_eval_ingress import (
     run_id_of,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.orchestrator_support import (

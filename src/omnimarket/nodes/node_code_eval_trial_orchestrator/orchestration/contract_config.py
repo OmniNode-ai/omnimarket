@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+from omnimarket.models.model_code_score import (
     ModelCodeScoreOverlay,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.leg import (

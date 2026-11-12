@@ -5,7 +5,7 @@
 from collections.abc import Mapping
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_overlay import (
+from omnimarket.models.code_eval_trial.model_code_eval_overlay import (
     ModelCodeEvalRunnerOverlay,
 )
 

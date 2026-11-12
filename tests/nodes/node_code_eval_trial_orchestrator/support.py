@@ -16,24 +16,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
-    EnumCodeScoreSource,
-    EnumCodeScoreVerdict,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models import (
+from omnimarket.models.code_eval_trial import (
     ModelCodeEvalArm,
     ModelCodeEvalCandidate,
+    ModelCodeEvalReduceInput,
+    ModelCodeEvalReduceOutput,
     ModelCodeEvalRunNudge,
     ModelCodeEvalRunRequest,
     ModelCodeEvalRunRow,
     ModelCodeEvalSettings,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
-    HandlerCodeEvalTrialReducer,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import (
-    ModelCodeEvalReduceInput,
-    ModelCodeEvalReduceOutput,
     ModelNudgeMessage,
     ModelResolvedTask,
     ModelRunRequestedMessage,
@@ -41,6 +32,13 @@ from omnimarket.nodes.node_code_eval_trial_reducer.models import (
     ModelScoreToSend,
     ModelUnitAnsweredMessage,
     ModelUnitToPlace,
+)
+from omnimarket.models.enum_code_score import (
+    EnumCodeScoreSource,
+    EnumCodeScoreVerdict,
+)
+from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
+    HandlerCodeEvalTrialReducer,
 )
 
 T0 = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)

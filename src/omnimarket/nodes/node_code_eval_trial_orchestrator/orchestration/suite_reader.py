@@ -23,24 +23,24 @@ from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContrac
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
+    ModelCodeEvalCandidate,
+)
+from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
+    ModelCodeEvalTaskMaterial,
+    task_key_for,
+)
 from omnimarket.models.delegation.model_size_band import (
     ModelSizeBand,
     ModelSizeBandRequest,
 )
-from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
-    _git,
-)
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+from omnimarket.models.model_code_score import (
     ModelCodeScoreCheckFile,
     ModelCodeScoreContractRef,
     ModelCodeScoreOverlay,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request import (
-    ModelCodeEvalCandidate,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_task_material import (
-    ModelCodeEvalTaskMaterial,
-    task_key_for,
+from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
+    _git,
 )
 from omnimarket.nodes.node_delegation_size_band_compute.handlers.handler_delegation_size_band import (
     HandlerDelegationSizeBand,

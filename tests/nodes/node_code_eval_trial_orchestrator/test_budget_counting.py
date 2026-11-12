@@ -8,7 +8,7 @@ import itertools
 
 import pytest
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreVerdict as V,
 )
 from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (

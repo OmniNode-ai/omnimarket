@@ -27,27 +27,27 @@ from omnimarket.events.context_roi import (
     ModelAttemptReductionRow,
     ModelContextRoiRunResult,
 )
-from omnimarket.models.model_delegated_code_edit import ModelDeclaredCheck
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
-    EnumCodeScoreVerdict,
-)
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
-    ModelCodeScoreOverlay,
-    ModelCodeScoreRequest,
-    ModelCodeScoreTry,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_overlay import (
-    ModelCodeEvalRunnerOverlay,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_task_material import (
-    ModelCodeEvalTaskMaterial,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import (
+from omnimarket.models.code_eval_trial import (
     ModelScoreToSend,
     ModelUnitToPlace,
     ModelVerdictRow,
 )
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
+from omnimarket.models.code_eval_trial.model_code_eval_overlay import (
+    ModelCodeEvalRunnerOverlay,
+)
+from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
+    ModelCodeEvalTaskMaterial,
+)
+from omnimarket.models.enum_code_score import (
+    EnumCodeScoreVerdict,
+)
+from omnimarket.models.model_code_score import (
+    ModelCodeScoreOverlay,
+    ModelCodeScoreRequest,
+    ModelCodeScoreTry,
+)
+from omnimarket.models.model_delegated_code_edit import ModelDeclaredCheck
+from omnimarket.models.model_lab_work_unit import (
     ModelLabCodeDraft,
     ModelLabWorkUnitRequest,
 )

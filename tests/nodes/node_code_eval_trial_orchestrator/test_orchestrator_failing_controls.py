@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+from omnimarket.models.model_code_score import (
     ModelCodeScoreRequest,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator import (
@@ -125,7 +125,7 @@ def test_break_reuse_an_earlier_trys_worktree(monkeypatch: pytest.MonkeyPatch) -
 def test_break_drop_the_nudge_expiry_at_the_orchestrator(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
+    from omnimarket.models.model_lab_work_unit import (
         ModelLabWorkUnitRequest,
     )
 

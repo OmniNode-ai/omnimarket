@@ -12,11 +12,14 @@ from datetime import timedelta
 
 import pytest
 
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_closed import (
+    ModelCodeEvalRunClosed,
+)
+from omnimarket.models.model_code_score import (
     ModelCodeScoreRequest,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
-    ModelCodeEvalRunClosed,
+from omnimarket.models.model_lab_work_unit import (
+    ModelLabWorkUnitRequest,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.row_store import (
     InMemoryCodeEvalRowStore,
@@ -25,9 +28,6 @@ from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.row_store 
 from omnimarket.nodes.node_code_eval_trial_orchestrator.state_codec import StateIoCodec
 from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
     CodeEvalConfigurationError,
-)
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
-    ModelLabWorkUnitRequest,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.orchestrator_support import (
     RUN_ID,

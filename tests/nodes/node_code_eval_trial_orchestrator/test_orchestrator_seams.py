@@ -23,19 +23,19 @@ import yaml
 from pydantic import BaseModel
 
 from omnimarket.events.context_roi import ModelAttemptReductionRow
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+from omnimarket.models.code_eval_trial import ModelVerdictRow
+from omnimarket.models.code_eval_trial.model_code_eval_run_closed import (
+    ModelCodeEvalRunClosed,
+)
+from omnimarket.models.model_code_score import (
     ModelCodeScored,
     ModelCodeScoreRequest,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
-    ModelCodeEvalRunClosed,
+from omnimarket.models.model_lab_work_unit import (
+    ModelLabWorkUnitReceipt,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.builders import (
     trial_columns,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import ModelVerdictRow
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
-    ModelLabWorkUnitReceipt,
 )
 from omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi import (
     HandlerProjectionContextRoi,

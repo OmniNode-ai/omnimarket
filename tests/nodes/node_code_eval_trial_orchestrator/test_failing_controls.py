@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
+from omnimarket.models.code_eval_trial import (
+    ModelScoreAnsweredMessage,
+    ModelUnitAnsweredMessage,
+)
+from omnimarket.models.enum_code_score import (
     EnumCodeScoreVerdict,
 )
 from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
@@ -18,10 +22,6 @@ from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
 )
 from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
     handler_code_eval_trial_reducer as handler_module,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import (
-    ModelScoreAnsweredMessage,
-    ModelUnitAnsweredMessage,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.support import (
     Run,

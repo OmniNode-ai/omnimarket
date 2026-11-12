@@ -47,11 +47,11 @@ description: >
   It waits for nothing and never reads a clock the message did not carry.
 input_model:
   name: "ModelCodeEvalRunRequest"
-  module: "omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request"
+  module: "omnimarket.models.code_eval_trial.model_code_eval_run_request"
   description: "The run command: candidates, model arms, tenant, harness revision and publish_cells."
 output_model:
   name: "ModelCodeEvalRunClosed"
-  module: "omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed"
+  module: "omnimarket.models.code_eval_trial.model_code_eval_run_closed"
   description: "The closed event: the run's digest, controls, sequences and whether it was abandoned."
 inputs:
   correlation_id:
@@ -128,7 +128,7 @@ handler_routing:
         module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
       event_model:
         name: "ModelCodeEvalRunRequest"
-        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_request"
+        module: "omnimarket.models.code_eval_trial.model_code_eval_run_request"
       topic: onex.cmd.omnimarket.code-eval-run-requested.v1
       description: "The run leg: reads the suite through the suite reader port, bands and admits each task, freezes the overlay values and the digest into the row, queues each control's score, places what the free hosts take. Timeouts plus slack that do not fit under completion_bound raise a configuration error: the runtime dead-letters the request and no row is written."
     - operation: "code_eval.unit_completed"
@@ -138,7 +138,7 @@ handler_routing:
         module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
       event_model:
         name: "ModelLabWorkUnitReceipt"
-        module: "omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit"
+        module: "omnimarket.models.model_lab_work_unit"
       topic: onex.evt.omnimarket.lab-work-unit-completed.v1
       description: "The answer route: a unit's receipt, matched to its run by lane (the run id) and to its try by unit id; rule 2's table gives the verdict. A unit not in flight changes nothing."
     - operation: "code_eval.unit_failed"
@@ -158,7 +158,7 @@ handler_routing:
         module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
       event_model:
         name: "ModelCodeScored"
-        module: "omnimarket.nodes.node_code_contract_score_effect.models.model_code_score"
+        module: "omnimarket.models.model_code_score"
       topic: onex.evt.omnimarket.code-contract-scored.v1
       description: "The score route: E2's verdict matched by the try identity (task, model arm, ordinal); frees the single score slot."
     - operation: "code_eval.nudge"
@@ -168,7 +168,7 @@ handler_routing:
         module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
       event_model:
         name: "ModelCodeEvalRunNudge"
-        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_nudge"
+        module: "omnimarket.models.code_eval_trial.model_code_eval_run_nudge"
       topic: onex.cmd.omnimarket.code-eval-run-nudge.v1
       description: "The nudge route: expires a unit or score in flight past its deadline plus slack, then places."
     - operation: "code_eval.capacity"
@@ -197,13 +197,13 @@ handler_routing:
         module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
       event_model:
         name: "ModelCodeEvalRunClosed"
-        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed"
+        module: "omnimarket.models.code_eval_trial.model_code_eval_run_closed"
       topic: onex.evt.omnimarket.code-eval-run-closed.v1
       description: "The tick route's read of the closed event: drops the run from the nudged set."
 overlay:
   node: node_code_eval_trial_orchestrator
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
-  model: omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_overlay.ModelCodeEvalRunnerOverlay
+  model: omnimarket.models.code_eval_trial.model_code_eval_overlay.ModelCodeEvalRunnerOverlay
 metadata:
   description: "Code eval trial orchestrator: places, scores and records each try of a grid of coding trials on local models."
   author: "OmniNode Team"

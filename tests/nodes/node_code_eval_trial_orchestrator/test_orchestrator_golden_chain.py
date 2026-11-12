@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
+from omnimarket.models.model_lab_work_unit import (
     ModelLabWorkUnitRequest,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.orchestrator_support import (

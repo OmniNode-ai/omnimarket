@@ -15,16 +15,16 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
-    EnumCodeScoreVerdict,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_closed import (
     ModelCodeEvalControlReading,
     ModelCodeEvalRunClosed,
     ModelCodeEvalSequenceReading,
 )
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_row import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_row import (
     ModelCodeEvalRunRow,
+)
+from omnimarket.models.enum_code_score import (
+    EnumCodeScoreVerdict,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.row_store import (
     StateIoCodeEvalRowStore,
@@ -130,7 +130,7 @@ class StateIoCodec:
             sequences=sequences,
         )
         return (
-            "omnimarket.nodes.node_code_eval_trial_orchestrator.models",
+            "omnimarket.models.code_eval_trial",
             "ModelCodeEvalRunClosed",
             closed.model_dump(mode="json"),
         )

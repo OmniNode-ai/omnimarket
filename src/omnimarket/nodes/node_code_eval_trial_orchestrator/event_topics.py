@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
+from omnimarket.models.code_eval_trial.model_code_eval_run_closed import (
     ModelCodeEvalRunClosed,
 )
 

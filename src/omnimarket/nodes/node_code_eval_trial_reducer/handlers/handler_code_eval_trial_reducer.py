@@ -27,13 +27,11 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 
-from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
-    EnumCodeScoreSource,
-    EnumCodeScoreVerdict,
-)
-from omnimarket.nodes.node_code_eval_trial_orchestrator.models import (
+from omnimarket.models.code_eval_trial import (
     EnumCodeEvalSlot,
     ModelCodeEvalControlReading,
+    ModelCodeEvalReduceInput,
+    ModelCodeEvalReduceOutput,
     ModelCodeEvalRunClosed,
     ModelCodeEvalRunRow,
     ModelCodeEvalSequenceReading,
@@ -41,10 +39,6 @@ from omnimarket.nodes.node_code_eval_trial_orchestrator.models import (
     ModelCodeEvalSettings,
     ModelCodeEvalTaskRow,
     ModelCodeEvalVerdict,
-)
-from omnimarket.nodes.node_code_eval_trial_reducer.models import (
-    ModelCodeEvalReduceInput,
-    ModelCodeEvalReduceOutput,
     ModelNudgeMessage,
     ModelRunRequestedMessage,
     ModelScoreAnsweredMessage,
@@ -53,6 +47,10 @@ from omnimarket.nodes.node_code_eval_trial_reducer.models import (
     ModelUnitFailedMessage,
     ModelUnitToPlace,
     ModelVerdictRow,
+)
+from omnimarket.models.enum_code_score import (
+    EnumCodeScoreSource,
+    EnumCodeScoreVerdict,
 )
 
 _PASS = EnumCodeScoreVerdict.PASS
