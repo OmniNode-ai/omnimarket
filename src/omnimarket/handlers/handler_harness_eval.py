@@ -36,10 +36,10 @@ from omnimarket.events.delegation_gate_eval.model_gate_replay_verdict import (
 from omnimarket.models.delegation.model_harness_observation import (
     ModelHarnessObservation,
 )
-from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
 )
+from omnimarket.models.delegation_capability_map import model_capability_line
 from omnimarket.models.delegation_capability_map.enum_capability_source import (
     EnumCapabilitySource,
 )
@@ -185,6 +185,7 @@ def summarize(
     for (harness, model, configuration, task_class), rows in sorted(groups.items()):
         available = [r for r in rows if r.available]
         passes = sum(r.passed for r in available)
+        failed = [r.failure_kind or "checker-failed" for r in rows if not r.passed]
         cells.append(
             {
                 "harness": harness,
@@ -198,11 +199,7 @@ def summarize(
                 "median_minutes": median(r.duration_s for r in available) / 60
                 if available
                 else None,
-                "failure_kinds": dict(
-                    Counter(
-                        r.failure_kind or "checker-failed" for r in rows if not r.passed
-                    )
-                ),
+                "failure_kinds": dict(Counter(failed)),
             }
         )
     return cells
@@ -215,6 +212,7 @@ def build_harness_capability_run(
     observed_at: datetime,
     suite_revision: str,
     harness_revision: str,
+    line: model_capability_line.ModelCapabilityLine | None,
 ) -> ModelCapabilityMapRunRecorded:
     """Adapt small fixed-fixture trials to the existing capability projection.
 
@@ -248,7 +246,7 @@ def build_harness_capability_run(
                 item_key=row.item_key,
                 source=EnumCapabilitySource.LABELLED_ITEM,
                 task_class=row.task_class,
-                size_band=EnumSizeBand.S,
+                size_band=row.size_band,
                 model_key=row.model,
                 backend_id=backend,
                 configuration=configuration,
@@ -276,6 +274,7 @@ def build_harness_capability_run(
         observed_at=observed_at,
         rows=tuple(rows),
         assignments=tuple(assignments[key] for key in sorted(assignments)),
+        line=line,
     )
 
 

@@ -123,7 +123,8 @@ def test_rows_narrowed_a_message_to_the_lane_is_kept() -> None:
         assert answer
 
 
-def test_rows_narrowed_a_read_with_no_start_reads_the_window_whole() -> None:
+def test_rows_narrowed_a_rows_read_with_no_start_is_bounded_and_narrowed() -> None:
+    """OMN-23541: a rows read with no start reads the declared window, narrowed in the store."""
     reader = NarrowingReader(fixture_records())
     request = ModelWorkLedgerQueryRequest.model_validate(
         {
@@ -133,5 +134,21 @@ def test_rows_narrowed_a_read_with_no_start_reads_the_window_whole() -> None:
             "kinds": ("STATUS",),
         }
     )
-    HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(request)
+    answer = HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(request)
+    assert answer.bounded is True
+    assert [c[0] for c in reader.calls if c[0].startswith("rows")] == ["rows-matching"]
+
+
+def test_rows_narrowed_a_rulings_read_with_no_start_reads_the_window_whole() -> None:
+    """The bound is the rows query's: a rulings read with no start is not bounded (OMN-23541)."""
+    reader = NarrowingReader(fixture_records())
+    request = ModelWorkLedgerQueryRequest.model_validate(
+        {
+            "correlation_id": uuid4(),
+            "now": NOW,
+            "query": EnumWorkLedgerQueryKind.RULINGS,
+        }
+    )
+    answer = HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(request)
+    assert answer.bounded is False
     assert [c[0] for c in reader.calls if c[0].startswith("rows")] == ["rows"]

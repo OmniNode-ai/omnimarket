@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The overlay of node_lab_alarm: every setting of the broker lag and effects-held conditions.
+"""The overlay of node_lab_alarm: every setting of the broker lag, effects-held and broker-listener conditions.
 
 Found at ``<root>/node_lab_alarm/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``.
 The package ships ``overlay.example.yaml`` (the in-memory backend, synthetic values). Nothing here has
 a default: an absent key refuses the load and names it, with one exception: ``effects_held`` is the
 block of the effects-held verbs only, so an overlay that lacks it still loads and the broker lag read
 (the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23340).
+``broker_listener`` is the same: the block of the broker-listener verbs only, and those verbs refuse
+it themselves.
 """
 
 from __future__ import annotations
@@ -75,6 +77,19 @@ class ModelManifestSettings(BaseModel):
     resilience: ModelManifestResilience | None = None
 
 
+class ModelLagGrowthRule(BaseModel):
+    """When growth is an alarm: a rebalance after a dev redeploy grows a group for a run or two, a stuck group keeps growing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Messages a group must grow by between two samples for that sample to count as growth.
+    min_growth: int = Field(ge=1)
+    #: Consecutive samples that count as growth before the group alarms.
+    persist_runs: int = Field(ge=1)
+    #: Where each group's count of consecutive growth samples is kept between ticks.
+    streak_path: str = Field(min_length=1)
+
+
 class ModelLagSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -85,6 +100,8 @@ class ModelLagSettings(BaseModel):
     record_path: str = Field(min_length=1)
     #: The condition name the run record carries, the one the floor's overlay lists for the broker.
     record_condition: str = Field(min_length=1)
+    #: Absent means the rule before OMN-19998: any growth between two samples alarms at once. Declare it to turn the persistence on.
+    growth: ModelLagGrowthRule | None = None
 
 
 class ModelLabAlarmScheduleHost(BaseModel):
@@ -154,6 +171,28 @@ class ModelEffectsHeldSettings(BaseModel):
     escalation: ModelEscalationSettings
 
 
+class ModelBrokerListenerSettings(BaseModel):
+    """The broker-listener condition (OMN-23933): which listener addresses to dial, and for how long."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The dev broker's external listener addresses, the old config key ``kafka_bootstrap_servers``.
+    bootstrap_servers: str = Field(min_length=1)
+    #: The old script's own 10 s dial bound.
+    timeout_seconds: float = Field(gt=0)
+
+
+class ModelAlarmDeliveryWiring(BaseModel):
+    """Names that this node's alarms are delivered through node_lab_alarm_deliver_effect (OMN-23906).
+
+    That node's own overlay holds every destination, window and cell; this block only turns the delivery on.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool
+
+
 class ModelLabAlarmOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -166,6 +205,11 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the effects-held verbs alone. Absent, the broker lag verbs still run: a block that
     #: belongs to one condition must not stop another condition's reading (the 2026-11-09 stale read).
     effects_held: ModelEffectsHeldSettings | None = None
+    #: Read by the broker-listener verbs alone; absent, the overlay still loads and the other verbs
+    #: run, and the broker-listener verbs refuse it themselves, as the effects-held ones do theirs.
+    broker_listener: ModelBrokerListenerSettings | None = None
+    #: Absent, nothing is delivered: an overlay written before the delivery existed loads and runs unchanged.
+    alarm_delivery: ModelAlarmDeliveryWiring | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLabAlarmOverlay:
@@ -182,6 +226,8 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelLabAlarmOverl
 __all__ = [
     "NODE_NAME",
     "ModelAlarmBackend",
+    "ModelAlarmDeliveryWiring",
+    "ModelBrokerListenerSettings",
     "ModelDeclaredNode",
     "ModelEffectsHeldSettings",
     "ModelEscalationSettings",
@@ -189,6 +235,7 @@ __all__ = [
     "ModelLabAlarmOverlay",
     "ModelLabAlarmSchedule",
     "ModelLabAlarmScheduleHost",
+    "ModelLagGrowthRule",
     "ModelLagSettings",
     "ModelManifestResilience",
     "ModelManifestSettings",

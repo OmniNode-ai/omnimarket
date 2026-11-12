@@ -25,6 +25,7 @@ class EnumExposureReadFailure(StrEnum):
     ORG_READ_DENIED = "org-read-denied"
     BUDGET_EXHAUSTED = "budget-exhausted"
     UNREADABLE = "unreadable"
+    TOKEN_MINT_FAILED = "token-mint-failed"
 
 
 class ModelRunnerGroupFacts(BaseModel):

@@ -9,6 +9,4 @@ first_party_orgs:
 tag_pattern: 'dev-\d{14}-[0-9a-f]{12}'
 # The earlier check let a first-party @main through; no workflow uses one now, so it is refused.
 first_party_main: fail
-known_exceptions:
-  - uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@6bfba15f7d103ddaa9e949c459e95153b1ca6a94
-    reason: No dev-merge tag points at this commit; the nearest tag that contains it is a later commit with other changes.
+known_exceptions: []

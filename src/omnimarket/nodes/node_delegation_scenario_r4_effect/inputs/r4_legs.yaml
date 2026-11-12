@@ -36,9 +36,11 @@ all_down_leg:
   rungs:
     - {backend_id: r4-down-a, model_id: stub-down-a, behaviour: stopped, timeout_ms: 5000}
     - {backend_id: r4-down-b, model_id: stub-down-b, behaviour: status, status_code: 503, timeout_ms: 5000}
-# A slow rung, then a rung with no credential, then a healthy one. A probe-ladder rung names a loopback stub and has no
-# credential field, so the leg cannot be built from a ladder file today. It stays a named, failing assertion until the
-# probe rung can declare an absent credential; it is never skipped and never counted as passed.
+# A slow rung, then a rung that declares its credential absent (never attempted, skipped), then a healthy one (K8).
 credential_absent_leg:
-  runnable: false
-  gap: a probe rung has no credential setting, so the third-rung-answers leg (K8) cannot be expressed as a ladder file
+  name: slow_then_credential_absent_then_healthy
+  expect_failure_class: timeout
+  rungs:
+    - {backend_id: r4-slow, model_id: stub-slow, behaviour: slow, delay_ms: 8000, timeout_ms: 1500}
+    - {backend_id: r4-nokey, model_id: stub-nokey, behaviour: answer, credential: declared_absent, timeout_ms: 5000}
+    - {backend_id: r4-healthy, model_id: stub-healthy, behaviour: answer, timeout_ms: 30000}

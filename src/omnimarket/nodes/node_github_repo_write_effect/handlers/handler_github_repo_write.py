@@ -25,7 +25,12 @@ Rules this handler enforces:
   pr_comment and pr_thread_reply check the PR's head when given one. No
   mutation follows.
 - **Idempotency.** A retried command with the same idempotency key returns the
-  first result marked ``replayed`` and sends nothing. Across restarts GitHub
+  first result marked ``replayed`` and sends nothing; a key reused with
+  different request content is refused with ``idempotency_key_conflict``,
+  naming the fields that differ, never their values. Only the call-context
+  fields (correlation id, dry_run, the asking lane and run, the expected head,
+  the lease, the claim and the claims directory) may differ between retries.
+  Across restarts GitHub
   itself is the record: pr_create finds an open PR for the head, pr_comment
   finds a comment carrying the key, pr_thread_reply finds a review comment
   carrying the key, pr_review_post finds a review carrying the key,
@@ -33,6 +38,11 @@ Rules this handler enforces:
   in the asked-for state. workflow_dispatch has no GitHub-side record, so only
   the in-process record guards a retry. check_run_create likewise only has
   the in-process record; a restart can create another check run.
+- **Allowed labels.** pr_label adds and removes labels on a pull request, pinned to
+  the expected head like pr_edit. Every label must be in the ``allowed_labels`` set of
+  the node's overlay (``overlay.py``); one that is not, or an overlay that cannot be
+  read, is refused ``label_not_allowed`` before any GitHub call, in either mode. A label
+  already in the asked-for state is not sent again and the result is ``replayed``.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -49,6 +59,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import hashlib
+import json
 import logging
 import os
 import re
@@ -102,6 +114,7 @@ from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_github_token_is_actor,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.inference.secret_store_resolver import (
     SecretStoreConfigurationError,
     resolve_api_key_async,
@@ -131,10 +144,18 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_config import (
     ModelRepoWriteCredentialChoice,
 )
+from omnimarket.nodes.node_github_repo_write_effect.overlay import (
+    ModelRepoWriteOverlay,
+    load_overlay,
+)
 from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolGithubRepoWriteTransport,
     ProtocolLeaseFence,
     ProtocolPrClaimLookup,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
+    add_labels_request,
+    remove_label_request,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_review_post import (
     create_pull_request_review_request,
@@ -156,6 +177,19 @@ _SECRET_NAME = "GITHUB_TOKEN"
 _CLAIMS_DIR_ENV = "ONEX_PR_CLAIMS_DIR"
 # How many completed writes the in-process idempotency record keeps.
 _IDEMPOTENCY_RECORD_SIZE = 4096
+# The request fields that say who is asking and under which guard-rails, not
+# what is written: a retry may differ in them and still be the same write, so
+# the idempotency record's per-field digests leave them out.
+_CALL_CONTEXT_FIELDS: tuple[str, ...] = (
+    "correlation_id",
+    "dry_run",
+    "requested_by_run",
+    "requested_by_lane",
+    "expected_head_sha",
+    "lease",
+    "claim",
+    "claims_dir",
+)
 # Comment pages scanned for an idempotency marker (300 comments), for the
 # conversation comments, review comments and reviews of the comment/review writes.
 _MARKER_SCAN_PAGES = 3
@@ -189,6 +223,21 @@ async def _credential_from_store(ref: str) -> SecretStr | None:
 def idempotency_marker(key: str) -> str:
     """The hidden line a comment or review carries so a retry can find it."""
     return f"{IDEMPOTENCY_MARKER_PREFIX}{key} -->"
+
+
+def _request_digests(request: ModelRepoWriteRequest) -> dict[str, str]:
+    """One digest per request field, naming the write, not how it was asked.
+
+    The call-context fields are left out (see ``_CALL_CONTEXT_FIELDS``); a
+    digest, never the value, is kept, because a body can be private.
+    """
+    fields = request.model_dump(mode="json", exclude=set(_CALL_CONTEXT_FIELDS))
+    return {
+        name: hashlib.sha256(
+            json.dumps(value, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        for name, value in fields.items()
+    }
 
 
 def _resource_of(request: ModelGithubHttpRequest) -> str:
@@ -391,7 +440,9 @@ class HandlerGithubRepoWriteEffect:
         config: ModelRepoWriteConfig | None = None,
         clock: Callable[[], float] = time.time,
         quota_readings: GithubQuotaReadings | None = None,
+        overlay: ModelRepoWriteOverlay | None = None,
     ) -> None:
+        self._write_overlay = overlay
         self._transport = transport
         self._fence = fence_port
         if deadline_seconds is None:
@@ -413,8 +464,41 @@ class HandlerGithubRepoWriteEffect:
         self.quota_readings = (
             GithubQuotaReadings() if quota_readings is None else quota_readings
         )
-        self._done: OrderedDict[tuple[str, str, str], ModelRepoWriteCompleted] = (
-            OrderedDict()
+        self._done: OrderedDict[
+            tuple[str, str, str], tuple[dict[str, str], ModelRepoWriteCompleted]
+        ] = OrderedDict()
+
+    def _label_refusal(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | None:
+        """Refuse a pr_label naming a label the overlay does not allow, before any call.
+
+        The overlay is read the first time a pr_label needs it, so no other
+        operation depends on it; one that cannot be read refuses the label
+        write, never falls back to a value here.
+        """
+        if request.operation is not EnumRepoWriteOperation.PR_LABEL:
+            return None
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.LABEL_NOT_ALLOWED,
+                f"no allowed-label overlay is configured for pr_label: {exc}",
+            )
+        allowed = set(self._write_overlay.pr_label.allowed_labels)
+        refused = sorted(
+            {*(request.add_labels or ()), *(request.remove_labels or ())} - allowed
+        )
+        if not refused:
+            return None
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.LABEL_NOT_ALLOWED,
+            f"label(s) {', '.join(refused)} are not in the node's allowed pr_label "
+            "set; no call made",
         )
 
     # --- quota ----------------------------------------------------------------
@@ -433,8 +517,24 @@ class HandlerGithubRepoWriteEffect:
     async def handle(self, request: ModelRepoWriteRequest) -> Result:
         """Run one write; dry_run plans its requests and sends nothing."""
         key = (request.repo.lower(), request.operation.value, request.idempotency_key)
-        done = self._done.get(key)
-        if done is not None:
+        digests = _request_digests(request)
+        record = self._done.get(key)
+        if record is not None:
+            done_digests, done = record
+            differing = sorted(
+                name
+                for name in done_digests.keys() | digests.keys()
+                if done_digests.get(name) != digests.get(name)
+            )
+            if differing:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.IDEMPOTENCY_KEY_CONFLICT,
+                    f"idempotency key {request.idempotency_key} was already used "
+                    f"for a {request.operation.value} on {request.repo} that "
+                    f"differs in {', '.join(differing)}; the recorded write's "
+                    "result is not replayed and no call is made",
+                )
             return done.model_copy(
                 update={"correlation_id": request.correlation_id, "replayed": True}
             )
@@ -442,6 +542,9 @@ class HandlerGithubRepoWriteEffect:
         if refused is not None:
             return refused
         refused = self._claim_refusal(request)
+        if refused is not None:
+            return refused
+        refused = self._label_refusal(request)
         if refused is not None:
             return refused
         mode = (
@@ -472,7 +575,7 @@ class HandlerGithubRepoWriteEffect:
         except _RefusedError as exc:
             result = exc.failed
         if isinstance(result, ModelRepoWriteCompleted):
-            self._done[key] = result
+            self._done[key] = (digests, result)
             while len(self._done) > _IDEMPOTENCY_RECORD_SIZE:
                 self._done.popitem(last=False)
         _log.info(
@@ -683,6 +786,8 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_thread_reply(run)
         if op is EnumRepoWriteOperation.PR_THREAD_RESOLVE:
             return await _pr_thread_resolve(run)
+        if op is EnumRepoWriteOperation.PR_LABEL:
+            return await _pr_label(run)
         if op is EnumRepoWriteOperation.PR_REVIEW_POST:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
@@ -994,6 +1099,29 @@ async def _pr_thread_resolve(run: _Run) -> ModelRepoWriteCompleted:
     return run.completed(html_url=url, head_sha=head_sha)
 
 
+async def _pr_label(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    number = c.pr_number or 0
+    pr = await run.expect_pr_head()
+    labels = pr.get("labels")
+    current = {
+        name
+        for label in (labels if isinstance(labels, list) else [])
+        if isinstance(label, dict) and isinstance(name := label.get("name"), str)
+    }
+    to_add = [label for label in (c.add_labels or ()) if label not in current]
+    to_remove = [label for label in (c.remove_labels or ()) if label in current]
+    if to_add:
+        await run.send(add_labels_request(c.repo, number, to_add))
+    for label in to_remove:
+        await run.send(remove_label_request(c.repo, number, label))
+    return run.completed(
+        replayed=not (to_add or to_remove),
+        html_url=_str_at(pr, "html_url"),
+        head_sha=_str_at(pr, "head", "sha"),
+    )
+
+
 def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
     body: dict[str, object] = {
         "name": c.name,
@@ -1050,6 +1178,19 @@ def planned_requests(
         in (EnumRepoWriteOperation.PR_CREATE, EnumRepoWriteOperation.WORKFLOW_DISPATCH)
         else []
     )
+    if op is EnumRepoWriteOperation.PR_LABEL:
+        return (
+            pull_request_request(c.repo, n),
+            *(
+                (add_labels_request(c.repo, n, list(c.add_labels)),)
+                if c.add_labels
+                else ()
+            ),
+            *(
+                remove_label_request(c.repo, n, label)
+                for label in c.remove_labels or ()
+            ),
+        )
     if op is EnumRepoWriteOperation.PR_CREATE:
         return (
             *tip,

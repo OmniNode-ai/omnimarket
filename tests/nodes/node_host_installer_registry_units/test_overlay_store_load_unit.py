@@ -75,9 +75,7 @@ def test_the_unit_is_declared_hourly_on_systemd_and_reads_the_overlay_home_clone
     assert unit["platform"] == "systemd"
     assert unit["schedule"]["start_interval"] == 3600
     assert unit["module"].endswith("runtime_overlay_store_load_tick")
-    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == (
-        "{registry_root}/overlays/overlays"
-    )
+    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == ("{overlays_root}")
 
 
 def test_install_renders_an_hourly_timer_running_the_tick_over_the_clone_overlay_root(

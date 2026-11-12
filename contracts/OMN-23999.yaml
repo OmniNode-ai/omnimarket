@@ -1,0 +1,74 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23999
+title: "Lane time limit becomes an overlay setting, and a lane cut off with unsaved work ends typed"
+summary: >
+  This change is the model the overlay home loads the lane_time_box overlay through (ModelLaneTimeBoxOverlay).
+  The remote-lane runner's default lane time limit was the code constant DEFAULT_TIMEOUT_MIN = 90. It is now the lane_time_box overlay's
+  default_timeout_min (a pinned host's hosts.<host>.timeout_min first), resolved once by node_lane_time_box_compute and used by the runner's
+  deadline, the lane guard's runtime (limit plus GRACE_S) and the systemd scope's RuntimeMaxSec alike. A missing or invalid value reads the
+  built-in 90 and the run says so; the Timeout reason rule applies past the overlay value. A lane that reaches its limit with work on its
+  worktree is salvaged and ends with the typed outcome time-box-unpushed naming the worktree and the salvage branch.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn23999-lane-time-box-overlay"
+    statement: "The lane time limit default is an overlay value read by the runner, the lane guard runtime and the scope limit together, and a lane cut off with unsaved work ends time-box-unpushed."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a lane started with no --timeout-min runs for the lane_time_box overlay's default_timeout_min, and the runner's deadline, the lane guard's runtime and the systemd scope's RuntimeMaxSec all derive from that one number -- falsifier: pytest in plugins/omni/skills/remote-lane/tests/test_lane_time_box.py fails when the default is the old literal 90 (test_the_default_limit_is_the_overlay_value, test_the_runner_the_guard_runtime_and_the_scope_limit_read_one_number)
+      - id: "AC2"
+        statement: |-
+          AC2: a missing or invalid overlay value reads the old 90-minute default and the run says so, and the Timeout reason rule applies past the overlay value rather than past 90 -- falsifier: pytest tests test_a_missing_overlay_reads_the_old_default_and_says_so, test_an_invalid_overlay_value_reads_the_old_default_and_says_so and test_the_reason_line_rule_applies_past_the_overlay_value fail on the base revision
+      - id: "AC3"
+        statement: |-
+          AC3: a lane that reaches its limit with uncommitted or unpushed work ends with outcome time-box-unpushed naming its worktree and salvage branch, and a lane with nothing to salvage does not -- falsifier: pytest tests test_a_lane_the_guard_ends_with_unpushed_work_ends_time_box_unpushed and test_a_lane_the_guard_ends_with_nothing_to_salvage_is_not_typed_time_box_unpushed
+      - id: "AC4"
+        statement: |-
+          AC4: integrated: on a lab host with the change installed, a lane started without --timeout-min shows its receipt time_box cell holding the overlay's value (or the old default with the notice when the overlay is absent) -- falsifier: the running lane's receipt time_box cell read on the host shows a different value than the overlay, or no cell
+evidence_requirements:
+  - kind: tests
+    description: "the lane time box controls, red on origin/main"
+    command: "uv run pytest tests/unit/models/test_lane_time_box_overlay_omn23999.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23999-ac1
+    description: "AC1: focused tests of the change, failing on the base revision"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/models/test_lane_time_box_overlay_omn23999.py -q"
+    binds_ac: ["AC1"]
+  - id: dod-omn23999-ac2
+    description: "AC2: focused tests of the change, failing on the base revision"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/models/test_lane_time_box_overlay_omn23999.py -q"
+    binds_ac: ["AC2"]
+  - id: dod-omn23999-ac3
+    description: "AC3: focused tests of the change, failing on the base revision"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/models/test_lane_time_box_overlay_omn23999.py -q"
+    binds_ac: ["AC3"]
+  - id: dod-omn23999-ac4
+    description: "AC4: the receipt time_box cell of a lane run on the lab host with the change installed"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/models/test_lane_time_box_overlay_omn23999.py -q"
+    binds_ac: ["AC4"]
+  - id: dod-omn23999-integration-proof
+    description: "The pushed head ran the lane time box overlay model tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23999 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/models/test_lane_time_box_overlay_omn23999.py -q --no-cov
+        cwd: .

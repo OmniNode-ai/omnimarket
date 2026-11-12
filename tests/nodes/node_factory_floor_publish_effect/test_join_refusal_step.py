@@ -24,6 +24,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     HandlerFactoryFloorPublish,
     load_runtime,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
     FLOOR_SIMPLE,
     JOIN_REFUSAL,
@@ -34,7 +35,7 @@ from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish im
 
 pytestmark = pytest.mark.unit
 
-RT = load_runtime()
+RT = load_runtime().with_limits(TEST_LIMITS)
 
 
 def _module_calls(runner: Scripted) -> list[tuple[str, list[str]]]:
@@ -73,7 +74,10 @@ def test_golden_one_publish_run_calls_the_node_before_the_floor_step(
 ) -> None:
     runner, steps = _run(tmp_path)
     modules = _modules(runner)
-    assert modules.index(JOIN_REFUSAL) < modules.index(FLOOR_SIMPLE)
+    # The simple floor module also runs inside the concurrent group (the MVP reads step), in whatever order the threads start:
+    # the step that follows the record is the last call of the module before the canary.
+    last_floor_simple = len(modules) - 1 - modules[::-1].index(FLOOR_SIMPLE)
+    assert modules.index(JOIN_REFUSAL) < last_floor_simple
     assert dict(_module_calls(runner))[JOIN_REFUSAL] == ["run"]
     assert dict(steps)["join_refusal"] == "ok"
 

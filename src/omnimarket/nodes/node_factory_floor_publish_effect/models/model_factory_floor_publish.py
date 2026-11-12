@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -11,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_friction_rollup_source import (
     ModelFrictionRollupStepSettings,
 )
@@ -35,6 +37,35 @@ class ModelPublishTarget(BaseModel):
         path = PurePosixPath(value)
         if not path.is_absolute() or ".." in path.parts or "\n" in value:
             raise ValueError("a remote path must be an absolute path without '..'")
+        return value
+
+
+class PublishLimitMissingError(NodeOverlayError):
+    """A limit the overlay must name is missing; the message names the overlay key."""
+
+
+class PublishLimitBoundError(NodeOverlayError):
+    """The overlay's cycle bound is below the longest declared path; the message names the bound and both numbers."""
+
+
+class ModelPublishLimits(BaseModel):
+    """The limits the overlay carries for the publish cycle: no code default for any of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cycle_bound_seconds: int = Field(gt=0)
+    step_timeout_seconds: dict[str, int]
+
+    @field_validator("step_timeout_seconds")
+    @classmethod
+    def _step_timeout_seconds(cls, value: dict[str, int]) -> dict[str, int]:
+        if not value:
+            raise ValueError("step_timeout_seconds must name at least one step")
+        for name, seconds in value.items():
+            if seconds <= 0:
+                raise ValueError(
+                    f"step_timeout_seconds[{name!r}] must be > 0, got {seconds}"
+                )
         return value
 
 
@@ -111,6 +142,7 @@ class ModelFactoryFloorPublishOverlay(BaseModel):
     # user table. The operator-only reports are served to the devices that login owns and to nobody else; without
     # this key the publish refuses (there is no packaged value and no default).
     owner_login: str = Field(min_length=3, pattern=r"^[^\s@]+@[^\s@]+$")
+    limits: ModelPublishLimits
 
     @field_validator("remote_dir", "history_root")
     @classmethod
@@ -177,7 +209,16 @@ class ModelPublishStep(BaseModel):
     name: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     kind: StepKind
     required: bool
-    timeout_seconds: int = Field(gt=0)
+    timeout_seconds: int | None = Field(default=None, gt=0)
+
+    @property
+    def seconds(self) -> int:
+        if self.timeout_seconds is None:
+            raise PublishLimitMissingError(
+                f"overlay node_factory_floor_publish_effect: key limits.step_timeout_seconds.{self.name} is missing"
+            )
+        return self.timeout_seconds
+
     module: str | None = None
     args: tuple[str, ...] = ()
     argv: tuple[str, ...] = ()
@@ -188,9 +229,23 @@ class ModelPublishStep(BaseModel):
     fresh_relpath: str | None = None
     fresh_seconds: int | None = Field(default=None, gt=0)
     rollup: ModelFrictionRollupStepSettings | None = None
+    # Variables this step's program runs with in place of the unit's (OMN-23606): a module, command or capture step only.
+    # The floor's 14-day window read cannot be answered by the bus source (the answer is far past the read node's bound),
+    # so a host whose ledger record is the bus spent 5 to 14 s on a refused read before the reader took the file, while the
+    # tracker and friction steps need the bus read command the unit declares.
+    environment: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPublishStep:
+        for key in self.environment:
+            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+                raise ValueError(
+                    f"step {self.name} names the environment variable {key!r}, which is not an upper-case name"
+                )
+        if self.environment and self.kind not in ("module", "command", "capture"):
+            raise ValueError(
+                f"step {self.name} of kind {self.kind} runs no program, so it takes no environment"
+            )
         if (self.fresh_relpath is None) != (self.fresh_seconds is None):
             raise ValueError(
                 f"step {self.name} names fresh_relpath and fresh_seconds together or neither"
@@ -426,7 +481,7 @@ class ModelPublishCycle(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # The seconds one publish run may take on its longest declared path; the served status names it beside the seconds taken.
-    bound_seconds: int = Field(gt=0)
+    bound_seconds: int | None = Field(default=None, gt=0)
     delegation_timeout_seconds: int = Field(gt=0)
     # All the copies of one run (the snapshot, the pages, the data and the first status) share this; a copy that finds it spent is refused.
     copy_budget_seconds: int = Field(gt=0)
@@ -491,22 +546,66 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     reports: ModelReportsRuntime
     operator_reports: ModelOperatorReportsRuntime
 
+    def bound(self) -> int:
+        """The cycle bound the overlay names; raises ``PublishLimitMissingError`` naming ``limits.cycle_bound_seconds`` when unset."""
+        if self.cycle.bound_seconds is None:
+            raise PublishLimitMissingError(
+                "overlay node_factory_floor_publish_effect: key limits.cycle_bound_seconds is missing"
+            )
+        return self.cycle.bound_seconds
+
+    def with_limits(
+        self, limits: ModelPublishLimits
+    ) -> ModelFactoryFloorPublishRuntime:
+        """A copy of this runtime with every step's timeout and the cycle bound taken from ``limits``.
+
+        A declared step with no overlay value raises ``PublishLimitMissingError`` naming the key; an overlay value for a
+        step the contract no longer declares is ignored, so removing a step never stops the cycle. When the resolved longest path exceeds the bound, raises
+        ``PublishLimitBoundError`` naming ``limits.cycle_bound_seconds`` and both numbers.
+        """
+
+        def resolve(step: ModelPublishStep) -> ModelPublishStep:
+            if step.name not in limits.step_timeout_seconds:
+                raise PublishLimitMissingError(
+                    f"overlay node_factory_floor_publish_effect: key "
+                    f"limits.step_timeout_seconds.{step.name} is missing"
+                )
+            seconds = limits.step_timeout_seconds[step.name]
+            return step.model_copy(update={"timeout_seconds": seconds})
+
+        steps = tuple(resolve(s) for s in self.steps)
+        after = tuple(resolve(s) for s in self.after_publish_steps)
+        cycle = self.cycle.model_copy(
+            update={"bound_seconds": limits.cycle_bound_seconds}
+        )
+        rt = self.model_copy(
+            update={"steps": steps, "after_publish_steps": after, "cycle": cycle}
+        )
+        path = rt.declared_longest_path()
+        total = sum(path.values())
+        if total > limits.cycle_bound_seconds:
+            raise PublishLimitBoundError(
+                f"overlay node_factory_floor_publish_effect: key limits.cycle_bound_seconds is {limits.cycle_bound_seconds}, "
+                f"below the longest declared path of {total} s"
+            )
+        return rt
+
     def declared_longest_path(self) -> dict[str, int]:
         """The seconds each phase may take at most, from the timeouts this contract declares.
 
         The input steps run in groups: a group of concurrent steps takes its slowest member's timeout, and the groups
         add up. The after-publish steps add up. The other phases are the cycle block's own numbers, which the handler
-        enforces. Their sum is the longest path a run may take; ``cycle.bound_seconds`` must hold it.
+        enforces. Their sum is the longest path a run may take; ``cycle.bound_seconds`` must hold it. A step whose limit
+        is not yet resolved (``timeout_seconds`` is ``None``) raises ``PublishLimitMissingError`` naming its key.
         """
         return {
             "input_steps": sum(
-                max(step.timeout_seconds for step in group)
-                for group in group_steps(self.steps)
+                max(step.seconds for step in group) for group in group_steps(self.steps)
             ),
             "delegation": self.cycle.delegation_timeout_seconds,
             "copy": self.cycle.copy_budget_seconds,
             "history_prune": self.cycle.history_prune_budget_seconds,
-            "after_publish": sum(s.timeout_seconds for s in self.after_publish_steps),
+            "after_publish": sum(s.seconds for s in self.after_publish_steps),
             "final_status": self.cycle.final_status_seconds,
         }
 

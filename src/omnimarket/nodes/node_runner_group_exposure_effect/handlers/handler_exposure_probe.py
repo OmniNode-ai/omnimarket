@@ -22,6 +22,9 @@ from omnimarket.models.runner_group_exposure import (
 from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner_group_exposure import (
     HandlerRunnerGroupExposure,
 )
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters.app_token_mint import (
+    AppInstallationTokenMint,
+)
 from omnimarket.nodes.node_runner_group_exposure_effect.adapters.github_group_source import (
     GithubGroupSource,
 )
@@ -43,6 +46,7 @@ from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
 from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_group_source import (
     ProtocolGroupSource,
     ProtocolHttpGet,
+    ProtocolTokenMint,
 )
 
 _CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -60,19 +64,25 @@ class HandlerExposureProbe:
         overlay: ModelExposureProbeOverlay | None = None,
         http_get: ProtocolHttpGet | None = None,
         environ: Mapping[str, str] | None = None,
+        token_mint: ProtocolTokenMint | None = None,
     ) -> None:
         self._overlay = overlay
         self._http_get = http_get
         self._environ = environ
+        self._token_mint = token_mint
 
     def _source(self, overlay: ModelExposureProbeOverlay) -> ProtocolGroupSource:
         source = overlay.source
         if isinstance(source, ModelInMemorySource):
             return InMemoryGroupSource(source.fixture)
+        token_mint = self._token_mint
+        if token_mint is None and source.token_mint is not None:
+            token_mint = AppInstallationTokenMint()
         return GithubGroupSource(
             source,
             self._http_get or UrllibHttpTransport(),
             os.environ if self._environ is None else self._environ,
+            token_mint=token_mint,
         )
 
     def handle(self, request: ModelExposureProbeRequest) -> ModelExposureProbeResult:

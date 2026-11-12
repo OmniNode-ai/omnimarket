@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The publication of the floor emissions projection. A host names its own copy with ONEX_FLOOR_EMISSIONS_OVERLAY. The in-memory bus is the
+# default and holds no emission, so the projection is published empty; the real backend is the broker.
+bus: inmemory
+bus_lane: null
+kafka_bootstrap: null
+# The broker the snapshot is published on when it is not the read broker; null publishes on the read broker.
+snapshot_kafka_bootstrap: null
+read_window_s: 4.0
+projection_id: floor_emissions
+# onex-topic-allow: a projection snapshot topic has the projection's own name form.
+snapshot_topic: onex.snapshot.projection.floor-emissions.v1
+emission_topics:
+  - onex.evt.omnimarket.floor-node-started.v1
+  - onex.evt.omnimarket.floor-node-succeeded.v1
+  - onex.evt.omnimarket.floor-node-failed.v1
+window_hours: 48
+max_events: 2000

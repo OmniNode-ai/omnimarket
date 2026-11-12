@@ -156,14 +156,61 @@ def test_timer_units_run_the_node_with_the_overlay_pin(tmp_path: Path) -> None:
         source_root=Path("/srv/omnimarket"),
         overlay_file=Path("/srv/overlay.yaml"),
         home=tmp_path,
+        workspace_root=Path("/srv/workspace"),
+        workspace_config_root=Path("/srv/config"),
     )
     assert (
         '-m omnimarket.nodes.node_lab_disk_watermark_effect run --host "pool-a"'
         in service
     )
     assert 'Environment="ONEX_LAB_DISK_WATERMARK_OVERLAY=/srv/overlay.yaml"' in service
+    assert 'Environment="OMNIBASE_PATH=/srv/workspace"' in service
+    assert 'Environment="ONEX_WORKSPACE_CONFIG_ROOT=/srv/config"' in service
+    assert "TimeoutStartSec=600" in service
     assert "OnUnitActiveSec=300s" in timer
     assert "Unit=onex-disk-watermark.service" in timer
+
+
+def test_install_without_workspace_root_is_refused_by_the_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    overlay = _overlay(tmp_path)
+    code = main(
+        [
+            "schedule",
+            "install",
+            "--host",
+            "pool-a",
+            "--source-root",
+            str(tmp_path),
+            "--overlay",
+            str(overlay),
+        ]
+    )
+    assert code == 3
+    assert "INDETERMINATE" in capsys.readouterr().err
+
+
+def test_install_without_workspace_config_root_is_refused_by_the_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    overlay = _overlay(tmp_path)
+    code = main(
+        [
+            "schedule",
+            "install",
+            "--host",
+            "pool-a",
+            "--source-root",
+            str(tmp_path),
+            "--overlay",
+            str(overlay),
+            "--workspace-root",
+            str(tmp_path),
+        ]
+    )
+    assert code == 3
+    assert "INDETERMINATE" in capsys.readouterr().err
 
 
 def test_install_writes_units_and_enables_the_timer(tmp_path: Path) -> None:
@@ -175,7 +222,12 @@ def test_install_writes_units_and_enables_the_timer(tmp_path: Path) -> None:
     python = tmp_path / "python"
     python.write_text("")
     result = scheduler.install(
-        "pool-a", python=python, source_root=tmp_path, overlay_file=overlay
+        "pool-a",
+        python=python,
+        source_root=tmp_path,
+        overlay_file=overlay,
+        workspace_root=tmp_path,
+        workspace_config_root=tmp_path,
     )
     assert result.exit_code == 0, result.stderr
     assert (tmp_path / ".config/systemd/user/onex-disk-watermark.timer").is_file()

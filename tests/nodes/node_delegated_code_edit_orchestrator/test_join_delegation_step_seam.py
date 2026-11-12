@@ -154,7 +154,14 @@ def node_result(*, accepted: bool) -> dict[str, Any]:
     """The node's result line, as the loop produces it: accepted, or two dead delegate runs."""
     if accepted:
         ports = FakePorts(
-            [_reply(1, _a("finish", summary="done"))], check_passes=[True]
+            [
+                _reply(
+                    1,
+                    _a("write", file_path="src/m.py", content="x"),
+                    _a("finish", summary="done"),
+                )
+            ],
+            check_passes=[True],
         )
     else:
         dead = ModelTurnReply(

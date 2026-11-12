@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.handlers.delegation_scenario_runtime import write_atomic
+from omnimarket.handlers.delegation_scenario_settings import fill_overlay_settings
 from omnimarket.models.model_delegation_scenario import EnumScenarioTrigger
 from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2 import (
     HandlerScenarioR2,
@@ -33,9 +34,11 @@ from omnimarket.nodes.node_delegation_scenario_r2_effect.scenario_r2_settings im
     ProtocolSettingStore,
     SecretStoreSettingsReader,
     fill_settings,
+    setting_names,
 )
 
 NODE = "node_delegation_scenario_r2_effect"
+NODE_DIR = Path(__file__).resolve().parent
 EXIT_REFUSED = 65
 RunnerFactory = Callable[[Mapping[str, str], EnumScenarioTrigger], HandlerScenarioR2]
 
@@ -70,6 +73,7 @@ def main(
     *,
     store: ProtocolSettingStore | None = None,
     runner_factory: RunnerFactory | None = None,
+    home: Path | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(
         prog=f"{NODE}.tick",
@@ -82,12 +86,19 @@ def main(
     runtime = load_runtime()
     environment: dict[str, str] = dict(os.environ)  # ONEX_FLAG_EXEMPT
     environment[runtime.home_env] = str(args.registry_root)
-    filled, unresolved = asyncio.run(
-        fill_settings(
-            environment,
-            runtime,
-            store if store is not None else SecretStoreSettingsReader(),
-        )
+    settings_store = store if store is not None else SecretStoreSettingsReader()
+    stored, _ = asyncio.run(fill_settings(environment, runtime, settings_store))
+    # What the store does not hold under the setting's own name is found under the existing name the overlay declares
+    # (OMN-23602): the environment, the host environment file, then the store.
+    filled = fill_overlay_settings(
+        stored,
+        runtime.settings_overlay_relpath,
+        node_dir=NODE_DIR,
+        store=settings_store,
+        home=home,
+    )
+    unresolved = tuple(
+        name for name in setting_names(runtime) if not filled.get(name, "").strip()
     )
     factory = runner_factory if runner_factory is not None else _runner_factory
     try:
