@@ -41,3 +41,8 @@ steering:
 unit_environment: {}
 schedule:
   interval_seconds: 300
+# Stale-revoke rule (OMN-23887). Absent: no revoke is ever cleared as stale (the tick keeps every revoked mark, as before).
+# Present: a revoked label is cleared only when the same fingerprint was limited on the source host more than margin_seconds
+# AFTER the revoke stamp (a revoke with no later success of that token anywhere stands). The value is the operator's.
+stale_revoke:
+  margin_seconds: 60
