@@ -148,6 +148,11 @@ class HandlerClaudeTokenPool:
         with self._locked() as pool:
             alert = None
             cleared: tuple[str, ...] = ()
+            limit_effect: tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] = (
+                (),
+                (),
+                (),
+            )
             if request.operation == "add":
                 self._add(pool, request)
             elif request.operation == "mark_limited":
@@ -165,6 +170,8 @@ class HandlerClaudeTokenPool:
                 pool.pop("pinned_by", None)
             elif request.operation == "clear_revokes":
                 cleared = self._clear_revokes(pool, request)
+            elif request.operation == "apply_limit_rechecks":
+                limit_effect = self._apply_limit_rechecks(pool, request)
             synced: tuple[str, ...] = ()
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
@@ -175,9 +182,19 @@ class HandlerClaudeTokenPool:
                 chosen, token, refusal, fallback = self._resolve(pool, request)
             if request.operation != "status" and not request.dry_run:
                 _write_private(self._pool_path, pool)
+            if request.operation == "export":
+                token = self._export(pool, request)
             result = self._result(
                 request.operation, pool, chosen, token, alert, synced, cleared
-            ).model_copy(update={"refusal": refusal, "drained_fallback": fallback})
+            ).model_copy(
+                update={
+                    "refusal": refusal,
+                    "drained_fallback": fallback,
+                    "limits_cleared": limit_effect[0],
+                    "limits_replaced": limit_effect[1],
+                    "limits_kept": limit_effect[2],
+                }
+            )
             if not request.dry_run:
                 _write_private(
                     self._status_path,
@@ -276,8 +293,15 @@ class HandlerClaudeTokenPool:
         if entry is None:
             raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
         until = _stamp(self._now() + timedelta(seconds=request.seconds))
-        entry["until"] = max(until, entry.get("until") or "")
+        # A notice that names its own reset (``exact``) is newer than any stamp the entry holds and replaces it, even
+        # with an earlier time, so a stamp taken from a wrong or since-moved reset cannot outlast the account's real
+        # one. A backoff estimate (no reset named) still never shortens a stamp.
+        entry["until"] = (
+            until if request.exact else max(until, entry.get("until") or "")
+        )
         entry["limited_at"] = _stamp(self._now())
+        if request.exact:
+            entry["probed_at"] = None
 
     def _record_use(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -409,6 +433,54 @@ class HandlerClaudeTokenPool:
             cleared.append(command.label)
         return tuple(cleared)
 
+    def _apply_limit_rechecks(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        """Execute the limit recheck compute's typed commands; return the labels cleared, replaced and kept.
+
+        A command is executed only when the pool still holds the command's fingerprint under the label and the
+        limited-until stamp it holds is exactly the one the decision was made on, so a newer limit notice, a
+        re-added token or an already cleared mark is left alone (and is in none of the three results).
+        """
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        cleared: list[str] = []
+        replaced: list[str] = []
+        kept: list[str] = []
+        for command in request.limit_commands:
+            entry = by_label.get(command.label)
+            if (
+                entry is None
+                or entry.get("fingerprint") != command.fingerprint
+                or entry.get("until") != _stamp(command.expected_until)
+            ):
+                continue
+            entry["probed_at"] = _stamp(command.probed_at)
+            if command.action == "clear":
+                entry["until"] = None
+                entry["limited_at"] = None
+                cleared.append(command.label)
+            elif command.action == "replace" and command.new_until is not None:
+                entry["until"] = _stamp(command.new_until)
+                entry["limited_at"] = _stamp(command.probed_at)
+                replaced.append(command.label)
+            else:
+                kept.append(command.label)
+        return tuple(cleared), tuple(replaced), tuple(kept)
+
+    def _export(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> SecretStr:
+        """The stored token of ``request.label`` for the caller's pipe; refused for a label this pool does not hold."""
+        label = self._label(request)
+        if not any(t["label"] == label for t in pool["tokens"]):
+            raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        value = self.secret(label)
+        if value is None:
+            raise ClaudeTokenPoolRefusedError(
+                f"{label} is in this host's pool but its stored token is missing"
+            )
+        return value
+
     def secret(self, label: str) -> SecretStr | None:
         """The stored token of ``label`` for the rotation tick to write to the host's login, never to a result."""
         value = asyncio.run(self._store.get_secret(SECRET_REF_PREFIX + label))
@@ -534,6 +606,7 @@ class HandlerClaudeTokenPool:
                 last_used_at=t.get("last_used_at"),
                 revoked_at=t.get("revoked_at"),
                 limited_at=t.get("limited_at"),
+                probed_at=t.get("probed_at"),
             )
             for t in pool["tokens"]
         )

@@ -46,3 +46,19 @@ schedule:
 # AFTER the revoke stamp (a revoke with no later success of that token anywhere stands). The value is the operator's.
 stale_revoke:
   margin_seconds: 60
+# Limit-recheck rule (OMN-23895). Absent: a limited mark is never re-tested (the tick answers limit_recheck=not_configured).
+# Present: on the marks-source host only (the one that holds the marks and syncs them out), the tick probes each limited label
+# every policy.interval_seconds with one small headless Claude call under that label's stored token. An ok answer clears the
+# mark; a limited answer that names a reset replaces the stamp (even with an earlier one); a limited answer without a newer
+# reset keeps it; an error answer proves nothing and is asked again next tick. reset_pattern names the groups month, day,
+# hour (and optionally minute and ampm), read as UTC. The values are the operator's, in the overlays repository.
+limit_recheck:
+  policy:
+    interval_seconds: 3600
+  probe:
+    model: example-model
+    prompt: Reply with the single word ok
+    timeout_seconds: 90
+    limited_patterns: ["hit your weekly limit"]
+    reset_pattern: 'resets (?P<month>[A-Za-z]{3}) (?P<day>\d{1,2}), (?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?(?P<ampm>am|pm)'
+    reset_margin_seconds: 7

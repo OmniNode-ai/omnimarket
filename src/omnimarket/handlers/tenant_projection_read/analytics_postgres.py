@@ -13,10 +13,11 @@ import asyncio
 import importlib
 import logging
 from collections.abc import Mapping
-from typing import Any, Protocol
+from typing import Any
 
-from pydantic import SecretStr
-
+from omnimarket.protocols.protocol_logical_secret_resolver import (
+    ProtocolLogicalSecretResolver,
+)
 from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
     ProjectionMissingError,
     ProjectionNotConfiguredError,
@@ -34,14 +35,6 @@ psycopg2: Any = importlib.import_module("psycopg2")
 psycopg2_errors: Any = importlib.import_module("psycopg2.errors")
 psycopg2_extras: Any = importlib.import_module("psycopg2.extras")
 psycopg2_extras.register_uuid()
-
-
-class ProtocolLogicalSecretResolver(Protocol):
-    """The runtime secret resolver, asked for a secret by logical name."""
-
-    async def get_secret_async(
-        self, logical_name: str, required: bool = True
-    ) -> SecretStr | None: ...
 
 
 class SecretResolverDsnSource:

@@ -42,10 +42,17 @@ from typing import Any, Literal
 
 from pydantic import SecretStr
 
+from omnimarket.models.model_claude_pool_limit_recheck import (
+    ModelLimitRecheckCommand,
+    ModelLimitRecheckRequest,
+)
 from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
     ModelRevokeObservation,
     ModelRevokeStalenessRequest,
+)
+from omnimarket.nodes.node_claude_pool_limit_recheck_compute.handlers.handler_limit_recheck import (
+    HandlerLimitRecheck,
 )
 from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
     HandlerRevokeStaleness,
@@ -69,6 +76,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
     ModelRotationOverlay,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_rotation_ports import (
+    ProtocolLimitProbe,
     ProtocolLoginFile,
     ProtocolMarksSource,
 )
@@ -155,6 +163,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         host: str,
         events_path: Path,
         now: Callable[[], datetime] = _utc_now,
+        limit_probe: ProtocolLimitProbe | None = None,
     ) -> None:
         super().__init__(
             pool=pool,
@@ -165,6 +174,9 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         )
         self._source = marks_source
         self._overlay = overlay
+        #: The pool's own headless probe. Wired by the runtime only on the marks-source host with the overlay's
+        #: ``limit_recheck`` block; ``None`` means the tick re-tests no limited mark.
+        self._limit_probe = limit_probe
 
     def handle(
         self, request: ModelClaudeTokenRotationRequest
@@ -178,6 +190,10 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             request, pooled, source_marks
         )
         pooled = after_clear or pooled
+        rechecked, limits_cleared, limits_replaced, limits_kept, after_recheck = (
+            self._recheck_limits(request, pooled)
+        )
+        pooled = after_recheck or pooled
         entries = pooled.tokens
         order = self._order(entries, rank, pooled.pinned)
         if not request.dry_run and order:
@@ -207,6 +223,10 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             "stale_revoke": stale,
             "revokes_cleared": cleared,
             "revokes_kept": kept,
+            "limit_recheck": rechecked,
+            "limits_cleared": limits_cleared,
+            "limits_replaced": limits_replaced,
+            "limits_kept": limits_kept,
         }
         if state == "usable":
             spread = (
@@ -225,6 +245,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                 lines=(
                     f"{request.host}: login {held.label if held else ''} is usable",
                     *self._cleared_lines(request, cleared),
+                    *self._limit_lines(request, base),
                 ),
             )
         if state == "unmanaged":
@@ -407,6 +428,83 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             return ()
         verb = "would clear" if request.dry_run else "cleared"
         return (f"{request.host}: {verb} stale revoke of {', '.join(cleared)}",)
+
+    @staticmethod
+    def _limit_lines(
+        request: ModelClaudeTokenRotationRequest,
+        base: dict[str, Any],
+    ) -> tuple[str, ...]:
+        lines: list[str] = []
+        for key, verb in (
+            ("limits_cleared", "cleared the limited mark of"),
+            ("limits_replaced", "replaced the limited stamp of"),
+        ):
+            if base[key]:
+                lines.append(f"{request.host}: {verb} {', '.join(base[key])}")
+        return tuple(lines)
+
+    def _recheck_limits(
+        self,
+        request: ModelClaudeTokenRotationRequest,
+        pooled: ModelClaudeTokenPoolResult,
+    ) -> tuple[
+        Literal["not_configured", "evaluated"],
+        tuple[str, ...],
+        tuple[str, ...],
+        tuple[str, ...],
+        ModelClaudeTokenPoolResult | None,
+    ]:
+        """Re-test every limited label that is due, and have the pool execute the compute's typed commands.
+
+        Marks live on the one marks-source host and sync out from it, so only that host probes; without the
+        overlay's ``limit_recheck`` block (or on another host) nothing is asked and nothing changes. The compute
+        decides twice per label: whether a probe is due, then what the answer means. A dry run decides what is
+        due and runs no probe.
+        """
+        settings = self._overlay.limit_recheck
+        if (
+            settings is None
+            or self._limit_probe is None
+            or self._overlay.marks_source.host != request.host
+        ):
+            return "not_configured", (), (), (), None
+        decider = HandlerLimitRecheck()
+        commands: list[ModelLimitRecheckCommand] = []
+        for entry in pooled.tokens:
+            if not entry.limited or entry.revoked or entry.until is None:
+                continue
+            common = {
+                "label": entry.label,
+                "fingerprint": entry.fingerprint,
+                "until": _instant(entry.until),
+                "last_probe_at": _instant(entry.probed_at) if entry.probed_at else None,
+                "now": self._now(),
+                "policy": settings.policy,
+            }
+            due = decider.handle(ModelLimitRecheckRequest(**common))
+            if due.action != "probe" or request.dry_run:
+                continue
+            verdict = decider.handle(
+                ModelLimitRecheckRequest(
+                    **common, probe=self._limit_probe.probe(entry.label)
+                )
+            )
+            if verdict.command is not None:
+                commands.append(verdict.command)
+        if not commands:
+            return "evaluated", (), (), (), None
+        done = self._pool.handle(
+            ModelClaudeTokenPoolRequest(
+                operation="apply_limit_rechecks", limit_commands=tuple(commands)
+            )
+        )
+        return (
+            "evaluated",
+            done.limits_cleared,
+            done.limits_replaced,
+            done.limits_kept,
+            done,
+        )
 
     def _clear_stale_revokes(
         self,

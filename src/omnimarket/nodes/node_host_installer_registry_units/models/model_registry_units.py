@@ -51,6 +51,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     ledger_host_name: str = Field(
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
     )
+    # The lab_hosts row this install is for; names the declared overlays clone. Empty defers to
+    # ledger_host_name, then to the installing shell's ONEX_LEDGER_HOST_NAME.
+    host_name: str = Field(default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$")
     # The remote-lane runner script the alarm starts for each episode it opens. Optional: a configuration that has no
     # value for it carries no dispatch_command, and the alarm sends no lane (it says so in its row).
     remote_lane_runner: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")

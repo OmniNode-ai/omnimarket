@@ -429,8 +429,10 @@ node_claude_code_binding_install_effect = "omnimarket.nodes.node_claude_code_bin
 node_claude_code_binding_render_compute = "omnimarket.nodes.node_claude_code_binding_render_compute"
 node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_history_read_effect"
 node_claude_code_hook_adapter_effect = "omnimarket.nodes.node_claude_code_hook_adapter_effect"
+node_claude_pool_limit_recheck_compute = "omnimarket.nodes.node_claude_pool_limit_recheck_compute"
 node_claude_pool_refill_effect = "omnimarket.nodes.node_claude_pool_refill_effect"
 node_claude_pool_revoke_staleness_compute = "omnimarket.nodes.node_claude_pool_revoke_staleness_compute"
+node_claude_pool_store_adopt_compute = "omnimarket.nodes.node_claude_pool_store_adopt_compute"
 node_claude_review_batch_effect = "omnimarket.nodes.node_claude_review_batch_effect"
 node_claude_review_budget_admission_effect = "omnimarket.nodes.node_claude_review_budget_admission_effect"
 node_claude_review_budget_compute = "omnimarket.nodes.node_claude_review_budget_compute"
@@ -445,6 +447,7 @@ node_code_contract_score_effect = "omnimarket.nodes.node_code_contract_score_eff
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
 node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
+node_code_eval_suite_census_compute = "omnimarket.nodes.node_code_eval_suite_census_compute"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
 node_code_graph_effect = "omnimarket.nodes.node_code_graph_effect"
 node_code_quarantine_effect = "omnimarket.nodes.node_code_quarantine_effect"
@@ -745,6 +748,7 @@ node_hook_chain_probe_trigger_effect = "omnimarket.nodes.node_hook_chain_probe_t
 node_hook_chain_probe_verdict_effect = "omnimarket.nodes.node_hook_chain_probe_verdict_effect"
 node_hook_drain_probe_compute = "omnimarket.nodes.node_hook_drain_probe_compute"
 node_hook_event_capture = "omnimarket.nodes.node_hook_event_capture"
+node_hook_events_by_correlation_read_effect = "omnimarket.nodes.node_hook_events_by_correlation_read_effect"
 node_hook_lane_join_compute = "omnimarket.nodes.node_hook_lane_join_compute"
 node_hook_parse_probe_compute = "omnimarket.nodes.node_hook_parse_probe_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
@@ -935,6 +939,7 @@ node_memory_retrieval_effect = "omnimarket.nodes.node_memory_retrieval_effect"
 node_memory_storage_effect = "omnimarket.nodes.node_memory_storage_effect"
 node_merge_attribution_compute = "omnimarket.nodes.node_merge_attribution_compute"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
+node_merge_override_alarm_effect = "omnimarket.nodes.node_merge_override_alarm_effect"
 node_merge_state_projection = "omnimarket.nodes.node_merge_state_projection"
 node_merge_sweep_compute = "omnimarket.nodes.node_merge_sweep_compute"
 node_merge_sweep_effect = "omnimarket.nodes.node_merge_sweep_effect"
@@ -1026,6 +1031,7 @@ node_pr_duplicate_guard_compute = "omnimarket.nodes.node_pr_duplicate_guard_comp
 node_pr_duplicate_snapshot_effect = "omnimarket.nodes.node_pr_duplicate_snapshot_effect"
 node_pr_handoff_decision_compute = "omnimarket.nodes.node_pr_handoff_decision_compute"
 node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"
+node_pr_handoff_install_proof_compute = "omnimarket.nodes.node_pr_handoff_install_proof_compute"
 node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
 node_pr_handoff_orchestrator = "omnimarket.nodes.node_pr_handoff_orchestrator"
 node_pr_head_stage_compute = "omnimarket.nodes.node_pr_head_stage_compute"
@@ -1102,6 +1108,7 @@ node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
 node_projection_freshness_alert_effect = "omnimarket.nodes.node_projection_freshness_alert_effect"
 node_projection_hook_ledger = "omnimarket.nodes.node_projection_hook_ledger"
+node_projection_host_disk = "omnimarket.nodes.node_projection_host_disk"
 node_projection_infra_routing_decisions = "omnimarket.nodes.node_projection_infra_routing_decisions"
 node_projection_instruction_eval = "omnimarket.nodes.node_projection_instruction_eval"
 node_projection_intent_classification = "omnimarket.nodes.node_projection_intent_classification"
@@ -1604,9 +1611,9 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # lab_receipt validator; the two tags move together.
 # OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
-# OMN-23892: infra#5896 (OMN-23858) grants the runtime account the four merge override tables in every shipped topology profile;
+# OMN-23865: infra#5901 (OMN-23896) grants the runtime account the two host disk tables in every shipped topology profile;
 # the core pin is unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261111211012-df3f14f5e6b9" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261112010628-aa87c2dd6abe" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
