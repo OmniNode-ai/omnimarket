@@ -4235,7 +4235,8 @@
         "node_context_roi_runner",
         "node_delegate_skill_orchestrator",
         "node_delegation_routing_reducer",
-        "node_generation_consumer"
+        "node_generation_consumer",
+        "node_projection_context_roi"
       ],
       "target_schema": "public",
       "writers": [
@@ -8030,6 +8031,7 @@
       "partitioning": [],
       "producer": "node_projection_overlay_store",
       "readers": [
+        "node_floor_emissions_publish_effect",
         "node_floor_owner_map_publish_effect",
         "node_floor_projection_read_effect",
         "node_floor_simple_effect",

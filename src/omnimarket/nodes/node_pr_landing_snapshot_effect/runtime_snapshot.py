@@ -37,6 +37,9 @@ from omnimarket.handlers.tick_unit_arguments import (
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot import (
     HandlerPrLandingSnapshot,
 )
+from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.journal_retention import (
+    retention_line,
+)
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
     SnapshotSourceError,
 )
@@ -79,7 +82,11 @@ def run_once(
     except SnapshotSourceError as exc:
         return 3, {"status": "facts_unread", "detail": str(exc)}
     if any(r.tick == tick for r in recorder.recorded()):
-        return 0, {"status": "already_recorded", "tick": tick}
+        return 0, {
+            "status": "already_recorded",
+            "tick": tick,
+            **retention_line(recorder.decision, trimmed=False),
+        }
     request = ModelLandingSnapshotRequest(correlation_id=uuid4(), tick=tick)
     if (
         overlay.emission_journal is None
@@ -90,6 +97,7 @@ def run_once(
         node=NODE,
         piece=overlay.floor_piece,
         correlation_id=request.correlation_id.hex,
+        origin="real",
     )
     chain.start()
     result = HandlerPrLandingSnapshot(
@@ -112,6 +120,7 @@ def run_once(
             if result.record and result.record.controller
             else None
         ),
+        **retention_line(recorder.decision, trimmed=recorder.trimmed),
     }
     if result.status is EnumSnapshotStatus.RECORDED:
         chain.success(

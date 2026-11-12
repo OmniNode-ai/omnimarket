@@ -408,6 +408,7 @@ class HandlerLabTestHarnessEffect:
             self._sink,
             node=node,
             piece=emission.piece_number,
+            origin="drill" if planted else "probe",
             clock=self._now,
             correlation_id=correlation_id,
             drill=planted,

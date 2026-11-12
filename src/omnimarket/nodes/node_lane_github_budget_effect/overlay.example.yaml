@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Overlay of node_lane_github_budget_effect (OMN-23832). The deployment's file lives at
+# <root>/node_lane_github_budget_effect/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS,
+# or the file ONEX_LANE_GITHUB_BUDGET_OVERLAY names. No key has a default.
+# Gateway cache misses one lane may spend; a cache hit costs nothing.
+gateway_cache_misses_per_lane: 8

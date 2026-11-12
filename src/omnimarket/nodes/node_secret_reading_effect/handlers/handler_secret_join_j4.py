@@ -138,6 +138,7 @@ class HandlerSecretJoinJ4:
             correlation_id=command.correlation_id,
             backend=backend,
             drill=self._join.drill,
+            origin="drill" if self._join.drill else "probe",
         )
         consumer_chain.start()
         resolved = self._store.resolve(handle)
@@ -173,6 +174,7 @@ class HandlerSecretJoinJ4:
             self._sink,
             node=self._join.scan_node,
             piece=self._join.scan_piece,
+            origin="drill" if self._join.drill else "probe",
             clock=self._clock,
             correlation_id=command.correlation_id,
             backend=backend,
@@ -300,6 +302,7 @@ class HandlerSecretJoinJ4:
             ModelNodeEmission(
                 node=self._join.scan_node,
                 piece=self._join.scan_piece,
+                origin="drill" if self._join.drill else "probe",
                 correlation_id=command.correlation_id,
                 phase="failure",
                 emitted_at=self._clock(),

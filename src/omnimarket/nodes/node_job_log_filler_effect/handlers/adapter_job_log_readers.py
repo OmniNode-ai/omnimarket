@@ -78,13 +78,23 @@ class InMemoryJobLogReader:
         )
 
     def read(
-        self, repo: str, job_id: int, *, cache_only: bool
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
     ) -> ModelJobLogTailResult:
         transport = None if cache_only else self._factory()
         cache = JobLogCacheTransport(self._root, transport, ttl_seconds=self._ttl)
         try:
             result = cache.handle(
-                _request(repo, job_id, cache_only=cache_only, tail_bytes=self._tail)
+                _request(
+                    repo,
+                    job_id,
+                    cache_only=cache_only,
+                    tail_bytes=tail_bytes or self._tail,
+                )
             )
         except GitHubTransportError as exc:
             if str(exc).startswith(JOB_LOG_CACHE_MISS):
@@ -105,13 +115,23 @@ class BusJobLogReader:
         self._tail = tail_bytes
 
     def read(
-        self, repo: str, job_id: int, *, cache_only: bool
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
     ) -> ModelJobLogTailResult:
         # read_over_bus takes the lane from this variable, which the profile names.
         os.environ[GATEWAY_BUS_LANE_ENV] = self._lane
         try:
             result = read_over_bus(
-                _request(repo, job_id, cache_only=cache_only, tail_bytes=self._tail),
+                _request(
+                    repo,
+                    job_id,
+                    cache_only=cache_only,
+                    tail_bytes=tail_bytes or self._tail,
+                ),
                 timeout_s=self._timeout,
             )
         except GatewayReadError as exc:
