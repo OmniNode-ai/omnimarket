@@ -9,7 +9,9 @@ place the deployment's ladder additions are read from, and every one is
 ``explicit_pin_only``. Both bifrost loaders call this module so a backend-id
 pin resolves an arm through the same contract every other backend resolves
 through. Nothing else selects them: the tier ladder names none of them and the
-capability fallback skips pinned-only backends.
+capability fallback skips pinned-only backends. Before the arms are appended,
+the overlay's local endpoints (OMN-23871) are bound onto the contract's local
+backends by :func:`bind_local_endpoint_backends`.
 """
 
 from __future__ import annotations
@@ -17,6 +19,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from omnimarket.handlers.routing.local_endpoint_bindings import (
+    bind_local_endpoint_backends,
+)
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
 )
@@ -37,6 +42,8 @@ def append_eval_arm_backends(
     ``backend_id`` raises naming the id. Each appended row is proven complete by
     ``validate_overlay_added_backends`` and its endpoint is held to the
     contract's declared provider surfaces. An unbound overlay appends nothing.
+    The overlay's local endpoints (OMN-23871) are bound onto the contract's
+    local backends first, before the arms are appended.
 
     OMN-23756: the overlay's paid rungs (``paid_rungs``) are appended the same
     way, but only while their switch is on, and they are selectable: the paid
@@ -50,7 +57,7 @@ def append_eval_arm_backends(
         validate_overlay_added_backends,
     )
 
-    merged = [dict(b) for b in backends]
+    merged = bind_local_endpoint_backends(backends, provider_rules=provider_rules)
     overlay = load_delegation_routing_overlay()
     rows = overlay.eval_backend_rows() + overlay.paid_rung_backend_rows()
     if not rows:

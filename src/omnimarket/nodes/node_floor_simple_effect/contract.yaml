@@ -186,6 +186,10 @@ runtime:
     # overlay store's fleet was this node's file from the Mac's reader; it is the hosts' published views now.
     projection_reads_relpath: .onex_state/floor-projection/projection-reads.json
     overlay_store_projection: overlay_store_fleet
+    # The floor's chain emissions (OMN-23877): node_floor_emissions_publish_effect folds the three emission topics into this projection.
+    # The readiness rule counts a chain as real work only from it; the journal file is read as health only (origin unknown). A
+    # projection that is unknown (never published, or older than its bound) holds no chain, so no join reads real.
+    emissions_projection: floor_emissions
     # The owner map (OMN-23184, OMN-23391): who holds each pull request (the controller's landing leases and the cause leases that hold
     # shared reds), published by the controller's host from its own state. The board's work list names a pull request's owner from it;
     # a map that is unknown (never published, or older than its bound) makes the list unread, never empty.

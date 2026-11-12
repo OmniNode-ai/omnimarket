@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Emissions Publish Effect (OMN-23877)
+#
+# One pass of the floor's emission projection: read the three chain emission topics for one window, fold them into the
+# floor_emissions projection and publish it on its snapshot topic, stamped with the time it was read. The board's readiness rule reads
+# real work from this projection and never from the journal file on a machine (the file is health only). A topic that cannot be read
+# publishes nothing, so the projection ages and the floor reads it unknown. Topics, window and caps are the overlay's.
+name: node_floor_emissions_publish_effect
+contract_name: node_floor_emissions_publish_effect
+node_name: node_floor_emissions_publish_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Folds the floor's chain emission topics into the floor_emissions projection and publishes it with the time it was read.
+
+handler:
+  module: omnimarket.nodes.node_floor_emissions_publish_effect.handlers.handler_floor_emissions_publish
+  class: HandlerFloorEmissionsPublish
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  side_effects:
+    - listens on each emission topic the overlay names for one window
+    - publishes the floor emissions projection on its snapshot topic
+    - appends a start and a success or a typed failure to the floor emission journal under the registry home
+
+output_model:
+  name: ModelFloorEmissionsPublishResult
+  module: omnimarket.models.floor_projection
+  description: Whether the projection was published, when it was read and how many events it holds.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_floor_emissions_publish_effect, as a step of the factory floor publish or from a unit the overlays repository declares.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-emissions.v1
+externally_consumed_topics:
+  # The floor reads it through node_floor_projection_read_effect.
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-emissions.v1
+
+# Read by a bus client within the overlay's window, never dispatched by a runtime, so no subscription of this node. The producers of
+# these topics are the chain publishers (each writes its journal event and mirrors it here, OMN-23877).
+snapshot_reads:
+  - onex.evt.omnimarket.floor-node-started.v1
+  - onex.evt.omnimarket.floor-node-succeeded.v1
+  - onex.evt.omnimarket.floor-node-failed.v1
+
+runtime:
+  home_env: OMNI_HOME
+  overlay: {overlay_id: node_floor_emissions_publish_effect, file_env: ONEX_FLOOR_EMISSIONS_OVERLAY}
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  piece: 17
+  chain: node_floor_emissions_publish_effect:publish_floor_emissions
+  group_prefix: node_floor_emissions_publish_effect
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-23877
