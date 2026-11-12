@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_consumer_group_reap_effect
+version: 1.0.0
+description: Deletes the long-Empty per-call consumer groups the consumer group state reducer named, but only on a command that proves the reducer decided them through a recomputed decision digest; a command decided from a file is refused and deletes nothing, and a dry run is the default and touches nothing.
+pack: operator_tooling
+node_role: effect
+display_name: Consumer Group Reap Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_consumer_group_reap_effect: omnimarket.nodes.node_consumer_group_reap_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- omnibase-infra>=0.38.3
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- broker
+- consumer-groups
