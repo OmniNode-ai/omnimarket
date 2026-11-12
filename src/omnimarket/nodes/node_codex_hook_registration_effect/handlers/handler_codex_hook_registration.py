@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -28,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.runtime_paths import runtime_dir
 from omnimarket.nodes.node_codex_hook_registration_effect.enums import (
     EnumCodexHookRegistrationStatus,
 )
@@ -139,7 +139,7 @@ class HandlerCodexHookRegistration:
                 ) as stream:
                     temporary = Path(stream.name)
                     stream.write(json.dumps(merged, indent=2) + "\n")
-                os.replace(temporary, hooks_file)  # Atomic replacement.
+                temporary.replace(hooks_file)  # Atomic replacement.
             except OSError as exc:
                 return failed(exc)
             finally:
@@ -163,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--codex-home",
         type=Path,
-        default=Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser(),
+        default=runtime_dir("codex.home_dir", "CODEX_HOME"),
     )
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
