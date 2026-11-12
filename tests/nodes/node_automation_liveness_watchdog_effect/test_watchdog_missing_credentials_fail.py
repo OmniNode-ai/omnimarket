@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.nodes.node_automation_liveness_watchdog_effect.handlers.alert_channel_sender import (
     AlertChannelAlarmSender,
 )

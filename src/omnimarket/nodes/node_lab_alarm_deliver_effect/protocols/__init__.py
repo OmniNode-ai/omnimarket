@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 
 
 class ProtocolAlarmChannel(Protocol):

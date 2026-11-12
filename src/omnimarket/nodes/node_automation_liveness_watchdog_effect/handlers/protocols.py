@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 
 
 class ProtocolAlarmSender(Protocol):

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendRequest,

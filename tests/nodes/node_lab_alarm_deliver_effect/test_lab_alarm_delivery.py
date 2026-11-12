@@ -18,7 +18,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.lab_alarm_delivery import (
+from omnimarket.models.lab_alarm_delivery import (
     EnumDeliveryCondition,
     EnumDeliveryOutcome,
     EnumDeliveryStep,

@@ -16,8 +16,8 @@ import subprocess
 from pathlib import Path
 from uuid import UUID
 
-from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 
 _SLACK_TS = re.compile(r"^\d{9,}\.\d{3,}$")
 _STDERR_TAIL = 200

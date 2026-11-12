@@ -10,7 +10,7 @@ from uuid import UUID, uuid5
 
 from omnibase_core.enums.enum_liveness_state import EnumLivenessState
 
-from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.models.liveness.model_automation_liveness import (
     EnumAlarmSeverity,
     EnumAutomationLivenessReason,
