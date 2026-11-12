@@ -19,7 +19,6 @@ from omnimarket.nodes.node_projection_overlay_store.handlers import (
 from omnimarket.nodes.node_projection_overlay_store.handlers.handler_overlay_store_projection import (
     HandlerOverlayStoreProjectionRunner,
 )
-from omnimarket.projection.runner import BaseProjectionRunner
 from tests.unit.nodes.node_overlay_store.support import LOADED_TOPIC, NOW, record
 
 pytestmark = pytest.mark.unit
@@ -148,19 +147,8 @@ async def test_injected_keyed_fn_is_returned_and_unkeyed_fn_is_unchanged() -> No
     async def plain(topic: str, value: bytes) -> None:
         return None
 
-    class _Runner(BaseProjectionRunner):
-        def __init__(self) -> None:
-            super().__init__(publish_fn=plain, publish_keyed_fn=keyed)
-
-        @property
-        def topics(self) -> list[str]:
-            return ["t"]
-
-        async def project_event(
-            self, topic: str, data: dict[str, Any], meta: Any
-        ) -> bool:
-            return True
-
-    runner = _Runner()
+    runner = HandlerOverlayStoreProjectionRunner(
+        publish_fn=plain, publish_keyed_fn=keyed
+    )
     assert await runner.get_keyed_publish_fn() is keyed
     assert await runner.get_publish_fn() is plain

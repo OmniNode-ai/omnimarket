@@ -29,7 +29,10 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import compare_doc
 from omnimarket.nodes.node_projection_overlay_store.handlers import (
     HandlerOverlayStoreProjectionRunner,
 )
-from omnimarket.projection.runner import MessageMeta, PublishKeyedFn
+from omnimarket.nodes.node_projection_overlay_store.handlers.handler_overlay_store_projection import (
+    PublishKeyedFn,
+)
+from omnimarket.projection.runner import MessageMeta
 from tests.unit.nodes.node_overlay_store.support import (
     NOW,
     SNAPSHOT_TOPIC,

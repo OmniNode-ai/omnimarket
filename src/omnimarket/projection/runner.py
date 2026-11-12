@@ -119,7 +119,6 @@ PROJECTION_RUNNER_HEALTH_PORT_ENV = "PROJECTION_RUNNER_HEALTH_PORT"
 
 # Async publish callable injected into projection handlers: (topic, value_bytes) -> None.
 PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
-PublishKeyedFn = Callable[[str, bytes | None, bytes], Coroutine[Any, Any, None]]
 
 
 class _ProjectionHealthServer(http.server.ThreadingHTTPServer):
@@ -451,7 +450,6 @@ class BaseProjectionRunner(ABC):
         runtime_binding: ModelProjectionRuntimeBinding | None = None,
         runtime_binding_overlay_path: str | Path | None = None,
         publish_fn: PublishFn | None = None,
-        publish_keyed_fn: PublishKeyedFn | None = None,
     ) -> None:
         resolved_binding = runtime_binding
         if resolved_binding is None and runtime_binding_overlay_path is not None:
@@ -516,7 +514,6 @@ class BaseProjectionRunner(ABC):
         # never construct transport clients themselves. An injected publish_fn
         # (tests or a DI container) takes precedence over the lazily-built producer.
         self._publish_fn: PublishFn | None = publish_fn
-        self._publish_keyed_fn: PublishKeyedFn | None = publish_keyed_fn
         self._producer: AIOKafkaProducer | None = None
         self._health_server: _ProjectionHealthServer | None = None
         self._health_thread: threading.Thread | None = None
@@ -840,34 +837,6 @@ class BaseProjectionRunner(ABC):
             await live.send_and_wait(topic, value)
 
         return _publish
-
-    async def get_keyed_publish_fn(self) -> PublishKeyedFn | None:
-        """Return the runtime-owned keyed publish callable, building a producer if needed.
-
-        An injected ``publish_keyed_fn`` is used as-is; otherwise the shared
-        producer from :meth:`_ensure_producer` is used. Returns ``None`` when
-        no brokers are configured so handlers can skip best-effort emission
-        gracefully.
-        """
-        if self._publish_keyed_fn is not None:
-            return self._publish_keyed_fn
-
-        if await self._ensure_producer() is None:
-            return None
-
-        # OMN-23325: the callable is NOT cached and does not close over a
-        # producer. The runtime host stops the producer after every delivery
-        # (KeptPools), so a cached closure would publish through a stopped
-        # producer -- ``ProducerClosed`` on every delivery after the first.
-        # Each call resolves the live producer, building a fresh one when the
-        # last was stopped, so a callable a handler held across a stop still
-        # publishes.
-        async def _publish_keyed(topic: str, key: bytes | None, value: bytes) -> None:
-            if (live := await self._ensure_producer()) is None:
-                raise RuntimeError("no Kafka producer available to publish")
-            await live.send_and_wait(topic, value, key=key)
-
-        return _publish_keyed
 
     async def publish_snapshot_delta(
         self,
