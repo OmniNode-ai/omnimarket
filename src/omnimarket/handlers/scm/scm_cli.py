@@ -97,6 +97,7 @@ from omnimarket.handlers.scm.scm_duplicate_guard import (
 )
 from omnimarket.handlers.scm.scm_gateway_open_prs import GatewayOpenPrFactsSource
 from omnimarket.handlers.scm.scm_git_credential import git_credential_command
+from omnimarket.handlers.scm.scm_rerun_request import rerun_request_command
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_gateway_node_skew import plain_sentence, refused_fields
 from omnimarket.models.model_github_gateway_io import (
@@ -1106,6 +1107,8 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+# OMN-23830: any lane asks for one failed job to be re-run; the landing tick orchestrator answers.
+scm_group.add_command(rerun_request_command(_open_bus, _watcher_head))
 scm_group.add_command(git_credential_command)
 scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:

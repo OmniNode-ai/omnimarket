@@ -1031,6 +1031,7 @@ node_pr_landing_ledger_facts_compute = "omnimarket.nodes.node_pr_landing_ledger_
 node_pr_landing_orchestrator = "omnimarket.nodes.node_pr_landing_orchestrator"
 node_pr_landing_order_waits_compute = "omnimarket.nodes.node_pr_landing_order_waits_compute"
 node_pr_landing_reducer = "omnimarket.nodes.node_pr_landing_reducer"
+node_pr_landing_rerun_request_compute = "omnimarket.nodes.node_pr_landing_rerun_request_compute"
 node_pr_landing_snapshot_effect = "omnimarket.nodes.node_pr_landing_snapshot_effect"
 node_pr_landing_strict_plan_compute = "omnimarket.nodes.node_pr_landing_strict_plan_compute"
 node_pr_landing_tick_compute = "omnimarket.nodes.node_pr_landing_tick_compute"
