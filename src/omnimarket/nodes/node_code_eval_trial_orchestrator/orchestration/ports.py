@@ -32,25 +32,25 @@ class ProtocolCodeEvalSuiteReader(Protocol):
 
     def read(
         self, candidates: Sequence[ModelCodeEvalCandidate]
-    ) -> tuple[ModelCodeEvalTaskMaterial, ...]: ...
+    ) -> tuple[ModelCodeEvalTaskMaterial, ...]:
+        """The material each candidate gives, one entry per candidate."""
 
 
 @runtime_checkable
 class ProtocolCodeEvalFreeHosts(Protocol):
     """The hosts that can take a try now; each chosen host leaves the leg's snapshot."""
 
-    def free_hosts(
-        self, now: datetime, need_tools: Sequence[str]
-    ) -> tuple[str, ...]: ...
+    def free_hosts(self, now: datetime, need_tools: Sequence[str]) -> tuple[str, ...]:
+        """The hosts free to take a try at ``now`` with the given tools."""
 
     def record(self, advertisement: object) -> None:
         """Keep a capacity advertisement (the capacity route)."""
-        ...
 
 
 @runtime_checkable
 class ProtocolCodeEvalClock(Protocol):
-    def __call__(self) -> datetime: ...
+    def __call__(self) -> datetime:
+        """The current time, as the leg sees it."""
 
 
 __all__ = [

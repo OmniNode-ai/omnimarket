@@ -14,14 +14,15 @@ from omnimarket.nodes.node_lab_work_unit_effect.models import (
 
 class ProtocolWorkHandler(Protocol):
     @property
-    def host_name(self) -> str: ...
+    def host_name(self) -> str:
+        """The name the host advertises itself under."""
 
-    async def handle(
-        self, request: ModelLabWorkUnitRequest
-    ) -> ModelLabWorkUnitReceipt: ...
+    async def handle(self, request: ModelLabWorkUnitRequest) -> ModelLabWorkUnitReceipt:
+        """The receipt of the unit this host served."""
 
 
 class ProtocolAdvertiseHandler(Protocol):
     def handle(
         self, request: ModelHostCapacityProbeRequest
-    ) -> ModelHostCapacityAdvertisement: ...
+    ) -> ModelHostCapacityAdvertisement:
+        """The host's capacity advertisement for the probe."""

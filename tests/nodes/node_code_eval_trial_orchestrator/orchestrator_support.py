@@ -16,7 +16,7 @@ import hashlib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -166,9 +166,9 @@ class InMemorySuiteReader:
         self._excluded = excluded or {}
         self._task_text = task_text
 
-    def read(self, candidates: object) -> tuple[ModelCodeEvalTaskMaterial, ...]:
+    def read(self, candidates: Iterable[Any]) -> tuple[ModelCodeEvalTaskMaterial, ...]:
         out = []
-        for candidate in cast("Iterable[Any]", candidates):
+        for candidate in candidates:
             key = task_key_for(candidate)
             self.reads.append(key)
             held = f"held diff of {key}"
@@ -256,7 +256,7 @@ class Bus:
     handler: HandlerCodeEvalTrialOrchestrator
     reader: InMemorySuiteReader
     scorer: Scorer = pass_controls_only
-    host: Host = completed_host
+    host: Host = field(default_factory=lambda: completed_host)
     now: datetime = T0
     units: list[ModelLabWorkUnitRequest] = field(default_factory=list)
     scores: list[ModelCodeScoreRequest] = field(default_factory=list)

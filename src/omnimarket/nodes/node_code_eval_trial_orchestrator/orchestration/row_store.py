@@ -41,7 +41,6 @@ _ENVELOPE_KEYS = (_TENANT_KEY,)
 # row field: an undecodable row failed every later message for that run, which
 # the dead-letter replay then put back on the shared command topic.
 _RUNTIME_RECOVERY_KEY = "failure_reason"
-_NO_ROW_STATE = "UNSEEN"
 
 DEFAULT_CAS_ATTEMPTS = 5
 
@@ -54,11 +53,13 @@ class CodeEvalCasExhaustedError(RuntimeError):
 class ProtocolCodeEvalRowStore(Protocol):
     """Versioned rows keyed by the run id (``str(row.run_id)``)."""
 
-    async def load(self, key: str) -> tuple[ModelCodeEvalRunRow | None, int]: ...
+    async def load(self, key: str) -> tuple[ModelCodeEvalRunRow | None, int]:
+        """The row stored under the key and its version, or no row at version 0."""
 
     async def compare_and_set(
         self, key: str, expected_version: int, row: ModelCodeEvalRunRow
-    ) -> bool: ...
+    ) -> bool:
+        """Write the row when the stored version still matches the expected one."""
 
 
 def encode_row(row: ModelCodeEvalRunRow) -> str:
