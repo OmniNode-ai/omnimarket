@@ -37,14 +37,16 @@ class EnumLandingCi(StrEnum):
 class EnumLandingRedClass(StrEnum):
     """What clears a red head (the ci-watch classes).
 
-    ``cascade``, ``replay``, ``cancelled_producer`` and ``runner_saturation``
-    earn one whole-run rerun per head; ``product`` goes to a fix worker.
+    ``cascade``, ``replay``, ``cancelled_producer``, ``runner_saturation`` and
+    ``stale_fleet`` earn one whole-run rerun per head; ``product`` goes to a
+    fix worker.
     """
 
     CASCADE = "cascade"
     REPLAY = "replay"
     CANCELLED_PRODUCER = "cancelled_producer"
     RUNNER_SATURATION = "runner_saturation"
+    STALE_FLEET = "stale_fleet"
     PRODUCT = "product"
 
 
@@ -54,6 +56,7 @@ RERUNNABLE_RED_CLASSES: frozenset[EnumLandingRedClass] = frozenset(
         EnumLandingRedClass.REPLAY,
         EnumLandingRedClass.CANCELLED_PRODUCER,
         EnumLandingRedClass.RUNNER_SATURATION,
+        EnumLandingRedClass.STALE_FLEET,
     }
 )
 

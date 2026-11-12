@@ -7,7 +7,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 _LANE = r"^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,127}$"
 
@@ -18,6 +18,8 @@ class EnumReaderQuery(StrEnum):
     INBOX = "inbox"
     HOLDS = "holds"
     OPEN_CLAIMS = "open-claims"
+    OPEN_RULINGS = "open-rulings"
+    ROWS = "rows"
 
 
 class EnumReaderStatus(StrEnum):
@@ -53,7 +55,18 @@ class ModelReaderRequest(BaseModel):
     reader: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
     query: EnumReaderQuery
     lane: str | None = Field(default=None, pattern=_LANE)
+    ticket: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9]*-[0-9]+$")
     read_parity: bool = False
+    window_hours: int | None = Field(default=None, ge=1, le=24 * 30)
+
+    @model_validator(mode="after")
+    def _window_hours_matches_query(self) -> ModelReaderRequest:
+        if self.query is EnumReaderQuery.ROWS:
+            if self.window_hours is None:
+                raise ValueError("a rows read names its window_hours")
+        elif self.window_hours is not None:
+            raise ValueError("window_hours is only for a rows read")
+        return self
 
 
 class ModelPointAnswer(BaseModel):

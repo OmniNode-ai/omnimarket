@@ -16,11 +16,27 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
+from omnimarket.models.broker_acl import (
+    EnumAclResourceType,
+    EnumBrokerAclFindingCode,
+    ModelBrokerAclDeriveRequest,
+    ModelBrokerAclRow,
+)
 from omnimarket.models.broker_acl_reconcile import (
     ModelBrokerAclReconcileRequest,
     ModelBrokerAclReconcileResult,
 )
+from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_derive import (
+    HandlerBrokerAclDerive,
+)
+from omnimarket.nodes.node_broker_acl_overlay_render_compute.overlay import (
+    load_principals_overlay,
+)
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers import driver_broker_acl
+from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.contract_topics import (
+    load_topic_uses,
+)
 
 _NODE = "node_broker_acl_reconcile_effect"
 _REPORT = re.compile(r"declared=(\d+) live=(\d+) missing=(\d+) undeclared=(\d+)")
@@ -126,6 +142,56 @@ def aggregate_declared_grants(nodes_root: Path | None = None) -> list[dict[str, 
     return [dict(zip(keys, row, strict=True)) for row in sorted(rows)]
 
 
+def derived_grants(
+    settings: Mapping[str, Any],
+    declared: Sequence[Mapping[str, str]],
+    environ: Mapping[str, str],
+) -> tuple[list[dict[str, str]], int]:
+    """The rows the contracts' topics need for the declared principals, and how many topics still have no row.
+
+    No principals overlay (the setting is absent or the file is not found) derives nothing, so a deployment that does not
+    declare principals applies exactly what it applied before. A derivation the apply tool would refuse raises.
+    """
+    scope = settings.get("derive_principals_scope")
+    if not scope:
+        return [], 0
+    try:
+        principals = load_principals_overlay(scope, environ)
+    except NodeOverlayNotFoundError:
+        return [], 0
+    result = HandlerBrokerAclDerive().handle(
+        ModelBrokerAclDeriveRequest(
+            scope=scope,
+            topic_uses=load_topic_uses(),
+            principals=principals,
+            declared_rows=tuple(
+                ModelBrokerAclRow(**row)
+                for row in declared
+                if row["resource_type"] == EnumAclResourceType.TOPIC.value
+            ),
+        )
+    )
+    refusing = sorted(
+        {
+            finding.code.value
+            for finding in result.findings
+            if finding.code != EnumBrokerAclFindingCode.TOPIC_WITHOUT_ROW
+        }
+    )
+    if refusing:
+        raise ValueError(f"derived rows refused: {', '.join(refusing)}")
+    return [
+        {
+            "principal": row.principal,
+            "resource_type": row.resource_type.value,
+            "pattern": row.pattern.value,
+            "name": row.name,
+            "operation": row.operation.value,
+        }
+        for row in result.rows
+    ], len(result.uncovered_topics)
+
+
 def _run(argv: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv), capture_output=True, text=True, timeout=timeout, check=False
@@ -200,7 +266,17 @@ class HandlerBrokerAclReconcile:
     ) -> ModelBrokerAclReconcileResult:
         try:
             declaration = dict(loaded["broker_acl_declaration"])
-            declaration["rows"] = aggregate_declared_grants()
+            declared = aggregate_declared_grants()
+            derived, uncovered = derived_grants(
+                loaded["broker_acl_reconcile"], declared, self._environ
+            )
+            keys = ("principal", "resource_type", "pattern", "name", "operation")
+            declaration["rows"] = [
+                dict(zip(keys, row, strict=True))
+                for row in sorted(
+                    {tuple(row[key] for key in keys) for row in (*declared, *derived)}
+                )
+            ]
             rendered = render_declaration(declaration, self._environ)
             timeout = float(loaded["broker_acl_reconcile"]["timeout_seconds"])
             connection = driver_broker_acl.AclConnection.from_mapping(
@@ -218,6 +294,8 @@ class HandlerBrokerAclReconcile:
             code = int(bool(int(reports[-1][2])))
             return self._result(
                 request, subprocess.CompletedProcess([], code, output, "")
+            ).model_copy(
+                update={"derived": len(derived), "uncovered_topics": uncovered}
             )
         except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
             return ModelBrokerAclReconcileResult(
