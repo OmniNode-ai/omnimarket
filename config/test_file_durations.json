@@ -1443,6 +1443,7 @@
   "tests/nodes/node_host_installer_container_units/test_container_units.py": 1.93,
   "tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py": 1.46,
   "tests/nodes/node_host_installer_net_units/test_host_net_units.py": 0.21,
+  "tests/nodes/node_host_installer_net_units/test_host_net_units_serving.py": 5.28,
   "tests/nodes/node_host_installer_registry_units/test_alarm_config_omn22778.py": 0.1,
   "tests/nodes/node_host_installer_registry_units/test_alarm_dispatch_command.py": 10.94,
   "tests/nodes/node_host_installer_registry_units/test_claude_pool_tick_units.py": 12.12,
