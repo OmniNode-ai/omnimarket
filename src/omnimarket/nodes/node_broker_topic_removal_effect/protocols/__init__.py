@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Protocol
 
-from omnimarket.events.topic_removal import (
+from omnimarket.models.model_topic_removal import (
     ModelTopicObservation,
 )
 

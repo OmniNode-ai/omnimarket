@@ -4,7 +4,7 @@
 
 from pathlib import Path
 
-from omnimarket.events.topic_never_produced import (
+from omnimarket.models.model_topic_never_produced import (
     ModelNeverProducedReport,
     ModelNeverProducedRequest,
 )

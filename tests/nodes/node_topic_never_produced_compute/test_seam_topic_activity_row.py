@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from omnimarket.events.topic_never_produced import (
+from omnimarket.models.model_topic_never_produced import (
     ModelNeverProducedRequest,
     ModelNeverProducedRule,
     ModelTopicEvidence,

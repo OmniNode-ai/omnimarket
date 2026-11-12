@@ -14,10 +14,10 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.events.topic_never_produced import (
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_topic_never_produced import (
     ModelNeverProducedRule,
 )
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_broker_load_reading_effect.overlay import (
     ModelBrokerMetricsSource,
 )

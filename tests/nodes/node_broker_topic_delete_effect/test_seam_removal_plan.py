@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.events.topic_removal import (
+from omnimarket.models.model_topic_removal import (
     EnumRemovalMode,
     EnumTopicClass,
     ModelTopicRemovalCommand,

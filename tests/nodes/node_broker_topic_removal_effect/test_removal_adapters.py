@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.topic_removal import (
+from omnimarket.models.model_topic_removal import (
     ModelTopicObservation,
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.adapters.declared_topics import (

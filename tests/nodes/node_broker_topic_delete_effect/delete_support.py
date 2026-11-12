@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.events.topic_removal import (
+from omnimarket.models.model_topic_removal import (
     EnumTopicClass,
 )
 from omnimarket.nodes.node_broker_topic_delete_effect.adapters.in_memory_admin import (

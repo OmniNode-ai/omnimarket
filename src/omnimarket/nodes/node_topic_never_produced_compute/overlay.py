@@ -4,10 +4,10 @@
 
 from collections.abc import Mapping
 
-from omnimarket.events.topic_never_produced import (
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_topic_never_produced import (
     ModelNeverProducedRule,
 )
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 
 NODE_NAME = "node_topic_never_produced_compute"
 

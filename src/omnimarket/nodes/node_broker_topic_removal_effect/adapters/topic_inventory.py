@@ -18,7 +18,7 @@ import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 
-from omnimarket.events.topic_removal import (
+from omnimarket.models.model_topic_removal import (
     ModelTopicObservation,
 )
 from omnimarket.nodes.node_broker_load_reading_effect.adapters.metrics_source import (

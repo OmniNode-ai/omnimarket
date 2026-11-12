@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.topic_removal import (
+from omnimarket.models.model_topic_removal import (
     EnumRemovalMode,
     ModelTopicRemovalCommand,
 )

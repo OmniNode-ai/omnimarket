@@ -23,10 +23,10 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from omnimarket.events.topic_removal import (
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_topic_removal import (
     ModelTopicRemovalResult,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_broker_topic_delete_effect.handlers.handler_broker_topic_delete import (
     HandlerBrokerTopicDelete,
 )
