@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_table_keys_ingest_effect
+version: 1.0.0
+description: Ingest the lab host table into the key-value store when the overlay loads (OMN-23983, OMN-22251)
+pack: distributed_validation
+node_role: effect
+display_name: Host Table Keys Ingest Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_table_keys_ingest_effect: omnimarket.nodes.node_host_table_keys_ingest_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- host-table-keys-ingest
+- OMN-23983
+- OMN-22251

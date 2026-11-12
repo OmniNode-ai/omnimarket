@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_table_keys_ingest_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Ingest the lab host table into the key-value store when the overlay loads (OMN-23983, OMN-22251).
+input_model:
+  name: ModelOverlayStoreRecord
+  module: omnimarket.models.overlay_store.model_overlay_store
+output_model:
+  name: ModelHostTableKeysIngestResult
+  module: omnimarket.nodes.node_host_table_keys_ingest_effect.models.model_host_table_keys
+overlay:
+  node: node_host_table_keys_ingest_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+handler:
+  module: omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_host_table_keys_ingest
+  class: HandlerHostTableKeysIngest
+  input_model: omnimarket.models.overlay_store.model_overlay_store.ModelOverlayStoreRecord
+  output_model: omnimarket.nodes.node_host_table_keys_ingest_effect.models.model_host_table_keys.ModelHostTableKeysIngestResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerHostTableKeysIngest
+      module: omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_host_table_keys_ingest
+    event_model:
+      name: ModelOverlayStoreRecord
+      module: omnimarket.models.overlay_store.model_overlay_store
+    topic: onex.evt.omnimarket.overlay-store-loaded.v1
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.overlay-store-loaded.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-table-keys-ingested.v1
+  - onex.evt.omnimarket.host-table-keys-refused.v1
+side_effects:
+- key-value-write
+- bus-publish
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: kafka
+  ticket: OMN-23983
+  related_tickets:
+  - OMN-22251
