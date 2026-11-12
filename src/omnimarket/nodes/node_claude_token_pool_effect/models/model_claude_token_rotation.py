@@ -14,6 +14,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.model_claude_pool_revoke_staleness import (
+    ModelRevokeStalenessPolicy,
+)
+
 
 class ModelRotationMark(BaseModel):
     """One label's marks at the source: a limit that ends at ``until`` and whether its login was revoked."""
@@ -26,8 +30,13 @@ class ModelRotationMark(BaseModel):
     #: is not an instant, or names no zone, is refused rather than kept as a limit that never ends.
     until: str | None = None
     revoked: bool = False
+    #: Optional facts a newer source mirror carries so a host can tell a stale revoke from a real one; an
+    #: older mirror without them reads exactly as before (the stale-revoke rule then has nothing to go on).
+    fingerprint: str | None = None
+    revoked_at: str | None = None
+    limited_at: str | None = None
 
-    @field_validator("until")
+    @field_validator("until", "revoked_at", "limited_at")
     @classmethod
     def _until_is_a_utc_instant(cls, value: str | None) -> str | None:
         if value is None:
@@ -158,6 +167,9 @@ class ModelRotationOverlay(BaseModel):
     #: Account steering for new lane starts. ``None`` (or ``enabled: false``) declares none: a lane start
     #: draws as before, and no label has a lane cap.
     steering: ModelRotationSteering | None = None
+    #: The revoke-staleness rule. Absent (``None``) => no revoke is ever cleared as stale (not configured);
+    #: present => its ``margin_seconds`` decides which revokes are stale enough to clear.
+    stale_revoke: ModelRevokeStalenessPolicy | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRotationOverlay:
@@ -223,6 +235,13 @@ class ModelClaudeTokenRotationResult(BaseModel):
     events: tuple[ModelRotationEvent, ...] = ()
     alarm: str | None = None
     lines: tuple[str, ...] = ()
+    #: ``not_configured`` when the overlay has no stale-revoke block (the old behaviour, never an error);
+    #: ``evaluated`` when the rule ran and decided which revokes to clear.
+    stale_revoke: Literal["not_configured", "evaluated"] = "not_configured"
+    #: Labels whose stale revokes the tick cleared (labels only, never a token).
+    revokes_cleared: tuple[str, ...] = ()
+    #: Labels whose revokes the tick kept (real or unknown, so left in place).
+    revokes_kept: tuple[str, ...] = ()
 
 
 class ModelClaudeTokenAssignRequest(BaseModel):

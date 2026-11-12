@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_routing_order_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Answers, for one task class, the order in which a delegating caller tries
+  engines and how many attempts each ladder tier gets (OMN-23712, plan
+  revision 44 task E8). The order is the class's escalation chain in the
+  routing overlay bound by DELEGATION_ROUTING_OVERLAY_PATH, resolved by
+  resolve_class_escalation_chain: a ladder rung carries its tier's backends
+  that serve the class and its max_retries from the routing contract (the tier
+  gets max_retries + 1 attempts, because the routing path retries while the
+  retries issued are below max_retries); a harness rung carries its backend,
+  its harness and its refusals. The chain does not change tier_order, so
+  delegation_routing, paid_from_size_band and the lab-first check never read
+  it. An unbound overlay, no chain for the class, an invalid overlay or chain,
+  an unreadable contract or a chain that does not open on the lab tier is a
+  typed refusal with no rungs: there is no fallback and no default order.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: read_routing_order
+      handler:
+        name: HandlerDelegationRoutingOrder
+        module: omnimarket.nodes.node_delegation_routing_order_compute.handlers.handler_delegation_routing_order
+
+handler:
+  module: omnimarket.nodes.node_delegation_routing_order_compute.handlers.handler_delegation_routing_order
+  class: HandlerDelegationRoutingOrder
+  input_model: omnibase_core.models.delegation.model_delegation_routing_order_request.ModelDelegationRoutingOrderRequest
+  output_model: omnibase_core.models.delegation.model_delegation_routing_order_answer.ModelDelegationRoutingOrderAnswer
+
+descriptor:
+  node_archetype: compute
+  purity: impure  # reads the routing contracts and the bound routing overlay file; writes nothing
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  task_class:
+    type: str
+    required: true
+    description: The task class whose engine order is asked for.
+  tenant_slug:
+    type: str
+    required: false
+    description: The tenant asking; a harness rung is refused for any tenant but the house tenant.
+  surface:
+    type: str
+    required: true
+    description: The caller surface; a harness rung is refused off the internal surface.
+  pin_lifted:
+    type: bool
+    required: true
+    description: True when the caller pins the engine explicitly, which lifts the explicit-pin refusal.
+
+outputs:
+  ok:
+    type: bool
+  task_class:
+    type: str
+  rungs:
+    type: list
+  refusal:
+    type: str
+  detail:
+    type: str
+
+terminal_event: onex.evt.omnimarket.delegation-routing-order-read.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-routing-order-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-routing-order-read.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-routing-order-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-routing-order-read.v1
