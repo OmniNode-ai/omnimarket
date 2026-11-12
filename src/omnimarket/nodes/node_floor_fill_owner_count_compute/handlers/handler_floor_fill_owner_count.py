@@ -83,6 +83,7 @@ class HandlerFloorFillOwnerCount:
             piece=self._overlay.emission_piece,
             clock=self._clock,
             backend=self._backend,
+            origin="probe",
         )
         chain.start()
         window = self._overlay.lane_write_window_minutes
