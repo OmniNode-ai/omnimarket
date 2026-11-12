@@ -84,6 +84,15 @@ def merge_pages(
             f"newest={max(dated) if dated else 'none'}"
         )
         lines = [summary, *(line for line in lines if not _INBOX_SUMMARY.match(line))]
+    if query is EnumReaderQuery.ROWS:
+        # A rows window: the lines are every page's lines in page order, and the query node
+        # reports the window total on every page, so the matched count is the first page's,
+        # never summed over the pages.
+        return ModelPointAnswer(
+            lines=tuple(lines),
+            matched=pages[0].matched,
+            watermark=min(watermarks) if len(watermarks) == len(pages) else None,
+        )
     return ModelPointAnswer(
         lines=tuple(lines),
         matched=sum(p.matched for p in pages),
@@ -128,8 +137,10 @@ class HandlerWorkLedgerReader:
             )
         if request.query is EnumReaderQuery.INBOX and not request.lane:
             raise ValueError("an inbox read names its lane")
+        if request.query is EnumReaderQuery.OPEN_RULINGS and not request.ticket:
+            raise ValueError("an open-rulings read names its ticket")
         now = self._clock().astimezone(UTC)
-        answer = self._read_open_set(request)
+        answer = self._read_open_set(request, now)
         if answer.error is not None:
             return self._finish(
                 request,
@@ -168,9 +179,13 @@ class HandlerWorkLedgerReader:
             parity=parity,
         )
 
-    def _read_open_set(self, request: ModelReaderRequest) -> ModelPointAnswer:
+    def _read_open_set(
+        self, request: ModelReaderRequest, now: datetime
+    ) -> ModelPointAnswer:
         """Every page of the open set, following next_cursor up to max_pages; a set that does
-        not end within max_pages is an error, never a cut-short answer."""
+        not end within max_pages is an error, never a cut-short answer. A rows read names its
+        window: since is the injected clock's now minus window_hours, read once at the start
+        of handle and used for every page."""
         pages: list[ModelPointAnswer] = []
         cursor: str | None = None
         for _ in range(self._overlay.max_pages):
@@ -180,6 +195,15 @@ class HandlerWorkLedgerReader:
                     lanes=(request.lane,)
                     if request.query is EnumReaderQuery.INBOX and request.lane
                     else (),
+                    ticket=request.ticket
+                    if request.query is EnumReaderQuery.OPEN_RULINGS
+                    else None,
+                    since=(
+                        now - timedelta(hours=request.window_hours)
+                        if request.query is EnumReaderQuery.ROWS
+                        and request.window_hours is not None
+                        else None
+                    ),
                     page_size=self._overlay.page_size,
                     cursor=cursor,
                 )

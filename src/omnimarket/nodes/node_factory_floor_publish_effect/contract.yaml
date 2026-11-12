@@ -112,7 +112,9 @@ descriptor:
 # overlay_file_env, else <ONEX_SKILL_OVERLAY_ROOTS root>/node_factory_floor_publish_effect/overlay.yaml.
 # The friction step keeps the 24-hour window of the rollup's report (the part with the classes the record reads).
 # Steps run in order. A step that is not required may fail: the status file records it and the page shows that
-# source as unread. The factory floor effect is last and required: without a record nothing is published.
+# source as unread. The factory floor effect is last and required: without a record nothing is published. The
+# delegation tracker the optional step built, and the served status carrying a `refused` block, are still served
+# when this step refuses (OMN-23969).
 delegation_report:
   local_group: local
   fallback_group: other
@@ -433,7 +435,8 @@ runtime:
     fresh_relpath: .onex_state/factory-floor/unresolved-rows.json
     fresh_seconds: 21600
   # OMN-23606: the record step, one window read of the ledger and every other source, with the unresolved record read from its file.
-  # Its limit stays 30 s and the cycle bound stays 240 s. Measured on the publishing Mac 2026-11-10 at load 10 to 11, with the
+  # Its limit is 45 s and the cycle bound 255 s (operator decision 2026-11-12, OMN-23877: the step took 18 to 23 s at Mac load 10 to 12
+  # and passed 30 s near load 13, so the board stopped publishing; 45 s is at least 1.5 times the 23 s maximum). Measured on the publishing Mac 2026-11-10 at load 10 to 11, with the
   # overlay naming the file as the ledger source and the window read running beside the step's other reads: 19.6 s, 19.5 s and
   # 19.1 s (three runs; 24.1 s before the window read ran beside the others, 14.7 s of that the window read alone).
   # The window read takes the file (OMN-23606, measured on the publishing Mac 2026-11-11): the bus source never answers it (the
@@ -445,7 +448,7 @@ runtime:
   - name: factory_floor
     kind: module
     required: true
-    timeout_seconds: 30
+    timeout_seconds: 45
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
     environment:
@@ -503,7 +506,7 @@ runtime:
   # process-health rebuild (only when its file is older than 900 s) took 82 s on a lab host. A step that reaches its
   # timeout is recorded failed with the seconds it took.
   cycle:
-    bound_seconds: 240
+    bound_seconds: 255
     delegation_timeout_seconds: 15
     copy_budget_seconds: 40
     history_prune_budget_seconds: 8
