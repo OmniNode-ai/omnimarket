@@ -167,17 +167,17 @@ def test_the_count_survives_in_the_journal_across_handlers(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "reason"),
+    ("fallback", "file", "reason"),
     [
-        ({"fallback": False, "file": FakeFile()}, "file-fallback-retired"),
-        ({"file": None}, "node-failed-and-no-file-source"),
-        ({"file": FakeFile(None)}, "file-fallback-unreadable"),
+        (False, FakeFile(), "file-fallback-retired"),
+        (True, None, "node-failed-and-no-file-source"),
+        (True, FakeFile(None), "file-fallback-unreadable"),
     ],
 )
 def test_no_source_is_unreadable_with_an_error_event_never_empty_ok(
-    kwargs: dict[str, object], reason: str
+    fallback: bool, file: FakeFile | None, reason: str
 ) -> None:
-    handler, sink, _ = loader(**kwargs)  # type: ignore[arg-type]
+    handler, sink, _ = loader(fallback=fallback, file=file)
     result = handler.handle(request(EnumReaderStatus.UNREADABLE))
     assert result.status is EnumRowsStatus.UNREADABLE
     assert result.reason == reason

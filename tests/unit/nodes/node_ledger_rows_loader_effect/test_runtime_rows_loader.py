@@ -14,6 +14,9 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_ledger_rows_loader_effect.runtime_rows_loader import main
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
+)
 from tests.unit.nodes.node_ledger_rows_loader_effect.test_rows_loader_reader_seam import (
     OutagePointRead,
     ledger_file,
@@ -55,7 +58,7 @@ def env(tmp_path: Path, *, fallback: bool = True) -> dict[str, str]:
 
 def run(
     tmp_path: Path,
-    point_read: object,
+    point_read: ProtocolLedgerPointRead,
     capsys: pytest.CaptureFixture[str],
     *extra: str,
     fallback: bool = True,
@@ -63,7 +66,7 @@ def run(
     code = main(
         ["--reader", "drain-map", "--window-hours", "27", *extra],
         environ=env(tmp_path, fallback=fallback),
-        point_read=point_read,  # type: ignore[arg-type]
+        point_read=point_read,
         clock=lambda: SEAM_NOW,
     )
     captured = capsys.readouterr()
