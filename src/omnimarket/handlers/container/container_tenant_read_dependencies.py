@@ -32,7 +32,6 @@ from omnimarket.handlers.container.container_overlay_dependencies import (
     installed_overlay,
 )
 from omnimarket.handlers.tenant_projection_read.analytics_postgres import (
-    ProtocolLogicalSecretResolver,
     Psycopg2AnalyticsQueryExecutor,
     SecretResolverDsnSource,
     StaticDsnSource,
@@ -47,6 +46,9 @@ from omnimarket.models.model_tenant_delegation_projection import (
 )
 from omnimarket.protocols.protocol_http_tenant_identity import (
     ProtocolHttpTenantIdentity,
+)
+from omnimarket.protocols.protocol_logical_secret_resolver import (
+    ProtocolLogicalSecretResolver,
 )
 from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
     ProjectionMissingError,

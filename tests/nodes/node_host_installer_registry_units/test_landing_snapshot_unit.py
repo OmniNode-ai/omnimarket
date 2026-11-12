@@ -55,9 +55,7 @@ def test_the_unit_is_declared_every_minute_on_launchd_and_runs_the_step_module()
     assert unit["module"] == "omnimarket.nodes.node_pr_landing_snapshot_effect"
     assert unit["entry_file"] == ENTRY
     assert unit["run_timeout_s"] < 60
-    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"].startswith(
-        "{registry_root}/overlays/overlays"
-    )
+    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"].startswith("{overlays_root}")
     assert unit["environment"]["OMNIBASE_PATH"] == "{registry_root}"
 
 

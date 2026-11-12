@@ -31,7 +31,7 @@ from tests.nodes.node_host_installer_registry_units import (
 pytestmark = pytest.mark.unit
 
 ROOTS = "ONEX_SKILL_OVERLAY_ROOTS"
-CLONE = "{registry_root}/overlays/overlays"
+CLONE = "{overlays_root}"
 PLUGIN = "{marketplace_root}/plugins/onex-overlays/overlays"
 # The clone first, then the plugin copy, matching the form the factory floor publisher declares.
 CLONE_THEN_PLUGIN = f"{CLONE}{os.pathsep}{PLUGIN}"
