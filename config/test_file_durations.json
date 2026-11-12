@@ -1439,6 +1439,7 @@
   "tests/nodes/node_host_drift_fleet/test_stale_state.py": 0.02,
   "tests/nodes/node_host_install_file_effect/test_contract.py": 1.5,
   "tests/nodes/node_host_install_file_effect/test_file_effect.py": 1.5,
+  "tests/nodes/node_host_install_orchestrator/test_cli.py": 1.5,
   "tests/nodes/node_host_install_orchestrator/test_contract.py": 1.5,
   "tests/nodes/node_host_install_orchestrator/test_orchestrator.py": 1.5,
   "tests/nodes/node_host_install_orchestrator/test_seam.py": 1.5,
