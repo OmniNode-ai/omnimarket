@@ -74,10 +74,14 @@ TOPIC = "onex.snapshot.projection.floor-integration.v1"
 SECTION: dict[str, Any] = {
     "title": "Merged work that is not running yet",
     "group_titles": {
-        "needs_fix": "Needs a fix",
+        "runtime_behind": "The runtime is older than the merge",
+        "needs_registration": "Needs registering in the runtime",
+        "needs_unit": "Needs a unit installed",
+        "needs_reader": "Needs a reader or a setting",
+        "needs_pin": "Needs a pin moved",
+        "needs_plugin_release": "Needs a plugin release",
+        "second_copy": "A second copy runs instead",
         "waits_on_merge": "Waits on another change merging",
-        "needs_install": "Needs an install",
-        "needs_proof": "Needs one proving run",
         "needs_reading": "Needs a reading",
     },
     "max_rows": 40,
@@ -157,15 +161,16 @@ def test_golden_board_read_the_pass_list_reaches_the_board_section(
     assert section.age_s == 600
     assert section.counts is not None
     assert section.counts.model_dump(mode="json") == GOLDEN_COUNTS
+    # overlays#301 is in place with no run seen: counted as a reading owed, never listed as not running.
     assert [r.key for r in section.rows] == [
-        "overlays#301",
+        "omnimarket#5125",
         "omnimarket#5843",
         "omnimarket#5856",
     ]
     assert [(g.title, g.keys) for g in section.groups] == [
-        ("Needs a fix", ("omnimarket#5856",)),
+        ("Needs a unit installed", ("omnimarket#5125",)),
+        ("A second copy runs instead", ("omnimarket#5856",)),
         ("Waits on another change merging", ("omnimarket#5843",)),
-        ("Needs one proving run", ("overlays#301",)),
     ]
     assert section.rows_total == 3
     assert doc.sources_read["integration_projection"] is True
@@ -246,7 +251,7 @@ def test_the_section_draws_at_most_max_rows_and_counts_the_rest() -> None:
             status="read", as_of=projection.as_of, age_s=5, projection=projection
         ),
     )
-    assert [r.key for r in section.rows] == ["overlays#301", "omnimarket#5843"]
+    assert [r.key for r in section.rows] == ["omnimarket#5125", "omnimarket#5843"]
     assert section.rows_total == 3
 
 

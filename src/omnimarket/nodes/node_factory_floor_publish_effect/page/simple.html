@@ -128,7 +128,7 @@ function integrationSection(s){
   let h = `<h2 id="integration">${esc(s.title)}</h2>`;
   if (s.status !== "read") return h + `<div class="row"><span class="dot red"></span><div><b>The list is not readable now.</b><small>${esc(s.reason)}${s.age_s == null ? "" : "; last published " + ago(s.age_s)}.</small></div></div>`;
   const c = s.counts, o = c.oldest_unintegrated;
-  h += `<div class="piece"><b>${c.unintegrated} of ${c.merged} merged changes are not running.</b> ${c.seen_running} seen running, ${c.settled_elsewhere} run nowhere by design (CI or library).${o ? " Oldest not running: " + esc(o.key) + ", merged " + ago(Math.max(0, Math.floor((Date.now() - Date.parse(o.merged_at)) / 1000))) + "." : ""} List published ${ago(s.age_s)}.</div>`;
+  h += `<div class="piece"><b>${c.unintegrated} of ${c.merged} merged changes are not running.</b> ${c.seen_running} seen running, ${c.reading_owed} in place with no run seen yet, ${c.settled_elsewhere} run nowhere by design (CI or library).${o ? " Oldest not running: " + esc(o.key) + ", merged " + ago(Math.max(0, Math.floor((Date.now() - Date.parse(o.merged_at)) / 1000))) + "." : ""} List published ${ago(s.age_s)}.</div>`;
   const byKey = {}; for (const r of s.rows) byKey[r.key] = r;
   for (const g of s.groups) {
     h += `<div class="line amber"><span class="n">${g.count}</span><span class="t"><b>${esc(g.title)}</b></span><span class="a"></span></div>`;
