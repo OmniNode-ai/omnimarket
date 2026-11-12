@@ -150,7 +150,6 @@ node_plan_to_tickets created_count
 node_plan_to_tickets epic_id
 node_plan_to_tickets failed_count
 node_plan_to_tickets skipped_count
-node_pr_health_monitor onex.evt.omnimarket.pr-health-report-completed.v1
 node_projection_capsule_store onex.evt.omnimarket.capsule-store-applied.v1
 node_projection_event_chain onex.evt.omnimarket.event-chain-applied.v1
 node_projection_llm_routing onex.evt.omnimarket.projection-llm-routing-applied.v1

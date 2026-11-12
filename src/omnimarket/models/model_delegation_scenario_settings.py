@@ -13,8 +13,14 @@ only, never a key.
 from __future__ import annotations
 
 import re
+from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
 
 NAME_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
 _TEMPLATE_PART = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -76,4 +82,30 @@ class ModelScenarioSettingsOverlay(BaseModel):
     settings: tuple[ModelScenarioSetting, ...] = Field(min_length=1)
 
 
-__all__ = ["NAME_PATTERN", "ModelScenarioSetting", "ModelScenarioSettingsOverlay"]
+class ModelScenarioTenantReadOverlay(BaseModel):
+    """The bus lane of a scenario's tenant reads: the bus and lane to open, the probe tenant and the wait bound."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bus: Literal["kafka", "inmemory"]
+    bus_lane: str = Field(min_length=1)
+    probe_tenant_id: UUID
+    timeout_seconds: float = Field(gt=0)
+
+
+class ModelScenarioStoreOverlay(BaseModel):
+    """The overlay document of a scenario node that names its store: names and addresses only, never a value."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    secret_store: ModelSecretStoreOverlay
+    tenant_read: ModelScenarioTenantReadOverlay | None = None
+
+
+__all__ = [
+    "NAME_PATTERN",
+    "ModelScenarioSetting",
+    "ModelScenarioSettingsOverlay",
+    "ModelScenarioStoreOverlay",
+    "ModelScenarioTenantReadOverlay",
+]

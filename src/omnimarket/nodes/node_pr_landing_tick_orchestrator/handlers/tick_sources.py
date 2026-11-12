@@ -11,7 +11,8 @@ the bus publisher of tick_bus_publisher for redpanda. This module holds no Kafka
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+import os
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
@@ -28,6 +29,9 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
@@ -48,11 +52,20 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_overla
     EnumTickBackend,
     ModelTickOrchestratorOverlay,
     ModelTickTopicSelection,
+    resolved_consumer_group,
 )
 
 
 class ProtocolTickSnapshotSource(Protocol):
     def snapshots(self) -> tuple[ModelTickSnapshot, ...]: ...
+
+    def skipped(self) -> tuple[ModelTickSkippedRecord, ...]: ...
+
+
+class ProtocolRerunRequestSource(Protocol):
+    """The open rerun requests lanes made (OMN-23830): facts the newest tick of a pass answers."""
+
+    def requests(self) -> tuple[ModelLandingRerunRequest, ...]: ...
 
     def skipped(self) -> tuple[ModelTickSkippedRecord, ...]: ...
 
@@ -116,7 +129,11 @@ class RedpandaSnapshotSource:
                 )
                 continue
             out.append(
-                ModelTickSnapshot(facts=record.facts, provenance=record.provenance)
+                ModelTickSnapshot(
+                    facts=record.facts,
+                    provenance=record.provenance,
+                    controller=record.controller,
+                )
             )
         self._skipped = tuple(skipped)
         return tuple(out)
@@ -141,6 +158,7 @@ _REQUIRED_FIELDS: dict[EnumTickBackend, tuple[str, ...]] = {
     EnumTickBackend.INMEMORY: (),
     EnumTickBackend.REDPANDA: (
         "consumer_group",
+        "host_env",
         "snapshot_topic",
         "poll_timeout_s",
         "emission_journal",
@@ -179,6 +197,7 @@ def build_snapshot_source(
     *,
     inmemory: InMemorySnapshotSource | None = None,
     topic_reader_factory: TopicReaderFactory | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> ProtocolTickSnapshotSource:
     if overlay.backend is EnumTickBackend.INMEMORY:
         if inmemory is None:
@@ -191,9 +210,15 @@ def build_snapshot_source(
         and overlay.poll_timeout_s
     ):
         raise ValueError("backend redpanda needs its overlay fields")
+    assert (
+        overlay.join_timeout_s is not None
+    )  # the overlay validator requires it for redpanda
     selection = ModelTickTopicSelection(
         topic=overlay.snapshot_topic,
-        consumer_group=overlay.consumer_group,
+        consumer_group=resolved_consumer_group(
+            overlay, os.environ if environ is None else environ
+        ),
+        join_timeout_s=overlay.join_timeout_s,
         bus_lane=overlay.bus_lane,
         workspace_root=overlay.workspace_root,
         bootstrap_servers=overlay.bootstrap_servers,
@@ -248,8 +273,15 @@ def run_snapshots(
     handler: HandlerPrLandingTickOrchestrator,
     source: ProtocolTickSnapshotSource,
     mode: EnumTickMode,
+    rerun_source: ProtocolRerunRequestSource | None = None,
 ) -> tuple[ModelTickResult, ...]:
-    """Run every snapshot of the source through the handler in the given mode."""
+    """Run every snapshot of the source through the handler in the given mode.
+
+    The rerun requests (OMN-23830) are read after the snapshots, only when there is one, and ride the
+    newest snapshot: the facts a request is answered against are the newest tick's.
+    """
+    snapshots = source.snapshots()
+    requests = rerun_source.requests() if rerun_source is not None and snapshots else ()
     return tuple(
         handler.handle(
             ModelTickRequest(
@@ -258,14 +290,17 @@ def run_snapshots(
                 facts=snapshot.facts,
                 recorded_decision=snapshot.decision,
                 fair_share=snapshot.fair_share,
+                controller=snapshot.controller,
+                rerun_requests=requests if position == len(snapshots) - 1 else (),
             )
         )
-        for snapshot in source.snapshots()
+        for position, snapshot in enumerate(snapshots)
     )
 
 
 __all__: list[str] = [
     "InMemorySnapshotSource",
+    "ProtocolRerunRequestSource",
     "ProtocolTickSnapshotSource",
     "ProtocolTickTopicReader",
     "PublisherFactory",

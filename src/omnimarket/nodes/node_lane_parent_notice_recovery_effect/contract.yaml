@@ -14,7 +14,7 @@ description: >-
   is recorded; every recovery carries the original lane's attempt family, a retry budget and a backoff, and the budget
   ends in one escalation row. The recovery starts through the placement path the overlay names, not the node that
   failed. Statuses, budget, backoff, state file and every command are rows of the node overlay (OMN-23389, R12 of the
-  h053 cascade plan).
+  full-disk cascade plan).
 input_model:
   name: ModelNoticeConsumeRequest
   module: omnimarket.nodes.node_lane_parent_notice_recovery_effect.models.model_notice_recovery

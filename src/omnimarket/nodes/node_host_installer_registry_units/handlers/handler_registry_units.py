@@ -32,7 +32,11 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.handlers.rules_overlay_root_declared import declared_overlay_root
 from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
+from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
@@ -110,14 +114,44 @@ def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
     }
 
 
+def default_hosts() -> ModelLabHostsTable:
+    """The lab host table the installing shell's overlay roots serve (looked up at call time)."""
+    return resolve_lab_hosts_table()
+
+
 class HandlerRegistryUnits:
     """``handle(request) -> result``. ``run`` runs one command; tests inject it."""
 
     def __init__(
-        self, run: Runner = run_command, units: dict[str, dict[str, Any]] | None = None
+        self,
+        run: Runner = run_command,
+        units: dict[str, dict[str, Any]] | None = None,
+        hosts: Callable[[], ModelLabHostsTable] | None = None,
     ) -> None:
         self.run = run
         self.units = units if units is not None else load_units()
+        self.hosts = hosts if hosts is not None else default_hosts
+
+    def overlays_root(self, request: ModelRegistryUnitsRequest) -> str:
+        host = (
+            request.host_name
+            or request.ledger_host_name
+            or os.environ.get("ONEX_LEDGER_HOST_NAME", "").strip()
+        )
+        if not host:
+            raise ValueError(
+                "{overlays_root}: the install needs host_name (or ledger_host_name / ONEX_LEDGER_HOST_NAME) "
+                "to resolve it, or a path override of the variable"
+            )
+        try:
+            table = self.hosts()
+        except NodeOverlayError as exc:
+            raise ValueError(
+                f"{{overlays_root}}: the lab host table cannot be read: {exc}"
+            ) from exc
+        document = table.model_dump(mode="json")
+        declared = declared_overlay_root(document, host, Path(request.registry_root))
+        return os.path.normpath(str(declared))
 
     def handle(self, request: ModelRegistryUnitsRequest) -> ModelRegistryUnitsResult:
         unit = self.units.get(request.unit)
@@ -304,6 +338,12 @@ class HandlerRegistryUnits:
         for key in ("plans_path", "marketplace_root"):
             if getattr(request, key):
                 values[key] = getattr(request, key)
+        needs = any(
+            "{overlays_root}" in str(t) and name not in request.path_overrides
+            for name, t in declared.items()
+        )
+        if needs:
+            values["overlays_root"] = self.overlays_root(request)
         allowed = {str(n) for n in unit.get("environment_path_overrides") or []}
         for name in request.path_overrides:
             if name not in allowed:
@@ -368,6 +408,21 @@ class HandlerRegistryUnits:
             )
         return list(declared)
 
+    def tick_arguments(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> list[str]:
+        """The arguments the rendered unit passes to its module at every tick, so the start check runs the real argv."""
+        root = Path(request.registry_root)
+        evidence_dir = str((Path(request.home) / str(unit["evidence_file"])).parent)
+        tick_root = str(root)
+        if (
+            unit.get("platform") != "systemd"
+            and unit.get("tick_omni_home") != "registry_root"
+            and unit.get("launchd_root")
+        ):
+            tick_root = str(Path(request.home) / str(unit["launchd_root"]))
+        return ["--omni-home", tick_root, "--state-dir", evidence_dir]
+
     def start_check(
         self,
         request: ModelRegistryUnitsRequest,
@@ -399,6 +454,7 @@ class HandlerRegistryUnits:
                 "python",
                 "-m",
                 str(unit["module"]),
+                *self.tick_arguments(request, unit),
                 *self.probe_argv(unit),
             ]
         )
@@ -682,7 +738,7 @@ class HandlerRegistryUnits:
         proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project} (start check: {' '.join(self.probe_argv(unit))}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join([*self.tick_arguments(request, unit), *self.probe_argv(unit)])}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         if unit.get("launchd_root"):
@@ -914,7 +970,7 @@ class HandlerRegistryUnits:
         proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project} (start check: {' '.join(self.probe_argv(unit))}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join([*self.tick_arguments(request, unit), *self.probe_argv(unit)])}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         unit_dir.mkdir(parents=True, exist_ok=True)

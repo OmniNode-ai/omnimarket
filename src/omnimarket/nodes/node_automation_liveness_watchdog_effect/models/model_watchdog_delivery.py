@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Self
 from uuid import UUID
 
 from pydantic import (
@@ -21,7 +20,6 @@ from pydantic import (
     Field,
     NonNegativeInt,
     PositiveInt,
-    model_validator,
 )
 
 from omnimarket.models.liveness.model_automation_liveness import (
@@ -42,28 +40,6 @@ class EnumOutboxStatus(StrEnum):
     DELIVERED = "delivered"
     #: A low-severity row replaced by a high-severity row of the same episode.
     SUPERSEDED = "superseded"
-
-
-class ModelAlarmSendReceipt(BaseModel):
-    """What the alarm sender reports: a Slack message timestamp or a failure."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    delivered: bool
-    message_ref: NonEmptyStr | None = None
-    failure: NonEmptyStr | None = None
-
-    @model_validator(mode="after")
-    def _receipt_or_failure(self) -> Self:
-        if self.delivered and (self.message_ref is None or self.failure is not None):
-            raise ValueError("a delivered alarm carries its message_ref and no failure")
-        if not self.delivered and (
-            self.failure is None or self.message_ref is not None
-        ):
-            raise ValueError(
-                "an undelivered alarm carries its failure and no message_ref"
-            )
-        return self
 
 
 class ModelOutboxEntry(BaseModel):
@@ -133,7 +109,6 @@ class ModelWatchdogDeliveryResult(BaseModel):
 __all__ = [
     "HOURLY_MESSAGE_CAP",
     "EnumOutboxStatus",
-    "ModelAlarmSendReceipt",
     "ModelOutboxEntry",
     "ModelWatchdogDeliveryRequest",
     "ModelWatchdogDeliveryResult",

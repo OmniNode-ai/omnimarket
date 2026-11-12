@@ -21,6 +21,10 @@ class ModelPointQuery(BaseModel):
     lanes: tuple[str, ...] = ()
     lane: str | None = None
     since: datetime | None = None
+    #: The window's exclusive end; the node answers up to its own now when none is sent (OMN-23606).
+    until: datetime | None = None
+    #: A case-insensitive substring the row's first line must hold; the node narrows in the store (OMN-23606).
+    term: str | None = Field(default=None, min_length=1)
     kinds: tuple[str, ...] = ()
     limit: int | None = Field(default=None, ge=1)
     page_size: int | None = Field(default=None, ge=1)

@@ -23,11 +23,19 @@ import argparse
 import json
 import sys
 
+from omnimarket.handlers.tick_unit_arguments import (
+    add_tick_arguments,
+    write_tick_heartbeat,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     ProtocolTickPublisher,
+)
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_rerun_source import (
+    build_rerun_ledger,
+    build_rerun_request_source,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_sources import (
     PublisherFactory,
@@ -65,7 +73,18 @@ def run_once(
         }
     if publisher is None:
         publisher = build_publisher(overlay, publisher_factory=publisher_factory)
-    source = build_snapshot_source(overlay, topic_reader_factory=topic_reader_factory)
+    try:
+        source = build_snapshot_source(
+            overlay, topic_reader_factory=topic_reader_factory
+        )
+    except ValueError as exc:  # no host identity: refused, never the shared group
+        return 3, {"status": "overlay_refused", "detail": str(exc)}
+    try:
+        rerun_source = build_rerun_request_source(
+            overlay, topic_reader_factory=topic_reader_factory
+        )
+    except ValueError as exc:  # no host identity: refused, never the shared group
+        return 3, {"status": "overlay_refused", "detail": str(exc)}
     sink, label = build_emission(overlay)
     handler = HandlerPrLandingTickOrchestrator(
         publisher=publisher,
@@ -75,11 +94,21 @@ def run_once(
         emission_backend=label,
         cutover_repository=overlay.cutover_repository,
         script_out_of_scope=overlay.script_out_of_scope_repositories,
+        rerun_limit=(
+            overlay.rerun_requests.max_reruns_per_head
+            if overlay.rerun_requests
+            else None
+        ),
+        rerun_ledger=build_rerun_ledger(overlay),
     )
     try:
-        results = run_snapshots(handler, source, EnumTickMode.OBSERVE)
+        results = run_snapshots(handler, source, EnumTickMode.OBSERVE, rerun_source)
     except Exception as exc:  # the reader raised, or a record did not validate
-        return 3, {"status": "source_unread", "detail": type(exc).__name__}
+        return 3, {
+            "status": "source_unread",
+            "detail": type(exc).__name__,
+            "reason": str(exc)[:200],
+        }
     failed = sum(result.status is EnumTickStatus.FAILED for result in results)
     line: dict[str, object] = {
         "status": ("no_records" if not results else "failed" if failed else "compared"),
@@ -89,11 +118,27 @@ def run_once(
         "failed": failed,
         "equal": sum(result.equal for result in results),
         "ticks": [result.tick for result in results],
+        "compared_prs": sum(len(result.compared_prs) for result in results),
+        "agreed_prs": sum(len(result.agreed_prs) for result in results),
+        "controller_ticks": sorted(
+            {
+                result.controller_tick
+                for result in results
+                if result.controller_tick is not None
+            }
+        ),
         "divergent": sorted(
             {d.subject for result in results for d in result.divergences}
         ),
         "skipped": [row.model_dump(mode="json") for row in source.skipped()],
     }
+    if rerun_source is not None:
+        answers = [a for result in results for a in result.rerun_answers]
+        line["rerun_requests"] = {
+            "answered": len(answers),
+            "verdicts": sorted({a.verdict.value for a in answers}),
+            "skipped": [row.model_dump(mode="json") for row in rerun_source.skipped()],
+        }
     return (1 if failed else 0), line
 
 
@@ -107,11 +152,12 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start check: exit 0 and print one status line without loading an overlay, reading the bus or writing a file",
     )
+    add_tick_arguments(parser)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    """--probe exits 0 after one status line, before loading the overlay or running the pass."""
+    """--probe exits 0 after one status line; a pass accepts --omni-home and --state-dir and writes last-run.json, the unit heartbeat."""
     parser = _parser()
     args = parser.parse_args(argv)
     if args.probe:
@@ -122,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         code, line = run_once(overlay)
     except ValueError as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}
+    write_tick_heartbeat(args.state_dir, code=code, line=line)
     sys.stdout.write(json.dumps(line, sort_keys=True) + "\n")
     return code
 

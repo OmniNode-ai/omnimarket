@@ -140,6 +140,7 @@ async def _migrated(
         "_CLOSE_ENTITY",
         "_SEQ_HOLDER",
         "_INSERT_SEQ_CONFLICT",
+        "_UPSERT_LATEST",
     )
     originals = {n: getattr(writer_module, n) for n in names}
     try:
@@ -155,6 +156,12 @@ async def _migrated(
         # 0010 grants the runtime role, which the throwaway schema lacks, so only 0009 is applied.
         await connection.execute(
             (MIGRATION.parent / "0009_work_ledger_seq_unique.sql")
+            .read_text()
+            .replace("omninode_internal.", f"{schema}.")
+        )
+        # OMN-23694: the newest-row-per-subject table; its grant (0012) names the runtime role, so only 0011 is applied.
+        await connection.execute(
+            (MIGRATION.parent / "0011_work_ledger_latest.sql")
             .read_text()
             .replace("omninode_internal.", f"{schema}.")
         )
@@ -397,3 +404,64 @@ async def test_the_closure_read_back_from_the_tables_is_order_independent() -> N
         assert len(ruling["superseded_by"]) == 1
         assert len(ruling["corrected_by"]) == 1
         assert closure["ruling:2026-10-01T10:00:00Z:orch"]["is_open"] is True
+
+
+LATEST_ROWS = (
+    (EnumLedgerRowType.CLAIM, CLAIM),
+    (
+        EnumLedgerRowType.TERMINAL,
+        TERMINAL.replace("friction=none |", "friction=none | outcome=done |"),
+    ),
+    (EnumLedgerRowType.CLAIM, CLAIM_LATER),
+)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_latest_keeps_the_newest_row_per_subject_and_type_in_any_order() -> None:
+    """OMN-23694: the writer's upsert binds against the migration and keeps the newest row per key, in SQL."""
+    async with _migrated() as (writer, connection, schema):
+        for row_type, raw in reversed(LATEST_ROWS):
+            await _project(writer, row_type, raw)
+        rows = await connection.fetch(
+            f"SELECT subject_kind, subject, row_type, ticket, outcome FROM {schema}.work_ledger_latest"
+            " ORDER BY subject_kind, subject, row_type"
+        )
+        got = [tuple(r) for r in rows]
+        assert ("lane", "alpha", "CLAIM", "OMN-2", None) in got
+        assert ("lane", "alpha", "TERMINAL", "OMN-1", "done") in got
+        assert ("ticket", "OMN-1", "CLAIM", "OMN-1", None) in got
+        assert ("ticket", "OMN-1", "TERMINAL", "OMN-1", "done") in got
+        assert ("ticket", "OMN-2", "CLAIM", "OMN-2", None) in got
+        assert len(got) == 5
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_latest_backfill_of_the_migration_equals_the_writers_state() -> None:
+    """The migration's backfill over rows already held gives the state the writer's upserts give (cells included)."""
+    async with _migrated() as (writer, connection, schema):
+        for row_type, raw in LATEST_ROWS:
+            await _project(writer, row_type, raw)
+        written = [
+            tuple(r)
+            for r in await connection.fetch(
+                f"SELECT subject_kind, subject, row_type, row_id, at, lane, ticket, pr, outcome, to_cell"
+                f" FROM {schema}.work_ledger_latest ORDER BY 1, 2, 3"
+            )
+        ]
+        await connection.execute(f"DELETE FROM {schema}.work_ledger_latest")
+        await connection.execute(
+            (MIGRATION.parent / "0011_work_ledger_latest.sql")
+            .read_text()
+            .replace("omninode_internal.", f"{schema}.")
+        )
+        backfilled = [
+            tuple(r)
+            for r in await connection.fetch(
+                f"SELECT subject_kind, subject, row_type, row_id, at, lane, ticket, pr, outcome, to_cell"
+                f" FROM {schema}.work_ledger_latest ORDER BY 1, 2, 3"
+            )
+        ]
+        assert written
+        assert backfilled == written

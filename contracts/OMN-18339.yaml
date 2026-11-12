@@ -17,6 +17,19 @@ context:
   epic_criteria_unproven:
   - id: AC4
     statement: "AC4. The rung is re-run on both surfaces with the new scorer, once each, zero retries, before any R3b number is cited in a document or a decision."
+  ac_binding_provenance:
+    dod-omn18339-ac3-accepted-20261112t0545z:
+    - label: AC3
+      criterion_hash: b951d59f72a2b895fbf4d7f7c099f7df2684fc698e2c09ecb2e97ce4a2e74b52
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0545Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0545Z-c1
+      accepted_at: '2026-11-12T06:20:05Z'
+    dod-omn18339-ac5-accepted-20261112t0545z:
+    - label: AC5
+      criterion_hash: 4b76a50be5c0d01785b5242a5b199c4c176dc34046e397ad133e72eec0a97502
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0545Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0545Z-c1
+      accepted_at: '2026-11-12T06:20:05Z'
 requirements:
 - id: req-r3b-measures-parameter-filling
   statement: R3b responses are scored by parsing and schema validation, not by substring presence.
@@ -101,3 +114,27 @@ dod_evidence:
       grep -F 'def score_workflow_request(' "$readback_dir/handler.py";
       grep -F '  workflow_request: exact_match' "$readback_dir/rubric.yaml";
       printf 'workflow request scorer source readback matched %s\n' "$revision"
+- id: dod-omn18339-ac3-accepted-20261112t0545z
+  description: 'AC3 binding (accepted 2026-11-12T0545Z, proposed by lane=dod-closeout-bind-2026-11-12T0545Z-c1,
+    accepted by lane=dod-closeout-accept-2026-11-12T0545Z-c1). The four space-joined token lists from the
+    review are committed verbatim in benchmarks/delegation_ladder/fixtures/r3b_review_counterexamples.json
+    and each scores FAIL under the workflow_request scorer. Re-run at omnimarket origin/dev 87874581e0 passed
+    (4 passed); with the parent of 0c4619863e the test file does not import (workflow_request_score absent).'
+  source: manual
+  binds_ac: [AC3]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py::test_ac3_each_counterexample_fails_under_the_new_scorer" -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac5-accepted-20261112t0545z
+  description: 'AC5 binding (accepted 2026-11-12T0545Z, proposed by lane=dod-closeout-bind-2026-11-12T0545Z-c1,
+    accepted by lane=dod-closeout-accept-2026-11-12T0545Z-c1). An AST scan of the new scorer functions finds
+    no numeric literal beyond the zeros and ones of control flow. Re-run at omnimarket origin/dev 87874581e0
+    passed; its positive control (test_ac5_the_check_finds_the_new_scorer_functions) also passed there. With
+    the parent of 0c4619863e the test file does not import.'
+  source: manual
+  binds_ac: [AC5]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py::test_ac5_no_threshold_is_written_in_the_new_scorer" -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket

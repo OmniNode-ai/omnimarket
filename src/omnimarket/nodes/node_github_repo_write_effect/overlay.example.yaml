@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+pr_label:
+  allowed_labels:
+    - example:label

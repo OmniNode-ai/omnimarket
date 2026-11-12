@@ -81,12 +81,18 @@ runtime:
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r8_run.yaml
+  # Where each run variable is found, by existing names (OMN-23695): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
 
 # The delegation lane the scenario drives. backend `http` reads the probe tenant's totals and Runs from the tenant API and sends
 # runs with the `onex delegate` command, which the caller's environment points at the same tenant; `inmemory` is the typed model
 # the tests use. The address and the tenant's key are read from the named environment variables, never from a file.
 lane:
-  backend: http
+  backend: bus
+  bus:
+    savings_node: omnimarket.nodes.node_tenant_savings_read_effect
+    delegations_node: omnimarket.nodes.node_tenant_delegations_read_effect
+    workspace_env: ONEX_WORKSPACE_CONFIG_ROOT
   base_url_env: R8_PROBE_API_BASE_URL
   api_key_env: R8_PROBE_TENANT_API_KEY
   api_key_header: x-api-key
@@ -115,7 +121,7 @@ schedule:
   state_directory: .onex_state/delegation-scenario-r8
   timeout_seconds: 900
   unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
-  # The probe tenant address and key are loaded from this file under the home directory, so their values never sit in the unit.
+  # The probe tenant address is loaded from this file under the home directory; the tenant key is filled from the secret store through the settings overlay, so no value sits in the unit.
   environment_file: .config/onex/scenario-r8.env
   cadence:
     on_calendar: "*-*-* 00,06,12,18:50:00"

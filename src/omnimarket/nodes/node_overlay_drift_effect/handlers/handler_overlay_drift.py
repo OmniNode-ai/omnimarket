@@ -123,6 +123,7 @@ class HandlerOverlayDrift:
             self._emissions,
             node=emission.node,
             piece=emission.piece,
+            origin="probe",
             clock=self._clock,
             correlation_id=correlation_id,
         )
@@ -140,6 +141,7 @@ class HandlerOverlayDrift:
                 ModelNodeEmission(
                     node=emission.node,
                     piece=emission.piece,
+                    origin="probe",
                     correlation_id=command.correlation_id,
                     phase="failure",
                     emitted_at=self._clock(),

@@ -59,6 +59,9 @@ snapshot_reads:
   - onex.snapshot.projection.floor-owner-map.v1
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   - onex.snapshot.projection.floor-work-state.v1
+  # The integration pass's readings (OMN-23899): every merged change and whether it runs where it runs.
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-integration.v1
 
 runtime:
   home_env: OMNI_HOME

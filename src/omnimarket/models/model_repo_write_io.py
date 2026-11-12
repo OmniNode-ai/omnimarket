@@ -17,6 +17,9 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
   same GraphQL mutation, refused unless the thread has a reply from the fixing lane.
 - pr_review_post replaces ``gh api --method POST /repos/{o}/{r}/pulls/{n}/reviews``
   with one COMMENT review pinned to the expected head.
+- pr_label replaces ``gh api --method POST /repos/{o}/{r}/issues/{n}/labels`` with
+  that POST for the labels to add and one DELETE per label to remove, each label
+  allowed by the node's overlay.
 - check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
@@ -24,6 +27,7 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Final, Literal
@@ -34,6 +38,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
+    field_validator,
     model_serializer,
     model_validator,
 )
@@ -44,17 +49,21 @@ from omnimarket.events.pr_landing_github.model_github_quota_reading import (
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
 )
+from omnimarket.models.model_pr_duplicate_guard import validate_replaces
 from omnimarket.models.model_repo_write_lease import (
     ModelRepoWriteLease,
 )
 
-# GitHub's own limits: a PR or comment body holds at most 65536 characters and
-# a workflow_dispatch carries at most 10 inputs.
+# GitHub's own limits: a PR or comment body holds at most 65536 characters,
+# a workflow_dispatch carries at most 10 inputs, and a label name holds at
+# most 50 characters.
 MAX_BODY_CHARS = 65_536
 MAX_DISPATCH_INPUTS = 10
+MAX_LABEL_CHARS = 50
 
 _SHA = r"^[0-9a-f]{40}$"
 _REF = r"^[A-Za-z0-9._/-]+$"
+_LABEL = r"^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$"
 
 
 class EnumRepoWriteOperation(StrEnum):
@@ -68,6 +77,7 @@ class EnumRepoWriteOperation(StrEnum):
     PR_THREAD_REPLY = "pr_thread_reply"
     PR_THREAD_RESOLVE = "pr_thread_resolve"
     PR_REVIEW_POST = "pr_review_post"
+    PR_LABEL = "pr_label"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
 
@@ -84,8 +94,10 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
         "conclusion",
         "output",
     ),
+    EnumRepoWriteOperation.PR_CREATE: ("replaces",),
     EnumRepoWriteOperation.PR_THREAD_REPLY: ("thread_comment_id",),
     EnumRepoWriteOperation.PR_THREAD_RESOLVE: ("review_thread_id",),
+    EnumRepoWriteOperation.PR_LABEL: ("add_labels", "remove_labels"),
 }
 
 
@@ -108,6 +120,7 @@ class EnumRepoWriteRefusal(StrEnum):
     CONTRACT_REQUIRED = "contract_required"
     NOT_FOUND = "not_found"
     THREAD_NOT_REPLIED = "thread_not_replied"
+    LABEL_NOT_ALLOWED = "label_not_allowed"
     GITHUB_REFUSED = "github_refused"
     CREDENTIAL_UNAVAILABLE = "credential_unavailable"
     TRANSPORT_ERROR = "transport_error"
@@ -123,6 +136,7 @@ _PR_SCOPED = frozenset(
         EnumRepoWriteOperation.PR_THREAD_REPLY,
         EnumRepoWriteOperation.PR_THREAD_RESOLVE,
         EnumRepoWriteOperation.PR_REVIEW_POST,
+        EnumRepoWriteOperation.PR_LABEL,
     }
 )
 # State changes and reviews name the head they expect to act on.
@@ -132,6 +146,7 @@ _HEAD_REQUIRED = frozenset(
         EnumRepoWriteOperation.PR_READY,
         EnumRepoWriteOperation.PR_CLOSE,
         EnumRepoWriteOperation.PR_REVIEW_POST,
+        EnumRepoWriteOperation.PR_LABEL,
     }
 )
 
@@ -284,6 +299,24 @@ class ModelRepoWriteRequest(BaseModel):
         "(`onex scm pr-threads` lists them). Refused unless the thread already "
         "has a reply from the fixing lane.",
     )
+    add_labels: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description="pr_label: the labels to add to the PR.",
+    )
+    remove_labels: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description="pr_label: the labels to remove from the PR.",
+    )
+    replaces: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description="pr_create: pull requests of the same repository, as OWNER/REPO#N, that this change "
+        "replaces. The duplicate check read each one's state itself and set aside only the overlaps it alone "
+        "introduced; the write carries the list so the handoff and landing sides can read it. None leaves the "
+        "field out of the envelope.",
+    )
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
@@ -294,6 +327,29 @@ class ModelRepoWriteRequest(BaseModel):
         default=False,
         description="Force dry_run even where the contract's mode is enforce.",
     )
+
+    @field_validator("replaces")
+    @classmethod
+    def _replaces_are_pull_request_refs(
+        cls, value: tuple[str, ...] | None
+    ) -> tuple[str, ...] | None:
+        return None if value is None else validate_replaces(value)
+
+    @field_validator("add_labels", "remove_labels")
+    @classmethod
+    def _labels_are_valid(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        if value is None:
+            return None
+        for label in value:
+            if not label:
+                raise ValueError("label must be a non-empty string")
+            if len(label) > MAX_LABEL_CHARS:
+                raise ValueError(
+                    f"label {label!r} exceeds {MAX_LABEL_CHARS} characters"
+                )
+            if not re.fullmatch(_LABEL, label):
+                raise ValueError(f"label {label!r} does not match {_LABEL!r}")
+        return value
 
     @model_validator(mode="after")
     def _operation_fields(self) -> ModelRepoWriteRequest:
@@ -335,6 +391,17 @@ class ModelRepoWriteRequest(BaseModel):
             missing.append("review_thread_id")
         if op is EnumRepoWriteOperation.PR_CLOSE and self.requested_by_run is None:
             missing.append("requested_by_run")
+        if op is EnumRepoWriteOperation.PR_LABEL:
+            if self.add_labels is None and self.remove_labels is None:
+                raise ValueError(
+                    "pr_label requires at least one of add_labels, remove_labels"
+                )
+            if self.add_labels and self.remove_labels:
+                both = set(self.add_labels) & set(self.remove_labels)
+                if both:
+                    raise ValueError(
+                        f"pr_label label(s) {sorted(both)!r} are in both add_labels and remove_labels"
+                    )
         if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
             missing += [
                 n
@@ -382,6 +449,8 @@ class ModelRepoWriteRequest(BaseModel):
         data: dict[str, Any] = handler(self)
         if self.lease is None:
             data.pop("lease", None)
+        if self.replaces is None:
+            data.pop("replaces", None)
         for owner, names in _OPERATION_ONLY_FIELDS.items():
             if owner is not self.operation:
                 for name in names:

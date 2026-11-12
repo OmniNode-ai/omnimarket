@@ -38,10 +38,25 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import SecretStr
 
+from omnimarket.models.model_claude_pool_limit_recheck import (
+    ModelLimitRecheckCommand,
+    ModelLimitRecheckRequest,
+)
+from omnimarket.models.model_claude_pool_revoke_staleness import (
+    ModelClearRevokeCommand,
+    ModelRevokeObservation,
+    ModelRevokeStalenessRequest,
+)
+from omnimarket.nodes.node_claude_pool_limit_recheck_compute.handlers.handler_limit_recheck import (
+    HandlerLimitRecheck,
+)
+from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
+    HandlerRevokeStaleness,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
     HandlerClaudeTokenPool,
 )
@@ -56,10 +71,12 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
     ModelClaudeTokenRotationRequest,
     ModelClaudeTokenRotationResult,
     ModelRotationEvent,
+    ModelRotationMark,
     ModelRotationMarksSync,
     ModelRotationOverlay,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_rotation_ports import (
+    ProtocolLimitProbe,
     ProtocolLoginFile,
     ProtocolMarksSource,
 )
@@ -69,6 +86,11 @@ _MAX_REINSTALLS = 3
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _instant(stamp: str | None) -> datetime:
+    """A pool stamp (``%Y-%m-%dT%H:%M:%SZ``) as a UTC instant."""
+    return datetime.strptime(stamp or "", "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
 class HandlerClaudeTokenRotationBase:
@@ -141,6 +163,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         host: str,
         events_path: Path,
         now: Callable[[], datetime] = _utc_now,
+        limit_probe: ProtocolLimitProbe | None = None,
     ) -> None:
         super().__init__(
             pool=pool,
@@ -151,6 +174,9 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         )
         self._source = marks_source
         self._overlay = overlay
+        #: The pool's own headless probe. Wired by the runtime only on the marks-source host with the overlay's
+        #: ``limit_recheck`` block; ``None`` means the tick re-tests no limited mark.
+        self._limit_probe = limit_probe
 
     def handle(
         self, request: ModelClaudeTokenRotationRequest
@@ -158,8 +184,16 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         rank = self._overlay.rank(request.host)
         if rank is None:
             raise ValueError(f"{request.host} is not a host of the overlay")
-        sync, effective = self._sync_marks(request)
+        sync, effective, source_marks = self._sync_marks(request)
         pooled = effective or self._status(dry_run=request.dry_run)
+        stale, cleared, kept, after_clear = self._clear_stale_revokes(
+            request, pooled, source_marks
+        )
+        pooled = after_clear or pooled
+        rechecked, limits_cleared, limits_replaced, limits_kept, after_recheck = (
+            self._recheck_limits(request, pooled)
+        )
+        pooled = after_recheck or pooled
         entries = pooled.tokens
         order = self._order(entries, rank, pooled.pinned)
         if not request.dry_run and order:
@@ -186,6 +220,13 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             "from_label": held.label if held else None,
             "order": order,
             "marks_sync": sync,
+            "stale_revoke": stale,
+            "revokes_cleared": cleared,
+            "revokes_kept": kept,
+            "limit_recheck": rechecked,
+            "limits_cleared": limits_cleared,
+            "limits_replaced": limits_replaced,
+            "limits_kept": limits_kept,
         }
         if state == "usable":
             spread = (
@@ -203,6 +244,8 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                 outcome="kept",
                 lines=(
                     f"{request.host}: login {held.label if held else ''} is usable",
+                    *self._cleared_lines(request, cleared),
+                    *self._limit_lines(request, base),
                 ),
             )
         if state == "unmanaged":
@@ -377,19 +420,189 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             return (pinned, *(label for label in rotated if label != pinned))
         return tuple(rotated)
 
+    @staticmethod
+    def _cleared_lines(
+        request: ModelClaudeTokenRotationRequest, cleared: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        if not cleared:
+            return ()
+        verb = "would clear" if request.dry_run else "cleared"
+        return (f"{request.host}: {verb} stale revoke of {', '.join(cleared)}",)
+
+    @staticmethod
+    def _limit_lines(
+        request: ModelClaudeTokenRotationRequest,
+        base: dict[str, Any],
+    ) -> tuple[str, ...]:
+        lines: list[str] = []
+        for key, verb in (
+            ("limits_cleared", "cleared the limited mark of"),
+            ("limits_replaced", "replaced the limited stamp of"),
+        ):
+            if base[key]:
+                lines.append(f"{request.host}: {verb} {', '.join(base[key])}")
+        return tuple(lines)
+
+    def _recheck_limits(
+        self,
+        request: ModelClaudeTokenRotationRequest,
+        pooled: ModelClaudeTokenPoolResult,
+    ) -> tuple[
+        Literal["not_configured", "evaluated"],
+        tuple[str, ...],
+        tuple[str, ...],
+        tuple[str, ...],
+        ModelClaudeTokenPoolResult | None,
+    ]:
+        """Re-test every limited label that is due, and have the pool execute the compute's typed commands.
+
+        Marks live on the one marks-source host and sync out from it, so only that host probes; without the
+        overlay's ``limit_recheck`` block (or on another host) nothing is asked and nothing changes. The compute
+        decides twice per label: whether a probe is due, then what the answer means. A dry run decides what is
+        due and runs no probe.
+        """
+        settings = self._overlay.limit_recheck
+        if (
+            settings is None
+            or self._limit_probe is None
+            or self._overlay.marks_source.host != request.host
+        ):
+            return "not_configured", (), (), (), None
+        decider = HandlerLimitRecheck()
+        commands: list[ModelLimitRecheckCommand] = []
+        for entry in pooled.tokens:
+            if not entry.limited or entry.revoked or entry.until is None:
+                continue
+            common = {
+                "label": entry.label,
+                "fingerprint": entry.fingerprint,
+                "until": _instant(entry.until),
+                "last_probe_at": _instant(entry.probed_at) if entry.probed_at else None,
+                "now": self._now(),
+                "policy": settings.policy,
+            }
+            due = decider.handle(ModelLimitRecheckRequest(**common))
+            if due.action != "probe" or request.dry_run:
+                continue
+            verdict = decider.handle(
+                ModelLimitRecheckRequest(
+                    **common, probe=self._limit_probe.probe(entry.label)
+                )
+            )
+            if verdict.command is not None:
+                commands.append(verdict.command)
+        if not commands:
+            return "evaluated", (), (), (), None
+        done = self._pool.handle(
+            ModelClaudeTokenPoolRequest(
+                operation="apply_limit_rechecks", limit_commands=tuple(commands)
+            )
+        )
+        return (
+            "evaluated",
+            done.limits_cleared,
+            done.limits_replaced,
+            done.limits_kept,
+            done,
+        )
+
+    def _clear_stale_revokes(
+        self,
+        request: ModelClaudeTokenRotationRequest,
+        pooled: ModelClaudeTokenPoolResult,
+        source_marks: tuple[ModelRotationMark, ...],
+    ) -> tuple[
+        Literal["not_configured", "evaluated"],
+        tuple[str, ...],
+        tuple[str, ...],
+        ModelClaudeTokenPoolResult | None,
+    ]:
+        """Ask the staleness compute about every revoked label and have the pool execute its clear commands.
+
+        Without the overlay's ``stale_revoke`` block nothing is asked and nothing changes (the old behaviour).
+        The evidence is a later limit of the same fingerprint: the source mark's own ``limited_at`` (the source
+        host saw the token answer), and, only on the source host itself, the entry's own ``limited_at``. On any
+        other host an entry's ``limited_at`` may have been copied from a sync, so it is never evidence there.
+        """
+        policy = self._overlay.stale_revoke
+        if policy is None:
+            return "not_configured", (), (), None
+        source_host = self._overlay.marks_source.host
+        decider = HandlerRevokeStaleness()
+        commands: list[ModelClearRevokeCommand] = []
+        kept: list[str] = []
+        for entry in pooled.tokens:
+            if not entry.revoked:
+                continue
+            observations = [
+                ModelRevokeObservation(
+                    host=source_host,
+                    kind="limited",
+                    at=_instant(mark.limited_at),
+                    fingerprint=entry.fingerprint,
+                )
+                for mark in source_marks
+                if mark.label == entry.label
+                and mark.fingerprint == entry.fingerprint
+                and mark.limited_at is not None
+            ]
+            if source_host == request.host and entry.limited_at:
+                observations.append(
+                    ModelRevokeObservation(
+                        host=request.host,
+                        kind="limited",
+                        at=_instant(entry.limited_at),
+                        fingerprint=entry.fingerprint,
+                    )
+                )
+            verdict = decider.handle(
+                ModelRevokeStalenessRequest(
+                    label=entry.label,
+                    fingerprint=entry.fingerprint,
+                    revoked_at=_instant(entry.revoked_at) if entry.revoked_at else None,
+                    observations=tuple(observations),
+                    policy=policy,
+                )
+            )
+            if verdict.clear is not None:
+                commands.append(verdict.clear)
+            else:
+                kept.append(entry.label)
+        if not commands:
+            return "evaluated", (), tuple(kept), None
+        done = self._pool.handle(
+            ModelClaudeTokenPoolRequest(
+                operation="clear_revokes",
+                clear_commands=tuple(commands),
+                dry_run=request.dry_run,
+            )
+        )
+        # A command the pool refused (a newer revoke arrived) is a kept revoke, not a cleared one.
+        kept += [c.label for c in commands if c.label not in done.cleared]
+        return "evaluated", done.cleared, tuple(kept), done
+
     def _sync_marks(
         self, request: ModelClaudeTokenRotationRequest
-    ) -> tuple[ModelRotationMarksSync, ModelClaudeTokenPoolResult | None]:
+    ) -> tuple[
+        ModelRotationMarksSync,
+        ModelClaudeTokenPoolResult | None,
+        tuple[ModelRotationMark, ...],
+    ]:
         """Sync the source's marks; the second value is the pool as the sync leaves it, when it ran.
 
         A dry run applies the same marks to a view of the pool and persists neither the pool nor the mirror,
-        so it decides on the marks a real tick decides on.
+        so it decides on the marks a real tick decides on. The third value is the source's marks read
+        (empty when this host is the source or the read was unreadable/stale).
         """
         if self._overlay.marks_source.host == request.host:
-            return ModelRotationMarksSync(state="is_source"), None
+            return ModelRotationMarksSync(state="is_source"), None, ()
         read = self._source.read()
         if read.state != "read" or read.at is None:
-            return ModelRotationMarksSync(state="unreadable", detail=read.detail), None
+            return (
+                ModelRotationMarksSync(state="unreadable", detail=read.detail),
+                None,
+                (),
+            )
         age = (self._now() - read.at).total_seconds()
         if age > self._overlay.marks_source.max_age_seconds:
             return (
@@ -398,6 +611,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                     detail=f"source marks are {int(age)} s old, over the {self._overlay.marks_source.max_age_seconds} s bound",
                 ),
                 None,
+                (),
             )
         done = self._pool.handle(
             ModelClaudeTokenPoolRequest(
@@ -414,6 +628,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                 detail="dry run" if request.dry_run else "",
             ),
             done,
+            read.marks,
         )
 
 

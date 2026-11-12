@@ -533,6 +533,7 @@ _WRITE_ARGS: dict[str, list[str]] = {
         "--output-summary",
         "Passed.",
     ],
+    "pr-label": [f"{REPO}#77", "--add", "ci:ready", "--head-sha", HEAD],
 }
 
 
@@ -737,7 +738,13 @@ def _contract_1_2_0_request() -> type[BaseModel]:
     "verb_name",
     sorted(
         set(_WRITE_ARGS)
-        - {"check-run-create", "pr-thread-reply", "pr-thread-resolve", "pr-review-post"}
+        - {
+            "check-run-create",
+            "pr-thread-reply",
+            "pr-thread-resolve",
+            "pr-review-post",
+            "pr-label",
+        }
     ),
 )
 def test_older_write_envelopes_validate_against_the_deployed_contract(
@@ -805,6 +812,28 @@ def test_pr_thread_reply_carries_the_thread_id_as_an_integer(
     assert (sent.pr_number, sent.thread_comment_id) == (77, 2410010001)
     assert sent.body == "Fixed in the head commit.\n"
     assert sent.expected_head_sha is None
+
+
+def test_pr_label_carries_the_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["pr-label", *_WRITE_ARGS["pr-label"], "--lane", "lane-x"])
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["operation"] == "pr_label"
+    assert payload["add_labels"] == ["ci:ready"]
+    assert payload["remove_labels"] is None
+    assert "review_thread_id" not in payload
+    assert payload["pr_number"] == 77
+    assert payload["expected_head_sha"] == HEAD
+
+
+def test_pr_label_needs_a_label(monkeypatch: pytest.MonkeyPatch) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["pr-label", f"{REPO}#77", "--head-sha", HEAD, "--lane", "lane-x"])
+    assert result.exit_code != 0
+    assert bus.published == []
 
 
 @pytest.mark.parametrize(

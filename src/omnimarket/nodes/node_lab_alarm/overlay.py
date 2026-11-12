@@ -75,6 +75,19 @@ class ModelManifestSettings(BaseModel):
     resilience: ModelManifestResilience | None = None
 
 
+class ModelLagGrowthRule(BaseModel):
+    """When growth is an alarm: a rebalance after a dev redeploy grows a group for a run or two, a stuck group keeps growing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Messages a group must grow by between two samples for that sample to count as growth.
+    min_growth: int = Field(ge=1)
+    #: Consecutive samples that count as growth before the group alarms.
+    persist_runs: int = Field(ge=1)
+    #: Where each group's count of consecutive growth samples is kept between ticks.
+    streak_path: str = Field(min_length=1)
+
+
 class ModelLagSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -85,6 +98,8 @@ class ModelLagSettings(BaseModel):
     record_path: str = Field(min_length=1)
     #: The condition name the run record carries, the one the floor's overlay lists for the broker.
     record_condition: str = Field(min_length=1)
+    #: Absent means the rule before OMN-19998: any growth between two samples alarms at once. Declare it to turn the persistence on.
+    growth: ModelLagGrowthRule | None = None
 
 
 class ModelLabAlarmScheduleHost(BaseModel):
@@ -154,6 +169,17 @@ class ModelEffectsHeldSettings(BaseModel):
     escalation: ModelEscalationSettings
 
 
+class ModelAlarmDeliveryWiring(BaseModel):
+    """Names that this node's alarms are delivered through node_lab_alarm_deliver_effect (OMN-23906).
+
+    That node's own overlay holds every destination, window and cell; this block only turns the delivery on.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool
+
+
 class ModelLabAlarmOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -166,6 +192,8 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the effects-held verbs alone. Absent, the broker lag verbs still run: a block that
     #: belongs to one condition must not stop another condition's reading (the 2026-11-09 stale read).
     effects_held: ModelEffectsHeldSettings | None = None
+    #: Absent, nothing is delivered: an overlay written before the delivery existed loads and runs unchanged.
+    alarm_delivery: ModelAlarmDeliveryWiring | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLabAlarmOverlay:
@@ -182,6 +210,7 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelLabAlarmOverl
 __all__ = [
     "NODE_NAME",
     "ModelAlarmBackend",
+    "ModelAlarmDeliveryWiring",
     "ModelDeclaredNode",
     "ModelEffectsHeldSettings",
     "ModelEscalationSettings",
@@ -189,6 +218,7 @@ __all__ = [
     "ModelLabAlarmOverlay",
     "ModelLabAlarmSchedule",
     "ModelLabAlarmScheduleHost",
+    "ModelLagGrowthRule",
     "ModelLagSettings",
     "ModelManifestResilience",
     "ModelManifestSettings",

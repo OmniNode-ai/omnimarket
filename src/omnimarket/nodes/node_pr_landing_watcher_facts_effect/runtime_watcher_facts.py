@@ -28,6 +28,10 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.handlers.tick_unit_arguments import (
+    add_tick_arguments,
+    write_tick_heartbeat,
+)
 from omnimarket.nodes.node_pr_landing_watcher_facts_effect.handlers.handler_pr_landing_watcher_facts import (
     HandlerPrLandingWatcherFacts,
 )
@@ -66,6 +70,7 @@ def run_once(
         node=NODE,
         piece=overlay.floor_piece,
         correlation_id=request.correlation_id.hex,
+        origin="real",
     )
     chain.start()
     result = HandlerPrLandingWatcherFacts(
@@ -104,11 +109,12 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start check: exit 0 and print one status line without loading an overlay, reading the bus or writing a file",
     )
+    add_tick_arguments(parser)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    """--probe exits 0 after one status line, before loading the overlay or running the pass."""
+    """--probe exits 0 after one status line; a pass accepts --omni-home and --state-dir and writes last-run.json, the unit heartbeat."""
     parser = _parser()
     args = parser.parse_args(argv)
     if args.probe:
@@ -119,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         code, line = run_once(overlay)
     except (NodeOverlayError, ValueError) as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}
+    write_tick_heartbeat(args.state_dir, code=code, line=line)
     sys.stdout.write(json.dumps(line, sort_keys=True) + "\n")
     return code
 

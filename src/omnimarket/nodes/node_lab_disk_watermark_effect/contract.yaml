@@ -13,6 +13,14 @@ description: >-
   `warn`, and at or past the page mark `page`: a page is the service exiting with status 2, a PAGE line in the journal
   and the reading file's `level`, which the automation-liveness watchdog and the floor read. Every host, volume and mark
   is a row of the node overlay, never of this node.
+
+  OMN-23865: when the overlay declares `reading`, each run also measures the consumers of the host's disk by class (the
+  lane package cache grouped by package and revision with size and last-use age, docker images, build cache, volumes and
+  exited containers, worktrees and lab-run folders) and publishes one `host-disk-read` event with the volumes' free and
+  total bytes, or one typed `host-disk-read-failed` event (a volume that cannot be read, class sizes that exceed the
+  volume's used bytes past the overlay tolerance, or a refused publish). A class with no declared root is an unread
+  class in the event, never read from a default path. The reading file is written first and keeps its shape; the
+  projection node_projection_host_disk keeps the newest reading per host and class.
 input_model:
   name: ModelLabDiskWatermarkRequest
   module: omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark
@@ -37,14 +45,29 @@ schedule:
     first_pass: 1s
     interval_seconds: 300
     accuracy: 30s
-    timeout_start_seconds: 120
+    timeout_start_seconds: 600
     description: a first reading at install, then every 300 s
+event_bus:
+  publish_topics:
+    - onex.evt.omnimarket.host-disk-read.v1
+    - onex.evt.omnimarket.host-disk-read-failed.v1
+terminal_event: onex.evt.omnimarket.host-disk-read.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-disk-read-failed.v1
+# The request a reading is asked on. Its publisher is the orchestrator of the next ticket, which is not in this repository yet.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.host-disk-read-requested.v1
+    producer: "the host disk orchestrator of the next ticket"
+runtime_dispatch:
+  external_trigger: "The onex-disk-watermark systemd timer on each pool host runs the node every 300 s, with its first reading at install."
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
   side_effects:
   - writes the host's reading file
+  - publishes the host disk reading, or its typed failure, on the overlay's bus lane
 metadata:
   ticket: OMN-23384
+  extended_by: OMN-23865
   transport_type: in_process

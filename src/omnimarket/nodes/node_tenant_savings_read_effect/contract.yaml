@@ -39,8 +39,11 @@ event_bus:
     major: 1
     minor: 0
     patch: 0
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-savings-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.tenant-savings-read-completed.v1
+    - onex.evt.omnimarket.tenant-savings-read-failed.v1
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -56,12 +59,34 @@ handler_routing:
       supported_operations:
         - "tenant_savings.read"
       description: "Serve GET /v1/tenants/me/savings: the caller tenant's delegation savings headline from the savings and delegation projections, keyed by the canonical tenant UUID."
+    - operation: "tenant_savings.read_bus"
+      topic: "onex.cmd.omnimarket.tenant-savings-read-requested.v1"
+      event_model:
+        name: "ModelTenantReadCommand"
+        module: "omnimarket.models.model_tenant_read_bus"
+      event_type: "omnimarket.tenant-savings-read-requested"
+      message_category: "COMMAND"
+      handler:
+        name: "HandlerTenantSavingsReadBus"
+        module: "omnimarket.nodes.node_tenant_savings_read_effect.handlers.handler_tenant_savings_read_bus"
+      supported_operations:
+        - "tenant_savings.read_bus"
+      description: "Bus entry for the tenant savings read; the command carries the tenant and limit, the answer is the same JSON body the HTTP route answers."
   execution_mode: "single"
   max_timeout_seconds: 30
+terminal_event: onex.evt.omnimarket.tenant-savings-read-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-savings-read-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-savings-read-completed.v1
+    failure: onex.evt.omnimarket.tenant-savings-read-failed.v1
 config:
   # Logical secret name the runtime secret resolver maps to the read-only DSN of
   # the analytics projection database. The value is never in this repository.
   analytics_dsn_secret: "omnidash.analytics.db_url"
+  # The bus handler builds its projection reader through this contract-declared factory, so the
+  # handler module holds no import of a database driver.
+  reader_factory: "omnimarket.handlers.tenant_projection_read.resolver_reader:reader_for_node"
 handler_dependencies:
   - omnimarket.protocols.protocol_http_tenant_identity.ProtocolHttpTenantIdentity
   - omnimarket.protocols.protocol_tenant_delegation_projection_reader.ProtocolTenantDelegationProjectionReader
@@ -79,14 +104,14 @@ dependencies:
     type: "service"
     class_name: "SecretResolver"
     module: "omnibase_infra.runtime.secret_resolver"
-    description: "Built by omnibase_infra's service_kernel from the lane's rendered resolver config when it maps the logical name in config.analytics_dsn_secret. Absent means every read answers 503 not configured."
+    description: "Handed to the bus handler's constructor, or built by the bus handler from the lane's rendered resolver config (ONEX_SECRET_RESOLVER_CONFIG_PATH) when it maps the logical name in config.analytics_dsn_secret. Absent means every read answers 503 not configured, and the bus handler answers not_configured."
     required: false
 capabilities:
   - name: "tenant_savings.read"
     description: "Serve GET /v1/tenants/me/savings: the caller tenant's delegation savings headline from the savings and delegation projections, keyed by the canonical tenant UUID."
 metadata:
-  # No bus topics: the read is served over the runtime's HTTP mount only, so the
-  # liveness gate (both topic sides or an explicit lifecycle) reads this annotation.
+  # Bus topics: the read is served over the runtime's HTTP mount and the bus entry
+  # beside it; the liveness gate (both topic sides or an explicit lifecycle) reads this annotation.
   lifecycle: experimental
   description: "Serve GET /v1/tenants/me/savings: the caller tenant's delegation savings headline from the savings and delegation projections, keyed by the canonical tenant UUID."
   author: "OmniNode Team"

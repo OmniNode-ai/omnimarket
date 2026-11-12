@@ -79,6 +79,17 @@ class InMemorySamples:
         self.sample = dict(sample)
 
 
+class InMemoryGrowthStreaks:
+    def __init__(self, streaks: Mapping[str, int] | None = None) -> None:
+        self.streaks: dict[str, int] = dict(streaks or {})
+
+    def load(self) -> dict[str, int]:
+        return dict(self.streaks)
+
+    def save(self, streaks: Mapping[str, int]) -> None:
+        self.streaks = dict(streaks)
+
+
 class InMemoryRunRecords:
     """Keeps the appended run records in a list; ``unwritable`` makes the next append refuse."""
 
@@ -132,6 +143,7 @@ class InMemoryDispatcher:
 __all__ = [
     "InMemoryDispatcher",
     "InMemoryEffectsGroups",
+    "InMemoryGrowthStreaks",
     "InMemoryHeldState",
     "InMemoryLag",
     "InMemoryManifest",

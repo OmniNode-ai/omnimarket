@@ -94,5 +94,4 @@ bindings:
   navigation_embedding_model: "Qwen3-Embedding-8B"
   cost_demo_local_model: "qwen3-coder-30b"
   lab_measure_rater_role: "blind_model:claude-opus-5-5"
-  route_check_local_model: "Qwen3.8-27B"
   route_check_cheap_cloud_model: "gemini-2.5-flash-lite"
