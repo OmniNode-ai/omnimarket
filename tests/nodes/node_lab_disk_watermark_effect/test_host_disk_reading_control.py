@@ -10,7 +10,7 @@ from typing import Any, cast
 import pytest
 from pydantic import BaseModel
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.models.model_host_disk_reading import (
     ModelHostDiskRead,
     ModelHostDiskReadFailed,
 )

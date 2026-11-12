@@ -11,7 +11,7 @@ from typing import Any, cast
 import pytest
 import yaml
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.models.model_host_disk_reading import (
     ModelHostDiskRead,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect import (

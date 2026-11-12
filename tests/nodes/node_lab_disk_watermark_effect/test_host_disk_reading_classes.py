@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.models.model_host_disk_reading import (
     ALL_CLASSES,
     ModelHostDiskRead,
 )

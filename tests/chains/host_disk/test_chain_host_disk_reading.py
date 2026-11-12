@@ -25,7 +25,7 @@ import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import BaseModel
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.models.model_host_disk_reading import (
     ALL_CLASSES,
     ModelHostDiskRead,
     ModelHostDiskReadFailed,

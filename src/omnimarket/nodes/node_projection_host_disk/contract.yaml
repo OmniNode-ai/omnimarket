@@ -3,7 +3,7 @@ name: projection_host_disk
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.events.host_disk_reading.ModelHostDiskRead
+input_model: omnimarket.models.model_host_disk_reading.ModelHostDiskRead
 description: >
   OMN-23865. Keeps the newest host disk reading per host and class (and per
   host and volume). The newest read_at wins: a redelivery or an older reading

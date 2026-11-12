@@ -13,7 +13,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.models.model_host_disk_reading import (
     ALL_CLASSES,
 )
 from omnimarket.nodes.node_projection_host_disk.handlers.handler_host_disk_writer import (

@@ -18,10 +18,10 @@ from typing import Never
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_host_disk_reading import (
     ModelHostDiskReadFailed,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_watermark import (
     HandlerLabDiskWatermark,
     WatermarkRefusalError,

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.models.model_host_disk_reading import (
     ModelHostDiskRead,
 )
 from omnimarket.models.model_projection_request import ModelProjectionRequest

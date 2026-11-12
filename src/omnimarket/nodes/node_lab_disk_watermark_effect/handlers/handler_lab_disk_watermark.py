@@ -16,18 +16,18 @@ from typing import NamedTuple
 
 import yaml
 
-from omnimarket.events.host_disk_reading import (
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.overlay_store.bus_opener import workspace_root
+from omnimarket.models.model_host_disk_reading import (
     FILESYSTEM_CLASSES,
     FailureReason,
     ModelHostDiskRead,
     ModelHostDiskReadFailed,
     ModelHostDiskVolume,
 )
-from omnimarket.handlers.node_overlay_reader import (
-    NodeOverlayNotFoundError,
-    load_structured_overlay,
-)
-from omnimarket.handlers.overlay_store.bus_opener import workspace_root
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.adapter_host_disk_bus import (
     LaneBusHostDiskPublisher,
 )

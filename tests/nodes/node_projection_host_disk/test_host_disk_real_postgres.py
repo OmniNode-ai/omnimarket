@@ -21,7 +21,7 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
-from omnimarket.events.host_disk_reading import ModelHostDiskRead
+from omnimarket.models.model_host_disk_reading import ModelHostDiskRead
 from omnimarket.nodes.node_projection_host_disk.handlers import (
     handler_host_disk_writer as writer_module,
 )
