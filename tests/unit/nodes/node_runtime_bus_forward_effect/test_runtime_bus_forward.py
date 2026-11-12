@@ -421,3 +421,17 @@ class TestAdapter:
         assert receipt["failed"] == 1
         assert "refused" in str(receipt["detail"])
         assert publisher.topics == [READING]
+
+
+class TestContract:
+    def test_the_terminal_event_is_the_declared_completed_topic(self) -> None:
+        contract = yaml.safe_load(
+            (OVERLAY_EXAMPLE.parent / "contract.yaml").read_text(encoding="utf-8")
+        )
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.runtime-bus-forward-completed.v1"
+        )
+        assert contract["topics"]["runtime_bus_forward_failed"] == (
+            "onex.evt.omnimarket.runtime-bus-forward-failed.v1"
+        )
