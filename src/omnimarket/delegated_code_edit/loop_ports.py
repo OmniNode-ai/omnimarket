@@ -177,7 +177,12 @@ def pin_violation(receipt_path: Path, pin: ModelDelegatePin) -> str:
     if receipt.get("backend_pin_honoured") is False:
         problems.append("the delegate reported its backend pin not honoured")
     backend_id = receipt.get("backend_id")
-    if not backend_id:
+    if not backend_id and _served_then_vetoed(receipt, pin):
+        # A pinned run whose answer a gate refused names no backend of its own
+        # (no accepted attempt authored it), yet every attempt names the pinned
+        # backend: the pin was served and the model's reply was the failure.
+        pass
+    elif not backend_id:
         problems.append("the receipt names no backend")
     elif backend_id != pin.backend_id:
         problems.append(f"backend {backend_id!r}")
@@ -189,6 +194,23 @@ def pin_violation(receipt_path: Path, pin: ModelDelegatePin) -> str:
         if attempt_host and attempt_host != pin.host:
             problems.append(f"an attempt on host {attempt_host}")
     return "; ".join(dict.fromkeys(problems))
+
+
+def _served_then_vetoed(receipt: dict[str, object], pin: ModelDelegatePin) -> bool:
+    """True when the pinned backend answered and a quality gate refused the answer."""
+    if receipt.get("terminal_failure_reason") != "quality_veto":
+        return False
+    attempts = _attempts(receipt) or _receipt_attempts(receipt)
+    return bool(attempts) and all(
+        attempt.get("backend_id") == pin.backend_id for attempt in attempts
+    )
+
+
+def _receipt_attempts(receipt: dict[str, object]) -> list[dict[str, object]]:
+    attempts = receipt.get("attempts")
+    if not isinstance(attempts, list):
+        return []
+    return [a for a in attempts if isinstance(a, dict)]
 
 
 def _attempts(receipt: dict[str, object]) -> list[dict[str, object]]:
@@ -210,6 +232,7 @@ class _DelegateReceipt:
     tokens_out: int = 0
     failure: str = ""
     retry_cause: str = ""
+    vetoed: bool = False
 
 
 def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
@@ -263,6 +286,7 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
             if value and (text := " ".join(str(value).split()))
         ),
         retry_cause=retry_cause,
+        vetoed=receipt.get("terminal_failure_reason") == "quality_veto",
     )
 
 
@@ -770,9 +794,14 @@ class DelegatedCodeEditPorts:
             )
             if receipt.failure:
                 reason += f" | receipt: {receipt.failure}"
+            # A pinned run whose answer a gate refused is the model's unusable
+            # reply: it is fed back for another turn, not counted as a delegate
+            # that never answered (the loop reads raw_text to tell the two apart).
+            refused = receipt.vetoed and self._pin is not None
             return ModelTurnReply(
                 run_id=run_id,
                 ok=False,
+                raw_text=bound_error(reason) if refused else "",
                 tokens_in=receipt.tokens_in,
                 tokens_out=receipt.tokens_out,
                 model=receipt.model,
