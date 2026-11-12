@@ -448,6 +448,8 @@ node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
 node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
 node_code_eval_suite_census_compute = "omnimarket.nodes.node_code_eval_suite_census_compute"
+node_code_eval_trial_orchestrator = "omnimarket.nodes.node_code_eval_trial_orchestrator"
+node_code_eval_trial_reducer = "omnimarket.nodes.node_code_eval_trial_reducer"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
 node_code_graph_effect = "omnimarket.nodes.node_code_graph_effect"
 node_code_quarantine_effect = "omnimarket.nodes.node_code_quarantine_effect"
@@ -627,6 +629,7 @@ node_dev_deploy_reading_effect = "omnimarket.nodes.node_dev_deploy_reading_effec
 node_dev_merge_redeploy_trigger_effect = "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect"
 node_dev_roll_request_compute = "omnimarket.nodes.node_dev_roll_request_compute"
 node_dev_runtime_mutation_guard_effect = "omnimarket.nodes.node_dev_runtime_mutation_guard_effect"
+node_dev_tag_lineage_effect = "omnimarket.nodes.node_dev_tag_lineage_effect"
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
 node_developer_lane_admission_compute = "omnimarket.nodes.node_developer_lane_admission_compute"
 node_dirty_canonical_sweep = "omnimarket.nodes.node_dirty_canonical_sweep"
@@ -645,6 +648,8 @@ node_dod_verify = "omnimarket.nodes.node_dod_verify"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
 node_e2e_bridge_effect = "omnimarket.nodes.node_e2e_bridge_effect"
 node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"
+node_effect_backends_check_compute = "omnimarket.nodes.node_effect_backends_check_compute"
+node_effect_backends_load_effect = "omnimarket.nodes.node_effect_backends_load_effect"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
 node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment_orchestrator"
 node_entrypoint_lib_compute = "omnimarket.nodes.node_entrypoint_lib_compute"
@@ -760,6 +765,7 @@ node_host_drain_effect = "omnimarket.nodes.node_host_drain_effect"
 node_host_drift_check_effect = "omnimarket.nodes.node_host_drift_check_effect"
 node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
 node_host_gap_unit_effect = "omnimarket.nodes.node_host_gap_unit_effect"
+node_host_install_state_reducer = "omnimarket.nodes.node_host_install_state_reducer"
 node_host_installer_container_units = "omnimarket.nodes.node_host_installer_container_units"
 node_host_installer_net_units = "omnimarket.nodes.node_host_installer_net_units"
 node_host_installer_registry_units = "omnimarket.nodes.node_host_installer_registry_units"
@@ -816,6 +822,7 @@ node_knowledge_health_probe_effect = "omnimarket.nodes.node_knowledge_health_pro
 node_knowledge_query_federation_orchestrator = "omnimarket.nodes.node_knowledge_query_federation_orchestrator"
 node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
 node_lab_alarm = "omnimarket.nodes.node_lab_alarm"
+node_lab_alarm_deliver_effect = "omnimarket.nodes.node_lab_alarm_deliver_effect"
 node_lab_check_run_effect = "omnimarket.nodes.node_lab_check_run_effect"
 node_lab_claude_token_effect = "omnimarket.nodes.node_lab_claude_token_effect"
 node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
@@ -1613,7 +1620,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
 # OMN-23865: infra#5901 (OMN-23896) grants the runtime account the two host disk tables in every shipped topology profile;
 # the core pin is unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261112010628-aa87c2dd6abe" }
+# OMN-23932: infra#5906 moves infra to core dev-20261111183916-a85cb916d4c1, the core tag below; the two tags move together.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261112083258-b0b00a52dd57" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
@@ -1622,9 +1630,9 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # for external installs.
 # OMN-22472: core and infra move together; the ticket validator (omnibase_core#2281) the floor-task ticket nodes import came with core cd128b790ec6.
 # OMN-23839: this core tag is the one infra dev-20261111211012-df3f14f5e6b9 locks (omnibase_infra#5896); it carries the delegation routing order models (omnibase_core#2309).
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261111160725-6cbe67b216fe" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261111183916-a85cb916d4c1" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261108074331-82c1680fad8a" }
+omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261112102309-92b9c1a20bef" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
@@ -2118,4 +2126,5 @@ markers = [
     "closing_row_parity: the remote lane's closing row (needs and report cells) joins the close node, the row writer and the stopped-lane compute the same on the in-memory bus and on a Redpanda bus (needs CLOSING_ROW_PARITY_BOOTSTRAP for the Redpanda leg)",
     "work_state_parity: the work-state projection projects the same items on the in-memory bus and on a Redpanda bus (needs WORK_STATE_PARITY_BOOTSTRAP for the Redpanda leg)",
     "join_j7_parity: the J7 refusal seam answers the same on the in-memory bus and on a Redpanda bus (needs JOIN_J7_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "host_install_parity: the host install state reducer folds the same step events on the in-memory bus and on a Redpanda bus (needs HOST_INSTALL_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]

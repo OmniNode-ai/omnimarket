@@ -8,6 +8,10 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Protocol
 
+from omnimarket.models.lab_alarm_delivery import (
+    ModelLabAlarmDeliveryRequest,
+    ModelLabAlarmDeliveryResult,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     ModelEffectsGroupReading,
     ModelEscalationBrief,
@@ -107,6 +111,14 @@ class ProtocolLaneDispatcher(Protocol):
         ...
 
 
+class ProtocolAlarmDelivery(Protocol):
+    def handle(
+        self, request: ModelLabAlarmDeliveryRequest
+    ) -> ModelLabAlarmDeliveryResult:
+        """Deliver the alarms one condition read (node_lab_alarm_deliver_effect), or raise ValueError or OSError."""
+        ...
+
+
 __all__ = [
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
@@ -114,6 +126,7 @@ __all__ = [
     "LaneDispatchError",
     "ManifestUnreachableError",
     "ManifestUnreadableError",
+    "ProtocolAlarmDelivery",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
