@@ -542,6 +542,19 @@ def test_a_failed_in_process_retry_names_both_causes(
         assert reply.invalid_reason.endswith("TAILMARK")
 
 
+def _queued_receipt() -> dict[str, object]:
+    """A deployed-lane receipt of a turn the consumer never started, as one written
+    on 2026-11-12: status failed, terminal_class queued_not_started, and a null
+    terminal payload inside receipt.result."""
+    return {
+        "status": "failed",
+        "terminal_class": "queued_not_started",
+        "terminal_failure_cause": None,
+        "terminal_payload": None,
+        "receipt": {"result": {"terminal_payload": None}},
+    }
+
+
 @pytest.mark.parametrize("returncode", [0, 1])
 def test_a_deployed_lane_turn_that_never_started_is_retried_once_in_process(
     tree: Path, tmp_path: Path, returncode: int
@@ -555,9 +568,7 @@ def test_a_deployed_lane_turn_that_never_started_is_retried_once_in_process(
         run_dir = tmp_path / "state" / "runs" / run_id
         run_dir.mkdir(parents=True)
         if len(seen) == 1:
-            (run_dir / "receipt.json").write_text(
-                json.dumps({"status": "failed", "terminal_class": "queued_not_started"})
-            )
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
             return subprocess.CompletedProcess(
                 argv, returncode, json.dumps({"run_id": run_id}), ""
             )
@@ -585,9 +596,7 @@ def test_after_a_never_started_turn_later_turns_go_straight_in_process(
         run_dir = tmp_path / "state" / "runs" / run_id
         run_dir.mkdir(parents=True)
         if len(seen) == 1:
-            (run_dir / "receipt.json").write_text(
-                json.dumps({"status": "failed", "terminal_class": "queued_not_started"})
-            )
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
             return subprocess.CompletedProcess(
                 argv, 1, json.dumps({"run_id": run_id}), ""
             )
@@ -617,9 +626,7 @@ def test_a_failed_in_process_retry_after_a_never_started_turn_names_both_causes(
         if len(seen) == 1:
             run_dir = tmp_path / "state" / "runs" / first_run_id
             run_dir.mkdir(parents=True)
-            (run_dir / "receipt.json").write_text(
-                json.dumps({"status": "failed", "terminal_class": "queued_not_started"})
-            )
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
             return subprocess.CompletedProcess(
                 argv, 1, json.dumps({"run_id": first_run_id}), ""
             )
@@ -645,9 +652,7 @@ def test_a_never_started_receipt_on_an_in_process_turn_is_not_retried(
         seen.append(argv)
         run_dir = tmp_path / "state" / "runs" / run_id
         run_dir.mkdir(parents=True)
-        (run_dir / "receipt.json").write_text(
-            json.dumps({"status": "failed", "terminal_class": "queued_not_started"})
-        )
+        (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
         return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
 
     ports = _ports(tmp_path, runner, delegate_flags=IN_PROCESS_DELEGATE_FLAGS)
@@ -689,9 +694,7 @@ def test_a_loop_whose_first_turn_never_started_is_accepted_after_the_in_process_
         run_dir = tmp_path / "state" / "runs" / run_id
         run_dir.mkdir(parents=True)
         if len(seen) == 1:
-            (run_dir / "receipt.json").write_text(
-                json.dumps({"status": "failed", "terminal_class": "queued_not_started"})
-            )
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
             return subprocess.CompletedProcess(
                 argv, 1, json.dumps({"run_id": run_id}), ""
             )
@@ -719,9 +722,7 @@ def test_a_loop_whose_turns_never_start_and_whose_retries_fail_ends_delegate_fai
         run_dir = tmp_path / "state" / "runs" / run_id
         run_dir.mkdir(parents=True)
         receipt = (
-            {"status": "failed", "terminal_class": "queued_not_started"}
-            if "deployed-lane" in argv
-            else _failed_receipt(run_id)
+            _queued_receipt() if "deployed-lane" in argv else _failed_receipt(run_id)
         )
         (run_dir / "receipt.json").write_text(json.dumps(receipt))
         return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")

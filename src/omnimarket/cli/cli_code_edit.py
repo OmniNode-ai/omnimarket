@@ -196,6 +196,12 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     help="The check time limit in seconds; omitted, the node's overlay decides, else the request model's default.",
 )
 @click.option(
+    "--wall-budget-s",
+    type=click.IntRange(1, 7200),
+    default=None,
+    help="The wall budget in seconds; omitted, the node's overlay decides, else no limit.",
+)
+@click.option(
     "--ticket-contract",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
@@ -272,6 +278,7 @@ def run_command(
     formatter: tuple[str, ...],
     max_turns: int | None,
     check_timeout_s: int | None,
+    wall_budget_s: int | None,
     ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
@@ -316,6 +323,7 @@ def run_command(
                 formatter=formatter,
                 max_turns=max_turns,
                 check_timeout_s=check_timeout_s,
+                wall_budget_s=wall_budget_s,
                 ticket_contract=ticket_contract,
                 caller_lane=caller_lane,
                 ticket=ticket,
