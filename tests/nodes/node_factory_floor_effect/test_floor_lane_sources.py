@@ -121,9 +121,10 @@ def test_the_host_table_gives_cap_and_availability(tmp_path: Path) -> None:
         yaml.safe_dump(
             {
                 "hosts": [
-                    {"name": "h051", "cap": 24},
+                    {"name": "h051", "target": "h051.lan", "cap": 24},
                     {
                         "name": "h202",
+                        "target": "h202.lan",
                         "available": False,
                         "unavailable_reason": "down for repair",
                     },
@@ -131,13 +132,15 @@ def test_the_host_table_gives_cap_and_availability(tmp_path: Path) -> None:
             }
         ),
     )
-    rows = load_host_table(path)
+    rows = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)})
     assert rows is not None
     assert [(r.host, r.cap, r.available, r.unavailable_reason) for r in rows] == [
         ("h051", 24, True, ""),
         ("h202", None, False, "down for repair"),
     ]
-    assert load_host_table(tmp_path / "absent.yaml") is None
+    assert (
+        load_host_table({"ONEX_LAB_RUN_HOSTS": str(tmp_path / "absent.yaml")}) is None
+    )
 
 
 def test_placement_markers_count_units_and_lanes_for_live_pids_only(

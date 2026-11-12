@@ -550,9 +550,7 @@ class HandlerFactoryFloorEffect:
             stoppages=load_stoppages(home / src.friction_report_relpath),
             machines=machines,
             pool=load_pool(lane_dir / ls.pool_receipt),
-            host_table=load_host_table(host_table_path)
-            if host_table_path is not None
-            else None,
+            host_table=load_host_table(os.environ),
             placed=load_placed(placement_dir, ls.lane_marker_min_id),
             receipts=load_receipts(
                 lane_dir,
