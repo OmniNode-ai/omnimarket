@@ -879,6 +879,8 @@
   "tests/nodes/node_contract_seams_reducer/test_contract_seams_fsm.py": 1.25,
   "tests/nodes/node_contract_sweep/test_cli_contract_sweep.py": 0.4,
   "tests/nodes/node_contract_sweep/test_handler_contract_sweep.py": 0.35,
+  "tests/nodes/node_contract_topic_reader_compute/test_contract_topic_reader.py": 2.83,
+  "tests/nodes/node_contract_topic_reader_compute/test_reader_parity.py": 7.16,
   "tests/nodes/node_contractor_integration_note_effect/test_golden_chain_contractor_integration_note_effect.py": 0.03,
   "tests/nodes/node_controller_fix_plan_compute/test_contract_controller_fix_plan_compute.py": 0.01,
   "tests/nodes/node_controller_fix_plan_compute/test_controller_fix_plan.py": 0.01,
