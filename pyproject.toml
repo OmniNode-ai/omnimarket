@@ -448,6 +448,7 @@ node_code_contract_score_effect = "omnimarket.nodes.node_code_contract_score_eff
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
 node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
+node_code_eval_context_arm_compute = "omnimarket.nodes.node_code_eval_context_arm_compute"
 node_code_eval_suite_census_compute = "omnimarket.nodes.node_code_eval_suite_census_compute"
 node_code_eval_trial_orchestrator = "omnimarket.nodes.node_code_eval_trial_orchestrator"
 node_code_eval_trial_reducer = "omnimarket.nodes.node_code_eval_trial_reducer"
@@ -530,6 +531,7 @@ node_contract_seams_orchestrator = "omnimarket.nodes.node_contract_seams_orchest
 node_contract_seams_reducer = "omnimarket.nodes.node_contract_seams_reducer"
 node_contract_serialize_compute = "omnimarket.nodes.node_contract_serialize_compute"
 node_contract_sweep = "omnimarket.nodes.node_contract_sweep"
+node_contract_topic_reader_compute = "omnimarket.nodes.node_contract_topic_reader_compute"
 node_contractor_integration_note_effect = "omnimarket.nodes.node_contractor_integration_note_effect"
 node_controller_fix_plan_compute = "omnimarket.nodes.node_controller_fix_plan_compute"
 node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
@@ -1263,6 +1265,7 @@ node_runner_pool_canary_compute = "omnimarket.nodes.node_runner_pool_canary_comp
 node_runner_stop_idle_proof_compute = "omnimarket.nodes.node_runner_stop_idle_proof_compute"
 node_runner_workspace_retention_effect = "omnimarket.nodes.node_runner_workspace_retention_effect"
 node_runtime_boot_set_compute = "omnimarket.nodes.node_runtime_boot_set_compute"
+node_runtime_bus_forward_effect = "omnimarket.nodes.node_runtime_bus_forward_effect"
 node_runtime_closeout_orchestrator = "omnimarket.nodes.node_runtime_closeout_orchestrator"
 node_runtime_coverage_compute = "omnimarket.nodes.node_runtime_coverage_compute"
 node_runtime_coverage_effect = "omnimarket.nodes.node_runtime_coverage_effect"
@@ -1585,6 +1588,11 @@ delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegat
 # entry point node_code_embedding_effect / node_code_enrichment_effect resolve
 # nothing at their effect boundary and fail on first dispatch.
 code_entity_repository = "omnimarket.plugins.plugin_code_entity_repository:PluginCodeEntityRepository"
+
+# The runtime-bus forwarder omnibase_core's RuntimeLocal calls after a run on a runtime-local in-memory bus
+# (OMN-24003). Exactly one provider may register: two would let install order pick.
+[project.entry-points."onex.runtime_bus_forwarders"]
+node_runtime_bus_forward_effect = "omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder:CoreRuntimeBusForwarder"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
