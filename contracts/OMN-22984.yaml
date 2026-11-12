@@ -71,3 +71,10 @@ dod_evidence:
     check_value: |-
       uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane rdy-18b-1235 -- uv run --frozen pytest tests/nodes/node_onboarding_clean_vm_walk_effect tests/nodes/node_onboarding_clean_vm_walk -v -rs
     cwd: .
+- id: dod-omn22984-judge-tests-only
+  description: The lab proof judge passes a change whose every path is a declared non-runtime path (tests only) and still fails a change that mixes one with a non-node source path.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_lab_proof_judge_compute/test_changed_path_live.py -q --no-cov --tb=line
+    cwd: .

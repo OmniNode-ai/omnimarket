@@ -184,10 +184,25 @@ def test_no_changed_runtime_node_fails(handler: HandlerChangedPathLive) -> None:
 
 
 def test_non_runtime_path_not_affecting(handler: HandlerChangedPathLive) -> None:
-    """(i) A path under .../nodes/<declared node>/tests/ is not runtime-affecting."""
+    """(i) A path under .../nodes/<declared node>/tests/ is not runtime-affecting: a tests-only change passes."""
     req = _request(
         changed_paths=(
             "src/omnimarket/nodes/node_overlay_drift_effect/tests/test_x.py",
+        ),
+    )
+    result = handler.handle(req)
+    assert result.verdict.value == "PASS"
+    assert result.ok is True
+
+
+def test_tests_mixed_with_non_node_path_still_fails(
+    handler: HandlerChangedPathLive,
+) -> None:
+    """A tests path beside a non-node, non-test source path is not tests-only -> FAIL."""
+    req = _request(
+        changed_paths=(
+            "src/omnimarket/nodes/node_overlay_drift_effect/tests/test_x.py",
+            "src/omnimarket/enums/enum_overlay_verdict.py",
         ),
     )
     result = handler.handle(req)

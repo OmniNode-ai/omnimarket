@@ -113,6 +113,16 @@ class HandlerChangedPathLive:
             if m and "node" in m.groupdict():
                 changed_nodes.add(m.group("node"))
         changed_nodes -= set(contract_local_nodes)
+        if not changed_nodes and all(
+            any(rx.search(path) for rx in non_runtime_patterns)
+            for path in request.changed_paths
+        ):
+            return ModelChangedPathLiveResult(
+                verdict=EnumJudgeVerdict.PASS,
+                ok=True,
+                class_id=None,
+                evidence="every changed path is a declared non-runtime path (tests only); no runtime behaviour changed",
+            )
         if not changed_nodes:
             return ModelChangedPathLiveResult(
                 verdict=EnumJudgeVerdict.FAIL,
