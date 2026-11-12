@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract - Topic Required Absent Compute (OMN-19998, broker plan mechanism M3)
+#
+# The required-and-absent reading: the topics that must exist now (from node_contract_topic_reader_compute) against the
+# broker's live topic list. The compute is pure; the live list arrives in the request, read by a broker effect. A list
+# that was not read, or is smaller than the overlay's minimum, reads UNKNOWN so a failed read never passes as WORKING.
+{
+  "name": "node_topic_required_absent_compute",
+  "lifecycle": "experimental",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Compare the topics that must exist now with the broker's live topic list and name each required topic that is absent: WORKING when none is absent, NOT_WORKING with each absent topic and who requires it, UNKNOWN when the topic list was not read or is smaller than the overlay's minimum (a failed read is never an empty broker). The required topics come from the one contract topic reader; the live list comes from a broker read. The node reads nothing itself.",
+  "input_model": {
+    "name": "ModelRequiredAbsentRequest",
+    "module": "omnimarket.models.model_topic_required_absent"
+  },
+  "output_model": {
+    "name": "ModelRequiredAbsentReport",
+    "module": "omnimarket.models.model_topic_required_absent"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_topic_required_absent_compute.handlers.handler_topic_required_absent:HandlerTopicRequiredAbsent",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerTopicRequiredAbsent",
+          "module": "omnimarket.nodes.node_topic_required_absent_compute.handlers.handler_topic_required_absent"
+        },
+        "topic": "onex.cmd.omnimarket.topic-required-absent-read-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeTopicRequiredAbsentCompute",
+    "module": "omnimarket.nodes.node_topic_required_absent_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "the required-and-absent reading of the dev runtime and of each installed host serve unit, with the live topic list read by a broker effect"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_topic_required_absent_compute.handlers.handler_topic_required_absent",
+    "class": "HandlerTopicRequiredAbsent",
+    "input_model": "omnimarket.models.model_topic_required_absent.ModelRequiredAbsentRequest",
+    "output_model": "omnimarket.models.model_topic_required_absent.ModelRequiredAbsentReport"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.topic-required-absent-read-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.topic-required-absent-read-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.topic-required-absent-read-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.topic-required-absent-read-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.topic-required-absent-read-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}
