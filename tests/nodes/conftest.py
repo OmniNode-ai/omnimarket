@@ -15,15 +15,20 @@ import pytest
 from omnimarket.nodes.node_host_installer_registry_units.handlers import (
     handler_registry_units as installer,
 )
+from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
+    ModelRegistryUnitsRequest,
+)
 
 
 @pytest.fixture(autouse=True)
 def installer_default_overlays_root(monkeypatch: pytest.MonkeyPatch) -> None:
     real = installer.HandlerRegistryUnits.overlays_root
 
-    def overlays_root(self: installer.HandlerRegistryUnits, request: object) -> str:
+    def overlays_root(
+        self: installer.HandlerRegistryUnits, request: ModelRegistryUnitsRequest
+    ) -> str:
         if self.hosts is installer.default_hosts:
-            return f"{request.registry_root}/overlays/overlays"  # type: ignore[attr-defined]
-        return real(self, request)  # type: ignore[arg-type]
+            return f"{request.registry_root}/overlays/overlays"
+        return real(self, request)
 
     monkeypatch.setattr(installer.HandlerRegistryUnits, "overlays_root", overlays_root)
