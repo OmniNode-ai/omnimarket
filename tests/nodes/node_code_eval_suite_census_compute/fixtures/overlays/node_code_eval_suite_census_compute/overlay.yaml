@@ -1,0 +1,8 @@
+# Test data for the node_code_eval_suite_census_compute tests.
+# The schema is ModelCodeEvalSuiteCensusOverlay; the block below is the value of
+# the overlay key delegation.capability_map.line.
+line:
+  floor: 0.5
+  margin: 0.3
+  confidence: 0.95
+  power: 0.8

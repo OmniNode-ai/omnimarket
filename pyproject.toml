@@ -445,6 +445,7 @@ node_code_contract_score_effect = "omnimarket.nodes.node_code_contract_score_eff
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
 node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
+node_code_eval_suite_census_compute = "omnimarket.nodes.node_code_eval_suite_census_compute"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
 node_code_graph_effect = "omnimarket.nodes.node_code_graph_effect"
 node_code_quarantine_effect = "omnimarket.nodes.node_code_quarantine_effect"
