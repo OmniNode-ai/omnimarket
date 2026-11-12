@@ -77,7 +77,11 @@ def run(
     contract = _contract()["runtime"]
     now = clock or (lambda: datetime.now(UTC))
     chain = ChainEmitter(
-        sink, node=contract["chain"], piece=int(contract["piece"]), clock=clock
+        sink,
+        node=contract["chain"],
+        piece=int(contract["piece"]),
+        clock=clock,
+        origin="probe",
     )
     chain.start()
     handler = HandlerFactoryFloorUnresolved(overlay, clock=clock)
