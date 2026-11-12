@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23903
+title: Make the delegation readiness check's tenant reads reach their handlers
+summary: A bus command to the tenant savings or delegations read node was answered by the runtime's boundary failure terminal (no dispatcher) because each contract's bus entry declared an explicit event type that is not the one the sender stamps on the command topic. The scenario's bus request read only reason and detail from a failed terminal, so it reported None. Both contracts now declare the topic-derived event type on the bus entry, and the request reads failure_code and failure_reason too.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23903-bus-entry-dispatch-key
+  statement: The event type a bus caller stamps on a tenant read command is a dispatcher key of the contract's bus entry, so the command reaches its handler.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A tenant savings read command and a tenant delegations read command published on their request topics are each answered with a completed terminal, not a boundary failure -- falsifier: either command answered with failure code ONEX_CORE_063_ITEM_NOT_REGISTERED.'
+- id: req-omn23903-failed-terminal-names-cause
+  statement: The scenario's bus request words a failed terminal from its failure code and failure reason when the node's reason and detail are absent, and never reports None.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: The scenario''s bus request names the cause of a failed terminal whichever shape it carries -- falsifier: a failed terminal whose payload holds failure_code and failure_reason reported as "None: None".'
+- id: req-omn23903-integrated
+  statement: The change runs in the dev runtime and the R8 unit on h053 reads its totals.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: with the change running in the dev runtime, the R8 unit on h053 reads the totals before the run and last-run.json shows no totals_read_before failure -- falsifier: last-run.json detail still reading "totals before" after the runtime image revision includes this change.'
+evidence_requirements:
+- kind: tests
+  description: The dispatch key seam test and the failed terminal tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/test_tenant_read_dispatch_key_seam.py tests/nodes/node_delegation_scenario_r8_effect/test_bus_request_failed_terminal.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23903-ac1
+  description: The seam test derives the dispatcher keys with the runtime's own function over the real contracts and holds that the sender's event type is among them; it fails with the previous event type (the control test shows the check can see a miss).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_tenant_read_dispatch_key_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23903-ac2
+  description: The failed terminal tests feed the runtime's boundary failure payload to the real bus request; before the change the reason read None, None.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_request_failed_terminal.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23903-integration-proof
+  description: After the dev runtime rebuilds on the merge, the R8 unit on h053 is started and last-run.json is read. Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23903 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
