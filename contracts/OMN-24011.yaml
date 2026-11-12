@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: "AC1: a file entry that carries inline content is installed byte for byte with the same value filling, restart-rule check and fingerprint check as a separate file, and an entry naming both or neither is refused -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k inline fails at the merge base"
   - id: AC2
-    statement: "AC2: the typed document model refuses a file entry with neither or both of a source and content -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k neither fails at the merge base"
+    statement: "AC2: the typed document model refuses a file entry with neither or both of a source and content -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k model_accepts_inline fails at the merge base"
   - id: AC3
     statement: "AC3: the settings repository holds the vllm-gpu0 unit with its template inline in overlay.yaml and no other file, and its digest pin equals the rendered bytes -- falsifier: python -m pytest tests/test_vllm_gpu0_unit_overlay.py -q fails when RESTART_POLICY is set to on-failure"
   - id: AC4
@@ -36,13 +36,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k inline
     cwd: .
 - id: dod-omn24011-ac2
-  description: 'AC2: the document model test passes at the head and fails at the merge base.'
+  description: 'AC2: the document model tests pass at the head; the test that a content-only entry is accepted fails at the merge base, where a file entry requires source.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k neither
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k "model_accepts_inline or model_refuses_file_with_neither or model_refuses_file_with_both"
     cwd: .
 - id: dod-omn24011-ac3
   description: 'AC3: the overlay-side test lives in the overlays repository (pull request OmniNode-ai/overlays#358); here the node tests that load a fixture document through the same model pass.'

@@ -370,3 +370,21 @@ def test_inline_content_serving_restart_refused(tmp_path: Path) -> None:
     assert result.status == "refused"
     assert result.reason == "serving-restart-policy"
     assert not any(fs.rglob("*"))
+
+
+def test_model_accepts_inline_content_without_source() -> None:
+    doc = fixture_document()
+    entry = doc["units"]["serve"]["files"][0]
+    entry.pop("source")
+    entry["content"] = TEMPLATE
+    overlay = ModelNetUnitsOverlay.model_validate(doc)
+    declared = overlay.units["serve"].files[0]
+    assert declared.content == TEMPLATE
+    assert declared.source == ""
+
+
+def test_model_refuses_file_with_both_source_and_content() -> None:
+    doc = fixture_document()
+    doc["units"]["serve"]["files"][0]["content"] = TEMPLATE
+    with pytest.raises(ValidationError):
+        ModelNetUnitsOverlay.model_validate(doc)
