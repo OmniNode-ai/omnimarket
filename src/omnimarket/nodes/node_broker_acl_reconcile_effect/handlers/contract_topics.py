@@ -21,6 +21,23 @@ _KEYS = (
 )
 
 
+def parse_topic_uses(text: str) -> tuple[ModelContractTopicUse, ...]:
+    """The (node, topic, direction) uses one contract's event_bus declares; a contract with no name or event_bus declares none."""
+    loaded = yaml.load(text, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+    if not isinstance(loaded, dict):
+        raise ValueError("contract must be a mapping")
+    name = loaded.get("name")
+    bus = loaded.get("event_bus")
+    if not isinstance(name, str) or not name or not isinstance(bus, dict):
+        return ()
+    return tuple(
+        ModelContractTopicUse(node=name, topic=topic, direction=direction)
+        for key, direction in _KEYS
+        for topic in bus.get(key) or []
+        if isinstance(topic, str) and topic
+    )
+
+
 def load_topic_uses(
     nodes_root: Path | None = None,
 ) -> tuple[ModelContractTopicUse, ...]:
@@ -33,24 +50,7 @@ def load_topic_uses(
     uses: set[ModelContractTopicUse] = set()
     for path in sorted(root.rglob("contract.yaml")):
         try:
-            loaded = yaml.load(
-                path.read_text(encoding="utf-8"),
-                Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader),
-            )
-            if not isinstance(loaded, dict):
-                raise ValueError("contract must be a mapping")
-            name = loaded.get("name")
-            bus = loaded.get("event_bus")
-            if not isinstance(name, str) or not name or not isinstance(bus, dict):
-                continue
-            for key, direction in _KEYS:
-                for topic in bus.get(key) or []:
-                    if isinstance(topic, str) and topic:
-                        uses.add(
-                            ModelContractTopicUse(
-                                node=name, topic=topic, direction=direction
-                            )
-                        )
+            uses.update(parse_topic_uses(path.read_text(encoding="utf-8")))
         except (ValueError, OSError, yaml.YAMLError) as error:
             raise ValueError(f"{path}: {error}") from error
     return tuple(sorted(uses, key=lambda u: (u.node, u.direction.value, u.topic)))

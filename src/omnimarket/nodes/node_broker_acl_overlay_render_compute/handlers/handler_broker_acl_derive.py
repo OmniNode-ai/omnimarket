@@ -43,33 +43,55 @@ class HandlerBrokerAclDerive:
         uses_by_node: dict[str, list[ModelContractTopicUse]] = defaultdict(list)
         for use in request.topic_uses:
             uses_by_node[use.node].append(use)
-        principal_of: dict[str, str] = {}
-        for entry in request.principals.principals:
+        exclusive: dict[str, str] = {}
+        principals_of: dict[str, set[str]] = defaultdict(set)
+        checked: set[str] = set()
+        no_contract: set[str] = set()
+
+        def check_principal(principal: str) -> None:
+            if principal in checked:
+                return
+            checked.add(principal)
             if (
-                not entry.principal.startswith(config["principal_prefix"])
-                or entry.principal == config["principal_wildcard"]
+                not principal.startswith(config["principal_prefix"])
+                or principal == config["principal_wildcard"]
             ):
                 findings.append(
                     ModelBrokerAclFinding(
-                        code=_CODES.PRINCIPAL_INVALID, detail=entry.principal
+                        code=_CODES.PRINCIPAL_INVALID, detail=principal
                     )
                 )
+
+        def note_node(node: str) -> None:
+            if node not in uses_by_node and node not in no_contract:
+                no_contract.add(node)
+                findings.append(
+                    ModelBrokerAclFinding(
+                        code=_CODES.NODE_WITHOUT_CONTRACT, detail=node
+                    )
+                )
+
+        for entry in request.principals.principals:
+            check_principal(entry.principal)
             for node in entry.nodes:
-                if node in principal_of and principal_of[node] != entry.principal:
+                if node in exclusive and exclusive[node] != entry.principal:
                     findings.append(
                         ModelBrokerAclFinding(
                             code=_CODES.NODE_PRINCIPAL_CONFLICT,
-                            detail=f"{node}: {principal_of[node]} and {entry.principal}",
+                            detail=f"{node}: {exclusive[node]} and {entry.principal}",
                         )
                     )
                     continue
-                principal_of[node] = entry.principal
-                if node not in uses_by_node:
-                    findings.append(
-                        ModelBrokerAclFinding(
-                            code=_CODES.NODE_WITHOUT_CONTRACT, detail=node
-                        )
-                    )
+                exclusive[node] = entry.principal
+                principals_of[node].add(entry.principal)
+                note_node(node)
+        # A role is a unit run under several logins at once (every lab host): each member holds the rows of each node.
+        for role in request.principals.roles:
+            for principal in role.principals:
+                check_principal(principal)
+            for node in role.nodes:
+                principals_of[node].update(role.principals)
+                note_node(node)
         rows: dict[tuple[str, str, str, str, str], ModelBrokerAclRow] = {}
 
         def add(
@@ -90,7 +112,19 @@ class HandlerBrokerAclDerive:
                 row = ModelBrokerAclRow(principal=principal, **grant.model_dump())
                 rows[_row_key(row)] = row
 
-        for node, principal in sorted(principal_of.items()):
+        if request.only_node is not None and request.only_node not in principals_of:
+            findings.append(
+                ModelBrokerAclFinding(
+                    code=_CODES.NODE_WITHOUT_PRINCIPAL, detail=request.only_node
+                )
+            )
+        for node, principal in sorted(
+            (node, principal)
+            for node, members in principals_of.items()
+            for principal in members
+        ):
+            if request.only_node is not None and node != request.only_node:
+                continue
             uses = uses_by_node.get(node, [])
             for use in uses:
                 operations = (
@@ -123,7 +157,11 @@ class HandlerBrokerAclDerive:
             for row in request.declared_rows
             if row.resource_type == EnumAclResourceType.TOPIC
         }
-        topics = {use.topic for use in request.topic_uses}
+        topics = {
+            use.topic
+            for use in request.topic_uses
+            if request.only_node is None or use.node == request.only_node
+        }
         uncovered = tuple(sorted(topics - covered))
         findings.extend(
             ModelBrokerAclFinding(code=_CODES.TOPIC_WITHOUT_ROW, detail=topic)
