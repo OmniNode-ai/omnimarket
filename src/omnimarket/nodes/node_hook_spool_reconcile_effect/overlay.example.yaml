@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+spool:
+  home_env: EXAMPLE_STATE_HOME
+  journal_relpath: hook_emit_journal
+  dead_letter_relpaths:
+    - hook_emit_journal/quarantine
+    - hook_emit_journal_denied_classes
+  loss_log_relpath: hook_emit_journal_losses.jsonl
+  drainer_status_relpath: hook_emit_drainer_status.json
+  alarm_state_relpath: hook_spool_reconcile_state.json
+replay:
+  batch_limit: 50
+  min_age_seconds: 0
+emission:
+  home_env: EXAMPLE_STATE_HOME
+  journal_relpath: .onex_state/hook-spool-reconcile/emissions.jsonl
+  piece: 6
