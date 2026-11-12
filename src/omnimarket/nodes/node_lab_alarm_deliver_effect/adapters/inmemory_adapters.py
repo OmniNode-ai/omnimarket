@@ -7,9 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery import (
-    ModelAlarmSendReceipt,
-)
+from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.nodes.node_lab_alarm_deliver_effect.protocols import LedgerAppendError
 
 

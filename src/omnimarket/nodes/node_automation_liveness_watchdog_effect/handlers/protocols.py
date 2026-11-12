@@ -7,9 +7,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery import (
-    ModelAlarmSendReceipt,
-)
+from omnimarket.events.alarm_send_receipt import ModelAlarmSendReceipt
 
 
 class ProtocolAlarmSender(Protocol):
