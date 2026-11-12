@@ -30,7 +30,9 @@ entrypoint:
 execution:
   deterministic: false
   side_effects: true
-# The overlay file this node reads: `<overlay_root>/units.yaml`, schema `host_net_units.v1`.
+# The overlay file this node reads: `<overlay_root>/<units_file>`, schema `host_net_units.v1`. A request that names no `units_file`
+# reads `units_file` below; the overlays repository names `overlay.yaml` so that its ci loads the document through
+# ModelNetUnitsOverlay. The whole document is validated through that model before a unit is looked up.
 overlay:
   units_file: units.yaml
   schema: host_net_units.v1
