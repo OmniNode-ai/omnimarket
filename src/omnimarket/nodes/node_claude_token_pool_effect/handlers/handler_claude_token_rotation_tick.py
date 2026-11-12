@@ -42,13 +42,13 @@ from typing import Any, Literal
 
 from pydantic import SecretStr
 
-from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
-    HandlerRevokeStaleness,
-)
-from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness import (
+from omnimarket.events.claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
     ModelRevokeObservation,
     ModelRevokeStalenessRequest,
+)
+from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
+    HandlerRevokeStaleness,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
     HandlerClaudeTokenPool,

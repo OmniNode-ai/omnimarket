@@ -19,15 +19,15 @@ from typing import Any
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
-from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
-    HandlerRevokeStaleness,
-)
-from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness import (
+from omnimarket.events.claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
     ModelRevokeObservation,
     ModelRevokeStalenessPolicy,
     ModelRevokeStalenessRequest,
+)
+from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
+    HandlerRevokeStaleness,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_ports import (
     FileTokenFile,
