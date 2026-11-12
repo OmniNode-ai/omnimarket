@@ -49,13 +49,13 @@ dod_evidence:
         check_value: uv run pytest tests/test_golden_chain_pr_health_monitor.py tests/test_golden_chain_pr_snapshot_effect.py -q -n 0 -p no:randomly --no-cov
         cwd: .
   - id: dod-omn23854-ac3
-    description: AC3 is read after the next omnimarket release, from one pass of the job-log filler unit's log on the launching Mac; until then the filler's own tests, which run its adapter against the transport error from its new home, are the bound check.
+    description: AC3 is read after the next omnimarket release, from one pass of the job-log filler unit's log on the launching Mac; until then the bound check is the job-log shared cache and fill-on-miss tests of the gateway, which raise and catch the transport error imported from its new home and so fail at a base that has no such module.
     source: manual
     binds_ac:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler.py -q -n 0 -p no:randomly --no-cov
+        check_value: uv run pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_shared_cache.py tests/nodes/node_github_repo_gateway_effect/test_job_log_fill_on_miss.py -q -n 0 -p no:randomly --no-cov
         cwd: .
   - id: dod-omn23854-deploy-readback
     description: Deploy probe. The shared GitHub transport error is present in its new module in the tree this change ships, read through gh api at the checked-out commit so hosted CI can run it before merge. It fails at a base that has no such module.
