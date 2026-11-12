@@ -12,6 +12,8 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a compute decision marks a revoke stale only when the same fingerprint was limited or answered ok on any host after the revoke stamp, and a typed clear command is executed by the pool effect inside the mark sync; a revoke with no later success is kept -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py -q, red at the merge base where no decision exists'
+  - id: AC2
+    statement: 'AC2: the declared install covers every host the overlay lists: the pool rotation tick is a unit in the host installer registry (a systemd unit and a launchd unit, each with a project path, an expected revision and its own environment), and every host row of the pool overlay resolves to one -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_claude_pool_tick_units.py -q, red at the merge base where no registry unit runs the tick and red when one listed host has no declared unit'
   - id: AC3
     statement: 'AC3: the rotation tick run against a temporary pool file clears the stale revoked mark and keeps the real one -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py -q -k "golden_a_stale or real_revoke_with_no_later", red at the merge base where the tick clears nothing'
 evidence_requirements:
@@ -33,11 +35,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py tests/nodes/node_claude_pool_revoke_staleness_compute -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23887-ac2
-  description: Every host the example overlay lists renders a tick unit that pins the overlay root; a host not listed is refused.
+  description: Every host row of the example pool overlay resolves to a declared registry unit (systemd or launchd) that renders with that host's name, a project path and an expected revision; a listed host with no declaration, an install without the host name and a checkout at another revision are refused.
   source: manual
+  binds_ac:
+  - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_claude_token_pool_effect/test_install_coverage.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_claude_pool_tick_units.py tests/nodes/node_claude_token_pool_effect/test_pool_tick_unit.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23887-ac3
   description: The tick run over a temporary pool file clears the stale revoked mark, and keeps a revoke with no later success.
