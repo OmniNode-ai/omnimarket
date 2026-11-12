@@ -1,0 +1,88 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-22371
+title: "Lean line board T6: the lines operation of the factory floor effect"
+summary: 'node_factory_floor_effect gains a lines operation (contract handler_routing entry, request and result models, a handler and a pure render module, and the word lines on the command line) that reads one published record and prints the board, the eight source health entries first, with no recompute and no other read; a stale, absent or unreadable record prints UNREAD first and exits non-zero. Plan task T6 of the lean line board plan; it renders the fields the record carries and prints "not in the record" for the health and stops fields the record does not carry until OMN-22368 and OMN-22370 put them there.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn22371-ac1
+    statement: 'the render of each T2 fixture record equals a recorded golden text, and the command line against a temporary home with a fixture record prints the golden'
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the render of each T2 fixture record equals a recorded golden text, and a subprocess run of the lines command against a temporary home with a fixture record prints the golden -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect -q -k lines'
+  - id: req-omn22371-ac2
+    statement: 'a stale or absent record prints UNREAD first and exits non-zero'
+    acceptance:
+      - id: AC2
+        statement: 'AC2: a stale or absent record prints UNREAD first and exits non-zero -- falsifier: one fixture of each in uv run pytest tests/nodes/node_factory_floor_effect -q -k lines'
+  - id: req-omn22371-ac3
+    statement: 'on h051 two consecutive lines runs each print a board whose record time is within 300 s of its run'
+    acceptance:
+      - id: AC3
+        statement: 'AC3: on h051 two consecutive lines runs each print a board whose record time is within 300 s of its run -- falsifier: the lab-run transcript shows either record older'
+evidence_requirements:
+  - kind: "tests"
+    description: "The lines tests with the neighbouring factory floor effect tests"
+    command: "uv run --frozen pytest tests/nodes/node_factory_floor_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22371-ac1"
+    description: 'AC1: thirteen of the fourteen T2 case records render to their stored golden (the fourteenth, the all-sources-unread observed case, is refused by the effect until OMN-22368) and the subprocess run prints the golden'
+    source: "manual"
+    binds_ac: [AC1]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_factory_floor_effect -q --no-cov --tb=line -k lines'
+        cwd: "."
+  - id: "dod-omn22371-ac2"
+    description: 'AC2: a stale record, an absent record and an unreadable record each print UNREAD first and exit non-zero; a fresh record prints no UNREAD line and exits zero'
+    source: "manual"
+    binds_ac: [AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_factory_floor_effect -q --no-cov --tb=line -k "lines and (stale or absent or unparsable)"'
+        cwd: "."
+  - id: "dod-omn22371-ac3"
+    description: 'AC3: the hosted part is the render of the record time and its age against the run time (the age is printed and the 15 minute limit is a contract value); the h051 lab-run transcript is recorded in a PR comment naming the head'
+    source: "manual"
+    binds_ac: [AC3]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_factory_floor_effect -q --no-cov --tb=line -k "lines_prints_health_and_stops or lines_reads_a_named_history_snapshot"'
+        cwd: "."
+  - id: "dod-omn22371-deploy-source-readback"
+    description: "Hosted-runner readback of the published lines handler, render module and node contract at the evaluated commit against this checkout. This checks published source, not a runtime rollout."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          node_path=src/omnimarket/nodes/node_factory_floor_effect;
+          for relative_path in handlers/handler_floor_lines.py handlers/floor_lines_render.py contract.yaml; do
+            target="$readback_dir/$(basename "$relative_path")";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/$relative_path" \
+              --output "$target";
+            cmp "$node_path/$relative_path" "$target";
+          done;
+          grep -F 'class HandlerFloorLines:' "$readback_dir/handler_floor_lines.py";
+          grep -F 'operation: lines' "$readback_dir/contract.yaml";
+          printf 'lines operation source readback matched %s\n' "$revision"
+  - id: "dod-omn22371-integration-proof"
+    description: "Run this pull request's lines tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22371 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_effect -q --no-cov -k lines'
+        cwd: "."
