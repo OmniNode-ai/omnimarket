@@ -14,7 +14,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from omnimarket.events.consumer_group_state import (
+from omnimarket.models.consumer_group_state import (
     ModelGroupStateRecord,
 )
 

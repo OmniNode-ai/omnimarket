@@ -17,7 +17,7 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Literal
 
-from omnimarket.events.consumer_group_state import decision_digest
+from omnimarket.models.consumer_group_state import decision_digest
 from omnimarket.nodes.node_consumer_group_reap_effect.adapters.kafka_group_admin import (
     KafkaGroupAdmin,
 )

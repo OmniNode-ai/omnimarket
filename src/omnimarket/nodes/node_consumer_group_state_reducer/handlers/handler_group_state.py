@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
-from omnimarket.events.consumer_group_state import (
+from omnimarket.models.consumer_group_state import (
     ModelGroupCensusEvent,
     ModelGroupState,
     ModelGroupStateRecord,
