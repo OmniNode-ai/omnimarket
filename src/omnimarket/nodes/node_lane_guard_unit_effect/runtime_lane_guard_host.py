@@ -1131,6 +1131,12 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _expand_path(path: str) -> str:
+    """A settings path as the host reads it: ``~`` is the lane user's home and ``$VAR`` (``$OMNI_HOME``, the host's own
+    registry root) the lane's environment, so one overlay row serves every lab host."""
+    return os.path.expanduser(os.path.expandvars(path))
+
+
 def main(argv: list[str] | None = None) -> int:
     words = list(sys.argv[1:] if argv is None else argv)
     command: list[str] = []
@@ -1161,8 +1167,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return EXIT_USAGE
             end_record = {
-                "record_dir": ns.record_dir,
-                "worktrees_dir": ns.worktrees_dir,
+                "record_dir": _expand_path(ns.record_dir),
+                "worktrees_dir": _expand_path(ns.worktrees_dir),
                 "git_timeout_s": ns.git_timeout_s,
                 "max_trees": ns.max_trees,
             }
