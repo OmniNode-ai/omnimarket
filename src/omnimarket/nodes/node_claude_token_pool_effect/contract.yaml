@@ -41,6 +41,11 @@ description: >
   label), which it holds against the overlay's steering.max_lanes_per_label; at the cap it answers a
   typed refusal and no token. The lane start passes both only when the overlay's steering.enabled is
   true; off, which is how it ships, a draw is what it was.
+  Inside the tick's mark sync (OMN-23887), when the overlay carries a stale_revoke block, the tick asks the
+  node_claude_pool_revoke_staleness_compute node whether each revoked label's revoke is stale (the same fingerprint
+  was limited after the revoke stamp plus the margin) and sends the pool one typed clear_revokes command per stale
+  label; the pool clears a mark only while it still holds that fingerprint and that exact revoke stamp. A revoke with
+  no later success stays; an overlay without the block keeps every revoke, as before.
 
 output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 

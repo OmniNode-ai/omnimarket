@@ -59,6 +59,15 @@ class ModelJobLogFillerOverlay(BaseModel):
     #: the unit's run limit. The budget plus ``reply_timeout_seconds`` (the longest read in flight when it ends)
     #: must stay under the unit's ``run_timeout_s``; the runs a pass leaves are taken, newest first, by the next.
     pass_budget_seconds: float = Field(default=240.0, gt=0)
+    #: Environment variable naming the state directory of this host (the unit sets it); the red-facts records live under it (OMN-23832).
+    red_facts_state_env: str = Field(min_length=1)
+    #: Directory under that state directory holding one record per red head and job.
+    red_facts_subdir: str = Field(min_length=1)
+    #: Bytes of a red job's log end read to build its record (the cache keeps the whole log).
+    red_facts_tail_bytes: int = Field(ge=1)
+    #: Most failure lines one record keeps (the last ones) and the characters each line keeps.
+    red_facts_max_lines: int = Field(ge=1)
+    red_facts_line_chars: int = Field(ge=1)
     profiles: dict[str, ModelJobLogFillerBusProfile] = Field(min_length=1)
     default_profile: str = Field(min_length=1)
 
@@ -156,6 +165,14 @@ class ModelJobLogFillResult(BaseModel):
     )
     stale_skipped: int = Field(
         ge=0, description="Pull requests whose CI record is not of their current head."
+    )
+    records_written: int = Field(
+        default=0, ge=0, description="Red-facts records this pass wrote (OMN-23832)."
+    )
+    records_failed: int = Field(
+        default=0,
+        ge=0,
+        description="Red jobs whose record could not be built or written; the fill itself still counts.",
     )
     items: tuple[ModelJobLogFillItem, ...] = ()
     error: str | None = Field(default=None, max_length=2000)

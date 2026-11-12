@@ -65,7 +65,7 @@ dependencies:
     required: false
   - name: ProtocolLandingTickRecorder
     dependency_type: protocol
-    description: "keeps every tick's record; a later tick never replaces an earlier one; the redpanda profile appends to the overlay's record_journal."
+    description: "keeps the tick's record; a later tick never replaces an earlier one; the redpanda profile appends to the overlay's record_journal and keeps the newest record_journal_max_records of them, reading back only those (unbounded, with the missing key named on the pass line, while the overlay declares none; OMN-23757)."
     required: true
   - name: ProtocolLandingSnapshotPublisher
     dependency_type: protocol
@@ -119,3 +119,4 @@ metadata:
     - snapshot
   related_tickets:
     - OMN-23409
+    - OMN-23757
