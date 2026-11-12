@@ -118,6 +118,8 @@ def test_golden_score_gives_the_exact_table() -> None:
         )
     )
     assert result.failure is None
+    assert result.suite_id == "s"
+    assert result.operation is EnumClassifyOperation.SCORE_ANSWERS
     e1, e2 = result.scores
     assert (e1.engine, e1.n, e1.correct, e1.unparsed, e1.accuracy, e1.mean_seconds) == (
         "e1",

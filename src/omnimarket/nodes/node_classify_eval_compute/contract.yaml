@@ -89,6 +89,10 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.classify-eval-completed.v1
 
+# The trial driver and the dashboard read the set and the scores from this topic.
+externally_consumed_topics:
+  - onex.evt.omnimarket.classify-eval-completed.v1
+
 published_events:
   - event_type: ClassifyEvalCompleted
     topic: onex.evt.omnimarket.classify-eval-completed.v1
