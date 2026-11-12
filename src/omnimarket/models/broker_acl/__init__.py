@@ -2,7 +2,15 @@
 # SPDX-License-Identifier: MIT
 """Models of the broker permission overlay and its render."""
 
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay import (
+from omnimarket.models.broker_acl.model_broker_acl_derive import (
+    EnumTopicDirection,
+    ModelBrokerAclDeriveRequest,
+    ModelBrokerAclDeriveResult,
+    ModelBrokerAclPrincipalsOverlay,
+    ModelContractTopicUse,
+    ModelNodePrincipal,
+)
+from omnimarket.models.broker_acl.model_broker_acl_overlay import (
     EnumAclOperation,
     EnumAclPattern,
     EnumAclResourceType,
@@ -21,11 +29,17 @@ __all__ = [
     "EnumAclPattern",
     "EnumAclResourceType",
     "EnumBrokerAclFindingCode",
+    "EnumTopicDirection",
+    "ModelBrokerAclDeriveRequest",
+    "ModelBrokerAclDeriveResult",
     "ModelBrokerAclFinding",
     "ModelBrokerAclGrant",
     "ModelBrokerAclPrincipal",
+    "ModelBrokerAclPrincipalsOverlay",
     "ModelBrokerAclRenderRequest",
     "ModelBrokerAclRenderResult",
     "ModelBrokerAclRow",
     "ModelBrokerAclScopeOverlay",
+    "ModelContractTopicUse",
+    "ModelNodePrincipal",
 ]

@@ -23,5 +23,8 @@ class ModelBrokerAclReconcileResult(BaseModel):
     missing: int | None = Field(default=None, ge=0)
     undeclared: int | None = Field(default=None, ge=0)
     missing_rows: tuple[str, ...] = ()
+    # Rows derived from contract topics for the declared principals, and topics that still have no row (None: not derived).
+    derived: int | None = Field(default=None, ge=0)
+    uncovered_topics: int | None = Field(default=None, ge=0)
     output: str = ""
     error: str = ""
