@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_broker_topic_delete_effect import (
-    runtime_broker_topic_delete as runtime,
-)
-from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
+from omnimarket.events.topic_removal import (
     EnumRemovalMode,
     ModelTopicRemovalCommand,
+)
+from omnimarket.nodes.node_broker_topic_delete_effect import (
+    runtime_broker_topic_delete as runtime,
 )
 from tests.nodes.node_broker_topic_delete_effect.delete_support import (
     TOPICS,

@@ -12,7 +12,7 @@ effect behind the operator's go.
 
 from __future__ import annotations
 
-from ..models.model_topic_never_produced import (
+from omnimarket.events.topic_never_produced import (
     ModelNeverProducedReport,
     ModelNeverProducedRequest,
     ModelNeverProducedTopic,

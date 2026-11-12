@@ -17,6 +17,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.topic_never_produced import (
+    ModelNeverProducedRule,
+    ModelTopicEvidence,
+)
 from omnimarket.nodes.node_broker_load_reading_effect.adapters.metrics_source import (
     parse_public_metrics,
 )
@@ -25,10 +29,6 @@ from omnimarket.nodes.node_broker_topic_removal_effect.adapters.topic_inventory 
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.overlay import (
     ModelTopicRemovalOverlay,
-)
-from omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced import (
-    ModelNeverProducedRule,
-    ModelTopicEvidence,
 )
 
 pytestmark = pytest.mark.unit

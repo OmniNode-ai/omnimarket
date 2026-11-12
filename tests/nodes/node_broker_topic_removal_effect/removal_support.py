@@ -12,6 +12,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.topic_removal import (
+    ModelTopicObservation,
+)
 from omnimarket.nodes.node_broker_topic_removal_effect.adapters.declared_topics import (
     InMemoryDeclaredTopics,
 )
@@ -23,9 +26,6 @@ from omnimarket.nodes.node_broker_topic_removal_effect.adapters.topic_remover im
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.handlers.handler_broker_topic_removal import (
     HandlerBrokerTopicRemoval,
-)
-from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
-    ModelTopicObservation,
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.overlay import (
     ModelTopicRemovalOverlay,

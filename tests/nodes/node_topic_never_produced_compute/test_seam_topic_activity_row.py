@@ -14,6 +14,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from omnimarket.events.topic_never_produced import (
+    ModelNeverProducedRequest,
+    ModelNeverProducedRule,
+    ModelTopicEvidence,
+)
 from omnimarket.nodes.node_projection_topic_activity.models.enum_topic_activity_state import (
     EnumTopicActivityState,
 )
@@ -22,11 +27,6 @@ from omnimarket.nodes.node_projection_topic_activity.models.model_topic_activity
 )
 from omnimarket.nodes.node_topic_never_produced_compute import (
     NodeTopicNeverProducedCompute,
-)
-from omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced import (
-    ModelNeverProducedRequest,
-    ModelNeverProducedRule,
-    ModelTopicEvidence,
 )
 
 pytestmark = pytest.mark.unit

@@ -12,17 +12,17 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.events.topic_removal import (
+    EnumRemovalMode,
+    EnumTopicClass,
+    ModelTopicRemovalCommand,
+)
 from omnimarket.nodes.node_broker_topic_delete_effect.models.model_topic_delete import (
     ModelDeleteTarget,
     ModelTopicDeleteCommand,
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.handlers.handler_broker_topic_removal import (
     load_topics as load_removal_topics,
-)
-from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
-    EnumRemovalMode,
-    EnumTopicClass,
-    ModelTopicRemovalCommand,
 )
 from tests.nodes.node_broker_topic_removal_effect.removal_support import TOPICS, World
 

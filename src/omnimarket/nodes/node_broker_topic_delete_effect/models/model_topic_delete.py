@@ -15,7 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
+from omnimarket.events.topic_removal import (
     EnumTopicClass,
 )
 

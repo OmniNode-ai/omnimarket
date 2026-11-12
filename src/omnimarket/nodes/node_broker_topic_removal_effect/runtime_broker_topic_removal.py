@@ -22,6 +22,10 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from omnimarket.events.topic_removal import (
+    EnumRemovalMode,
+    ModelTopicRemovalCommand,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_broker_topic_removal_effect.adapters.declared_topics import (
     ContractFileDeclaredTopics,
@@ -31,10 +35,6 @@ from omnimarket.nodes.node_broker_topic_removal_effect.adapters.topic_inventory 
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.handlers.handler_broker_topic_removal import (
     HandlerBrokerTopicRemoval,
-)
-from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
-    EnumRemovalMode,
-    ModelTopicRemovalCommand,
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.overlay import (
     NODE_NAME,

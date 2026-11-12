@@ -26,7 +26,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_broker_topic_removal_effect.handlers.handler_broker_topic_removal
   class: HandlerBrokerTopicRemoval
-  input_model: omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal.ModelTopicRemovalCommand
+  input_model: omnimarket.events.topic_removal.ModelTopicRemovalCommand
 
 # HandlerBrokerTopicRemoval takes the overlay, the topic inventory, the declared topics and the remover as
 # constructor parameters, so the node runs through its own CLI, not handler_routing.
@@ -41,11 +41,11 @@ descriptor:
 
 input_model:
   name: ModelTopicRemovalCommand
-  module: omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal
+  module: omnimarket.events.topic_removal
   description: A correlation id, dry run or execute, and the operator's approval reference for an execute run.
 output_model:
   name: ModelTopicRemovalResult
-  module: omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal
+  module: omnimarket.events.topic_removal
   description: Topics by class, the removal candidates with evidence, every refusal, and the partitions after.
 
 terminal_event: onex.evt.omnimarket.broker-topic-removal-run-completed.v1
