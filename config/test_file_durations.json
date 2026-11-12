@@ -615,6 +615,7 @@
   "tests/nodes/node_broker_load_reading_effect/test_broker_load_schedule.py": 0.07,
   "tests/nodes/node_broker_topic_delete_effect/test_delete_chain_events.py": 1.8,
   "tests/nodes/node_broker_topic_delete_effect/test_kafka_admin.py": 1.73,
+  "tests/nodes/node_broker_topic_delete_effect/test_rpk_superuser_admin.py": 3.34,
   "tests/nodes/node_broker_topic_delete_effect/test_runtime_cli.py": 2.06,
   "tests/nodes/node_broker_topic_delete_effect/test_seam_removal_plan.py": 1.51,
   "tests/nodes/node_broker_topic_delete_effect/test_topic_delete.py": 1.51,
