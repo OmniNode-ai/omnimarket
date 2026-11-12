@@ -14,6 +14,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from omnimarket.nodes.node_claude_pool_limit_recheck_compute.models.model_limit_recheck import (
+    ModelLimitRecheckCommand,
+)
 from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness import (
     ModelClearRevokeCommand,
 )
@@ -65,6 +68,9 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     it hands out. ``pin``: keep ``label`` first in this host's draw, through every ``reorder``, until
     ``release``; ``pinned_by`` says whether an operator's assign or the spread rule set it. ``clear_revokes``:
     execute the typed ``clear_commands`` the revoke staleness compute decided (see ``clear_commands``).
+    ``apply_limit_rechecks``: execute the typed ``limit_commands`` the limit recheck compute decided after a probe
+    (see ``limit_commands``). ``export``: hand the stored token of ``label`` to the caller's pipe, for adopting
+    a host-held label into the secret store; the value is never in a result, only in ``token``.
 
     ``resolve`` for a NEW lane start also takes ``drain_labels`` (the usage verdict's list of labels close
     to their limit: skipped while any other label is usable, used only when nothing else is) and
@@ -86,6 +92,8 @@ class ModelClaudeTokenPoolRequest(BaseModel):
         "pin",
         "release",
         "clear_revokes",
+        "apply_limit_rechecks",
+        "export",
     ]
     label: str | None = None
     #: ``pin``: who sets the pin. An operator's ``assign`` pin is never replaced by the spread rule.
@@ -95,6 +103,9 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     #: when it still holds that fingerprint AND that exact ``revoked_at``; a newer revoke, a re-added token or an
     #: already cleared mark is left alone.
     clear_commands: tuple[ModelClearRevokeCommand, ...] = ()
+    #: ``apply_limit_rechecks``: the typed commands the limit recheck compute decided after a probe answered. The pool
+    #: executes a command only while it still holds that fingerprint AND that exact limited-until stamp.
+    limit_commands: tuple[ModelLimitRecheckCommand, ...] = ()
     labels: tuple[str, ...] = ()
     #: ``sync_marks``: when the source wrote ``marks``. A local limit or revocation observed after this
     #: instant is newer than the snapshot and is kept; unset, the marks are authoritative.
@@ -103,6 +114,9 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     dry_run: bool = False
     setup_token_output: SecretStr | None = None
     seconds: float | None = Field(default=None, gt=0)
+    #: ``mark_limited``: ``seconds`` comes from the reset a limit notice itself names, not from a backoff estimate.
+    #: An exact notice replaces the label's stamp (a newer notice wins even when earlier); an estimate never shortens one.
+    exact: bool = False
     force: bool = False
     #: ``resolve``: labels the usage verdict asks NEW lane starts to stay off. The name and the element
     #: type are the verdict node's result field (``ModelPoolUsageResult.drain_labels``); a seam test pins both.
@@ -129,6 +143,8 @@ class ModelClaudeTokenPoolEntry(BaseModel):
     last_used_at: str | None = None
     revoked_at: str | None = None
     limited_at: str | None = None
+    #: When the limit recheck last got an answer from a probe of this label (an error answer records none).
+    probed_at: str | None = None
 
 
 class ModelClaudeTokenPoolResult(BaseModel):
@@ -148,6 +164,8 @@ class ModelClaudeTokenPoolResult(BaseModel):
         "pin",
         "release",
         "clear_revokes",
+        "apply_limit_rechecks",
+        "export",
     ]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()
@@ -161,6 +179,11 @@ class ModelClaudeTokenPoolResult(BaseModel):
     synced: tuple[str, ...] = ()
     #: ``clear_revokes``: the labels whose revoked mark was cleared.
     cleared: tuple[str, ...] = ()
+    #: ``apply_limit_rechecks``: labels whose limited mark was cleared, whose stamp was replaced by a newer
+    #: reset, and whose probe time was recorded with the mark kept.
+    limits_cleared: tuple[str, ...] = ()
+    limits_replaced: tuple[str, ...] = ()
+    limits_kept: tuple[str, ...] = ()
     alert: str | None = None
     all_limited: bool = False
     next_reset: str | None = None
