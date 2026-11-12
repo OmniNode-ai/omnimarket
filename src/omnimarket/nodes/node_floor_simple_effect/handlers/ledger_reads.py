@@ -200,6 +200,7 @@ def _chain(
         phase="start",
         emitted_at=row.stamp,
         drill=failed and row.cells.get(rule.error_drill_cell) == "yes",
+        origin="probe",
     )
     if failed:
         code = row.cells.get(rule.failure_code_cell, "")

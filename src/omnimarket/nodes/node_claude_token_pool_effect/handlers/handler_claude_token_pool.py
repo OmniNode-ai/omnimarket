@@ -147,6 +147,7 @@ class HandlerClaudeTokenPool:
     ) -> ModelClaudeTokenPoolResult:
         with self._locked() as pool:
             alert = None
+            cleared: tuple[str, ...] = ()
             if request.operation == "add":
                 self._add(pool, request)
             elif request.operation == "mark_limited":
@@ -162,6 +163,8 @@ class HandlerClaudeTokenPool:
             elif request.operation == "release":
                 pool.pop("pinned", None)
                 pool.pop("pinned_by", None)
+            elif request.operation == "clear_revokes":
+                cleared = self._clear_revokes(pool, request)
             synced: tuple[str, ...] = ()
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
@@ -173,7 +176,7 @@ class HandlerClaudeTokenPool:
             if request.operation != "status" and not request.dry_run:
                 _write_private(self._pool_path, pool)
             result = self._result(
-                request.operation, pool, chosen, token, alert, synced
+                request.operation, pool, chosen, token, alert, synced, cleared
             ).model_copy(update={"refusal": refusal, "drained_fallback": fallback})
             if not request.dry_run:
                 _write_private(
@@ -182,7 +185,14 @@ class HandlerClaudeTokenPool:
                         "host": self._host,
                         "at": _stamp(self._now()),
                         "tokens": [
-                            {"label": e.label, "until": e.until, "revoked": e.revoked}
+                            {
+                                "label": e.label,
+                                "until": e.until,
+                                "revoked": e.revoked,
+                                "fingerprint": e.fingerprint,
+                                "revoked_at": e.revoked_at,
+                                "limited_at": e.limited_at,
+                            }
                             for e in result.tokens
                         ],
                     },
@@ -366,11 +376,38 @@ class HandlerClaudeTokenPool:
                 changed.append(mark.label)
             entry["until"] = until
             if until is not None and until != was_until:
-                entry["limited_at"] = max(observed, entry.get("limited_at") or "")
+                entry["limited_at"] = max(
+                    mark.limited_at or observed, entry.get("limited_at") or ""
+                )
             entry["revoked_at"] = (
-                (entry.get("revoked_at") or observed) if revoked else None
+                (entry.get("revoked_at") or mark.revoked_at or observed)
+                if revoked
+                else None
             )
         return tuple(changed)
+
+    def _clear_revokes(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[str, ...]:
+        """Execute the staleness compute's typed clear commands; return the labels whose revoked mark was cleared.
+
+        A command is executed only when the pool still holds the command's fingerprint under the label and the
+        revoked stamp it holds is exactly the one the decision was made on, so a newer revoke, a re-added token
+        or an already cleared mark is left alone.
+        """
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        cleared: list[str] = []
+        for command in request.clear_commands:
+            entry = by_label.get(command.label)
+            if (
+                entry is None
+                or entry.get("fingerprint") != command.fingerprint
+                or entry.get("revoked_at") != _stamp(command.expected_revoked_at)
+            ):
+                continue
+            entry["revoked_at"] = None
+            cleared.append(command.label)
+        return tuple(cleared)
 
     def secret(self, label: str) -> SecretStr | None:
         """The stored token of ``label`` for the rotation tick to write to the host's login, never to a result."""
@@ -482,6 +519,7 @@ class HandlerClaudeTokenPool:
         token: SecretStr | None,
         alert: str | None = None,
         synced: tuple[str, ...] = (),
+        cleared: tuple[str, ...] = (),
     ) -> ModelClaudeTokenPoolResult:
         now = _stamp(self._now())
         entries = tuple(
@@ -494,6 +532,8 @@ class HandlerClaudeTokenPool:
                 revoked=bool(t.get("revoked_at")),
                 uses=t.get("uses", 0),
                 last_used_at=t.get("last_used_at"),
+                revoked_at=t.get("revoked_at"),
+                limited_at=t.get("limited_at"),
             )
             for t in pool["tokens"]
         )
@@ -508,6 +548,7 @@ class HandlerClaudeTokenPool:
             token=token,
             revoked=revoked,
             synced=synced,
+            cleared=cleared,
             alert=alert,
             **pool_summary(
                 self._host, [(e.label, e.until) for e in entries], now, revoked=revoked

@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_routing_order_compute
+version: "1.0.0"
+description: "Answer a task class's engine order and attempts from the routing contract and the routing overlay chain"
+omnibase_core_compat: ">=0.47.73,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_routing_order_compute: "omnimarket.nodes.node_delegation_routing_order_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.47.73"
+  - "omnibase-infra>=0.38.75"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "routing", "routing-order", "deterministic"]
+pack: "core"
+display_name: "Delegation Routing Order Compute"
+node_role: "compute"

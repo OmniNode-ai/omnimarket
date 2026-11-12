@@ -136,6 +136,7 @@ class HandlerReadOnlyPrincipalProbe:
             node=EMIT_NODE,
             piece=emission.piece,
             clock=self._clock,
+            origin="probe",
         )
 
     def _journal(self, emission: ModelProbeEmission) -> ProtocolEmissionSink:
