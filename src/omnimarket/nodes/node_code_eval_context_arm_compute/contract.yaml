@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_code_eval_context_arm_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >-
+  The context arm of a code-eval task, decided from an overlay carried on the
+  request: operation select decides whether the arm scores the task alone (no
+  pack) or requests a context pack bounded by the overlay's budget and the
+  backend's remaining grounded-input room; operation judge measures the pack's
+  answer against the arm's required tiers, tier floor, exemplar line and the
+  backend's ceiling, and refuses an input the ceiling cannot hold. The overlay
+  names the arms, their profiles, pinned and required tiers, the pack budget and
+  the archetype-to-lane-kind mapping; this contract holds none of those
+  deployment values. Deterministic, with no I/O, no clock and no randomness.
+input_model:
+  name: ModelCodeEvalContextArmRequest
+  module: omnimarket.nodes.node_code_eval_context_arm_compute.models.model_code_eval_context_arm
+output_model:
+  name: ModelCodeEvalContextArmResult
+  module: omnimarket.nodes.node_code_eval_context_arm_compute.models.model_code_eval_context_arm
+handler:
+  module: omnimarket.nodes.node_code_eval_context_arm_compute.handlers.handler_code_eval_context_arm
+  class: HandlerCodeEvalContextArm
+  input_model: omnimarket.nodes.node_code_eval_context_arm_compute.models.model_code_eval_context_arm.ModelCodeEvalContextArmRequest
+  output_model: omnimarket.nodes.node_code_eval_context_arm_compute.models.model_code_eval_context_arm.ModelCodeEvalContextArmResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_code_eval_context_arm_compute.handlers.handler_code_eval_context_arm:HandlerCodeEvalContextArm
+  handlers:
+    - operation: code_eval_context_arm
+      handler:
+        name: HandlerCodeEvalContextArm
+        module: omnimarket.nodes.node_code_eval_context_arm_compute.handlers.handler_code_eval_context_arm
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  operation: {type: str, required: true, enum: [select, judge], description: Operation to perform, either selecting the pack request or judging the pack answer.}
+  correlation_id: {type: str, required: true, description: Correlation identifier for this context-arm decision.}
+  arm: {type: str, required: true, description: Context arm name the decision is about.}
+  task: {type: object, required: true, description: Code-eval task, with the base commit and its UTC committer time, the task's own merge commit, and its lane kind when the task names one.}
+  backend: {type: object, required: true, description: Routed backend's grounded-input token ceiling and the request composed without any pack.}
+  overlay: {type: object, required: true, description: Deployment values carried on the request, the arms with their profiles and tiers, the pack budget and the archetype-to-lane-kind mapping.}
+  pack_answer: {type: object, required: false, description: Context-pack orchestrator's answer; present only for the judge operation.}
+outputs:
+  correlation_id: {type: str}
+  operation: {type: str, enum: [select, judge]}
+  arm: {type: str}
+  decision: {type: str, enum: [no_pack_needed, request_pack, satisfied, not_satisfied, refused]}
+  reason: {type: str, enum: [ok, arm_not_in_overlay, no_lane_kind, no_room, unexpected_pack_for_task_alone, pack_not_answered, pack_failed, profile_mismatch, required_tier_missing, too_few_tiers, exemplar_not_verifiable, exemplar_is_task_merge_commit, exemplar_after_base, over_input_ceiling]}
+  detail: {type: str}
+  unscorable_context: {type: bool}
+  pack_request: {type: object}
+  pack_budget_tokens: {type: int}
+  token_estimate: {type: int}
+  token_estimate_basis: {type: str, enum: [none, budget_ceiling, included_tiers]}
+  included_tiers: {type: array}
+  excluded_by_budget: {type: array}
+  unresolved_tiers: {type: array}
+  final_pack_hash: {type: str}
+  exemplar_ref: {type: str}
+terminal_event: onex.evt.omnimarket.code-eval-context-arm-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.code-eval-context-arm-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.code-eval-context-arm-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.code-eval-context-arm-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.code-eval-context-arm-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Context-arm select and judge for code-eval context scoring
+  author: OmniNode Team
+  created: "2026-11-10"
+  related_tickets: [OMN-23629]

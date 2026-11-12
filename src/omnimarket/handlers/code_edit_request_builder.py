@@ -83,6 +83,7 @@ def build_code_edit_request(
     formatter: tuple[str, ...],
     max_turns: int | None,
     check_timeout_s: int | None,
+    wall_budget_s: int | None,
     ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
@@ -107,6 +108,8 @@ def build_code_edit_request(
         if overlay
         else fields["max_no_change_finishes"].default
     )
+    if wall_budget_s is None:
+        wall_budget_s = overlay.wall_budget_seconds if overlay else None
     checks = cli_checks
     if ticket_contract is not None:
         contract_checks = declared_checks_from_contract(
@@ -135,6 +138,7 @@ def build_code_edit_request(
             checks=checks,
             formatter=tuple(tuple(shlex.split(step)) for step in formatter),
             max_turns=max_turns,
+            wall_budget_seconds=wall_budget_s,
             max_no_change_finishes=max_no_change,
             caller_lane=caller_lane,
             ticket=ticket,

@@ -16,6 +16,8 @@ the sessions already open stay. A request whose installed files already match wr
 no value, or a value with no placeholder, is refused. The ``__GPU_MEMORY_UTILIZATION__`` placeholder is computed from the
 unit's ``gpu_budget`` measurements. A unit that declares ``serving: true`` must have a ``Restart=`` line in its systemd
 unit file whose value is in the contract's ``restart_policies``; this check runs before the sha256 pin check.
+A file entry may carry its payload inline via ``content`` instead of a ``source`` file name; the bytes are the UTF-8
+encoding of that string and the same rendering, pin and serving checks apply.
 """
 
 from __future__ import annotations
@@ -269,15 +271,31 @@ class HandlerNetUnits:
         plan: UnitPlan,
         item: FilePlan,
     ) -> bytes:
-        source = str(entry["source"])
-        if "/" in source or source in ("", ".", ".."):
+        source = str(entry.get("source") or "")
+        content = str(entry.get("content") or "")
+        if source and content:
             raise RefusalError(
-                "source-not-allowed", f"payload {source!r} is not a plain file name"
+                "payload-source-ambiguous",
+                f"{item.destination} declares both source and content",
             )
-        try:
-            data = (Path(request.overlay_root) / source).read_bytes()
-        except OSError as exc:
-            raise RefusalError("payload-unreadable", f"{source}: {exc}") from exc
+        if not source and not content:
+            raise RefusalError(
+                "payload-source-missing",
+                f"{item.destination} declares neither source nor content",
+            )
+        if content:
+            source = "inline content"
+            data = content.encode("utf-8")
+        else:
+            if "/" in source or source in ("", ".", ".."):
+                raise RefusalError(
+                    "source-not-allowed",
+                    f"payload {source!r} is not a plain file name",
+                )
+            try:
+                data = (Path(request.overlay_root) / source).read_bytes()
+            except OSError as exc:
+                raise RefusalError("payload-unreadable", f"{source}: {exc}") from exc
         if entry.get("encoding"):
             if entry["encoding"] != "base64":
                 raise RefusalError(
