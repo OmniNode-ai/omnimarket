@@ -43,7 +43,7 @@ from omnimarket.nodes.node_floor_owner_map_publish_effect.handlers import (
 from omnimarket.nodes.node_floor_projection_read_effect.runtime_floor_projection_read import (
     run as read_projections,
 )
-from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_integration import (
+from omnimarket.nodes.node_floor_simple_compute.handlers.integration_section import (
     build_integration_section,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (

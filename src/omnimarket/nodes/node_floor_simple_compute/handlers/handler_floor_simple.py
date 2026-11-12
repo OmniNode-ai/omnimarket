@@ -47,7 +47,7 @@ from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
     WorklistKind,
 )
-from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_integration import (
+from omnimarket.nodes.node_floor_simple_compute.handlers.integration_section import (
     build_integration_section,
 )
 
