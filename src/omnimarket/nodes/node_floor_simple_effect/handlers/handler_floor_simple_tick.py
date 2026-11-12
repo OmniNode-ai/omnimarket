@@ -1272,6 +1272,7 @@ class HandlerFloorSimpleTick:
                     ),
                 ),
                 join_ends=rt.join_ends,
+                real_origins=ov.readiness.real_origins,
             )
         )
 

@@ -65,7 +65,7 @@ db_io:
       # are the house tenant's rows. ADR-0027 classification, not a rename.
       schema: public
       migration: "001_create_context_roi_scores.sql"
-      access: write
+      access: read_write
       role: scores
 
 event_bus:
@@ -82,6 +82,9 @@ event_bus:
     - onex.evt.omnimarket.context-roi-run-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-context-roi-applied.v1
+  # OMN-23628: a malformed run event is quarantined here.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-context-roi-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-context-roi-applied.v1
@@ -106,6 +109,20 @@ projection_api:
         - context_pack_hash
         - factor_subset_hash
         - routing_source
+        - check_verdict
+        - unscorable_source
+        - row_kind
+        - try_end
+        - suite_digest
+        - size_band
+        - sequence_id
+        - try_ordinal
+        - diff_hash
+        - max_turns
+        - try_timeout_s
+        - generation_s
+        - env_sync_s
+        - check_s
         - attempt_count
         - first_pass_success
         - final_success
