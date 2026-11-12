@@ -24,20 +24,24 @@ pytestmark = pytest.mark.unit
 NODES = Path(__file__).parents[3] / "src" / "omnimarket" / "nodes"
 TICK_DIR = NODES / "node_pr_landing_tick_orchestrator"
 RERUN_COMPUTE_DIR = NODES / "node_pr_landing_rerun_request_compute"
+HOST_INSTALLER_DIR = NODES / "node_host_installer_registry_units"
 
-# Adding a new consumed-only command topic is a decision someone must list here (OMN-23964):
-# each name below is read by some contract without any contract's event_bus declaring it, so
-# boot provisioning never creates it and whoever publishes it must arrange the topic elsewhere.
-KNOWN_CONSUMED_ONLY_COMMAND_TOPICS = frozenset(
-    {
-        "onex.cmd.omnimarket.code-analysis.v1",
-        "onex.cmd.omnimarket.declared-clone-refresh-requested.v1",
-        "onex.cmd.omnimarket.document-ingestion.v1",
-        "onex.cmd.omnimarket.host-disk-read-requested.v1",
-        "onex.cmd.omnimarket.pattern-learning.v1",
-        "onex.cmd.omnimarket.repo-state-query-requested.v1",
-    }
+# A consumed command topic that no contract's event_bus declares is not created by boot
+# provisioning (OMN-23991), so whoever publishes it must arrange the topic elsewhere. Each name
+# below is listed with the reason it is not boot provisioned; a new one is a decision someone
+# must add here.
+_NO_HANDLER_REASON = (
+    "node_intelligence_orchestrator subscribes none of the three; OMN-18013 removed the subscriptions that had "
+    "no handler; re-declare each only with its handler"
 )
+KNOWN_NO_LIVE_CONSUMER_COMMAND_TOPICS: dict[str, str] = {
+    "onex.cmd.omnimarket.code-analysis.v1": _NO_HANDLER_REASON,
+    "onex.cmd.omnimarket.document-ingestion.v1": _NO_HANDLER_REASON,
+    "onex.cmd.omnimarket.pattern-learning.v1": _NO_HANDLER_REASON,
+    "onex.cmd.omnimarket.host-disk-read-requested.v1": (
+        "no publisher or consumer exists yet; the host disk orchestrator is a later ticket"
+    ),
+}
 
 
 def _contract(node_dir: Path) -> dict[str, Any]:
@@ -97,4 +101,32 @@ def test_consumed_only_command_topics_are_named() -> None:
                     declared.add(topic)
 
     unprovisioned = declared - wired
-    assert unprovisioned == KNOWN_CONSUMED_ONLY_COMMAND_TOPICS
+    missing = unprovisioned - set(KNOWN_NO_LIVE_CONSUMER_COMMAND_TOPICS)
+    stale = set(KNOWN_NO_LIVE_CONSUMER_COMMAND_TOPICS) - unprovisioned
+    assert unprovisioned == set(KNOWN_NO_LIVE_CONSUMER_COMMAND_TOPICS), (
+        f"consumed command topics not boot provisioned and not listed with a reason: {sorted(missing)}; "
+        f"listed with a reason but now boot provisioned (stale entry): {sorted(stale)}"
+    )
+
+
+def test_repo_state_and_declared_clone_refresh_topics_are_boot_provisioned() -> None:
+    manifest = discover_contracts_from_paths([HOST_INSTALLER_DIR / "contract.yaml"])
+    provisioned: set[str] = set()
+    for contract in manifest.contracts:
+        provisioned.update(_contract_provision_topics(contract))
+
+    assert "onex.cmd.omnimarket.repo-state-query-requested.v1" in provisioned
+    assert "onex.cmd.omnimarket.declared-clone-refresh-requested.v1" in provisioned
+
+
+def test_serve_topics_are_declared_externally_consumed() -> None:
+    contract = _contract(HOST_INSTALLER_DIR)
+
+    assert (
+        "onex.cmd.omnimarket.repo-state-query-requested.v1"
+        in contract["externally_consumed_topics"]
+    )
+    assert (
+        "onex.cmd.omnimarket.declared-clone-refresh-requested.v1"
+        in contract["externally_consumed_topics"]
+    )
