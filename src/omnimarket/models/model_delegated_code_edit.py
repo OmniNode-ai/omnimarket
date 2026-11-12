@@ -102,6 +102,7 @@ class EnumCodeEditStatus(StrEnum):
     ACCEPTED = "accepted"
     CHECKS_FAILED = "checks_failed"
     NO_PROGRESS = "no_progress"
+    NO_CHANGE = "no_change"
     BUDGET_EXHAUSTED = "budget_exhausted"
     DELEGATE_FAILED = "delegate_failed"
     INFRA_ERROR = "infra_error"
@@ -164,6 +165,12 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         "command. Empty: no format tool.",
     )
     max_turns: int = Field(default=20, ge=1, le=MAX_TURNS_CEILING)
+    max_no_change_finishes: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="How many finish calls over an empty diff end the loop as no_change.",
+    )
     task_type: Literal["code_generation"] = "code_generation"
     caller_lane: str | None = Field(
         default=None,

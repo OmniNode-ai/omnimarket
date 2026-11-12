@@ -52,6 +52,12 @@ from omnimarket.delegated_code_edit.loop_ports import (
     deployed_lane_delegate_flags,
     resolve_delegate_pin,
 )
+from omnimarket.handlers.code_edit_contract_checks import (
+    declared_checks_from_contract,
+)
+from omnimarket.handlers.code_edit_loop_overlay import (
+    load_code_edit_loop_overlay,
+)
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     EnumCodeEditStatus,
     HandlerDelegatedCodeEditOrchestrator,
@@ -180,7 +186,24 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     "the file path is appended to each (e.g. 'uv run ruff check --select I "
     "--fix', then 'uv run ruff format'). Omitted: no format tool.",
 )
-@click.option("--max-turns", type=click.IntRange(1, 40), default=20, show_default=True)
+@click.option(
+    "--max-turns",
+    type=click.IntRange(1, 40),
+    default=None,
+    help="The round limit; omitted, the node's overlay decides, else the request model's default.",
+)
+@click.option(
+    "--check-timeout-s",
+    type=click.IntRange(1, 1800),
+    default=None,
+    help="The check time limit in seconds; omitted, the node's overlay decides, else the request model's default.",
+)
+@click.option(
+    "--ticket-contract",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="The ticket's contract file; its test_passes checks are declared checks.",
+)
 @click.option(
     "--caller-lane",
     default=None,
@@ -250,7 +273,9 @@ def run_command(
     file_list_path: Path | None,
     check_specs: tuple[str, ...],
     formatter: tuple[str, ...],
-    max_turns: int,
+    max_turns: int | None,
+    check_timeout_s: int | None,
+    ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
     new_correlation: bool,
@@ -297,11 +322,49 @@ def run_command(
         if new_correlation:
             request = request.model_copy(update={"correlation_id": str(uuid.uuid4())})
     else:
-        if worktree is None or task_file is None or not writable or not check_specs:
+        if worktree is None or task_file is None or not writable:
             raise click.ClickException(
-                "without --request, give --worktree, --task-file, at least one "
-                "--writable and at least one --check"
+                "without --request, give --worktree, --task-file and at least one --writable"
             )
+        overlay = load_code_edit_loop_overlay()
+        fields = ModelDelegatedCodeEditRequest.model_fields
+        resolved_max_turns = (
+            max_turns
+            if max_turns is not None
+            else overlay.max_turns
+            if overlay
+            else fields["max_turns"].default
+        )
+        resolved_check_timeout = (
+            check_timeout_s
+            if check_timeout_s is not None
+            else overlay.check_timeout_seconds
+            if overlay
+            else ModelDeclaredCheck.model_fields["timeout_seconds"].default
+        )
+        resolved_max_no_change = (
+            overlay.max_no_change_finishes
+            if overlay
+            else fields["max_no_change_finishes"].default
+        )
+        if ticket_contract is not None:
+            contract_checks = declared_checks_from_contract(
+                ticket_contract, resolved_check_timeout
+            )
+            checks = contract_checks + tuple(parse_check(spec) for spec in check_specs)
+            extra_targets = tuple(
+                target
+                for check in contract_checks
+                for target in check.targets
+                if (worktree / target).is_file()
+            )
+            context_paths = context_paths + extra_targets
+        else:
+            if not check_specs:
+                raise click.ClickException(
+                    "without --request or --ticket-contract, give at least one --check"
+                )
+            checks = tuple(parse_check(spec) for spec in check_specs)
         try:
             request = ModelDelegatedCodeEditRequest(
                 correlation_id=str(uuid.uuid4()),
@@ -310,9 +373,10 @@ def run_command(
                 workspace_root=str(worktree.resolve()),
                 writable_globs=writable,
                 context_paths=context_paths,
-                checks=tuple(parse_check(spec) for spec in check_specs),
+                checks=checks,
                 formatter=tuple(tuple(shlex.split(step)) for step in formatter),
-                max_turns=max_turns,
+                max_turns=resolved_max_turns,
+                max_no_change_finishes=resolved_max_no_change,
                 caller_lane=caller_lane,
                 ticket=ticket,
             )
