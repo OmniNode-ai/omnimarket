@@ -1,0 +1,210 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host install state REDUCER (OMN-23957)
+#
+# Holds, per host and unit, the state of one install: the declared render digest, the installed file digest, the rollback
+# target digest, the actor and the times. Folds one step event (request, snapshot, install, verify, run, rollback) into the
+# record. Pure fold, no I/O. The projection is the record every reader uses.
+---
+name: node_host_install_state_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Host unit install state reducer. Folds one install step event (the prior record of the unit on the host and the
+  step taken) into the unit's install record: requested, snapshotted, installing, installed, verified, run_ok, failed,
+  rolled_back. The reducer compares digests itself: a verify read whose installed digest differs from the render digest
+  moves the record to failed, never to verified; a rollback read whose installed digest differs from the rollback target
+  leaves the record failed. An out-of-order step, or one for another host, unit or install, is refused with a typed error.
+  Every bound of the fold comes from the node overlay. No events, no intents, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "host.install.state.fold"
+      handler:
+        name: HandlerHostInstallState
+        module: omnimarket.nodes.node_host_install_state_reducer.handlers.handler_host_install_state
+      description: "Fold one install step event into the unit's install record."
+      input_model:
+        name: ModelHostInstallReduceCommand
+        module: omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state
+        description: "Prior install record (or none) + the step event to fold."
+
+handler:
+  module: omnimarket.nodes.node_host_install_state_reducer.handlers.handler_host_install_state
+  class: HandlerHostInstallState
+  input_model: omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state.ModelHostInstallReduceCommand
+
+input_model:
+  name: ModelHostInstallReduceCommand
+  module: omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state
+  description: "Prior install record + the step event to fold."
+output_model:
+  name: ModelHostInstallRecord
+  module: omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state
+  description: "The install record projection."
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles: [workers]
+
+terminal_event: onex.evt.omnimarket.host-install-state-updated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.host-install-step.v1
+  publish_topics:
+    - onex.evt.omnimarket.host-install-state-updated.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.host-install-step.v1
+    producer: "the host install workflow, which publishes one step event per install step directly -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-install-state-updated.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Host install state reducer"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-23957"
+
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: host_install_state_reducer
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "host_install_state_reducer"
+  initial_state: requested
+  terminal_states: [run_ok, rolled_back]
+  error_states: [failed]
+  persistence_enabled: true
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: requested
+      state_type: operational
+      description: "Install requested; render digest recorded."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: snapshotted
+      state_type: operational
+      description: "Current unit file snapshotted; rollback target recorded."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: installing
+      state_type: operational
+      description: "Registry install effect running."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: installed
+      state_type: operational
+      description: "Registry install effect finished; awaiting verify read."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: verified
+      state_type: operational
+      description: "Installed file digest equals the render digest."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: run_ok
+      state_type: terminal
+      description: "One run of the unit read ok."
+      is_terminal: true
+      is_recoverable: false
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: operational
+      description: "A step failed or the read-back digest differs; rollback is the next step."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: rolled_back
+      state_type: terminal
+      description: "Rollback restored the rollback target."
+      is_terminal: true
+      is_recoverable: false
+      required_data: []
+  transitions:
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: requested_to_snapshotted_on_snapshot_ok
+      from_state: requested
+      to_state: snapshotted
+      trigger: snapshot_ok
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: requested_to_failed_on_step_failed
+      from_state: requested
+      to_state: failed
+      trigger: step_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: snapshotted_to_installing_on_install_started
+      from_state: snapshotted
+      to_state: installing
+      trigger: install_started
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: snapshotted_to_installed_on_install_ok
+      from_state: snapshotted
+      to_state: installed
+      trigger: install_ok
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: snapshotted_to_failed_on_step_failed
+      from_state: snapshotted
+      to_state: failed
+      trigger: step_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: installing_to_installed_on_install_ok
+      from_state: installing
+      to_state: installed
+      trigger: install_ok
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: installing_to_failed_on_step_failed
+      from_state: installing
+      to_state: failed
+      trigger: step_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: installed_to_verified_on_verify_digest_match
+      from_state: installed
+      to_state: verified
+      trigger: verify_digest_match
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: installed_to_failed_on_verify_digest_mismatch
+      from_state: installed
+      to_state: failed
+      trigger: verify_digest_mismatch
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: installed_to_failed_on_step_failed
+      from_state: installed
+      to_state: failed
+      trigger: step_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verified_to_run_ok_on_run_ok
+      from_state: verified
+      to_state: run_ok
+      trigger: run_ok
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verified_to_failed_on_step_failed
+      from_state: verified
+      to_state: failed
+      trigger: step_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: failed_to_rolled_back_on_rollback_digest_match
+      from_state: failed
+      to_state: rolled_back
+      trigger: rollback_digest_match
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: failed_to_failed_on_rollback_failed
+      from_state: failed
+      to_state: failed
+      trigger: rollback_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: failed_to_requested_on_request_ok
+      from_state: failed
+      to_state: requested
+      trigger: request_ok
