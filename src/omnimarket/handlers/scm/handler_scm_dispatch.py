@@ -88,34 +88,10 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         local_read=EnumScmLocalRead.PR_MERGE_COMMIT,
     ),
     ModelScmVerb(
-        verb="pr-review",
-        node=_G,
-        operation="review_gate",
-        replaces="gh pr view --json reviewDecision",
-    ),
-    ModelScmVerb(
-        verb="pr-ticket",
-        node=_G,
-        operation="ticket_ref",
-        replaces="gh pr view --json headRefName",
-    ),
-    ModelScmVerb(
-        verb="branch-protection",
-        node=_G,
-        operation="branch_protection",
-        replaces="gh api repos/<o>/<r>/branches/<b>/protection",
-    ),
-    ModelScmVerb(
         verb="run-list", node=_G, operation="workflow_runs", replaces="gh run list"
     ),
     ModelScmVerb(
         verb="run-view", node=_G, operation="run_jobs", replaces="gh run view"
-    ),
-    ModelScmVerb(
-        verb="job-log",
-        node=_G,
-        operation="job_log_tail",
-        replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs",
     ),
     ModelScmVerb(
         verb="job-log-fill", node=_G, operation="job_log_fill", replaces="gh job log"
@@ -134,24 +110,6 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         local_read=EnumScmLocalRead.PR_HEADS,
     ),
     # OMN-21146: the reads node_dod_verify sends the gateway.
-    ModelScmVerb(
-        verb="commit-check-runs",
-        node=_G,
-        operation="commit_check_runs",
-        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
-    ),
-    ModelScmVerb(
-        verb="pr-merged",
-        node=_G,
-        operation="merged_pr",
-        replaces="gh pr view --json state,mergedAt,mergeCommit,headRefOid",
-    ),
-    ModelScmVerb(
-        verb="pr-threads",
-        node=_G,
-        operation="pr_review_threads",
-        replaces="gh api graphql (pullRequest reviewThreads)",
-    ),
     ModelScmVerb(
         verb="open-pr-facts", node=_G, operation="open_pr_facts", replaces="gh pr list"
     ),
@@ -203,6 +161,34 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         node=_W,
         operation="pr_label",
         replaces="gh api --method POST /repos/{o}/{r}/issues/{n}/labels",
+    ),
+    *(
+        ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
+        for v, op, gh in (
+            ("pr-review", "review_gate", "gh pr view --json reviewDecision"),
+            ("pr-ticket", "ticket_ref", "gh pr view --json headRefName"),
+            (
+                "branch-protection",
+                "branch_protection",
+                "gh api repos/<o>/<r>/branches/<b>/protection",
+            ),
+            ("job-log", "job_log_tail", "gh api repos/<o>/<r>/actions/jobs/<id>/logs"),
+            (
+                "commit-check-runs",
+                "commit_check_runs",
+                "gh api repos/<o>/<r>/commits/<sha>/check-runs",
+            ),
+            (
+                "pr-merged",
+                "merged_pr",
+                "gh pr view --json state,mergedAt,mergeCommit,headRefOid",
+            ),
+            (
+                "pr-threads",
+                "pr_review_threads",
+                "gh api graphql (pullRequest reviewThreads)",
+            ),
+        )
     ),
 )
 
