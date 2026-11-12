@@ -12,12 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render import (
-    _grant_findings,
-    _row_key,
-    contract_config,
-)
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models import (
+from omnimarket.models.broker_acl import (
     EnumAclOperation,
     EnumAclPattern,
     EnumAclResourceType,
@@ -29,6 +24,11 @@ from omnimarket.nodes.node_broker_acl_overlay_render_compute.models import (
     ModelBrokerAclGrant,
     ModelBrokerAclRow,
     ModelContractTopicUse,
+)
+from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render import (
+    _grant_findings,
+    _row_key,
+    contract_config,
 )
 
 _CODES = EnumBrokerAclFindingCode

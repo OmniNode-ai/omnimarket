@@ -19,6 +19,13 @@ import pytest
 import yaml
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.broker_acl import (
+    EnumBrokerAclFindingCode,
+    ModelBrokerAclDeriveRequest,
+    ModelBrokerAclDeriveResult,
+    ModelBrokerAclPrincipalsOverlay,
+    ModelBrokerAclRow,
+)
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers import (
     handler_broker_acl_derive as module,
 )
@@ -27,13 +34,6 @@ from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_br
 )
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render import (
     contract_config,
-)
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models import (
-    EnumBrokerAclFindingCode,
-    ModelBrokerAclDeriveRequest,
-    ModelBrokerAclDeriveResult,
-    ModelBrokerAclPrincipalsOverlay,
-    ModelBrokerAclRow,
 )
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.overlay import (
     load_principals_overlay,

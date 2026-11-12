@@ -5,7 +5,7 @@
 from collections.abc import Mapping
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models import (
+from omnimarket.models.broker_acl import (
     ModelBrokerAclPrincipalsOverlay,
     ModelBrokerAclScopeOverlay,
 )

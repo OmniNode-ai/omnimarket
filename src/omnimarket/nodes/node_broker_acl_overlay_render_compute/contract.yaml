@@ -26,14 +26,14 @@ handler_routing:
     handler:
       name: HandlerBrokerAclOverlayRender
       module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render
-    input_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay.ModelBrokerAclRenderRequest
-    output_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay.ModelBrokerAclRenderResult
+    input_model: omnimarket.models.broker_acl.model_broker_acl_overlay.ModelBrokerAclRenderRequest
+    output_model: omnimarket.models.broker_acl.model_broker_acl_overlay.ModelBrokerAclRenderResult
   - operation: derive_broker_acl_rows
     handler:
       name: HandlerBrokerAclDerive
       module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_derive
-    input_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_derive.ModelBrokerAclDeriveRequest
-    output_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_derive.ModelBrokerAclDeriveResult
+    input_model: omnimarket.models.broker_acl.model_broker_acl_derive.ModelBrokerAclDeriveRequest
+    output_model: omnimarket.models.broker_acl.model_broker_acl_derive.ModelBrokerAclDeriveResult
 descriptor:
   node_archetype: compute
   purity: pure

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models import (
+from omnimarket.models.broker_acl import (
     EnumTopicDirection,
     ModelContractTopicUse,
 )

@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay import (
+from omnimarket.models.broker_acl.model_broker_acl_overlay import (
     ModelBrokerAclFinding,
     ModelBrokerAclRow,
 )
