@@ -758,6 +758,7 @@ node_hook_events_by_correlation_read_effect = "omnimarket.nodes.node_hook_events
 node_hook_lane_join_compute = "omnimarket.nodes.node_hook_lane_join_compute"
 node_hook_parse_probe_compute = "omnimarket.nodes.node_hook_parse_probe_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
+node_hook_spool_reconcile_effect = "omnimarket.nodes.node_hook_spool_reconcile_effect"
 node_host_bringup_orchestrator = "omnimarket.nodes.node_host_bringup_orchestrator"
 node_host_bringup_plan_compute = "omnimarket.nodes.node_host_bringup_plan_compute"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
