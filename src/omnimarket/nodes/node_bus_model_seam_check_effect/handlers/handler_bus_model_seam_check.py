@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices
+from pydantic import AliasChoices, BaseModel
 
 from ..models.model_bus_model_seam_check_request import ModelBusModelSeamCheckRequest
 from ..models.model_bus_model_seam_check_result import ModelBusModelSeamCheckResult
@@ -224,23 +224,23 @@ def _field_accepted_names(field_name: str, field: Any) -> set[str]:
     return names
 
 
-def _emit_names(model_cls: type) -> set[str]:
+def _emit_names(model_cls: type[BaseModel]) -> set[str]:
     """Get the set of names a producer model emits."""
     names: set[str] = set()
-    for field_name, field in model_cls.model_fields.items():  # type: ignore[attr-defined]
+    for field_name, field in model_cls.model_fields.items():
         names.add(field.serialization_alias or field.alias or field_name)
     return names
 
 
-def _accept_names(model_cls: type) -> set[str]:
+def _accept_names(model_cls: type[BaseModel]) -> set[str]:
     """Get the set of names a consumer model accepts."""
     names: set[str] = set()
-    for field_name, field in model_cls.model_fields.items():  # type: ignore[attr-defined]
+    for field_name, field in model_cls.model_fields.items():
         names |= _field_accepted_names(field_name, field)
     return names
 
 
-def _load_model_class(fq: str) -> tuple[type | None, str]:
+def _load_model_class(fq: str) -> tuple[type[BaseModel] | None, str]:
     """Load a pydantic model class by fully qualified path; the text names a failure."""
     module_name, _, class_name = fq.rpartition(".")
     if not module_name or not class_name:
@@ -275,7 +275,7 @@ def _grade_pair(
     missing = tuple(
         sorted(
             field_name
-            for field_name, field in consumer_cls.model_fields.items()  # type: ignore[attr-defined]
+            for field_name, field in consumer_cls.model_fields.items()
             if field.is_required()
             and not _field_accepted_names(field_name, field) & emit
         )
