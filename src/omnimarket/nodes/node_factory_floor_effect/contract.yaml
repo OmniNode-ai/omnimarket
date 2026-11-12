@@ -11,7 +11,7 @@ contract_version:
 node_version: 1.0.0
 description: >-
   Read the factory floor's sources (plans and their .tasks.yaml manifests, the PR watcher state, the ledger
-  through the ledger reader, the Linear snapshot plans-today writes, the lab placement reading, the friction
+  through the read node's pages, the Linear snapshot plans-today writes, the lab placement reading, the friction
   report), call node_factory_floor_compute with them and write its JSON to the path this contract declares.
   The only reads and the only write of the factory floor live here; the compute node is pure.
 dependencies:
@@ -40,6 +40,12 @@ handler_routing:
     handler:
       name: HandlerFactoryFloorEffect
       module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect
+  - operation: read_ledger_pages
+    handler:
+      name: HandlerFloorLedgerPages
+      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_floor_ledger_pages
+    input_model: omnimarket.nodes.node_factory_floor_effect.models.model_floor_ledger_pages.ModelFloorLedgerPages
+    output_model: omnimarket.nodes.node_factory_floor_effect.models.model_floor_ledger_pages.ModelFloorLedgerPagesResult
   - operation: emit_seam_count
     handler:
       name: HandlerSeamEmitter
@@ -68,7 +74,7 @@ descriptor:
   timeout_ms: 600000
   side_effects:
   - reads the plans repository clone, the PR watcher state, the plans-today output, the lab placement reading and the friction report
-  - reads the rolling ledger through the plugin's reader for the window, and the unresolved-rows record the unresolved step wrote for the older hand-offs
+  - reads the work ledger from the read node's rows query, page by page, for the window (ledger_pages; the bus read command the unit carries), and the unresolved-rows record the unresolved step wrote for the older hand-offs
   - reads the goal file in the plans repository clone and the queue-status tick's saved required-contexts map
   - reads the trace count and newest span time from the Phoenix GraphQL API at the URL the phoenix_url_env variable names (a read that fails is recorded as unread)
   - reads each declared host's container listing over ssh (read-only listing; a host that cannot be read draws UNKNOWN with its cause)
@@ -94,13 +100,40 @@ runtime:
   # The Phoenix base URL the floor reads its trace count and newest span age from; unset draws the reading unread.
   phoenix_url_env: ONEX_FACTORY_FLOOR_PHOENIX_URL
   ledger_window_days: 14
-  # The reader's row source is the deployment overlay's ledger_source (OMN-23606), for this node and, in its own overlay, for the
-  # unresolved step: which source answers inside the time limit is a fact of the host. An overlay that names none leaves the reader
-  # its own default.
-  # The reader cuts each row's text at this many characters (its own default drops the sentence a CLAIM carries).
+  # The reader cuts each row's text at this many characters (its own default drops the sentence a CLAIM carries). Only the unresolved step
+  # still calls the reader (its reads move to the read node in a later slice); the window read here does not.
   ledger_cut_chars: 1200
-  # The reader returns 14 days (57 MB) in 8 s in the foreground and 69 s as the Background-class module tick runs it on a Mac at load 56.
-  ledger_timeout_seconds: 480
+  # OMN-23669: the window is read from the read node (the work ledger query node's rows query), page by page, through the bus read
+  # command in ledger_pages.read_command_env, one worker per read below; the ledger file and the plugin's reader are not read. A read
+  # that does not answer, a cursor still open after max_pages and a spent time budget refuse the step with the read named as
+  # unread: the floor is never drawn from a short read. Measured on the dev lane 2026-11-11 (14 days): 162,850 rows (STATUS
+  # 76,916, CLAIM 29,553, TERMINAL 28,872, FRICTION 10,215, MSG 9,854, ACK 5,901, RELEASE 913, HOLD 396, RULING 309,
+  # CORRECTION 92); a page holds at most about 230 rows (the node's answer bound is 917,516 bytes) and takes 5 to 7 s, so the
+  # whole window cannot be paged inside the step's 30 s. Each read below asks for exactly what the compute node uses of that
+  # kind: the STATUS rows of the three states it joins (gate, integration, task-map), the rows of the kinds it reads whole in
+  # the window, and the claim, terminal and ask rows of the last 24 hours (the stopped-lane list reads 1,440 minutes and a
+  # live claim 45).
+  ledger_pages:
+    read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+    page_size: 200
+    max_pages: 12
+    page_timeout_seconds: 20
+    time_budget_seconds: 24
+    workers: 8
+    reads:
+      - {name: holds, kinds: [HOLD]}
+      - {name: releases, kinds: [RELEASE]}
+      - {name: rulings, kinds: [RULING]}
+      - {name: corrections, kinds: [CORRECTION]}
+      - {name: status_gate, kinds: [STATUS], term: "state=gate"}
+      - {name: status_integration, kinds: [STATUS], term: "state=integration"}
+      - {name: status_task_map, kinds: [STATUS], term: "state=task-map"}
+      - {name: floor_owner_msgs, kinds: [MSG], term: "owns=floor:"}
+      - {name: orchestrator_asks, kinds: [MSG], term: "to=orchestrator", window_hours: 24}
+      - {name: ask_answers, kinds: [ACK], window_hours: 24}
+      - {name: claims, kinds: [CLAIM], window_hours: 24}
+      - {name: terminals, kinds: [TERMINAL], window_hours: 24}
+      - {name: lane_status, kinds: [STATUS], window_hours: 3}
   # The kinds kept from the window. The first five were read before OMN-22368; RULING, MSG, ACK, CORRECTION and FRICTION
   # rows are forwarded whole so the line board can map a ruling to its line and a stop to its cause.
   ledger_kinds: [CLAIM, TERMINAL, HOLD, RELEASE, STATUS, RULING, MSG, ACK, CORRECTION, FRICTION]

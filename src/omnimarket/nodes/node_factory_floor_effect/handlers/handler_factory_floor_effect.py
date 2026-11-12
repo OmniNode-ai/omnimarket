@@ -40,6 +40,9 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from omnimarket.nodes.node_factory_floor_effect.handlers.draft_plan_refs import (
     draft_plan_refs,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.handler_floor_ledger_pages import (
+    HandlerFloorLedgerPages,
+)
 from omnimarket.nodes.node_factory_floor_effect.handlers.source_health import (
     source_health,
 )
@@ -50,6 +53,7 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorCloudSource,
     ModelFactoryFloorOverlay,
+    ModelFactoryFloorRuntime,
 )
 from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
     load_phoenix_traces,
@@ -80,13 +84,16 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     merge_linear_titles,
     newest_dated_file,
     newest_linear_snapshot,
-    read_ledger_rows,
+    read_ledger_rows_file,
     read_placement,
     resolve_dir,
     resolve_home,
     resolve_host_table,
     runner_fleet_cause,
     write_result,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
 )
 from omnimarket.protocols.protocol_merged_running_count_reader import (
     ProtocolMergedRunningCountReader,
@@ -186,9 +193,35 @@ class HandlerFactoryFloorEffect:
     """Boundary of the factory floor: every read and the one write happen here, none in the compute node."""
 
     def __init__(
-        self, merged_running: ProtocolMergedRunningCountReader | None = None
+        self,
+        merged_running: ProtocolMergedRunningCountReader | None = None,
+        ledger_source: ProtocolLedgerPointRead | None = None,
     ) -> None:
         self._merged_running = merged_running
+        # The read port of the window's pages; none takes the command the contract's variable holds.
+        self._ledger_source = ledger_source
+
+    def _read_ledger(
+        self,
+        rt: ModelFactoryFloorRuntime,
+        request: ModelFactoryFloorRunRequest,
+        kinds: frozenset[str],
+        now: datetime,
+    ) -> tuple[ModelFloorLedgerRow, ...]:
+        """The window's rows, from the read node page by page; a rows file stands in only when a test or a replay names one."""
+        if request.ledger_rows_file:
+            return read_ledger_rows_file(Path(request.ledger_rows_file), kinds)
+        return (
+            HandlerFloorLedgerPages()
+            .handle(
+                rt.ledger_pages,
+                window_days=rt.ledger_window_days,
+                kinds=kinds,
+                now=now,
+                source=self._ledger_source,
+            )
+            .rows
+        )
 
     def _read_merged_running(
         self, now: datetime, hosts_table: Path | None
@@ -340,19 +373,7 @@ class HandlerFactoryFloorEffect:
             overlay.cloud_accounts_node_command if overlay is not None else (),
         )
         kinds = frozenset(rt.ledger_kinds)
-        ledger_read = cloud_pool.submit(
-            read_ledger_rows,
-            window_days=rt.ledger_window_days,
-            source=overlay.ledger_source if overlay is not None else None,
-            cut_chars=rt.ledger_cut_chars,
-            timeout_seconds=rt.ledger_timeout_seconds,
-            plugin_root=Path(plugin_root) if plugin_root else None,
-            plugin_root_env=rt.plugin_root_env,
-            ledger_rows_file=Path(request.ledger_rows_file)
-            if request.ledger_rows_file
-            else None,
-            kinds=kinds,
-        )
+        ledger_read = cloud_pool.submit(self._read_ledger, rt, request, kinds, now)
         try:
             # The four unresolved reads are the unresolved step's own (OMN-19998): this run reads the record it wrote.
             ledger_unresolved: tuple[ModelFloorLedgerRow, ...] | None = (

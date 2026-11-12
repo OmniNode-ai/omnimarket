@@ -439,20 +439,16 @@ runtime:
   # and passed 30 s near load 13, so the board stopped publishing; 45 s is at least 1.5 times the 23 s maximum). Measured on the publishing Mac 2026-11-10 at load 10 to 11, with the
   # overlay naming the file as the ledger source and the window read running beside the step's other reads: 19.6 s, 19.5 s and
   # 19.1 s (three runs; 24.1 s before the window read ran beside the others, 14.7 s of that the window read alone).
-  # The window read takes the file (OMN-23606, measured on the publishing Mac 2026-11-11): the bus source never answers it (the
-  # read node matched 161,693 rows and returned none past its answer bound, and the contract's default command refused a 225 MB
-  # answer), so on a host whose ledger record is the bus each read spent 5 s (internal source) to 14 s (default command) on that
-  # refusal before the reader fell back to the file: 14.3 s to 15.9 s and 24.2 s, against 9.6 s for the file. With the bus read
-  # command the tracker and friction steps need, the step took 25 s and then passed its 30 s limit. A deployment overlay's
-  # ledger_source still names the source when it is set.
+  # OMN-23669: the window read is the read node's, page by page (the effect's contract declares each read, its window and the page, time and
+  # worker bounds), through the bus read command the unit carries (ONEX_LEDGER_BUS_READ_COMMAND, the variable the tracker and friction steps
+  # read). The step names no ledger record: the file value it carried (ONEX_LEDGER_RECORD: file, OMN-23606) is gone with the file read.
+  # The limit stays 30 s.
   - name: factory_floor
     kind: module
     required: true
     timeout_seconds: 45
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
-    environment:
-      ONEX_LEDGER_RECORD: file
   # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
   # required: when it fails the previous floor-simple.json stays and the page draws its own age, red past 15 minutes.
   - name: floor_simple

@@ -13,6 +13,9 @@ from omnimarket.models.model_factory_floor_input import (
 from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetDeclaration,
 )
+from omnimarket.nodes.node_factory_floor_effect.models.model_floor_ledger_pages import (
+    ModelFloorLedgerPages,
+)
 
 
 class ModelFactoryFloorSources(BaseModel):
@@ -133,8 +136,11 @@ class ModelFactoryFloorRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     phoenix_url_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
+    # The reader cuts each row's text at this many characters: read by the unresolved step (node_factory_floor_unresolved_effect), whose
+    # reads are the plugin reader's until that step moves to the read node (a later slice of OMN-23606's board work).
     ledger_cut_chars: int = Field(gt=0)
-    ledger_timeout_seconds: int = Field(gt=0)
+    # The window's reads of the read node, page by page (OMN-23669): each read's kinds, term and window, and the page, time and worker bounds.
+    ledger_pages: ModelFloorLedgerPages
     # The row kinds the effect keeps from the window.
     ledger_kinds: tuple[str, ...] = Field(min_length=1)
     # Hours after which the unresolved step's record reads unread (its own margin past the window's edge is the other bound).
@@ -213,9 +219,6 @@ class ModelFactoryFloorOverlay(BaseModel):
     container_read_line: str = ""
     container_hosts: tuple[ModelFactoryFloorContainerHost, ...] = ()
     container_budgets: tuple[ModelLaneContainerBudgetDeclaration, ...] = ()
-    # The ledger reader's row source for the window read (its ``--source``: file, db or compare; the reader refuses another).
-    # None names no source and leaves the reader its own default, which on a host whose ledger record is the bus is the bus read.
-    ledger_source: str | None = Field(default=None, min_length=1)
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]
     roles: tuple[str, ...]
