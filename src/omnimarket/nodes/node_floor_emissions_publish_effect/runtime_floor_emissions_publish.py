@@ -70,6 +70,19 @@ def _open_bus(overlay: ModelFloorEmissionsOverlay, env: Mapping[str, str]) -> An
     )
 
 
+def _open_publish_bus(
+    overlay: ModelFloorEmissionsOverlay, env: Mapping[str, str]
+) -> Any:
+    if overlay.snapshot_kafka_bootstrap is not None:
+        return open_lane_bus(
+            bus="kafka",
+            lane=None,
+            kafka_bootstrap=overlay.snapshot_kafka_bootstrap,
+            root=workspace_root(env),
+        )
+    return _open_bus(overlay, env)
+
+
 class BusEnvelopePublisher:
     """The real backend: one publication on the overlay's snapshot topic."""
 
@@ -103,7 +116,9 @@ def build_publisher(
     """The publisher the overlay selects: held in memory, or the broker."""
     if overlay.bus == "inmemory":
         return InMemoryEnvelopePublisher()
-    return BusEnvelopePublisher(lambda: _open_bus(overlay, env), overlay.snapshot_topic)
+    return BusEnvelopePublisher(
+        lambda: _open_publish_bus(overlay, env), overlay.snapshot_topic
+    )
 
 
 async def run(
