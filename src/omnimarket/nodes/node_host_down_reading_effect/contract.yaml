@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_down_reading_effect
+contract_name: node_host_down_reading_effect
+node_name: node_host_down_reading_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  A host loss reads as a host-down reading within minutes (bottom-up plan L0-06, piece 2, OMN-19998). One sweep, run
+  from a lab host the overlay names (never the Mac's LAN path), probes every available row of the one lab host table
+  by a TCP connect to its ssh address, asks node_host_down_compute for each host's state (up, suspect, down, unknown)
+  from the probe, the start of the failed run in the prior reading and the host's newest capacity advertisement, writes
+  the readings to the store and reads them back, then publishes each reading on the bus. Lab placement reads the store
+  at every placement (read_down_hosts): a down host takes no lane and a lane pinned to it is re-placed, never retried
+  against it. Each sweep is one chain on the emission contract under one correlation id: a start, then a success or a
+  typed failure (observer_not_allowed, table_unreadable, write_failed, readback_failed, publish_failed). The profile in
+  the overlay picks the backend: in_memory (default), jsonl (a durable file on one host). Every setting is in the overlay.
+
+handler:
+  module: omnimarket.nodes.node_host_down_reading_effect.handlers.handler_host_down_reading
+  class: HandlerHostDownReading
+  input_model: omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading.ModelHostDownSweepRequest
+  output_model: omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading.ModelHostDownSweepResult
+
+# HandlerHostDownReading takes the overlay settings, the ports, the sink and the clock as constructor parameters, so the
+# node runs through its own command line (python -m) and schedule, not a bus topic.
+handlers:
+  - name: HandlerHostDownReading
+    module: omnimarket.nodes.node_host_down_reading_effect.handlers.handler_host_down_reading
+    input_model: omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading.ModelHostDownSweepRequest
+    output_model: omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading.ModelHostDownSweepResult
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_down_reading_effect.handlers.handler_host_down_reading:HandlerHostDownReading
+  handlers: []
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: []
+  purity: impure
+  idempotent: true
+  side_effects: [tcp-probe, down-state-write, bus-publish]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelHostDownSweepRequest
+  module: omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading
+  description: One sweep of every available host of the lab host table.
+output_model:
+  name: ModelHostDownSweepResult
+  module: omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading
+  description: The outcome, each host's reading and the hosts read down.
+
+terminal_event: onex.evt.omnimarket.host-down-sweep-completed.v1
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_host_down_reading_effect (runtime_host_down.py), which reads the overlay, runs HandlerHostDownReading.handle for the sweep verb and prints the result"
+
+# The topics by role; the handler's publisher reads these and holds no topic string.
+topics:
+  host_down_reading: onex.evt.omnimarket.host-down-reading.v1
+  host_down_sweep_completed: onex.evt.omnimarket.host-down-sweep-completed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+published_events:
+  - topic: onex.evt.omnimarket.host-down-reading.v1
+    event_type: ModelHostReading
+  - topic: onex.evt.omnimarket.host-down-sweep-completed.v1
+    event_type: ModelHostDownSweepResult
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-down-reading.v1
+  - onex.evt.omnimarket.host-down-sweep-completed.v1
+
+overlay:
+  node: node_host_down_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+# The node's own every-minute schedule, installed by the declared host installer.
+schedule:
+  unit_name: onex-host-down-reading
+  launchd_label: ai.omninode.host-down-reading
+  state_directory: .onex_state/host-down-reading
+  timeout_seconds: 120
+  cadence:
+    on_calendar: "*-*-* *:*:00"
+    persistent: true
+    description: every minute
+
+requires_external_dependencies: true
+
+metadata:
+  ticket: OMN-19998
+  transport_type: local
