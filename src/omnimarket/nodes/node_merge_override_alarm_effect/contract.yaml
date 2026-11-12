@@ -40,8 +40,8 @@ handler_routing:
     - operation: merge_override.pr_merged
       message_category: event
       handler:
-        name: HandlerMergeOverrideAlarm
-        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+        name: HandlerMergeOverridePrMerged
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_entries
       event_model:
         name: ModelPrMergedEvent
         module: omnimarket.events.github
@@ -50,8 +50,8 @@ handler_routing:
     - operation: merge_override.repo_merged
       message_category: event
       handler:
-        name: HandlerMergeOverrideAlarm
-        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+        name: HandlerMergeOverrideRepoMerged
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_entries
       event_model:
         name: ModelRepoMerged
         module: omnimarket.models.model_repo_merged
@@ -60,8 +60,8 @@ handler_routing:
     - operation: merge_override.landing_completed
       message_category: event
       handler:
-        name: HandlerMergeOverrideAlarm
-        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+        name: HandlerMergeOverrideLandingCompleted
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_entries
       event_model:
         name: ModelPrLandingGithubCompleted
         module: omnimarket.events.pr_landing_github.model_pr_landing_github_completed
@@ -70,8 +70,8 @@ handler_routing:
     - operation: merge_override.landing_failed
       message_category: event
       handler:
-        name: HandlerMergeOverrideAlarm
-        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+        name: HandlerMergeOverrideLandingFailed
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_entries
       event_model:
         name: ModelPrLandingGithubFailed
         module: omnimarket.events.pr_landing_github.model_pr_landing_github_failed
@@ -80,8 +80,8 @@ handler_routing:
     - operation: merge_override.sweep
       message_category: event
       handler:
-        name: HandlerMergeOverrideAlarm
-        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_alarm
+        name: HandlerMergeOverrideSweep
+        module: omnimarket.nodes.node_merge_override_alarm_effect.handlers.handler_merge_override_entries
       event_model:
         name: ModelMergeOverrideSweepTrigger
         module: omnimarket.nodes.node_merge_override_alarm_effect.models.model_merge_override_sweep_trigger
@@ -204,6 +204,8 @@ dod_evidence:
     description: "An unreadable ledger, a failed or unanswered GitHub read, or a missing publisher is detector_unreadable with an alarm"
   - test: tests/unit/nodes/node_merge_override_alarm_effect/test_golden_chain_merge_override.py
     description: "Receipt, merge, read and verdict hops meet the shipped contracts and models"
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_typed_entries.py::test_every_routed_handler_resolves_its_event_model
+    description: "Each routing entry's handler resolves the runtime's typed arm with that entry's event model"
 
 dependencies:
   packages:
