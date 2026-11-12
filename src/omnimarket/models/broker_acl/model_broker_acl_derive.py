@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.broker_acl.model_broker_acl_overlay import (
     ModelBrokerAclFinding,
@@ -40,14 +40,31 @@ class ModelNodePrincipal(BaseModel):
     nodes: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelNodeRole(BaseModel):
+    """A set of nodes run under several logins at once (a unit on every lab host): each login holds the rows of each node."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    name: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    nodes: tuple[str, ...] = Field(min_length=1)
+    principals: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelBrokerAclPrincipalsOverlay(BaseModel):
-    """The declared principals: which login runs which nodes."""
+    """The declared principals: which login runs which nodes, one login per node (principals) or one role of many logins (roles)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     scope: str = Field(min_length=1)
     ticket: str = Field(min_length=1)
     why: str = Field(min_length=1)
-    principals: tuple[ModelNodePrincipal, ...] = Field(min_length=1)
+    principals: tuple[ModelNodePrincipal, ...] = ()
+    roles: tuple[ModelNodeRole, ...] = ()
+
+    @model_validator(mode="after")
+    def _names_something(self) -> ModelBrokerAclPrincipalsOverlay:
+        if not self.principals and not self.roles:
+            raise ValueError("an overlay declares at least one principal or role")
+        return self
 
 
 class ModelBrokerAclDeriveRequest(BaseModel):

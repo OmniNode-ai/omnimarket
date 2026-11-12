@@ -606,6 +606,7 @@
   "tests/nodes/node_brief_prerequisites_compute/test_brief_prerequisites.py": 0.01,
   "tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py": 6.34,
   "tests/nodes/node_broker_acl_overlay_render_compute/test_derive_chain.py": 4.93,
+  "tests/nodes/node_broker_acl_overlay_render_compute/test_derive_roles.py": 2.66,
   "tests/nodes/node_broker_acl_overlay_render_compute/test_overlay_seams.py": 0.03,
   "tests/nodes/node_broker_acl_overlay_render_compute/test_render_error_chain.py": 0.03,
   "tests/nodes/node_broker_acl_overlay_render_compute/test_render_golden_chain.py": 0.03,

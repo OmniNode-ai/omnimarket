@@ -16,11 +16,15 @@ class ModelBrokerAclReconcileRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     mode: Literal["dry_run", "apply", "ready_check"]
     node: str | None = Field(default=None, min_length=1)
+    # ready_check only: ask about one login of the node (a node run on every lab host is asked once per host's login).
+    principal: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _node_only_for_ready_check(self) -> ModelBrokerAclReconcileRequest:
         if (self.mode == "ready_check") != (self.node is not None):
             raise ValueError("node is given for mode ready_check and for no other mode")
+        if self.principal is not None and self.mode != "ready_check":
+            raise ValueError("principal is given for mode ready_check only")
         return self
 
 

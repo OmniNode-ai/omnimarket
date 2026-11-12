@@ -22,9 +22,12 @@ def main(argv: list[str] | None = None) -> int:
         "--mode", choices=("dry_run", "apply", "ready_check"), required=True
     )
     parser.add_argument("--node", help="the node a ready_check asks about")
+    parser.add_argument("--principal", help="the one login a ready_check asks about")
     args = parser.parse_args(argv)
     try:
-        request = ModelBrokerAclReconcileRequest(mode=args.mode, node=args.node)
+        request = ModelBrokerAclReconcileRequest(
+            mode=args.mode, node=args.node, principal=args.principal
+        )
     except ValueError as error:
         parser.error(str(error))
     result = HandlerBrokerAclReconcile().handle(request)

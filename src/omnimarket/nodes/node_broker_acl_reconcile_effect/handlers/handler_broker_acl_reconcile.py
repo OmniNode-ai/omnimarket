@@ -283,6 +283,14 @@ class HandlerBrokerAclReconcile:
         try:
             settings = loaded["broker_acl_reconcile"]
             derived, _ = derived_grants(settings, [], self._environ, node=request.node)
+            if request.principal is not None:
+                derived = [
+                    row for row in derived if row["principal"] == request.principal
+                ]
+                if not derived:
+                    raise ValueError(
+                        f"{request.node} derives no rows for {request.principal}"
+                    )
             declaration = dict(loaded["broker_acl_declaration"])
             declaration.pop("principals", None)
             keys = ("principal", "resource_type", "pattern", "name", "operation")

@@ -220,3 +220,44 @@ def test_error_chain_unreadable_listing_over_the_bus(tmp_path: Path) -> None:
 
     result = asyncio.run(_over_bus(_env(tmp_path), broken))
     assert (result.exit_code, result.ready) == (2, None)
+
+
+def test_ready_check_for_one_login_of_a_role(tmp_path: Path) -> None:
+    """A node run under two logins is asked once per login: the login with its rows is ready, the other is named missing."""
+    scope = contract()["broker_acl_reconcile"]["derive_principals_scope"]
+    target = tmp_path / "roles" / scope
+    target.mkdir(parents=True)
+    document = {
+        "scope": scope,
+        "ticket": "OMN-24005",
+        "why": "a test scope",
+        "roles": [
+            {
+                "name": "units",
+                "role": "a unit on two hosts",
+                "nodes": [RENDER],
+                "principals": [LOGIN, OTHER_LOGIN],
+            }
+        ],
+    }
+    (target / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
+    env = {**ENV, "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "roles")}
+    remote = FakeRemote()
+    remote.live = _derived_live(tmp_path)  # LOGIN's rows only
+    ready = HandlerBrokerAclReconcile(environ=env, remote_runner=remote).handle(
+        ModelBrokerAclReconcileRequest(mode="ready_check", node=RENDER, principal=LOGIN)
+    )
+    lacking = HandlerBrokerAclReconcile(environ=env, remote_runner=remote).handle(
+        ModelBrokerAclReconcileRequest(
+            mode="ready_check", node=RENDER, principal=OTHER_LOGIN
+        )
+    )
+    wrong = HandlerBrokerAclReconcile(environ=env, remote_runner=remote).handle(
+        ModelBrokerAclReconcileRequest(
+            mode="ready_check", node=RENDER, principal="User:nobody"
+        )
+    )
+    assert (ready.ready, ready.exit_code) == (True, 0)
+    assert (lacking.ready, lacking.exit_code) == (False, 1)
+    assert all(OTHER_LOGIN in row for row in lacking.missing_rows)
+    assert (wrong.exit_code, wrong.ready) == (2, None)

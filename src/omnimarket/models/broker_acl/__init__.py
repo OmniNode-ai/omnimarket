@@ -14,6 +14,7 @@ from omnimarket.models.broker_acl.model_broker_acl_derive import (
     ModelBrokerAclPrincipalsOverlay,
     ModelContractTopicUse,
     ModelNodePrincipal,
+    ModelNodeRole,
 )
 from omnimarket.models.broker_acl.model_broker_acl_overlay import (
     EnumAclOperation,
@@ -50,4 +51,5 @@ __all__ = [
     "ModelContractTopicUse",
     "ModelCoverageBaselineEntry",
     "ModelNodePrincipal",
+    "ModelNodeRole",
 ]
