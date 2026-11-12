@@ -153,7 +153,8 @@ def packaged_contract_value(package: str, *keys: str) -> Any:
 def packaged_factory(package: str, *keys: str) -> Callable[..., Any]:
     """The callable the contract packaged with ``package`` names as ``module:attribute`` under ``keys``."""
     module, _, attribute = str(packaged_contract_value(package, *keys)).partition(":")
-    return getattr(importlib.import_module(module), attribute)  # type: ignore[no-any-return]
+    factory: Callable[..., Any] = getattr(importlib.import_module(module), attribute)
+    return factory
 
 
 def bind_overlay(bindings: ModelOverlayBindings | None) -> None:
