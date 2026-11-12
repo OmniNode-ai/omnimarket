@@ -85,6 +85,10 @@ class AdvertisementFileSource:
         return parse_advertisements(text)
 
 
+# What ssh returns when it could not reach the destination (not the remote command's own code).
+SSH_CONNECT_FAILED_RC = 255
+
+
 def _default_runner(argv: Sequence[str], timeout_seconds: int) -> tuple[int, str]:
     """Run argv with no shell: the return code and stdout when it passed, else stderr."""
     try:
@@ -227,27 +231,48 @@ class TokenPoolCommandAccountsSource:
             return ModelHostAccounts(host=row.name, unread_reason="away")
         if row.local:
             argv = [os.path.expandvars(a) for a in self._route.local_argv]
-        else:
-            if (
-                any("{registry_roots}" in a for a in self._route.remote_argv)
-                and not roots
-            ):
-                return ModelHostAccounts(
-                    host=row.name, unread_reason="no registry root declared"
-                )
-            argv = [
-                a.replace("{target}", row.target).replace("{registry_roots}", roots)
-                for a in self._route.remote_argv
-            ]
+            return self._read_destination(row, argv)[1]
+        if any("{registry_roots}" in a for a in self._route.remote_argv) and not roots:
+            return ModelHostAccounts(
+                host=row.name, unread_reason="no registry root declared"
+            )
+        # The row's destinations in the order it declares them: ssh ends 255 when a name does not resolve or a login is
+        # refused, and only then does the next destination of the same machine get its turn.
+        destinations = (row.target, *row.fallback_targets)
+        for destination in destinations[:-1]:
+            rc, accounts = self._read_destination(
+                row, self._remote_argv(destination, roots)
+            )
+            if rc != SSH_CONNECT_FAILED_RC:
+                return accounts
+        return self._read_destination(row, self._remote_argv(destinations[-1], roots))[
+            1
+        ]
+
+    def _remote_argv(self, destination: str, roots: str) -> list[str]:
+        return [
+            a.replace("{target}", destination).replace("{registry_roots}", roots)
+            for a in self._route.remote_argv
+        ]
+
+    def _read_destination(
+        self, row: ModelLabHostRow, argv: Sequence[str]
+    ) -> tuple[int | None, ModelHostAccounts]:
+        """The run's return code (None when the run never ended in one) and the reading it gave."""
         try:
             rc, stdout = self._runner(argv, self._route.timeout_seconds)
         except PoolSnapshotSourceError as exc:
-            return ModelHostAccounts(host=row.name, unread_reason=str(exc))
+            return None, ModelHostAccounts(host=row.name, unread_reason=str(exc))
         if rc != 0:
-            return ModelHostAccounts(
+            return rc, ModelHostAccounts(
                 host=row.name,
                 unread_reason=f"token pool command rc={rc}: {stdout.strip()[-120:]}",
             )
+        return rc, self._accounts_from_status(row, stdout)
+
+    def _accounts_from_status(
+        self, row: ModelLabHostRow, stdout: str
+    ) -> ModelHostAccounts:
         try:
             result = ModelTokenPoolStatusReading.model_validate_json(stdout)
         except ValidationError:

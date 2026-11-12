@@ -67,6 +67,7 @@ def host_row(
     contributor: bool = False,
     lane_ready: bool = False,
     codex: bool = False,
+    fallback_targets: tuple[str, ...] = (),
 ) -> ModelLabHostRow:
     return ModelLabHostRow(
         name=name,
@@ -78,6 +79,7 @@ def host_row(
         contributor=contributor,
         lane_ready=lane_ready,
         codex=codex,
+        fallback_targets=fallback_targets,
     )
 
 
