@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23945
+title: The lab alarm delivers each raised alarm to the notifications channel and the ledger once
+summary: node_lab_alarm_deliver_effect posts a raised lab alarm once to the alert channel and appends one FRICTION row to the rolling ledger, with the alarm script's edge-triggered dedupe; node_lab_alarm's broker lag verdict is handed to it when the overlay's alarm_delivery block turns it on.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23945-delivery
+  statement: A raised lab alarm reaches the alert channel and the rolling ledger once per episode, every destination and window comes from the overlay, and the broker lag verdict is delivered through it.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a new alarm is posted once to the channel and appended once to the ledger, and a repeat of the same alarm delivers nothing -- falsifier: pytest tests/nodes/node_lab_alarm_deliver_effect/test_lab_alarm_delivery.py -q -k 'new_alarm or repeat' fails when the standing-episode check is removed"
+  - id: AC2
+    statement: "AC2: the broker lag verdict reaches the delivery as a typed alarm, a failed delivery makes the run exit as an alarm, and an overlay without the delivery block runs unchanged -- falsifier: pytest tests/nodes/node_lab_alarm/test_lab_alarm_delivery_wiring.py -q fails when the broker lag handler no longer calls the delivery"
+  - id: AC3
+    statement: "AC3: integrated: on the lab host that runs the alarm, one alarm raised through the running node is posted once and written to the ledger once, and the run after it delivers nothing more -- falsifier: read the channel and the ledger for that alarm after two runs and find more or fewer than one of each"
+evidence_requirements:
+- kind: tests
+  description: The delivery node's and the lab alarm node's focused tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_alarm tests/nodes/node_lab_alarm_deliver_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23945-ac1
+  description: 'AC1: the delivery tests pass; the node is added by this change, so the test file fails at the merge base (the handler it imports does not exist there).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm_deliver_effect/test_lab_alarm_delivery.py -q -n 0 --no-cov -p no:cacheprovider -k "new_alarm or repeat"
+    cwd: .
+- id: dod-omn23945-ac2
+  description: 'AC2: the wiring and seam tests pass; they fail at the merge base (the delivery argument and typed_alarms do not exist there).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_delivery_wiring.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23945-ac3
+  description: 'hosted proxy for AC3: the chain tests of both nodes pass; the reading on the running lab host is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm tests/nodes/node_lab_alarm_deliver_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Alarm Deliver (OMN-23906)
+#
+# Step one of retiring scripts/lab_alarm.py: the delivery the script does and node_lab_alarm did not. A typed alarm
+# is posted to the alert channel and appended to the rolling ledger as one FRICTION row, with the script's own dedupe.
+name: node_lab_alarm_deliver_effect
+contract_name: node_lab_alarm_deliver_effect
+node_name: node_lab_alarm_deliver_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Delivers what one lab alarm condition read in one run. A subject that ENTERS the alarm state is posted once to
+  the alert channel (through the alert-channel library's alarm function, the path the liveness watchdog sends
+  over) and appended once to the rolling ledger as a FRICTION row (through the ledger host's bus append, the path
+  the pin-friction effect writes over). A subject already in an episode is not delivered again; an episode ends
+  only when its condition reads OK, and an INDETERMINATE read neither ends nor starts one. A ledger row that could
+  not be written is kept and retried on every later request until it lands; a subject that clears and re-raises
+  inside the overlay's dedupe window appends no second row. A channel or ledger step that fails is a typed failure
+  of the run, never a silent skip. A request that does not write (a probe or a drill) delivers nothing and keeps
+  nothing. Every destination, window and cell is the overlay's; the backend (in-memory recorders or the alert
+  channel and the ledger bus) comes from the overlay.
+
+handler:
+  module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver
+  class: HandlerLabAlarmDeliver
+  input_model: omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery.ModelLabAlarmDeliveryRequest
+
+# HandlerLabAlarmDeliver takes the overlay settings, the channel, the ledger, the episode state store and the
+# clock as constructor parameters, so it is built by its caller (node_lab_alarm's runtime, or the node's own
+# runtime module) and declares no handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [alert-channel-post, ledger-append, state-file-write]
+  timeout_ms: 240000
+
+input_model:
+  name: ModelLabAlarmDeliveryRequest
+  module: omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery
+  description: The condition, its outcome, and every subject that is alarming.
+output_model:
+  name: ModelLabAlarmDeliveryResult
+  module: omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery
+  description: Per subject, the channel and ledger steps; the episodes the run ended; the ledger rows it retried.
+
+terminal_event: onex.evt.omnimarket.lab-alarm-delivery-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+
+topics:
+  delivery_requested: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+  delivery_started: onex.evt.omnimarket.lab-alarm-delivery-started.v1
+  delivery_alarm: onex.evt.omnimarket.lab-alarm-delivery-alarm.v1
+  delivery_completed: onex.evt.omnimarket.lab-alarm-delivery-completed.v1
+  delivery_failed: onex.evt.omnimarket.lab-alarm-delivery-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-alarm-delivery-started.v1
+  - onex.evt.omnimarket.lab-alarm-delivery-alarm.v1
+  - onex.evt.omnimarket.lab-alarm-delivery-completed.v1
+  - onex.evt.omnimarket.lab-alarm-delivery-failed.v1
+
+overlay:
+  node: node_lab_alarm_deliver_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23906
+  transport_type: inmemory

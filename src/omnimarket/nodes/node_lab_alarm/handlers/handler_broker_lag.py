@@ -42,6 +42,7 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupUnreadableError,
     ManifestUnreachableError,
     ManifestUnreadableError,
+    ProtocolAlarmDelivery,
     ProtocolGroupLagReader,
     ProtocolGrowthStreakStore,
     ProtocolManifestCache,
@@ -49,6 +50,12 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ProtocolRunRecordStore,
     ProtocolSampleStore,
     RunRecordUnwritableError,
+)
+from omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery import (
+    EnumDeliveryCondition,
+    EnumDeliveryOutcome,
+    ModelLabAlarm,
+    ModelLabAlarmDeliveryRequest,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -206,12 +213,14 @@ class HandlerBrokerLag:
         clock: Callable[[], datetime],
         manifest_cache: ProtocolManifestCache | None = None,
         streaks: ProtocolGrowthStreakStore | None = None,
+        delivery: ProtocolAlarmDelivery | None = None,
     ) -> None:
         if overlay.lag.growth is not None and streaks is None:
             raise ValueError(
                 "the overlay declares lag.growth, so a growth streak store is required"
             )
         self._streaks = streaks
+        self._delivery = delivery
         self._manifest_cache = manifest_cache
         self._overlay = overlay
         self._manifest = manifest
@@ -560,7 +569,70 @@ class HandlerBrokerLag:
             + f"{len(groups)} groups derived, {len(sample)} read; {rule}",
             failure=failure,
         )
-        return self._record(request, result)
+        return self._record(request, self._deliver(request, result))
+
+    def _deliver(
+        self, request: ModelBrokerLagCommand, result: ModelBrokerLagResult
+    ) -> ModelBrokerLagResult:
+        """Hand the verdict to the alarm delivery; a probe and a drill never deliver.
+
+        A delivery that fails or cannot run is named in the result's failure, so the run ends as an alarm
+        meanwhile: an alarm that believes it was delivered and was not is the defect the delivery exists for.
+        """
+        if (
+            self._delivery is None
+            or not request.write
+            or request.fault is not EnumLabAlarmFault.NONE
+        ):
+            return result
+        condition = self._overlay.lag.record_condition
+        try:
+            reply = self._delivery.handle(
+                ModelLabAlarmDeliveryRequest(
+                    correlation_id=request.correlation_id,
+                    condition=condition,
+                    outcome=EnumDeliveryCondition(result.outcome.value),
+                    alarms=typed_alarms(result.alarms, condition),
+                    evidence=result.evidence,
+                )
+            )
+        except (ValueError, OSError) as exc:
+            return self._with_delivery_failure(
+                result, (), f"delivery-unavailable:{type(exc).__name__}"
+            )
+        entries = tuple(
+            f"{d.key} channel={d.channel.value} ledger={d.ledger.value}"
+            for d in reply.deliveries
+        )
+        if reply.outcome is EnumDeliveryOutcome.FAILED:
+            return self._with_delivery_failure(
+                result, entries, f"delivery-failed:{reply.failure}"
+            )
+        return result.model_copy(update={"delivery": entries})
+
+    @staticmethod
+    def _with_delivery_failure(
+        result: ModelBrokerLagResult, entries: tuple[str, ...], failure: str
+    ) -> ModelBrokerLagResult:
+        return result.model_copy(
+            update={
+                "delivery": entries,
+                "failure": f"{result.failure}; {failure}"
+                if result.failure
+                else failure,
+            }
+        )
+
+
+def typed_alarms(alarms: Sequence[str], condition: str) -> tuple[ModelLabAlarm, ...]:
+    """Each alarm line is ``<group>: <what happened>``; a group name never holds ``: ``, so the first one splits it."""
+    typed: list[ModelLabAlarm] = []
+    for line in alarms:
+        subject, separator, detail = line.partition(": ")
+        if not separator:
+            raise ValueError(f"alarm line {line!r} names no subject before ': '")
+        typed.append(ModelLabAlarm(condition=condition, subject=subject, detail=detail))
+    return tuple(typed)
 
 
 def events_for(
@@ -627,4 +699,5 @@ __all__ = [
     "load_topics",
     "normalize_kafka_identifier",
     "parse_command",
+    "typed_alarms",
 ]

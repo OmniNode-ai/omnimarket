@@ -12,6 +12,10 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import 
     ModelEffectsGroupReading,
     ModelEscalationBrief,
 )
+from omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery import (
+    ModelLabAlarmDeliveryRequest,
+    ModelLabAlarmDeliveryResult,
+)
 
 
 class ManifestUnreadableError(Exception):
@@ -107,6 +111,14 @@ class ProtocolLaneDispatcher(Protocol):
         ...
 
 
+class ProtocolAlarmDelivery(Protocol):
+    def handle(
+        self, request: ModelLabAlarmDeliveryRequest
+    ) -> ModelLabAlarmDeliveryResult:
+        """Deliver the alarms one condition read (node_lab_alarm_deliver_effect), or raise ValueError or OSError."""
+        ...
+
+
 __all__ = [
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
@@ -114,6 +126,7 @@ __all__ = [
     "LaneDispatchError",
     "ManifestUnreachableError",
     "ManifestUnreadableError",
+    "ProtocolAlarmDelivery",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
