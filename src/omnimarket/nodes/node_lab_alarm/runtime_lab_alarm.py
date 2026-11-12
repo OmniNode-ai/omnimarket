@@ -9,6 +9,9 @@
                         member has held past the bound (what a schedule runs).
 ``effects-held-probe``  the same read, keeping nothing and opening nothing.
 
+``broker-listener``        dial the dev broker's external listener and deliver an alarm when every address refuses.
+``broker-listener-probe``  the same dial, delivering nothing.
+
 ``--fault`` injects a drill fault (planted-lag, unknown-node, manifest-down); a drill never keeps its sample.
 
 Exit codes: 0 OK, 2 ALARM, 3 INDETERMINATE (a group or the manifest could not be read, or no baseline yet),
@@ -33,6 +36,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryGrowthStreaks,
     InMemoryHeldState,
     InMemoryLag,
+    InMemoryListenerProbe,
     InMemoryManifest,
     InMemoryRunRecords,
     InMemorySamples,
@@ -47,11 +51,21 @@ from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     HttpManifest,
     KafkaEffectsGroups,
     KafkaLag,
+    TcpApiVersionsProbe,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
     HandlerBrokerLag,
     events_for,
     load_topics,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_listener import (
+    HandlerBrokerListener,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_listener import (
+    events_for as broker_listener_events_for,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_listener import (
+    load_topics as broker_listener_load_topics,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held import (
     HandlerEffectsHeld,
@@ -71,12 +85,18 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm import (
     EnumLabAlarmFault,
     ModelBrokerLagCommand,
 )
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_broker_listener import (
+    EnumBrokerListenerFault,
+    EnumBrokerListenerOutcome,
+    ModelBrokerListenerCommand,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     EnumEffectsHeldFault,
     EnumEffectsHeldOutcome,
     ModelEffectsHeldCommand,
 )
 from omnimarket.nodes.node_lab_alarm.overlay import (
+    ModelBrokerListenerSettings,
     ModelEffectsHeldSettings,
     ModelLabAlarmOverlay,
     load_overlay,
@@ -101,6 +121,13 @@ _EFFECTS_EXIT = {
     EnumEffectsHeldOutcome.OK: 0,
     EnumEffectsHeldOutcome.ALARM: 2,
     EnumEffectsHeldOutcome.INDETERMINATE: 3,
+}
+
+
+_LISTENER_EXIT = {
+    EnumBrokerListenerOutcome.OK: 0,
+    EnumBrokerListenerOutcome.ALARM: 2,
+    EnumBrokerListenerOutcome.INDETERMINATE: 3,
 }
 
 
@@ -333,6 +360,63 @@ def run_effects_held(
     return _EFFECTS_EXIT[result.outcome]
 
 
+def build_broker_listener_handler(
+    overlay: ModelLabAlarmOverlay, settings: ModelBrokerListenerSettings
+) -> HandlerBrokerListener:
+    """The listener handler wired to the overlay's backend: the TCP probe on the runtime backend, fixtures in memory."""
+    probe = (
+        TcpApiVersionsProbe()
+        if overlay.bus.backend == "runtime"
+        else InMemoryListenerProbe()
+    )
+    return HandlerBrokerListener(
+        settings=settings, probe=probe, delivery=_delivery_for(overlay)
+    )
+
+
+def run_broker_listener(
+    verb: str,
+    fault: EnumBrokerListenerFault,
+    *,
+    overlay: ModelLabAlarmOverlay,
+    handler: HandlerBrokerListener | None = None,
+    out: Callable[[str], object] = sys.stdout.write,
+) -> int:
+    """One broker-listener tick."""
+    settings = overlay.broker_listener
+    if settings is None:
+        sys.stderr.write(
+            "LAB-ALARM-REFUSED broker_listener: the overlay has no broker_listener block; "
+            "the other verbs do not need it\n"
+        )
+        return 1
+    handler = handler or build_broker_listener_handler(overlay, settings)
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = handler.handle(
+        ModelBrokerListenerCommand(
+            correlation_id=f"lab-alarm-broker-listener-{now}",
+            write=verb == "broker-listener",
+            fault=fault,
+        )
+    )
+    for topic, body in broker_listener_events_for(
+        result, broker_listener_load_topics()
+    ):
+        out(f"EVENT topic={topic} correlation_id={body['correlation_id']}\n")
+    out(
+        f"BROKER-LISTENER outcome={result.outcome.value} fault={result.fault.value} "
+        f"bootstrap={result.bootstrap_servers} alarms={len(result.alarms)} "
+        f"reasons={','.join(result.reasons) or 'none'}\n"
+    )
+    for alarm in result.alarms:
+        out(f"ALARM {alarm}\n")
+    for entry in result.delivery:
+        out(f"DELIVERY {entry}\n")
+    if "delivery-failed" in result.failure or "delivery-unavailable" in result.failure:
+        return _LISTENER_EXIT[EnumBrokerListenerOutcome.ALARM]
+    return _LISTENER_EXIT[result.outcome]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="node_lab_alarm")
     sub = parser.add_subparsers(dest="verb", required=True)
@@ -345,6 +429,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         held = sub.add_parser(verb)
         held.add_argument(
             "--fault", choices=[f.value for f in EnumEffectsHeldFault], default="none"
+        )
+    for verb in ("broker-listener", "broker-listener-probe"):
+        listener = sub.add_parser(verb)
+        listener.add_argument(
+            "--fault",
+            choices=[f.value for f in EnumBrokerListenerFault],
+            default="none",
         )
     schedule = sub.add_parser("schedule")
     schedule.add_argument(
@@ -376,6 +467,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             omni_root=Path(registry_root) if registry_root else None,
             overlay_root=args.overlay_root or _first_overlay_root(os.environ),
             dry_run=args.dry_run,
+        )
+    if args.verb.startswith("broker-listener"):
+        return run_broker_listener(
+            args.verb, EnumBrokerListenerFault(args.fault), overlay=overlay
         )
     if args.verb.startswith("effects-held"):
         return run_effects_held(

@@ -111,6 +111,20 @@ class ProtocolLaneDispatcher(Protocol):
         ...
 
 
+class ListenerUnresolvableError(Exception):
+    """The address's name cannot be resolved: the alarm host's fault, not evidence about the broker."""
+
+
+class ListenerRefusedError(Exception):
+    """The address refused, timed out, closed before answering, or answered with a foreign correlation id."""
+
+
+class ProtocolListenerProbe(Protocol):
+    def probe(self, host: str, port: int, timeout: float) -> None:
+        """Return when ``host:port`` answers a Kafka ApiVersions request, or raise one of the two errors above."""
+        ...
+
+
 class ProtocolAlarmDelivery(Protocol):
     def handle(
         self, request: ModelLabAlarmDeliveryRequest
@@ -124,6 +138,8 @@ __all__ = [
     "GroupNeverCommittedError",
     "GroupUnreadableError",
     "LaneDispatchError",
+    "ListenerRefusedError",
+    "ListenerUnresolvableError",
     "ManifestUnreachableError",
     "ManifestUnreadableError",
     "ProtocolAlarmDelivery",
@@ -132,6 +148,7 @@ __all__ = [
     "ProtocolGrowthStreakStore",
     "ProtocolHeldStateStore",
     "ProtocolLaneDispatcher",
+    "ProtocolListenerProbe",
     "ProtocolManifestCache",
     "ProtocolManifestSource",
     "ProtocolRunRecordStore",
