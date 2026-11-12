@@ -9,11 +9,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.landing_controller_carry import ModelLandingControllerCarry
+from omnimarket.models.landing_controller_carry import ModelLandingControllerDecisions
 from omnimarket.models.landing_decision import ModelLandingDecision, ModelLandingFacts
 from omnimarket.models.landing_tick import (
     ModelTickDivergence,
     ModelTickSubjectRow,
+)
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
+    ModelLandingRerunAnswer,
+)
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
 )
 
 
@@ -34,7 +40,7 @@ class EnumTickFailureReason(StrEnum):
     ACT_NOT_ENABLED = "act_not_enabled"
     RECORDED_DECISION_MISSING = "recorded_decision_missing"
     DECISION_RAISED = "decision_raised"
-    CONTROLLER_DECISION_UNREPRODUCED = "controller_decision_unreproduced"
+    CONTROLLER_TICK_MISSING = "controller_tick_missing"
 
 
 class EnumTickSkipReason(StrEnum):
@@ -77,11 +83,11 @@ class ModelTickSnapshot(BaseModel):
         description="Whether the script shared free slots across repositories.",
     )
     provenance: str = Field(default="", description="Where the snapshot came from.")
-    controller: ModelLandingControllerCarry | None = Field(
+    controller: ModelLandingControllerDecisions | None = Field(
         default=None,
         description=(
             "The old controller's finished tick the record's state was carried from, with its "
-            "facts and logged actions; None outside the cutover period (OMN-23665)."
+            "decision rows only, never its facts; None outside the cutover period (OMN-23665)."
         ),
     )
 
@@ -96,12 +102,16 @@ class ModelTickRequest(BaseModel):
     facts: ModelLandingFacts
     recorded_decision: ModelLandingDecision | None = None
     fair_share: bool = True
-    controller: ModelLandingControllerCarry | None = Field(
+    controller: ModelLandingControllerDecisions | None = Field(
         default=None,
         description=(
             "The old controller's finished tick carried on the record; when set, the "
             "comparison runs against that controller's decision (OMN-23665)."
         ),
+    )
+    rerun_requests: tuple[ModelLandingRerunRequest, ...] = Field(
+        default=(),
+        description="The open rerun requests lanes made: facts of this tick, each answered once (OMN-23830).",
     )
 
 
@@ -145,6 +155,10 @@ class ModelTickResult(BaseModel):
     )
     failure_reason: EnumTickFailureReason | None = None
     failure_detail: str = ""
+    rerun_answers: tuple[ModelLandingRerunAnswer, ...] = Field(
+        default=(),
+        description="The answer to each rerun request the tick carried, in request order (OMN-23830).",
+    )
 
 
 class ModelTickComparedEvent(BaseModel):

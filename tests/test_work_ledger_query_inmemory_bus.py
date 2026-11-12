@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
@@ -126,6 +128,55 @@ async def test_query_over_the_bus_matches_the_recorded_markdown_reads(
         assert [c.claim.text for c in result.open_claims] == [
             c["claim"] for c in case["claims"]
         ]
+
+
+async def test_latest_state_over_the_bus_matches_a_scan_of_the_fixture_rows() -> None:
+    """OMN-23694 golden chain: rows published through the emit handler, read as the newest row per lane and type."""
+    bus = EventBusInmemory()
+    await bus.start()
+    tracked = frozenset(
+        yaml.safe_load(
+            (
+                Path(__file__).parents[1]
+                / "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml"
+            ).read_text()
+        )["work_ledger"]["latest_row_types"]
+    )
+    reader = InMemoryWorkLedgerQueryReader(latest_row_types=tracked)
+    await reader.attach(bus)
+    await _write_fixture(InMemoryBusEmitter(bus))
+    expected: dict[tuple[str, str], str] = {}
+    for raw in split_ledger_rows(LEDGER.read_text()):
+        stamp, row_type, *cells = (
+            c.strip() for c in raw.split("\n", 1)[0].split(" | ")
+        )
+        # A MSG row names its lane in from=, every other tracked row in lane=.
+        lane = next(
+            (
+                c.split("=", 1)[1].split()[0]
+                for c in cells
+                if c.startswith(("lane=", "from="))
+            ),
+            None,
+        )
+        if lane and row_type in tracked:
+            expected[(lane, row_type)] = max(
+                expected.get((lane, row_type), stamp), stamp
+            )
+    assert expected
+    result = HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(
+        ModelWorkLedgerQueryRequest(
+            correlation_id=uuid4(),
+            query=EnumWorkLedgerQueryKind.LATEST_STATE,
+            subject_kind="lane",
+            page_size=5000,
+        )
+    )
+    assert result.error is None
+    assert {
+        (e.subject, e.row_type): e.at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        for e in result.latest
+    } == expected
 
 
 async def test_empty_ledger_answers_with_no_rows_and_no_error() -> None:

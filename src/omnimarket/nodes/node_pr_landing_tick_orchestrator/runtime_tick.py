@@ -33,6 +33,10 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_land
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     ProtocolTickPublisher,
 )
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_rerun_source import (
+    build_rerun_ledger,
+    build_rerun_request_source,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_sources import (
     PublisherFactory,
     TopicReaderFactory,
@@ -69,7 +73,18 @@ def run_once(
         }
     if publisher is None:
         publisher = build_publisher(overlay, publisher_factory=publisher_factory)
-    source = build_snapshot_source(overlay, topic_reader_factory=topic_reader_factory)
+    try:
+        source = build_snapshot_source(
+            overlay, topic_reader_factory=topic_reader_factory
+        )
+    except ValueError as exc:  # no host identity: refused, never the shared group
+        return 3, {"status": "overlay_refused", "detail": str(exc)}
+    try:
+        rerun_source = build_rerun_request_source(
+            overlay, topic_reader_factory=topic_reader_factory
+        )
+    except ValueError as exc:  # no host identity: refused, never the shared group
+        return 3, {"status": "overlay_refused", "detail": str(exc)}
     sink, label = build_emission(overlay)
     handler = HandlerPrLandingTickOrchestrator(
         publisher=publisher,
@@ -79,11 +94,21 @@ def run_once(
         emission_backend=label,
         cutover_repository=overlay.cutover_repository,
         script_out_of_scope=overlay.script_out_of_scope_repositories,
+        rerun_limit=(
+            overlay.rerun_requests.max_reruns_per_head
+            if overlay.rerun_requests
+            else None
+        ),
+        rerun_ledger=build_rerun_ledger(overlay),
     )
     try:
-        results = run_snapshots(handler, source, EnumTickMode.OBSERVE)
+        results = run_snapshots(handler, source, EnumTickMode.OBSERVE, rerun_source)
     except Exception as exc:  # the reader raised, or a record did not validate
-        return 3, {"status": "source_unread", "detail": type(exc).__name__}
+        return 3, {
+            "status": "source_unread",
+            "detail": type(exc).__name__,
+            "reason": str(exc)[:200],
+        }
     failed = sum(result.status is EnumTickStatus.FAILED for result in results)
     line: dict[str, object] = {
         "status": ("no_records" if not results else "failed" if failed else "compared"),
@@ -107,6 +132,13 @@ def run_once(
         ),
         "skipped": [row.model_dump(mode="json") for row in source.skipped()],
     }
+    if rerun_source is not None:
+        answers = [a for result in results for a in result.rerun_answers]
+        line["rerun_requests"] = {
+            "answered": len(answers),
+            "verdicts": sorted({a.verdict.value for a in answers}),
+            "skipped": [row.model_dump(mode="json") for row in rerun_source.skipped()],
+        }
     return (1 if failed else 0), line
 
 

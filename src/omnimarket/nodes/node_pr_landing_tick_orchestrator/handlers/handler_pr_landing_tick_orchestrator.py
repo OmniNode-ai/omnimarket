@@ -12,8 +12,10 @@ A landing snapshot step record carries no recorded decision. For a cutover repos
 controller rules out of scope (it reads no facts and decides nothing for it), act mode writes that
 record itself, no action, and compares that repository's subjects only; any other tick with no
 recorded decision is refused RECORDED_DECISION_MISSING (OMN-23458). When the record instead
-carries the old controller's finished tick, the compare step uses that controller's real decision
-for the tick, in scope, instead of a synthetic no action (OMN-23665).
+carries the old controller's finished tick (its decision rows, never its facts), the compare step
+uses that controller's real decision for the tick, in scope, instead of a synthetic no action
+(OMN-23665). An observe-mode record with neither is unread, CONTROLLER_TICK_MISSING: observe mode
+never assumes a decision (OMN-22921).
 """
 
 from __future__ import annotations
@@ -24,11 +26,26 @@ import yaml
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.landing_decision import (
+    EnumLandingActionKind,
+    ModelLandingAction,
     ModelLandingControllerState,
     ModelLandingDecision,
 )
 from omnimarket.models.landing_tick import (
     ModelTickReduceInput,
+)
+from omnimarket.models.pr_landing_rerun_request.enum_rerun_verdict import (
+    EnumRerunVerdict,
+)
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
+    ModelLandingRerunAnswer,
+)
+from omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input import (
+    ModelRerunDecideInput,
+    ModelRerunGrant,
+)
+from omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request import (
+    HandlerPrLandingRerunRequest,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
@@ -37,6 +54,10 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports impo
     ProtocolTickDecider,
     ProtocolTickPublisher,
     ProtocolTickWriter,
+)
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_rerun_ledger import (
+    InMemoryRerunLedger,
+    ProtocolRerunLedger,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickFailureReason,
@@ -67,6 +88,13 @@ def contract_topics() -> tuple[str, str]:
     return terminal["success"], terminal["failure"]
 
 
+def rerun_topics() -> tuple[str, str]:
+    """The rerun request's completed and failed topics, as the contract's rerun_request section declares them (OMN-23830)."""
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    section = contract["rerun_request"]
+    return section["completed_topic"], section["failed_topic"]
+
+
 class HandlerPrLandingTickOrchestrator:
     """One tick: decide, reduce per pull request, publish. Writes only in an enabled act mode."""
 
@@ -84,6 +112,9 @@ class HandlerPrLandingTickOrchestrator:
         drill: bool = False,
         cutover_repository: str | None = None,
         script_out_of_scope: tuple[str, ...] = (),
+        rerun_limit: int | None = None,
+        rerun_ledger: ProtocolRerunLedger | None = None,
+        rerun_decider: HandlerPrLandingRerunRequest | None = None,
     ) -> None:
         self._decider: ProtocolTickDecider = decider or NodePathDecider()
         self._reducer = reducer or HandlerPrLandingTickReducer()
@@ -98,6 +129,11 @@ class HandlerPrLandingTickOrchestrator:
         self._cutover_repository = cutover_repository
         self._script_out_of_scope = frozenset(script_out_of_scope)
         self._compared_topic, self._failed_topic = contract_topics()
+        # the per-head limit comes from the overlay; with none declared nothing is granted (OMN-23830)
+        self._rerun_limit = rerun_limit
+        self._rerun_ledger: ProtocolRerunLedger = rerun_ledger or InMemoryRerunLedger()
+        self._rerun_decider = rerun_decider or HandlerPrLandingRerunRequest()
+        self._rerun_completed_topic, self._rerun_failed_topic = rerun_topics()
 
     def _performed_in(
         self, request: ModelTickRequest, decision: ModelLandingDecision
@@ -142,6 +178,10 @@ class HandlerPrLandingTickOrchestrator:
         if chain is not None:
             chain.start()
         result = self._compare(request)
+        if request.rerun_requests:
+            result = result.model_copy(
+                update={"rerun_answers": self._answer_reruns(request)}
+            )
         if chain is not None:
             if result.status is EnumTickStatus.COMPARED:
                 chain.success(
@@ -160,6 +200,75 @@ class HandlerPrLandingTickOrchestrator:
                 )
         return result
 
+    def _answer_reruns(
+        self, request: ModelTickRequest
+    ) -> tuple[ModelLandingRerunAnswer, ...]:
+        """Answer each open rerun request once, in order, from this tick's facts (OMN-23830).
+
+        The request is a fact the tick reads: the decision node's rule set is untouched and the
+        rerun decision node answers. A granted re-run goes out through the one writer in an enabled
+        act mode; observe and replay record would_rerun and write nothing. Observe grants are kept
+        apart from act grants, so a request seen in observe is still granted once when acting
+        begins, and replay keeps no ledger at all.
+        """
+        facts_by_pr = {pr.pr: pr for pr in request.facts.prs}
+        acting = request.mode is EnumTickMode.ACT
+        scope = "act" if acting else request.mode.value
+        answers: list[ModelLandingRerunAnswer] = []
+        local: dict[str, list[ModelRerunGrant]] = {}
+        for ask in request.rerun_requests:
+            # replay keeps no ledger: its grants are this tick's own; otherwise the ledger holds them all
+            kept = (
+                tuple(local.get(ask.pr, ()))
+                if request.mode is EnumTickMode.REPLAY
+                else self._rerun_ledger.granted(f"{scope}:{ask.pr}")
+            )
+            answer = self._rerun_decider.handle(
+                ModelRerunDecideInput(
+                    request=ask,
+                    current=facts_by_pr.get(ask.pr),
+                    granted=kept,
+                    max_reruns_per_head=self._rerun_limit or 0,
+                )
+            )
+            if answer.verdict is EnumRerunVerdict.RERUN:
+                grant = ModelRerunGrant(head_sha=ask.head_sha, job=ask.job)
+                if acting:
+                    written = self._writer.perform(
+                        ModelLandingAction(
+                            kind=EnumLandingActionKind.RERUN,
+                            subject=ask.pr,
+                            head_sha=ask.head_sha,
+                        ),
+                        request.facts,
+                    )
+                    answer = answer.model_copy(
+                        update={
+                            "written": written,
+                            "detail": "" if written else "the writer sent no re-run",
+                        }
+                    )
+                    if not written:
+                        answers.append(answer)
+                        self._publish_rerun(answer)
+                        continue
+                else:
+                    answer = answer.model_copy(update={"would_rerun": True})
+                local.setdefault(ask.pr, []).append(grant)
+                if request.mode is not EnumTickMode.REPLAY:
+                    self._rerun_ledger.record(f"{scope}:{ask.pr}", grant)
+            answers.append(answer)
+            self._publish_rerun(answer)
+        return tuple(answers)
+
+    def _publish_rerun(self, answer: ModelLandingRerunAnswer) -> None:
+        self._publisher.publish(
+            self._rerun_failed_topic
+            if answer.verdict.is_refusal
+            else self._rerun_completed_topic,
+            answer,
+        )
+
     def _chain(self, request: ModelTickRequest) -> ChainEmitter | None:
         if self._emission_sink is None or self._floor_piece is None:
             return None
@@ -170,6 +279,7 @@ class HandlerPrLandingTickOrchestrator:
             correlation_id=request.correlation_id.hex,
             backend=self._emission_backend,
             drill=self._drill,
+            origin="real",
         )
 
     def _compare(self, request: ModelTickRequest) -> ModelTickResult:
@@ -185,9 +295,6 @@ class HandlerPrLandingTickOrchestrator:
             EnumTickMode.ACT,
         ):
             try:
-                controller_decision = self._decider.decide(
-                    request.controller.facts, request.fair_share
-                )
                 decision = self._decider.decide(request.facts, request.fair_share)
             except Exception as exc:
                 return self._failed(
@@ -195,30 +302,19 @@ class HandlerPrLandingTickOrchestrator:
                 )
             scope = self._cutover_repository
             node_projected = self._projected(decision, scope, request.facts.tick)
-            controller_projected = self._projected(
-                controller_decision, scope, request.facts.tick
-            )
-            # the node cannot reproduce what the controller did: a logged row in scope the
-            # recomputed decision does not name would make the comparison unreal
-            missing = sorted(
-                {
-                    (row.kind, row.subject)
-                    for row in request.controller.logged
-                    if scope is None or row.subject.partition("#")[0] == scope
-                }
-                - {
-                    (action.kind, action.subject)
-                    for action in controller_projected.actions
+            # the controller's real decision for the tick: its decision rows, in scope, as the
+            # carry holds them (it carries no facts to recompute them from)
+            controller_projected = node_projected.model_copy(
+                update={
+                    "actions": tuple(
+                        ModelLandingAction.model_construct(
+                            kind=row.kind, subject=row.subject
+                        )
+                        for row in request.controller.decisions
+                        if scope is None or row.subject.partition("#")[0] == scope
+                    )
                 }
             )
-            if missing:
-                kind, subject = missing[0]
-                return self._failed(
-                    request,
-                    EnumTickFailureReason.CONTROLLER_DECISION_UNREPRODUCED,
-                    f"the decision log names {kind} on {subject}, "
-                    "which the recomputed decision does not",
-                )
             reduced = self._reducer.handle(
                 ModelTickReduceInput(
                     decision=node_projected, recorded=controller_projected
@@ -278,7 +374,9 @@ class HandlerPrLandingTickOrchestrator:
             if only is None:
                 return self._failed(
                     request,
-                    EnumTickFailureReason.RECORDED_DECISION_MISSING,
+                    EnumTickFailureReason.CONTROLLER_TICK_MISSING
+                    if request.mode is EnumTickMode.OBSERVE
+                    else EnumTickFailureReason.RECORDED_DECISION_MISSING,
                     self._missing_detail(request),
                 )
         try:
@@ -380,15 +478,16 @@ class HandlerPrLandingTickOrchestrator:
         )
 
     def _written_record_repository(self, request: ModelTickRequest) -> str | None:
-        """The repository whose recorded decision the tick writes, or None when it may not.
+        """The repository whose recorded decision act mode writes, or None when it may not.
 
-        Act mode and observe mode both write it (OMN-23514): the snapshot step's records carry no
-        recorded decision, so observe mode for the cutover repository refused every record. The
-        record is the old controller's no action for a repository it rules out of scope; observe
-        mode still performs nothing.
+        Only act mode writes it (OMN-23458): the snapshot step's records carry no recorded decision,
+        and the old controller's decision for a repository it rules out of scope is no action. Observe
+        mode never assumes a decision: a record with no controller tick is unread
+        (controller_tick_missing, OMN-22921), because the controller does decide the cutover
+        repository, so an assumed no action there compared the node with a decision nobody made.
         """
         if (
-            request.mode in (EnumTickMode.ACT, EnumTickMode.OBSERVE)
+            request.mode is EnumTickMode.ACT
             and self._cutover_repository is not None
             and self._cutover_repository in self._script_out_of_scope
         ):
@@ -396,6 +495,11 @@ class HandlerPrLandingTickOrchestrator:
         return None
 
     def _missing_detail(self, request: ModelTickRequest) -> str:
+        if request.mode is EnumTickMode.OBSERVE:
+            return (
+                "the record carries no controller tick, so there is no decision of the old "
+                "controller to compare with; none is assumed"
+            )
         if request.mode is not EnumTickMode.ACT:
             return "no recorded decision to compare with"
         if self._cutover_repository is None:
@@ -411,4 +515,5 @@ __all__: list[str] = [
     "HandlerPrLandingTickOrchestrator",
     "contract_topics",
     "node_name",
+    "rerun_topics",
 ]

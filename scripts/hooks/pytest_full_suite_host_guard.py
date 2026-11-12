@@ -34,13 +34,17 @@ _SRC = str(Path(__file__).resolve().parents[2] / "src")
 _RESOLVER = Path(__file__).with_name("prepush_dispatch.sh")
 
 
+_NEEDS = ("pydantic", "yaml")
+_WITH = ("--with", "pydantic", "--with", "pyyaml")
+
+
 def _load(module: str) -> Any:
     """A module of the host guard node (OMN-23367), loaded on first use.
 
     The shell hook runs this file with no project env, so the file finds the node through this
-    checkout's own src and, when pydantic is missing, runs itself again under uv with it."""
-    if importlib.util.find_spec("pydantic") is None and __name__ == "__main__":
-        again = ["uv", "run", "--no-project", "--with", "pydantic", "python", "-m"]
+    checkout's own src and, when pydantic or yaml is missing, runs itself again under uv with them."""
+    if __name__ == "__main__" and not all(map(importlib.util.find_spec, _NEEDS)):
+        again = ["uv", "run", "--no-project", *_WITH, "python", "-m"]
         os.execvp(
             "uv", [*again, "scripts.hooks.pytest_full_suite_host_guard", *sys.argv[1:]]
         )
@@ -112,19 +116,16 @@ def _decide(
         _node()
         .HandlerPytestFullSuiteHostGuard()
         .handle(
-            _node().ModelPytestFullSuiteHostGuardRequest(
-                table_text=table_text,
-                login_overlay_text=_io().login_overlay_text(
-                    env, LOGIN_OVERLAY_NAME, OVERLAY_ROOTS_ENV
-                ),
+            _io().request(
+                table_text,
+                env,
+                host=host,
                 login=who,
                 login_home=_io().login_home(who),
-                host=host,
-                env_overrides={
-                    k: v for k, v in env.items() if k.startswith("PREPUSH_")
-                },
                 private_table_rel=private_rel,
                 host_table_rel=HOST_TABLE_REL,
+                overlay_name=LOGIN_OVERLAY_NAME,
+                roots_env=OVERLAY_ROOTS_ENV,
             )
         )
     )

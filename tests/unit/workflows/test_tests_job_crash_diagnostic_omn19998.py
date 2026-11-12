@@ -7,6 +7,11 @@ CI never says which test was running. These tests read this repository's own
 ci.yml: the fault-handler env and verbose flags the two pytest steps need to
 leave a trail, the exit code surviving the tee pipe, and the OMN-23625
 diagnostic step that reads the shard log and names the crashed test.
+
+OMN-23692: the pytest steps also record their exit status for the diagnostic,
+which then names the signal behind a 139, reads the shard's cgroup v2 memory
+high-water without privilege, and says when the kernel log is unreadable
+instead of printing nothing.
 """
 
 from __future__ import annotations
@@ -47,6 +52,9 @@ _SUDO_STUB = (
     "error 4 in _yaml.cpython-312-x86_64-linux-gnu.so[7f0000000000+1a000]'\n"
     "echo 'unrelated kernel line'\n"
 )
+
+# A log that ends mid-test: no summary line, so the diagnostic's group runs.
+_MID_TEST_LOG = "tests/a/test_two.py::test_dies \n"
 
 
 def _steps() -> list[dict[str, Any]]:
@@ -120,20 +128,31 @@ def test_diagnostic_step_runs_only_on_failure_and_is_ordered() -> None:
 
 
 def _run_diagnostic(
-    script: str, tmp_path: Path, log: str | None
+    script: str,
+    tmp_path: Path,
+    log: str | None,
+    *,
+    rc: int | None = None,
+    sudo_stub: str = _SUDO_STUB,
+    cgroup_dir: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     runner_temp = tmp_path / "runner-temp"
     bin_dir = tmp_path / "stub-bin"
     runner_temp.mkdir()
     bin_dir.mkdir()
     stub = bin_dir / "sudo"
-    stub.write_text(_SUDO_STUB)
+    stub.write_text(sudo_stub)
     stub.chmod(0o755)
     if log is not None:
         (runner_temp / "pytest-3.log").write_text(log)
+    if rc is not None:
+        (runner_temp / "pytest-3.rc").write_text(f"{rc}\n")
     env = dict(os.environ)
     env["RUNNER_TEMP"] = str(runner_temp)
     env["SPLIT"] = "3"
+    env["CGROUP_DIR"] = (
+        str(cgroup_dir) if cgroup_dir is not None else str(tmp_path / "no-such-cgroup")
+    )
     env["PATH"] = str(bin_dir) + os.pathsep + env.get("PATH", "")
     return subprocess.run(
         ["bash", "-c", script],
@@ -189,6 +208,71 @@ def test_diagnostic_survives_a_missing_log(tmp_path: Path) -> None:
     proc = _run_diagnostic(_step_run(DIAGNOSTIC), tmp_path, None)
     assert proc.returncode == 0
     assert "no pytest log" in proc.stdout
+
+
+def test_how_the_process_ended_names_the_signal_for_139(tmp_path: Path) -> None:
+    proc = _run_diagnostic(_step_run(DIAGNOSTIC), tmp_path, _MID_TEST_LOG, rc=139)
+    assert "exit status: 139" in proc.stdout
+    assert "ended by signal 11" in proc.stdout
+    assert "SEGV" in proc.stdout
+    assert proc.returncode == 0
+
+
+def test_how_the_process_ended_says_exit_1_is_not_a_signal(tmp_path: Path) -> None:
+    proc = _run_diagnostic(_step_run(DIAGNOSTIC), tmp_path, _MID_TEST_LOG, rc=1)
+    assert "exit status: 1" in proc.stdout
+    assert "is not a signal" in proc.stdout
+    assert proc.returncode == 0
+
+
+def test_how_the_process_ended_reads_memory_without_privilege(tmp_path: Path) -> None:
+    cgroup = tmp_path / "cgroup"
+    cgroup.mkdir()
+    (cgroup / "memory.peak").write_text("2147483648\n")
+    (cgroup / "memory.events").write_text("low 0\nhigh 0\nmax 0\noom 0\noom_kill 2\n")
+    proc = _run_diagnostic(
+        _step_run(DIAGNOSTIC), tmp_path, _MID_TEST_LOG, cgroup_dir=cgroup
+    )
+    assert "memory high-water: 2048 MB" in proc.stdout
+    assert "memory kill events: 2" in proc.stdout
+    assert proc.returncode == 0
+    # No readable cgroup v2 tree: say so, never read the host's own.
+    again = tmp_path / "again"
+    again.mkdir()
+    bare = _run_diagnostic(_step_run(DIAGNOSTIC), again, _MID_TEST_LOG)
+    assert "memory high-water: unavailable" in bare.stdout
+    assert bare.returncode == 0
+
+
+def test_kernel_log_refused_is_said_not_silent(tmp_path: Path) -> None:
+    refused = "#!/bin/sh\necho 'sudo: a password is required' >&2\nexit 1\n"
+    proc = _run_diagnostic(
+        _step_run(DIAGNOSTIC), tmp_path, _MID_TEST_LOG, sudo_stub=refused
+    )
+    assert (
+        "kernel log not readable without privilege: sudo: a password is required"
+        in (proc.stdout)
+    )
+    assert proc.returncode == 0
+
+
+def test_kernel_log_with_no_fault_line_says_so(tmp_path: Path) -> None:
+    quiet = "#!/bin/sh\necho 'unrelated kernel line'\n"
+    proc = _run_diagnostic(
+        _step_run(DIAGNOSTIC), tmp_path, _MID_TEST_LOG, sudo_stub=quiet
+    )
+    assert "kernel log read: no segfault, oom or kill line" in proc.stdout
+    assert "unrelated kernel line" not in proc.stdout
+    assert proc.returncode == 0
+
+
+def test_both_pytest_steps_record_their_exit_status_for_the_diagnostic() -> None:
+    record = 'echo "$rc" > "$RUNNER_TEMP/pytest-${{ matrix.split }}.rc"'
+    for name in PYTEST_STEPS:
+        run = _step_run(name)
+        assert record in run, name
+        assert run.index(record) < run.index('exit "$rc"'), name
+        assert _keeps_exit_code(run), name
 
 
 def test_exit_code_predicate_control() -> None:

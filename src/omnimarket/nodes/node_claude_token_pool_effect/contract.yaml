@@ -41,6 +41,19 @@ description: >
   label), which it holds against the overlay's steering.max_lanes_per_label; at the cap it answers a
   typed refusal and no token. The lane start passes both only when the overlay's steering.enabled is
   true; off, which is how it ships, a draw is what it was.
+  Inside the tick's mark sync (OMN-23887), when the overlay carries a stale_revoke block, the tick asks the
+  node_claude_pool_revoke_staleness_compute node whether each revoked label's revoke is stale (the same fingerprint
+  was limited after the revoke stamp plus the margin) and sends the pool one typed clear_revokes command per stale
+  label; the pool clears a mark only while it still holds that fingerprint and that exact revoke stamp. A revoke with
+  no later success stays; an overlay without the block keeps every revoke, as before.
+  Inside the same tick on the marks-source host (OMN-23895), when the overlay carries a limit_recheck block, the tick asks
+  node_claude_pool_limit_recheck_compute which limited labels are due for a re-test, runs the pool's own headless probe
+  (an injected port) on each, asks the compute node what the answer means and sends the pool one apply_limit_rechecks
+  command: an ok answer clears the mark, a limited answer naming a newer reset replaces the stamp (even an earlier one),
+  a limited answer without one keeps it, an error answer proves nothing; the pool executes a command only while it holds
+  that fingerprint and that exact stamp. mark-limited takes --exact for a notice that names its own reset, which replaces
+  the stamp; an estimate never shortens one. export --label L --name KEY writes KEY=value to a pipe (never a terminal) so
+  the refill's adopt step can move a host-held label into the secret store through the secret seed node.
 
 output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 

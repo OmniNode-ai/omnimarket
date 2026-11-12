@@ -22,6 +22,9 @@ from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score im
     ModelCodeScoreTry,
     ModelCodeScoreVerdict,
 )
+from omnimarket.nodes.node_code_contract_score_effect.models.model_pytest_summary import (
+    ModelPytestSummary,
+)
 
 __all__ = [
     "EnumCodeScoreCheckOutcome",
@@ -40,4 +43,5 @@ __all__ = [
     "ModelCodeScoreTry",
     "ModelCodeScoreVerdict",
     "ModelCodeScored",
+    "ModelPytestSummary",
 ]

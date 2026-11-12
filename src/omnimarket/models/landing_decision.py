@@ -31,6 +31,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
+    ModelLandingExternalJudged,
     ModelLandingFacts,
     ModelLandingPrFacts,
     ModelLandingSharedCheckVerdict,
@@ -63,6 +64,7 @@ __all__ = [
     "ModelLandingCauseRelease",
     "ModelLandingControllerState",
     "ModelLandingDecision",
+    "ModelLandingExternalJudged",
     "ModelLandingFacts",
     "ModelLandingLivenessFacts",
     "ModelLandingPrFacts",

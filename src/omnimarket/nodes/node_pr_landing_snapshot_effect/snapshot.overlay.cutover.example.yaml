@@ -16,9 +16,24 @@ watcher_state_path: $OMNIBASE_PATH/.claude_scratch/pr-watcher/state.json
 watcher_max_age_seconds: 900
 owner: OmniNode-ai
 record_journal: $OMNIBASE_PATH/.onex_state/landing-snapshot/records.jsonl
+# the journal keeps the newest records only (OMN-23757): its one use is the already-recorded check, the broker holds the rest;
+# 30 facts ticks of 120 s is an hour, four times the 900 s staleness bound
+record_journal_max_records: 30
 emission_journal: $OMNIBASE_PATH/.onex_state/floor-simple/emissions.jsonl
+# below the dev broker's payload limit of 1,048,588 bytes
+record_max_bytes: 1000000
 # The cutover instance (OMN-23665): also carries the old controller's finished tick onto each record.
 controller_facts_path: $HOME/.local/state/omni/landing/last-facts.json
 controller_ticks_path: $HOME/.local/state/omni/landing/ticks.jsonl
 controller_decisions_path: $HOME/.local/state/omni/landing/decisions.jsonl
+# the controller's sidecar: its external_judged memory, filled onto the pull requests' facts (OMN-22921)
+controller_sidecar_path: $HOME/.local/state/omni/landing/sidecar.json
+# the controller's declared external blocker kinds and the hours a bounded one holds (its KNOWN_EXTERNAL_KINDS,
+# UNBOUNDED_KINDS and WORKER_GATE_HOURS), filled into the facts' policy
+external_blocker_kinds: [upstream_open, operator_decision, production_gate, collaborator, hold_row]
+external_blocker_unbounded_kinds: [upstream_open]
+external_gate_hours: 1.0
+# how many bytes from the end of the tick log and of the decision log one pass reads (OMN-23708); the logs are hundreds
+# of megabytes, a pass needs the newest tick and that tick's decisions
+controller_tail_bytes: 4194304
 controller_max_age_seconds: 900

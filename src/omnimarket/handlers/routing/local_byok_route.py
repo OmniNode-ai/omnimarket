@@ -171,7 +171,39 @@ def substitute_local_byok_route(
     route = _registered_byok_route(
         byok, replaced=backend, tier=backend.tier, db_path=db_path
     )
-    return route or backend
+    if route is None:
+        return backend
+    return _keep_eval_arm_model(route, replaced=backend)
+
+
+def _keep_eval_arm_model(
+    route: ModelResolvedDelegationBackend,
+    *,
+    replaced: ModelResolvedDelegationBackend,
+) -> ModelResolvedDelegationBackend:
+    """Keep an eval arm's own model when the registered key stands in for it.
+
+    OMN-23751. An eval arm exists to measure one named model, and only a run
+    that pins its backend id reaches it. The registered key still authenticates
+    the call (the team is its own customer), but the model the key resolved at
+    registration is not the one under test: running it would score a different
+    model under the arm's name. Any other substituted rung keeps the key's model.
+    """
+    overlay = load_delegation_routing_overlay()
+    if overlay.eval_arms is None:
+        return route
+    arm = overlay.eval_arms.arm_by_backend_id().get(replaced.backend_id)
+    if arm is None:
+        return route
+    return route.model_copy(
+        update={
+            "model_id": arm.slug,
+            "model_id_source": (
+                f"eval arm {replaced.backend_id} slug, from the delegation routing "
+                "overlay eval_arms (OMN-23751)"
+            ),
+        }
+    )
 
 
 def _registered_byok_route(

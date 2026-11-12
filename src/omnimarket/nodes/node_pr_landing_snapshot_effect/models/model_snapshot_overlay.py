@@ -19,12 +19,18 @@ _REDPANDA_FIELDS = (
     "owner",
     "record_journal",
     "emission_journal",
+    "record_max_bytes",
 )
 _CONTROLLER_FIELDS = (
     "controller_facts_path",
     "controller_ticks_path",
     "controller_decisions_path",
+    "controller_tail_bytes",
     "controller_max_age_seconds",
+    "controller_sidecar_path",
+    "external_blocker_kinds",
+    "external_blocker_unbounded_kinds",
+    "external_gate_hours",
 )
 
 
@@ -96,9 +102,30 @@ class ModelSnapshotOverlay(BaseModel):
         default=None,
         description="Redpanda only: the journal every tick's record is appended to.",
     )
+    record_journal_max_records: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Redpanda only: how many of the newest tick records the journal keeps (OMN-23757). The journal's one "
+            "use is the already-recorded check, which needs the newest tick, and the broker holds every record "
+            "(each is published before it is journaled), so a read parses only this many and an append that "
+            "leaves more rewrites the file to this many. Absent, the journal is unbounded and each pass line "
+            "names this key as missing."
+        ),
+    )
     emission_journal: str | None = Field(
         default=None,
         description="Redpanda only: the floor's emission journal each pass's chain is written to.",
+    )
+    record_max_bytes: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Redpanda only: the largest tick record (its JSON, in bytes) the step publishes. The broker "
+            "refuses a payload over its limit (1,048,588 bytes on the dev lane), so the overlay sets this "
+            "below it; a record over it ends in the typed failed event record_too_large, never a "
+            "refused publish."
+        ),
     )
     controller_facts_path: str | None = Field(
         default=None,
@@ -124,6 +151,17 @@ class ModelSnapshotOverlay(BaseModel):
             "its three companions, never alone."
         ),
     )
+    controller_tail_bytes: int | None = Field(
+        default=None,
+        ge=1024,
+        description=(
+            "Cutover only: how many bytes from the end of the controller's tick log and of its decision log "
+            "the pass may read (OMN-23708); the logs reach hundreds of megabytes, and only the newest finished "
+            "tick and that tick's decisions are needed. A tail with no whole row, or one that does not reach "
+            "back before the tick's decisions, is an unread controller state, never a partial one; set with "
+            "its companions, never alone."
+        ),
+    )
     controller_max_age_seconds: int | None = Field(
         default=None,
         ge=1,
@@ -131,6 +169,32 @@ class ModelSnapshotOverlay(BaseModel):
             "Cutover only: a controller state older than this is refused (OMN-23665); set "
             "with its three companions, never alone."
         ),
+    )
+
+    controller_sidecar_path: str | None = Field(
+        default=None,
+        description=(
+            "Cutover only: the controller's sidecar file; its external_judged (the external blockers a worker "
+            "judged per pull request and head) is filled onto the pull requests' facts (OMN-22921); set with "
+            "its companions, never alone. An unreadable file is an unread controller state, never an empty one."
+        ),
+    )
+    external_blocker_kinds: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Cutover only: the blocker kinds that hold a pull request from a worker while the ref stands; "
+            "filled into the facts' policy (OMN-22921)."
+        ),
+    )
+    external_blocker_unbounded_kinds: tuple[str, ...] | None = Field(
+        default=None,
+        description="Cutover only: the kinds that hold with no time bound while the ref is open (OMN-22921).",
+    )
+    external_gate_hours: float | None = Field(
+        default=None,
+        gt=0,
+        description="Cutover only: how long any other judged kind holds a pull request from a worker (OMN-22921).",
     )
 
     @model_validator(mode="after")
@@ -149,7 +213,11 @@ class ModelSnapshotOverlay(BaseModel):
 
     @model_validator(mode="after")
     def _controller_fields_come_as_a_set(self) -> ModelSnapshotOverlay:
-        set_fields = [name for name in _CONTROLLER_FIELDS if getattr(self, name)]
+        set_fields = [
+            name
+            for name in _CONTROLLER_FIELDS
+            if getattr(self, name) is not None and getattr(self, name) != ""
+        ]
         if set_fields and len(set_fields) != len(_CONTROLLER_FIELDS):
             missing = [name for name in _CONTROLLER_FIELDS if name not in set_fields]
             raise ValueError(

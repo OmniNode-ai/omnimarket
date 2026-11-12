@@ -19,8 +19,17 @@ from typing import Protocol
 import yaml
 from pydantic import SecretStr
 
+from omnimarket.handlers.node_overlay_reader import (
+    find_node_overlay,
+    load_structured_overlay,
+)
 from omnimarket.models.model_delegation_scenario_settings import (
     ModelScenarioSettingsOverlay,
+    ModelScenarioStoreOverlay,
+    ModelScenarioTenantReadOverlay,
+)
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
 )
 from omnimarket.models.secret_store.model_secret_store_request import (
     EnumSecretStoreOperation,
@@ -48,14 +57,23 @@ class ProtocolSettingStore(Protocol):
 class SecretStoreSettingsReader:
     """The real store seam: the machine's overlay first, the host env file's identity second.
 
+    With ``overlay`` the reader resolves through that store block alone: no host env
+    file fallback and no machine config attempt.
+
     Args:
+        overlay: The store block to resolve through, instead of the machine's own config.
         onex_home: The ONEX home holding ``config.yaml``; defaults to the standard one.
         home: The user's home holding ``.omnibase/.env``; defaults to ``Path.home()``.
     """
 
     def __init__(
-        self, *, onex_home: Path | None = None, home: Path | None = None
+        self,
+        *,
+        overlay: ModelSecretStoreOverlay | None = None,
+        onex_home: Path | None = None,
+        home: Path | None = None,
     ) -> None:
+        self._overlay = overlay
         self._onex_home = onex_home
         self._home = home
 
@@ -65,17 +83,22 @@ class SecretStoreSettingsReader:
             folder=folder,
             key=name,
         )
-        result = await HandlerSecretStore(onex_home=self._onex_home).handle(request)
-        if result.outcome is EnumSecretStoreOutcome.NOT_CONFIGURED:
-            home = self._home or Path.home()
-            overlay = host_env_overlay(home)
-            if overlay is None:
-                return None
+        if self._overlay is not None:
             result = await HandlerSecretStore(
-                overlay=overlay,
-                onex_home=self._onex_home,
-                bootstrap_store=IdentityFileStore(home / HOST_ENV_FILE),
+                overlay=self._overlay, onex_home=self._onex_home
             ).handle(request)
+        else:
+            result = await HandlerSecretStore(onex_home=self._onex_home).handle(request)
+            if result.outcome is EnumSecretStoreOutcome.NOT_CONFIGURED:
+                home = self._home or Path.home()
+                overlay = host_env_overlay(home)
+                if overlay is None:
+                    return None
+                result = await HandlerSecretStore(
+                    overlay=overlay,
+                    onex_home=self._onex_home,
+                    bootstrap_store=IdentityFileStore(home / HOST_ENV_FILE),
+                ).handle(request)
         if result.outcome is not EnumSecretStoreOutcome.RESOLVED:
             return None
         value = result.value
@@ -89,6 +112,34 @@ def load_settings_overlay(path: Path) -> ModelScenarioSettingsOverlay:
     return ModelScenarioSettingsOverlay.model_validate(
         yaml.safe_load(path.read_text(encoding="utf-8"))
     )
+
+
+def load_store_overlay(
+    overlay_id: str, environ: Mapping[str, str] | None = None
+) -> ModelSecretStoreOverlay | None:
+    """The scenario node's ``secret_store`` block from its overlay document, or ``None`` when it declares none.
+
+    A present but broken document raises: a store the overlay names badly must not read as no store.
+    """
+    if find_node_overlay(overlay_id, environ) is None:
+        return None
+    return load_structured_overlay(
+        overlay_id, ModelScenarioStoreOverlay, environ
+    ).secret_store
+
+
+def load_tenant_read_overlay(
+    overlay_id: str, environ: Mapping[str, str] | None = None
+) -> ModelScenarioTenantReadOverlay | None:
+    """The scenario node's ``tenant_read`` block (bus, lane, probe tenant, wait bound), or ``None`` when it declares none.
+
+    A present but broken document raises: a block the overlay names badly must not read as no block.
+    """
+    if find_node_overlay(overlay_id, environ) is None:
+        return None
+    return load_structured_overlay(
+        overlay_id, ModelScenarioStoreOverlay, environ
+    ).tenant_read
 
 
 def read_host_env_names(
@@ -189,5 +240,6 @@ __all__ = [
     "fill_declared_settings",
     "fill_overlay_settings",
     "load_settings_overlay",
+    "load_store_overlay",
     "read_host_env_names",
 ]

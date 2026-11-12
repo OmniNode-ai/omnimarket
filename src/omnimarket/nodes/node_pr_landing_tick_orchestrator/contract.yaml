@@ -33,8 +33,8 @@ description: >
   Landing tick orchestrator. Runs one tick's facts through the decision node and the tick
   reducer, compares the decision per pull request with the script's recorded decision, and
   emits one compared event (or a typed failure). Observe and replay never write. During the
-  cutover the tick record can carry the old controller's finished tick, with its facts and
-  logged actions: when it does, the comparison runs against the controller's real decision
+  cutover the tick record can carry the old controller's finished tick, with its decision rows
+  (kind, subject, outcome, reason; never its facts): when it does, the comparison runs against the controller's real decision
   for that tick, scoped to the cutover repository, instead of a synthetic no action
   (OMN-23665).
 input_model:
@@ -81,10 +81,29 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimarket.pr-landing-tick-compared.v1"
     - "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
+    - "onex.evt.omnimarket.pr-landing-rerun-completed.v1"
+    - "onex.evt.omnimarket.pr-landing-rerun-failed.v1"
 terminal_event: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
 externally_consumed_topics:
   - "onex.evt.omnimarket.pr-landing-tick-compared.v1"
   - "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
+  - "onex.evt.omnimarket.pr-landing-rerun-completed.v1"
+  - "onex.evt.omnimarket.pr-landing-rerun-failed.v1"
+externally_produced_topics:
+  - topic: "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
+    producer: "the onex scm rerun-request verb (omnimarket.handlers.scm.scm_rerun_request), which publishes the request directly and reads the answer -- not a node contract"
+# OMN-23830: any lane's request to re-run one failed job on the current head. The request is a fact the tick
+# reads (read from command_topic by the unit's topic reader under the overlay's rerun_requests section, never a
+# handler subscription), the rerun decision node answers it, and the tick publishes the answer: completed for a
+# re-run or a duplicate, failed for limit_reached, head_moved or job_not_failed. The per-head limit is the
+# overlay's. onex scm rerun-request publishes the command and reads the answer.
+rerun_request:
+  command_topic: "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
+  completed_topic: "onex.evt.omnimarket.pr-landing-rerun-completed.v1"
+  failed_topic: "onex.evt.omnimarket.pr-landing-rerun-failed.v1"
+  request_model: "omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request.ModelLandingRerunRequest"
+  answer_model: "omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer.ModelLandingRerunAnswer"
+  decision_node: "node_pr_landing_rerun_request_compute"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.pr-landing-tick-compare-requested.v1"
   terminal_events:
@@ -96,9 +115,12 @@ runtime_dispatch:
 # runtime wires no handler subscription for it; the topic itself is provisioned from the
 # snapshot step's event_bus.publish_topics (OMN-23494).
 consumed_events:
+  - event_type: ModelLandingRerunRequest
+    topic: "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
+    description: A lane's request to re-run one failed job on the current head (OMN-23830), read by this node's topic reader under the overlay's rerun_requests consumer group; declared as a consumed event and not in event_bus.subscribe_topics so the runtime wires no handler subscription for it. The request is a fact of the tick that reads it and is answered once on the rerun completed or failed topic.
   - event_type: ModelLandingTickRecord
     topic: "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
-    description: The landing snapshot step's tick record, read by this node's topic reader under its overlay's consumer group; declared as a consumed event and not in event_bus.subscribe_topics so the runtime wires no handler subscription for it (OMN-23494). During the cutover the record carries the old controller's finished tick, with its facts and logged actions, and the compare step decides those facts and compares against that controller's real decision instead of a synthetic no action (OMN-23665).
+    description: The landing snapshot step's tick record, read by this node's topic reader under its overlay's consumer group; declared as a consumed event and not in event_bus.subscribe_topics so the runtime wires no handler subscription for it (OMN-23494). During the cutover the record carries the old controller's finished tick, as its decision rows only, and the compare step compares the node's decision for the record's facts with those rows, the controller's real decision, instead of a synthetic no action (OMN-23665); a record with no controller tick in observe mode is unread, controller_tick_missing, never an assumed decision (OMN-22921).
 descriptor:
   node_archetype: orchestrator
   purity: side_effecting
