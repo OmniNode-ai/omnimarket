@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.code_eval_suite.model_suite_task import ModelCodeEvalSuiteTask
+from omnimarket.models.eval_suite_census.model_suite_task import ModelCodeEvalSuiteTask
 
 
 class ModelCodeEvalSuiteExclusion(BaseModel):
