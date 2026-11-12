@@ -52,6 +52,25 @@ handler:
 
 handler_routing:
   default_handler: omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup:HandlerModelSetup
+  handlers:
+    - operation: model_setup.probe_models
+      handler:
+        name: HandlerEndpointProbe
+        module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_probe
+      handler_module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_probe
+      event_model: omnimarket.nodes.node_model_setup_effect.models.model_endpoint_probe.ModelEndpointProbeRequest
+    - operation: model_setup.connections
+      handler:
+        name: HandlerEndpointConnections
+        module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_connections
+      handler_module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_connections
+      event_model: omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection.ModelEndpointConnectionRequest
+    - operation: model_setup.discover
+      handler:
+        name: HandlerEndpointModels
+        module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models
+      handler_module: omnimarket.nodes.node_model_setup_effect.handlers.handler_endpoint_models
+      event_model: omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models.ModelEndpointModelsRequest
 
 descriptor:
   node_archetype: effect
@@ -78,3 +97,14 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+# OMN-23413: the HTTP this node makes, always to the server the user connects.
+endpoints:
+  model_server_models:
+    url_ref: connection.base_url
+    method: GET
+    description: "Read-only: the models a user-connected server lists."
+  model_server_probe:
+    url_ref: connection.base_url
+    method: POST
+    description: "One-token check of a chosen model on the user's server."

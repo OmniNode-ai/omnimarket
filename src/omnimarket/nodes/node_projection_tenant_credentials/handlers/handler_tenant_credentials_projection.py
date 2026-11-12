@@ -75,7 +75,9 @@ from omnimarket.events.topics import (
 from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.registered_endpoint_backend import (
+    registered_endpoint_backend,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     terminal_event_time,
@@ -639,6 +641,15 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                     "persisting a secret value into the ref catalog)"
                 )
 
+        endpoint_metadata = data.get("metadata") or {}
+        if not isinstance(endpoint_metadata, dict):
+            raise ValueError("Credential metadata must be a mapping")
+        registered_endpoint_backend(
+            str(provider),
+            plan=_registered_plan(data),
+            base_url=endpoint_metadata.get("base_url"),
+            connection_id=endpoint_metadata.get("connection_id"),
+        )
         models = registered_models(data)
         expected_version = registered_expected_version(data)
         rows = await self.db_for(self._table_credentials, operation="write").execute(
@@ -693,6 +704,8 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             model=models[0] if models else _registered_model(data),
             models=models,
             expected_version=expected_version,
+            base_url=endpoint_metadata.get("base_url"),
+            connection_id=endpoint_metadata.get("connection_id"),
         )
         # The route write also records the key's own model choices on its
         # catalog row (OMN-21217); that later row is the one to publish.
@@ -714,6 +727,8 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         model: str = BYOK_MODEL_UNRESOLVED,
         models: list[str] | None = None,
         expected_version: int | None = None,
+        base_url: object = None,
+        connection_id: object = None,
     ) -> dict[str, Any] | None:
         """Mint the route that actually selects this customer's key (OMN-17372).
 
@@ -742,7 +757,9 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         # provider's default plan (glm: the general API, byok-glm-general). A
         # detection-only plan (glm coding_plan) resolves to nothing here, so no
         # route to the Coding Plan endpoint is ever minted for a customer.
-        backend = resolve_byok_provider_backend(provider, plan=plan)
+        backend = registered_endpoint_backend(
+            provider, plan=plan, base_url=base_url, connection_id=connection_id
+        )
         if backend is None:
             # Deliberately not a raise and not a DLQ: the credential itself is
             # valid and now visible to its owner. What does not exist is a

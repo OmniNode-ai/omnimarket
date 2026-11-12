@@ -20,6 +20,7 @@ never read or written (``_isolated_home`` asserts that).
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shlex
 from collections.abc import Iterator
@@ -30,11 +31,23 @@ import pytest
 from click.testing import CliRunner, Result
 from omnibase_core.cli.cli_commands import cli
 
+from omnimarket.handlers import handler_model_keys
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
+    ModelModelStatus,
+    ModelModelTestResult,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
+    HandlerSetupPreflight,
+)
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupReceipt,
     ModelOnexSetupRequest,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
+    ModelSetupObservation,
+)
+from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 _UNSET_ENV: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
 # The model step has its own tests (tests/unit/nodes/node_onex_setup_effect); here it
@@ -43,9 +56,16 @@ _MODEL_ARGS = ["--provider", "local", "--url", "http://127.0.0.1:9", "--model", 
 
 
 def _answering_model_step(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
+    (request.onex_home / ".model-fixture.json").write_text(
+        json.dumps(
+            {"provider": request.provider, "model": request.model, "url": request.url}
+        )
+    )
     return ModelOnexSetupReceipt(
         provider=request.provider or "",
         model=request.model or "",
+        backend_id="fixture-model",
+        endpoint=request.url,
         tested_at="2026-11-08T00:00:00+00:00",
     )
 
@@ -59,12 +79,45 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    isolate_setup_shell(monkeypatch)
     assert Path.home() == fake_home
     assert Path.home() != real_home
     # Every prerequisite present by default; tests remove what they need to.
     monkeypatch.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(handler_onex_setup, "compose_available", lambda: True)
     monkeypatch.setattr(handler_onex_setup, "prove_model", _answering_model_step)
+    monkeypatch.setattr(
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
+    )
+    monkeypatch.setattr(
+        "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
+        lambda: fake_home / ".model-store" / "delegation.sqlite",
+    )
+
+    def fixture_statuses(**_selection: object) -> tuple[ModelModelStatus, ...]:
+        path = fake_home / ".onex" / ".model-fixture.json"
+        if not path.exists():
+            return ()
+        data = json.loads(path.read_text())
+        return (
+            ModelModelStatus(
+                provider=data["provider"],
+                set_up=True,
+                models=(data["model"],),
+                last_test=ModelModelTestResult(
+                    provider=data["provider"],
+                    status="passed",
+                    tested_at="2026-11-08T00:00:00+00:00",
+                    model=data["model"],
+                    backend_id="fixture-model",
+                    endpoint=data["url"],
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(handler_model_keys, "list_providers", fixture_statuses)
     return fake_home
 
 
@@ -79,7 +132,12 @@ def _run(
         args = [*args, *_MODEL_ARGS]
     merged: dict[str, str | None] = dict(_UNSET_ENV)
     merged.update(env)
-    return CliRunner().invoke(cli, ["setup", *args], input=prompt_input, env=merged)
+    return CliRunner().invoke(
+        cli,
+        ["setup", "--yes", "--component", "delegation", *args],
+        input=prompt_input,
+        env=merged,
+    )
 
 
 def _snapshot(*roots: Path) -> dict[str, str]:
@@ -117,7 +175,7 @@ class TestSetupWalk:
         assert 'type: "inmemory"' in runtime.read_text()
         assert (home / ".onex/config.yaml").is_file()
         assert (home / ".onex/setup.json").is_file()
-        assert f'export OMNIBASE_PATH="{workspace}"' in result.output
+        assert "Setup complete" in result.output
 
     def test_omni_home_bridge_is_a_derivation_source(
         self, home: Path, tmp_path: Path
@@ -148,7 +206,6 @@ class TestSetupWalk:
 
         assert result.exit_code == 1
         assert "Workspace root" not in result.output, "prompted without a terminal"
-        assert "step 'arguments' failed" in result.output
         assert "--workspace is missing" in result.output
         assert "export OMNIBASE_PATH" in result.output
         assert not (home / ".onex").exists(), "wrote state before the walk could run"
@@ -159,7 +216,7 @@ class TestSetupWalk:
         workspace = tmp_path / "remembered"
         first = _run(["--no-interactive", "--workspace", str(workspace)])
         assert first.exit_code == 0, first.output
-        second = _run(["--interactive"], prompt_input="")
+        second = _run(["--interactive"], prompt_input="\n")
         assert second.exit_code == 0, second.output
         assert "Workspace root" not in second.output
 
@@ -170,10 +227,12 @@ class TestSetupWalk:
         result = _run(
             ["--no-interactive", "--path", "docker"], OMNIBASE_PATH=str(workspace)
         )
-        assert result.exit_code == 0, result.output
-        runtime = workspace / "config/onex/runtime/runtime_config.yaml"
-        assert 'type: "kafka"' in runtime.read_text()
-        assert "# install-path: docker" in runtime.read_text()
+        # The legacy command only wrote Kafka settings. Until the actual Docker
+        # lifecycle is connected, a selected Docker setup must refuse before
+        # claiming completion or writing a partial native installation.
+        assert result.exit_code != 0
+        assert not workspace.exists()
+        assert not (home / ".onex").exists()
 
     def test_cloud_path_is_refused_with_the_choices(
         self, home: Path, tmp_path: Path
@@ -202,6 +261,13 @@ class TestSetupIdempotent:
             path_choice,
         ]
         first = _run(args)
+        if path_choice == "docker":
+            before = _snapshot(home)
+            second = _run(args)
+            assert first.exit_code != 0
+            assert second.exit_code != 0
+            assert _snapshot(home) == before
+            return
         assert first.exit_code == 0, first.output
         before = _snapshot(home, workspace)
 
@@ -215,7 +281,7 @@ class TestSetupIdempotent:
     ) -> None:
         workspace = tmp_path / "ws"
         first = _run(
-            ["--no-interactive", "--workspace", str(workspace), "--path", "docker"]
+            ["--no-interactive", "--workspace", str(workspace), "--path", "local"]
         )
         assert first.exit_code == 0, first.output
         before = _snapshot(home, workspace)
@@ -249,15 +315,23 @@ def _break_prerequisites(
     home: Path, workspace: Path, mp: pytest.MonkeyPatch
 ) -> list[str]:
     mp.setattr(
-        handler_onex_setup,
-        "which",
-        lambda name: None if name == "docker" else f"/usr/bin/{name}",
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(
+            step="preflight",
+            status="unavailable",
+            fix="Install the missing prerequisite tool.",
+        ),
     )
-    return ["--no-interactive", "--workspace", str(workspace), "--path", "docker"]
+    return ["--no-interactive", "--workspace", str(workspace)]
 
 
 def _fix_prerequisites(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> None:
-    mp.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
+    mp.setattr(
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
+    )
 
 
 def _break_user_config(
@@ -278,6 +352,7 @@ def _break_runtime_config(
 ) -> list[str]:
     runtime = workspace / "config/onex/runtime/runtime_config.yaml"
     runtime.parent.mkdir(parents=True, exist_ok=True)
+    (workspace / ".onex-setup-workspace").write_text("onex setup\n")
     runtime.write_text("name: hand-written\n")
     return ["--no-interactive", "--workspace", str(workspace)]
 
@@ -327,7 +402,10 @@ class TestSetupFailureAndResume:
 
         failed = _run(args)
         assert failed.exit_code == 1, failed.output
-        assert f"step '{step}' failed" in failed.output
+        actual_step = {"prerequisites": "preflight", "model": "models"}.get(step, step)
+        assert re.search(
+            rf"\[(failure|unavailable|action_required)\] {actual_step}\b", failed.output
+        ), failed.output
         fix_lines = [
             line for line in failed.output.splitlines() if line.startswith("Fix: ")
         ]

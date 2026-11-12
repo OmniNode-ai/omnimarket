@@ -7,8 +7,8 @@ AC1  a key on stdin, on a fresh HOME against a stub key server, ends with a
 AC2  each missing input is refused before any step runs, naming its flag.
 AC3  a wrong key fails the model step with exit 1, the step and the retry
      command named, the earlier steps kept; the retry with the right key ends.
-AC4  ``--provider local --url`` ends with a receipt naming local; ``ollama``
-     is refused unattended, naming ``--provider local --url``.
+AC4  ``local`` and optional ``ollama`` use the supplied endpoint without
+     installing, starting or downloading a runtime or models.
 AC5  the key is in no argv, stdout, stderr, log, state file or receipt.
 
 The servers are real HTTP servers on 127.0.0.1. The one thing stubbed is the
@@ -36,11 +36,17 @@ from omnibase_core.cli.cli_commands import cli
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
-from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     HandlerOnexSetup,
 )
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
+    HandlerSetupPreflight,
+)
 from omnimarket.nodes.node_onex_setup_effect.models import ModelOnexSetupRequest
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
+    ModelSetupObservation,
+)
+from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 pytestmark = pytest.mark.unit
 
@@ -62,7 +68,34 @@ class _KeyServer(BaseHTTPRequestHandler):
         self._json(200, {"object": "list", "data": [{"id": MODEL}]})
 
     def do_POST(self) -> None:
-        self.send_error(404)
+        # The setup walk's one-token availability check (OMN-23413); delegation
+        # itself goes through the recorded subprocess, never this server.
+        if self.path != "/v1/chat/completions":
+            self.send_error(404)
+            return
+        if self.headers.get("Authorization") not in (None, f"Bearer {GOOD_KEY}"):
+            self._json(401, {"error": {"message": "invalid api key"}})
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        model = json.loads(self.rfile.read(length) or b"{}").get("model")
+        if model != MODEL:
+            self._json(404, {"error": {"message": "unknown model"}})
+            return
+        self._json(
+            200,
+            {
+                "object": "chat.completion",
+                "model": MODEL,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "length",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
 
     def _json(self, status: int, body: dict[str, Any]) -> None:
         data = json.dumps(body).encode()
@@ -94,6 +127,7 @@ class Recorder:
 
     receipts_dir: Path
     answer_model: str = MODEL
+    endpoint: str = "http://127.0.0.1/v1/chat/completions"
     argv: list[list[str]] = field(default_factory=list)
     receipts: list[Path] = field(default_factory=list)
 
@@ -111,7 +145,7 @@ class Recorder:
                     "status": "success",
                     "backend_id": backend,
                     "model": self.answer_model,
-                    "endpoint": "http://127.0.0.1/v1/chat/completions",
+                    "endpoint": self.endpoint,
                 }
             ),
             encoding="utf-8",
@@ -133,6 +167,15 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    isolate_setup_shell(monkeypatch)
+    # These isolate the model/store/receipt boundary. Native machine probes have
+    # their own real-Mac E2E and refusal controls; the subprocess recorder must
+    # not impersonate sysctl or disk evidence.
+    monkeypatch.setattr(
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
+    )
     store = tmp_path / "delegation" / "delegation.sqlite"
     store.parent.mkdir()
     for module in (
@@ -144,8 +187,12 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
-def recorder(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Recorder:
-    recording = Recorder(receipts_dir=tmp_path / "runs")
+def recorder(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server: str
+) -> Recorder:
+    recording = Recorder(
+        receipts_dir=tmp_path / "runs", endpoint=server + "/v1/chat/completions"
+    )
     monkeypatch.setattr(subprocess, "run", recording)
     return recording
 
@@ -153,7 +200,12 @@ def recorder(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rec
 def _setup(args: list[str], stdin: str | None = None, **env: str) -> Result:
     merged: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
     merged.update(env)
-    return CliRunner().invoke(cli, ["setup", *args], input=stdin, env=merged)
+    return CliRunner().invoke(
+        cli,
+        ["setup", "--yes", "--component", "delegation", *args],
+        input=stdin,
+        env=merged,
+    )
 
 
 def _unattended(workspace: Path, *flags: str) -> list[str]:
@@ -189,8 +241,16 @@ def test_model_step_proven_delegation(
     receipt = _receipt_line(result)
     assert receipt["provider"] == "openai_compatible"
     assert receipt["model"] == MODEL
-    steps = re.findall(r"^\[(?:done|unchanged)\] (\w+):", result.output, re.MULTILINE)
-    assert steps == list(handler_onex_setup.SETUP_STEPS)
+    steps = re.findall(r"^\[success\] ([\w-]+)", result.output, re.MULTILINE)
+    assert steps == [
+        "preflight",
+        "shell-safety",
+        "workspace",
+        "user_config",
+        "runtime_config",
+        "identity",
+        "models",
+    ]
     delegations = recorder.delegations()
     assert len(delegations) == 1, "the walk must run exactly one delegation"
     assert (
@@ -216,7 +276,7 @@ def test_model_step_refuses_a_delegation_that_answered_on_another_model(
         stdin=f"{GOOD_KEY}\n",
     )
     assert result.exit_code == 1, result.output
-    assert "step 'model' failed" in result.output
+    assert "[failure] models" in result.output
     assert "Receipt: " not in result.output
 
 
@@ -237,7 +297,6 @@ def _assert_missing_refused(
     result = _setup(args, stdin="")
 
     assert result.exit_code == 1, result.output
-    assert "step 'arguments' failed" in result.output
     assert f"{named} is missing" in result.output
     assert "[done]" not in result.output
     assert "[unchanged]" not in result.output
@@ -313,11 +372,10 @@ def test_wrong_key_resumes(
     failed = _setup(args, stdin=f"{WRONG_KEY}\n")
 
     assert failed.exit_code == 1, failed.output
-    assert "step 'model' failed" in failed.output
+    assert "[failure] models" in failed.output
     retry = re.search(r"^Retry: (onex setup.*)$", failed.output, re.MULTILINE)
     assert retry, failed.output
     assert "stdin" in failed.output, "the retry must say the key goes on stdin"
-    assert "Steps before this one are complete and are kept" in failed.output
     assert WRONG_KEY not in failed.output
     # The earlier steps are kept.
     assert workspace.is_dir()
@@ -353,7 +411,7 @@ def test_interactive_walk_asks_for_provider_url_and_model(
 ) -> None:
     result = _setup(
         ["--interactive", "--workspace", str(tmp_path / "ws")],
-        stdin=f"local\n{server}\n{MODEL}\n",
+        stdin=f"local\n{server}\ny\n{MODEL}\n",
     )
     assert result.exit_code == 0, result.output
     assert "Provider" in result.output
@@ -361,7 +419,7 @@ def test_interactive_walk_asks_for_provider_url_and_model(
     assert len(recorder.delegations()) == 1
 
 
-def test_unattended_ollama_refused_names_local(
+def test_ollama_requires_an_explicit_endpoint_before_installation(
     home: Path, tmp_path: Path, server: str, recorder: Recorder
 ) -> None:
     result = _setup(
@@ -369,12 +427,95 @@ def test_unattended_ollama_refused_names_local(
         stdin="",
     )
     assert result.exit_code != 0, result.output
-    assert "--provider local --url" in result.output
-    assert "No step ran and nothing was written" in result.output
-    assert "--provider ollama" not in result.output.split("Retry:", 1)[1]
+    assert "--url" in result.output
     assert "[done]" not in result.output
     assert not (home / ".onex").exists()
     assert recorder.argv == []
+
+
+@pytest.mark.parametrize("authenticated", [False, True])
+def test_ollama_uses_supplied_endpoint_without_managing_runtime(
+    home: Path, tmp_path: Path, server: str, recorder: Recorder, authenticated: bool
+) -> None:
+    """Catch model allowlists, implicit localhost, and install/start/pull effects."""
+    args = _unattended(
+        tmp_path / "ws", "--provider", "ollama", "--model", MODEL, "--url", server
+    )
+    if authenticated:
+        args += ["--endpoint-auth", "api-key"]
+    result = _setup(args, stdin=f"{GOOD_KEY}\n" if authenticated else "")
+    assert result.exit_code == 0, result.output
+    assert _receipt_line(result)["provider"] == "ollama"
+    assert len(recorder.delegations()) == 1
+    assert all("delegate" in argv for argv in recorder.argv), recorder.argv
+    assert GOOD_KEY not in result.output
+    state = home / ".onex" / "setup.json"
+    assert GOOD_KEY not in state.read_text()
+    before = state.read_bytes()
+    database = tmp_path / "delegation" / "delegation.sqlite"
+    database_before = (database.read_bytes(), database.stat().st_mtime_ns)
+    again = _setup([*args, "--action", "verify"], stdin="")
+    assert again.exit_code == 0, again.output
+    assert len(recorder.delegations()) == 1
+    assert state.read_bytes() == before
+    assert (database.read_bytes(), database.stat().st_mtime_ns) == database_before
+
+
+def test_ollama_preserves_an_existing_local_endpoint(
+    home: Path, tmp_path: Path, server: str, recorder: Recorder
+) -> None:
+    from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
+        ModelModelSetupRequest,
+    )
+
+    owner = handler_model_setup.HandlerModelSetup()
+    owner.handle(
+        ModelModelSetupRequest(operation="add_local", url=server, models=(MODEL,))
+    )
+    original = owner.overrides_path().read_text()
+    second = server + "/separate-server"
+    recorder.endpoint = second + "/v1/chat/completions"
+    result = _setup(
+        _unattended(
+            tmp_path / "ws", "--provider", "ollama", "--model", MODEL, "--url", second
+        ),
+        stdin="",
+    )
+    assert result.exit_code == 0, result.output
+    rows = handler_model_setup.local_url_entries(owner.overrides_path())
+    assert len(rows) == 2
+    assert rows[0]["endpoint_url"] == server + "/v1/chat/completions"
+    assert rows[1]["endpoint_url"] == recorder.endpoint
+    assert original != owner.overrides_path().read_text()
+    assert _receipt_line(result)["backend"] == rows[1]["backend_id"]
+
+
+def test_ollama_authentication_cannot_share_a_credential_slot_in_one_plan(
+    tmp_path: Path,
+) -> None:
+    from pydantic import ValidationError
+
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
+        ModelSetupPlan,
+    )
+
+    with pytest.raises(ValidationError, match="credential"):
+        ModelSetupPlan(
+            workspace=tmp_path,
+            providers=(
+                {
+                    "provider": "ollama",
+                    "models": [MODEL],
+                    "url": "http://localhost:11434",
+                    "api_key_required": True,
+                },
+                {
+                    "provider": "openai_compatible",
+                    "models": [MODEL],
+                    "url": "https://example.com/v1",
+                },
+            ),
+        )
 
 
 def test_unattended_keyed_provider_without_a_key_is_refused(
@@ -393,7 +534,7 @@ def test_unattended_keyed_provider_without_a_key_is_refused(
         stdin="",
     )
     assert result.exit_code == 1, result.output
-    assert "no openai_compatible key was given on stdin" in result.output
+    assert "credential" in result.output.lower()
     assert not (home / ".onex").exists()
 
 
@@ -429,8 +570,9 @@ def _where_the_key_is(
 
 
 def _run_for_the_sentinel(
-    home: Path, tmp_path: Path, server: str, key: str
+    home: Path, tmp_path: Path, server: str, key: str, recorder: Recorder
 ) -> tuple[Result, Path]:
+    recorder.endpoint = server + "/v1/chat/completions"
     workspace = tmp_path / "ws"
     result = _setup(
         _unattended(
@@ -478,10 +620,15 @@ def test_sentinel_key_never_leaks(
 ) -> None:
     sentinel = f"sk-sentinel-{uuid.uuid4().hex}"
     caplog.set_level("DEBUG")
-    result, workspace = _run_for_the_sentinel(home, tmp_path, any_key_server, sentinel)
+    result, workspace = _run_for_the_sentinel(
+        home, tmp_path, any_key_server, sentinel, recorder
+    )
     assert result.exit_code == 0, result.output
     assert recorder.argv, "the recorder saw no subprocess: nothing was checked"
     assert recorder.delegations(), "the walk started no delegation: nothing was proven"
+    state = home / ".onex" / "setup.json"
+    before_compatibility_call = state.read_bytes()
+    assert json.loads(before_compatibility_call)["schema_version"] == 2
 
     handler_result = HandlerOnexSetup().handle(
         ModelOnexSetupRequest(
@@ -495,6 +642,9 @@ def test_sentinel_key_never_leaks(
         )
     )
     assert handler_result.receipt is not None
+    assert state.read_bytes() == before_compatibility_call, (
+        "the legacy contract handler replaced the versioned setup authority"
+    )
 
     found = _where_the_key_is(
         sentinel,
@@ -522,7 +672,9 @@ def test_sentinel_scan_catches_a_key_put_in_argv(
     """Failing control for AC5: a named break, the key in the delegation's prompt."""
     sentinel = f"sk-sentinel-{uuid.uuid4().hex}"
     monkeypatch.setattr(handler_model_setup, "_TEST_PROMPT", f"say ok {sentinel}")
-    result, workspace = _run_for_the_sentinel(home, tmp_path, any_key_server, sentinel)
+    result, workspace = _run_for_the_sentinel(
+        home, tmp_path, any_key_server, sentinel, recorder
+    )
     assert result.exit_code == 0, result.output
 
     found = _where_the_key_is(

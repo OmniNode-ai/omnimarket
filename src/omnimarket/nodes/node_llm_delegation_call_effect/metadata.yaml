@@ -1,6 +1,6 @@
 name: node_llm_delegation_call_effect
 version: "0.1.0"
-description: "Delegation call effect — model routing, generic inference and local and cloud coding-session adapters with lab job receipts and bounded operator evaluation subprocesses and typed Codex harness attempts and shared provider quota-reset handling"
+description: "Delegation call effect — model routing, inference, native Claude gateway streaming, local and cloud coding sessions, lab receipts, bounded evaluation and quota-reset handling"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -16,12 +16,14 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "httpx>=0.27.0"
+  - "fastapi>=0.110"
+  - "uvicorn>=0.27"
   - "omnibase_infra>=0.39.0"
   - "omnimarket.nodes.node_model_router"
   - "omnimarket.nodes.node_lab_job_reducer"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["llm", "delegation", "effect", "httpx", "cost-telemetry"]
+tags: ["llm", "delegation", "effect", "httpx", "cost-telemetry", "claude-gateway"]
 pack: "delegation"
 display_name: "LLM Delegation Call Effect"
 node_role: "effect"

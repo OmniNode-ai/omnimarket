@@ -27,6 +27,12 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.registered_endpoint_backend import (
+    registered_endpoint_backend,
+)
+from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_models import (
+    ModelEndpointModelsRequest,
+)
 
 #: OMN-21012. A lab host table row name: one lowercase DNS label (h201, h200),
 #: the same shape omnibase_core's delegation request ``source_host`` takes, so
@@ -108,6 +114,23 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
             "customer did not choose."
         ),
     )
+
+    base_url: str | None = None
+    connection_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+
+    @model_validator(mode="after")
+    def _registered_endpoint(self) -> ModelInferenceCredentialCreateRequest:
+        registered_endpoint_backend(
+            self.provider,
+            plan=self.plan,
+            base_url=self.base_url,
+            connection_id=self.connection_id,
+        )
+        if self.base_url is not None:
+            object.__setattr__(
+                self, "base_url", ModelEndpointModelsRequest(url=self.base_url).url
+            )
+        return self
 
     models: list[str] | None = Field(default=None, min_length=1)
     expected_version: int | None = Field(default=None, strict=True, gt=0)

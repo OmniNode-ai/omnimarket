@@ -128,7 +128,10 @@ from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
-from omnimarket.handlers.delegation_first_choice import first_choice_route
+from omnimarket.handlers.delegation_first_choice import (
+    first_choice_route,
+    first_choice_routes,
+)
 from omnimarket.handlers.delegation_model_scope import (
     is_free_model,
     model_scope_refusal,
@@ -142,6 +145,9 @@ from omnimarket.handlers.handler_capability_start import (
     resolve_capability_cell_reader,
 )
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
+from omnimarket.handlers.local_snapshot_publisher import (
+    LocalEvidenceNoRepublishPublisher as _LocalEvidenceNoRepublishPublisher,
+)
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
     byok_backend_retry_wait_seconds,
@@ -165,6 +171,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
 from omnimarket.handlers.routing.local_byok_route import (
+    is_registered_named_connection_route,
     next_chosen_model_byok_route,
     next_registered_byok_route,
     registered_byok_routes,
@@ -423,7 +430,6 @@ from omnimarket.pricing import (
     resolve_baseline_model,
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
-from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.sqlite_metering_summary import (
     InProcessMeteringRefreshPublisher,
@@ -1077,7 +1083,9 @@ def _is_customer_byok_route(backend: ModelResolvedDelegationBackend) -> bool:
     (``byok-gemini``, ``byok-openrouter``, ...), the same key the bus path's
     retry budget is read by.
     """
-    return resolve_byok_backend_by_id(backend.backend_id) is not None
+    return resolve_byok_backend_by_id(
+        backend.backend_id
+    ) is not None or is_registered_named_connection_route(backend)
 
 
 # OMN-13597: hard ceiling buffer (seconds) added to the contract-resolved
@@ -1630,34 +1638,6 @@ def resolve_delegation_backend(
     return substitute_local_byok_route(resolved)
 
 
-class _LocalEvidenceNoRepublishPublisher:
-    """The local port's snapshot publisher: it republishes nothing (OMN-19193).
-
-    The delegation projection republishes each row it writes onto a snapshot
-    topic that a LANE's projection API serves from. The local port's evidence
-    store is not that lane's store, and the only broker this process could name
-    is the ambient ``KAFKA_BOOTSTRAP_SERVERS`` -- on the operator's machine, the
-    stability-test proof lane. Publishing a local row there would serve a row the
-    lane's database does not hold. So the local port declares this publisher
-    rather than inheriting the Kafka default.
-
-    Nothing that works is lost: the Kafka default was called from inside the
-    ``RuntimeLocal`` loop, where ``asyncio.run`` refused every call. An evidence
-    target bound by overlay to a shared database (OMN-14015) is not republished
-    either; that store's own lane writer owns its exposure. Reaching the shared
-    projection is a transport decision, made by the runtime configuration that
-    picks this port or the bus port, not by this republish.
-    """
-
-    def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
-        logger.debug(
-            "local delegation evidence: snapshot delta for %s not republished "
-            "(the local evidence store backs no lane projection exposure)",
-            message.topic,
-        )
-        return False
-
-
 class LocalDelegationDispatchPort:
     """Resolve routing, run the canonical effect, and project evidence in-process.
 
@@ -2174,6 +2154,8 @@ class LocalDelegationDispatchPort:
         # instead. An explicit pin is the caller's own choice and is left to
         # the terminus. OMN-21212: so is a probe ladder's rung.
         probe_walk = _ACTIVE_PROBE_LADDER.get()
+        chosen_first: ModelResolvedDelegationBackend | None = None
+        ladder_fallback: ModelResolvedDelegationBackend | None = None
         if backend_id is None and probe_walk is None:
             # OMN-19442: a customer's one declared local model answers a class
             # whose own local rung they did not declare, where the terminus
@@ -2191,6 +2173,14 @@ class LocalDelegationDispatchPort:
             # key for any catalogue provider, that provider answers.
             if is_customer_attributed(resolved_tenant_id):
                 backend = substitute_any_registered_byok_route(backend)
+            # A configured first choice is the candidate the customer guard
+            # must inspect. A clean install may have no legacy local/house rung
+            # even though its named endpoint is fully configured.
+            if model is None:
+                chosen_first = first_choice_route(task_type)
+                if chosen_first is not None:
+                    ladder_fallback = backend
+                    backend = chosen_first
             try:
                 refuse_undeclared_local_model(
                     tenant_id=resolved_tenant_id,
@@ -2249,20 +2239,19 @@ class LocalDelegationDispatchPort:
         # OMN-21211: the customer's own local models answer first, in the order
         # they set, then the run takes its ladder, where any key is reached. A
         # pin, a named model and a probe ladder each decide the rung themselves.
-        ladder_entry = backend
+        ladder_entry = ladder_fallback or backend
         local_rungs: tuple[ModelResolvedDelegationBackend, ...] = ()
         if backend_id is None and model is None and probe_walk is None:
             local_rungs = registered_local_model_routes(task_type)
             # OMN-21346: the model the developer chose with ``onex models
             # first`` answers before everything else; a failure carries on in
             # the order the run would have taken without a choice.
-            chosen_first = first_choice_route(task_type)
             if chosen_first is not None:
                 local_rungs = (
                     chosen_first,
                     *(
                         rung
-                        for rung in local_rungs
+                        for rung in (*first_choice_routes(task_type), *local_rungs)
                         if (rung.backend_id, rung.model_id)
                         != (chosen_first.backend_id, chosen_first.model_id)
                     ),

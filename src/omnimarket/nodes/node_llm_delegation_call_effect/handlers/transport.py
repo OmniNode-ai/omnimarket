@@ -23,6 +23,7 @@ http(s) URL.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -168,6 +169,7 @@ def probe_served_models(
     *,
     runtime_profile: str | None = None,
     timeout_seconds: float = 5.0,
+    extra_headers: dict[str, str] | None = None,
 ) -> frozenset[str] | None:
     """Return the set of model ids served at ``endpoint_url``'s ``/v1/models``.
 
@@ -193,16 +195,20 @@ def probe_served_models(
     _require_http_url(endpoint_url)
     models_url = served_models_url(endpoint_url)
     try:
-        if uses_lan_curl_transport(runtime_profile):
+        if extra_headers:
+            # The same bounded authenticated transport used by model discovery;
+            # credentials never enter a curl argv or follow redirects.
+            body = get_provider_json(
+                url=models_url,
+                timeout_seconds=timeout_seconds,
+                extra_headers=extra_headers,
+            )
+        elif uses_lan_curl_transport(runtime_profile):
             body = _curl_get_json(models_url, timeout_seconds=timeout_seconds)
         else:
             body = _httpx_get_json(models_url, timeout_seconds=timeout_seconds)
     except Exception:
-        logger.debug(
-            "served-model probe failed for %s — treating as no evidence",
-            models_url,
-            exc_info=True,
-        )
+        logger.debug("served-model probe failed — treating as no evidence")
         return None
     if body is None:
         return None
@@ -218,17 +224,23 @@ def probe_served_models(
 
 
 # OMN-16419 / OMN-17098: cache of ``probe_served_models`` results, keyed by
-# endpoint URL and shared by BOTH effect boundaries that run the served-model
+# endpoint URL and an opaque per-process credential identity, shared by BOTH boundaries.
+# Authenticated catalogs must never be reused for another credential at that URL.
+# Both effect boundaries run the served-model
 # attribution guard (``HandlerLlmDelegationCall`` and ``HandlerInferenceIntent``),
 # so a hot route is not re-probed on every call. A ``None`` served-id set is
 # cached too (it means "no evidence either way", e.g. a cloud backend without
 # this path), so a backend that never exposes ``/v1/models`` is not re-probed.
 _SERVED_MODELS_CACHE_TTL_SECONDS = 60
 served_models_cache: dict[str, tuple[float, frozenset[str] | None]] = {}
+_SERVED_MODELS_CACHE_KEY = os.urandom(32)
 
 
 def get_served_model_ids(
-    endpoint_url: str, *, refresh: bool = False
+    endpoint_url: str,
+    *,
+    refresh: bool = False,
+    extra_headers: dict[str, str] | None = None,
 ) -> frozenset[str] | None:
     """Return cached (or freshly probed) served model ids for ``endpoint_url``.
 
@@ -241,16 +253,30 @@ def get_served_model_ids(
     a known mismatch.
     """
     now = time.monotonic()
-    cached = served_models_cache.get(endpoint_url)
+    cache_key = endpoint_url
+    if extra_headers:
+        identity = json.dumps(
+            {key.lower(): value for key, value in extra_headers.items()},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        cache_key += (
+            "#" + hmac.digest(_SERVED_MODELS_CACHE_KEY, identity, "sha256").hex()
+        )
+    cached = served_models_cache.get(cache_key)
     if cached is not None and not refresh:
         ts, served_ids = cached
         if now - ts < _SERVED_MODELS_CACHE_TTL_SECONDS:
             return served_ids
 
-    served_ids = probe_served_models(endpoint_url)
+    served_ids = (
+        probe_served_models(endpoint_url, extra_headers=extra_headers)
+        if extra_headers
+        else probe_served_models(endpoint_url)
+    )
     if refresh and served_ids is None and cached is not None:
         return cached[1]
-    served_models_cache[endpoint_url] = (now, served_ids)
+    served_models_cache[cache_key] = (now, served_ids)
     return served_ids
 
 
@@ -282,11 +308,16 @@ def _curl_get_json(url: str, *, timeout_seconds: float) -> dict[str, Any] | None
     return body if isinstance(body, dict) else None
 
 
+# A transport safety bound, independent of provider/model catalog contents.
+PROVIDER_JSON_MAX_BYTES = 8 * 1024 * 1024
+
+
 def get_provider_json(
     *,
     url: str,
     timeout_seconds: float,
     extra_headers: dict[str, str] | None = None,
+    trust_env: bool = True,
 ) -> Any:
     """GET a provider's JSON endpoint VERBATIM and return the decoded body.
 
@@ -296,12 +327,34 @@ def get_provider_json(
     LAN, this read only ever addresses a provider's public endpoint, and httpx
     keeps the credential header off a subprocess argv, where ``ps`` would show
     it. A non-2xx raises ``httpx.HTTPStatusError`` with the provider's status
-    and body preserved, the same shape the chat POST raises, so one classifier
-    reads both.
+    and bounded body preserved, the same shape the chat POST raises, so one
+    classifier reads both. Oversized responses, including error bodies and
+    decompressed bodies, are refused before JSON parsing.
     """
     _require_http_url(url)
-    with httpx.Client(timeout=timeout_seconds) as client:
-        response = client.get(url, headers=extra_headers or {}, timeout=timeout_seconds)
+    with (
+        httpx.Client(
+            timeout=timeout_seconds, trust_env=trust_env, follow_redirects=False
+        ) as client,
+        client.stream("GET", url, headers=extra_headers or {}) as streamed,
+    ):
+        body = bytearray()
+        for chunk in streamed.iter_bytes(chunk_size=65536):
+            if len(body) + len(chunk) > PROVIDER_JSON_MAX_BYTES:
+                raise ValueError("Provider JSON response exceeds the size limit")
+            body.extend(chunk)
+        # Preserve a readable error body after the stream is closed. The
+        # bytes are already decoded; carrying Content-Encoding would decode
+        # them twice when constructing the in-memory response.
+        headers = dict(streamed.headers)
+        headers.pop("content-encoding", None)
+        headers.pop("content-length", None)
+        response = httpx.Response(
+            streamed.status_code,
+            headers=headers,
+            content=bytes(body),
+            request=streamed.request,
+        )
     response.raise_for_status()
     return response.json()
 

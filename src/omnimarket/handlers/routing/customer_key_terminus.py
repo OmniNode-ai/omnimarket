@@ -74,7 +74,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.network_bindings import network_host
+from omnimarket.inference.local_byok_credential_adapter import read_named_connections
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, HOUSE_TENANT_UUID
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 # The customer-facing error code. A stable, machine-readable contract: gateway
 # and CLI surfaces route on this string, so changing it is a breaking API
@@ -378,7 +380,15 @@ def house_credential_refs(backends: Mapping[str, object]) -> frozenset[str]:
     # backend's credential name so disabling a rung never shrinks this set.
     declared = getattr(backends, "declared_secret_refs", ())
     names.update(str(name) for name in declared if str(name).strip())
-    return frozenset(names)
+    # Named endpoint overlays carry customer-minted references. Only an actual
+    # canonical registration can establish ownership; a cred_* spelling alone
+    # never removes a reference from the platform set.
+    customer_refs = {
+        str(row["secret_ref"])
+        for row in read_named_connections()
+        if row["secret_ref"] and is_tenant_credential_ref(str(row["secret_ref"]))
+    }
+    return frozenset(names - customer_refs)
 
 
 def _endpoint_host(endpoint_url: str | None) -> str | None:

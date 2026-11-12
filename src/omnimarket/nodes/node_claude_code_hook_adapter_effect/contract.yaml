@@ -62,6 +62,12 @@ handler_routing:
   routing_strategy: payload_type_match
   handlers:
     - handler:
+        name: HandlerClaudeGatewayHook
+        module: omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_gateway_hook
+      event_model:
+        name: ModelClaudeGatewayHookRequest
+        module: omnimarket.models.delegation.model_claude_gateway_hook
+    - handler:
         name: HandlerClaudeCodeHookAdapter
         module: omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter
       event_model:

@@ -80,7 +80,7 @@ def test_credential_open_whose_commit_is_refused_releases_the_lock(
     tmp_path: Path,
 ) -> None:
     db_path = tmp_path / "delegation.sqlite"
-    credentials._connect(db_path).close()
+    credentials.open_local_credentials(db_path).close()
     # A credential stored with the single model column: the next open copies
     # it into the model list, which is a real write that must commit.
     seed = sqlite3.connect(str(db_path))
@@ -100,7 +100,7 @@ def test_credential_open_whose_commit_is_refused_releases_the_lock(
     reader.execute(f"SELECT * FROM {credentials.LOCAL_CREDENTIAL_TABLE}").fetchall()
     try:
         with pytest.raises(sqlite3.OperationalError) as failed_open:
-            credentials._connect(db_path)
+            credentials.open_local_credentials(db_path)
     finally:
         reader.rollback()
         reader.close()

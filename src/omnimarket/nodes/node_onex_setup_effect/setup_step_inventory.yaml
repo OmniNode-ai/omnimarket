@@ -139,3 +139,2466 @@ entries:
     reason: >-
       onex setup --help documents the walk; onex --help names it as the
       quickstart.
+
+lab_onboarding:
+  source_repository: OmniNode-ai/omniclaude
+  source_revision: 628da25322e1b1635c0b54fe9dbfbbf7357115b2
+  audit_scope: All audited functions, flags, phases and artifacts are individually mapped. Integrated
+    means the stated replacement and named controls exist, not that final release or actual model/Docker/Claude
+    evidence is complete. Planned includes partial outcomes and explicitly names the remaining gap.
+  external_runtime_policy: Ollama is optional and connection-only. Users install and run Ollama and prepare
+    their models separately. ONEX accepts endpoint, model and optional authentication; it never installs,
+    launches, serves or downloads Ollama models.
+  sources:
+  - id: walk
+    fixture: lab_onboarding_8c1b3e5e.txt
+    git_blob: 8c1b3e5e60f7f124fc5d1fb10e7bc6affcaa038e
+    fixture_sha256: 3c1e0c64eb256f6567e0e432262fa9183fab66768ce0bc4b580a6a2639364d7a
+    redacted_lines:
+    - 1208
+    - 1820
+    - 1858
+    - 1859
+    - 1866
+    - 1869
+    redaction: Private repository references are replaced in the public audit copy. All 273 inventoried
+      capabilities are preserved; git_blob identifies the original audited source.
+  - id: preflight
+    fixture: onboarding_preflight_caf4b1a8.txt
+    git_blob: caf4b1a8fa85fea42c4db0644539f5dc954bba3f
+    fixture_sha256: 24ca661a7af42089d761289c88300853ad472b6205013ce548bbd75520ba71b2
+  - id: model-config
+    fixture: onboarding_model_config_c378a729.txt
+    git_blob: c378a729561d06b46bfbdab5bbee83c08975de60
+    fixture_sha256: cb87c9a79e7f1f47e6265b9adfb9a087fb0d4c154035cb9f56d2c16a1ce84bba
+  entries:
+  - source: model-config
+    kind: function
+    identifier: _ollama_config
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: model-config
+    kind: function
+    identifier: _place_local_url
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: model-config
+    kind: function
+    identifier: handle
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: add_model_res
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: anchor_time
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: preflight
+    kind: function
+    identifier: anchored_commit
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: preflight
+    kind: function
+    identifier: ask_keys
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: ask_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: ask_ollama_models
+    owner: 'onex setup: model selection'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: preflight
+    kind: function
+    identifier: ask_url
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: catalogue_row
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: checkout_anchored
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: preflight
+    kind: function
+    identifier: choose_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: chosen_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: clone_at_anchor
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: preflight
+    kind: function
+    identifier: comma_list
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: confirm_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: docker_url
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: drop_unlisted
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: ensure_local_url_onex
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: finish_name
+    owner: 'onex setup: completion'
+    disposition: integrated
+    reason: The approved modern completion behavior uses an optional explicit user-entered completion_name
+      and the installed system voice once after consent. Automatic account-name guessing, generic-name
+      matching and prerecorded clip selection are not reproduced. tests/e2e/test_setup_completion_cli.py
+      verifies explicit naming and once-only orchestration with a controlled audio executable, not audible
+      playback.
+  - source: preflight
+    kind: function
+    identifier: finish_name_like
+    owner: 'onex setup: completion'
+    disposition: integrated
+    reason: The approved modern completion behavior uses an optional explicit user-entered completion_name
+      and the installed system voice once after consent. Automatic account-name guessing, generic-name
+      matching and prerecorded clip selection are not reproduced. tests/e2e/test_setup_completion_cli.py
+      verifies explicit naming and once-only orchestration with a controlled audio executable, not audible
+      playback.
+  - source: preflight
+    kind: function
+    identifier: finish_sound
+    owner: 'onex setup: completion'
+    disposition: integrated
+    reason: The optional completion-audio plugin and completion_name use the installed system voice once
+      after reviewed consent. Declining, verify and unchanged reruns play nothing. tests/e2e/test_setup_completion_cli.py
+      proves CLI orchestration with a controlled audio executable, not audible playback.
+  - source: preflight
+    kind: function
+    identifier: finish_sound_consent
+    owner: 'onex setup: completion'
+    disposition: integrated
+    reason: The optional completion-audio plugin and completion_name use the installed system voice once
+      after reviewed consent. Declining, verify and unchanged reruns play nothing. tests/e2e/test_setup_completion_cli.py
+      proves CLI orchestration with a controlled audio executable, not audible playback.
+  - source: preflight
+    kind: function
+    identifier: in_user_shell
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: is_workspace_onex
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: key_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: leftover
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: leftovers_interfering
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: list_in_order
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: list_recommended_first
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: local_url_add_args
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: local_url_answers
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: local_url_base
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: local_url_endpoint
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: local_url_supported
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: local_url_unreachable
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: local_url_valid
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: mark_local_url_overrides
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: masked
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: model_config
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: model_result
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: offered_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: ollama_config
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: ollama_models
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: omnimarket_file
+    owner: 'onex setup: package resources'
+    disposition: integrated
+    reason: The installed package provider registry and resource loader supply model/provider metadata;
+      setup no longer retrieves Python/metadata from a source checkout or raw GitHub HEAD. Hosted catalog
+      fixture tests exercise registry-derived protocols and endpoints.
+    verification:
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: onex_order
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: parse_model_choice
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: parse_ordered_choice
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: pipx_home
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: place_local_url_on_ladder
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: point_bundle_at_local_url
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: point_stack_at_local_url
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: prepare_local_url
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: prepare_profile_edits
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: probe_listed
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: probe_model
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: profile_comment_out
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: profile_leftover_lines
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: profile_set_aside
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: profile_syntax_ok
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: proven_pin
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: preflight
+    kind: function
+    identifier: put_first
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: real_path
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell resolves PATH executable targets for shadow detection without invoking the
+      target. The controlled shadow executable test proves it is named and preserved, not run or removed.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: recommended_basis
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: recommended_order
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: report_leftovers
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: result_line
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: resume_banner
+    owner: 'onex setup: state and resume'
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
+  - source: preflight
+    kind: function
+    identifier: retire_lab_model_overrides
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: routing_overlay_in_place
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: row
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: Typed CLI observations and plan display represent paths/platform/status without relying on
+      shell table/path-formatting helpers. Preflight human output and typed JSON controls cover actual
+      installed rendering; exact old column spacing is not a separate behavior.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+  - source: preflight
+    kind: function
+    identifier: save_choices
+    owner: 'onex setup: state and resume'
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
+  - source: preflight
+    kind: function
+    identifier: saved_choice
+    owner: 'onex setup: state and resume'
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
+  - source: preflight
+    kind: function
+    identifier: set_aside_leftovers
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: set_aside_one
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: set_chosen_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: settle_leftovers
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: settle_local_url
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: settle_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: preflight
+    kind: function
+    identifier: setup_model
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: shell_onex_answer
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: shell_onex_kind
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: shell_onex_path
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: shell_onex_version
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: shell_runs_workspace_onex
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: stop_local_url_unanswered
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: preflight
+    kind: function
+    identifier: survey_leftovers
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell statically surveys declared profiles and inherited routing variables; default
+      conflicts stop setup. Explicit one-use --set-aside backs up and disables only safe standalone profile
+      lines, preserving unrelated bytes. Compound/functions/symlinks, inherited variables and executable
+      shadowing require manual action. Tests prove no profile execution, redaction, exact backup and repeat
+      no-op.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: preflight
+    kind: function
+    identifier: tilde
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: Typed CLI observations and plan display represent paths/platform/status without relying on
+      shell table/path-formatting helpers. Preflight human output and typed JSON controls cover actual
+      installed rendering; exact old column spacing is not a separate behavior.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+  - source: preflight
+    kind: function
+    identifier: to_ere
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: user_shell
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: uv_tool_dir
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: preflight
+    kind: function
+    identifier: vm_notice
+    owner: 'onex setup: machine detection'
+    disposition: retired
+    reason: 'Retired by operator rulings of 2026-11-10 and 2026-11-11: no VM is needed, and the onboarding walk needs only a clean venv. Setup gives no VM-specific notice
+      or refusal.'
+  - source: preflight
+    kind: function
+    identifier: write_routing_overlay
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: artifact
+    identifier: .omninode-dev-setup
+    owner: 'onex setup: legacy import'
+    disposition: integrated
+    reason: HandlerSetupLegacyImport reads the legacy directory once as inert choices and marks; HandlerSetupWorkflow
+      persists the translated nonsecret plan and re-observes all effects. Existing legacy files are preserved
+      and cannot establish a successful effect.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py
+  - source: walk
+    kind: artifact
+    identifier: .onex-dispatch-venv
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: artifact
+    identifier: bifrost_overrides.yaml
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: artifact
+    identifier: choices
+    owner: 'onex setup: state and resume'
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
+  - source: walk
+    kind: artifact
+    identifier: claude-plugin-registration
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: The packaged customer-assets entry point supplies the local marketplace to HandlerSetupClaude;
+      its registry-based observation preserves unrelated user settings and refuses conflicts. Installed
+      wheel/client provenance and actual authenticated Claude execution remain separate required evidence.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_packaged_journey.py
+  - source: walk
+    kind: artifact
+    identifier: delegation.sqlite
+    owner: 'onex setup: canonical usage'
+    disposition: integrated
+    reason: The canonical delegation runtime writes receipts/usage and HandlerSetupDashboard reads the
+      existing served dashboard projection. The packaged journey joins the same run ID without direct
+      database queries; fixture controls are distinct from the pending actual model receipt.
+    verification:
+    - tests/e2e/test_setup_dashboard_lifecycle.py
+    - tests/e2e/test_setup_packaged_journey.py
+  - source: walk
+    kind: artifact
+    identifier: docker-local-env
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: artifact
+    identifier: docker-settings
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: artifact
+    identifier: model-credential-store
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: artifact
+    identifier: onex-symlink
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: artifact
+    identifier: phases.v2.done
+    owner: 'onex setup: state and resume'
+    disposition: integrated
+    reason: HandlerSetupWorkflow and HandlerSetupLegacyImport import choices once as inert hints, never
+      effect proof. The shared setup.json journal re-observes and atomically checkpoints. test_setup_legacy_import.py
+      and test_setup_workflow.py cover unchanged replay, interruption, migration, locking and atomic failure.
+  - source: walk
+    kind: artifact
+    identifier: proven-floor-stamp
+    owner: 'onex setup: delegation'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: artifact
+    identifier: routing_overlay.yaml
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: artifact
+    identifier: run-log-status
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: The versioned setup journal records typed step status, sanitized evidence and actionable failure
+      boundaries. Interrupted effects resume by re-observation, and read-only verification does not write
+      state. This replaces mutable shell status strings rather than reproducing every legacy log line.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: artifact
+    identifier: runtime_config.yaml
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: HandlerSetupEnvironment observes and reconciles runtime configuration through the existing
+      owner and selected install path. It preserves a conflicting user file. The versioned plan/config
+      profile separately records selected choices.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
+  - source: walk
+    kind: artifact
+    identifier: shell-profile
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: artifact
+    identifier: stack-tenant-and-secrets
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: artifact
+    identifier: stack.anchor
+    owner: 'onex setup: state and resume'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: artifact
+    identifier: workspace-config-git
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: flag
+    identifier: --compat-url
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: flag
+    identifier: --containers
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: flag
+    identifier: --developer
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: The shared setup developer flag selects an already prepared developer marketplace resolved
+      by its owner manifest, preserving the customer profile distinction and refusing ambiguous/conflicting
+      registrations. It does not clone developer repositories.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+  - source: walk
+    kind: flag
+    identifier: --help
+    owner: 'onex setup: completion'
+    disposition: integrated
+    reason: The thin bootstrap and installed onex setup provide help, ASCII human banner and banner-free
+      JSON. Verified by omniclaude tests/skills/test_thin_onboarding_bootstrap.py and omnimarket tests/unit/cli/test_setup_banner_command.py.
+  - source: walk
+    kind: flag
+    identifier: --local-model
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: flag
+    identifier: --local-url
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: flag
+    identifier: --no-containers
+    owner: 'onex setup: local stack'
+    disposition: integrated
+    reason: The thin bootstrap excludes the optional local-stack component. Local endpoint delegation
+      and dashboard do not require containers; the stack owner is invoked only with an explicit component
+      and supplied compose/topology inputs.
+    verification:
+    - tests/e2e/test_setup_local_stack.py
+  - source: walk
+    kind: flag
+    identifier: --ollama-model
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: flag
+    identifier: --preflight-only
+    owner: 'onex setup: preflight'
+    disposition: integrated
+    reason: The installed setup preflight runs before prompts and returns typed platform facts without
+      creating the workspace, journal or profiles. Unsupported macOS/platform reports unavailable; it
+      does not impose universal RAM, SSD, CPU or developer-tool requirements.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+  - source: walk
+    kind: flag
+    identifier: --provider
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: The thin compatibility bootstrap translates legacy provider/model/URL flags to the installed
+      shared setup CLI. The endpoint-only setup path discovers and proves selected models; Ollama runtime/model
+      preparation stays user-managed. New named connections use --connection with --url/--models.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: flag
+    identifier: --restart
+    owner: 'onex setup: state and resume'
+    disposition: integrated
+    reason: The thin bootstrap maps --restart to onex setup --action repair. The shared workflow re-observes
+      rather than erases state. omniclaude test_thin_onboarding_bootstrap.py proves forwarding; omnimarket
+      test_setup_workflow.py proves resumable effects.
+  - source: walk
+    kind: flag
+    identifier: --set-aside
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: The invocation-only --set-aside option reaches HandlerSetupShell; scratch-home CLI tests prove
+      review, exact private backup, preservation and no replay of permission on a later saved-plan run.
+      Binary, routing-file and clone relocation are not implemented by this option.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: walk
+    kind: flag
+    identifier: --workspace
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: ModelSetupPlan canonicalizes the selected workspace; HandlerSetupEnvironment persists the
+      chosen configuration and the versioned profile owner exports/imports only validated nonsecret plans.
+      This does not clone a source workspace.
+    verification:
+    - tests/e2e/test_setup_configuration_cli.py
+  - source: walk
+    kind: function
+    identifier: a_an
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+  - source: walk
+    kind: function
+    identifier: accept_docker_terms
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: accepted_backend
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: arch
+    owner: 'onex setup: preflight'
+    disposition: integrated
+    reason: HandlerSetupPreflight reports the client platform and architecture and supports macOS 14+
+      on arm64/x86_64. Actual CLI tests check typed evidence and no state or profile writes; controlled
+      machine-fact tests check unsupported platforms.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+  - source: walk
+    kind: function
+    identifier: ask_docker
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: ask_docker_terms
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: avail_mem_gb
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: bind_workspace_env
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: boot_resources_ok
+    owner: 'onex setup: delegation'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: brew_bin
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal Homebrew and Xcode provisioning is retired from customer onboarding; versioned package
+      acquisition owns CLI installation.
+  - source: walk
+    kind: function
+    identifier: brew_install
+    owner: 'onex setup: prerequisites'
+    disposition: retired
+    reason: Universal Homebrew and Xcode provisioning is retired from customer onboarding; versioned package
+      acquisition owns CLI installation.
+  - source: walk
+    kind: function
+    identifier: cause_of
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: check
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: claude_bin
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: HandlerSetupClaude locates the installed Claude CLI, checks its on-disk user registry and
+      resolves the packaged ONEX marketplace assets. It uses vendor plugin installation and canonical
+      hook installation while preserving unrelated settings. Controlled CLI/settings tests cover orchestration;
+      actual Claude account proof is a separate close gate.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_claude_hook_component.py
+  - source: walk
+    kind: function
+    identifier: cleanup
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: clear_keys
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
+  - source: walk
+    kind: function
+    identifier: clone_behind_note
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: clone_default_branch
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: clone_fix
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: clone_problem
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: clone_state
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: clone_where
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: commit_workspace_runtime_config
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Cloning and pin bookkeeping are no longer part of customer setup; source checkouts and their
+      Git configuration remain untouched.
+  - source: walk
+    kind: function
+    identifier: commits_behind
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Cloning and pin bookkeeping are no longer part of customer setup; source checkouts and their
+      Git configuration remain untouched.
+  - source: walk
+    kind: function
+    identifier: compose_ok
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: config_git
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Cloning and pin bookkeeping are no longer part of customer setup; source checkouts and their
+      Git configuration remain untouched.
+  - source: walk
+    kind: function
+    identifier: count_words
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+  - source: walk
+    kind: function
+    identifier: cpu_count
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: delegate_hello
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: disk_free_gb
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: dispatch_venv_current
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: docker_awaits_terms
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: docker_has_resources
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: docker_installed
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: docker_ready
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: docker_settings_file
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: docker_state
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: download
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: drop_model
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: elapsed
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: ensure_stack_tenant
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: ensure_sudo
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: foreign_clones
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: has_model
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: hr
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+  - source: walk
+    kind: function
+    identifier: in_list
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+  - source: walk
+    kind: function
+    identifier: in_menu_order
+    owner: 'onex setup: CLI presentation'
+    disposition: integrated
+    reason: The typed setup plan and interactive picker own list validation, ordered choices and readable
+      review. Actual CLI controls verify selected order and refusal before effects; shell grammar, horizontal
+      rules and word counting are replaced by that interface.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+  - source: walk
+    kind: function
+    identifier: install_claude_code
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: install_clt
+    owner: 'onex setup: prerequisites'
+    disposition: retired
+    reason: Universal Homebrew and Xcode provisioning is retired from customer onboarding; versioned package
+      acquisition owns CLI installation.
+  - source: walk
+    kind: function
+    identifier: install_ollama
+    owner: 'onex setup: preflight'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: internal_plugins_reachable
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: HandlerSetupClaude locates the installed Claude CLI, checks its on-disk user registry and
+      resolves the packaged ONEX marketplace assets. It uses vendor plugin installation and canonical
+      hook installation while preserving unrelated settings. Controlled CLI/settings tests cover orchestration;
+      actual Claude account proof is a separate close gate.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_claude_hook_component.py
+  - source: walk
+    kind: function
+    identifier: is_admin
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: is_done
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: is_rosetta
+    owner: 'onex setup: machine detection'
+    disposition: integrated
+    reason: 'The production collector asks sysctl.proc_translated; an error or unexpected answer stays
+      unknown rather than guessed. Rosetta is refused with the native-terminal fix.'
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+  - source: walk
+    kind: function
+    identifier: is_stored
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
+  - source: walk
+    kind: function
+    identifier: is_vm
+    owner: 'onex setup: machine detection'
+    disposition: retired
+    reason: 'Retired by operator rulings of 2026-11-10 and 2026-11-11: no VM is needed, and the onboarding walk needs only a clean venv. A VM reading is evidence only and
+      gates nothing.'
+  - source: walk
+    kind: function
+    identifier: key_looks_like
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: key_page
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: keyed_models
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: walk
+    kind: function
+    identifier: labels
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: walk
+    kind: function
+    identifier: last_log_lines
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: link_onex
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: load_ollama_config
+    owner: 'onex setup: preflight'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: load_onboarding_preflight
+    owner: 'onex setup: package resources'
+    disposition: integrated
+    reason: The installed CLI imports its packaged preflight effect and does not download/source the old
+      shell helper. Actual preflight CLI tests execute this owner with a temporary HOME and verify no
+      prompt or mutation.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+  - source: walk
+    kind: function
+    identifier: local_stack_running
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: log
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: macos_version
+    owner: 'onex setup: preflight'
+    disposition: integrated
+    reason: HandlerSetupPreflight reports the client platform and architecture and supports macOS 14+
+      on arm64/x86_64. Actual CLI tests check typed evidence and no state or profile writes; controlled
+      machine-fact tests check unsupported platforms.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+  - source: walk
+    kind: function
+    identifier: main
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: mark_done
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: models_cmd
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: needs_admin
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: no_shadow
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell detects PATH executable shadowing and legacy profile/environment conflicts
+      without executing a user shell. It refuses unresolved conflicts rather than replacing a binary or
+      sourcing profiles; static profile recovery is separately explicit.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: walk
+    kind: function
+    identifier: notify
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: ollama_bin
+    owner: 'onex setup: preflight'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: ollama_has_model
+    owner: 'onex setup: preflight'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: ollama_overrides_ours
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: ollama_up
+    owner: 'onex setup: preflight'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: onex_run
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: os_name
+    owner: 'onex setup: preflight'
+    disposition: integrated
+    reason: HandlerSetupPreflight reports the client platform and architecture and supports macOS 14+
+      on arm64/x86_64. Actual CLI tests check typed evidence and no state or profile writes; controlled
+      machine-fact tests check unsupported platforms.
+    verification:
+    - tests/e2e/test_setup_preflight_cli.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+  - source: walk
+    kind: function
+    identifier: passed_models
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: pending_key
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
+  - source: walk
+    kind: function
+    identifier: phase0
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: phase1
+    owner: 'onex setup: universal tools'
+    disposition: retired
+    reason: Approved spec AC2/AC3 removes the universal Xcode, Homebrew, GitHub CLI, jq and source-build
+      Python tool phase. The installed package has its own runtime requirement; selected components check
+      their genuine dependencies individually.
+  - source: walk
+    kind: function
+    identifier: phase1_verified
+    owner: 'onex setup: universal tools'
+    disposition: retired
+    reason: Approved spec AC2/AC3 removes the universal Xcode, Homebrew, GitHub CLI, jq and source-build
+      Python tool phase. The installed package has its own runtime requirement; selected components check
+      their genuine dependencies individually.
+  - source: walk
+    kind: function
+    identifier: phase2
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: phase2_verified
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: phase3
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: phase4
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: phase5
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: phase6
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: phase_fail
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: phase_pass
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: phase_skip
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: phase_start
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: plugin_installed
+    owner: 'onex setup: Claude integration'
+    disposition: integrated
+    reason: HandlerSetupClaude locates the installed Claude CLI, checks its on-disk user registry and
+      resolves the packaged ONEX marketplace assets. It uses vendor plugin installation and canonical
+      hook installation while preserving unrelated settings. Controlled CLI/settings tests cover orchestration;
+      actual Claude account proof is a separate close gate.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py
+    - tests/e2e/test_setup_claude_hook_component.py
+  - source: walk
+    kind: function
+    identifier: point_bundle_model
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: port_busy
+    owner: 'onex setup: component port checks'
+    disposition: integrated
+    reason: Dashboard and Claude gateway lifecycle owners bind explicit loopback listeners and return
+      actionable collision/start failures while preserving unrelated services. Ports are selected component
+      inputs, not universal port assumptions.
+    verification:
+    - tests/e2e/test_setup_gateway_lifecycle.py
+    - tests/e2e/test_setup_dashboard_lifecycle.py
+  - source: walk
+    kind: function
+    identifier: print_ladder
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: profile_block_names_legacy_home
+    owner: 'onex setup: shell safety'
+    disposition: integrated
+    reason: HandlerSetupShell detects PATH executable shadowing and legacy profile/environment conflicts
+      without executing a user shell. It refuses unresolved conflicts rather than replacing a binary or
+      sourcing profiles; static profile recovery is separately explicit.
+    verification:
+    - tests/e2e/test_setup_shell_safety.py
+  - source: walk
+    kind: function
+    identifier: provider_label
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: walk
+    kind: function
+    identifier: quit_setup
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: ram_gb
+    owner: 'onex setup: preflight'
+    disposition: retired
+    reason: Universal machine floors and administrator prerequisites are retired; optional local-stack
+      checks belong to actual selected-component requirements.
+  - source: walk
+    kind: function
+    identifier: read_secret
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
+  - source: walk
+    kind: function
+    identifier: receipt_field
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: record_model_status
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: refuse_foreign_workspace
+    owner: 'onex setup: workspace ownership'
+    disposition: integrated
+    reason: HandlerSetupEnvironment accepts the exact legacy marker or its own new marker, refuses foreign
+      nonempty directories and preserves foreign files before creating its marker. Existing setup workflow
+      and thin-client controls exercise preservation.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
+  - source: walk
+    kind: function
+    identifier: register_key_in_stack
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: rerun_note
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: restart_docker
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: result_of
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: retry
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: retry_capture
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: run_logged
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: say
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: sed_inplace
+    owner: 'onex setup: owned edits'
+    disposition: integrated
+    reason: Owned configuration changes use typed atomic checkpoint/backup and conflict-aware settings/profile
+      owners instead of blind in-place substitutions. Tests exercise atomic-write failure, later user
+      edits and preservation of unrelated profile bytes.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_shell_safety.py
+  - source: walk
+    kind: function
+    identifier: set_pending_key
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
+  - source: walk
+    kind: function
+    identifier: set_result
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: settle_models_unattended
+    owner: 'onex setup: model connections'
+    disposition: integrated
+    reason: HandlerModelConnections and HandlerSetupEnvironment configure the supplied endpoint, ordered
+      selected models and canonical credential identity, then require matching inference receipts. Named-connection
+      CLI fixtures exercise discovery, independent authenticated servers, default routing and ordered
+      retry. Fixture responses prove protocol behavior; actual operator-model inference remains pending.
+    verification:
+    - tests/e2e/test_named_connections_cli.py
+  - source: walk
+    kind: function
+    identifier: settle_ollama
+    owner: 'onex setup: preflight'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: setup_ollama
+    owner: 'onex setup: delegation'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: size_docker
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: sqlite_rows
+    owner: 'onex setup: canonical usage'
+    disposition: integrated
+    reason: Canonical receipt and served usage readback replace direct SQL row-count verification. Dashboard
+      protocol controls join actual runtime run IDs; actual user-model proof remains required separately.
+    verification:
+    - tests/e2e/test_setup_dashboard_lifecycle.py
+    - tests/e2e/test_setup_packaged_journey.py
+  - source: walk
+    kind: function
+    identifier: stack_delegate
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: stack_healthy
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: stamp_proven_floor
+    owner: 'onex setup: delegation'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: start_ollama
+    owner: 'onex setup: preflight'
+    disposition: external
+    reason: Runtime installation, service lifecycle and model files are user-managed; setup only configures
+      the supplied endpoint and proves inference.
+  - source: walk
+    kind: function
+    identifier: step
+    owner: 'onex setup: workflow'
+    disposition: integrated
+    reason: HandlerSetupWorkflow uses typed observations, a private atomic journal and explicit repair/verify
+      actions. Failures cannot become success without re-observation; interruption, lock contention, unknown
+      steps, secret-bearing input and partial writes have refusal controls. CLI human/JSON rendering replaces
+      shell message/status helpers.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+    - tests/e2e/test_setup_workflow_cli.py
+  - source: walk
+    kind: function
+    identifier: stored_key_providers
+    owner: 'onex setup: credentials'
+    disposition: integrated
+    reason: LocalByokCredentialStore remains the canonical secret owner; CLI hidden/stdin intake separates
+      per-connection keys from saved nonsecret plans. Existing keys are reused only for their unchanged
+      endpoint, rotated keys invalidate proof, and secrets are excluded from results. Temporary-HOME tests
+      exercise actual authenticated HTTP and read-only lookup.
+    verification:
+    - tests/e2e/test_setup_saved_credentials.py
+    - tests/unit/test_named_endpoint_connection_flow.py
+  - source: walk
+    kind: function
+    identifier: sync_clone
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: usage
+    owner: 'onex setup: completion'
+    disposition: integrated
+    reason: The thin bootstrap and installed onex setup provide help, ASCII human banner and banner-free
+      JSON. Verified by omniclaude tests/skills/test_thin_onboarding_bootstrap.py and omnimarket tests/unit/cli/test_setup_banner_command.py.
+  - source: walk
+    kind: function
+    identifier: uses_key
+    owner: 'onex setup: model selection'
+    disposition: integrated
+    reason: cli_choices.ask_choices reads the provider or endpoint catalog and probes each model only
+      after explicit one-token API-charge consent. Hard failures are excluded with reasons, HTTP 429 follows
+      ready models, an all-busy catalog remains selectable, and the user-selected order is preserved.
+      The HTTP fixture tests do not establish actual provider availability.
+    verification:
+    - tests/e2e/test_setup_model_probe_cli.py
+    - tests/e2e/test_setup_hosted_picker.py
+  - source: walk
+    kind: function
+    identifier: uv_bin
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: wait_for_docker
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: wait_until
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: workspace_floor
+    owner: 'onex setup: verify'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: workspace_runtime_config_anchored
+    owner: 'onex setup: workspace'
+    disposition: retired
+    reason: Source checkout acquisition and pin stamps are retired; versioned package dependencies own
+      installation.
+  - source: walk
+    kind: function
+    identifier: workspace_runtime_config_present
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: HandlerSetupEnvironment uses the existing runtime configuration owner, observes the selected
+      native/Docker configuration and refuses conflicting bytes rather than overwriting a user file. No
+      configuration Git commit or source checkout is acquired.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+  - source: walk
+    kind: function
+    identifier: write_ollama_overrides
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: write_profile_block
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: function
+    identifier: write_workspace_runtime_config
+    owner: 'onex setup: configuration'
+    disposition: integrated
+    reason: HandlerSetupEnvironment uses the existing runtime configuration owner, observes the selected
+      native/Docker configuration and refuses conflicting bytes rather than overwriting a user file. No
+      configuration Git commit or source checkout is acquired.
+    verification:
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py
+    - tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+  - source: walk
+    kind: phase
+    identifier: phase0
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: phase
+    identifier: phase1
+    owner: 'onex setup: universal tools'
+    disposition: retired
+    reason: Approved spec AC2/AC3 removes the universal Xcode, Homebrew, GitHub CLI, jq and source-build
+      Python tool phase; selected components retain genuine dependency checks.
+  - source: walk
+    kind: phase
+    identifier: phase2
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: phase
+    identifier: phase3
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: phase
+    identifier: phase4
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: phase
+    identifier: phase5
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'
+  - source: walk
+    kind: phase
+    identifier: phase6
+    owner: 'lab-onboarding.sh (unchanged, Amendment 3)'
+    disposition: external
+    reason: 'External per OMN-23413 Amendment 4 (operator ruling 2026-11-11): lab-onboarding.sh keeps doing this unchanged; onex setup does not take it over in this ticket.'

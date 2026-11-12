@@ -116,8 +116,8 @@ MODEL_LABELS: dict[str, str] = {
     "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
 }
 OLLAMA_HOW = (
-    "Ollama is installed by onboarding, which downloads a model sized to this "
-    "Mac: run onboarding again with --provider ollama."
+    "Run Ollama yourself, then connect its endpoint: onex setup --provider ollama --url URL. "
+    "ONEX never installs Ollama or downloads models."
 )
 LOCAL_HOW = (
     "Declare a model server on an OpenAI-compatible URL (LM Studio, llama.cpp, "
@@ -701,9 +701,9 @@ def _write_model_list(provider: str, models: tuple[str, ...]) -> tuple[str, ...]
     return written.models
 
 
-def model_handler() -> HandlerModelSetup:
+def model_handler(*, read_only: bool = False) -> HandlerModelSetup:
     """The setup effect with the model-list write it is handed (it imports no other node)."""
-    return HandlerModelSetup(write_model_list=_write_model_list)
+    return HandlerModelSetup(write_model_list=_write_model_list, read_only=read_only)
 
 
 def add_key(
@@ -761,9 +761,43 @@ def add_key(
     return result
 
 
-def list_providers() -> tuple[ModelModelStatus, ...]:
+def list_providers(
+    *,
+    provider: ModelProvider | None = None,
+    url: str | None = None,
+    models: tuple[str, ...] = (),
+    read_only: bool = False,
+) -> tuple[ModelModelStatus, ...]:
     """Each provider: set up or not, its models and its last test result."""
-    return model_handler().handle(ModelModelSetupRequest(operation="status")).providers
+    return (
+        model_handler(read_only=read_only)
+        .handle(
+            ModelModelSetupRequest(
+                operation="status",
+                provider=provider,
+                url=url,
+                models=models,
+            )
+        )
+        .providers
+    )
+
+
+def add_local_endpoint(
+    url: str | None, models: tuple[str, ...]
+) -> tuple[ModelModelTestResult, ...]:
+    """Register and prove each model using the canonical local endpoint owner."""
+    return (
+        model_handler()
+        .handle(
+            ModelModelSetupRequest(
+                operation="add_local",
+                url=url,
+                models=models,
+            )
+        )
+        .tests
+    )
 
 
 def _usable(status: ModelModelStatus) -> bool:

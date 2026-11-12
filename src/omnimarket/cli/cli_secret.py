@@ -83,6 +83,9 @@ from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_capture
 from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
     ModelCapturedSecretStoreRequest,
 )
+from omnimarket.nodes.node_model_setup_effect.credential_output import (
+    registered_credential_view,
+)
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
     OVERLAY_DEFAULT_PROVIDERS,
@@ -465,6 +468,16 @@ def _resolve_bound_host(declared: str | None) -> str | None:
     multiple=True,
     help="A model this key runs; repeat in routing order. Each is checked with the provider.",
 )
+@click.option(
+    "--base-url",
+    default=None,
+    help="Explicit custom server base URL; never inferred from another provider.",
+)
+@click.option(
+    "--connection-id",
+    default=None,
+    help="Independent custom endpoint identity, paired with --base-url.",
+)
 @click.option("--expected-version", type=click.IntRange(min=1), default=None)
 @click.option(
     "--expires",
@@ -519,6 +532,8 @@ def register_tenant_key(
     host: str | None,
     workspace_id: str | None,
     store_choice: str,
+    base_url: str | None,
+    connection_id: str | None,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
@@ -536,6 +551,8 @@ def register_tenant_key(
             key_value=SecretStr(value),
             plan=plan,
             models=list(model_option) if model_option else None,
+            base_url=base_url,
+            connection_id=connection_id,
             expected_version=expected_version,
             expires_at=expires_at,
             bound_host=bound_host,
@@ -553,6 +570,7 @@ def register_tenant_key(
                     tenant_id=tenant,
                     secret_store=secret_store,
                     event_bus=event_bus,
+                    allow_custom_endpoint=base_url is not None,
                 ),
                 lane=_lab_host_bus_lane(bound_host),
             )
@@ -577,25 +595,7 @@ def register_tenant_key(
         raise click.ClickException(
             f"{exc}. Nothing was stored and nothing was published."
         ) from exc
-    shown: dict[str, object] = {
-        "api_key_ref": response.api_key_ref,
-        "provider": response.provider,
-        "plan": response.plan,
-        "tenant": tenant,
-    }
-    if response.model is not None:
-        shown["model"] = response.model
-    shown["models"] = response.models
-    if response.expires_at is not None:
-        shown["expires_at"] = response.expires_at.astimezone(UTC).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-    if response.expiry_warning is not None:
-        shown["expiry_warning"] = response.expiry_warning.value
-    if response.bound_host is not None:
-        shown["bound_host"] = response.bound_host
-    if response.workspace_id is not None:
-        shown["workspace_id"] = response.workspace_id
+    shown = registered_credential_view(response, tenant)
     if not central:
         _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
@@ -838,14 +838,6 @@ def check_captured(reference: str, accessor: str) -> None:
 # ---------------------------------------------------------------------------
 
 _MODEL_LABELS = model_keys.MODEL_LABELS
-_KEY_PAGES: dict[str, str] = {
-    "gemini": "aistudio.google.com/apikey",
-    "openrouter": "openrouter.ai/keys",
-    "openai": "platform.openai.com/api-keys",
-    "anthropic": "platform.claude.com/settings/keys",
-    "glm": "z.ai/manage-apikey/apikey-list",
-    "openai_compatible": "the endpoint's own key page",
-}
 _OLLAMA_HOW = model_keys.OLLAMA_HOW
 _LOCAL_HOW = model_keys.LOCAL_HOW
 _NOT_ROUTED = "Delegation does not use this key until its test passes."
@@ -892,8 +884,12 @@ def _read_model_key(provider: str) -> str:
     """The key from stdin when piped, else one hidden prompt. Never echoed."""
     label = _MODEL_LABELS[provider]
     if _stdin_is_tty():
+        row = resolve_byok_provider_backend(provider)
+        key_page = (
+            row.key_page if row and row.key_page else "the endpoint's own key page"
+        )
         value = getpass(
-            f"Paste your {label} API key ({_KEY_PAGES[provider]}; input is hidden): "
+            f"Paste your {label} API key ({key_page}; input is hidden): "
         ).strip()
     else:
         value = sys.stdin.read().strip()
@@ -902,7 +898,7 @@ def _read_model_key(provider: str) -> str:
     looks = key_looks_like(value, provider)
     if looks is not None and looks != provider:
         raise click.ClickException(
-            f"that looks like a key for {_MODEL_LABELS[looks]}, not {label}. "
+            f"that looks like a key for {_MODEL_LABELS.get(looks, looks)}, not {label}. "
             "Nothing was stored."
         )
     return value
@@ -1065,7 +1061,7 @@ def list_models(as_json: bool) -> None:
                 f"{last.reason}{models}"
             )
             # A keyed provider; Ollama and local have none.
-            if row.provider in _KEY_PAGES:
+            if resolve_byok_provider_backend(row.provider) is not None:
                 click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
 
 

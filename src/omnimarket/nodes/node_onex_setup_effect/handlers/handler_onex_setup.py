@@ -36,6 +36,9 @@ from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_co
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import ValidationError
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    customer_provider_catalogue,
+)
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupFailure,
     ModelOnexSetupReceipt,
@@ -52,25 +55,15 @@ SETUP_STEPS: tuple[str, ...] = (
     "runtime_config",
     "model",
 )
-#: The providers setup offers. Ollama is not one: a user who runs it names it as
-#: ``--provider local --url <its OpenAI-compatible base URL>``.
-SETUP_PROVIDERS: tuple[str, ...] = (
-    "gemini",
-    "openrouter",
-    "openai",
-    "openai_compatible",
-    "local",
+#: Hosted choices come from the canonical provider registry. Local and Ollama
+#: are endpoint-only setup modes; neither provisions model software.
+SETUP_PROVIDERS: tuple[str, ...] = tuple(
+    dict.fromkeys((*customer_provider_catalogue(), "local", "ollama"))
 )
 #: Providers setup refuses, each with its problem and the way to reach it instead.
-REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {
-    "ollama": (
-        "ollama is not a setup provider",
-        "reach Ollama by its OpenAI-compatible URL: "
-        "--provider local --url http://localhost:11434/v1 --model <a model it runs>",
-    ),
-}
-URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible")
-KEYLESS_PROVIDERS: tuple[str, ...] = ("local",)
+REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {}
+URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible", "ollama")
+KEYLESS_PROVIDERS: tuple[str, ...] = ("local", "ollama")
 ARGUMENTS_STEP = "arguments"
 SETUP_MARKER = "# generated-by: onex setup"
 INSTALL_SH_MARKER = "# generated-by: omnibase install.sh"
@@ -160,7 +153,7 @@ def _write_atomic(path: Path, content: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def _write_if_changed(path: Path, content: str) -> bool:
+def write_if_changed(path: Path, content: str) -> bool:
     """Write ``content`` unless the file already holds it. True when written."""
     if path.is_file() and path.read_text(encoding="utf-8") == content:
         return False
@@ -179,7 +172,7 @@ def recorded_state(onex_home: Path) -> ModelOnexSetupState | None:
         return None
 
 
-def _recorded_path(runtime_config: Path) -> str | None:
+def recorded_install_path(runtime_config: Path) -> str | None:
     if not runtime_config.is_file():
         return None
     lines = runtime_config.read_text(encoding="utf-8").splitlines()
@@ -299,7 +292,7 @@ def refused_before_any_step(
     return None
 
 
-def _step_workspace(workspace: Path | None) -> tuple[Path, bool]:
+def ensure_workspace(workspace: Path | None) -> tuple[Path, bool]:
     if workspace is None:
         raise _StepFailedError(
             "workspace",
@@ -328,7 +321,7 @@ def _resolve_path(
     elif state is not None:
         choice = state.install_path
     else:
-        choice = _recorded_path(runtime_config) or "local"
+        choice = recorded_install_path(runtime_config) or "local"
     if choice == "cloud":
         raise _StepFailedError(
             "prerequisites",
@@ -364,7 +357,7 @@ def _step_prerequisites(install_path: str) -> str:
     return "path docker: docker, docker compose, openssl and make found"
 
 
-def _step_user_config(onex_home: Path) -> tuple[str, bool]:
+def ensure_user_config(onex_home: Path) -> tuple[str, bool]:
     config = onex_home / USER_CONFIG_FILE_NAME
     if config.exists():
         try:
@@ -382,9 +375,7 @@ def _step_user_config(onex_home: Path) -> tuple[str, bool]:
     return str(config), True
 
 
-def _step_runtime_config(
-    workspace: Path, install_path: str, onex_home: Path
-) -> tuple[Path, bool]:
+def ensure_runtime_config(workspace: Path, install_path: str) -> tuple[Path, bool]:
     runtime_config = workspace / RUNTIME_CONFIG_RELPATH
     if runtime_config.exists():
         lines = runtime_config.read_text(encoding="utf-8").splitlines()
@@ -403,12 +394,8 @@ def _step_runtime_config(
         description=description,
         bus_type=bus_type,
     )
-    written = _write_if_changed(runtime_config, content)
-    state = ModelOnexSetupState(workspace=workspace, install_path=install_path)
-    recorded = _write_if_changed(
-        onex_home / STATE_FILE_NAME, state.model_dump_json(indent=2) + "\n"
-    )
-    return runtime_config, written or recorded
+    written = write_if_changed(runtime_config, content)
+    return runtime_config, written
 
 
 def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
@@ -474,85 +461,115 @@ ModelStep = Callable[[ModelOnexSetupRequest], ModelOnexSetupReceipt]
 
 
 class HandlerOnexSetup:
-    """Run every step in order; stop at the first that fails and name its fix."""
+    """Keep the v1 contract shape while dispatching to the one setup engine."""
 
     def __init__(self, model_step: ModelStep | None = None) -> None:
         self._model_step: ModelStep = model_step or prove_model
 
     def handle(self, request: ModelOnexSetupRequest) -> ModelOnexSetupResult:
+        from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow import (
+            HandlerSetupWorkflow,
+        )
+        from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
+            ModelSetupPlan,
+        )
+
         refused = refused_before_any_step(request)
         if refused is not None:
             return refused
-        steps: list[ModelOnexSetupStepOutcome] = []
-        workspace: Path | None = request.workspace
-        install_path: str | None = request.install_path
-        state = recorded_state(request.onex_home)
-        try:
-            workspace, created = _step_workspace(workspace)
-            steps.append(
-                ModelOnexSetupStepOutcome(
-                    step="workspace", changed=created, detail=str(workspace)
-                )
-            )
-            install_path = _resolve_path(
-                request.install_path, state, workspace / RUNTIME_CONFIG_RELPATH
-            )
-            steps.append(
-                ModelOnexSetupStepOutcome(
-                    step="prerequisites",
-                    changed=False,
-                    detail=_step_prerequisites(install_path),
-                )
-            )
-            detail, changed = _step_user_config(request.onex_home)
-            steps.append(
-                ModelOnexSetupStepOutcome(
-                    step="user_config", changed=changed, detail=detail
-                )
-            )
-            runtime_config, changed = _step_runtime_config(
-                workspace, install_path, request.onex_home
-            )
-            steps.append(
-                ModelOnexSetupStepOutcome(
-                    step="runtime_config", changed=changed, detail=str(runtime_config)
-                )
-            )
-            receipt = self._prove_model(request)
-            steps.append(
-                ModelOnexSetupStepOutcome(
-                    step="model",
-                    changed=True,
-                    detail=f"{receipt.provider} {receipt.model} answered one delegation",
-                )
-            )
-        except _StepFailedError as failed:
+        if request.workspace is None:
             return ModelOnexSetupResult(
-                workspace=workspace,
-                install_path=install_path,
-                steps=tuple(steps),
+                workspace=None,
+                install_path=request.install_path,
+                steps=(),
                 failure=ModelOnexSetupFailure(
-                    step=failed.step,
-                    problem=failed.problem,
-                    fix=failed.fix,
-                    retry=retry_command(workspace, install_path, request),
+                    step="workspace",
+                    problem="No workspace root was named.",
+                    fix="Pass --workspace DIR.",
+                    retry=retry_command(None, request.install_path, request),
                 ),
             )
-        return ModelOnexSetupResult(
-            workspace=workspace,
-            install_path=install_path,
-            steps=tuple(steps),
-            receipt=receipt,
-        )
-
-    def _prove_model(self, request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
         if not request.provider or not request.model:
-            raise _StepFailedError(
-                "model",
-                "no provider and model are named",
-                "pass --provider and --model (onex setup asks for them in a terminal)",
+            return _refuse(
+                request,
+                "A provider and model are required.",
+                "Name --provider and --model before starting setup.",
             )
-        return self._model_step(request)
+        if request.install_path not in (None, "local"):
+            return _refuse(
+                request,
+                "The requested install lifecycle is not integrated yet.",
+                "Use --path local; Docker lifecycle setup is unfinished.",
+            )
+        try:
+            plan = ModelSetupPlan.model_validate(
+                {
+                    "workspace": request.workspace,
+                    "providers": [
+                        {
+                            "provider": request.provider.lower(),
+                            "models": [request.model],
+                            "url": request.url,
+                            "api_key_required": request.provider.lower() == "ollama"
+                            and request.key is not None,
+                        }
+                    ],
+                }
+            )
+            credentials = (
+                {request.provider.lower(): request.key}
+                if request.key is not None
+                else {}
+            )
+            journal = HandlerSetupWorkflow(
+                onex_home=request.onex_home,
+                credentials=credentials,
+                model_step=self._model_step,
+            ).handle(plan)
+        except (OSError, ValueError):
+            return _refuse(
+                request,
+                "The setup request or state could not be validated.",
+                "Preserve existing setup files and review the selected workspace, provider, model and URL.",
+            )
+        outcomes = tuple(
+            ModelOnexSetupStepOutcome(
+                step=item.step,
+                changed=item.changed,
+                detail="; ".join(
+                    f"{key}: {value}" for key, value in item.evidence.items()
+                )
+                or item.status,
+            )
+            for item in journal.observations
+            if item.status in ("success", "skipped")
+        )
+        failed = next(
+            (
+                item
+                for item in journal.observations
+                if item.status not in ("success", "skipped")
+            ),
+            None,
+        )
+        receipts = [
+            receipt for item in journal.observations for receipt in item.receipts
+        ]
+        return ModelOnexSetupResult(
+            workspace=journal.workspace,
+            install_path=journal.install_path,
+            steps=outcomes,
+            failure=ModelOnexSetupFailure(
+                step=failed.step,
+                problem=f"Component reported {failed.status}.",
+                fix=failed.fix or "Review the failed component.",
+                retry=failed.retry
+                or retry_command(journal.workspace, journal.install_path, request),
+            )
+            if failed
+            else None,
+            receipt=receipts[0] if receipts and failed is None else None,
+        )
 
 
 __all__ = [

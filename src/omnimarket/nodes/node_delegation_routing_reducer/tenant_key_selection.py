@@ -13,6 +13,9 @@ import logging
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.handlers.tenant_model_candidates import selected_key_models
 
@@ -69,6 +72,7 @@ def _select_pool_secret_ref(
     overlay_secret_ref: str | None,
     selector_key: str | None,
     now: datetime,
+    exact_ref_only: bool = False,
 ) -> str | None:
     """Choose the key this request runs on from the tenant's pool (OMN-20992).
 
@@ -105,6 +109,10 @@ def _select_pool_secret_ref(
     """
     if not provider:
         return overlay_secret_ref
+    backend = resolve_byok_provider_backend(provider)
+    exact_ref_only = exact_ref_only or bool(
+        backend and backend.endpoint_from_registration
+    )
     try:
         # OMN-21819: the pool spans rows stamped with either of the tenant's
         # forms (name or registry UUID); a failed read of either is a failed read.
@@ -131,9 +139,9 @@ def _select_pool_secret_ref(
             provider,
             exc_info=True,
         )
-        return overlay_secret_ref
+        return None if exact_ref_only else overlay_secret_ref
     if not catalogued:
-        return overlay_secret_ref
+        return None if exact_ref_only else overlay_secret_ref
     live = sorted(
         str(row["api_key_ref"])
         for row in catalogued
@@ -141,6 +149,7 @@ def _select_pool_secret_ref(
         and row.get("revoked_at") is None
         and _not_expired(row.get("expires_at"), now)
         and not row.get("bound_host")
+        and (not exact_ref_only or row.get("api_key_ref") == overlay_secret_ref)
     )
     if not live:
         logger.warning(
