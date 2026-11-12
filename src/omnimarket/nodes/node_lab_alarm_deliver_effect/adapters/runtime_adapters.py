@@ -13,15 +13,13 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendRequest,
 )
 from omnimarket.nodes.node_automation_liveness_watchdog_effect.handlers.alert_channel_sender import (
     AlertChannelAlarmSender,
-)
-from omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery import (
-    ModelAlarmSendReceipt,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.protocols import LedgerAppendError
 from omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect.adapters import (

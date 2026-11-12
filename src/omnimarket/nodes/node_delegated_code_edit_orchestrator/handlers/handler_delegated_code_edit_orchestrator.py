@@ -371,6 +371,7 @@ class _State:
     superseded: list[dict[str, object]] = field(default_factory=list)
     resumes: int = 0
     read_only_streak: int = 0
+    empty_finishes: int = 0
 
     def record_good(self, turn: int) -> None:
         """Snapshot the history boundary after a received reply was processed."""
@@ -752,6 +753,22 @@ class HandlerDelegatedCodeEditOrchestrator:
             try:
                 finished = self._apply_turn(request, turn, reply, record, state)
                 if finished:
+                    diff = self._ports.diff(request)
+                    if not diff.strip():
+                        state.empty_finishes += 1
+                        state.history.append(
+                            HistoryTurn(
+                                turn,
+                                message="FINISH REFUSED: no file in the worktree has changed. "
+                                "The task needs a change to a writable file; write it, then finish.\n",
+                            )
+                        )
+                        if state.empty_finishes >= request.max_no_change_finishes:
+                            raise _TerminalError(
+                                EnumCodeEditStatus.NO_CHANGE,
+                                f"finish was called {state.empty_finishes} times with no file changed",
+                            )
+                        continue
                     checks = self._run_checks(request, state)
                     self._record_finish(request, checks, state)
                     if all(c.status == "passed" for c in checks):
@@ -770,6 +787,11 @@ class HandlerDelegatedCodeEditOrchestrator:
                     self._progress_or_stop(request, checks, state)
             finally:
                 state.record_good(turn)
+        if not self._ports.diff(request).strip():
+            raise _TerminalError(
+                EnumCodeEditStatus.NO_CHANGE,
+                f"the turn cap ({request.max_turns}) was reached with no file changed",
+            )
         checks = self._run_checks(request, state)
         if all(c.status == "passed" for c in checks):
             return EnumCodeEditStatus.ACCEPTED

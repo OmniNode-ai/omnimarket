@@ -14,6 +14,12 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.lab_alarm_delivery import (
+    EnumDeliveryCondition,
+    EnumDeliveryOutcome,
+    ModelLabAlarm,
+    ModelLabAlarmDeliveryRequest,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_broker_listener import (
     EnumBrokerListenerFault,
     EnumBrokerListenerOutcome,
@@ -26,12 +32,6 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ListenerUnresolvableError,
     ProtocolAlarmDelivery,
     ProtocolListenerProbe,
-)
-from omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery import (
-    EnumDeliveryCondition,
-    EnumDeliveryOutcome,
-    ModelLabAlarm,
-    ModelLabAlarmDeliveryRequest,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"

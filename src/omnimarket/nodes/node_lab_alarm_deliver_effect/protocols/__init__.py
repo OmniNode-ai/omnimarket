@@ -7,9 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery import (
-    ModelAlarmSendReceipt,
-)
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 
 
 class ProtocolAlarmChannel(Protocol):

@@ -28,6 +28,12 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.lab_alarm_delivery import (
+    EnumDeliveryCondition,
+    EnumDeliveryOutcome,
+    ModelLabAlarm,
+    ModelLabAlarmDeliveryRequest,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm import (
     EnumBrokerLagOutcome,
     EnumGroupState,
@@ -50,12 +56,6 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ProtocolRunRecordStore,
     ProtocolSampleStore,
     RunRecordUnwritableError,
-)
-from omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery import (
-    EnumDeliveryCondition,
-    EnumDeliveryOutcome,
-    ModelLabAlarm,
-    ModelLabAlarmDeliveryRequest,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"

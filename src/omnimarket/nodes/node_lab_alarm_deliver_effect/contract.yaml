@@ -28,7 +28,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver
   class: HandlerLabAlarmDeliver
-  input_model: omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery.ModelLabAlarmDeliveryRequest
+  input_model: omnimarket.models.lab_alarm_delivery.ModelLabAlarmDeliveryRequest
 
 # HandlerLabAlarmDeliver takes the overlay settings, the channel, the ledger, the episode state store and the
 # clock as constructor parameters, so it is built by its caller (node_lab_alarm's runtime, or the node's own
@@ -44,11 +44,11 @@ descriptor:
 
 input_model:
   name: ModelLabAlarmDeliveryRequest
-  module: omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery
+  module: omnimarket.models.lab_alarm_delivery
   description: The condition, its outcome, and every subject that is alarming.
 output_model:
   name: ModelLabAlarmDeliveryResult
-  module: omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery
+  module: omnimarket.models.lab_alarm_delivery
   description: Per subject, the channel and ledger steps; the episodes the run ended; the ledger rows it retried.
 
 terminal_event: onex.evt.omnimarket.lab-alarm-delivery-completed.v1

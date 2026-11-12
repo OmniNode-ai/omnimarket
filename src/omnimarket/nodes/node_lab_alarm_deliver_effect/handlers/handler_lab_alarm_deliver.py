@@ -22,7 +22,7 @@ from uuid import UUID, uuid5
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery import (
+from omnimarket.models.lab_alarm_delivery import (
     EnumDeliveryCondition,
     EnumDeliveryOutcome,
     EnumDeliveryStep,

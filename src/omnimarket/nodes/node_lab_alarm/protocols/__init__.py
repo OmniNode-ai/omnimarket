@@ -8,13 +8,13 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Protocol
 
+from omnimarket.models.lab_alarm_delivery import (
+    ModelLabAlarmDeliveryRequest,
+    ModelLabAlarmDeliveryResult,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     ModelEffectsGroupReading,
     ModelEscalationBrief,
-)
-from omnimarket.nodes.node_lab_alarm_deliver_effect.models.model_lab_alarm_delivery import (
-    ModelLabAlarmDeliveryRequest,
-    ModelLabAlarmDeliveryResult,
 )
 
 
