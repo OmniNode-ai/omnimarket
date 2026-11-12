@@ -72,7 +72,11 @@ def _chain(
 ) -> ChainEmitter:
     runtime = _contract()["runtime"]
     return ChainEmitter(
-        sink, node=runtime["chain"], piece=int(runtime["piece"]), clock=clock
+        sink,
+        node=runtime["chain"],
+        piece=int(runtime["piece"]),
+        origin="real",
+        clock=clock,
     )
 
 

@@ -103,6 +103,6 @@ dod_evidence:
     binds_ac:
       - AC7
     checks:
-      - check_type: command
-        check_value: grep -q floor-integration src/omnimarket/nodes/node_integration_reading_publish_effect/contract.yaml
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_reading_publish.py -q -n 0 -p no:randomly --no-cov -k golden_chain
         cwd: .
