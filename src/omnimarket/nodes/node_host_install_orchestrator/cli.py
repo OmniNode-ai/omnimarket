@@ -35,14 +35,14 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
+from omnimarket.events.host_installer_registry_units import (
+    ModelRegistryUnitsRequest,
+)
 from omnimarket.handlers.bus_binding.select import positional_opener
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.nodes.node_host_install_orchestrator.models import (
     ModelHostInstallCompleted,
     ModelHostInstallRequest,
-)
-from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
-    ModelRegistryUnitsRequest,
 )
 
 EXIT_VALIDATION = 65
