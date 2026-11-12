@@ -167,8 +167,8 @@ class MemoryChainBus:
 class RedpandaChainBus:
     """A real broker of the declared test lane, on disposable topics tagged ``drill``.
 
-    The leg creates and deletes its own disposable topic through the admin client (the lane login
-    needs CREATE and DELETE on the drill prefixes).
+    The leg creates its own disposable topic through the admin client and leaves it (the lane login
+    needs CREATE on the drill prefixes and holds no DELETE).
     """
 
     name = "redpanda"
@@ -205,7 +205,6 @@ class RedpandaChainBus:
         drill_topic = f"{topic}.{self._tag}"
         admin = AIOKafkaAdminClient(bootstrap_servers=self._bootstrap, **auth)
         await asyncio.wait_for(admin.start(), timeout=BUS_TIMEOUT_S)
-        created = False
         try:
             # The consumer can only start on a topic that exists, so the drill topic is created first; a topic
             # error on the answer fails the leg, it never skips.
@@ -226,7 +225,6 @@ class RedpandaChainBus:
                     raise RuntimeError(
                         f"topic {name!r} was refused with code {code}: {err}"
                     )
-            created = True
             producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap, **auth)
             consumer = AIOKafkaConsumer(
                 drill_topic,
@@ -247,10 +245,6 @@ class RedpandaChainBus:
                 await consumer.stop()
                 await producer.stop()
         finally:
-            if created:
-                await asyncio.wait_for(
-                    admin.delete_topics([drill_topic]), timeout=BUS_TIMEOUT_S
-                )
             await asyncio.wait_for(admin.close(), timeout=BUS_TIMEOUT_S)
 
 
@@ -1083,9 +1077,25 @@ def test_golden_the_topic_is_created_before_the_consumer_starts(
         "consumer.getone",
         "consumer.stop",
         "producer.stop",
-        f"admin.delete:{drill_topic}",
         "admin.close",
     ]
+
+
+def test_golden_drill_topic_is_never_deleted(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_fakes(monkeypatch)
+    got = asyncio.run(RedpandaChainBus().roundtrip(TOPIC, PAYLOAD))
+    assert got == PAYLOAD
+    assert not any(event.startswith("admin.delete") for event in STATE.events)
+    assert len(STATE.created) == 1
+
+
+def test_control_drill_topic_delete_would_be_seen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_fakes(monkeypatch)
+    admin = FakeAdmin(bootstrap_servers=BROKER)
+    asyncio.run(admin.delete_topics(["x"]))
+    assert "admin.delete:x" in STATE.events
 
 
 def test_error_a_refused_create_fails_the_leg_and_starts_no_consumer(

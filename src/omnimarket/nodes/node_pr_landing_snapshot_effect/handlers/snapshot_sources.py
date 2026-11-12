@@ -13,8 +13,8 @@
   its facts file, its tick log (the tick is finished when the log's last row names it) and its decision
   log's action rows for that tick. The controller keeps no copy of its decision, only the facts it decided
   from and the actions it took, so the carry holds those two.
-- JsonlLandingTickRecorder: appends each tick's record to a journal and reads every record back,
-  so a tick's facts are recoverable after any later tick and after a restart.
+- JsonlLandingTickRecorder: appends each tick's record to a journal that keeps the newest record_journal_max_records
+  (OMN-23757; unbounded while the overlay names none), and reads those back; the broker holds the full history.
 
 The overlay names every path and bound; build_snapshot_ports wires the backend it selects.
 """
@@ -44,6 +44,10 @@ from omnimarket.models.landing_decision import (
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.adapter_publisher import (
     KafkaSnapshotPublisher,
     LaneBusSnapshotPublisher,
+)
+from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.journal_retention import (
+    ModelJournalRetentionDecision,
+    decide_journal_retention,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
     ControllerStateStaleError,
@@ -360,24 +364,78 @@ class LandingCarryStateDirSource:
         return tuple(rows)
 
 
-class JsonlLandingTickRecorder:
-    """Appends every tick's record to a journal; reads them all back."""
+_TAIL_CHUNK = 65536
 
-    def __init__(self, path: Path) -> None:
+
+def _tail_lines(path: Path, count: int) -> list[bytes]:
+    """The last ``count`` non-empty lines of a file, oldest first, read backward in chunks and never parsed.
+
+    Reads only as far back as it takes to hold ``count`` whole lines, so the cost does not grow with the file.
+    """
+    try:
+        with path.open("rb") as fh:
+            end = fh.seek(0, 2)
+            data = b""
+            pos = end
+            while pos > 0 and data.count(b"\n") <= count:
+                step = min(_TAIL_CHUNK, pos)
+                pos -= step
+                fh.seek(pos)
+                data = fh.read(step) + data
+    except FileNotFoundError:
+        return []
+    lines = data.split(b"\n")
+    if pos > 0:  # the read began inside a line: that first piece is partial
+        lines = lines[1:]
+    return [line for line in lines if line.strip()][-count:]
+
+
+class JsonlLandingTickRecorder:
+    """Appends every tick's record to a journal and keeps the newest ``max_records`` of them (OMN-23757).
+
+    With ``max_records`` unset the journal is unbounded and every record is read back, as before; the
+    pass line then names the missing overlay key. With it set, a read parses only the newest
+    ``max_records`` records, and an append that leaves more than that rewrites the file to the newest
+    ``max_records`` lines (the decision is journal_retention's; this class only executes it).
+    """
+
+    def __init__(self, path: Path, max_records: int | None = None) -> None:
         self._path = path
+        self._max_records = max_records
+        self.trimmed = False
+
+    @property
+    def decision(self) -> ModelJournalRetentionDecision:
+        return decide_journal_retention(self._max_records)
 
     def record(self, record: ModelLandingTickRecord) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as fh:
             fh.write(record.model_dump_json() + "\n")
+        if self._max_records is None:
+            return
+        tail = _tail_lines(self._path, self._max_records + 1)
+        decision = decide_journal_retention(self._max_records, records_found=len(tail))
+        if not decision.trim:
+            return
+        kept = tail[-self._max_records :]
+        scratch = self._path.with_name(self._path.name + ".trim")
+        scratch.write_bytes(b"\n".join(kept) + b"\n")
+        os.replace(scratch, self._path)
+        self.trimmed = True
 
     def recorded(self) -> tuple[ModelLandingTickRecord, ...]:
         if not self._path.exists():
             return ()
+        if self._max_records is None:
+            return tuple(
+                ModelLandingTickRecord.model_validate_json(line)
+                for line in self._path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
         return tuple(
             ModelLandingTickRecord.model_validate_json(line)
-            for line in self._path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
+            for line in _tail_lines(self._path, self._max_records)
         )
 
 
@@ -415,7 +473,9 @@ def build_snapshot_ports(
             max_age_seconds=overlay.watcher_max_age_seconds,
             now=now,
         ),
-        JsonlLandingTickRecorder(resolve_path(overlay.record_journal)),
+        JsonlLandingTickRecorder(
+            resolve_path(overlay.record_journal), overlay.record_journal_max_records
+        ),
         publisher or _publisher(overlay),
     )
 
