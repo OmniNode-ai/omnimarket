@@ -304,6 +304,17 @@ def _tick(args: argparse.Namespace) -> int:
         f"claude-pool-tick host={result.host} rank={result.rank} outcome={result.outcome} "
         f"in_use={result.in_use_state} from={result.from_label or 'none'} to={result.to_label or 'none'} "
         f"marks={sync.state}"
+        f" stale_revoke={result.stale_revoke}"
+        + (
+            f" revokes_cleared={','.join(result.revokes_cleared)}"
+            if result.revokes_cleared
+            else ""
+        )
+        + (
+            f" revokes_kept={','.join(result.revokes_kept)}"
+            if result.revokes_kept
+            else ""
+        )
         + (f" changed={','.join(sync.changed)}" if sync.changed else "")
         + (f" ({sync.detail})" if sync.detail else "")
         + "\n"

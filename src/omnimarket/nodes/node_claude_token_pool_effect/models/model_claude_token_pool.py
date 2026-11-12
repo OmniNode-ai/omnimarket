@@ -14,6 +14,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from omnimarket.models.model_claude_pool_revoke_staleness import (
+    ModelClearRevokeCommand,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
     ModelRotationMark,
 )
@@ -60,7 +63,8 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     started under ``label``; count the use and when it was seen, so the spread rule can tell a
     login that has been in use from one no lanes have used yet. ``resolve`` counts the use of the token
     it hands out. ``pin``: keep ``label`` first in this host's draw, through every ``reorder``, until
-    ``release``; ``pinned_by`` says whether an operator's assign or the spread rule set it.
+    ``release``; ``pinned_by`` says whether an operator's assign or the spread rule set it. ``clear_revokes``:
+    execute the typed ``clear_commands`` the revoke staleness compute decided (see ``clear_commands``).
 
     ``resolve`` for a NEW lane start also takes ``drain_labels`` (the usage verdict's list of labels close
     to their limit: skipped while any other label is usable, used only when nothing else is) and
@@ -81,11 +85,16 @@ class ModelClaudeTokenPoolRequest(BaseModel):
         "record_use",
         "pin",
         "release",
+        "clear_revokes",
     ]
     label: str | None = None
     #: ``pin``: who sets the pin. An operator's ``assign`` pin is never replaced by the spread rule.
     pinned_by: Literal["assign", "spread"] = "assign"
     marks: tuple[ModelRotationMark, ...] = ()
+    #: ``clear_revokes``: the typed commands the staleness compute decided. The pool clears a label's revoked mark only
+    #: when it still holds that fingerprint AND that exact ``revoked_at``; a newer revoke, a re-added token or an
+    #: already cleared mark is left alone.
+    clear_commands: tuple[ModelClearRevokeCommand, ...] = ()
     labels: tuple[str, ...] = ()
     #: ``sync_marks``: when the source wrote ``marks``. A local limit or revocation observed after this
     #: instant is newer than the snapshot and is kept; unset, the marks are authoritative.
@@ -118,6 +127,8 @@ class ModelClaudeTokenPoolEntry(BaseModel):
     #: How many times a lane on this host started under the token, and when the last one did.
     uses: int = 0
     last_used_at: str | None = None
+    revoked_at: str | None = None
+    limited_at: str | None = None
 
 
 class ModelClaudeTokenPoolResult(BaseModel):
@@ -136,6 +147,7 @@ class ModelClaudeTokenPoolResult(BaseModel):
         "record_use",
         "pin",
         "release",
+        "clear_revokes",
     ]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()
@@ -147,6 +159,8 @@ class ModelClaudeTokenPoolResult(BaseModel):
     limited: int = 0
     revoked: tuple[str, ...] = ()
     synced: tuple[str, ...] = ()
+    #: ``clear_revokes``: the labels whose revoked mark was cleared.
+    cleared: tuple[str, ...] = ()
     alert: str | None = None
     all_limited: bool = False
     next_reset: str | None = None

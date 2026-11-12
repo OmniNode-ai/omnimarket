@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_topic_provision_plan_compute
+version: 1.0.0
+description: >-
+  Plan the broker topics to create. A topic is provisioned only for a contract that a
+  running profile loads, and the rule comes from the node overlay, never from code.
+pack: topics
+node_role: compute
+display_name: Topic Provision Plan Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_topic_provision_plan_compute: omnimarket.nodes.node_topic_provision_plan_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- broker-topics

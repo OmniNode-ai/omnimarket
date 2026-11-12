@@ -371,6 +371,7 @@ class JoinJ2:
             correlation_id=cid,
             backend=self._backend,
             drill=self._drill,
+            origin="canary",
         )
 
     def _advert_age(self, host: str) -> int | None:
@@ -407,6 +408,7 @@ class JoinJ2:
                     "drill": self._drill,
                     "failure_code": UPSTREAM_PREFIX + code,
                     "failure_detail": detail[:300],
+                    "origin": "canary",
                 }
             )
         )
