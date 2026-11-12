@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-23902
+title: Two tests that fail on the main line itself no longer move with real data
+summary: The mid-weight shard-bound test in tests/unit/scripts/test_detect_test_paths.py writes its own recorded-times file instead of reading the real tests/nodes/ total (1839 recorded seconds, over the selector's 1800 second bound), and the arm-compare seam test compares the node's example line with the capability map's own overlay example instead of constructing ModelCapabilityLine() with no values (its fields have been required since the defaults moved to the overlay). Tests only; no limit, policy value or product code changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23902-shard-bound
+  statement: The mid-weight shard-bound test does not depend on the real recorded test times.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the shard-bound test for a mid-weight selection passes on the main line with the real recorded times, because it writes its own recorded times -- falsifier: uv run pytest tests/unit/scripts/test_detect_test_paths.py -q -k shard_bound fails at the main line before this change (estimated 1839 seconds, full_suite_too_heavy)"
+- id: req-omn23902-seam
+  statement: The arm-compare seam test reads the capability map's example overlay line.
+  acceptance:
+  - id: AC2
+    statement: "AC2: the arm-compare seam test compares the node's example line with the capability map's example overlay line and fails when either value changes -- falsifier: uv run pytest tests/nodes/node_delegation_arm_compare_compute/test_seam_capability_line.py -q fails at the main line before this change (four missing required fields), and fails when the capability map example margin is changed from 0.07 to 0.08"
+- id: req-omn23902-integrated
+  statement: The two checks read green in the main line's own CI.
+  acceptance:
+  - id: AC3
+    statement: "AC3: integrated: the next main-line CI run of the Tests splits that carry these two files is green and the factory's pull-request watcher shows those two checks no longer red on the open changes -- falsifier: either test is red in that run"
+evidence_requirements:
+- kind: tests
+  description: The two focused test files pass at the pushed head.
+  command: uv run pytest tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_delegation_arm_compare_compute/test_seam_capability_line.py -q -n 0 --no-cov -p no:cacheprovider -k "shard_bound or capability_map_example_line"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23902-ac1
+  description: 'AC1: the shard-bound tests pass with a durations file the test writes itself; at the main line the old test reads the real tests/nodes/ total (1839 recorded seconds) and fails with full_suite_too_heavy.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:cacheprovider -k shard_bound
+    cwd: .
+- id: dod-omn23902-ac2
+  description: 'AC2: the seam test reads both example overlays; it failed with four missing required fields at the main line, and a changed margin in the capability map example makes it fail (control run on the lab host).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_arm_compare_compute/test_seam_capability_line.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23902-ac3
+  description: 'hosted proxy for AC3: both focused test files pass at the pushed head; the reading of the open changes after the merge is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_delegation_arm_compare_compute/test_seam_capability_line.py -q -n 0 --no-cov -p no:cacheprovider -k "shard_bound or capability_map_example_line"
+    cwd: .
