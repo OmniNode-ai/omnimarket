@@ -45,3 +45,19 @@ class ModelNetUnitsResult(BaseModel):
     rendered: str = ""
     interface: str = ""
     digests: dict[str, str] = Field(default_factory=dict)
+    gpu_memory_utilization: str = ""
+
+
+class ModelGpuBudget(BaseModel):
+    """Measured GPU memory budget for a serving unit, in GiB and tokens."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    total_gib: float
+    engine_resident_gib: float
+    engine_fraction_measured: float
+    co_resident_gib: float
+    margin_gib: float
+    kv_cache_tokens_measured: int
+    kv_bytes_per_token: int
+    max_model_len: int
