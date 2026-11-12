@@ -43,13 +43,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_growth_persistence.py -q -n 0 --no-cov -p no:cacheprovider -k "zero_persist or streak_store"
     cwd: .
 - id: dod-omn23906-ac3
-  description: 'hosted proxy for AC3: the node tests that read the run record the board reads still pass; the reading across the redeploy is posted as a pull request comment naming the head.'
+  description: 'hosted proxy for AC3: the growth persistence tests that keep one rebalance spike from alarming pass here and fail at the merge base; the reading across the redeploy is posted as a pull request comment naming the head.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_run_record.py tests/nodes/node_floor_simple_effect/test_broker_lag_from_lag_node.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_growth_persistence.py -q -n 0 --no-cov -p no:cacheprovider -k 'one_growth_sample_waits or did_not_grow_resets or growth_under_min'
     cwd: .
 - id: dod-omn23906-integration-proof
   description: the node's focused tests run on a lab host at the pushed head, including the growth persistence tests that fail at the merge base; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
