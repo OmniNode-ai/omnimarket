@@ -1400,6 +1400,7 @@
   "tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_unit.py": 0.57,
   "tests/nodes/node_host_installer_registry_units/test_log_directory.py": 0.17,
   "tests/nodes/node_host_installer_registry_units/test_overlay_root_never_a_worktree.py": 11.7,
+  "tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py": 2.5,
   "tests/nodes/node_host_installer_registry_units/test_overlay_store_load_unit.py": 0.17,
   "tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py": 2.27,
   "tests/nodes/node_host_installer_registry_units/test_process_type.py": 0.74,
