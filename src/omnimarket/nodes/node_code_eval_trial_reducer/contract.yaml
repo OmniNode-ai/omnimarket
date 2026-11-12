@@ -17,7 +17,8 @@
 # I/O, no language model. The row and its guards are the model in
 # formal/code_eval_trial (design-review verdict approve-with-notes, omnimarket
 # pull request 5836). The orchestrator calls it in process, so the reducer has no
-# bus surface: no event_bus, no handler_routing.
+# bus surface: no event_bus, no handler_routing. The handler is bound by the
+# handler block below, which gives it no route or topic.
 name: "node_code_eval_trial_reducer"
 contract_name: "node_code_eval_trial_reducer"
 node_name: "node_code_eval_trial_reducer"
@@ -47,6 +48,10 @@ output_model:
   name: "ModelCodeEvalReduceOutput"
   module: "omnimarket.nodes.node_code_eval_trial_reducer.models"
   description: "The next row, the transition taken or the drop reason, and the emissions."
+handler:
+  module: "omnimarket.nodes.node_code_eval_trial_reducer.handlers.handler_code_eval_trial_reducer"
+  class: "HandlerCodeEvalTrialReducer"
+  input_model: "omnimarket.nodes.node_code_eval_trial_reducer.models.ModelCodeEvalReduceInput"
 metadata:
   description: "Pure transition function of the code eval trial run row."
   author: "OmniNode Team"

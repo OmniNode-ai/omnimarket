@@ -60,6 +60,8 @@ inputs:
     description: "The run's id; onex run-node fills it with the envelope's."
 # onex run-node publishes the request and polls this topic for the run's result.
 terminal_event: "onex.evt.omnimarket.code-eval-run-closed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.code-eval-run-requested.v1"
 runtime_profiles:
   - main
 state_io:
@@ -176,7 +178,6 @@ handler_routing:
       topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
       description: "The capacity route: keeps the newest advertisement per host, at most max_hosts; emits nothing."
     - operation: "code_eval.tick"
-      message_category: "event"
       handler:
         name: "HandlerCodeEvalTrialOrchestrator"
         module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"

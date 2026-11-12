@@ -221,6 +221,20 @@ def test_s6_the_topics_the_orchestrator_names_are_the_other_nodes_own() -> None:
     )
 
 
+def test_s6_the_published_topics_are_exactly_the_five_the_seams_pin() -> None:
+    own = contract("node_code_eval_trial_orchestrator")
+    assert set(own["event_bus"]["publish_topics"]) == {
+        "onex.cmd.omnimarket.lab-work-unit-requested.v1",
+        "onex.cmd.omnimarket.code-contract-score-requested.v1",
+        "onex.evt.omnimarket.context-roi-run-completed.v1",
+        "onex.cmd.omnimarket.code-eval-run-nudge.v1",
+        "onex.evt.omnimarket.code-eval-run-closed.v1",
+    }
+    assert own["runtime_dispatch"]["command_topic"] == (
+        "onex.cmd.omnimarket.code-eval-run-requested.v1"
+    )
+
+
 def test_s6_every_route_names_a_model_and_a_handler_that_import() -> None:
     import importlib
 
