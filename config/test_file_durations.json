@@ -1429,6 +1429,7 @@
   "tests/nodes/node_hook_parse_probe_compute/test_golden_chain_hook_parse_probe.py": 0.8,
   "tests/nodes/node_host_capability_compute/test_golden_chain_host_capability_compute.py": 0.01,
   "tests/nodes/node_host_capability_compute/test_host_capability_parity.py": 10.48,
+  "tests/nodes/node_host_capability_compute/test_lab_ssh_peers.py": 4.41,
   "tests/nodes/node_host_capability_compute/test_pr_create_placement.py": 0.16,
   "tests/nodes/node_host_capability_compute/test_registry_roots.py": 0.03,
   "tests/nodes/node_host_capacity_compute/test_golden_chain_host_capacity_compute.py": 0.17,
