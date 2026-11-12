@@ -162,6 +162,7 @@ class HandlerLabCheckRunEffect:
             backend="in_memory"
             if isinstance(overlay.source, ModelInMemorySource)
             else "real",
+            origin="probe",
         )
         chain.start()
         try:
