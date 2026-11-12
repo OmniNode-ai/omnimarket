@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI
 from omnibase_infra.cli.receipt_mode import create_receipt_artifact_store
 
@@ -31,8 +31,12 @@ from omnimarket.models.delegation.model_claude_gateway import (
     ModelClaudeGatewayReceipt,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_gateway import (
+    GatewayTransport,
     HandlerClaudeGateway,
     build_gateway_app,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_launch import (
+    HandlerClaudeLaunch,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -44,6 +48,11 @@ from omnimarket.projection.sqlite_metering_summary import (
 )
 
 
+def launch_claude(args: Sequence[str]) -> int:
+    """Start Claude Code through the delegation node's launch handler."""
+    return HandlerClaudeLaunch().handle(args)
+
+
 def serve_local_gateway(config: ModelClaudeGatewayConfig) -> None:
     asyncio.run(HandlerClaudeGateway().handle(config))
 
@@ -53,7 +62,7 @@ def build_local_gateway_application(
     *,
     state_root: Path | None = None,
     store: LocalByokCredentialStore | None = None,
-    transport: httpx.AsyncBaseTransport | None = None,
+    transport: GatewayTransport | None = None,
 ) -> FastAPI:
     credential_store = store or LocalByokCredentialStore()
     identity = read_local_tenant_identity(db_path=credential_store.db_path)

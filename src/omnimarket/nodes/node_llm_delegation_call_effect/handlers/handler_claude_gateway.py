@@ -29,7 +29,7 @@ from pydantic import JsonValue
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
-from omnimarket.inference.provider_response_error import provider_message_from_text
+from omnimarket.inference.provider_response_error import failure_class_for_status
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_claude_gateway import (
     ModelClaudeGatewayConfig,
     ModelClaudeGatewayReceipt,
@@ -182,6 +182,10 @@ def _endpoint(
     # never a request parameter. Local/LAN inference may use HTTP just as the
     # existing delegation transport does. Redirects remain disabled below.
     return endpoint
+
+
+#: The upstream transport type, so callers need no transport import of their own.
+GatewayTransport = httpx.AsyncBaseTransport
 
 
 def build_gateway_app(
@@ -375,12 +379,10 @@ def build_gateway_app(
                     break
                 if last or not _fallback_eligible(response.status_code):
                     failure["status"] = response.status_code
-                    message = provider_message_from_text(
-                        (await _bounded_response(response, 4096)).decode(
-                            errors="replace"
-                        )
+                    failure_class = failure_class_for_status(response.status_code)
+                    failure["reason"] = (
+                        str(failure_class) if failure_class else "unclassified"
                     )
-                    failure["reason"] = message or f"HTTP {response.status_code}"
                     raise ValueError("Upstream request refused")
                 await response.aclose()
                 await client.aclose()

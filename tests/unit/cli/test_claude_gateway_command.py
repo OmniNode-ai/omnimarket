@@ -17,6 +17,9 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models.model_claud
     ModelClaudeGatewaySettingsRequest,
     ModelClaudeGatewaySettingsResult,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    handler_claude_launch as claude_launch,
+)
 
 pytestmark = pytest.mark.unit
 ENABLE = [
@@ -156,7 +159,9 @@ def test_start_rejects_routing_override_arguments(
     override: str,
 ) -> None:
     launches: list[object] = []
-    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **_kw: launches.append(a))
+    monkeypatch.setattr(
+        claude_launch.subprocess, "run", lambda *a, **_kw: launches.append(a)
+    )
     result = CliRunner().invoke(cli.claude_group, ["start", "--", override])
     assert result.exit_code != 0
     assert launches == []
@@ -171,7 +176,9 @@ def test_start_refuses_unavailable_gateway(monkeypatch: pytest.MonkeyPatch) -> N
         ),
     )
     launches: list[object] = []
-    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **_kw: launches.append(a))
+    monkeypatch.setattr(
+        claude_launch.subprocess, "run", lambda *a, **_kw: launches.append(a)
+    )
     result = CliRunner().invoke(cli.claude_group, ["start"])
     assert result.exit_code != 0
     assert launches == []
@@ -187,7 +194,7 @@ def test_start_uses_claude_after_successful_status(
         launches.append(argv)
         return SimpleNamespace(returncode=7)
 
-    monkeypatch.setattr(cli.subprocess, "run", run)
+    monkeypatch.setattr(claude_launch.subprocess, "run", run)
     result = CliRunner().invoke(cli.claude_group, ["start", "--", "--version"])
     assert result.exit_code == 7
     assert launches == [["claude", "--version"]]

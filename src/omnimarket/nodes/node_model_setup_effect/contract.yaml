@@ -97,3 +97,14 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+# OMN-23413: the HTTP this node makes, always to the server the user connects.
+endpoints:
+  model_server_models:
+    url_ref: connection.base_url
+    method: GET
+    description: "Read-only: the models a user-connected server lists."
+  model_server_probe:
+    url_ref: connection.base_url
+    method: POST
+    description: "One-token check of a chosen model on the user's server."

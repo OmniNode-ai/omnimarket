@@ -826,7 +826,7 @@ def open_local_credentials(db_path: Path) -> sqlite3.Connection:
     # already -- tightening an existing file is the point, not a side effect.
     db_path.touch(mode=0o600, exist_ok=True)
     db_path.chmod(0o600)
-    conn = sqlite3.connect(str(db_path))  # no-contract-check: secret-store boundary
+    conn = _sqlite_connect(str(db_path))
     # OMN-17427: close on setup failure so its traceback cannot retain a write lock.
     try:
         conn.row_factory = sqlite3.Row
@@ -884,13 +884,13 @@ def open_local_credentials(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _sqlite_connect(target: str, *, uri: bool = False) -> sqlite3.Connection:
+    # The one direct connection of this secret-store adapter, read-write or read-only.
+    return sqlite3.connect(target, uri=uri)  # no-contract-check: secret-store boundary
+
+
 def read_local_credentials(db_path: Path) -> sqlite3.Connection:
     """Read existing credential metadata without creating, migrating or chmodding it."""
-    conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=ro", uri=True)
+    conn = _sqlite_connect(db_path.absolute().as_uri() + "?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
-
-
-_connect = open_local_credentials
-
-_read_connect = read_local_credentials

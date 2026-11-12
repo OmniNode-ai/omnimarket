@@ -344,17 +344,18 @@ async def test_incompatible_route_refused_before_inference() -> None:
 @pytest.mark.parametrize(
     ("failure", "status", "reason"),
     [
-        ("refused", 400, "maximum context length is 32768 tokens"),
+        ("refused", 400, None),
         ("outage", None, "ConnectError"),
     ],
 )
 async def test_a_refused_request_records_why_in_its_receipt_only(
-    failure: str, status: int | None, reason: str
+    failure: str, status: int | None, reason: str | None
 ) -> None:
     """The 502 tells the user to inspect the run receipt; the receipt must say why.
 
-    The client still sees only the generic 502 (no upstream text), and a
-    key-shaped string in the upstream message is scrubbed from the receipt.
+    Why is the upstream status and its failure class, or the transport error's
+    class name. No upstream text reaches the receipt or the client: a provider
+    body can echo private request content.
     """
 
     def respond(req: httpx.Request) -> httpx.Response:
@@ -379,5 +380,8 @@ async def test_a_refused_request_records_why_in_its_receipt_only(
     assert len(receipts) == 1
     assert receipts[0].status == "failed"
     assert receipts[0].upstream_status == status
-    assert reason in (receipts[0].failure_reason or "")
-    assert "SENTINEL" not in (receipts[0].failure_reason or "")
+    assert receipts[0].failure_reason
+    if reason is not None:
+        assert reason in receipts[0].failure_reason
+    assert "SENTINEL" not in receipts[0].model_dump_json()
+    assert "context length" not in receipts[0].model_dump_json()

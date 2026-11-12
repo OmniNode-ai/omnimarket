@@ -208,3 +208,22 @@ metadata:
   # OMN-23413: the loopback host of the processes setup starts (URL authority);
   # read by handlers/setup_contract_values.py.
   loopback_host: "127.0.0.1"
+  # OMN-23413: handlers the TUI serves directly, with no bus operation.
+  cli_served_handlers:
+    - operation: "tui_run_onex_command"
+      handler:
+        module: "omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_command"
+        class: "HandlerOnexCommand"
+      description: "Runs the installed onex for the TUI: palette commands, delegations and setup, streamed or captured; a cancelled run stops its process."
+
+# OMN-23413: the HTTP this node makes. Every URL comes from the user's setup
+# choice or a loopback service setup started; none is written here.
+endpoints:
+  dashboard_health:
+    url_ref: setup.dashboard_loopback_url
+    method: GET
+    description: "Read-only: is the dashboard this setup started answering for this install's tenant?"
+  claude_gateway_check:
+    url_ref: setup.claude_gateway_url
+    method: POST
+    description: "One Anthropic Messages request through the gateway setup configured, proving it answers."

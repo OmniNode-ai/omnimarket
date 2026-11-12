@@ -501,6 +501,11 @@ metadata:
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_gateway"
         class: "HandlerClaudeGateway"
       description: "Native Claude ingress for onex claude gateway: canonical routing, an ordered native-Messages ladder and run receipts. No direct-provider fallback."
+    - operation: "launch_claude"
+      handler:
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_launch"
+        class: "HandlerClaudeLaunch"
+      description: "Start the installed Claude Code CLI for onex claude start, after the CLI has verified the gateway binding."
 
 # Direct host operation, deliberately no customer bus topic carrying prompts.
 # CLI: python -m omnimarket.nodes.node_llm_delegation_call_effect codex-harness
@@ -541,3 +546,15 @@ claude_credential_probe:
   max_timeout_seconds: 300
   terminate_grace_seconds: 5
   output_chars: 600
+
+# OMN-23413: the HTTP the Claude gateway handlers make. The upstream is the
+# routed native backend; the route proof calls the local gateway itself.
+endpoints:
+  native_messages_upstream:
+    url_ref: routing.backend.endpoint_url
+    method: POST
+    description: "Claude gateway: Anthropic Messages to the routed native backend."
+  gateway_route_proof:
+    url_ref: claude.gateway_url
+    method: POST
+    description: "Route proof: one request through the local Claude gateway."

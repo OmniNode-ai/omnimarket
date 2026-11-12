@@ -8,7 +8,6 @@ import asyncio
 import json
 import os
 import shlex
-import subprocess
 import sys
 from pathlib import Path
 
@@ -382,13 +381,15 @@ def start_command(ctx: click.Context, args: tuple[str, ...]) -> None:
         raise click.ClickException(
             "Gateway routing is unavailable; run onex claude status before launching Claude."
         )
+    from omnimarket.handlers.claude_gateway import launch_claude
+
     try:
-        process = subprocess.run(["claude", *args], check=False)
+        code = launch_claude(args)
     except OSError:
         raise click.ClickException(
             "Claude Code could not be launched; check its installation."
         ) from None
-    ctx.exit(process.returncode)
+    ctx.exit(code)
 
 
 if __name__ == "__main__":
