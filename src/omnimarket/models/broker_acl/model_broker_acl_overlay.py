@@ -44,6 +44,9 @@ class EnumBrokerAclFindingCode(StrEnum):
     DUPLICATE_GRANT = "duplicate_grant"
     FORBIDDEN_SCM_GRANT = "forbidden_scm_grant"
     SCOPE_MISMATCH = "scope_mismatch"
+    TOPIC_WITHOUT_ROW = "topic_without_row"
+    NODE_WITHOUT_CONTRACT = "node_without_contract"
+    NODE_PRINCIPAL_CONFLICT = "node_principal_conflict"
 
 
 class ModelBrokerAclGrant(BaseModel):
