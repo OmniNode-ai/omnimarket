@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23994
+title: Declare a per-host projection read binding in the node overlay
+summary: The projection read node resolved its database only from two environment variables that name overlay files, so a host that sets neither (the operator Mac) read projection_binding_unconfigured. The read binding now also comes from a host row of the node_projection_read_effect overlay, found under the overlay roots, after the two variables; a host with no row, an invalid overlay or an unresolved database reference is refused by name and never reads as an empty page.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23994-host-binding
+  statement: A host row of the node_projection_read_effect overlay supplies the projection read binding when neither variable is set, and a host without a usable binding is refused by name.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a host row in the node_projection_read_effect overlay resolves the projection read binding when neither environment variable is set, and the two variables still win over it -- falsifier: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py -q -p no:randomly --no-cov fails at the merge base"
+  - id: AC2
+    statement: "AC2: a host with no row, an unreadable overlay, or a row whose database reference does not resolve reads projection_binding_unconfigured or projection_binding_invalid, never an empty page -- falsifier: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py -q -p no:randomly --no-cov -k unknown fails at the merge base"
+  - id: AC3
+    statement: "AC3: the golden and error chain tests of the read node pass through the overlay -- falsifier: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py -q -p no:randomly --no-cov -k host_overlay fails at the merge base"
+- id: req-omn23994-integrated
+  statement: The read answers from an overlay row alone on a lab host.
+  acceptance:
+  - id: AC4
+    statement: "AC4: integrated: on a lab host with neither variable set, onex node node_projection_read_effect returns rows through the overlay row alone -- falsifier: the same command with the overlay root unset prints projection_binding_unconfigured"
+evidence_requirements:
+- kind: tests
+  description: The host overlay tests and the OMN-20159 read binding tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py tests/unit/nodes/node_projection_read_effect/test_read_binding_apart_from_claim_store_omn20159.py tests/unit/projection/test_projection_binding_env_discipline_omn20159.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23994-ac1
+  description: 'AC1: the host overlay resolution tests pass at the head; the file fails at the merge base, where the overlay is not read.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23994-ac2
+  description: 'AC2: the unknown-host, missing-file and unset-reference tests pass at the head and fail at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py -q -p no:randomly --no-cov -k unknown
+    cwd: .
+- id: dod-omn23994-ac3
+  description: 'AC3: the golden chain and every error chain test of the file pass at the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py -q -p no:randomly --no-cov -k host_overlay
+    cwd: .
+- id: dod-omn23994-ac4
+  description: 'hosted proxy for AC4: the golden chain test reads rows through the overlay row alone; the reading on a lab host is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_projection_read_binding_host_overlay.py -q -p no:randomly --no-cov -k golden
+    cwd: .

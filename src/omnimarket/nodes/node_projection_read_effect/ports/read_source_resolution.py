@@ -18,7 +18,10 @@ bound to.
 
 Unlike that node there is no fallback. A runtime with no binding has no
 projection tables to read, and answering from some other database would
-serve rows the writers never wrote, so the read is refused by name.
+serve rows the writers never wrote, so the read is refused by name. The
+binding may also come from the ``node_projection_read_effect`` node overlay,
+the per-host projection read binding the read node's own overlay names for
+this host (OMN-23994).
 """
 
 from __future__ import annotations
@@ -65,8 +68,9 @@ def resolve_projection_read_source() -> TableRowSource | SqliteTableRowSource:
     if binding is None:
         raise ProjectionReadError(
             "projection_binding_unconfigured",
-            f"{PROJECTION_READ_BINDING_UNSET_DETAIL}, so this runtime has no "
-            "projection tables to read",
+            f"{PROJECTION_READ_BINDING_UNSET_DETAIL}, and no row of the "
+            "node_projection_read_effect overlay names this host, so this "
+            "runtime has no projection tables to read",
         )
     # binding.source is where the binding came from (overlay:<path>), never a
     # credential, so the operator is sent to the file that was in effect.

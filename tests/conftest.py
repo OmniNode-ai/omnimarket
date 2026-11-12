@@ -493,6 +493,9 @@ def _strip_projection_database_bindings(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
     monkeypatch.delenv("OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY", raising=False)
     monkeypatch.delenv("OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY", raising=False)
+    # OMN-23994: a host row of the node_projection_read_effect overlay is another
+    # source of the read binding, so the caller's overlay roots stay out too.
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
 
 
 @pytest.fixture(autouse=True)
