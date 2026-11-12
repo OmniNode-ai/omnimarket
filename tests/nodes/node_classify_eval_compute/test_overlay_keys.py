@@ -26,6 +26,19 @@ def test_the_example_overlay_validates_and_names_every_key() -> None:
     overlay = ModelClassifyEvalOverlay.model_validate(document)
     assert set(document) == set(ModelClassifyEvalOverlay.model_fields)
     assert sum(overlay.per_class_n.values()) >= overlay.min_total
+    assert len(overlay.leak_phrases) >= 1
+    assert overlay.leak_mask
+
+
+def test_the_example_overlay_names_leak_phrases_and_leak_mask() -> None:
+    document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    assert "leak_phrases" in document
+    assert "leak_mask" in document
+    assert isinstance(document["leak_phrases"], list)
+    assert len(document["leak_phrases"]) >= 1
+    assert all(isinstance(p, str) and p for p in document["leak_phrases"])
+    assert isinstance(document["leak_mask"], str)
+    assert document["leak_mask"]
 
 
 def test_a_key_the_schema_does_not_name_is_refused() -> None:

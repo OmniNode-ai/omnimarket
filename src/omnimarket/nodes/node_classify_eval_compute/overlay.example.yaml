@@ -16,3 +16,11 @@ seed: synthetic-seed           # classify_eval.seed: orders each class's lines f
 min_total: 8                   # classify_eval.min_total: the smallest set that is a result
 rubric: >                      # classify_eval.rubric: the instruction an engine gets with each line
   Classify one merged change into exactly one class word. Answer with the class word only.
+leak_phrases:                  # classify_eval.leak_phrases: class words that leak the answer in a task's text cells
+  - DEFECT
+  - SEEN RUNNING
+  - NOT RUNNING
+  - BLOCKED
+  - UNPROVEN
+  - IN PLACE
+leak_mask: "[class word]"       # classify_eval.leak_mask: the text each leak phrase is replaced with

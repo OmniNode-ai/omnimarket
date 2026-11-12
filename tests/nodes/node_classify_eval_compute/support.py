@@ -39,6 +39,8 @@ def overlay(
         seed="s",
         min_total=min_total,
         rubric="Classify one merged change. Last line: the class word alone.",
+        leak_phrases=("DEFECT", "SEEN RUNNING", "NOT RUNNING", "BLOCKED", "UNPROVEN"),
+        leak_mask="[class word]",
     )
 
 

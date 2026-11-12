@@ -13,7 +13,8 @@ description: >
   each engine on each input variant and answers accuracy overall and per class, replies that name no
   class, and mean wall time per line. A request with no lines, a class short of its size, a set below
   the minimum, no tasks, no answers, an answer for an unknown task or a repeated answer ends as a typed
-  failure and never a result. No clock, no model call.
+  failure and never a result. Class words in a task's text cells are masked from the overlay's list and
+  counted. No clock, no model call.
 
 handler_routing:
   routing_strategy: operation_match
@@ -74,6 +75,8 @@ outputs:
   class_counts:
     type: tuple
   ambiguous_excluded:
+    type: int
+  masked_cells:
     type: int
   scores:
     type: tuple

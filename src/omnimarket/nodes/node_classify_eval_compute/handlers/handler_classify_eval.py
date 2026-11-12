@@ -122,14 +122,40 @@ class HandlerClassifyEval:
                 class_counts=tuple(counts),
                 ambiguous_excluded=len(ambiguous),
             )
+        masked_cells = 0
+        masked: list[ModelClassifyEvalTask] = []
+        for task in drawn:
+            title = self._mask(task.title, overlay)
+            runs = self._mask(task.runs, overlay)
+            evidence = self._mask(task.evidence, overlay)
+            masked_cells += sum(
+                after != before
+                for before, after in (
+                    (task.title, title),
+                    (task.runs, runs),
+                    (task.evidence, evidence),
+                )
+            )
+            masked.append(
+                task.model_copy(
+                    update={"title": title, "runs": runs, "evidence": evidence}
+                )
+            )
         return ModelClassifyEvalResult(
             suite_id=request.suite_id,
             operation=request.operation,
             rubric=overlay.rubric,
-            tasks=tuple(drawn),
+            tasks=tuple(masked),
             class_counts=tuple(counts),
             ambiguous_excluded=len(ambiguous),
+            masked_cells=masked_cells,
         )
+
+    @staticmethod
+    def _mask(text: str, overlay: ModelClassifyEvalOverlay) -> str:
+        for phrase in overlay.leak_phrases:
+            text = text.replace(phrase, overlay.leak_mask)
+        return text
 
     @staticmethod
     def _order_key(seed: str, task: ModelClassifyEvalTask) -> str:

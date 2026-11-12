@@ -653,6 +653,7 @@
   "tests/nodes/node_classify_eval_compute/test_error_chain_classify_eval.py": 3.67,
   "tests/nodes/node_classify_eval_compute/test_failing_controls.py": 3.64,
   "tests/nodes/node_classify_eval_compute/test_golden_chain_classify_eval.py": 3.71,
+  "tests/nodes/node_classify_eval_compute/test_leak_mask.py": 3.26,
   "tests/nodes/node_classify_eval_compute/test_overlay_keys.py": 3.72,
   "tests/nodes/node_classify_eval_compute/test_seam_ledger_and_reply_shapes.py": 3.74,
   "tests/nodes/node_claude_code_history_read_effect/test_handler_history_read.py": 0.05,

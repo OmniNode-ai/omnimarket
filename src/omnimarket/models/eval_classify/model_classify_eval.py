@@ -103,6 +103,7 @@ class ModelClassifyEvalResult(BaseModel):
     tasks: tuple[ModelClassifyEvalTask, ...] = ()
     class_counts: tuple[ModelClassifyClassCount, ...] = ()
     ambiguous_excluded: int = Field(default=0, ge=0)
+    masked_cells: int = Field(default=0, ge=0)
     scores: tuple[ModelClassifyEngineScore, ...] = ()
 
 
