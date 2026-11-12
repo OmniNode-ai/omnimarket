@@ -4329,7 +4329,8 @@
         "node_context_roi_runner",
         "node_delegate_skill_orchestrator",
         "node_delegation_routing_reducer",
-        "node_generation_consumer"
+        "node_generation_consumer",
+        "node_projection_context_roi"
       ],
       "target_schema": "public",
       "writers": [
