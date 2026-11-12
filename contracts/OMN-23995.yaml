@@ -68,7 +68,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/ci/test_omn23995_bus_model_seam_wiring.py tests/unit/scripts/ci/test_ci_summary_gate.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23995-ac4
   description: The tests that stand behind the integrated reading pass at the head. The reading itself (the dev runtime's image revision and one run of the check on it) is taken after the merge by the
