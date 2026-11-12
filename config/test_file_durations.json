@@ -677,6 +677,7 @@
   "tests/nodes/node_claude_token_pool_effect/test_seam_drain_labels.py": 0.06,
   "tests/nodes/node_claude_token_pool_effect/test_seams_omn23895.py": 1.15,
   "tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py": 1.45,
+  "tests/nodes/node_claude_token_pool_effect/test_unstamped_revoke.py": 1.2,
   "tests/nodes/node_clone_parity_compute/test_clone_parity.py": 0.81,
   "tests/nodes/node_clone_parity_compute/test_golden_chain_clone_parity_compute.py": 0.01,
   "tests/nodes/node_closeout_verifier_compute/test_handler_closeout_verifier.py": 0.03,
