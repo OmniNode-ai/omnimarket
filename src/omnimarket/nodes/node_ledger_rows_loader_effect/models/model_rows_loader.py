@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_work_ledger_reader_effect.models import (
+from omnimarket.events.work_ledger_reader import (
     EnumReaderEventKind,
     ModelReaderResult,
 )

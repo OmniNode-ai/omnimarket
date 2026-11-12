@@ -19,6 +19,10 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.events.work_ledger_reader import (
+    EnumReaderQuery,
+    ModelReaderRequest,
+)
 from omnimarket.nodes.node_ledger_rows_loader_effect.adapters import (
     FileRowsReader,
     InMemoryRowsLoaderSink,
@@ -41,10 +45,6 @@ from omnimarket.nodes.node_work_ledger_reader_effect.adapters import (
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.handlers import (
     HandlerWorkLedgerReader,
-)
-from omnimarket.nodes.node_work_ledger_reader_effect.models import (
-    EnumReaderQuery,
-    ModelReaderRequest,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.overlay import (
     load_overlay as load_reader_overlay,
