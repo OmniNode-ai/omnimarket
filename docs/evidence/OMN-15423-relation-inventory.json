@@ -4,6 +4,13 @@
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
+      "name": "code_eval_trial_state",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
       "name": "compaction_current_context",
       "reason": "no authoritative CREATE TABLE migration found"
     },
@@ -125,7 +132,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 41,
-    "table": 139,
+    "table": 140,
     "view": 11
   },
   "relations": [
@@ -3949,6 +3956,49 @@
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_claude_hook_events",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "code_eval_trial_state",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "public",
+      "writers": [
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -11375,7 +11425,7 @@
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
     "source_created_tables": 126,
-    "source_declared_tables": 139
+    "source_declared_tables": 140
   },
   "runtime_evidence": {
     "dsn_key_provenance": {

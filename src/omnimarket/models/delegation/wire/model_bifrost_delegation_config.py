@@ -36,6 +36,7 @@ class EnumDelegationHarness(StrEnum):
     CODEX = "codex"
     CLAUDE_GLM = "claude-glm"
     CLAUDE = "claude"
+    LAB_AGENT = "lab-agent"
 
 
 class EnumDelegationBackendSurface(StrEnum):
