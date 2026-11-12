@@ -686,6 +686,7 @@
   "tests/nodes/node_claude_token_pool_effect/test_install_coverage.py": 1.89,
   "tests/nodes/node_claude_token_pool_effect/test_limit_probe_adapter.py": 2.17,
   "tests/nodes/node_claude_token_pool_effect/test_limit_recheck.py": 1.41,
+  "tests/nodes/node_claude_token_pool_effect/test_limit_recheck_outcome_line.py": 1.94,
   "tests/nodes/node_claude_token_pool_effect/test_pool_tick_unit.py": 1.75,
   "tests/nodes/node_claude_token_pool_effect/test_receipt_login_seam.py": 0.08,
   "tests/nodes/node_claude_token_pool_effect/test_review_findings_omn23069.py": 0.31,
