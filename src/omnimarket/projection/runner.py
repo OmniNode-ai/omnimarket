@@ -31,11 +31,13 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers import (
+    handler_projection_read_binding_host_overlay as _host_overlay,
+)
 from omnimarket.handlers.runtime_delivery_host import KeptPools
 from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
-from omnimarket.projection import read_binding_host_overlay as _host_overlay
 from omnimarket.projection.dlq import (
     build_dlq_envelope,
     correlation_id_from_payload,

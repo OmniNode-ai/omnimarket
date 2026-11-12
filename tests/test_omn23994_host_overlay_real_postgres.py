@@ -20,6 +20,9 @@ import pytest
 import yaml
 
 import omnimarket.projection.runner as runner
+from omnimarket.handlers.handler_projection_read_binding_host_overlay import (
+    projection_read_binding_from_host_overlay,
+)
 
 
 def _real_dsn() -> str:
@@ -66,6 +69,9 @@ async def test_host_overlay_binding_connects_to_real_postgres(
     binding = runner.projection_read_binding_from_overlay_env()
     assert binding is not None
     assert binding.source.endswith(f"#{host}")
+    from_handler = projection_read_binding_from_host_overlay(host)
+    assert from_handler is not None
+    assert from_handler.source == binding.source
     try:
         conn = await asyncpg.connect(binding.resolve_database_url())
     except (OSError, asyncpg.PostgresError) as exc:
