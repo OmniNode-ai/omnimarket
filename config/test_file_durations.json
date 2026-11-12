@@ -4552,6 +4552,7 @@
   "tests/unit/nodes/node_lab_proof_judge_use_effect/test_use_recorded.py": 1.68,
   "tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py": 0.25,
   "tests/unit/nodes/node_lab_test_harness/test_reading_rules.py": 0.03,
+  "tests/unit/nodes/node_landing_canary_effect/test_canary_backend_refusal.py": 3.27,
   "tests/unit/nodes/node_landing_canary_effect/test_canary_chain_events.py": 0.03,
   "tests/unit/nodes/node_landing_canary_effect/test_canary_drill_cell.py": 0.073,
   "tests/unit/nodes/node_landing_canary_effect/test_canary_lands.py": 0.03,
