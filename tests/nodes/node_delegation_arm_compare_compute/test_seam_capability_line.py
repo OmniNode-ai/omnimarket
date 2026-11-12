@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Seam with the capability map's class line (plan E3, OMN-23628): the line this node reads is that line's shape and values.
+"""Seam with the capability map's class line (plan E3, OMN-23628): the line this node reads is that line's shape.
 
-Today the values live in the overlay key delegation.capability_map.line of the capability map node, whose packaged
-example this test reads. This test fails when either side changes a field name or a
-value, and when the node stops sizing its test from the line it is given, so the node never judges from a line the
-capability map no longer holds.
+Since OMN-23749 the line model carries no defaults and the values come from the overlay key
+delegation.capability_map.line; the example overlay must carry exactly the model's fields. This test fails when
+either side changes a field name, and when the node stops sizing its test from the line it is given, so the
+node never judges from a line the capability map no longer holds.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ CAPABILITY_MAP_EXAMPLE = (
 )
 
 
-def test_the_example_line_equals_the_capability_map_line_today() -> None:
+def test_the_example_line_has_the_capability_map_line_fields() -> None:
     document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     capability_document = yaml.safe_load(
         CAPABILITY_MAP_EXAMPLE.read_text(encoding="utf-8")

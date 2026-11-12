@@ -13,15 +13,15 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.model_topic_removal import (
+    ModelTopicObservation,
+)
 from omnimarket.nodes.node_broker_topic_removal_effect.adapters.declared_topics import (
     ContractFileDeclaredTopics,
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.adapters.topic_inventory import (
     SshPublicMetricsInventory,
     parse_topic_observations,
-)
-from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
-    ModelTopicObservation,
 )
 from omnimarket.nodes.node_broker_topic_removal_effect.overlay import (
     ModelContractSource,

@@ -19,11 +19,11 @@ from typing import Literal
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.models.topic_never_produced import (
+from omnimarket.models.model_topic_never_produced import (
     ModelNeverProducedRequest,
     ModelTopicEvidence,
 )
-from omnimarket.nodes.node_broker_topic_removal_effect.models.model_broker_topic_removal import (
+from omnimarket.models.model_topic_removal import (
     EnumRemovalMode,
     EnumTopicClass,
     ModelClassCount,

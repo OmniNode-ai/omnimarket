@@ -5,7 +5,7 @@
 from collections.abc import Mapping
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced import (
+from omnimarket.models.model_topic_never_produced import (
     ModelNeverProducedRule,
 )
 

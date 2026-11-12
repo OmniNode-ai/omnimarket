@@ -15,6 +15,12 @@ from omnimarket.models.landing_tick import (
     ModelTickDivergence,
     ModelTickSubjectRow,
 )
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
+    ModelLandingRerunAnswer,
+)
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
+)
 
 
 class EnumTickMode(StrEnum):
@@ -103,6 +109,10 @@ class ModelTickRequest(BaseModel):
             "comparison runs against that controller's decision (OMN-23665)."
         ),
     )
+    rerun_requests: tuple[ModelLandingRerunRequest, ...] = Field(
+        default=(),
+        description="The open rerun requests lanes made: facts of this tick, each answered once (OMN-23830).",
+    )
 
 
 class ModelTickResult(BaseModel):
@@ -145,6 +155,10 @@ class ModelTickResult(BaseModel):
     )
     failure_reason: EnumTickFailureReason | None = None
     failure_detail: str = ""
+    rerun_answers: tuple[ModelLandingRerunAnswer, ...] = Field(
+        default=(),
+        description="The answer to each rerun request the tick carried, in request order (OMN-23830).",
+    )
 
 
 class ModelTickComparedEvent(BaseModel):

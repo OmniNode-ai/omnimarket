@@ -4,11 +4,12 @@
 
 from pathlib import Path
 
-from .handlers.handler_topic_never_produced import HandlerTopicNeverProduced
-from .models.model_topic_never_produced import (
+from omnimarket.models.model_topic_never_produced import (
     ModelNeverProducedReport,
     ModelNeverProducedRequest,
 )
+
+from .handlers.handler_topic_never_produced import HandlerTopicNeverProduced
 
 
 class NodeTopicNeverProducedCompute:

@@ -30,16 +30,19 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.handlers.scm.scm_terminal_match import terminal_payload
 from omnimarket.lab_work.bus import _bytes, _uuid_or_none
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmBusReceipt,
-    ModelScmLocalVerb,
     ModelScmRefusedVerb,
     ModelScmTerminal,
     ModelScmTopics,
     ModelScmVerb,
+)
+from omnimarket.models.scm.model_scm_local_verbs import (
+    SCM_LOCAL_VERBS as SCM_LOCAL_VERBS,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 
@@ -85,34 +88,10 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         local_read=EnumScmLocalRead.PR_MERGE_COMMIT,
     ),
     ModelScmVerb(
-        verb="pr-review",
-        node=_G,
-        operation="review_gate",
-        replaces="gh pr view --json reviewDecision",
-    ),
-    ModelScmVerb(
-        verb="pr-ticket",
-        node=_G,
-        operation="ticket_ref",
-        replaces="gh pr view --json headRefName",
-    ),
-    ModelScmVerb(
-        verb="branch-protection",
-        node=_G,
-        operation="branch_protection",
-        replaces="gh api repos/<o>/<r>/branches/<b>/protection",
-    ),
-    ModelScmVerb(
         verb="run-list", node=_G, operation="workflow_runs", replaces="gh run list"
     ),
     ModelScmVerb(
         verb="run-view", node=_G, operation="run_jobs", replaces="gh run view"
-    ),
-    ModelScmVerb(
-        verb="job-log",
-        node=_G,
-        operation="job_log_tail",
-        replaces="gh api repos/<o>/<r>/actions/jobs/<id>/logs",
     ),
     ModelScmVerb(
         verb="job-log-fill", node=_G, operation="job_log_fill", replaces="gh job log"
@@ -131,24 +110,6 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         local_read=EnumScmLocalRead.PR_HEADS,
     ),
     # OMN-21146: the reads node_dod_verify sends the gateway.
-    ModelScmVerb(
-        verb="commit-check-runs",
-        node=_G,
-        operation="commit_check_runs",
-        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
-    ),
-    ModelScmVerb(
-        verb="pr-merged",
-        node=_G,
-        operation="merged_pr",
-        replaces="gh pr view --json state,mergedAt,mergeCommit,headRefOid",
-    ),
-    ModelScmVerb(
-        verb="pr-threads",
-        node=_G,
-        operation="pr_review_threads",
-        replaces="gh api graphql (pullRequest reviewThreads)",
-    ),
     ModelScmVerb(
         verb="open-pr-facts", node=_G, operation="open_pr_facts", replaces="gh pr list"
     ),
@@ -195,32 +156,39 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="check_run_create",
         replaces="gh api --method POST /repos/{o}/{r}/check-runs",
     ),
-)
-
-#: Verbs no node contract has an operation for: answered from the canonical
-#: clones and the watcher state alone. The measured gh read refusals they
-#: replace (the shared call log) are PR commit lists, file contents, one commit
-#: and one commit's check runs.
-SCM_LOCAL_VERBS: Final[tuple[ModelScmLocalVerb, ...]] = (
-    ModelScmLocalVerb(
-        verb="pr-commits",
-        read=EnumScmLocalRead.PR_COMMITS,
-        replaces="gh api repos/<o>/<r>/pulls/<n>/commits",
+    ModelScmVerb(
+        verb="pr-label",
+        node=_W,
+        operation="pr_label",
+        replaces="gh api --method POST /repos/{o}/{r}/issues/{n}/labels",
     ),
-    ModelScmLocalVerb(
-        verb="file-read",
-        read=EnumScmLocalRead.FILE_CONTENTS,
-        replaces="gh api repos/<o>/<r>/contents/<path>",
-    ),
-    ModelScmLocalVerb(
-        verb="commit-view",
-        read=EnumScmLocalRead.COMMIT_VIEW,
-        replaces="gh api repos/<o>/<r>/commits/<ref>",
-    ),
-    ModelScmLocalVerb(
-        verb="commit-checks",
-        read=EnumScmLocalRead.COMMIT_CHECKS,
-        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
+    *(
+        ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
+        for v, op, gh in (
+            ("pr-review", "review_gate", "gh pr view --json reviewDecision"),
+            ("pr-ticket", "ticket_ref", "gh pr view --json headRefName"),
+            (
+                "branch-protection",
+                "branch_protection",
+                "gh api repos/<o>/<r>/branches/<b>/protection",
+            ),
+            ("job-log", "job_log_tail", "gh api repos/<o>/<r>/actions/jobs/<id>/logs"),
+            (
+                "commit-check-runs",
+                "commit_check_runs",
+                "gh api repos/<o>/<r>/commits/<sha>/check-runs",
+            ),
+            (
+                "pr-merged",
+                "merged_pr",
+                "gh pr view --json state,mergedAt,mergeCommit,headRefOid",
+            ),
+            (
+                "pr-threads",
+                "pr_review_threads",
+                "gh api graphql (pullRequest reviewThreads)",
+            ),
+        )
     ),
 )
 
@@ -233,7 +201,7 @@ LANDING_CONTROLLER: Final[str] = (
 SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
     ModelScmRefusedVerb(verb=verb, handled_by=LANDING_CONTROLLER)
     for verb in (
-        *("pr-merge", "merge", "arm", "pr-arm", "rerun"),
+        *("pr-merge", "merge", "arm", "pr-arm"),
         *("run-rerun", "pr-rerun", "update-branch", "pr-update-branch"),
     )
 )
@@ -346,15 +314,10 @@ class ScmBusCaller:
                     return
                 if not isinstance(raw, dict):
                     return
-                payload = raw.get("payload")
-                payload_dict = payload if isinstance(payload, dict) else {}
-                names_it = (
-                    _uuid_or_none(raw.get("parent_envelope_id")) == envelope.envelope_id
-                    or _uuid_or_none(raw.get("correlation_id")) == correlation_id
-                    or _uuid_or_none(payload_dict.get("correlation_id"))
-                    == correlation_id
+                payload_dict = terminal_payload(
+                    raw, envelope.envelope_id, correlation_id
                 )
-                if not names_it:
+                if payload_dict is None:
                     return
                 partition = getattr(message, "partition", None)
                 offset = getattr(message, "offset", None)

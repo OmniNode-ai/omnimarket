@@ -11,17 +11,17 @@ import pytest
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
+from omnimarket.models.model_topic_never_produced import (
+    ModelNeverProducedReport,
+    ModelNeverProducedRequest,
+    ModelNeverProducedRule,
+    ModelTopicEvidence,
+)
 from omnimarket.nodes.node_topic_never_produced_compute import (
     NodeTopicNeverProducedCompute,
 )
 from omnimarket.nodes.node_topic_never_produced_compute.handlers.handler_topic_never_produced import (
     HandlerTopicNeverProduced,
-)
-from omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced import (
-    ModelNeverProducedReport,
-    ModelNeverProducedRequest,
-    ModelNeverProducedRule,
-    ModelTopicEvidence,
 )
 from omnimarket.nodes.node_topic_never_produced_compute.overlay import (
     NODE_NAME,

@@ -10,11 +10,11 @@
   "description": "List the broker topics that were never produced, each listing carrying the evidence that read it there (no record, nothing inside retention, no consumer group) and every other topic the reason it was not listed. The node deletes nothing: deletion is a separate effect behind the operator's go.",
   "input_model": {
     "name": "ModelNeverProducedRequest",
-    "module": "omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced"
+    "module": "omnimarket.models.model_topic_never_produced"
   },
   "output_model": {
     "name": "ModelNeverProducedReport",
-    "module": "omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced"
+    "module": "omnimarket.models.model_topic_never_produced"
   },
   "handler_routing": {
     "routing_strategy": "operation_match",
@@ -52,8 +52,8 @@
   "handler": {
     "module": "omnimarket.nodes.node_topic_never_produced_compute.handlers.handler_topic_never_produced",
     "class": "HandlerTopicNeverProduced",
-    "input_model": "omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced.ModelNeverProducedRequest",
-    "output_model": "omnimarket.nodes.node_topic_never_produced_compute.models.model_topic_never_produced.ModelNeverProducedReport"
+    "input_model": "omnimarket.models.model_topic_never_produced.ModelNeverProducedRequest",
+    "output_model": "omnimarket.models.model_topic_never_produced.ModelNeverProducedReport"
   },
   "event_bus": {
     "subscribe_topics": [
