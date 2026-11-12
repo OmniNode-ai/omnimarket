@@ -46,6 +46,3 @@ event_bus:
   version: {major: 1, minor: 0, patch: 0}
   subscribe_topics:
     - onex.cmd.omnimarket.effect-backends-check-requested.v1
-  publish_topics:
-    - onex.evt.omnimarket.effect-backends-check-completed.v1
-    - onex.evt.omnimarket.effect-backends-check-failed.v1
