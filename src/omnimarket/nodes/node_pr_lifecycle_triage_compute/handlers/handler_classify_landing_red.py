@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from itertools import pairwise
 from typing import Any
 
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import (
@@ -47,7 +46,8 @@ def offline_only_label_sets(log: str) -> tuple[frozenset[str], ...]:
     """The distinct label sets a job log says are carried ONLY by offline runners, sorted by their labels."""
     lines = [ln for ln in log.splitlines() if ln.strip()]
     found: set[frozenset[str]] = set()
-    for line, following in pairwise(lines):
+    for index in range(len(lines) - 1):
+        line, following = lines[index], lines[index + 1]
         labels = _LABELS_RE.match(line)
         status = _STATUS_RE.match(following)
         if labels is None or status is None:
