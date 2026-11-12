@@ -1211,10 +1211,18 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
             "provider": "local",
             "set_up": True,
             "models": ["Qwen3.8-27B", "saluki:latest"],
-            "endpoints": {
-                "Qwen3.8-27B": "http://vllm.test:8000",
-                "saluki:latest": "http://ollama.test:11434",
-            },
+            "local_models": [
+                {
+                    "model": "Qwen3.8-27B",
+                    "base_url": "http://vllm.test:8000",
+                    "backend_id": "local-url",
+                },
+                {
+                    "model": "saluki:latest",
+                    "base_url": "http://ollama.test:11434",
+                    "backend_id": "local-url-2",
+                },
+            ],
         }
     )
     asked: list[tuple[str, tuple[str, ...]]] = []
@@ -1401,7 +1409,13 @@ async def test_gateway_registers_a_server_that_speaks_messages_then_starts_it() 
             "provider": "local",
             "set_up": True,
             "models": ["saluki:latest"],
-            "endpoints": {"saluki:latest": "http://ollama.test:11434"},
+            "local_models": [
+                {
+                    "model": "saluki:latest",
+                    "base_url": "http://ollama.test:11434",
+                    "backend_id": "local-url",
+                }
+            ],
         }
     )
     runner = _Runner(
@@ -1436,7 +1450,7 @@ async def test_gateway_registers_a_server_that_speaks_messages_then_starts_it() 
         assert connect == [
             tuple(
                 part.format(
-                    connection="ollama-11434",
+                    connection="ollama-ollama-test-11434",
                     url="http://ollama.test:11434",
                     model="saluki:latest",
                 )
@@ -1446,7 +1460,7 @@ async def test_gateway_registers_a_server_that_speaks_messages_then_starts_it() 
         setup = [c for c in runner.calls if c[0] == "setup"]
         assert setup[-1][-4:] == (
             "--gateway-connection",
-            "ollama-11434",
+            "ollama-ollama-test-11434",
             "--gateway-model",
             "saluki:latest",
         )

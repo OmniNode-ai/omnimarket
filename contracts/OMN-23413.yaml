@@ -509,3 +509,14 @@ dod_evidence:
   - check_type: test_passes
     check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly -k "catalog or literal or provider or model_lists or stored or price or cache or json"'
     cwd: .
+- id: dod-omn23413-ac22-ac27-local-model-per-server
+  description: 'Two local servers can run a model of the same name: each is its own row with its own test, /model and the CLI choose one by URL, and remove and reorder never touch the other server.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC22
+  - AC27
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/cli/test_local_model_by_server_omn23413.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py -q --no-cov -n 0 -p no:randomly'
+    cwd: .

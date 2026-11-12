@@ -1176,6 +1176,7 @@ def reorder_models(provider: str, models: tuple[str, ...]) -> None:
     """Put PROVIDER's chosen MODELS in this order, first tried first.
 
     Name exactly the models the key holds, each once. Nothing changes otherwise.
+    A local model two servers run is named once per server, as MODEL@URL.
     """
     _edit_model_list(
         _model_handler(),
@@ -1195,10 +1196,22 @@ def reorder_models(provider: str, models: tuple[str, ...]) -> None:
     multiple=True,
     help="Remove only this model from the key's list; the key stays.",
 )
-def remove_model(provider: str, model_options: tuple[str, ...]) -> None:
+@click.option(
+    "--url",
+    default=None,
+    help="Local only: the server to remove from (with --model, only that "
+    "server's copy); needed when two servers run the model.",
+)
+def remove_model(
+    provider: str, model_options: tuple[str, ...], url: str | None
+) -> None:
     """Delete PROVIDER's stored key, or with --model just those models from its list."""
     name = provider.lower()
     handler = _model_handler()
+    if url is not None and name != "local":
+        raise click.ClickException(
+            "--url names a local model's server; other providers take no URL"
+        )
     if model_options:
         _edit_model_list(
             handler,
@@ -1206,6 +1219,7 @@ def remove_model(provider: str, model_options: tuple[str, ...]) -> None:
                 operation="remove_model",
                 provider=cast(ModelProvider, name),
                 models=model_options,
+                url=url,
             ),
         )
         return
@@ -1216,10 +1230,11 @@ def remove_model(provider: str, model_options: tuple[str, ...]) -> None:
         )
     if name == "local":
         try:
-            handler.handle(ModelModelSetupRequest(operation="remove_local"))
+            handler.handle(ModelModelSetupRequest(operation="remove_local", url=url))
         except ModelSetupRefusedError as refusal:
             raise click.ClickException(str(refusal)) from None
-        click.echo(f"Removed the local model URL from {handler.overrides_path()}")
+        what = f"the local models on {url}" if url else "the local model URL"
+        click.echo(f"Removed {what} from {handler.overrides_path()}")
         return
     # OMN-20816: the shared remove, which refuses the last usable provider here
     # as it does on the local dashboard.

@@ -43,6 +43,7 @@ from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from omnimarket.handlers.delegation_first_choice import (
     clear_first_choice,
     read_first_choice,
+    read_first_choice_url,
     write_first_choice,
 )
 from omnimarket.handlers.delegation_model_scope import (
@@ -82,6 +83,7 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request i
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelCostClass,
     ModelModelLadderEntry,
+    ModelModelLocalModel,
     ModelModelSetupResult,
     ModelModelStatus,
     ModelModelTestResult,
@@ -186,6 +188,71 @@ def local_base_url(url: str) -> str:
             "http://<host>:<port>. Nothing was changed"
         )
     return base
+
+
+def _recorded_test(recorded: object) -> ModelModelTestResult | None:
+    """A recorded test as a result; ``None`` when absent or unreadable."""
+    if not isinstance(recorded, dict):
+        return None
+    try:
+        return ModelModelTestResult.model_validate(recorded)
+    except ValueError:
+        return None
+
+
+def _entry_base(entry: dict[str, Any]) -> str:
+    """The base URL of the server a local model entry runs on."""
+    return str(entry.get("endpoint_url") or "").removesuffix("/v1/chat/completions")
+
+
+def spelled_local_models(entries: Sequence[dict[str, Any]]) -> list[str]:
+    """Each local model as a command names it (OMN-23413): its name, or
+    ``MODEL@URL`` when another server runs a model of the same name."""
+    names = [str(entry["model_name"]) for entry in entries]
+    return [
+        name if names.count(name) == 1 else f"{name}@{_entry_base(entry)}"
+        for name, entry in zip(names, entries, strict=True)
+    ]
+
+
+def split_local_model(token: str) -> tuple[str, str | None]:
+    """``MODEL@URL`` as ``(MODEL, URL)``; a plain ``MODEL`` as ``(MODEL, None)``."""
+    for mark in ("@http://", "@https://"):
+        model, found, rest = token.rpartition(mark)
+        if found and model:
+            return model, mark[1:] + rest
+    return token, None
+
+
+def local_named(
+    entries: Sequence[dict[str, Any]], model: str, url: str | None
+) -> dict[str, Any]:
+    """The one local entry ``model`` names, on the server at ``url`` when given.
+
+    OMN-23413: two servers can run a model of the same name. A name alone is
+    enough only when one server runs it; otherwise the URL says which, and a
+    name that matches nothing, or more than one, is refused.
+    """
+    named = [entry for entry in entries if entry.get("model_name") == model]
+    known = ", ".join(spelled_local_models(entries)) or "none"
+    if url is not None:
+        base = local_base_url(url)
+        named = [entry for entry in named if _entry_base(entry) == base]
+        if not named:
+            raise ModelSetupRefusedError(
+                f"{model} is not one of your local models on {base}: {known}"
+            )
+    if not named:
+        raise ModelSetupRefusedError(
+            f"{model} is not one of your local models: {known}"
+        )
+    if len(named) > 1:
+        servers = ", ".join(_entry_base(entry) for entry in named)
+        raise ModelSetupRefusedError(
+            f"{model} runs on more than one local server ({servers}); "
+            "name one with --url"
+        )
+    return named[0]
 
 
 def probe_local_url(base: str) -> str | None:
@@ -438,7 +505,7 @@ class HandlerModelSetup:
         if request.operation == "add_local":
             return self._add_local(request)
         if request.operation == "remove_local":
-            self._remove_local(request.models)
+            self._remove_local(request.models, request.url)
             return ModelModelSetupResult(operation="remove_local")
         if request.operation == "forget":
             if request.provider is not None:
@@ -602,6 +669,10 @@ class HandlerModelSetup:
         provider = request.provider
         if provider is None:
             raise ModelSetupRefusedError("name the provider whose model is tried first")
+        if request.url is not None and provider != LOCAL_URL_PROVIDER:
+            raise ModelSetupRefusedError(
+                "--url names a local model's server; other providers take no URL"
+            )
         if not self.is_set_up(provider):
             how = (
                 _LOCAL_ADD_HOW
@@ -611,6 +682,8 @@ class HandlerModelSetup:
             raise ModelSetupRefusedError(f"{provider} is not set up. {how}")
         if len(request.models) > 1:
             raise ModelSetupRefusedError("name one model to try first")
+        if provider == LOCAL_URL_PROVIDER:
+            return self._set_first_local(request)
         stored = self._status(provider).models
         if not stored:
             raise ModelSetupRefusedError(
@@ -632,6 +705,34 @@ class HandlerModelSetup:
         write_first_choice(provider, model)
         return ModelModelSetupResult(
             operation="set_first", models=self._status(provider).models
+        )
+
+    def _set_first_local(
+        self, request: ModelModelSetupRequest
+    ) -> ModelModelSetupResult:
+        """Move one local server's model to the front and record it, with its URL.
+
+        OMN-23413: the entry is found by name and, when two servers run the
+        name, by URL; it moves as one entry, so the other server stays declared.
+        """
+        entries = self._local_url_entries()
+        if request.models:
+            chosen = local_named(entries, request.models[0], request.url)
+        elif request.url is not None:
+            raise ModelSetupRefusedError("name the model to try first on that server")
+        else:
+            chosen = entries[0]
+        ordered = [chosen, *(e for e in entries if e is not chosen)]
+        if ordered != entries:
+            text, before = self._overlay_text()
+            self._write_overlay(
+                before, _with_local_urls(_without_local_url(text), ordered), ordered
+            )
+        write_first_choice(
+            LOCAL_URL_PROVIDER, str(chosen["model_name"]), _entry_base(chosen)
+        )
+        return ModelModelSetupResult(
+            operation="set_first", models=self._status(LOCAL_URL_PROVIDER).models
         )
 
     # -- a local model server by URL (OMN-21162) ---------------------------
@@ -718,22 +819,30 @@ class HandlerModelSetup:
         tmp.write_text(text, encoding="utf-8")
         tmp.replace(path)
 
-    def _remove_local(self, models: tuple[str, ...] = ()) -> None:
-        """Take the local models out of the overlay, or only ``models``; keep every other entry."""
+    def _remove_local(
+        self, models: tuple[str, ...] = (), url: str | None = None
+    ) -> None:
+        """Take the local models out of the overlay, or only ``models``; keep every other entry.
+
+        OMN-23413: with ``url``, only that server's entries go (all of them when
+        no model is named); a model two servers run is refused without it.
+        """
         entries = self._local_url_entries()
         if not entries:
             raise ModelSetupRefusedError("no local model URL is set up")
         if models:
-            declared = [str(entry["model_name"]) for entry in entries]
-            missing = [model for model in models if model not in declared]
-            if missing:
+            gone = [local_named(entries, model, url) for model in models]
+        elif url is not None:
+            base = local_base_url(url)
+            gone = [entry for entry in entries if _entry_base(entry) == base]
+            if not gone:
                 raise ModelSetupRefusedError(
-                    f"{', '.join(missing)} is not one of your local models: "
-                    f"{', '.join(declared)}"
+                    f"no local model runs on {base}: "
+                    f"{', '.join(spelled_local_models(entries))}"
                 )
-        kept = [
-            entry for entry in entries if models and entry["model_name"] not in models
-        ]
+        else:
+            gone = entries
+        kept = [entry for entry in entries if all(entry is not g for g in gone)]
         text, before = self._overlay_text()
         self._write_overlay(
             before, _with_local_urls(_without_local_url(text), kept), kept
@@ -744,22 +853,29 @@ class HandlerModelSetup:
     def _edit_local(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
         """Reorder the local models, or remove some of them (OMN-21211)."""
         entries = self._local_url_entries()
-        declared = [str(entry["model_name"]) for entry in entries]
         asked = request.models
         if not entries:
             raise ModelSetupRefusedError(
                 f"no local model URL is set up. {_LOCAL_ADD_HOW}"
             )
         if request.operation == "remove_model":
-            self._remove_local(asked)
+            self._remove_local(asked, request.url)
         else:
-            if sorted(asked) != sorted(declared):
-                raise ModelSetupRefusedError(
-                    "reorder names exactly your local models "
-                    f"({', '.join(declared)}), each once; add or remove models "
-                    "with their own commands"
-                )
-            ordered = [next(e for e in entries if e["model_name"] == m) for m in asked]
+            # OMN-23413: each token names one entry, as MODEL or, for a model two
+            # servers run, MODEL@URL; together they name every entry once.
+            refused = ModelSetupRefusedError(
+                "reorder names exactly your local models "
+                f"({', '.join(spelled_local_models(entries))}), each once; add or "
+                "remove models with their own commands"
+            )
+            try:
+                ordered = [local_named(entries, *split_local_model(t)) for t in asked]
+            except ModelSetupRefusedError:
+                raise refused from None
+            if len(ordered) != len(entries) or any(
+                sum(o is e for o in ordered) != 1 for e in entries
+            ):
+                raise refused
             text, before = self._overlay_text()
             self._write_overlay(
                 before, _with_local_urls(_without_local_url(text), ordered), ordered
@@ -1048,15 +1164,26 @@ class HandlerModelSetup:
         # OMN-21346: the choice counts only while it still routes: its model is
         # still in the list, and a key's last test did not fail.
         choice = read_first_choice()
+        # OMN-23413: a local choice names its server; it counts only while that
+        # server still runs the model.
+        first_url = read_first_choice_url() if provider == LOCAL_URL_PROVIDER else None
         tried_first = (
             choice is not None
             and choice[0] == provider
             and choice[1] in models
+            and (
+                first_url is None
+                or any(
+                    e.get("model_name") == choice[1] and _entry_base(e) == first_url
+                    for e in local_entries
+                )
+            )
             and not (
                 provider not in (LOCAL_URL_PROVIDER, "ollama")
                 and local_byok_key_test_failed(provider)
             )
         )
+        results = self._read_results() if local_entries else {}
         return ModelModelStatus(
             provider=provider,
             set_up=set_up,
@@ -1064,13 +1191,17 @@ class HandlerModelSetup:
             models=models,
             tried_first=tried_first,
             first_model=choice[1] if tried_first and choice is not None else None,
-            endpoints={
-                str(e["model_name"]): str(e["endpoint_url"]).removesuffix(
-                    "/v1/chat/completions"
+            first_url=first_url if tried_first else None,
+            local_models=tuple(
+                ModelModelLocalModel(
+                    model=str(e["model_name"]),
+                    base_url=_entry_base(e),
+                    backend_id=str(e["backend_id"]),
+                    last_test=_recorded_test(results.get(f"local:{e['backend_id']}")),
                 )
                 for e in local_entries
                 if e.get("endpoint_url")
-            },
+            ),
         )
 
     # -- the test ----------------------------------------------------------

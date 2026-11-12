@@ -112,6 +112,7 @@ model_table:
   details:
     title: Model details
     provider: Provider
+    server: Server
     model: Model
     name: Name
     runs: Runs
@@ -227,4 +228,7 @@ words:
   cannot_be_first: "{model} cannot be tried first: {reason}"
   nothing_set_up: "No model is set up yet. Type /config to connect one."
   now_first: "{model} is now tried first ({provider})"
+  # The model tried first, and the server it runs on when it was added by URL.
+  first_model: "{model} ({provider})"
+  model_on_server: "{model} on {server}"
   first_failed: "could not change the first model: {reason}"

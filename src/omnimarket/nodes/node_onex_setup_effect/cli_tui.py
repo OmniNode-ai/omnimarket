@@ -129,6 +129,18 @@ def _say(name: str, **parts: object) -> str:
     return tui_design().words[name].format(**parts)
 
 
+def _on_server(model: str, url: str | None) -> str:
+    """A model, with the server it runs on when it was added by URL (OMN-23413)."""
+    if not url:
+        return model
+    return _say("model_on_server", model=model, server=urlparse(url).netloc or url)
+
+
+def _first_text(provider: str, model: str, url: str | None) -> str:
+    """The model tried first, its server and its provider."""
+    return _say("first_model", model=_on_server(model, url), provider=_label(provider))
+
+
 def _hint(provider: str) -> str:
     entry = _entry(provider)
     return entry.hint if entry else ""
@@ -763,6 +775,8 @@ class ModelTuiSelection(BaseModel):
     entries: tuple[ModelCatalogEntry, ...] = ()
     #: (provider, model) tried first, when one is chosen.
     first: tuple[str, str] | None = None
+    #: The server the first model runs on, for a model added by URL.
+    first_url: str | None = None
     #: entry key -> connection id, for selected models the gateway can serve.
     gateway: dict[str, str] = {}
     #: entry key -> (connection to register, server URL), for selected models on
@@ -777,11 +791,14 @@ def server_models(rows: list[dict[str, object]]) -> dict[str, list[tuple[str, st
     """Base URL -> (provider, model) for every stored model run on a server by URL."""
     found: dict[str, list[tuple[str, str]]] = {}
     for row in rows:
-        endpoints = row.get("endpoints")
-        if not row.get("set_up") or not isinstance(endpoints, dict):
+        on_servers = row.get("local_models")
+        if not row.get("set_up") or not isinstance(on_servers, list):
             continue
-        for model, base in endpoints.items():
-            found.setdefault(str(base), []).append((str(row["provider"]), str(model)))
+        for item in on_servers:
+            if isinstance(item, dict) and item.get("model") and item.get("base_url"):
+                found.setdefault(str(item["base_url"]), []).append(
+                    (str(row["provider"]), str(item["model"]))
+                )
     return found
 
 
@@ -789,10 +806,13 @@ def selected_models(
     rows: list[dict[str, object]],
     connections: list[dict[str, object]],
     index: ModelsDevIndex,
-    servers: Mapping[tuple[str, str], ModelLocalServerDetails] | None = None,
-    bases: Mapping[tuple[str, str], str] | None = None,
+    servers: Mapping[tuple[str, str, str], ModelLocalServerDetails] | None = None,
 ) -> ModelTuiSelection:
-    """`models list --json` rows and `models connections --json` as one table."""
+    """`models list --json` rows and `models connections --json` as one table.
+
+    ``servers`` is what each server said about each model, by (provider,
+    model, server URL); a model two servers run is two rows (OMN-23413).
+    """
     entries = list(
         stored_entries(
             rows,
@@ -802,14 +822,11 @@ def selected_models(
             servers=servers,
         )
     )
-    first = next(
-        (
-            (str(r["provider"]), str(r["first_model"]))
-            for r in rows
-            if r.get("tried_first") and r.get("first_model")
-        ),
-        None,
+    chosen = next(
+        (r for r in rows if r.get("tried_first") and r.get("first_model")), None
     )
+    first = (str(chosen["provider"]), str(chosen["first_model"])) if chosen else None
+    first_url = str(chosen["first_url"]) if chosen and chosen.get("first_url") else None
     seen = {entry_key(e) for e in entries}
     gateway: dict[str, str] = {}
     for connection in connections:
@@ -832,26 +849,31 @@ def selected_models(
                 gateway[key] = str(connection.get("connection_id"))
     connect: dict[str, tuple[str, str]] = {}
     for entry in entries:
-        pair = (entry.provider, entry.model_id)
-        said = (servers or {}).get(pair)
-        base = (bases or {}).get(pair)
+        base = entry.server_url
+        said = (
+            (servers or {}).get((entry.provider, entry.model_id, base))
+            if base
+            else None
+        )
         key = entry_key(entry)
         if said and said.native_messages and base and key not in gateway:
-            connect[key] = (
-                _connection_name(said.server or entry.provider, base),
-                base,
-            )
+            connect[key] = (connection_name(said.server or entry.provider, base), base)
     return ModelTuiSelection(
-        entries=tuple(entries), first=first, gateway=gateway, connect=connect
+        entries=tuple(entries),
+        first=first,
+        first_url=first_url,
+        gateway=gateway,
+        connect=connect,
     )
 
 
-def _connection_name(kind: str, base: str) -> str:
-    """A stable connection id for a server: its kind and port, e.g. ollama-11434."""
+def connection_name(kind: str, base: str) -> str:
+    """A stable connection id for a server: its kind, host and port, e.g.
+    ollama-gpu-a-test-11434. The host is in it so two servers of one kind on
+    one port (two lab hosts, say) get two names (OMN-23413)."""
     parsed = urlparse(base)
-    name = re.sub(
-        r"[^a-z0-9_-]+", "-", f"{kind}-{parsed.port or parsed.hostname}".lower()
-    )
+    where = "-".join(str(p) for p in (parsed.hostname, parsed.port) if p)
+    name = re.sub(r"[^a-z0-9_-]+", "-", f"{kind}-{where}".lower())
     return (name if name[:1].isalpha() else f"m{name}")[:64]
 
 
@@ -1027,7 +1049,7 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
         self.dismiss(None)
 
 
-class ModelPickScreen(_TabbedScreen[tuple[str, str] | None]):
+class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
     """Auto, or the model every task tries first, from the one model table."""
 
     TAB = "model"
@@ -1051,7 +1073,11 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str] | None]):
     def compose(self) -> ComposeResult:
         words = tui_design().model_table
         first = self._selection.first
-        current = f"{first[1]} ({_label(first[0])})" if first else words.auto_label
+        current = (
+            _first_text(first[0], first[1], self._selection.first_url)
+            if first
+            else words.auto_label
+        )
         with Vertical(id="pick"):
             yield _tab_strip(self.TAB)
             yield Label(
@@ -1093,14 +1119,14 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str] | None]):
                 )
             )
             return
-        self.dismiss((entry.provider, entry.model_id))
+        self.dismiss((entry.provider, entry.model_id, entry.server_url or ""))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "auto":
             self.action_auto()
 
     def action_auto(self) -> None:
-        self.dismiss(("", ""))
+        self.dismiss(("", "", ""))
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -1616,12 +1642,11 @@ class OnexTui(App[int]):
             ),
         )
         servers = {
-            (provider, model): said[model]
+            (provider, model, base): said[model]
             for (base, pairs), said in zip(by_server.items(), answers, strict=True)
             for provider, model in pairs
             if model in said
         }
-        bases = {pair: base for base, pairs in by_server.items() for pair in pairs}
         return selected_models(
             rows,
             [c for c in connections if isinstance(c, dict)]
@@ -1629,7 +1654,6 @@ class OnexTui(App[int]):
             else [],
             index,
             servers,
-            bases,
         )
 
     async def _apply_delegation(self, choice: ModelTuiDelegationChoice | None) -> None:
@@ -1667,22 +1691,24 @@ class OnexTui(App[int]):
             return
         self.push_screen(ModelPickScreen(selection), self._apply_model)
 
-    async def _apply_model(self, picked: tuple[str, str] | None) -> None:
+    async def _apply_model(self, picked: tuple[str, str, str] | None) -> None:
         if picked is None:
             return
-        provider, model = picked
+        provider, model, url = picked
         auto = not provider
-        argv = (
+        argv: tuple[str, ...] = (
             ("models", "first", "--clear")
             if auto
-            else ("models", "first", provider, model)
+            else ("models", "first", provider, model, *(("--url", url) if url else ()))
         )
         code, out, err = await self._runner.capture(argv)
         glyphs = tui_design().glyphs
         chosen = (
             tui_design().model_table.auto_label
             if auto
-            else _say("now_first", model=model, provider=_label(provider))
+            else _say(
+                "now_first", model=_on_server(model, url), provider=_label(provider)
+            )
         )
         self._write(
             Text(f"{glyphs.done} {chosen}", style=_style("success"))

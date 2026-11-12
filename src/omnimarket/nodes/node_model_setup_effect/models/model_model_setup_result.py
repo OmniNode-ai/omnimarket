@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelProvider,
@@ -35,6 +35,19 @@ class ModelModelTestResult(BaseModel):
     reason: str | None = None
 
 
+class ModelModelLocalModel(BaseModel):
+    """One model on one local server, as ``onex models add local`` declared it (OMN-23413)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str
+    #: The server's base URL, without ``/v1/chat/completions``.
+    base_url: str
+    backend_id: str
+    #: This server's own last pinned test of this model.
+    last_test: ModelModelTestResult | None = None
+
+
 class ModelModelStatus(BaseModel):
     """One provider: whether it is set up here, and its last recorded test.
 
@@ -52,9 +65,12 @@ class ModelModelStatus(BaseModel):
     tried_first: bool = False
     #: OMN-21346: the model tried first, when ``tried_first``.
     first_model: str | None = None
-    #: OMN-23413: model -> the base URL of the server it runs on, for models
-    #: added by URL, so a screen can ask that server what it is and knows.
-    endpoints: dict[str, str] = Field(default_factory=dict)
+    #: OMN-23413: the server ``first_model`` runs on, for a local model.
+    first_url: str | None = None
+    #: OMN-23413: each local model on each server, in the order they are
+    #: tried. Two servers can run the same model; each is its own entry with
+    #: its own backend and its own last test.
+    local_models: tuple[ModelModelLocalModel, ...] = ()
 
 
 #: How a model is billed: ``free`` (local, a free tier, an OpenRouter ``:free`` id
@@ -112,6 +128,7 @@ class ModelModelSetupResult(BaseModel):
 __all__ = [
     "ModelCostClass",
     "ModelModelLadderEntry",
+    "ModelModelLocalModel",
     "ModelModelSetupResult",
     "ModelModelStatus",
     "ModelModelTestResult",

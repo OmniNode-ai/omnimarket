@@ -97,7 +97,9 @@ def deployment_text(entry: ModelCatalogEntry) -> Text:
 
 
 def entry_key(entry: ModelCatalogEntry) -> str:
-    return f"{entry.provider}\t{entry.model_id}"
+    """One row per model, and per server for a model two servers run (OMN-23413)."""
+    key = f"{entry.provider}\t{entry.model_id}"
+    return f"{key}\t{entry.server_url}" if entry.server_url else key
 
 
 def _search_blob(entry: ModelCatalogEntry, provider_label: str) -> str:
@@ -361,6 +363,7 @@ def _detail_rows(
 
     rows = [
         (say["provider"], provider_label),
+        *([(say["server"], entry.server_url)] if entry.server_url else []),
         (say["model"], entry.model_id),
         (say["name"], entry.display_name),
         (say["runs"], _table().deployment[entry.deployment].text),

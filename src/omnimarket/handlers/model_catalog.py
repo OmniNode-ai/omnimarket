@@ -198,6 +198,7 @@ def catalog_entry(
     status: ModelStatus = "listed",
     status_reason: str | None = None,
     capabilities: Mapping[str, CapabilityState] | None = None,
+    server_url: str | None = None,
 ) -> ModelCatalogEntry:
     """One model: the provider's own values first, models.dev only for the rest.
 
@@ -237,6 +238,7 @@ def catalog_entry(
         provider=provider,
         provider_label=provider_label,
         model_id=model_id,
+        server_url=server_url,
         display_name=name
         or (
             str(metadata.get("name")) if metadata and metadata.get("name") else model_id
@@ -275,12 +277,14 @@ def stored_entries(
     index: ModelsDevIndex,
     deployment_of: Callable[[str], Deployment],
     label_of: Callable[[str, str | None], str],
-    servers: Mapping[tuple[str, str], ModelLocalServerDetails] | None = None,
+    servers: Mapping[tuple[str, str, str], ModelLocalServerDetails] | None = None,
 ) -> tuple[ModelCatalogEntry, ...]:
     """Every model the user selected, in their order, from `onex models list --json` rows.
 
-    ``servers`` holds what each model's own server said, by (provider, model):
-    it names who serves the model and states its context and capabilities.
+    ``servers`` holds what each model's own server said, by (provider, model,
+    server URL): it names who serves the model and states its context and
+    capabilities. OMN-23413: a model added by URL is one entry per server (the
+    row's ``local_models``), each with its own server's last test.
     """
     entries: list[ModelCatalogEntry] = []
     for row in rows:
@@ -288,15 +292,25 @@ def stored_entries(
             continue
         provider = str(row.get("provider"))
         last = row.get("last_test")
-        for model_id in row.get("models") or ():
+        on_servers = row.get("local_models")
+        stored: list[tuple[str, str | None, Any]] = (
+            [
+                (str(m["model"]), str(m["base_url"]), m.get("last_test"))
+                for m in on_servers
+                if isinstance(m, dict) and m.get("model") and m.get("base_url")
+            ]
+            if isinstance(on_servers, list) and on_servers
+            else [(str(model), None, last) for model in row.get("models") or ()]
+        )
+        for model_id, url, tested in stored:
             status, reason = stored_status(
-                str(model_id), last if isinstance(last, dict) else None
+                model_id, tested if isinstance(tested, dict) else None
             )
-            said = (servers or {}).get((provider, str(model_id)))
+            said = (servers or {}).get((provider, model_id, url or ""))
             entries.append(
                 catalog_entry(
                     provider,
-                    str(model_id),
+                    model_id,
                     deployment=deployment_of(provider),
                     index=index,
                     provider_label=label_of(provider, said.server if said else None),
@@ -304,6 +318,7 @@ def stored_entries(
                     capabilities=said.capabilities if said else None,
                     status=status,
                     status_reason=reason,
+                    server_url=url,
                 )
             )
     return tuple(entries)

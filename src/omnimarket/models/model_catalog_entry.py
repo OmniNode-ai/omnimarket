@@ -34,6 +34,9 @@ class ModelCatalogEntry(BaseModel):
     #: How the provider is shown: the server's own kind for a model run by URL.
     provider_label: str = ""
     model_id: str
+    #: The base URL of the user's server that runs it, for a model added by URL.
+    #: Two servers can run a model of the same name; this tells them apart.
+    server_url: str | None = None
     display_name: str
     deployment: Deployment
     context_tokens: int | None = None

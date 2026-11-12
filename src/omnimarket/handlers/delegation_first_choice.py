@@ -73,14 +73,28 @@ def read_first_choice(*, db_path: Path | None = None) -> tuple[str, str] | None:
     return None
 
 
-def write_first_choice(provider: str, model: str) -> None:
-    """Record ``model`` of ``provider`` as the model tried first."""
+def read_first_choice_url(*, db_path: Path | None = None) -> str | None:
+    """The server URL recorded with a local first choice (OMN-23413), or ``None``.
+
+    Two local servers can run the same model; the URL says which one was chosen.
+    """
+    try:
+        recorded = json.loads(first_choice_path(db_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    url = recorded.get("url") if isinstance(recorded, dict) else None
+    return url if isinstance(url, str) and url else None
+
+
+def write_first_choice(provider: str, model: str, url: str | None = None) -> None:
+    """Record ``model`` of ``provider`` as the model tried first, on ``url`` when given."""
     path = first_choice_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps({"provider": provider, "model": model}, indent=2), encoding="utf-8"
-    )
+    record = {"provider": provider, "model": model}
+    if url:
+        record["url"] = url
+    tmp.write_text(json.dumps(record, indent=2), encoding="utf-8")
     tmp.replace(path)
 
 
@@ -130,8 +144,20 @@ def first_choice_route(
             return None
         return named_route
     if provider == _LOCAL_URL_PROVIDER:
+        # OMN-23413: with the server recorded, only that server's route is the
+        # choice; another server running the same model is not.
+        url = read_first_choice_url(db_path=db_path)
+        endpoint = f"{url}/v1/chat/completions" if url else None
         local = registered_local_model_routes(task_type)
-        return next((route for route in local if route.model_id == model), None)
+        return next(
+            (
+                route
+                for route in local
+                if route.model_id == model
+                and (endpoint is None or route.endpoint_ref == endpoint)
+            ),
+            None,
+        )
     if provider not in registered_local_byok_providers(db_path=db_path):
         return None
     if model not in resolve_local_byok_credential_models(provider, db_path=db_path):
@@ -205,5 +231,6 @@ __all__: list[str] = [
     "first_choice_route",
     "first_choice_routes",
     "read_first_choice",
+    "read_first_choice_url",
     "write_first_choice",
 ]
