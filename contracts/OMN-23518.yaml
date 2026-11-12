@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-23518
+title: The lab environment's shared library moves to the version the automatic work-filler needs
+summary: 'omnimarket raises its omnibase-spi floor from 0.23.3 to 0.23.15 in both places the file lists it, and moves the omnibase-spi dev merge tag and uv.lock to the 0.23.15 release (omnibase-core unchanged at 0.47.72, which the release admits). The reason: the floor fill orchestrator in omnimarket imports ModelLaneProcessRunResult, ModelLaneProcessStartResult and ModelLaneStartSpec from omnibase_spi.contracts.services, which 0.23.14 does not carry. No release is cut.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23518-omnimarket-spi-floor
+    statement: The omnimarket lock resolves an omnibase-spi that carries the lane process types the floor fill orchestrator imports, and the pyproject floors in both places agree with it.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnimarket''s pyproject carries omnibase-spi>=0.23.15,<0.24.0 in both places it lists the floor, and uv.lock resolves omnibase-spi 0.23.15 -- falsifier: run tests/ci/test_omn23518_spi_lock_floor.py at the merge base; the lock and floor tests fail there (lock names 0.23.14, floor 0.23.3)'
+      - id: AC2
+        statement: 'AC2: the locked omnibase-spi provides ModelLaneProcessRunResult, ModelLaneProcessStartResult and ModelLaneStartSpec, the three names node_floor_fill_orchestrator imports -- falsifier: import them in an environment built from the merge-base lock; the import raises ImportError'
+evidence_requirements:
+  - kind: tests
+    description: The floor tests pass at the head and the lock and floor tests fail at the merge base.
+    command: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23518-omnimarket-ac1-floor
+    description: AC1. The floors in both places and the lock agree on omnibase-spi 0.23.15; the lock and floor tests fail at the merge base.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn23518-omnimarket-ac2-import
+    description: AC2. The locked omnibase-spi provides the three lane process names the fill orchestrator imports.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lane_process
+        cwd: .
+  - id: dod-omn23518-integration-proof
+    description: The re-pinned work-contract corpus loads against the new uv.lock on a lab host at the pushed head.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23518 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_model_work_contract.py -q --no-cov
+        cwd: .
