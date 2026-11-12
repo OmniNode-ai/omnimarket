@@ -65,7 +65,11 @@ execution:
   deterministic: false
   side_effects: true
 # The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
-# {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given).
+# {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given), and
+# {overlays_root}: the overlays directory of the clone the lab_hosts overlay declares for the host the request names
+# (`host_name`), never a path built under the registry root (the clone sits beside it on the operator Mac). It is read
+# only when a unit's environment names it and no path override replaces that variable; a host row that declares no
+# overlays clone refuses the install with the host named.
 units:
   floor-alarm:
     platform: launchd
@@ -144,7 +148,7 @@ units:
     environment:
       # The overlays canonical clone first (the floor's owners map and sources live there), then the plugin's overlays
       # (OMN-23323: the owners map was read from a worktree that worktree triage removed).
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_LAB_RUN_HOSTS: ""
       ONEX_LAB_HOST_TABLE_ROOTS: ""
       ONEX_PLANS_KB_PATH: "{plans_path}"
@@ -190,7 +194,7 @@ units:
     environment:
       # The overlay store reader takes the list of overlays it keeps from the overlay store read under these
       # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
@@ -228,7 +232,7 @@ units:
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       # The third root holds the `repos` overlay whose knowledge_base key names the clone's directory (it has not moved to the overlays repository yet).
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays:{workspace_config_root}/config/onex/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays:{workspace_config_root}/config/onex/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
@@ -269,7 +273,7 @@ units:
     environment:
       # The overlay store reader takes the list of overlays it keeps from the overlay store read under these
       # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
@@ -301,7 +305,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
       - LAB_WORK_HOST_NAME
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
     state_directory: .onex_state/lane-closeout-sweep
@@ -337,7 +341,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
       - LAB_WORK_HOST_NAME
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
     state_directory: .onex_state/lane-closeout-sweep
@@ -374,7 +378,7 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     evidence_file: .local/state/omni/lane-ctx-ledger-dedupe/last-run.json
     state_directory: .onex_state/lane-ctx-ledger-dedupe
   # The C32 local auth-boundary probe (node_c32_auth_boundary_probe_effect, OMN-23213, MVP launch plan task M17), once a day on
@@ -410,7 +414,7 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
@@ -443,7 +447,7 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
     evidence_file: .local/state/omni/overlay-store-load/last-run.json
     state_directory: .onex_state/overlay-store-load
   # The daily memory pilot run (node_memory_pilot_effect, OMN-23619): once a day one pass runs the pilot and writes
@@ -479,7 +483,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment:
       # A lab host without a launchd marketplace keeps the overlays checkout under the registry root, as overlay-store-load-systemd does.
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/memory-pilot-daily/last-run.json
     state_directory: .onex_state/memory-pilot-daily
@@ -515,7 +519,7 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_MEMORY_PILOT_RESULT_FILE: "{registry_root}/.onex_state/memory-pilot-daily/result.json"
       ONEX_FLOOR_EMISSION_JOURNAL: "{registry_root}/.onex_state/floor-simple/emissions.jsonl"
@@ -669,7 +673,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
       PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
@@ -812,7 +816,7 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -853,7 +857,7 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
@@ -932,7 +936,7 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-join-j8/last-run.json
@@ -970,7 +974,7 @@ units:
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       # The overlays canonical clone first (the step's overlay lives there), then the plugin's overlays.
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
@@ -1010,7 +1014,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
       OMNIBASE_PATH: "{registry_root}"
       # The advertisement command runs the onex command line by name: the registry's own launcher directory leads the search path.
@@ -1052,7 +1056,7 @@ units:
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -1091,8 +1095,8 @@ units:
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
     environment:
       # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
-      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{registry_root}/overlays/overlays/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{overlays_root}/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -1129,7 +1133,7 @@ units:
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -1168,7 +1172,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
     evidence_file: .local/state/omni/lab-disk-hygiene/last-run.json
     state_directory: .onex_state/lab-disk-hygiene
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
@@ -1201,7 +1205,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -1235,8 +1239,8 @@ units:
       - ONEX_LANDING_SNAPSHOT_OVERLAY_FILE
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
-      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{registry_root}/overlays/overlays/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{overlays_root}/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -1269,7 +1273,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -1311,7 +1315,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -1346,7 +1350,7 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"

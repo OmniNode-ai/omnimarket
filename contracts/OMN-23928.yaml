@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-23928
+title: Installer reads the overlays clone from the lab host table
+summary: The host installer node built every unit's overlay root as a path under the registry root, which is absent on the operator Mac where the overlays clone sits beside it. The contract now names a {overlays_root} placeholder that the handler fills from the overlays clone the lab_hosts row of the named host declares; a row that declares none refuses the install naming the host. The Mac row is declared in the overlays repository (overlays#340).
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23928-declared-root-first
+  statement: A unit installed with defaults lists the overlays clone its host's lab_hosts row declares first among its overlay roots, wherever that clone sits.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: rendering a unit with defaults on a host whose declared overlays clone sits beside the registry root lists that clone first -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py -q fails on the base installer'
+- id: req-omn23928-refusals-name-cause
+  statement: A host row with no overlays clone, an unknown host or no host name refuses the install and names the host or the missing input.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a host row with no overlays clone, an unknown host, or no host name refuses the install naming the host or the missing input -- falsifier: the error tests in the same file'
+- id: req-omn23928-mac-row
+  statement: The lab host list declares the Mac's overlays clone beside its registry root.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the lab host list declares the Mac''s overlays clone beside its registry root -- falsifier: pytest tests/test_lab_host_overlays_clone.py -q in the overlays repository, with the in-registry path refused for h200'
+- id: req-omn23928-integrated
+  statement: Units reinstalled from the merged installer read the declared overlays clone first where they run.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: after reinstall from the merged installer, ai.omninode.factory-floor-publish on the Mac and the units that lacked the clone on h053 show the declared overlays clone first among their roots in the live plist or unit, and one tick of each reads a value only that clone holds -- falsifier: read the live plist and unit environment and the next tick''s record'
+evidence_requirements:
+- kind: tests
+  description: The declared overlays root tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23928-ac1
+  description: The test renders the factory floor unit with the Mac layout and holds that the clone beside the registry root comes first; on the base contract the first root is the path under the registry root and seven of the nine tests fail (control).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23928-ac2
+  description: The error tests refuse a row with no overlays clone, an unknown host, a request naming no host and an unreadable table, each naming the cause.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23928-ac3
+  description: The overlays repository test (overlays#340) holds the Mac row at the beside-the-registry path and refuses the in-registry path; this repository's test holds that the installer resolves such a row.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23928-ac4
+  description: The tests that stand behind the integrated reading pass at the head and fail at the merge base. The reading itself (the live plist and unit environments after reinstall, and the next tick) is taken after the merge by the Mac orchestrator and the host lanes.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
