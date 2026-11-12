@@ -3614,6 +3614,7 @@
   "tests/unit/cli/test_cli_cloud_registry_vocabulary.py": 0.81,
   "tests/unit/cli/test_cli_code_edit.py": 0.7,
   "tests/unit/cli/test_cli_code_edit_backend_pin.py": 0.4,
+  "tests/unit/cli/test_cli_code_edit_check_format.py": 1.7,
   "tests/unit/cli/test_cli_local_runtime_lane.py": 0.5,
   "tests/unit/cli/test_cli_test_loop.py": 0.94,
   "tests/unit/cli/test_cli_trajectory_eval.py": 0.76,

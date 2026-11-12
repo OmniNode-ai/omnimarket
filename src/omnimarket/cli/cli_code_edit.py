@@ -35,6 +35,7 @@ the worktree; model-written code executes there when a check runs.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -90,7 +91,14 @@ def read_file_list(path: Path | None) -> tuple[str, ...]:
 
 
 def parse_check(spec: str) -> ModelDeclaredCheck:
-    """``NAME=COMMAND`` as a declared check; its test targets come from the command."""
+    """``NAME=COMMAND`` as a declared check; its test targets come from the command.
+
+    The name is normalised before it reaches ``ModelDeclaredCheck``: it is
+    stripped, lowercased, every run of characters outside ``[a-z0-9_-]`` is
+    replaced by a single ``-``, and leading and trailing ``-`` are stripped.
+    A name that is empty after that, or longer than 48 characters, is still
+    refused through ``click.BadParameter`` (``param_hint="--check"``) as today.
+    """
     name, sep, command = spec.partition("=")
     if not sep or not command.strip():
         raise click.BadParameter(f"{spec!r} is not NAME=COMMAND", param_hint="--check")
@@ -99,8 +107,13 @@ def parse_check(spec: str) -> ModelDeclaredCheck:
     except ValueError as exc:
         raise click.BadParameter(f"{spec!r}: {exc}", param_hint="--check") from exc
     found = [word for word in argv if word.startswith("tests/")]
+    normalised = re.sub(r"[^a-z0-9_-]+", "-", name.strip().lower()).strip("-")
+    if not normalised or len(normalised) > 48:
+        raise click.BadParameter(
+            f"{spec!r} has an invalid check name", param_hint="--check"
+        )
     try:
-        return ModelDeclaredCheck(name=name.strip(), argv=argv, targets=tuple(found))
+        return ModelDeclaredCheck(name=normalised, argv=argv, targets=tuple(found))
     except ValueError as exc:
         raise click.BadParameter(str(exc), param_hint="--check") from exc
 
