@@ -114,3 +114,6 @@ class KafkaRuntimeBusPublisher:
     def flush(self, timeout_s: float) -> int:
         remaining = int(self._producer.flush(timeout_s))
         return remaining + len(self._failures)
+
+    def failure_detail(self) -> str | None:
+        return self._failures[0] if self._failures else None

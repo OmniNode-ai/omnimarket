@@ -29,3 +29,7 @@ class ProtocolRuntimeBusPublisher(Protocol):
     def flush(self, timeout_s: float) -> int:
         """Wait up to ``timeout_s`` for delivery; return how many published events were not confirmed delivered."""
         ...
+
+    def failure_detail(self) -> str | None:
+        """The first reason the hosted bus gave for an event it did not confirm; ``None`` when it gave none."""
+        ...

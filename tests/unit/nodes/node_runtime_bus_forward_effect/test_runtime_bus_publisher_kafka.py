@@ -88,3 +88,4 @@ class TestErrorChain:
         publisher.publish("example.evt.x.v1", None, b"v", {})
 
         assert publisher.flush(5.0) == 2
+        assert publisher.failure_detail() == "TOPIC_AUTHORIZATION_FAILED"

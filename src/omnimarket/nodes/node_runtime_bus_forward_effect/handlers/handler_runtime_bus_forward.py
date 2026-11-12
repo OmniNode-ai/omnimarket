@@ -100,6 +100,8 @@ class HandlerRuntimeBusForward:
                 f"{undelivered} event(s) not confirmed delivered "
                 "within flush_timeout_seconds"
             )
+            if reason := self._publisher.failure_detail():
+                detail += f": {reason}"
         elif refusals:
             detail = f"{len(refusals)} event(s) refused: {refusals[0].reason}"
         return ModelRuntimeBusForwardResult(

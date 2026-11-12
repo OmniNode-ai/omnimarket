@@ -88,6 +88,7 @@ class RecordedPublisher:
     ) -> None:
         self.published: list[tuple[str, bytes | None, bytes, dict[str, str]]] = []
         self.flushes: list[float] = []
+        self.failure: str | None = None
         self._refuse_topics = refuse_topics
         self._undelivered = undelivered
 
@@ -101,6 +102,9 @@ class RecordedPublisher:
     def flush(self, timeout_s: float) -> int:
         self.flushes.append(timeout_s)
         return self._undelivered
+
+    def failure_detail(self) -> str | None:
+        return self.failure
 
     @property
     def topics(self) -> list[str]:
@@ -232,6 +236,16 @@ class TestErrorChain:
         assert result.detail == "more than max_events"
         assert [r.topic for r in result.refusals] == [e.topic for e in events]
         assert all(r.reason == "more than max_events" for r in result.refusals)
+
+
+class TestBrokerReason:
+    def test_error_the_brokers_own_reason_rides_in_the_detail(self) -> None:
+        publisher = RecordedPublisher(undelivered=1)
+        publisher.failure = "TOPIC_AUTHORIZATION_FAILED"
+        result = _handler(publisher).handle(_command(_event(READING, "one")))
+        assert (result.forwarded, result.failed) == (0, 1)
+        assert result.detail is not None
+        assert result.detail.endswith(": TOPIC_AUTHORIZATION_FAILED")
 
 
 class TestFailingControl:
