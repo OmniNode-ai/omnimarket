@@ -50,6 +50,7 @@ pytestmark = pytest.mark.unit
 
 _REQUEST_FIELDS = frozenset(
     {
+        "add_labels",
         "base",
         "body",
         "claim",
@@ -69,6 +70,7 @@ _REQUEST_FIELDS = frozenset(
         "output",
         "pr_number",
         "ref",
+        "remove_labels",
         "replaces",
         "repo",
         "requested_by_lane",
@@ -129,6 +131,7 @@ _REFUSAL_REASONS = frozenset(
         "github_refused",
         "head_moved",
         "idempotency_key_conflict",
+        "label_not_allowed",
         "lease_expired",
         "lease_fence_stale",
         "lease_unreadable",
