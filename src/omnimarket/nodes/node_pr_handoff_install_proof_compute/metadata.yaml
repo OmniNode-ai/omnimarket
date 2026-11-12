@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_handoff_install_proof_compute
+version: 0.1.0
+description: Decide whether a pr-handoff PR's host install is installed on the lab and observed running, without I/O.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_pr_handoff_install_proof_compute: omnimarket.nodes.node_pr_handoff_install_proof_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- lab
+- pr-handoff
+pack: operator_tooling
+display_name: Pr Handoff Install Proof Compute
+node_role: compute

@@ -32,6 +32,9 @@ REAL = {
     "node_pr_landing_decision_compute/handlers/handler_landing_join_j8_live.py": {
         "real"
     },
+    "node_integration_reading_publish_effect/runtime_integration_reading_publish.py": {
+        "real"
+    },
     "node_host_drain_effect/handlers/handler_host_drain.py": {"real"},
     "node_host_drain_effect/handlers/handler_idle_runner_stop.py": {"real"},
 }

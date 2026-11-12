@@ -37,6 +37,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dry-run", action="store_true", help="read and probe only: no add, no mark"
     )
+    parser.add_argument(
+        "--adopt",
+        action="store_true",
+        help="first move every label a host holds and the store lacks into the store (needs the overlay's adopt block)",
+    )
     return parser.parse_args(argv)
 
 
@@ -48,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
             hosts=tuple(args.host),
             dry_run=args.dry_run,
             check_config=args.check_config,
+            adopt=args.adopt,
         )
     )
     for line in result.lines:

@@ -228,7 +228,7 @@ inputs:
     class: jsonl
     where: .onex_state/floor-simple/emissions.jsonl
     read_by: [node_floor_simple_effect, node_floor_compare_effect, node_host_reading_effect, node_work_ledger_append_effect, node_join_refusal_effect]
-    steps: [floor_simple, floor_compare, join_j2, join_j5, join_refusal]
+    steps: [floor_simple, floor_compare, join_j2, join_j5, join_refusal, floor_emissions]
     producer: every node of the floor's emission contract, through the JSONL sink
     replacement: {node: node_floor_emission_compute, topic: onex.snapshot.projection.floor-emissions.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-emission-journal-projection
