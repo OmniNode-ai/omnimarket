@@ -1287,3 +1287,82 @@ def test_resume_end_to_end_archives_interruption_and_accepts(
     assert json.loads((loop_dir / "loop_receipt.1.json").read_text()) == prior
     assert not (loop_dir / "loop_claim").exists()
     assert calls == 4
+
+
+def test_a_pinned_run_whose_answer_a_gate_refused_is_an_unusable_reply_not_a_pin_violation(
+    tree: Path, tmp_path: Path
+) -> None:
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(
+            json.dumps(
+                {
+                    "status": "failed",
+                    "terminal_failure_reason": "quality_veto",
+                    "failure_reason": "SCHEMA_VIOLATION: root is a list",
+                    "attempts": [
+                        {"backend_id": "pinned", "acceptance_decision": "terminate"}
+                    ],
+                }
+            )
+        )
+        (run_dir / "result.txt").write_text("")
+        return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
+
+    ports = DelegatedCodeEditPorts(
+        onex=Path("/bin/onex"),
+        state_root=tmp_path / "state",
+        delegate_flags=deployed_lane_delegate_flags("dev"),
+        run_delegate=runner,
+        pin=ModelDelegatePin(
+            backend_id="pinned",
+            host="model.example",
+            endpoint_url="https://model.example",
+        ),
+    )
+    reply = ports.delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert not reply.ok
+    assert reply.raw_text
+    assert "quality_veto" in reply.raw_text
+    assert reply.run_id == run_id
+
+
+def test_a_pinned_run_refused_by_a_gate_on_another_backend_is_still_a_pin_violation(
+    tree: Path, tmp_path: Path
+) -> None:
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(
+            json.dumps(
+                {
+                    "status": "failed",
+                    "terminal_failure_reason": "quality_veto",
+                    "failure_reason": "SCHEMA_VIOLATION: root is a list",
+                    "attempts": [
+                        {"backend_id": "wrong", "acceptance_decision": "terminate"}
+                    ],
+                }
+            )
+        )
+        (run_dir / "result.txt").write_text("")
+        return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
+
+    ports = DelegatedCodeEditPorts(
+        onex=Path("/bin/onex"),
+        state_root=tmp_path / "state",
+        delegate_flags=deployed_lane_delegate_flags("dev"),
+        run_delegate=runner,
+        pin=ModelDelegatePin(
+            backend_id="pinned",
+            host="model.example",
+            endpoint_url="https://model.example",
+        ),
+    )
+    with pytest.raises(DelegatePinViolationError):
+        ports.delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)

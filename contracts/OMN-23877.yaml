@@ -109,3 +109,12 @@ dod_evidence:
   - check_type: command
     check_value: curl -sf -m 20 "${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['readiness']['probe_health_text'], d['readiness']"
     cwd: .
+- id: dod-omn23877-floor-publish-omnibase-path
+  description: The factory-floor-publish unit renders OMNIBASE_PATH as the registry root, so the emission mirror finds the lane declaration; the test fails on the base commit where the rendered environment has no OMNIBASE_PATH.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_floor_publish_workspace_root.py -q -n 0 -p no:randomly --no-cov
+    cwd: .

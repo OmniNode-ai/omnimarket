@@ -18,7 +18,7 @@ ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 
 def test_the_unit_declares_the_overlay_root_and_refuses_a_worktree_root() -> None:
     spec = load_units()[UNIT]
-    assert spec["environment"][ROOTS_ENV] == "{registry_root}/overlays/overlays"
+    assert spec["environment"][ROOTS_ENV] == "{overlays_root}"
     assert ROOTS_ENV in spec["environment_path_overrides"]
     assert ROOTS_ENV in spec["environment_refuse_worktree_paths"]
 

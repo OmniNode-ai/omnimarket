@@ -169,6 +169,17 @@ class ModelEffectsHeldSettings(BaseModel):
     escalation: ModelEscalationSettings
 
 
+class ModelAlarmDeliveryWiring(BaseModel):
+    """Names that this node's alarms are delivered through node_lab_alarm_deliver_effect (OMN-23906).
+
+    That node's own overlay holds every destination, window and cell; this block only turns the delivery on.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool
+
+
 class ModelLabAlarmOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -181,6 +192,8 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the effects-held verbs alone. Absent, the broker lag verbs still run: a block that
     #: belongs to one condition must not stop another condition's reading (the 2026-11-09 stale read).
     effects_held: ModelEffectsHeldSettings | None = None
+    #: Absent, nothing is delivered: an overlay written before the delivery existed loads and runs unchanged.
+    alarm_delivery: ModelAlarmDeliveryWiring | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLabAlarmOverlay:
@@ -197,6 +210,7 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelLabAlarmOverl
 __all__ = [
     "NODE_NAME",
     "ModelAlarmBackend",
+    "ModelAlarmDeliveryWiring",
     "ModelDeclaredNode",
     "ModelEffectsHeldSettings",
     "ModelEscalationSettings",
