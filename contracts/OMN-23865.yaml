@@ -86,6 +86,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/chains/host_disk/test_chain_host_disk_reading.py -q -n 0 -p no:randomly --no-cov
     cwd: .
+- id: dod-omn23865-ac6
+  description: 'AC6 install half, runnable in hosted CI: the install command refuses without a workspace root (the defect the h053 branch install found), so the rendered unit always names the workspace root. The h202 install, the rollback proof, the scheduled run on the dev bus and the projection row for h202 cannot run in hosted CI and are recorded in the lane''s TERMINAL; the local Done gate item below carries the reading run.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_lab_disk_watermark.py::test_install_without_workspace_root_is_refused_by_the_cli -q -n 0 -p no:randomly --no-cov
+    cwd: .
 - id: dod-omn23865-integration-proof-reading-run
   description: 'AC6 local Done gate: the node runs on a lab host''s runtime with the deployed overlay''s host row and prints the reading with the lane package cache''s revision count (dry run, nothing published). Measured on h053 on 2026-11-11: `onex run-node` refuses with ModelNodeBrokerResolutionError until the node''s event_bus overlay is declared in the runtime''s contract overlays, so this item is unmet until that declaration is installed; the unit''s own module run (python -m omnimarket.nodes.node_lab_disk_watermark_effect run --dry-run) printed the class breakdown. Hosted CI cannot read a lab host, so only the local Done gate runs this unbound item. The h202 install from the branch, the rollback proof, the scheduled run on the dev bus and the projection row for h202 are recorded in the lane''s TERMINAL and the pull request.'
   source: manual
@@ -94,5 +103,3 @@ dod_evidence:
   - check_type: command
     check_value: onex run-node node_lab_disk_watermark_effect --input "{\"host_name\":\"h053\",\"overlay_file\":\"$HOST_DISK_PROOF_OVERLAY\",\"dry_run\":true}" | grep -F revision_count
     cwd: .
-  binds_ac:
-  - AC6
