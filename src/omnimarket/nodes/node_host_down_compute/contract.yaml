@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_down_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read each lab host's down state for one evaluation tick from its probe result and prior failed run. A host is
+  DOWN once its probes have failed for at least the request's down bound seconds with no capacity advertisement since
+  (down_since anchors the outage at the failed run's start), SUSPECT before the bound or when the host advertised capacity
+  within it, UP on an answered probe, and UNKNOWN when the probe could not run or the observer sees no host answer at all.
+  Every bound arrives in the request; the node owns no clock, no I/O, and no literal bound.
+input_model:
+  name: ModelHostDownRequest
+  module: omnimarket.nodes.node_host_down_compute.models.model_host_down
+output_model:
+  name: ModelHostDownReading
+  module: omnimarket.nodes.node_host_down_compute.models.model_host_down
+handler:
+  module: omnimarket.nodes.node_host_down_compute.handlers.handler_host_down
+  class: HandlerHostDown
+  input_model: omnimarket.nodes.node_host_down_compute.models.model_host_down.ModelHostDownRequest
+  output_model: omnimarket.nodes.node_host_down_compute.models.model_host_down.ModelHostDownReading
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_down_compute.handlers.handler_host_down:HandlerHostDown
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerHostDown
+      module: omnimarket.nodes.node_host_down_compute.handlers.handler_host_down
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with supplied host observations.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Read each lab host's down state for one evaluation tick from its probe result and prior failed run. A host is
+    DOWN once its probes have failed for at least the request's down bound seconds with no capacity advertisement since
+    (down_since anchors the outage at the failed run's start), SUSPECT before the bound or when the host advertised capacity
+    within it, UP on an answered probe, and UNKNOWN when the probe could not run or the observer sees no host answer at all.
+    Every bound arrives in the request; the node owns no clock, no I/O, and no literal bound.
+  author: OmniNode Team
+  created: '2026-11-12'
+  tags:
+  - compute
+  - host-down-compute
+  - OMN-19998
+  related_tickets:
+  - OMN-19998
