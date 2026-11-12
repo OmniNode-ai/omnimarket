@@ -4069,6 +4069,7 @@
   "tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_adapters.py": 0.55,
   "tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_chain.py": 0.79,
   "tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_observe.py": 0.64,
+  "tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_unit.py": 3.89,
   "tests/unit/docker/test_composed_boot_broker_budget_omn22478.py": 0.23,
   "tests/unit/docker/test_composed_boot_run_trace_omn19972.py": 0.09,
   "tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py": 3.62,
