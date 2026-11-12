@@ -11,6 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.lane_closeout.model_lane_guard_end_record_settings import (
+    ModelLaneGuardEndRecordSettings,
+)
 from omnimarket.nodes.node_lane_guard_unit_effect import (
     runtime_lane_guard_host as host,
 )
@@ -62,3 +65,48 @@ def test_end_record_paths_tilde_and_omni_home_resolve_on_the_host(
     )
     assert record["cause"] == "exit_code"
     assert [Path(t["path"]) for t in record["trees"]] == [lane_tree]
+
+
+ROW = (
+    "end_record:\n  record_dir: /var/tmp/x/records\n  worktrees_dir: $OMNI_HOME/omni_worktrees\n"
+    "  git_timeout_s: 20\n  max_trees: 20\n"
+)
+
+
+def _overlay_env(root: Path, body: str) -> dict[str, str]:
+    node = root / host.OVERLAY_NODE
+    node.mkdir(parents=True)
+    (node / "overlay.yaml").write_text(body, encoding="utf-8")
+    return {host.OVERLAY_ROOTS_ENV: str(root)}
+
+
+def test_end_record_overlay_flags_are_the_flags_the_node_passes(tmp_path: Path) -> None:
+    """The seam: a launcher that embeds the program and the node's start operation read one overlay into one set of flags."""
+    flags = host.overlay_end_record_flags(_overlay_env(tmp_path, ROW))
+    handler_flags = [
+        "--record-dir", "/var/tmp/x/records",
+        "--worktrees-dir", "$OMNI_HOME/omni_worktrees",
+        "--git-timeout-s", "20",
+        "--max-trees", "20",
+    ]  # fmt: skip
+    assert flags == handler_flags
+    settings = ModelLaneGuardEndRecordSettings.model_validate(
+        {
+            "record_dir": "/var/tmp/x/records",
+            "worktrees_dir": "$OMNI_HOME/omni_worktrees",
+            "git_timeout_s": 20,
+            "max_trees": 20,
+        }
+    )
+    assert set(host.END_RECORD_KEYS) == set(type(settings).model_fields)
+
+
+def test_end_record_overlay_flags_empty_without_an_overlay_and_refused_when_broken(
+    tmp_path: Path,
+) -> None:
+    assert host.overlay_end_record_flags({host.OVERLAY_ROOTS_ENV: str(tmp_path)}) == []
+    assert host.overlay_end_record_flags({}) == []
+    with pytest.raises(ValueError, match="exactly"):
+        host.overlay_end_record_flags(
+            _overlay_env(tmp_path / "bad", ROW.replace("  max_trees: 20\n", ""))
+        )

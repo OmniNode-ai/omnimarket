@@ -1131,6 +1131,38 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
+OVERLAY_NODE = "node_lane_guard_unit_effect"
+#: The overlay's end_record keys, each the flag of the same name with dashes (``record_dir`` -> ``--record-dir``).
+END_RECORD_KEYS = ("record_dir", "worktrees_dir", "git_timeout_s", "max_trees")
+
+
+def overlay_end_record_flags(environ: dict[str, str] | None = None) -> list[str]:
+    """The ``run`` flags of the end record, read by a launcher from the overlay ``node_lane_guard_unit_effect`` (the first
+    root of ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one): the one reading of those settings outside the node's own, so a
+    runner that embeds this program passes what the node would. Empty when no root holds the overlay (no record is written,
+    the end line still carries the cause); a present overlay without exactly the four keys is a ``ValueError``, never read
+    as absent."""
+    env = os.environ if environ is None else environ
+    for root in filter(None, env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)):
+        path = Path(root) / OVERLAY_NODE / "overlay.yaml"
+        if not path.is_file():
+            continue
+        import yaml  # a launcher reads the overlay; the program that runs on a host never does
+
+        row = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("end_record")
+        if not isinstance(row, dict) or set(row) != set(END_RECORD_KEYS):
+            raise ValueError(
+                f"{path} must hold end_record with exactly {', '.join(END_RECORD_KEYS)}"
+            )
+        return [
+            w
+            for k in END_RECORD_KEYS
+            for w in ("--" + k.replace("_", "-"), str(row[k]))
+        ]
+    return []
+
+
 def _expand_path(path: str) -> str:
     """A settings path as the host reads it: ``~`` is the lane user's home and ``$VAR`` (``$OMNI_HOME``, the host's own
     registry root) the lane's environment, so one overlay row serves every lab host."""
