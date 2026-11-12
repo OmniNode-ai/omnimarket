@@ -1420,6 +1420,7 @@
   "tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py": 0.13,
   "tests/nodes/node_host_installer_registry_units/test_default_host_source_overlays_repository.py": 3.07,
   "tests/nodes/node_host_installer_registry_units/test_environment_file_unit.py": 2.2,
+  "tests/nodes/node_host_installer_registry_units/test_floor_publish_workspace_root.py": 1.05,
   "tests/nodes/node_host_installer_registry_units/test_golden_chain_host_installer_registry_units.py": 0.04,
   "tests/nodes/node_host_installer_registry_units/test_lab_disk_hygiene_unit.py": 1.48,
   "tests/nodes/node_host_installer_registry_units/test_landing_cutover_units.py": 3.24,
