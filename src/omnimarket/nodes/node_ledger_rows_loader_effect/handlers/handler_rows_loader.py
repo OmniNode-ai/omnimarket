@@ -22,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.events.work_ledger_reader import (
+from omnimarket.models.model_work_ledger_reader import (
     EnumReaderEventKind,
     EnumReaderStatus,
 )

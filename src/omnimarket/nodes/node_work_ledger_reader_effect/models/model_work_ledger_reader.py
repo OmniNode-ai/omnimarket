@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Re-export of the shared ledger reader models (promoted to omnimarket.events)."""
 
-from omnimarket.events.work_ledger_reader import (
+from omnimarket.models.model_work_ledger_reader import (
     EnumReaderEventKind,
     EnumReaderParity,
     EnumReaderQuery,
