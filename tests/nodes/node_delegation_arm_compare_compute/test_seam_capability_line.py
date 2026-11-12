@@ -37,12 +37,21 @@ EXAMPLE = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_delegation_arm_compare_compute/overlay.example.yaml"
 )
+CAPABILITY_MAP_EXAMPLE = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_projection_delegation_capability_map/overlay.example.yaml"
+)
 
 
 def test_the_example_line_has_the_capability_map_line_fields() -> None:
     document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    capability_document = yaml.safe_load(
+        CAPABILITY_MAP_EXAMPLE.read_text(encoding="utf-8")
+    )
     example = ModelArmCompareOverlay.model_validate(document)
-    assert example.line == ModelCapabilityLine.model_validate(document["line"])
+    assert example.line == ModelCapabilityLine.model_validate(
+        capability_document["line"]
+    )
     assert set(document["line"]) == set(ModelCapabilityLine.model_fields)
 
 
