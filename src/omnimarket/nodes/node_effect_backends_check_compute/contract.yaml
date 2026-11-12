@@ -37,6 +37,7 @@ descriptor:
   idempotent: true
   timeout_ms: 60000
 runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.effect-backends-check-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.effect-backends-check-requested.v1
   terminal_events:
@@ -48,4 +49,3 @@ event_bus:
     - onex.cmd.omnimarket.effect-backends-check-requested.v1
   publish_topics:
     - onex.evt.omnimarket.effect-backends-check-completed.v1
-    - onex.evt.omnimarket.effect-backends-check-failed.v1
