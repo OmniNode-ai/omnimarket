@@ -49,12 +49,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_request_failed_terminal.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn23903-integration-proof
-  description: After the dev runtime rebuilds on the merge, the R8 unit on h053 is started and last-run.json is read. Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound check.
+- id: dod-omn23903-ac3
+  description: The tests that stand behind the integrated reading pass at the head and fail at the merge base, namely the dispatcher key seam and the failed terminal wording. The reading itself (the R8 unit on h053 after the dev runtime rebuilds) is taken after the merge.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_tenant_read_dispatch_key_seam.py tests/nodes/node_delegation_scenario_r8_effect/test_bus_request_failed_terminal.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23903-integration-proof
+  description: Run the R8 bus lane test on a lab host at the pushed head. Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check.
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23903 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane.py -q --no-cov -n 0 -p no:randomly
