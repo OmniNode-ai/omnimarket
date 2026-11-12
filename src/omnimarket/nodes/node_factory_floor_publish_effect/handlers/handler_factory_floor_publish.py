@@ -13,6 +13,7 @@ URL and the bus lane are deployment facts from the overlay; the paths, names and
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
@@ -456,6 +457,9 @@ class HandlerFactoryFloorPublish:
                 ):
                     results.append(result)
                     if result.status == "failed" and step.required:
+                        self._serve_on_refusal(
+                            rt, overlay, home, now, step.name, result.detail
+                        )
                         raise PublishRefusedError(
                             f"the required step {step.name} failed ({result.detail}): {result.diagnostic}"
                         )
@@ -660,6 +664,59 @@ class HandlerFactoryFloorPublish:
             self._tally.failed.setdefault(
                 "local", f"the local copy could not be written: {exc}"
             )
+
+    def _serve_on_refusal(
+        self,
+        rt: ModelFactoryFloorPublishRuntime,
+        overlay: ModelFactoryFloorPublishOverlay,
+        home: Path,
+        now: datetime,
+        step_name: str,
+        detail: str,
+    ) -> None:
+        """Serve what the refusal does not invalidate: the delegation tracker and the last status.
+
+        A required step refusing ends the cycle before any copy, which would leave the delegation tracker (built by an
+        optional step from its own sources) and the status frozen on the serving host. The status is the previous one
+        again, every key as it was, with one ``refused`` block added; a ``since`` already there is kept so the status
+        shows when the refusals began. Nothing here raises: a host that stores nothing must not lose its files
+        (OMN-23969).
+        """
+        tracker = self._read_simple(home / rt.delegation_tracker_data_relpath)
+        if tracker is not None:
+            with contextlib.suppress(PublishRefusedError):
+                self._copy(rt, overlay, rt.names.delegation_tracker_data, tracker)
+        if self._local_root is None:
+            return
+        try:
+            previous = json.loads((self._local_root / rt.names.status).read_bytes())
+        except (OSError, ValueError):
+            return
+        if not isinstance(previous, dict):
+            return
+        at = now.astimezone(UTC).isoformat()
+        earlier = previous.get("refused")
+        document = {
+            **previous,
+            "refused": {
+                "step": step_name,
+                "detail": detail,
+                "at": at,
+                "since": (
+                    earlier["since"]
+                    if isinstance(earlier, dict) and "since" in earlier
+                    else at
+                ),
+            },
+        }
+        payload = self._status_bytes(document)
+        # The local copy carries the block too, so the next refusal finds its ``since`` and a publishing cycle replaces it.
+        with contextlib.suppress(OSError):
+            _write_local_copy(
+                self._local_root, rt.names.status, payload, exclusive=False
+            )
+        with contextlib.suppress(PublishRefusedError):
+            self._copy(rt, overlay, rt.names.status, payload)
 
     def _prune_history(
         self,
