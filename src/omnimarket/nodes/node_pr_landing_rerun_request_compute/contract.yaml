@@ -33,7 +33,7 @@ description: >
   and the limit. Deterministic; the limit is an input read from the landing overlay, never a code value.
 input_model:
   name: "ModelRerunDecideInput"
-  module: "omnimarket.nodes.node_pr_landing_rerun_request_compute.models.model_rerun_decide_input"
+  module: "omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input"
   description: "The request, the tick's facts for its pull request, the grants so far and the per-head limit."
 output_model:
   name: "ModelLandingRerunAnswer"
@@ -42,7 +42,7 @@ output_model:
 handler:
   module: "omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request"
   class: "HandlerPrLandingRerunRequest"
-  input_model: "omnimarket.nodes.node_pr_landing_rerun_request_compute.models.model_rerun_decide_input.ModelRerunDecideInput"
+  input_model: "omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input.ModelRerunDecideInput"
   output_model: "omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer.ModelLandingRerunAnswer"
 handler_routing:
   routing_strategy: "operation_match"
@@ -66,9 +66,7 @@ event_bus:
     patch: 0
   subscribe_topics:
     - "onex.cmd.omnimarket.pr-landing-rerun-decision-requested.v1"
-  publish_topics:
-    - "onex.evt.omnimarket.pr-landing-rerun-decision-completed.v1"
-    - "onex.evt.omnimarket.pr-landing-rerun-decision-failed.v1"
+  publish_topics: []
 runtime_profiles:
   - main
 descriptor:

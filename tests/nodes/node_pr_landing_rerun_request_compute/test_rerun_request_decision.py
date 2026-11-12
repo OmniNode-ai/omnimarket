@@ -21,15 +21,15 @@ from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer impor
 from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
     ModelLandingRerunRequest,
 )
+from omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input import (
+    ModelRerunDecideInput,
+    ModelRerunGrant,
+)
 from omnimarket.nodes.node_pr_landing_rerun_request_compute import (
     NodePrLandingRerunRequestCompute,
 )
 from omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request import (
     HandlerPrLandingRerunRequest,
-)
-from omnimarket.nodes.node_pr_landing_rerun_request_compute.models.model_rerun_decide_input import (
-    ModelRerunDecideInput,
-    ModelRerunGrant,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     ModelTickSnapshot,

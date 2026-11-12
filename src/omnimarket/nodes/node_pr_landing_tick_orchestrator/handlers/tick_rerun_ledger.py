@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Protocol
 
-from omnimarket.nodes.node_pr_landing_rerun_request_compute.models.model_rerun_decide_input import (
+from omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input import (
     ModelRerunGrant,
 )
 
