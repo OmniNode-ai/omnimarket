@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-23864
+title: Routing order step answers which engines a code task tries, in what order, from settings
+summary: A compute node, node_delegation_routing_order_compute, reads the escalation chain of a task class from the routing overlay bound by DELEGATION_ROUTING_OVERLAY_PATH, resolves it with resolve_class_escalation_chain, and answers the rungs in order with each ladder tier's backends and max_retries plus one attempts and each harness rung's backend and refusals. Its request and answer models are the core library's. An unbound overlay, a missing or invalid chain, an unreadable routing contract or a chain that does not open on the lab tier is a typed refusal with no rungs and no default order. It replaces the earlier order effect node built to the wrong design, which is left untouched.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn23864-order-from-overlay
+  statement: The answer's rungs and attempts come from the bound overlay and the routing tiers file; a changed overlay or max_retries changes the answer with no code change, and a setting that cannot be read is a typed refusal.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: for a fixture overlay the routing order step answers exactly local, Codex, GLM through Claude Code, the lab agent, cheap_frontier, cheap_cloud, claude with the local tier backends and max_retries plus one attempts, and an overlay change changes the answer -- falsifier: uv run pytest tests/nodes/node_delegation_routing_order_compute/test_order_and_attempts_read.py -q'
+  - id: AC2
+    statement: 'AC2: an unbound overlay, a missing chain, an invalid chain, an unreadable contract or a chain not opening on the lab tier is a typed refusal with no rungs and no default order -- falsifier: uv run pytest tests/nodes/node_delegation_routing_order_compute/test_order_unreadable.py -q'
+  - id: AC3
+    statement: 'AC3: no third router exists: the code budget node has no chain operation and no delegation.code_chain key is read anywhere -- falsifier: uv run pytest tests/unit/routing/test_no_code_chain_router.py -q'
+  - id: AC4
+    statement: 'AC4: the node answer shape is the core library shape and the command and answer topics are fixed by a seam test that fails when either side changes, run on the in-memory bus and on the real broker -- falsifier: uv run pytest tests/nodes/node_delegation_routing_order_compute/test_routing_order_seam.py -q'
+evidence_requirements:
+- kind: tests
+  description: The routing order node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_delegation_routing_order_compute tests/unit/routing/test_no_code_chain_router.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23864-ac1
+  description: The golden and overlay-change tests read the order and attempts from a fixture overlay and the shipped routing tiers file; the control that ignores the overlay turns them red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_routing_order_compute/test_order_and_attempts_read.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23864-ac2
+  description: Each refusal is typed with no rungs; the control that answers a default order for an unbound overlay turns the error chain red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_routing_order_compute/test_order_unreadable.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23864-ac3
+  description: The budget node has no chain operation and the order node is the one router.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/routing/test_no_code_chain_router.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23864-ac4
+  description: The seam test drives the command through the runtime wiring on the in-memory bus and checks the answer against the core models and the contract's inputs and outputs.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_routing_order_compute/test_routing_order_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23864-integration-proof
+  description: From the pushed branch on a lab host, onex run-node answers the real house overlay with the local tier first. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23864 --kind test -- env RUN_REDPANDA_ROUTING_ORDER=1 PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_order_compute/test_routing_order_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

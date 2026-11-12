@@ -65,6 +65,10 @@ RECORD_TOPIC = "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
 GRANTED_PRODUCE_TOPICS = (
     "onex.evt.omnimarket.pr-landing-tick-compared.v1",
     "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1",
+    # OMN-23830: the rerun request's answers; the grant rows are declared in the overlays repository
+    # (broker_acls_mac_landing_tick) and the orchestrator applies them.
+    "onex.evt.omnimarket.pr-landing-rerun-completed.v1",
+    "onex.evt.omnimarket.pr-landing-rerun-failed.v1",
 )
 
 
