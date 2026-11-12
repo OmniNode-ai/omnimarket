@@ -114,6 +114,10 @@ published_events:
   - event_type: "CodeEvalRunClosed"
     topic: onex.evt.omnimarket.code-eval-run-closed.v1
     description: "Terminal: once per run, by the close rule or by the codec's abandoned terminal."
+# The unit command leaves the node graph here: node_lab_work_unit_effect takes it as its
+# runtime_dispatch.command_topic on a lab host's `onex lab-work serve`, which is no event_bus subscription.
+externally_consumed_topics:
+  - onex.cmd.omnimarket.lab-work-unit-requested.v1
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
