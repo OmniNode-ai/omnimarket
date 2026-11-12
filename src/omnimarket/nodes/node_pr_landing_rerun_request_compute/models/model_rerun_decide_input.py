@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
+from omnimarket.models.landing_decision import SHA_PATTERN, ModelLandingPrFacts
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
     ModelLandingRerunRequest,
 )
-from omnimarket.models.landing_decision import SHA_PATTERN, ModelLandingPrFacts
 
 
 class ModelRerunGrant(BaseModel):

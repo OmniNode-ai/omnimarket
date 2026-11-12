@@ -30,11 +30,11 @@ from pydantic import ValidationError
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
-    ModelLandingRerunRequest,
-)
 from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
+)
 from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
 
 _TARGET = re.compile(

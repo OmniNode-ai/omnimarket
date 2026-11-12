@@ -19,13 +19,13 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
-    ModelLandingRerunRequest,
-)
 from omnimarket.models.landing_controller_carry import (
     ModelLandingControllerDecisions,
 )
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
 )

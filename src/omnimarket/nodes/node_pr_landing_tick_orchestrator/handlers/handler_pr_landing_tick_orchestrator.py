@@ -24,12 +24,6 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.events.pr_landing_rerun_request.enum_rerun_verdict import (
-    EnumRerunVerdict,
-)
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_answer import (
-    ModelLandingRerunAnswer,
-)
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.landing_decision import (
     EnumLandingActionKind,
@@ -39,6 +33,12 @@ from omnimarket.models.landing_decision import (
 )
 from omnimarket.models.landing_tick import (
     ModelTickReduceInput,
+)
+from omnimarket.models.pr_landing_rerun_request.enum_rerun_verdict import (
+    EnumRerunVerdict,
+)
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
+    ModelLandingRerunAnswer,
 )
 from omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request import (
     HandlerPrLandingRerunRequest,

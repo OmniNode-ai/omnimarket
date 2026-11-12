@@ -8,10 +8,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.pr_landing_rerun_request.enum_rerun_verdict import (
+from omnimarket.models.landing_decision import PR_KEY_PATTERN, SHA_PATTERN
+from omnimarket.models.pr_landing_rerun_request.enum_rerun_verdict import (
     EnumRerunVerdict,
 )
-from omnimarket.models.landing_decision import PR_KEY_PATTERN, SHA_PATTERN
 
 
 class ModelLandingRerunAnswer(BaseModel):

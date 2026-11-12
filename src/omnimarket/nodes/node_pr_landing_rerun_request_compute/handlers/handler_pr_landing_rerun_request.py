@@ -19,10 +19,10 @@ The rules, in the order one request meets them:
 
 from __future__ import annotations
 
-from omnimarket.events.pr_landing_rerun_request.enum_rerun_verdict import (
+from omnimarket.models.pr_landing_rerun_request.enum_rerun_verdict import (
     EnumRerunVerdict,
 )
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_answer import (
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
     ModelLandingRerunAnswer,
 )
 from omnimarket.nodes.node_pr_landing_rerun_request_compute.models.model_rerun_decide_input import (

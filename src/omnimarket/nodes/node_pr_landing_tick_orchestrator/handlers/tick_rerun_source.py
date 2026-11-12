@@ -17,7 +17,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
     ModelLandingRerunRequest,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_rerun_ledger import (

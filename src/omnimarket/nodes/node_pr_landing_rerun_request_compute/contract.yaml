@@ -37,13 +37,13 @@ input_model:
   description: "The request, the tick's facts for its pull request, the grants so far and the per-head limit."
 output_model:
   name: "ModelLandingRerunAnswer"
-  module: "omnimarket.events.pr_landing_rerun_request.model_landing_rerun_answer"
+  module: "omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer"
   description: "The typed answer."
 handler:
   module: "omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request"
   class: "HandlerPrLandingRerunRequest"
   input_model: "omnimarket.nodes.node_pr_landing_rerun_request_compute.models.model_rerun_decide_input.ModelRerunDecideInput"
-  output_model: "omnimarket.events.pr_landing_rerun_request.model_landing_rerun_answer.ModelLandingRerunAnswer"
+  output_model: "omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer.ModelLandingRerunAnswer"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request:HandlerPrLandingRerunRequest"

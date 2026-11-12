@@ -22,13 +22,13 @@ import pytest
 from click.testing import CliRunner
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
-    ModelLandingRerunRequest,
-)
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.scm_rerun_request import (
     load_rerun_request_topics,
     rerun_request_command,
+)
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,

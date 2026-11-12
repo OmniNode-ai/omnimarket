@@ -12,13 +12,13 @@ from uuid import uuid4
 import pytest
 import yaml
 
-from omnimarket.events.pr_landing_rerun_request.enum_rerun_verdict import (
+from omnimarket.models.pr_landing_rerun_request.enum_rerun_verdict import (
     EnumRerunVerdict,
 )
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_answer import (
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
     ModelLandingRerunAnswer,
 )
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
     ModelLandingRerunRequest,
 )
 from omnimarket.nodes.node_pr_landing_rerun_request_compute import (
@@ -115,3 +115,20 @@ def test_the_same_input_gives_the_same_answer() -> None:
     request = _input()
     decide = HandlerPrLandingRerunRequest().handle
     assert decide(request) == decide(request)
+
+
+def test_contract_declares_decision_terminal_topics() -> None:
+    """The node's contract names the decision completed and failed topics it can answer on."""
+    from omnimarket.nodes import node_pr_landing_rerun_request_compute as pkg
+
+    contract = yaml.safe_load(
+        (Path(pkg.__file__).parent / "contract.yaml").read_text(encoding="utf-8")
+    )
+    terminal = contract["runtime_dispatch"]["terminal_events"]
+    assert (
+        terminal["success"]
+        == "onex.evt.omnimarket.pr-landing-rerun-decision-completed.v1"
+    )
+    assert (
+        terminal["failure"] == "onex.evt.omnimarket.pr-landing-rerun-decision-failed.v1"
+    )

@@ -19,9 +19,6 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
-    ModelLandingRerunRequest,
-)
 from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
     JsonlEmissionSink,
@@ -32,6 +29,9 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
+    ModelLandingRerunRequest,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )

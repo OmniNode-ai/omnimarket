@@ -14,16 +14,16 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.events.pr_landing_rerun_request.enum_rerun_verdict import (
+from omnimarket.models.landing_decision import EnumLandingActionKind
+from omnimarket.models.pr_landing_rerun_request.enum_rerun_verdict import (
     EnumRerunVerdict,
 )
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_answer import (
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
     ModelLandingRerunAnswer,
 )
-from omnimarket.events.pr_landing_rerun_request.model_landing_rerun_request import (
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
     ModelLandingRerunRequest,
 )
-from omnimarket.models.landing_decision import EnumLandingActionKind
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
     rerun_topics,
