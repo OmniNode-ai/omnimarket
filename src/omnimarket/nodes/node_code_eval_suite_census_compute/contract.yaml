@@ -17,7 +17,7 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: code_eval_suite_census
+    - operation: suite_census
       handler:
         name: HandlerCodeEvalSuiteCensus
         module: omnimarket.nodes.node_code_eval_suite_census_compute.handlers.handler_code_eval_suite_census
@@ -25,8 +25,8 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_code_eval_suite_census_compute.handlers.handler_code_eval_suite_census
   class: HandlerCodeEvalSuiteCensus
-  input_model: omnimarket.models.code_eval_suite.model_suite_census_request.ModelCodeEvalSuiteCensusRequest
-  output_model: omnimarket.models.code_eval_suite.model_suite_census_result.ModelCodeEvalSuiteCensus
+  input_model: omnimarket.models.eval_suite_census.model_suite_census_request.ModelCodeEvalSuiteCensusRequest
+  output_model: omnimarket.models.eval_suite_census.model_suite_census_result.ModelCodeEvalSuiteCensus
 
 descriptor:
   node_archetype: compute

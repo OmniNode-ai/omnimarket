@@ -14,7 +14,7 @@ import re
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.models.code_eval_suite.model_suite_census_result import (
+from omnimarket.models.eval_suite_census.model_suite_census_result import (
     ModelCodeEvalSuiteCandidate,
 )
 from omnimarket.nodes.node_code_contract_score_effect.models import (

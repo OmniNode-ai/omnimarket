@@ -17,14 +17,14 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.models.code_eval_suite.model_suite_census_request import (
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
+from omnimarket.models.eval_suite_census.model_suite_census_request import (
     ModelCodeEvalSuiteCensusRequest,
     ModelCodeEvalSuiteExclusion,
 )
-from omnimarket.models.code_eval_suite.model_suite_census_result import (
+from omnimarket.models.eval_suite_census.model_suite_census_result import (
     ModelCodeEvalSuiteCensus,
 )
-from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.nodes.node_code_contract_score_effect.models import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,

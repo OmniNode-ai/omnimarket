@@ -10,14 +10,14 @@ from typing import Any
 
 import yaml
 
-from omnimarket.models.code_eval_suite.model_suite_overlay import (
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
+from omnimarket.models.eval_suite_census.model_suite_overlay import (
     ModelCodeEvalSuiteCensusOverlay,
 )
-from omnimarket.models.code_eval_suite.model_suite_task import (
+from omnimarket.models.eval_suite_census.model_suite_task import (
     ModelCodeEvalSuiteCheck,
     ModelCodeEvalSuiteTask,
 )
-from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.nodes.node_code_contract_score_effect.models import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,

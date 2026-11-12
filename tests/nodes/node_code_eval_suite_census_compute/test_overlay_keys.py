@@ -10,7 +10,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.models.code_eval_suite.model_suite_overlay import (
+from omnimarket.models.eval_suite_census.model_suite_overlay import (
     ModelCodeEvalSuiteCensusOverlay,
 )
 

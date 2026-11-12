@@ -11,13 +11,18 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
-from omnimarket.models.code_eval_suite.enum_suite_census_failure import (
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
+from omnimarket.models.enum_code_score import (
+    EnumCodeScoreSource,
+    EnumCodeScoreVerdict,
+)
+from omnimarket.models.eval_suite_census.enum_suite_census_failure import (
     EnumSuiteCensusFailure,
 )
-from omnimarket.models.code_eval_suite.model_suite_census_request import (
+from omnimarket.models.eval_suite_census.model_suite_census_request import (
     ModelCodeEvalSuiteCensusRequest,
 )
-from omnimarket.models.code_eval_suite.model_suite_census_result import (
+from omnimarket.models.eval_suite_census.model_suite_census_result import (
     ModelCodeEvalBandCount,
     ModelCodeEvalBandRepositoryCount,
     ModelCodeEvalControlCounts,
@@ -26,16 +31,11 @@ from omnimarket.models.code_eval_suite.model_suite_census_result import (
     ModelCodeEvalSuiteCandidate,
     ModelCodeEvalSuiteCensus,
 )
-from omnimarket.models.code_eval_suite.model_suite_overlay import (
+from omnimarket.models.eval_suite_census.model_suite_overlay import (
     ModelCodeEvalSuiteCensusOverlay,
 )
-from omnimarket.models.code_eval_suite.model_suite_task import (
+from omnimarket.models.eval_suite_census.model_suite_task import (
     ModelCodeEvalSuiteTask,
-)
-from omnimarket.models.delegation.model_size_band import EnumSizeBand
-from omnimarket.models.enum_code_score import (
-    EnumCodeScoreSource,
-    EnumCodeScoreVerdict,
 )
 from omnimarket.ranges.compare import required_comparison_size
 from omnimarket.ranges.power import required_sample_size
