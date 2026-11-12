@@ -9,8 +9,9 @@ under the first root in ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one. When none s
 reader raises :class:`NodeOverlayError` naming the key, the variables that supply it and the
 overlay file. There is no packaged fallback value.
 
-The lab host table also discovers overlays under the declared workspace config
-owner after the explicit overlay roots, without changing selected-source refusals.
+The lab host table is read only from the overlay roots ``ONEX_SKILL_OVERLAY_ROOTS``
+lists (the overlays repository's overlays directory); the workspace config owner's
+copy is not read.
 
 The two ``*_home_env(s)`` keys hold variable *names*; :func:`resolve_clone_home` reads the clone path
 they name.
@@ -30,7 +31,6 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_ROOTS_ENV,
     NodeOverlayError,
-    NodeOverlayNotFoundError,
     load_structured_overlay,
     not_configured_message,
 )
@@ -46,6 +46,9 @@ from omnimarket.models.overlay_keys import (
 
 LAB_HOSTS_FILE_ENV = "ONEX_LAB_RUN_HOSTS"
 REGISTRY_ROOT_ENV = "ONEX_REGISTRY_ROOT"
+CONFIG_ROOT_ENV = "ONEX_WORKSPACE_CONFIG_ROOT"
+# The overlays directory under the config owner that held the retired copy of the host table.
+_RETIRED_ROOT_PARTS = ("config", "onex", "overlays")
 
 OVERLAY_DOCUMENT_MODELS: Mapping[str, type[BaseModel]] = {
     "repos": ModelReposOverlay,
@@ -147,39 +150,34 @@ def _table_from_file(spec: OverlayKeySpec, path_text: str) -> ModelLabHostsTable
         ) from None
 
 
-def _lab_hosts_environment(env: Mapping[str, str]) -> Mapping[str, str]:
-    """Append the declared workspace's overlays after the caller's overlay roots."""
-    workspace = env.get("OMNI_HOME", "").strip()
-    config = env.get("ONEX_WORKSPACE_CONFIG_ROOT", "").strip()
-    if not workspace and not config:
-        return env
-    from omnibase_infra.handlers.handler_workspace_config_root_resolve import (
-        HandlerWorkspaceConfigRootResolve,
-    )
-    from omnibase_infra.models.workspace import ModelWorkspaceConfigRootRequest
+def _without_retired_host_table_root(env: Mapping[str, str]) -> Mapping[str, str]:
+    """The environment without the config owner's overlays directory among the overlay roots.
 
-    resolution = HandlerWorkspaceConfigRootResolve().handle(
-        ModelWorkspaceConfigRootRequest(
-            workspace_root=Path(workspace or config),
-            environment=dict(env),
-            allow_developer_config=bool(workspace),
-        )
-    )
-    if resolution.config_root is None:
+    The lab host table is read only from the roots the caller declared (the overlays
+    repository's overlays directory); a config owner's copy an older shell left in
+    ``ONEX_SKILL_OVERLAY_ROOTS`` must not serve it.
+    """
+    config_root = env.get(CONFIG_ROOT_ENV, "").strip()
+    if not config_root:
         return env
-    root = str(resolution.config_root / "config" / "onex" / "overlays")
-    roots = env.get(OVERLAY_ROOTS_ENV, "")
-    return {**env, OVERLAY_ROOTS_ENV: os.pathsep.join(filter(None, (roots, root)))}
+    retired = os.path.normpath(str(Path(config_root, *_RETIRED_ROOT_PARTS)))
+    kept = [
+        root
+        for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)
+        if root and os.path.normpath(root) != retired
+    ]
+    return {**env, OVERLAY_ROOTS_ENV: os.pathsep.join(kept)}
 
 
 def resolve_lab_hosts_table(
     environ: Mapping[str, str] | None = None,
 ) -> ModelLabHostsTable:
-    """The whole lab host table: pinned file, explicit overlay roots, then workspace overlays.
+    """The whole lab host table: the pinned file, else the overlay roots the caller declared.
 
     Hosts come with the table's ``unit_needs`` (what units of named repositories need of a host), which
-    are not overlay keys. Workspace discovery uses the declared config owner, including developer
-    config under ``OMNI_HOME``. A broken selected source refuses; no host values are packaged.
+    are not overlay keys. The table is read from the overlays repository through ``ONEX_SKILL_OVERLAY_ROOTS``
+    only: the config owner's copy (retired) is neither searched nor served when a shell lists it. A broken
+    selected source refuses; no host values are packaged.
     Raises :class:`NodeOverlayError` when no source supplies a valid table."""
     env = os.environ if environ is None else environ
     spec = overlay_key_spec("lab_hosts.hosts")
@@ -188,22 +186,15 @@ def resolve_lab_hosts_table(
         return _table_from_file(spec, pinned)
     missing_message = (
         not_configured_message(spec.overlay_id, spec.key, spec.env_vars)
-        + "; or declare ONEX_WORKSPACE_CONFIG_ROOT with config/onex/overlays/lab_hosts/overlay.yaml"
+        + f"; the lab host table is read from the overlays repository's overlays directory listed in {OVERLAY_ROOTS_ENV}, "
+        "never from the config owner's copy"
     )
-    try:
-        document = load_structured_overlay(
-            spec.overlay_id,
-            OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
-            env,
-            missing_message=missing_message,
-        )
-    except NodeOverlayNotFoundError:
-        document = load_structured_overlay(
-            spec.overlay_id,
-            OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
-            _lab_hosts_environment(env),
-            missing_message=missing_message,
-        )
+    document = load_structured_overlay(
+        spec.overlay_id,
+        OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
+        _without_retired_host_table_root(env),
+        missing_message=missing_message,
+    )
     if not isinstance(document, ModelLabHostsTable):
         raise NodeOverlayError(
             f"{spec.key}: the {spec.overlay_id} overlay is not a host table"
