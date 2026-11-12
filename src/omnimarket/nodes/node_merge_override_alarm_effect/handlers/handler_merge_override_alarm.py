@@ -400,14 +400,16 @@ class HandlerMergeOverrideAlarm:
         self._attempt(
             errors,
             "verdict event",
-            lambda: self._publish(self._verdict_topic, verdict.model_dump_json()),
+            lambda: self.publish_event(self._verdict_topic, verdict.model_dump_json()),
         )
         if classification.verdict.is_finding:
             finding = _finding(verdict)
             finding_published = self._attempt(
                 errors,
                 "finding event",
-                lambda: self._publish(self._finding_topic, finding.model_dump_json()),
+                lambda: self.publish_event(
+                    self._finding_topic, finding.model_dump_json()
+                ),
             )
             command_published = self._attempt(
                 errors, "slack command", lambda: self._publish_slack(finding)
@@ -442,7 +444,7 @@ class HandlerMergeOverrideAlarm:
             return False
         return True
 
-    def _publish(self, topic: str, payload_json: str) -> None:
+    def publish_event(self, topic: str, payload_json: str) -> None:
         if self._publisher is None:
             raise RuntimeError("no event_publisher was injected; nothing was published")
         self._publisher(topic, payload_json.encode())
@@ -458,7 +460,7 @@ class HandlerMergeOverrideAlarm:
             idempotency_key=finding.idempotency_key,
             correlation_id=finding.correlation_id,
         )
-        self._publish(self._slack_topic, command.model_dump_json())
+        self.publish_event(self._slack_topic, command.model_dump_json())
 
     # -- boundaries -----------------------------------------------------------
 
