@@ -5,7 +5,6 @@
 from omnimarket.models.broker_acl.model_broker_acl_coverage import (
     ModelBrokerAclCoverageRequest,
     ModelBrokerAclCoverageResult,
-    ModelCoverageBaselineEntry,
 )
 from omnimarket.models.broker_acl.model_broker_acl_derive import (
     EnumTopicDirection,
@@ -49,7 +48,6 @@ __all__ = [
     "ModelBrokerAclRow",
     "ModelBrokerAclScopeOverlay",
     "ModelContractTopicUse",
-    "ModelCoverageBaselineEntry",
     "ModelNodePrincipal",
     "ModelNodeRole",
 ]

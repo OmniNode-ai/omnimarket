@@ -17,10 +17,6 @@ broker_acl_reconcile:
   # The overlay scope naming which login runs which node (node_broker_acl_overlay_render_compute derives its rows from
   # the contracts' topics). Absent overlay: nothing is derived and only declared rows apply.
   derive_principals_scope: broker_acl_principals
-  # The frozen baseline of the merge check (repository-relative): per node, how many of its topic uses no declared grant
-  # covered when the check was built. The check refuses a new uncovered use and a baseline that holds more than the
-  # contracts need, so the file only shrinks (OMN-24005).
-  coverage_baseline_path: config/broker_acl_coverage_baseline.yaml
 # The rows. DELETE on GROUP resources only, one PREFIXED row per reapable family of the
 # consumer-group guard contract (node_consumer_group_guard_effect, reap.reapable_patterns).
 # Four of the ten rows are also declared in the lab broker's own declaration and are

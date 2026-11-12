@@ -19,6 +19,8 @@ description: >
   operator-run command; node_broker_acl_reconcile_effect is the node that drives
   the broker admin path. The second operation, derive_broker_acl_rows, derives rows from the topics the contracts
   declare and the principals an overlay names, and refuses a topic that has no row.
+  The third operation, check_broker_acl_coverage, is the merge check: a topic use a change adds to a contract that no declared
+  grant covers refuses and names the topic.
 handler_routing:
   routing_strategy: operation_match
   handlers:

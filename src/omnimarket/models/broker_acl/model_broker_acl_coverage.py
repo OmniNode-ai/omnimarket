@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The coverage check: every topic a node contract declares is covered by a declared grant or a frozen baseline entry.
+"""The coverage check: every topic use a change adds to a node contract is covered by a declared grant (OMN-24005).
 
-A topic use is one (node, topic, direction) the contract's event_bus declares. It is covered when the declared rows carry
-every operation the direction needs (the operations are the render contract's config). A node with uncovered uses
-is held at a baseline of how many it had when the baseline was frozen: more is a new uncovered topic and refuses, fewer
-means the baseline is stale and refuses until it is lowered, so the baseline only shrinks (OMN-24005).
+A topic use is one (node, topic, direction) the contract's event_bus declares. It is covered when the declared rows carry every
+operation the direction needs (the operations are the render contract's config). Only uses the change adds are judged: a use
+the base branch's contracts already declare is the debt that predates the check, and there is no list of exceptions to maintain.
 """
 
 from __future__ import annotations
@@ -21,27 +20,20 @@ from omnimarket.models.broker_acl.model_broker_acl_overlay import (
 )
 
 
-class ModelCoverageBaselineEntry(BaseModel):
-    """One node held at the number of uncovered topic uses it had when the baseline was frozen."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    node: str = Field(min_length=1)
-    uncovered_uses: int = Field(ge=1)
-
-
 class ModelBrokerAclCoverageRequest(BaseModel):
+    """topic_uses are the contracts as they stand, base_topic_uses the contracts of the base branch."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
     topic_uses: tuple[ModelContractTopicUse, ...]
+    base_topic_uses: tuple[ModelContractTopicUse, ...]
     declared_rows: tuple[ModelBrokerAclRow, ...] = ()
-    baseline: tuple[ModelCoverageBaselineEntry, ...] = ()
 
 
 class ModelBrokerAclCoverageResult(BaseModel):
-    """Refused names every uncovered topic use not held by the baseline, and every stale baseline entry."""
+    """Refused names every added topic use no declared grant covers."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     status: Literal["covered", "refused"]
-    nodes: int = Field(default=0, ge=0)
-    uncovered_uses: int = Field(default=0, ge=0)
-    baselined_uses: int = Field(default=0, ge=0)
+    new_uses: int = Field(default=0, ge=0)
+    uncovered_new_uses: int = Field(default=0, ge=0)
     findings: tuple[ModelBrokerAclFinding, ...] = ()

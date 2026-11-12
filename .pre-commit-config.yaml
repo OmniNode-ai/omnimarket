@@ -1070,15 +1070,14 @@ repos:
         files: ^(src/omnimarket/configs/(task_class_bars|task_class_contracts)\.v1\.yaml|src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/.*)$
         stages: [pre-commit]
 
-      # OMN-24005: every topic a node contract declares is covered by a declared broker grant or held by the frozen
-      # baseline; a new uncovered topic, or a baseline above what the contracts need, is refused. SYNC with ci.yml step
-      # "Broker permission coverage gate (OMN-24005)".
+      # OMN-24005: a topic use a change adds to a node contract needs a declared broker grant; uses the base branch already
+      # declares are not judged and no exception list exists. SYNC with ci.yml step "Broker permission coverage gate (OMN-24005)".
       - id: broker-acl-coverage-gate
-        name: Every contract topic has a broker permission row or a baseline entry (OMN-24005)
+        name: A topic a contract change adds has a broker permission row (OMN-24005)
         language: system
-        entry: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py -q -n 0 -p no:randomly --no-cov
+        entry: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
         pass_filenames: false
-        files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|config/broker_acl_coverage_baseline\.yaml|src/omnimarket/nodes/node_broker_acl_overlay_render_compute/.*|tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate\.py)$
+        files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|src/omnimarket/nodes/node_broker_acl_(overlay_render_compute|reconcile_effect)/.*)$
         stages: [pre-commit]
 
       # OMN-18311 (release criterion C12, third clause). A customer catalogue
