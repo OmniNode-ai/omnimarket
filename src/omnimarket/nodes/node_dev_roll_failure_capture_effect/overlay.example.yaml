@@ -1,0 +1,3 @@
+artifact_root: /var/lib/omnimarket/dev-roll-capture
+retention_days: 14
+log_byte_cap: 1048576

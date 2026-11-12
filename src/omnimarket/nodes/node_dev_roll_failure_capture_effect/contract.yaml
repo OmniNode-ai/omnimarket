@@ -1,0 +1,92 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - dev-roll failure capture effect (OMN-24013, five whys R2)
+#
+# 1.0.0 (OMN-24013) freezes the seam: the two consumed deploy-agent topics, the
+# three published terminal/capture/manifest events, the two payload-matched
+# handlers and the terminal dispatch. The agent's wire fields are spelled in
+# the seam test; the agent repository is not importable here.
+name: node_dev_roll_failure_capture_effect
+contract_name: node_dev_roll_failure_capture_effect
+node_name: node_dev_roll_failure_capture_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+runtime_profiles:
+  - main
+
+description: >
+  The dev-roll failure capture effect (five whys plan root R2, OMN-24013).
+  It consumes the deploy agent's dev-roll incident event and dev-roll manifest
+  event and writes the roll's typed terminal record, with the failed
+  container's captured log, through an injected artifact store. A store
+  failure on a log capture is recorded on the artifact and the terminal is
+  still written; a store failure on the terminal record itself yields a typed
+  capture-failed event, never a success terminal.
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.evt.omnimarket.dev-roll-incident.v1
+    - onex.evt.omnimarket.dev-roll-manifest.v1
+  publish_topics:
+    - onex.evt.omnimarket.dev-roll-terminal-recorded.v1
+    - onex.evt.omnimarket.dev-roll-capture-failed.v1
+    - onex.evt.omnimarket.dev-roll-manifest-recorded.v1
+
+published_events:
+  - event_type: "DevRollTerminalRecorded"
+    topic: onex.evt.omnimarket.dev-roll-terminal-recorded.v1
+    description: "The roll's typed terminal record, with the captured log artifact refs, was written to the store."
+  - event_type: "DevRollCaptureFailed"
+    topic: onex.evt.omnimarket.dev-roll-capture-failed.v1
+    description: "The terminal record could not be written (store unwritable or the incident unreadable); no terminal was recorded."
+  - event_type: "DevRollManifestRecorded"
+    topic: onex.evt.omnimarket.dev-roll-manifest-recorded.v1
+    description: "The dev-roll manifest was recorded to the store."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "dev_roll_incident.capture"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollIncidentCapture"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.handlers.handler_dev_roll_incident_capture"
+      event_model:
+        name: "ModelDevRollIncident"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.models.model_dev_roll_incident"
+      topic: onex.evt.omnimarket.dev-roll-incident.v1
+      description: "The deploy agent's dev-roll incident; answered by one terminal-recorded or capture-failed event."
+    - operation: "dev_roll_manifest.record"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollManifestRecord"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.handlers.handler_dev_roll_manifest_record"
+      event_model:
+        name: "ModelDevRollManifest"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.models.model_dev_roll_manifest"
+      topic: onex.evt.omnimarket.dev-roll-manifest.v1
+      description: "The deploy agent's dev-roll manifest; answered by one manifest-recorded or capture-failed event."
+
+consumed_events:
+  - topic: onex.evt.omnimarket.dev-roll-incident.v1
+    event_type: "DevRollIncident"
+  - topic: onex.evt.omnimarket.dev-roll-manifest.v1
+    event_type: "DevRollManifest"
+
+runtime_dispatch:
+  terminal_events:
+    success:
+      - onex.evt.omnimarket.dev-roll-terminal-recorded.v1
+      - onex.evt.omnimarket.dev-roll-manifest-recorded.v1
+    failure:
+      - onex.evt.omnimarket.dev-roll-capture-failed.v1
+
+metadata:
+  transport_type: kafka

@@ -1,0 +1,58 @@
+schema_version: 1.0.0
+ticket_id: OMN-24013
+title: node_dev_roll_failure_capture_effect writes the dev roll's typed terminal, naming the command and its issuer, with the failed container's captured log
+summary: 'Five whys plan root R2. The deploy agent (omnibase_infra, same ticket) publishes a dev-roll incident event (issuer, health probes, captured container log) and a dev-roll manifest event (command id and issuer). node_dev_roll_failure_capture_effect consumes both and writes one typed terminal record per failed roll and one manifest record per roll through an injected artifact store, with the log kept to an overlay-declared byte cap and an overlay-declared retention. A store that cannot write yields a typed capture-failed event, never a success terminal. This draft is partial: the handlers, models, adapters and overlay exist and 16 of 23 node tests pass; the golden and error chain tests still use a hand-rolled harness instead of the runtime dispatch over the real contract, and 7 tests fail.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24013-capture
+  statement: A failed dev roll's incident is recorded with its issuer and its log, or refused with a typed reason.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: node_dev_roll_failure_capture_effect consumes the incident and manifest events and writes one typed roll terminal (command id, issuer, outcome, log artifact with its completeness) through an injected artifact store, and an unreadable incident yields a typed unknown terminal, never success -- falsifier: an incident with no issuer or an unwritable store reads as a success terminal'
+  - id: AC3
+    statement: "AC3: the start event, manifest and incident shapes are pinned against the start-count node's contract and the capture node's models in a seam test on each side -- falsifier: renaming a field on either side leaves the seam test green"
+- id: req-omn24013-integrated
+  statement: The roll terminal is read from the running dev runtime.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: after the next dev roll with both changes running, the start events, the manifest naming the command and its issuer, and the roll terminal are read on the dev bus lane -- falsifier: a dev roll finishes after both are running and the dev bus lane carries no start event for it'
+evidence_requirements:
+- kind: tests
+  description: The node's handler, adapter, overlay and seam tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24013-ac2
+  description: The handler tests show a failed store yields a capture-failed result and an incident with a recovery error reads recovery_failed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect/test_handler_incident_capture.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24013-ac3
+  description: The seam test spells the agent's incident, log capture and manifest fields and topics.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect/test_seam_agent_events.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24013-ac4
+  description: The reading on the running dev runtime needs this node and the agent change running; it is the step left.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect/test_handler_incident_capture.py -q --no-cov -p no:cacheprovider
+    cwd: .

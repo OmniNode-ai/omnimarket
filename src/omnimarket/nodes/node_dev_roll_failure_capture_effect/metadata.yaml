@@ -1,0 +1,23 @@
+name: node_dev_roll_failure_capture_effect
+version: "1.0.0"
+description: "Dev-roll failure capture effect: record the roll's typed terminal record and captured log through an injected artifact store (OMN-24013, five whys R2)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dev_roll_failure_capture_effect: "omnimarket.nodes.node_dev_roll_failure_capture_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: local_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["dev-roll", "failure-capture", "effect", "artifact-store", "OMN-24013"]
+pack: "pr_lifecycle"
+display_name: "Dev Roll Failure Capture Effect"
+node_role: "effect"
