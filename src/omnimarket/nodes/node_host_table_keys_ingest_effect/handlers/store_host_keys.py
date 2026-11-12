@@ -20,6 +20,14 @@ class ProtocolHostKeyStore(Protocol):
     def set(self, key: str, value: str) -> None: ...
 
 
+class ProtocolKeyValueClient(Protocol):
+    """What the Valkey store needs of a client: redis.Redis built with decode_responses, or a double."""
+
+    def get(self, name: str) -> str | bytes | None: ...
+
+    def set(self, name: str, value: str) -> object: ...
+
+
 class StoreHostKeysInMemory:
     """A dict-backed store: the default profile and the test double."""
 
@@ -40,7 +48,7 @@ class HostTableKeysStoreUnconfiguredError(RuntimeError):
 class StoreHostKeysValkey:
     """A redis-backed store: one key, written whole, so a reader never sees half a table."""
 
-    def __init__(self, client: redis.Redis) -> None:
+    def __init__(self, client: ProtocolKeyValueClient) -> None:
         self._client = client
 
     def get(self, key: str) -> str | None:

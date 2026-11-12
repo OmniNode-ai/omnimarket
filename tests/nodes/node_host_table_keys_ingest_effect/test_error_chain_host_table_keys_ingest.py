@@ -11,6 +11,7 @@ from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_host_t
     HostTableKeysRefusedError,
 )
 from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.store_host_keys import (
+    ProtocolHostKeyStore,
     StoreHostKeysInMemory,
 )
 from tests.nodes.node_host_table_compute.table_support import row, three_hosts
@@ -25,9 +26,9 @@ from tests.nodes.node_host_table_keys_ingest_effect.support import (
 pytestmark = pytest.mark.unit
 
 
-def handler(store: object) -> HandlerHostTableKeysIngest:
+def handler(store: ProtocolHostKeyStore) -> HandlerHostTableKeysIngest:
     return HandlerHostTableKeysIngest(
-        store=store,  # type: ignore[arg-type]
+        store=store,
         overlay=overlay(),
         clock=lambda: NOW,
     )

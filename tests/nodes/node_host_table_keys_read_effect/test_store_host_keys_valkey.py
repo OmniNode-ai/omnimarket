@@ -30,15 +30,15 @@ class FakeClient:
     def __init__(self) -> None:
         self.data: dict[str, str] = {}
 
-    def get(self, key: str) -> str | None:
-        return self.data.get(key)
+    def get(self, name: str) -> str | None:
+        return self.data.get(name)
 
-    def set(self, key: str, value: str) -> None:
-        self.data[key] = value
+    def set(self, name: str, value: str) -> None:
+        self.data[name] = value
 
 
 def test_a_value_round_trips_through_the_client() -> None:
-    store = StoreHostKeysValkey(FakeClient())  # type: ignore[arg-type]
+    store = StoreHostKeysValkey(FakeClient())
     store.set("k", "v")
     assert store.get("k") == "v"
     assert store.get("absent") is None

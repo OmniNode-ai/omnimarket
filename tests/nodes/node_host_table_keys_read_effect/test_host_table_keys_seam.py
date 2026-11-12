@@ -73,25 +73,26 @@ def test_read_rows_equal_the_host_table_node_rows() -> None:
 
 
 @pytest.mark.parametrize(
-    ("case", "store", "kwargs", "reason"),
+    ("case", "prefix", "later", "reason"),
     [
-        (
-            "another prefix",
-            ingested(),
-            {"prefix": "other:prefix"},
-            "no host table keys",
-        ),
-        ("empty store", StoreHostKeysInMemory(), {}, "no host table keys"),
-        ("stale", ingested(), {"later": 601}, "stale"),
+        ("another prefix", "other:prefix", 0, "no host table keys"),
+        ("stale", PREFIX, 601, "stale"),
     ],
 )
-def test_no_readable_keys_read_unknown_never_an_empty_list(
-    case: str, store: StoreHostKeysInMemory, kwargs: dict[str, object], reason: str
+def test_keys_that_cannot_be_read_read_unknown_never_an_empty_list(
+    case: str, prefix: str, later: int, reason: str
 ) -> None:
-    reading = reader(store, **kwargs).handle(REQUEST)  # type: ignore[arg-type]
+    reading = reader(ingested(), prefix=prefix, later=later).handle(REQUEST)
     assert reading.state == "UNKNOWN", case
     assert reading.document is None
     assert reason in reading.reason
+
+
+def test_an_empty_store_reads_unknown() -> None:
+    reading = reader(StoreHostKeysInMemory()).handle(REQUEST)
+    assert reading.state == "UNKNOWN"
+    assert reading.document is None
+    assert "no host table keys" in reading.reason
 
 
 def test_a_stored_empty_row_list_and_a_malformed_value_read_unknown() -> None:
