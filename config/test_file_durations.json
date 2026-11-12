@@ -4906,6 +4906,8 @@
   "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py": 0.06,
   "tests/unit/nodes/node_rsd_offline_c0_validate_compute/test_c0_canonical_consumer_regression.py": 2.83,
   "tests/unit/nodes/node_rsd_offline_c0_validate_compute/test_handler_rsd_offline_c0.py": 1.4,
+  "tests/unit/nodes/node_runtime_bus_forward_effect/test_runtime_bus_forward.py": 2.15,
+  "tests/unit/nodes/node_runtime_bus_forward_effect/test_runtime_bus_publisher_kafka.py": 2.27,
   "tests/unit/nodes/node_seam_read_orchestrator/test_attach_on_demand.py": 0.09,
   "tests/unit/nodes/node_seam_reading_compute/test_append_only_rows.py": 0.02,
   "tests/unit/nodes/node_seam_reading_compute/test_no_producer_topic_join.py": 2.0,
