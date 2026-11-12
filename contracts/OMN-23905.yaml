@@ -43,7 +43,7 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/overlays --sha "$(git -C "$OMNI_HOME/overlays" rev-parse origin/main)" --lane dod-ac2-23905 --kind test -- env PYTHONDONTWRITEBYTECODE=1 python3 -m pytest tests/test_lab_host_reach_declared.py -q
     cwd: .
-- id: dod-omn23905-ac3
+- id: dod-omn23905-integration-proof-ac3
   description: 'AC3: the read-at record the unit on h202 wrote carries accounts and no refusal for h051 and h053; run on h202 through the lab work bus.'
   source: manual
   binds_ac:
