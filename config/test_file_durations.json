@@ -5178,6 +5178,7 @@
   "tests/unit/test_literal_path_slice_omn21694.py": 0.52,
   "tests/unit/test_liveness_shared_models.py": 0.14,
   "tests/unit/test_mandatory_di_params_market.py": 0.26,
+  "tests/unit/test_merge_sweep_compute_importers.py": 17.27,
   "tests/unit/test_model_bindings_omn21760.py": 0.81,
   "tests/unit/test_most_used_baseline_omn21347.py": 0.08,
   "tests/unit/test_no_omnibase_compat_running_references.py": 4.9,
