@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -21,6 +22,7 @@ from omnimarket.models.work_ledger_query import (
     EnumWorkLedgerQueryKind,
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerQueryResult,
+    ModelWorkLedgerRowRecord,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query import (
     HandlerWorkLedgerQuery,
@@ -51,15 +53,15 @@ def _status_rows() -> tuple[str, ...]:
 class CountingReader(InMemoryWorkLedgerQueryReader):
     """The in-memory reader that counts how many times its window is read."""
 
-    def __init__(self, **kwargs: object) -> None:
-        super().__init__(**kwargs)  # type: ignore[arg-type]
+    def __init__(self, *, now: Callable[[], datetime]) -> None:
+        super().__init__(now=now)
         self.window_reads = 0
 
     def read_rows(
         self, *, since: datetime | None, until: datetime
-    ) -> tuple[object, ...]:
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         self.window_reads += 1
-        return super().read_rows(since=since, until=until)  # type: ignore[return-value]
+        return super().read_rows(since=since, until=until)
 
     def read_rows_matching(
         self,
@@ -69,9 +71,9 @@ class CountingReader(InMemoryWorkLedgerQueryReader):
         kinds: tuple[str, ...],
         contains: str | None,
         term: str | None = None,
-    ) -> tuple[object, ...]:
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         # the parent's narrowed read goes through read_rows, which counts it
-        return super().read_rows_matching(  # type: ignore[return-value]
+        return super().read_rows_matching(
             since=since, until=until, kinds=kinds, contains=contains, term=term
         )
 
@@ -79,17 +81,17 @@ class CountingReader(InMemoryWorkLedgerQueryReader):
 class FailingReader(CountingReader):
     """A reader whose window read raises while its ``fail`` flag is set."""
 
-    def __init__(self, **kwargs: object) -> None:
-        super().__init__(**kwargs)  # type: ignore[arg-type]
+    def __init__(self, *, now: Callable[[], datetime]) -> None:
+        super().__init__(now=now)
         self.fail = False
 
     def read_rows(
         self, *, since: datetime | None, until: datetime
-    ) -> tuple[object, ...]:
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         if self.fail:
             self.window_reads += 1
             raise RuntimeError("boom")
-        return super().read_rows(since=since, until=until)  # type: ignore[return-value]
+        return super().read_rows(since=since, until=until)
 
     def read_rows_matching(
         self,
@@ -99,11 +101,11 @@ class FailingReader(CountingReader):
         kinds: tuple[str, ...],
         contains: str | None,
         term: str | None = None,
-    ) -> tuple[object, ...]:
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         if self.fail:
             self.window_reads += 1
             raise RuntimeError("boom")
-        return super().read_rows_matching(  # type: ignore[return-value]
+        return super().read_rows_matching(
             since=since, until=until, kinds=kinds, contains=contains, term=term
         )
 
@@ -178,7 +180,10 @@ def _pages(
 
 def _decode_cursor(cursor: str) -> dict[str, object]:
     padded = cursor + "=" * (-len(cursor) % 4)
-    return json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+    payload: dict[str, object] = json.loads(
+        base64.urlsafe_b64decode(padded.encode()).decode()
+    )
+    return payload
 
 
 def _encode_cursor(payload: dict[str, object]) -> str:
