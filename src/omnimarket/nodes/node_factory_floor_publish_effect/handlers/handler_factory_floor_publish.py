@@ -68,6 +68,8 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelPublishStep,
     ModelPublishStepResult,
     ModelPublishTarget,
+    PublishLimitBoundError,
+    PublishLimitMissingError,
     group_steps,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source import (
@@ -432,6 +434,7 @@ class HandlerFactoryFloorPublish:
             explicit=request.overlay,
             file_env=rt.overlay_file_env,
         )
+        rt = rt.with_limits(overlay.limits)
         home_value = (request.home or env.get(rt.home_env, "")).strip()
         if not home_value:
             raise PublishRefusedError(
@@ -502,7 +505,7 @@ class HandlerFactoryFloorPublish:
         phases["delegation"] = self._clock() - delegation_start
         status_document: dict[str, Any] = {
             "cycle_seconds_before_copy": round(self._clock() - cycle_start, 3),
-            "cycle_bound_seconds": rt.cycle.bound_seconds,
+            "cycle_bound_seconds": rt.bound(),
             "phase_seconds": {k: round(v, 3) for k, v in phases.items()},
             "published_at": now.astimezone(UTC).isoformat(),
             "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
@@ -820,7 +823,7 @@ class HandlerFactoryFloorPublish:
                     HandlerFleetObservationSource(self._run)
                     .handle(
                         ModelFleetObservationSourceRequest(
-                            timeout_seconds=step.timeout_seconds
+                            timeout_seconds=step.seconds
                         ),
                         environ=env,
                     )
@@ -837,11 +840,11 @@ class HandlerFactoryFloorPublish:
                     )
                 settings = step.rollup
                 report = _within_seconds(
-                    step.timeout_seconds,
+                    step.seconds,
                     lambda: HandlerFrictionRollupSource().handle(
                         settings, now=self._wall_clock(), environ=env
                     ),
-                    f"the friction rollup ran past its {step.timeout_seconds} s budget",
+                    f"the friction rollup ran past its {step.seconds} s budget",
                 )
                 write_atomic(
                     home / step.output_relpath,
@@ -874,7 +877,7 @@ class HandlerFactoryFloorPublish:
                     *(f"{k}={v}" for k, v in sorted(step.environment.items())),
                     *argv,
                 ]
-            done = self._run(argv, None, step.timeout_seconds)
+            done = self._run(argv, None, step.seconds)
         except (OSError, ValueError, PublishRefusedError) as exc:
             return failed(type(exc).__name__, str(exc))
         if done.returncode != 0:
@@ -1126,6 +1129,8 @@ __all__ = [
     "CopyOutcome",
     "DeliveryTally",
     "HandlerFactoryFloorPublish",
+    "PublishLimitBoundError",
+    "PublishLimitMissingError",
     "PublishRefusedError",
     "copy_to_server",
     "load_runtime",
