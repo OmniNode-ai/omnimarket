@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Roll Failure Capture Effect (OMN-24013)
+#
+# 1.0.0 (OMN-24013) froze the node: it consumes the dev roll manifest and the
+# incident the deploy agent publishes on the dev bus lane, keeps the manifest
+# and the failed container's log in an injected artifact store, and publishes
+# one typed roll terminal per incident. An incident that cannot be read, has
+# no issuer, or whose artifacts cannot be written yields a terminal with
+# outcome unknown and a typed reason: never a success-like outcome.
+name: node_dev_roll_failure_capture_effect
+contract_name: node_dev_roll_failure_capture_effect
+node_name: node_dev_roll_failure_capture_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+
+runtime_profiles:
+  - main
+
+description: >
+  The dev lane's failure capture. It records the roll manifest the deploy agent
+  publishes at every accepted dev roll, and, when the boot guard recovers a
+  failed roll, captures the failed container's log and publishes one typed
+  terminal for the incident. A terminal that cannot be read, has no issuer, or
+  whose artifacts cannot be written is published with outcome unknown and a
+  typed reason, never a success-like outcome.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+
+input_model:
+  name: ModelDevRollIncidentEvent
+  module: omnimarket.nodes.node_dev_roll_failure_capture_effect.models.model_dev_roll_incident_event
+output_model:
+  name: ModelDevRollTerminal
+  module: omnimarket.nodes.node_dev_roll_failure_capture_effect.models.model_dev_roll_terminal
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.evt.omnimarket.dev-roll-manifest.v1
+    - onex.evt.omnimarket.dev-roll-incident.v1
+  publish_topics:
+    - onex.evt.omnimarket.dev-roll-manifest-recorded.v1
+    - onex.evt.omnimarket.dev-roll-terminal.v1
+
+published_events:
+  - event_type: "DevRollManifestRecorded"
+    topic: onex.evt.omnimarket.dev-roll-manifest-recorded.v1
+    description: "The manifest was recorded to the artifact store, or the reason it was not."
+  - event_type: "DevRollTerminal"
+    topic: onex.evt.omnimarket.dev-roll-terminal.v1
+    description: "One typed roll terminal per incident: recovered, unrecovered, or unknown with a typed reason."
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: "dev_roll.record_manifest"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollManifestRecord"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.handlers.handler_dev_roll_manifest_record"
+      event_model:
+        name: "ModelDevRollManifestEvent"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.models.model_dev_roll_manifest_event"
+      topic: onex.evt.omnimarket.dev-roll-manifest.v1
+      description: "The roll manifest the deploy agent published; answered by one recorded event."
+    - operation: "dev_roll.capture_incident"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollIncidentCapture"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.handlers.handler_dev_roll_incident_capture"
+      event_model:
+        name: "ModelDevRollIncidentEvent"
+        module: "omnimarket.nodes.node_dev_roll_failure_capture_effect.models.model_dev_roll_incident_event"
+      topic: onex.evt.omnimarket.dev-roll-incident.v1
+      description: "The incident the boot guard published for a recovered failed roll; answered by one terminal event."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-roll-manifest-recorded.v1
+  - onex.evt.omnimarket.dev-roll-terminal.v1
+
+# The broker rows the principal that runs this node needs (OMN-24005). The principal is named by an environment variable
+# so this public file names no identity; the overlays repository holds the concrete login.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DEV_ROLL_CAPTURE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-manifest.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-manifest.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-incident.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-incident.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-manifest-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-manifest-recorded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-terminal.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-terminal.v1, operation: DESCRIBE}
+
+overlay:
+  node: node_dev_roll_failure_capture_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24013

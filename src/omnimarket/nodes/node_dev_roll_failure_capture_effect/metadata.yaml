@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+version: 1.0.0
+side_effect_class: file_write
+pack: pr_lifecycle
+node_role: effect
+standalone: false
