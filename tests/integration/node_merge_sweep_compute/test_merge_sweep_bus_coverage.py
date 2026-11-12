@@ -31,13 +31,13 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.merge_sweep.enum_failure_category import EnumFailureCategory
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
+from omnimarket.models.merge_sweep.model_history_entry import ModelFailureHistoryEntry
+from omnimarket.models.merge_sweep.model_merge_sweep_result import ModelMergeSweepResult
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
+from omnimarket.models.merge_sweep.model_sweep_request import ModelMergeSweepRequest
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    EnumFailureCategory,
-    EnumPRTrack,
-    ModelFailureHistoryEntry,
-    ModelMergeSweepRequest,
-    ModelMergeSweepResult,
-    ModelPRInfo,
     NodeMergeSweep,
 )
 from tests.runtime_local_compat import LocalRuntimeBusAdapter

@@ -23,6 +23,41 @@ class EnumTickBackend(StrEnum):
     REDPANDA = "redpanda"
 
 
+class ModelRerunRequestsOverlay(BaseModel):
+    """The rerun-request section: the per-head limit and where requests are read (OMN-23830).
+
+    Absent from an overlay, the tick reads no requests. With it, the limit is declared here and nowhere
+    in code; backend redpanda also needs the request topic and its consumer group.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    max_reruns_per_head: int = Field(
+        ge=0,
+        description="Re-runs granted per pull request head, any job; a request past it is limit_reached.",
+    )
+    request_topic: str | None = Field(
+        default=None,
+        description="Redpanda only: the topic lanes publish rerun requests on (the contract's rerun_request.command_topic).",
+    )
+    consumer_group: str | None = Field(
+        default=None,
+        description="Redpanda only: base name of the request reader's group; the host identity is appended as for the snapshot reader.",
+    )
+    poll_timeout_s: float | None = Field(
+        default=None,
+        gt=0,
+        description="Redpanda only: how long the request read waits.",
+    )
+    max_requests: int = Field(
+        default=20, ge=1, description="Requests answered in one pass."
+    )
+    ledger_path: str | None = Field(
+        default=None,
+        description="The file the granted re-runs are kept in across passes; absent: kept in memory for the pass only.",
+    )
+
+
 class ModelTickOrchestratorOverlay(BaseModel):
     """<root>/node_pr_landing_tick_orchestrator/overlay.yaml."""
 
@@ -137,6 +172,11 @@ class ModelTickOrchestratorOverlay(BaseModel):
         ),
     )
 
+    rerun_requests: ModelRerunRequestsOverlay | None = Field(
+        default=None,
+        description="The rerun-request section (OMN-23830); absent: no request is read.",
+    )
+
     @model_validator(mode="after")
     def _act_needs_a_cutover(self) -> ModelTickOrchestratorOverlay:
         if self.act_enabled and (
@@ -171,10 +211,27 @@ class ModelTickOrchestratorOverlay(BaseModel):
             ]
             if missing:
                 raise ValueError(f"backend redpanda needs overlay fields {missing}")
+            rerun = self.rerun_requests
+            if rerun is not None:
+                absent = [
+                    name
+                    for name in ("request_topic", "consumer_group", "poll_timeout_s")
+                    if getattr(rerun, name) is None
+                ]
+                if absent:
+                    raise ValueError(
+                        f"backend redpanda with rerun_requests needs rerun_requests fields {absent}"
+                    )
+            # the request read joins its own group and polls after the snapshot read
             budget = (
                 (self.join_timeout_s or 0)
                 + (self.poll_timeout_s or 0)
                 + (self.run_margin_s or 0)
+                + (
+                    (self.join_timeout_s or 0) + (rerun.poll_timeout_s or 0)
+                    if rerun is not None
+                    else 0
+                )
             )
             if budget > (self.run_limit_s or 0):
                 raise ValueError(
@@ -235,6 +292,7 @@ def resolved_consumer_group(
 __all__: list[str] = [
     "OVERLAY_ID",
     "EnumTickBackend",
+    "ModelRerunRequestsOverlay",
     "ModelTickOrchestratorOverlay",
     "ModelTickTopicSelection",
     "resolved_consumer_group",

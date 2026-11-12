@@ -1193,8 +1193,31 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation_budget_readings/migrations/0000_create_delegation_budget_readings.sql
       access: read_write
       role: delegation_budget_readings
+    # OMN-23888: the durable per-run state of the code eval trial orchestrator
+    # (the eval driver, omnimarket 5867), keyed by correlation_id. The CREATE
+    # lives in the omnibase_infra migration stream (docker/migrations/forward/114),
+    # like live_events above; this entry registers this repository as the
+    # catalog owner so the OMN-15361 SQL ownership gate can resolve it. Declared
+    # ahead of the driver node, the way the goal-trace tables were.
+    - name: code_eval_trial_state
+      database_ref: application
+      schema: public
+      migration: docker/migrations/forward/114_create_code_eval_trial_state.sql
+      access: read_write
+      role: code_eval_trial_orchestrator_state
 
 database_objects:
+  # OMN-23888: the trigger helper migration 114 creates for code_eval_trial_state.
+  # The gate treats a function a migration creates, and one a trigger names, as
+  # an application target needing exactly one owner; a table row does not cover it.
+  - name: refresh_code_eval_trial_state_updated_at
+    kind: function
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    function_signature: ()
+    writers: []
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
   # SEQUENCE grants against exact physical catalog identities. These sequences
   # are PostgreSQL-owned objects created implicitly by the node table DDL above,
