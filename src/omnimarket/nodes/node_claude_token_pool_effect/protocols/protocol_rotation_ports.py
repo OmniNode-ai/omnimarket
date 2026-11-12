@@ -12,7 +12,7 @@ from typing import Protocol
 
 from pydantic import SecretStr
 
-from omnimarket.nodes.node_claude_pool_limit_recheck_compute.models.model_limit_recheck import (
+from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitProbeAnswer,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (

@@ -1135,6 +1135,7 @@ def overlay_store_events(
         correlation_id=correlation_id,
         phase="start",
         emitted_at=now,
+        origin="probe",
     )
     if read.status != "read":
         code, detail = "overlay_store_unread", read.reason

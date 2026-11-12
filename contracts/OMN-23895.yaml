@@ -34,7 +34,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_pool_limit_recheck_compute -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_claude_pool_limit_recheck_compute -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23895-ac2
   description: The tick on the marks-source host probes through the injected port and the pool executes the typed command only for its own fingerprint and exact stamp; a host without the marks, an overlay without the block, a dry run and a label inside the interval probe nothing.
@@ -43,7 +43,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_limit_recheck.py tests/nodes/node_claude_token_pool_effect/test_limit_probe_adapter.py tests/nodes/node_claude_token_pool_effect/test_seams_omn23895.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_limit_recheck.py tests/nodes/node_claude_token_pool_effect/test_limit_probe_adapter.py tests/nodes/node_claude_token_pool_effect/test_seams_omn23895.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23895-ac3
   description: A notice whose text names two pool labels is attributed to none, one label is attributed, and the mark command carries the exact flag only for a notice that names its own reset.
@@ -52,7 +52,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_pool_account_attribution.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_pool_account_attribution.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23895-integration-proof
   description: From the branch on a lab host, the tick handler over a copy of the live pool file with a fake probe clears the stale limited mark, keeps the limited and error ones, and the live pool file hash is unchanged. Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check.

@@ -26,6 +26,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.models.model_delegation_scenario_settings import (
     ModelScenarioSettingsOverlay,
     ModelScenarioStoreOverlay,
+    ModelScenarioTenantReadOverlay,
 )
 from omnimarket.models.secret_store.model_secret_store_overlay import (
     ModelSecretStoreOverlay,
@@ -125,6 +126,20 @@ def load_store_overlay(
     return load_structured_overlay(
         overlay_id, ModelScenarioStoreOverlay, environ
     ).secret_store
+
+
+def load_tenant_read_overlay(
+    overlay_id: str, environ: Mapping[str, str] | None = None
+) -> ModelScenarioTenantReadOverlay | None:
+    """The scenario node's ``tenant_read`` block (bus, lane, probe tenant, wait bound), or ``None`` when it declares none.
+
+    A present but broken document raises: a block the overlay names badly must not read as no block.
+    """
+    if find_node_overlay(overlay_id, environ) is None:
+        return None
+    return load_structured_overlay(
+        overlay_id, ModelScenarioStoreOverlay, environ
+    ).tenant_read
 
 
 def read_host_env_names(

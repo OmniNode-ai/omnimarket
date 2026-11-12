@@ -20,7 +20,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
-from omnimarket.nodes.node_claude_pool_limit_recheck_compute.models.model_limit_recheck import (
+from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitProbeAnswer,
     ModelLimitRecheckCommand,
 )

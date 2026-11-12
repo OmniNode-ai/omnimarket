@@ -16,14 +16,17 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_lane_guard_unit_effect import (
     runtime_lane_guard_host as host,
 )
 from omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit import (
     EnumLaneGuardOperation,
     ModelLaneGuardMember,
+    ModelLaneGuardOverlay,
     ModelLaneGuardUnitRequest,
     ModelLaneGuardUnitResult,
 )
@@ -31,6 +34,16 @@ from omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit i
 HOST_PROGRAM = Path(host.__file__)
 CONFIRM_ATTEMPTS = 10
 CONFIRM_INTERVAL_S = 0.3
+
+
+NODE_NAME = "node_lane_guard_unit_effect"
+
+
+def load_guard_overlay(
+    environ: Mapping[str, str] | None = None,
+) -> ModelLaneGuardOverlay:
+    """The end-record settings of the deployed guard, read from the node's overlay."""
+    return load_structured_overlay(NODE_NAME, ModelLaneGuardOverlay, environ)
 
 
 def host_program_source() -> str:
@@ -76,6 +89,19 @@ class HandlerLaneGuardUnit:
             )
         except ValueError as exc:
             return self._refused(request, unit, str(exc))
+        record_flags: list[str] = []
+        if request.end_record is not None:
+            record = request.end_record
+            record_flags = [
+                "--record-dir",
+                record.record_dir,
+                "--worktrees-dir",
+                record.worktrees_dir,
+                "--git-timeout-s",
+                str(record.git_timeout_s),
+                "--max-trees",
+                str(record.max_trees),
+            ]
         argv = [
             sys.executable,
             str(HOST_PROGRAM),
@@ -94,6 +120,7 @@ class HandlerLaneGuardUnit:
             str(limits.tasks_max),
             "--kind",
             limits.kind,
+            *record_flags,
             "--",
             *request.command,
         ]

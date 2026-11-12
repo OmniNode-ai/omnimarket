@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_claude_pool_store_adopt_compute.models.model_store_adopt import (
+from omnimarket.models.model_claude_pool_store_adopt import (
     ModelAdoptCommand,
     ModelAdoptDecision,
     ModelStoreAdoptRequest,

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness import (
+from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
     ModelRevokeStalenessRequest,
     ModelRevokeStalenessResult,

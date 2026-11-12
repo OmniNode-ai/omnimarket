@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models for node_claude_pool_store_adopt_compute (OMN-23895)."""
 
-from omnimarket.nodes.node_claude_pool_store_adopt_compute.models.model_store_adopt import (
+from omnimarket.models.model_claude_pool_store_adopt import (
     ModelAdoptCommand,
     ModelAdoptDecision,
     ModelHeldLabel,

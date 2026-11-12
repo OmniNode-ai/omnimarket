@@ -88,7 +88,11 @@ runtime:
 # runs with the `onex delegate` command, which the caller's environment points at the same tenant; `inmemory` is the typed model
 # the tests use. The address and the tenant's key are read from the named environment variables, never from a file.
 lane:
-  backend: http
+  backend: bus
+  bus:
+    savings_node: omnimarket.nodes.node_tenant_savings_read_effect
+    delegations_node: omnimarket.nodes.node_tenant_delegations_read_effect
+    workspace_env: ONEX_WORKSPACE_CONFIG_ROOT
   base_url_env: R8_PROBE_API_BASE_URL
   api_key_env: R8_PROBE_TENANT_API_KEY
   api_key_header: x-api-key

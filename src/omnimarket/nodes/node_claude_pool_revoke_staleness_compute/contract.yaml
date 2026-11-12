@@ -13,15 +13,15 @@ description: >-
   the handler reads no clock and carries no token or secret value.
 input_model:
   name: ModelRevokeStalenessRequest
-  module: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness
+  module: omnimarket.models.model_claude_pool_revoke_staleness
 output_model:
   name: ModelRevokeStalenessResult
-  module: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness
+  module: omnimarket.models.model_claude_pool_revoke_staleness
 handler:
   module: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness
   class: HandlerRevokeStaleness
-  input_model: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness.ModelRevokeStalenessRequest
-  output_model: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness.ModelRevokeStalenessResult
+  input_model: omnimarket.models.model_claude_pool_revoke_staleness.ModelRevokeStalenessRequest
+  output_model: omnimarket.models.model_claude_pool_revoke_staleness.ModelRevokeStalenessResult
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness:HandlerRevokeStaleness
@@ -35,14 +35,18 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 500
-  runtime_profiles:
-    - main
+  runtime_profiles: []
+runtime_dispatch:
+  addressable: false
+  invocation_mode: local
+  reason: Called in process by the Claude token pool rotation tick; no bus topic reaches it.
+  external_trigger: node_claude_token_pool_effect rotation tick (in-process call)
 # The node publishes nothing: the pool tick calls it in process.
 event_bus:
   subscribe_topics: []
   publish_topics: []
 metadata:
-  transport_type: inmemory
+  transport_type: local
   description: Claude token pool revoke staleness compute
   author: OmniNode Team
   created: "2026-11-10"

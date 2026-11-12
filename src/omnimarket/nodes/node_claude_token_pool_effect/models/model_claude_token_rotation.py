@@ -14,10 +14,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from omnimarket.nodes.node_claude_pool_limit_recheck_compute.models.model_limit_recheck import (
+from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitRecheckPolicy,
 )
-from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.models.model_revoke_staleness import (
+from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelRevokeStalenessPolicy,
 )
 

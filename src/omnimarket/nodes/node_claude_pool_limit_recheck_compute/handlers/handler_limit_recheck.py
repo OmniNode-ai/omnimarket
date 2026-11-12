@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from omnimarket.nodes.node_claude_pool_limit_recheck_compute.models.model_limit_recheck import (
+from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitRecheckCommand,
     ModelLimitRecheckRequest,
     ModelLimitRecheckResult,

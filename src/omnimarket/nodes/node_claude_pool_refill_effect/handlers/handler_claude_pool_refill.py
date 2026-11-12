@@ -43,19 +43,19 @@ from omnimarket.models.delegation.model_claude_credential_probe import (
     ModelClaudeCredentialProbeReceipt,
     ModelClaudeCredentialProbeRequest,
 )
+from omnimarket.models.model_claude_pool_store_adopt import (
+    ModelAdoptCommand,
+    ModelHeldLabel,
+    ModelStoreAdoptPolicy,
+    ModelStoreAdoptRequest,
+    ModelStoreToken,
+)
 from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill import (
     ModelClaudePoolRefillRequest,
     ModelClaudePoolRefillResult,
 )
 from omnimarket.nodes.node_claude_pool_store_adopt_compute.handlers.handler_store_adopt import (
     HandlerStoreAdopt,
-)
-from omnimarket.nodes.node_claude_pool_store_adopt_compute.models.model_store_adopt import (
-    ModelAdoptCommand,
-    ModelHeldLabel,
-    ModelStoreAdoptPolicy,
-    ModelStoreAdoptRequest,
-    ModelStoreToken,
 )
 
 OVERLAY_REL = Path("config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml")
