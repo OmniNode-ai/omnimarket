@@ -165,7 +165,9 @@ def test_the_same_alarm_on_the_next_run_delivers_nothing_and_ok_ends_it() -> Non
 @pytest.mark.parametrize(
     "growth", [None, {"min_growth": 1, "persist_runs": 1, "streak_path": "s.json"}]
 )
-def test_every_alarm_line_splits_into_a_declared_group(growth) -> None:  # type: ignore[no-untyped-def]
+def test_every_alarm_line_splits_into_a_declared_group(
+    growth: dict[str, object] | None,
+) -> None:
     rig = _Rig(growth=growth)
     result = rig.run(105)
     typed = typed_alarms(result.alarms, "consumer_group_lag")
@@ -193,7 +195,8 @@ def test_no_alarm_delivery_block_loads_and_delivers_nothing() -> None:
     result = rig.run(105)
     assert result.outcome is EnumBrokerLagOutcome.ALARM
     assert result.delivery == ()
-    assert rig.channel.posts == [] and rig.ledger.rows == []  # noqa: PT018
+    assert rig.channel.posts == []
+    assert rig.ledger.rows == []
 
 
 def test_alarm_delivery_switched_off_builds_no_delivery() -> None:
@@ -243,7 +246,7 @@ class _Unreadable:
 
 def test_a_delivery_that_cannot_run_is_named() -> None:
     rig = _Rig()
-    rig.handler._delivery = _Unreadable()  # type: ignore[assignment]
+    vars(rig.handler)["_delivery"] = _Unreadable()
     result = rig.run(105)
     assert "delivery-unavailable:OSError" in result.failure
 
@@ -252,7 +255,8 @@ def test_a_probe_and_a_drill_deliver_nothing() -> None:
     rig = _Rig()
     rig.run(105, write=False)
     rig.run(105, fault=EnumLabAlarmFault.PLANTED_LAG)
-    assert rig.channel.posts == [] and rig.ledger.rows == []  # noqa: PT018
+    assert rig.channel.posts == []
+    assert rig.ledger.rows == []
 
 
 def test_indeterminate_neither_starts_nor_ends_an_episode() -> None:

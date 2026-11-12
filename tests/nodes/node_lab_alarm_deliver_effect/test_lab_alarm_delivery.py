@@ -10,6 +10,7 @@ row is kept and retried until it lands, and nothing that does not write moves st
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -200,6 +201,10 @@ def test_the_golden_chain_ends_in_the_completed_event() -> None:
         topics["delivery_alarm"],
         topics["delivery_completed"],
     ]
+    assert (
+        topics["delivery_completed"]
+        == "onex.evt.omnimarket.lab-alarm-delivery-completed.v1"
+    )
 
 
 def test_a_refused_channel_is_a_typed_failure_and_is_not_resent() -> None:
@@ -284,7 +289,7 @@ def test_a_request_that_does_not_write_delivers_nothing_and_keeps_nothing() -> N
     ],
     ids=["other-condition", "alarms-on-ok", "blank-detail"],
 )
-def test_malformed_requests_are_refused(build) -> None:  # type: ignore[no-untyped-def]
+def test_malformed_requests_are_refused(build: Callable[[], object]) -> None:
     with pytest.raises(ValidationError):
         build()
 
