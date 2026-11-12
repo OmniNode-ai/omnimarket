@@ -956,7 +956,9 @@ def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count
     estimate = 3.5 * policy.target_shard_seconds
     durations = {f"tests/unit/nodes/node_x/test_{i}.py": estimate / 7 for i in range(7)}
     decision = HandlerTestSelectionSelector(_FixedDurations(durations), policy).handle(
-        ModelSelectorRequest(selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT))
+        ModelSelectorRequest(
+            selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT)
+        )
     )
     assert decision.split_count is not None
     assert 3 <= decision.split_count <= 5
