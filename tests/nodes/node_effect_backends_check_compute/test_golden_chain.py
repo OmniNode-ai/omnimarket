@@ -57,6 +57,14 @@ def test_golden_chain_declares_the_command_and_terminal_topics() -> None:
         assert topic in contract["event_bus"]["publish_topics"]
 
 
+def test_golden_chain_publishes_the_check_completed_and_failed_events() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text())
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.effect-backends-check-completed.v1",
+        "onex.evt.omnimarket.effect-backends-check-failed.v1",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_golden_chain_lists_an_effect_node_without_backends(
     tmp_path: Path,

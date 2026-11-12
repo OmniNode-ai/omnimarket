@@ -53,6 +53,13 @@ def test_golden_chain_declares_the_command_and_terminal_topics() -> None:
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
 
 
+def test_golden_chain_publishes_the_load_completed_event() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text())
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.effect-backends-load-completed.v1"
+    ]
+
+
 @pytest.mark.asyncio
 async def test_golden_chain_reads_one_node_contract(tmp_path: Path) -> None:
     folder = tmp_path / NODE_NAME

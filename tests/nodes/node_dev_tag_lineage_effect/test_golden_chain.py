@@ -104,6 +104,13 @@ def test_golden_chain_declares_the_command_and_terminal_topics() -> None:
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
 
 
+def test_golden_chain_publishes_the_lineage_completed_event() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text())
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.dev-tag-lineage-completed.v1"
+    ]
+
+
 @pytest.mark.asyncio
 async def test_golden_chain_resolves_a_real_dev_merge_tag(
     origin: tuple[Path, str, str, str, str], tmp_path: Path
