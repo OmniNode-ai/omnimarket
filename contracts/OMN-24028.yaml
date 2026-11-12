@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24028
 title: The settings store keeps the newest copy of every setting, not only the last one written
-summary: The overlay store projection published each snapshot record on a compacted topic with no message key, so compaction kept only the newest record of the whole topic and the host table read 3.1 days old. BaseProjectionRunner gains get_keyed_publish_fn and the projection publishes with the overlay id as key; the seam tests in tests/unit/nodes/node_overlay_store and the real-Postgres projection test hold the producer side and the reader side to one shape.
+summary: The overlay store projection published each snapshot record on a compacted topic with no message key, so compaction kept only the newest record of the whole topic and the host table read 3.1 days old. the projection handler gains get_keyed_publish_fn over the runner producer and publishes with the overlay id as key; the seam tests in tests/unit/nodes/node_overlay_store and the real-Postgres projection test hold the producer side and the reader side to one shape.
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:

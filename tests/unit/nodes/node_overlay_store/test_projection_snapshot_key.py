@@ -19,7 +19,12 @@ from omnimarket.nodes.node_projection_overlay_store.handlers import (
 from omnimarket.nodes.node_projection_overlay_store.handlers.handler_overlay_store_projection import (
     HandlerOverlayStoreProjectionRunner,
 )
-from tests.unit.nodes.node_overlay_store.support import LOADED_TOPIC, NOW, record
+from tests.unit.nodes.node_overlay_store.support import (
+    LOADED_TOPIC,
+    NOW,
+    SNAPSHOT_TOPIC,
+    record,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -152,3 +157,26 @@ async def test_injected_keyed_fn_is_returned_and_unkeyed_fn_is_unchanged() -> No
     )
     assert await runner.get_keyed_publish_fn() is keyed
     assert await runner.get_publish_fn() is plain
+
+
+@pytest.mark.asyncio
+async def test_the_producer_path_sends_the_key_with_the_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[tuple[str, bytes, bytes | None]] = []
+
+    class _Producer:
+        async def send_and_wait(
+            self, topic: str, value: bytes, key: bytes | None = None
+        ) -> None:
+            sent.append((topic, value, key))
+
+    async def _producer() -> _Producer:
+        return _Producer()
+
+    runner = HandlerOverlayStoreProjectionRunner()
+    monkeypatch.setattr(runner, "_ensure_producer", _producer)
+    publish = await runner.get_keyed_publish_fn()
+    assert publish is not None
+    await publish(SNAPSHOT_TOPIC, b"lab_hosts", b"{}")
+    assert sent == [(SNAPSHOT_TOPIC, b"{}", b"lab_hosts")]
