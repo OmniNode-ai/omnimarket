@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state import (
+from omnimarket.events.host_install_state import (
     EnumHostInstallState,
     ModelHostInstallRecord,
     ModelHostInstallStepEvent,

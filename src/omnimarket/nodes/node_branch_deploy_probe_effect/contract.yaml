@@ -54,6 +54,13 @@ terminal_event: onex.evt.omnimarket.branch-deploy-probe-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.branch-deploy-probe-requested.v1
 
+broker_acl_grants:
+  - principal: "${ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.branch-deploy-probe-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.branch-deploy-probe-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-probe-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-probe-completed.v1, operation: DESCRIBE}
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.branch-deploy-probe-requested.v1
