@@ -30,6 +30,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.handlers.scm.scm_terminal_match import terminal_payload
 from omnimarket.lab_work.bus import _bytes, _uuid_or_none
 from omnimarket.models.scm import (
     EnumScmLocalRead,
@@ -346,22 +347,10 @@ class ScmBusCaller:
                     return
                 if not isinstance(raw, dict):
                     return
-                payload = raw.get("payload")
-                # An event published with no envelope (the landing tick orchestrator's answers) is its own payload.
-                payload_dict = (
-                    payload
-                    if isinstance(payload, dict)
-                    else raw
-                    if "payload" not in raw and "envelope_id" not in raw
-                    else {}
+                payload_dict = terminal_payload(
+                    raw, envelope.envelope_id, correlation_id
                 )
-                names_it = (
-                    _uuid_or_none(raw.get("parent_envelope_id")) == envelope.envelope_id
-                    or _uuid_or_none(raw.get("correlation_id")) == correlation_id
-                    or _uuid_or_none(payload_dict.get("correlation_id"))
-                    == correlation_id
-                )
-                if not names_it:
+                if payload_dict is None:
                     return
                 partition = getattr(message, "partition", None)
                 offset = getattr(message, "offset", None)
