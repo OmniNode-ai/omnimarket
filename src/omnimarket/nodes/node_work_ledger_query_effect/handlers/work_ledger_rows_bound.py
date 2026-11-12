@@ -37,6 +37,10 @@ class ModelRowsWindowOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     default_rows_window_days: int = Field(ge=1)
+    # The held rows window (OMN-24031): optional, read by work_ledger_rows_window_cache; absent
+    # means the contract's work_ledger_query.rows_window_cache values.
+    rows_window_cache_ttl_seconds: int | None = Field(default=None, ge=1)
+    rows_window_cache_max_windows: int | None = Field(default=None, ge=1)
 
 
 def _contract_window_days(contract_path: Path) -> int:
