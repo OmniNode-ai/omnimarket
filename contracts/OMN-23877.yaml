@@ -72,7 +72,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_broker_acl_overlays.py -q -n 0 -p no:randomly --no-cov -k "floor_emission or delete"
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_emission_mirror_omn23877.py tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_publish_omn23877.py -q -n 0 -p no:randomly --no-cov -k "seam or overlay_refuses or contract_and_overlay"
     cwd: .
 - id: dod-omn23877-ac4
   description: AC4 is the focused tests named in its check.

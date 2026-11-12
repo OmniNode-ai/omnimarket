@@ -17,7 +17,7 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -32,6 +32,7 @@ from omnimarket.handlers.emission_sink import ChainEmitter, JsonlEmissionSink
 from omnimarket.handlers.floor_projection import BusSnapshotSource, fold_emissions
 from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
 from omnimarket.models.floor_17a import ModelNodeEmission
+from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 from omnimarket.models.floor_projection import (
     ModelEmissionMirrorOverlay,
     ModelFloorEmissionsOverlay,
@@ -63,7 +64,7 @@ def write_chain(
         piece=3,
         clock=lambda: NOW,
         correlation_id=cid,
-        origin=origin,  # type: ignore[arg-type]
+        origin=cast(ChainOrigin, origin),
     )
     emitter.start()
     if fail:
