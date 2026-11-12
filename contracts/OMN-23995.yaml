@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-23995
+title: Seam tests between every bus model and the pieces that read it, generated from the contracts
+summary: A new check node reads every node contract, pairs each bus model a node publishes with each model another node's route reads from the same topic, and refuses a pull request when a field
+  added to the producer's model is refused by a strict consumer, or a consumer gains a required field the producer lacks. The host capacity advertisement the factory board reads and the silent-failure
+  alarm's request are strict models with no pin; every other refusing pair is pinned debt that can only shrink. The check is a required CI Summary job and a pre-commit hook.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23995-generated-seam-pairs
+  statement: Every pair of a contract-declared bus model and the consumer reading its topic is graded, and a field added to a bus model that a strict consumer refuses fails the check.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a generated seam test exists for every pair of a contract-declared bus model and the consumer that reads its topic, and a field added to a bus model that a strict consumer refuses
+      turns the test red -- falsifier: pytest tests/unit/nodes/node_bus_model_seam_check_effect -q'
+- id: req-omn23995-strict-subjects
+  statement: The two models of the incidents the check starts from take no pin.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the factory board publisher''s host capacity advertisement and the silent-failure alarm''s models have zero refused pairs, with no pin -- falsifier: python -m omnimarket.nodes.node_bus_model_seam_check_effect
+      --strict-subjects exits non-zero when one subject pair refuses a field'
+- id: req-omn23995-required-check
+  statement: The check is a required job of the CI Summary and a pre-commit hook.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the check is a required job of the omnimarket CI Summary and a pre-commit hook -- falsifier: pytest tests/ci/test_ci_summary_gate.py -q fails when the job is removed from the strict
+      table'
+- id: req-omn23995-integrated
+  statement: The running dev runtime carries the node and one run of the check on that revision reads the pair count.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: the running dev runtime''s omnimarket image revision includes the node and one run of the check on that revision reports the pair count and zero unpinned refusals --
+      falsifier: the run reports a nonzero unpinned refusal count or the image revision lacks the node'
+evidence_requirements:
+- kind: tests
+  description: The seam check node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_bus_model_seam_check_effect tests/test_golden_chain_bus_model_seam_check_effect.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23995-ac1
+  description: The node tests add a field to a synthetic bus model and the consumer that refuses it turns the check red; the same tree without the field is admitted (control), and the real corpus is
+    admitted with its pins.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_bus_model_seam_check_effect tests/test_golden_chain_bus_model_seam_check_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23995-ac2
+  description: The strict models fail the check when a pinned or unpinned pair of theirs refuses a field, and fail when they appear in no pair; the real policy names both and the real corpus passes.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_bus_model_seam_check_effect -q --no-cov -n 0 -p no:randomly -k "strict or real_corpus"
+    cwd: .
+- id: dod-omn23995-ac3
+  description: The CI Summary strict table lists the job by its display name, the workflow defines it and the pre-commit hook runs the same module; the CI Summary gate tests pass at the head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23995-ac4
+  description: The tests that stand behind the integrated reading pass at the head. The reading itself (the dev runtime's image revision and one run of the check on it) is taken after the merge by the
+    lane that owns the reading.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_bus_model_seam_check_effect -q --no-cov -n 0 -p no:randomly -k real_corpus
+    cwd: .

@@ -811,6 +811,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-23995: a merged change must not break a running consumer. Pairs every bus model a
+      # node contract publishes with each model another node's route reads from the same topic
+      # and refuses a field the consumer refuses (or a required field the producer lacks).
+      # The strict models in seam_policy.yaml take no pin; other refusing pairs are pinned debt
+      # that only shrinks. CI twin: the "Bus Model Seam Gate (OMN-23995)" job in ci.yml, a
+      # strict CI Summary row.
+      - id: bus-model-seam-check
+        name: Bus models and the consumers that read them stay compatible (OMN-23995)
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_bus_model_seam_check_effect
+        files: ^src/omnimarket/(nodes/.*/contract\.yaml|nodes/node_bus_model_seam_check_effect/.*|models/.*\.py|events/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem
       # assertion — no scan, no derivation, nothing to soften.
