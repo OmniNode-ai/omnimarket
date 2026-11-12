@@ -9,6 +9,7 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import timedelta
 from typing import Literal
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -56,11 +57,13 @@ class HandlerLabPoolPlace:
         judge: HandlerLabPlacement | None = None,
         environ: Mapping[str, str] | None = None,
         draining_hosts: Callable[[], tuple[str, ...]] | None = None,
+        down_hosts: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         self._table_source = table_source
         self._judge = judge
         self._environ = environ
         self._draining_hosts = draining_hosts or self._drain_node_hosts
+        self._down_hosts = down_hosts or self._down_node_hosts
 
     def _drain_node_hosts(self) -> tuple[str, ...]:
         from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
@@ -68,6 +71,13 @@ class HandlerLabPoolPlace:
         )
 
         return read_draining_hosts(self._environ)
+
+    def _down_node_hosts(self) -> tuple[str, ...]:
+        from omnimarket.nodes.node_host_down_reading_effect.runtime_host_down import (
+            read_down_hosts,
+        )
+
+        return read_down_hosts(self._environ)
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
@@ -89,6 +99,20 @@ class HandlerLabPoolPlace:
                 verdicts=[],
                 detail=f"the drain state could not be read ({type(exc).__name__}: {exc})",
             )
+        down_detail = ""
+        try:
+            down = frozenset(request.down_hosts) | frozenset(self._down_hosts())
+        except (OSError, ValueError, NodeOverlayError) as exc:
+            down = frozenset()
+            down_detail = (
+                f"down reading could not be read ({type(exc).__name__}: {exc}): "
+                "placement went on without it"
+            )
+        replaced_from = ""
+        only_host = request.only_host
+        if only_host is not None and only_host in down:
+            replaced_from = only_host
+            only_host = None
         try:
             document = request.table or self._table_source()
             environ = os.environ if self._environ is None else self._environ
@@ -126,9 +150,11 @@ class HandlerLabPoolPlace:
             bound = timedelta(seconds=2 * ad.cadence_seconds).total_seconds()
             table = table_verdicts.get(ad.host_name)
             reason = ""
-            if age > bound or age < -bound:
+            if ad.host_name in down:
+                reason = "down: the host-down reading reads this host down, so it takes no lane"
+            elif age > bound or age < -bound:
                 reason = f"stale ({age:.0f}s old, bound {bound:.0f}s)"
-            elif request.only_host is not None and ad.host_name != request.only_host:
+            elif only_host is not None and ad.host_name != only_host:
                 reason = "not the requested host"
             else:
                 fresh_seen = True
@@ -189,6 +215,20 @@ class HandlerLabPoolPlace:
                     age_seconds=round(age, 1),
                 )
             )
+        for host in sorted(down - {ad.host_name for ad in request.advertisements}):
+            verdicts.append(
+                ModelHostVerdict(
+                    host_name=host,
+                    eligible=False,
+                    reason=(
+                        "down: the host-down reading reads this host down, so it takes no lane"
+                    ),
+                    load_per_core=0.0,
+                    mem_available_gb=0.0,
+                    age_seconds=0.0,
+                )
+            )
+        detail = down_detail
         if eligible:
             best = min(
                 eligible,
@@ -203,6 +243,8 @@ class HandlerLabPoolPlace:
                 decision=EnumPlacementDecision.PLACED,
                 host_name=best.host_name,
                 verdicts=verdicts,
+                detail=detail,
+                replaced_from=replaced_from,
             )
         if not fresh_seen:
             refusal = EnumRefusalReason.COULD_NOT_CHECK
@@ -213,7 +255,11 @@ class HandlerLabPoolPlace:
         else:
             refusal = EnumRefusalReason.HOST_TABLE
         return ModelPlacement(
-            decision=EnumPlacementDecision.REFUSED, refusal=refusal, verdicts=verdicts
+            decision=EnumPlacementDecision.REFUSED,
+            refusal=refusal,
+            verdicts=verdicts,
+            detail=detail,
+            replaced_from=replaced_from,
         )
 
 

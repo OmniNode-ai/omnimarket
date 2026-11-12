@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+profile: in_memory
+jsonl_state_relpath: host-down-reading.jsonl
+piece: 2
+chain_node: node_host_down_reading_effect
+injected_fault: table_unreadable
+observers:
+  - lab-host-a
+  - lab-host-b
+observer_env: ONEX_HOST_DOWN_OBSERVER
+probe:
+  port: 22
+  timeout_s: 3.0
+rules:
+  down_bound_s: 300
+  unknown_when_no_host_answers: true
+reading_ttl_s: 600
+advertisement_command:
+  - /usr/local/bin/onex-advertise
+  - --list
+advertisement_timeout_s: 10
+publish:
+  bus: inmemory
+  bus_lane: onex-host-down
+  kafka_bootstrap: null
+  timeout_s: 5.0
+codes:
+  observer_not_allowed: OBSERVER_NOT_ALLOWED
+  table_unreadable: TABLE_UNREADABLE
+  write_failed: WRITE_FAILED
+  readback_failed: READBACK_FAILED
+  publish_failed: PUBLISH_FAILED
+emission:
+  home_env: ONEX_HOST_DOWN_EMISSION_HOME
+  journal_relpath: journal/host-down-reading.jsonl
