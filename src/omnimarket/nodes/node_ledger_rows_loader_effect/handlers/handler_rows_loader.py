@@ -22,6 +22,10 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.events.work_ledger_reader import (
+    EnumReaderEventKind,
+    EnumReaderStatus,
+)
 from omnimarket.nodes.node_ledger_rows_loader_effect.models import (
     EnumRowsSource,
     EnumRowsStatus,
@@ -33,10 +37,6 @@ from omnimarket.nodes.node_ledger_rows_loader_effect.models import (
 from omnimarket.nodes.node_ledger_rows_loader_effect.protocols import (
     ProtocolFileRows,
     ProtocolRowsLoaderEventSink,
-)
-from omnimarket.nodes.node_work_ledger_reader_effect.models import (
-    EnumReaderEventKind,
-    EnumReaderStatus,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
