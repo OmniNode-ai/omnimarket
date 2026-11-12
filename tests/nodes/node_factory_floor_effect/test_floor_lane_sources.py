@@ -32,7 +32,6 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     parse_ledger_text,
     parse_pool_reading,
     resolve_dir,
-    resolve_host_table,
     split_reading,
 )
 
@@ -560,26 +559,30 @@ def test_titles_come_from_the_json_snapshot_and_status_types_from_the_text_file(
     ]
 
 
-def test_the_host_table_is_the_pinned_file_then_the_floor_overlay_relpath_then_the_lab_hosts_overlay(
+def test_the_host_table_is_the_pinned_file_then_the_lab_hosts_overlay_and_no_other(
     tmp_path: Path,
 ) -> None:
+    """The board's host list reads the one host table reader: the pin, else the overlay roots; none supplies it: None."""
     roots = tmp_path / "overlays"
-    write(roots / "lab_hosts" / "overlay.yaml", "hosts: []\n")
+    write(
+        roots / "lab_hosts" / "overlay.yaml",
+        yaml.safe_dump(
+            {
+                "hosts": [{"name": "from-overlay", "target": "a.lan"}],
+                "registry_root_candidates": ["/srv/synthetic-registry"],
+            }
+        ),
+    )
+    pin = tmp_path / "pinned.yaml"
+    pin.write_text(yaml.safe_dump({"hosts": [{"name": "from-pin", "target": "b.lan"}]}))
     environ = {"ONEX_SKILL_OVERLAY_ROOTS": str(roots)}
-    pinned = {**environ, "TABLE": str(tmp_path / "pinned.yaml")}
-    assert (
-        resolve_host_table(pinned, "TABLE", tmp_path, "rel.yaml")
-        == tmp_path / "pinned.yaml"
-    )
-    assert (
-        resolve_host_table(environ, "TABLE", tmp_path, "rel.yaml")
-        == tmp_path / "rel.yaml"
-    )
-    assert (
-        resolve_host_table(environ, "TABLE", tmp_path, "")
-        == roots / "lab_hosts" / "overlay.yaml"
-    )
-    assert resolve_host_table({}, "TABLE", tmp_path, "") is None
+    rows = load_host_table({**environ, "ONEX_LAB_RUN_HOSTS": str(pin)})
+    assert rows is not None
+    assert [r.host for r in rows] == ["from-pin"]
+    rows = load_host_table(environ)
+    assert rows is not None
+    assert [r.host for r in rows] == ["from-overlay"]
+    assert load_host_table({}) is None
 
 
 def test_a_workers_directory_of_thousands_is_read_without_a_stat_per_entry(

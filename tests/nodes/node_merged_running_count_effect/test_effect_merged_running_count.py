@@ -15,10 +15,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 from omnimarket.models.model_merged_running_count import (
     ModelMrcConfig,
+)
+from omnimarket.nodes.node_host_table_compute.models.model_host_table import (
+    ModelHostTableResult,
+    ModelHostTableRow,
 )
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (
     HandlerMergedRunningCountEffect,
@@ -157,15 +160,38 @@ class _Container:
         return self._sources
 
 
+def hosts_result(table: dict[str, Any]) -> ModelHostTableResult:
+    """The host table node's row set for a test table: what the entry's loader hands the source."""
+    rows = tuple(
+        ModelHostTableRow(
+            name=h["name"],
+            cap=h.get("cap"),
+            available=h.get("available", True),
+            exclusion_reason=""
+            if h.get("available", True)
+            else "excluded in the test table",
+        )
+        for h in table["hosts"]
+    )
+    return ModelHostTableResult(
+        rows=rows,
+        admitted=tuple(r.name for r in rows if r.available),
+        excluded=tuple(r for r in rows if not r.available),
+    )
+
+
+def _hosts() -> ModelHostTableResult:
+    return hosts_result(HOST_TABLE)
+
+
 def _sources(tmp_path: Path, ledger: str = LEDGER) -> SourceLocalFiles:
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
     (tmp_path / "ledger.md").write_text(ledger + "\n")
-    (tmp_path / "hosts.yaml").write_text(yaml.safe_dump(HOST_TABLE))
     return SourceLocalFiles(
         watcher_state=tmp_path / "state.json",
         ledger=tmp_path / "ledger.md",
         labels=LABELS,
-        hosts_table=tmp_path / "hosts.yaml",
+        hosts=_hosts,
         placement_read=tmp_path / "absent-hosts.json",
         now=NOW,
     )
@@ -267,7 +293,6 @@ def _roll(tmp_path: Path, rows_in_archive: list[str], kept: list[str]) -> Path:
     )
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
     (tmp_path / "ledger.md").write_text("\n".join(kept) + "\n")
-    (tmp_path / "hosts.yaml").write_text(yaml.safe_dump(HOST_TABLE))
     return tmp_path
 
 
@@ -282,7 +307,7 @@ def test_adopted_rows_rolled_into_the_archive_are_still_evidence(
         watcher_state=tmp_path / "state.json",
         ledger=tmp_path / "ledger.md",
         labels=LABELS,
-        hosts_table=tmp_path / "hosts.yaml",
+        hosts=_hosts,
         placement_read=tmp_path / "absent-hosts.json",
         now=NOW,
     )
@@ -334,7 +359,7 @@ def test_error_a_roll_header_in_an_archive_does_not_raise(tmp_path: Path) -> Non
         watcher_state=tmp_path / "state.json",
         ledger=tmp_path / "ledger.md",
         labels=LABELS,
-        hosts_table=tmp_path / "hosts.yaml",
+        hosts=_hosts,
         placement_read=tmp_path / "absent-hosts.json",
         now=NOW,
     )
