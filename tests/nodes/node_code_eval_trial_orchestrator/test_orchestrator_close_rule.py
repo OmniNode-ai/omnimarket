@@ -185,7 +185,7 @@ def test_a_row_past_the_completion_bound_yields_the_closed_event_abandoned() -> 
     assert built is not None
     module, name, payload = built
     assert name == "ModelCodeEvalRunClosed"
-    assert module.endswith(".models")
+    assert module == "omnimarket.models.code_eval_trial"
     closed = ModelCodeEvalRunClosed.model_validate(payload)
     assert closed.abandoned is True
     assert closed.correlation_id == RUN_ID
