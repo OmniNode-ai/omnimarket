@@ -97,6 +97,7 @@ from omnimarket.handlers.scm.scm_duplicate_guard import (
 )
 from omnimarket.handlers.scm.scm_gateway_open_prs import GatewayOpenPrFactsSource
 from omnimarket.handlers.scm.scm_git_credential import git_credential_command
+from omnimarket.handlers.scm.scm_rerun_request import rerun_request_command
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_gateway_node_skew import plain_sentence, refused_fields
 from omnimarket.models.model_github_gateway_io import (
@@ -110,6 +111,7 @@ from omnimarket.models.scm import (
     ModelScmAnswer,
     ModelScmLocalAnswer,
     ModelScmLocalReadRequest,
+    ModelScmLocalReadResult,
     ModelScmLocalVerb,
     ModelScmTerminal,
     ModelScmVerb,
@@ -654,6 +656,7 @@ _LOCAL_OPTIONS: Final[dict[EnumScmLocalRead, tuple[str, ...]]] = {
     EnumScmLocalRead.FILE_CONTENTS: ("path", "ref", "max_bytes"),
     EnumScmLocalRead.COMMIT_VIEW: ("ref",),
     EnumScmLocalRead.COMMIT_CHECKS: ("sha",),
+    EnumScmLocalRead.RED_FACTS: (),
 }
 _LOCAL_OPTION_DECORATORS: Final[
     dict[str, Callable[[click.decorators.FC], click.decorators.FC]]
@@ -673,8 +676,26 @@ _LOCAL_OPTION_DECORATORS: Final[
 }
 
 
+def _local_read(request: ModelScmLocalReadRequest) -> ModelScmLocalReadResult:
+    """Answer one local read; red-facts reads the head from the CI read, then the record."""
+    if request.read is not EnumScmLocalRead.RED_FACTS:
+        return HandlerScmLocalState().handle(request)
+    # Imported here: the filler node's handlers import this package.
+    from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
+        answer_red_facts_read,
+    )
+
+    checks = HandlerScmLocalState().handle(
+        request.model_copy(update={"read": EnumScmLocalRead.PR_CHECKS})
+    )
+    return answer_red_facts_read(request, checks)
+
+
 def _local_command(spec: ModelScmLocalVerb) -> click.Command:
-    pr_scoped = spec.read is EnumScmLocalRead.PR_COMMITS
+    pr_scoped = spec.read in (
+        EnumScmLocalRead.PR_COMMITS,
+        EnumScmLocalRead.RED_FACTS,
+    )
     ref_required = spec.read is EnumScmLocalRead.COMMIT_VIEW
 
     def command(
@@ -700,7 +721,7 @@ def _local_command(spec: ModelScmLocalVerb) -> click.Command:
             )
         except ValidationError as exc:
             raise click.UsageError(str(exc)) from exc
-        local = HandlerScmLocalState().handle(request)
+        local = _local_read(request)
         if not local.answered or local.source is None:
             click.echo(
                 f"local: {local.unanswered_reason} ({spec.verb} has no bus or "
@@ -1106,6 +1127,8 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+# OMN-23830: any lane asks for one failed job to be re-run; the landing tick orchestrator answers.
+scm_group.add_command(rerun_request_command(_open_bus, _watcher_head))
 scm_group.add_command(git_credential_command)
 scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:

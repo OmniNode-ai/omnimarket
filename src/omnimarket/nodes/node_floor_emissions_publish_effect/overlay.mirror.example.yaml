@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The journal sink's mirror (OMN-23877): each chain event the floor's emission journal holds is also published on the topic of its
+# phase, which the floor emissions projection folds. A host names its own copy with ONEX_FLOOR_EMISSION_MIRROR_OVERLAY, or holds it
+# as floor_emission_mirror/overlay.yaml under the overlay roots; a host with neither mirrors nothing. The in-memory bus is the
+# default and holds the events nowhere past the process; the real backend is the broker.
+bus: inmemory
+bus_lane: null
+kafka_bootstrap: null
+topic_start: onex.evt.omnimarket.floor-node-started.v1
+topic_success: onex.evt.omnimarket.floor-node-succeeded.v1
+topic_failure: onex.evt.omnimarket.floor-node-failed.v1
+publish_timeout_s: 10.0

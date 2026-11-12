@@ -103,7 +103,11 @@ async def run(
     """One pass with its chain: a start, then a success with the entries published, or a typed failure."""
     contract = _contract()["runtime"]
     chain = ChainEmitter(
-        sink, node=contract["chain"], piece=int(contract["piece"]), clock=clock
+        sink,
+        node=contract["chain"],
+        piece=int(contract["piece"]),
+        clock=clock,
+        origin="probe",
     )
     chain.start()
     handler = HandlerFloorOwnerMapPublish(

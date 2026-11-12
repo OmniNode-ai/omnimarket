@@ -357,6 +357,7 @@ class HandlerLabCheckRunJoinJ7Run:
             clock=self._clock,
             correlation_id=cid,
             backend=self._backend,
+            origin="probe",
         )
         chain.start()
         rig = self._golden_rig()
@@ -553,6 +554,7 @@ class HandlerLabCheckRunJoinJ7Run:
             clock=self._clock,
             correlation_id=cid,
             backend=self._backend,
+            origin="control",
         )
         upstream.start()
         upstream.failure(control.failure_code, detail)
@@ -563,6 +565,7 @@ class HandlerLabCheckRunJoinJ7Run:
             clock=self._clock,
             correlation_id=cid,
             backend=self._backend,
+            origin="control",
         ).refuse(f"{UPSTREAM_PREFIX}{control.failure_code}", detail)
         return ModelJoinJ7RunItem(
             correlation_id=cid,
@@ -636,6 +639,7 @@ class HandlerLabCheckRunJoinJ7Run:
             correlation_id=cid,
             backend=self._backend,
             drill=True,
+            origin="drill",
         )
         chain.start()
         chain.failure(_SUPERSEDED_CODE, late.outcome.value)

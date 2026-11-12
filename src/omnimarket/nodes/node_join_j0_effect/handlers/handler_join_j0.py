@@ -191,6 +191,7 @@ class HandlerJoinJ0:
             clock=self._clock,
             correlation_id=cid,
             backend=self._backend,
+            origin="probe",
         )
 
     def _control(

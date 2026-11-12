@@ -43,7 +43,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 
 # Single-PR query mirroring the fields the read functions consume. Uses the same
 # inline-fragment shape as the merge-sweep list query (fragments live inside

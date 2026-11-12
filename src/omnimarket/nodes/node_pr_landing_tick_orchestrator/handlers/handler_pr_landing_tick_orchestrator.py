@@ -26,12 +26,26 @@ import yaml
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.landing_decision import (
+    EnumLandingActionKind,
     ModelLandingAction,
     ModelLandingControllerState,
     ModelLandingDecision,
 )
 from omnimarket.models.landing_tick import (
     ModelTickReduceInput,
+)
+from omnimarket.models.pr_landing_rerun_request.enum_rerun_verdict import (
+    EnumRerunVerdict,
+)
+from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer import (
+    ModelLandingRerunAnswer,
+)
+from omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input import (
+    ModelRerunDecideInput,
+    ModelRerunGrant,
+)
+from omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request import (
+    HandlerPrLandingRerunRequest,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
@@ -40,6 +54,10 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports impo
     ProtocolTickDecider,
     ProtocolTickPublisher,
     ProtocolTickWriter,
+)
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_rerun_ledger import (
+    InMemoryRerunLedger,
+    ProtocolRerunLedger,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickFailureReason,
@@ -70,6 +88,13 @@ def contract_topics() -> tuple[str, str]:
     return terminal["success"], terminal["failure"]
 
 
+def rerun_topics() -> tuple[str, str]:
+    """The rerun request's completed and failed topics, as the contract's rerun_request section declares them (OMN-23830)."""
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    section = contract["rerun_request"]
+    return section["completed_topic"], section["failed_topic"]
+
+
 class HandlerPrLandingTickOrchestrator:
     """One tick: decide, reduce per pull request, publish. Writes only in an enabled act mode."""
 
@@ -87,6 +112,9 @@ class HandlerPrLandingTickOrchestrator:
         drill: bool = False,
         cutover_repository: str | None = None,
         script_out_of_scope: tuple[str, ...] = (),
+        rerun_limit: int | None = None,
+        rerun_ledger: ProtocolRerunLedger | None = None,
+        rerun_decider: HandlerPrLandingRerunRequest | None = None,
     ) -> None:
         self._decider: ProtocolTickDecider = decider or NodePathDecider()
         self._reducer = reducer or HandlerPrLandingTickReducer()
@@ -101,6 +129,11 @@ class HandlerPrLandingTickOrchestrator:
         self._cutover_repository = cutover_repository
         self._script_out_of_scope = frozenset(script_out_of_scope)
         self._compared_topic, self._failed_topic = contract_topics()
+        # the per-head limit comes from the overlay; with none declared nothing is granted (OMN-23830)
+        self._rerun_limit = rerun_limit
+        self._rerun_ledger: ProtocolRerunLedger = rerun_ledger or InMemoryRerunLedger()
+        self._rerun_decider = rerun_decider or HandlerPrLandingRerunRequest()
+        self._rerun_completed_topic, self._rerun_failed_topic = rerun_topics()
 
     def _performed_in(
         self, request: ModelTickRequest, decision: ModelLandingDecision
@@ -145,6 +178,10 @@ class HandlerPrLandingTickOrchestrator:
         if chain is not None:
             chain.start()
         result = self._compare(request)
+        if request.rerun_requests:
+            result = result.model_copy(
+                update={"rerun_answers": self._answer_reruns(request)}
+            )
         if chain is not None:
             if result.status is EnumTickStatus.COMPARED:
                 chain.success(
@@ -163,6 +200,75 @@ class HandlerPrLandingTickOrchestrator:
                 )
         return result
 
+    def _answer_reruns(
+        self, request: ModelTickRequest
+    ) -> tuple[ModelLandingRerunAnswer, ...]:
+        """Answer each open rerun request once, in order, from this tick's facts (OMN-23830).
+
+        The request is a fact the tick reads: the decision node's rule set is untouched and the
+        rerun decision node answers. A granted re-run goes out through the one writer in an enabled
+        act mode; observe and replay record would_rerun and write nothing. Observe grants are kept
+        apart from act grants, so a request seen in observe is still granted once when acting
+        begins, and replay keeps no ledger at all.
+        """
+        facts_by_pr = {pr.pr: pr for pr in request.facts.prs}
+        acting = request.mode is EnumTickMode.ACT
+        scope = "act" if acting else request.mode.value
+        answers: list[ModelLandingRerunAnswer] = []
+        local: dict[str, list[ModelRerunGrant]] = {}
+        for ask in request.rerun_requests:
+            # replay keeps no ledger: its grants are this tick's own; otherwise the ledger holds them all
+            kept = (
+                tuple(local.get(ask.pr, ()))
+                if request.mode is EnumTickMode.REPLAY
+                else self._rerun_ledger.granted(f"{scope}:{ask.pr}")
+            )
+            answer = self._rerun_decider.handle(
+                ModelRerunDecideInput(
+                    request=ask,
+                    current=facts_by_pr.get(ask.pr),
+                    granted=kept,
+                    max_reruns_per_head=self._rerun_limit or 0,
+                )
+            )
+            if answer.verdict is EnumRerunVerdict.RERUN:
+                grant = ModelRerunGrant(head_sha=ask.head_sha, job=ask.job)
+                if acting:
+                    written = self._writer.perform(
+                        ModelLandingAction(
+                            kind=EnumLandingActionKind.RERUN,
+                            subject=ask.pr,
+                            head_sha=ask.head_sha,
+                        ),
+                        request.facts,
+                    )
+                    answer = answer.model_copy(
+                        update={
+                            "written": written,
+                            "detail": "" if written else "the writer sent no re-run",
+                        }
+                    )
+                    if not written:
+                        answers.append(answer)
+                        self._publish_rerun(answer)
+                        continue
+                else:
+                    answer = answer.model_copy(update={"would_rerun": True})
+                local.setdefault(ask.pr, []).append(grant)
+                if request.mode is not EnumTickMode.REPLAY:
+                    self._rerun_ledger.record(f"{scope}:{ask.pr}", grant)
+            answers.append(answer)
+            self._publish_rerun(answer)
+        return tuple(answers)
+
+    def _publish_rerun(self, answer: ModelLandingRerunAnswer) -> None:
+        self._publisher.publish(
+            self._rerun_failed_topic
+            if answer.verdict.is_refusal
+            else self._rerun_completed_topic,
+            answer,
+        )
+
     def _chain(self, request: ModelTickRequest) -> ChainEmitter | None:
         if self._emission_sink is None or self._floor_piece is None:
             return None
@@ -173,6 +279,7 @@ class HandlerPrLandingTickOrchestrator:
             correlation_id=request.correlation_id.hex,
             backend=self._emission_backend,
             drill=self._drill,
+            origin="real",
         )
 
     def _compare(self, request: ModelTickRequest) -> ModelTickResult:
@@ -408,4 +515,5 @@ __all__: list[str] = [
     "HandlerPrLandingTickOrchestrator",
     "contract_topics",
     "node_name",
+    "rerun_topics",
 ]
