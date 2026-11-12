@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import timedelta
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -32,12 +34,12 @@ from omnimarket.nodes.node_host_install_state_reducer.models import (
 from tests.nodes.node_host_install_state_reducer.support import (
     HOST,
     OTHER,
+    OUT,
     PREVIOUS,
     RENDER,
     RUN_ID,
     START,
     UNIT,
-    O,
     S,
     error_chain,
     event,
@@ -87,6 +89,28 @@ def test_golden_chain_each_step_reads_its_state() -> None:
     ]
 
 
+def test_golden_chain_states_read_by_their_contract_names() -> None:
+    record = None
+    names = []
+    for item in golden_chain():
+        record = fold(record, item, overlay())
+        names.append(str(record.state))
+    assert names == [
+        "requested",
+        "snapshotted",
+        "installing",
+        "installed",
+        "verified",
+        "run_ok",
+    ]
+
+
+def test_a_failed_step_reads_the_failed_contract_name() -> None:
+    prior = fold_all(golden_chain()[:1])
+    failed = fold(prior, event(S.SNAPSHOT, OUT.FAILED, minute=1), overlay())
+    assert str(failed.state) == "failed"
+
+
 def assert_never_verified_on_mismatch(record: ModelHostInstallRecord) -> None:
     assert record.state is not ST.VERIFIED
     assert record.state is ST.FAILED
@@ -125,7 +149,7 @@ def test_rollback_that_restores_another_file_stays_failed() -> None:
     assert after.failure_detail == "rollback_digest_mismatch"
     assert after.rollback_failures == 1
     again = fold_all(
-        [event(S.ROLLBACK, O.OK, minute=5, installed_digest=PREVIOUS)], after
+        [event(S.ROLLBACK, OUT.OK, minute=5, installed_digest=PREVIOUS)], after
     )
     assert again.state is ST.ROLLED_BACK
 
@@ -145,7 +169,7 @@ def test_rollback_with_no_previous_file_accepts_any_read() -> None:
 def test_failed_rollback_step_is_counted_and_stays_failed() -> None:
     failed = fold_all(error_chain()[:4])
     after = fold_all(
-        [event(S.ROLLBACK, O.FAILED, minute=4, detail="copy refused")], failed
+        [event(S.ROLLBACK, OUT.FAILED, minute=4, detail="copy refused")], failed
     )
     assert (after.state, after.rollback_failures, after.failure_detail) == (
         ST.FAILED,
@@ -168,7 +192,7 @@ def test_a_failed_step_at_the_expected_step_fails_the_record(
     chain_length: int, failing: S, detail: str
 ) -> None:
     prior = fold_all(golden_chain()[:chain_length])
-    failed = fold_all([event(failing, O.FAILED, minute=9)], prior)
+    failed = fold_all([event(failing, OUT.FAILED, minute=9)], prior)
     assert failed.state is ST.FAILED
     assert failed.failure_detail == detail
 
@@ -199,7 +223,7 @@ def test_a_new_request_after_a_finished_or_failed_install_starts_a_new_record() 
             lambda: [request(), request(minute=1)], id="request-while-in-flight"
         ),
         pytest.param(
-            lambda: [request(), event(S.SNAPSHOT, O.STARTED, minute=1)],
+            lambda: [request(), event(S.SNAPSHOT, OUT.STARTED, minute=1)],
             id="snapshot-started",
         ),
         pytest.param(
@@ -223,12 +247,12 @@ def test_a_new_request_after_a_finished_or_failed_install_starts_a_new_record() 
             id="other-install",
         ),
         pytest.param(
-            lambda: [request(), event(S.REQUEST, O.FAILED, minute=1)],
+            lambda: [request(), event(S.REQUEST, OUT.FAILED, minute=1)],
             id="failed-request",
         ),
     ],
 )
-def test_error_chain_refuses_with_a_typed_error(bad) -> None:  # type: ignore[no-untyped-def]
+def test_error_chain_refuses_with_a_typed_error(bad: Callable[[], list[Any]]) -> None:
     with pytest.raises(HostInstallTransitionError) as refusal:
         fold_all(bad())
     assert HOST in str(refusal.value) or "host-b" in str(refusal.value)

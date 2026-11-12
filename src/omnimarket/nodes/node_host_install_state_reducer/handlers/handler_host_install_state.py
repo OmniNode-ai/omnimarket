@@ -32,7 +32,7 @@ HANDLER_ID = "host-install-state-reducer"
 
 S = EnumHostInstallState
 P = EnumHostInstallStep
-O = EnumHostInstallOutcome  # noqa: E741
+OUT = EnumHostInstallOutcome
 
 _TERMINAL = frozenset({S.RUN_OK, S.ROLLED_BACK})
 _RESTARTABLE = frozenset({S.RUN_OK, S.ROLLED_BACK, S.FAILED})
@@ -143,7 +143,7 @@ def fold(
         raise _refuse(prior, event, "the event is for another host or unit")
 
     if event.step is P.REQUEST:
-        if event.outcome is not O.OK:
+        if event.outcome is not OUT.OK:
             raise _refuse(prior, event, "a request step is ok or refused")
         if prior is not None and prior.state not in _RESTARTABLE:
             raise _refuse(prior, event, "an install of this unit is in flight")
@@ -162,7 +162,7 @@ def fold(
     if state is S.FAILED:
         return _fold_rollback(prior, event, overlay)
 
-    if event.step is _EXPECTED_STEP[state] and event.outcome is O.FAILED:
+    if event.step is _EXPECTED_STEP[state] and event.outcome is OUT.FAILED:
         return _advance(
             prior,
             event,
@@ -172,7 +172,7 @@ def fold(
             failure_detail=_cut(event.detail or f"{event.step.value}_failed", overlay),
         )
 
-    if state is S.REQUESTED and (event.step, event.outcome) == (P.SNAPSHOT, O.OK):
+    if state is S.REQUESTED and (event.step, event.outcome) == (P.SNAPSHOT, OUT.OK):
         return _advance(
             prior,
             event,
@@ -181,11 +181,14 @@ def fold(
             event.detail,
             rollback_target_digest=event.rollback_target_digest,
         )
-    if state is S.SNAPSHOTTED and (event.step, event.outcome) == (P.INSTALL, O.STARTED):
+    if state is S.SNAPSHOTTED and (event.step, event.outcome) == (
+        P.INSTALL,
+        OUT.STARTED,
+    ):
         return _advance(prior, event, overlay, S.INSTALLING, event.detail)
     if state in (S.SNAPSHOTTED, S.INSTALLING) and (event.step, event.outcome) == (
         P.INSTALL,
-        O.OK,
+        OUT.OK,
     ):
         return _advance(
             prior,
@@ -195,7 +198,7 @@ def fold(
             event.detail,
             installed_digest=event.installed_digest,
         )
-    if state is S.INSTALLED and (event.step, event.outcome) == (P.VERIFY, O.OK):
+    if state is S.INSTALLED and (event.step, event.outcome) == (P.VERIFY, OUT.OK):
         if not event.installed_digest:
             raise _refuse(prior, event, "a verify read carries the installed digest")
         if event.installed_digest == prior.render_digest:
@@ -216,7 +219,7 @@ def fold(
             installed_digest=event.installed_digest,
             failure_detail="digest_mismatch",
         )
-    if state is S.VERIFIED and (event.step, event.outcome) == (P.RUN, O.OK):
+    if state is S.VERIFIED and (event.step, event.outcome) == (P.RUN, OUT.OK):
         return _advance(prior, event, overlay, S.RUN_OK, event.detail)
     raise _refuse(prior, event, "the state does not accept this step")
 
@@ -226,9 +229,9 @@ def _fold_rollback(
     event: ModelHostInstallStepEvent,
     overlay: ModelHostInstallStateOverlay,
 ) -> ModelHostInstallRecord:
-    if event.step is not P.ROLLBACK or event.outcome is O.STARTED:
+    if event.step is not P.ROLLBACK or event.outcome is OUT.STARTED:
         raise _refuse(prior, event, "a failed install accepts a rollback result")
-    if event.outcome is O.FAILED:
+    if event.outcome is OUT.FAILED:
         return _advance(
             prior,
             event,

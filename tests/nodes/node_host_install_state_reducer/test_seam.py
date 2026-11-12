@@ -19,7 +19,7 @@ import json
 import os
 import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 import yaml
@@ -287,7 +287,7 @@ def test_seam_registry_result_carries_the_cells_the_workflow_reads() -> None:
 
 
 def test_seam_registry_request_takes_the_modes_the_workflow_sends() -> None:
-    modes = ModelRegistryUnitsRequest.model_fields["mode"].annotation.__args__  # type: ignore[union-attr]
+    modes = get_args(ModelRegistryUnitsRequest.model_fields["mode"].annotation)
     assert {"dry-run", "install"} <= set(modes)
     assert {"unit", "home", "registry_root"} <= set(
         ModelRegistryUnitsRequest.model_fields

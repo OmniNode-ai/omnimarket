@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -25,7 +27,7 @@ STEP_TOPIC = "onex.evt.omnimarket.host-install-step.v1"
 STATE_TOPIC = "onex.evt.omnimarket.host-install-state-updated.v1"
 
 
-def contract() -> dict:  # type: ignore[type-arg]
+def contract() -> dict[str, Any]:
     return yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
 
 
@@ -74,7 +76,9 @@ def test_every_setting_is_in_the_overlay_with_no_default() -> None:
             ModelHostInstallStateOverlay.model_validate(trimmed)
 
 
-def test_overlay_loads_from_the_named_root(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_overlay_loads_from_the_named_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = tmp_path / "node_host_install_state_reducer"
     target.mkdir()
     (target / "overlay.yaml").write_text(
@@ -84,7 +88,7 @@ def test_overlay_loads_from_the_named_root(tmp_path, monkeypatch) -> None:  # ty
     assert load_overlay() == overlay()
 
 
-def test_overlay_with_no_root_refuses(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_overlay_with_no_root_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     with pytest.raises(ValueError, match="node_host_install_state_reducer"):
         load_overlay()

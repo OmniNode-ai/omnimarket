@@ -69,7 +69,7 @@ def event(
 
 
 S = EnumHostInstallStep
-O = EnumHostInstallOutcome  # noqa: E741
+OUT = EnumHostInstallOutcome
 
 
 def request(**cells: str) -> ModelHostInstallStepEvent:
@@ -81,7 +81,7 @@ def golden_chain() -> list[ModelHostInstallStepEvent]:
     return [
         request(),
         event(S.SNAPSHOT, minute=1, rollback_target_digest=PREVIOUS),
-        event(S.INSTALL, O.STARTED, minute=2),
+        event(S.INSTALL, OUT.STARTED, minute=2),
         event(S.INSTALL, minute=3, installed_digest=RENDER),
         event(S.VERIFY, minute=4, installed_digest=RENDER),
         event(S.RUN, minute=5),
