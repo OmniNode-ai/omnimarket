@@ -425,6 +425,7 @@ node_ci_summary_registry_compute = "omnimarket.nodes.node_ci_summary_registry_co
 node_ci_watch = "omnimarket.nodes.node_ci_watch"
 node_claim_index_compute = "omnimarket.nodes.node_claim_index_compute"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
+node_classify_eval_compute = "omnimarket.nodes.node_classify_eval_compute"
 node_claude_code_binding_install_effect = "omnimarket.nodes.node_claude_code_binding_install_effect"
 node_claude_code_binding_render_compute = "omnimarket.nodes.node_claude_code_binding_render_compute"
 node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_history_read_effect"
