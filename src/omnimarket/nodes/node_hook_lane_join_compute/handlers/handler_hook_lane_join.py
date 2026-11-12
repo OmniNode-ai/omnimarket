@@ -25,7 +25,9 @@ from ..models import (
     ModelHookLaneJoinAgent,
     ModelHookLaneJoinRequest,
     ModelHookLaneJoinResult,
+    ModelHookLaneSilentHost,
     ModelHookLaneUnjoined,
+    ModelHookLaneUnmatchedAgent,
 )
 
 Key = tuple[str, str | None]
@@ -72,6 +74,24 @@ class HandlerHookLaneJoin:
             else:
                 fits[lane.name] = found
         owners = Counter(_key(agent) for found in fits.values() for agent in found)
+        matched_keys = set()
+        for found in fits.values():
+            if len(found) == 1:
+                matched_keys.add(_key(found[0]))
+        unmatched_agents = tuple(
+            ModelHookLaneUnmatchedAgent(
+                session_id=agent.session_id,
+                agent_id=agent.agent_id,
+                reason="no lane name fits the agent description",
+            )
+            for agent in request.agents
+            if _key(agent) not in matched_keys
+        )
+        expected_hosts = set(request.expected_hosts)
+        silent_hosts = tuple(
+            ModelHookLaneSilentHost(host=host)
+            for host in sorted(expected_hosts - set(counts))
+        )
         joins: list[ModelHookLaneJoin] = []
         for name, found in fits.items():
             if len(found) > 1:
@@ -103,5 +123,7 @@ class HandlerHookLaneJoin:
             for host, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         )
         return ModelHookLaneJoinResult(
+            unmatched_agents=unmatched_agents,
+            silent_hosts=silent_hosts,
             joins=tuple(joins), unjoined=tuple(unjoined), hosts=hosts
         )

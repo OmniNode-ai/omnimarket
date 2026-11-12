@@ -9,6 +9,8 @@ from .model_hook_lane_join import (
     ModelHookLaneJoinLane,
     ModelHookLaneJoinRequest,
     ModelHookLaneJoinResult,
+    ModelHookLaneSilentHost,
+    ModelHookLaneUnmatchedAgent,
     ModelHookLaneUnjoined,
 )
 
@@ -20,4 +22,6 @@ __all__ = [
     "ModelHookLaneJoinRequest",
     "ModelHookLaneJoinResult",
     "ModelHookLaneUnjoined",
+"ModelHookLaneSilentHost",
+"ModelHookLaneUnmatchedAgent",
 ]
