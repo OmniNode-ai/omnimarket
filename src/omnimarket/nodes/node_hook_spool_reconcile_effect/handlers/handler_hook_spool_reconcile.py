@@ -242,6 +242,7 @@ class HandlerHookSpoolReconcile:
             self._sink,
             node=NODE_NAME,
             piece=self._overlay.emission.piece,
+            origin="probe",
             clock=self._clock,
             backend=self._backend,
         )
