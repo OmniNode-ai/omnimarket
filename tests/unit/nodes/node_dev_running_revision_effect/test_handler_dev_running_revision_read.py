@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_dev_running_revision_compute.models import (
     EnumRunningRevisionRefusalReason,
@@ -125,3 +126,20 @@ def test_the_cli_exits_3_when_the_overlay_is_absent(
 ) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
     assert main([]) == 3
+
+
+def test_the_contract_declares_the_terminal_event_topics() -> None:
+    contract = yaml.safe_load(
+        (
+            Path(__file__).parents[4]
+            / "src/omnimarket/nodes/node_dev_running_revision_effect/contract.yaml"
+        ).read_text()
+    )
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.dev-running-revision-read-completed.v1"
+    )
+    assert (
+        contract["topics"]["dev_running_revision_read_failed"]
+        == "onex.evt.omnimarket.dev-running-revision-read-failed.v1"
+    )

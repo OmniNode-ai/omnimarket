@@ -11,6 +11,7 @@ red when OUR side changes shape: a renamed, added or dropped field of the manife
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from omnimarket.nodes.node_dev_running_revision_compute.models import (
     ModelBranchInstall,
@@ -25,8 +26,8 @@ from tests.unit.nodes.node_dev_running_revision_compute.conftest import build
 pytestmark = pytest.mark.unit
 
 
-def _fields(model: type) -> tuple[str, ...]:
-    return tuple(sorted(model.model_fields))  # type: ignore[attr-defined]
+def _fields(model: type[BaseModel]) -> tuple[str, ...]:
+    return tuple(sorted(model.model_fields))
 
 
 def test_the_build_manifest_fields_are_pinned() -> None:
