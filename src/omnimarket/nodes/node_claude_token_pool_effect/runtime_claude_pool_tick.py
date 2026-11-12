@@ -84,6 +84,19 @@ def main(argv: list[str] | None = None) -> int:
             "stale_revoke": result.stale_revoke,
             "revokes_cleared": list(result.revokes_cleared),
             "revokes_kept": list(result.revokes_kept),
+            "limit_recheck": result.limit_recheck,
+            "limit_rechecks": [
+                {
+                    "label": o.label,
+                    "outcome": o.outcome,
+                    "probed_at": (
+                        o.probed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+                        if o.probed_at
+                        else None
+                    ),
+                }
+                for o in result.limit_rechecks
+            ],
         }
         if result.outcome == "no_usable":
             code = EXIT_ALL_LIMITED

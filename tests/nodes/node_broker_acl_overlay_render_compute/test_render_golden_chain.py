@@ -22,6 +22,11 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
 )
+from omnimarket.models.broker_acl import (
+    ModelBrokerAclRenderRequest,
+    ModelBrokerAclRenderResult,
+    ModelBrokerAclScopeOverlay,
+)
 from omnimarket.nodes.node_broker_acl_overlay_render_compute import handlers
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers import (
     handler_broker_acl_overlay_render as module,
@@ -29,11 +34,6 @@ from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers import (
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render import (
     HandlerBrokerAclOverlayRender,
     contract_config,
-)
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models import (
-    ModelBrokerAclRenderRequest,
-    ModelBrokerAclRenderResult,
-    ModelBrokerAclScopeOverlay,
 )
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.overlay import (
     load_scope_overlay,

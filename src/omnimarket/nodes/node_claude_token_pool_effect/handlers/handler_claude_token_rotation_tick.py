@@ -70,6 +70,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
     ModelClaudeTokenAssignResult,
     ModelClaudeTokenRotationRequest,
     ModelClaudeTokenRotationResult,
+    ModelLimitRecheckOutcome,
     ModelRotationEvent,
     ModelRotationMark,
     ModelRotationMarksSync,
@@ -190,9 +191,14 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             request, pooled, source_marks
         )
         pooled = after_clear or pooled
-        rechecked, limits_cleared, limits_replaced, limits_kept, after_recheck = (
-            self._recheck_limits(request, pooled)
-        )
+        (
+            rechecked,
+            limit_rechecks,
+            limits_cleared,
+            limits_replaced,
+            limits_kept,
+            after_recheck,
+        ) = self._recheck_limits(request, pooled)
         pooled = after_recheck or pooled
         entries = pooled.tokens
         order = self._order(entries, rank, pooled.pinned)
@@ -224,6 +230,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             "revokes_cleared": cleared,
             "revokes_kept": kept,
             "limit_recheck": rechecked,
+            "limit_rechecks": limit_rechecks,
             "limits_cleared": limits_cleared,
             "limits_replaced": limits_replaced,
             "limits_kept": limits_kept,
@@ -449,6 +456,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         pooled: ModelClaudeTokenPoolResult,
     ) -> tuple[
         Literal["not_configured", "evaluated"],
+        tuple[ModelLimitRecheckOutcome, ...],
         tuple[str, ...],
         tuple[str, ...],
         tuple[str, ...],
@@ -467,9 +475,10 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             or self._limit_probe is None
             or self._overlay.marks_source.host != request.host
         ):
-            return "not_configured", (), (), (), None
+            return "not_configured", (), (), (), (), None
         decider = HandlerLimitRecheck()
         commands: list[ModelLimitRecheckCommand] = []
+        outcomes: list[ModelLimitRecheckOutcome] = []
         for entry in pooled.tokens:
             if not entry.limited or entry.revoked or entry.until is None:
                 continue
@@ -482,24 +491,60 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                 "policy": settings.policy,
             }
             due = decider.handle(ModelLimitRecheckRequest(**common))
-            if due.action != "probe" or request.dry_run:
-                continue
-            verdict = decider.handle(
-                ModelLimitRecheckRequest(
-                    **common, probe=self._limit_probe.probe(entry.label)
+            if due.action != "probe":
+                outcomes.append(
+                    ModelLimitRecheckOutcome(
+                        label=entry.label,
+                        outcome="not_due",
+                        probed_at=_instant(entry.probed_at)
+                        if entry.probed_at
+                        else None,
+                    )
                 )
+                continue
+            if request.dry_run:
+                outcomes.append(
+                    ModelLimitRecheckOutcome(
+                        label=entry.label,
+                        outcome="due",
+                        probed_at=_instant(entry.probed_at)
+                        if entry.probed_at
+                        else None,
+                    )
+                )
+                continue
+            probe_answer = self._limit_probe.probe(entry.label)
+            verdict = decider.handle(
+                ModelLimitRecheckRequest(**common, probe=probe_answer)
             )
             if verdict.command is not None:
                 commands.append(verdict.command)
+            outcomes.append(
+                ModelLimitRecheckOutcome(
+                    label=entry.label,
+                    outcome="kept",
+                    probed_at=probe_answer.probed_at,
+                )
+            )
         if not commands:
-            return "evaluated", (), (), (), None
+            return "evaluated", tuple(outcomes), (), (), (), None
         done = self._pool.handle(
             ModelClaudeTokenPoolRequest(
                 operation="apply_limit_rechecks", limit_commands=tuple(commands)
             )
         )
+        for i, o in enumerate(outcomes):
+            if o.outcome == "kept" and o.label in done.limits_cleared:
+                outcomes[i] = ModelLimitRecheckOutcome(
+                    label=o.label, outcome="cleared", probed_at=o.probed_at
+                )
+            elif o.outcome == "kept" and o.label in done.limits_replaced:
+                outcomes[i] = ModelLimitRecheckOutcome(
+                    label=o.label, outcome="replaced", probed_at=o.probed_at
+                )
         return (
             "evaluated",
+            tuple(outcomes),
             done.limits_cleared,
             done.limits_replaced,
             done.limits_kept,

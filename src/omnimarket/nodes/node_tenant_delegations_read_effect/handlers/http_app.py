@@ -46,7 +46,10 @@ def create_app(
     ):
         raise ValueError("HTTP handler binding does not match the mount factory")
     secret = str(contract["config"]["analytics_dsn_secret"])
-    handler = HandlerTenantDelegationsRead(reader=reader or bound_reader(secret))
+    uncounted = list(contract["config"]["uncounted_data_sources"])
+    handler = HandlerTenantDelegationsRead(
+        reader=reader or bound_reader(secret, uncounted)
+    )
     return build_app(
         route=route, identity=identity or bound_identity(), handle=handler.handle
     )

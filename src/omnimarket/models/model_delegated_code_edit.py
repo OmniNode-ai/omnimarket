@@ -125,9 +125,12 @@ class ModelDeclaredCheck(BaseModel):
         "rubric can bind a passing check to the answer that names it.",
     )
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
     def _name(cls, value: str) -> str:
+        """Normalise a lane-brief name (``PYTEST``) before the rule is applied."""
+        if isinstance(value, str):
+            value = re.sub(r"[^a-z0-9_-]+", "-", value.strip().lower()).strip("-")
         if not _CHECK_NAME.fullmatch(value):
             raise ValueError(
                 "a check name is lowercase letters, digits, '_' or '-', at most 48"
@@ -168,6 +171,13 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         "command. Empty: no format tool.",
     )
     max_turns: int = Field(default=20, ge=1, le=MAX_TURNS_CEILING)
+    wall_budget_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        le=7200,
+        description="Wall seconds the loop may use; None means no limit. The loop starts no "
+        "turn that its slowest turn so far would not finish inside this budget.",
+    )
     max_no_change_finishes: int = Field(
         default=2,
         ge=1,

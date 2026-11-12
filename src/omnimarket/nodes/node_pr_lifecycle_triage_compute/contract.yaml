@@ -88,7 +88,7 @@ operations:
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_ci_red"
   - name: "classify_landing_red"
     description: >-
-      The landing controller's red class of one head (product, cascade, runner_saturation, cancelled_producer, reviewer_pool), from its red check names and the watcher's run rows, in first-match order. Pure, no I/O; the controller calls it in process.
+      The landing controller's red class of one head (product, cascade, runner_saturation, cancelled_producer, reviewer_pool, stale_fleet), from its red check names and the watcher's run rows, in first-match order. Pure, no I/O; the controller calls it in process.
     input_model:
       name: "ModelLandingRedFacts"
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_landing_red_facts"

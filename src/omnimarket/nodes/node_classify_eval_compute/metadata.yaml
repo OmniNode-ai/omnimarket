@@ -1,0 +1,19 @@
+name: node_classify_eval_compute
+version: "1.0.0"
+description: "Classify task kind of the code eval suite: a labelled integration-ledger line set and per-engine, per-class accuracy scores — no LLM calls, no clock, no I/O but the overlay"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_classify_eval_compute: "omnimarket.nodes.node_classify_eval_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "evaluation", "classify"]
+pack: "core"
+display_name: "Classify Eval"
+node_role: "compute"
