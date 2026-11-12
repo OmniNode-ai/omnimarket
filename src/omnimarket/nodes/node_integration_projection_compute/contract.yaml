@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Integration Projection Compute (OMN-23899)
+#
+# Pure compute: ModelIntegrationReadingBatch -> ModelIntegrationProjection. Keeps the newest reading per repository and
+# number, counts merged, seen running, settled elsewhere (CI only, library) and unintegrated by gap class, names the
+# oldest unintegrated change and groups the unintegrated changes by what it would take, oldest merge first.
+name: node_integration_projection_compute
+contract_name: node_integration_projection_compute
+node_name: node_integration_projection_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  The integration projection the factory floor draws: one row per merged change keyed by repository and number,
+  holding its newest reading, with the counts and the groups. No clock read, no state, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_integration_projection_compute.handlers.handler_integration_projection
+  class: HandlerIntegrationProjection
+  input_model: omnimarket.models.integration_reading.ModelIntegrationReadingBatch
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: project_integration
+      handler:
+        name: HandlerIntegrationProjection
+        module: omnimarket.nodes.node_integration_projection_compute.handlers.handler_integration_projection
+      input_model: omnimarket.models.integration_reading.ModelIntegrationReadingBatch
+      output_model: omnimarket.models.integration_reading.ModelIntegrationProjection
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelIntegrationReadingBatch
+  module: omnimarket.models.integration_reading
+  description: One integration pass's readings.
+output_model:
+  name: ModelIntegrationProjection
+  module: omnimarket.models.integration_reading
+  description: The newest reading per change, the counts and the groups.
+
+runtime_dispatch:
+  external_trigger: "Direct Python invocation: node_integration_reading_publish_effect's runtime module calls the handler in process."
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
+  ticket: OMN-23899
