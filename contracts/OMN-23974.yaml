@@ -55,13 +55,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py::test_example_overlay_loads_through_the_model_with_and_without_the_login -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23974-ac3
-  description: The error chain test holds that a missing overlay refuses and publishes nothing.
+  description: The error chain tests hold that a missing overlay, or an S19 overlay without the login, refuses and publishes nothing, and the golden chain test holds that a login-less overlay before S19 yields the landing verdict; the golden chain test fails on the base settings model, so the control at the merge base fails.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_error_chain_detector_unreadable.py::test_error_chain_missing_overlay_refuses_and_publishes_nothing -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_error_chain_detector_unreadable.py::test_error_chain_missing_overlay_refuses_and_publishes_nothing tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py::test_golden_chain_landing_merge_without_login_before_s19 tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py::test_error_chain_s19_overlay_without_login_refuses -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23974-ac4
   description: The reading is taken after the merge from the running dev runtime's health and ready answers; the check is the focused settings test (the tests behind it).
