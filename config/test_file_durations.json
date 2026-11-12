@@ -4490,6 +4490,7 @@
   "tests/unit/nodes/node_event_emit_effect/test_transform_fail_closed.py": 0.3,
   "tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py": 0.32,
   "tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py": 0.3,
+  "tests/unit/nodes/node_factory_floor_publish_effect/test_board_step_limit_omn23877.py": 2.28,
   "tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_no_secret.py": 0.44,
   "tests/unit/nodes/node_factory_floor_publish_effect/test_canary_status_push.py": 1.16,
   "tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py": 1.02,
