@@ -154,6 +154,16 @@ class ModelInMemoryReadRoute(BaseModel):
     kind: Literal["inmemory"]
 
 
+class ModelBusSessionReadRoute(BaseModel):
+    """The bus session: one reusable connection for every page of a window read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["bus-session"]
+    bus_lane: str = Field(min_length=1)
+    timeout_seconds: int = Field(ge=1, le=600)
+
+
 class ModelReaderEvents(BaseModel):
     """Where this host keeps the event journal; the topics are the contract's."""
 
@@ -182,6 +192,11 @@ class ModelReaderOverlay(BaseModel):
     # is read a page at a time, following next_cursor, and never cut short.
     page_size: int = Field(ge=1, le=5000)
     max_pages: int = Field(ge=1, le=1000)
-    route: ModelCommandReadRoute | ModelInMemoryReadRoute = Field(discriminator="kind")
+    # Optional; absent means False so every overlay document written before this key still loads.
+    # True asks the query node for lines-only rows pages.
+    rows_lines_only: bool = False
+    route: ModelCommandReadRoute | ModelInMemoryReadRoute | ModelBusSessionReadRoute = (
+        Field(discriminator="kind")
+    )
     parity: ModelReaderParity
     events: ModelReaderEvents
