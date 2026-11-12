@@ -33,10 +33,11 @@ from omnimarket.nodes.node_factory_floor_unresolved_effect import (
 from omnimarket.nodes.node_factory_floor_unresolved_effect.models.model_factory_floor_unresolved import (
     ModelFactoryFloorUnresolvedOverlay,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
-RT = load_runtime()
+RT = load_runtime().with_limits(TEST_LIMITS)
 FLOOR = load_contract(OWN_CONTRACT_PATH).runtime
 STEP = next(s for s in RT.steps if s.name == "factory_floor_unresolved")
 RECORD = next(s for s in RT.steps if s.name == RT.record_step)
@@ -44,7 +45,7 @@ RECORD = next(s for s in RT.steps if s.name == RT.record_step)
 # rows): three runs of the floor step, 19.6 s, 19.5 s and 19.1 s; and of the unresolved step with 4 workers, 10.6 s, 10.4 s and 10.8 s.
 MEASURED_FLOOR_STEP_SECONDS = 19.6
 MEASURED_UNRESOLVED_STEP_SECONDS = 10.8
-CYCLE_BOUND_SECONDS = 255
+CYCLE_BOUND_SECONDS = TEST_LIMITS.cycle_bound_seconds
 
 
 def test_the_step_runs_the_unresolved_node_before_the_record_and_is_not_required() -> (
