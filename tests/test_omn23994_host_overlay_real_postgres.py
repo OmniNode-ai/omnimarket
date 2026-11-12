@@ -70,7 +70,8 @@ async def test_host_overlay_binding_connects_to_real_postgres(
         conn = await asyncpg.connect(binding.resolve_database_url())
     except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres: {exc}")
-    try:
-        assert await conn.fetchval("SELECT 1") == 1
-    finally:
-        await conn.close()
+    else:
+        try:
+            assert await conn.fetchval("SELECT 1") == 1
+        finally:
+            await conn.close()
