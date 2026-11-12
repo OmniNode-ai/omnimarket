@@ -64,6 +64,7 @@ def main(
     )
     parser.add_argument("--lane")
     parser.add_argument("--parity", action="store_true")
+    parser.add_argument("--window-hours", type=int)
     args = parser.parse_args(argv)
     env = os.environ if environ is None else environ
     overlay = load_overlay(env)
@@ -78,6 +79,7 @@ def main(
             query=EnumReaderQuery(args.query),
             lane=args.lane,
             read_parity=args.parity,
+            window_hours=args.window_hours,
         )
     )
     sys.stdout.write("".join(f"{line}\n" for line in result.lines))
