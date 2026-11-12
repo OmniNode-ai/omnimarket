@@ -17,8 +17,6 @@ import pytest
 
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_landing_red import (
     HandlerClassifyLandingRed,
-)
-from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_stale_fleet import (
     offline_only_label_sets,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_landing_red_facts import (
