@@ -92,11 +92,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # contract-declared HTTP mount, so it subscribes to no topic and has no
     # onex.nodes entry point.
     "node_hook_events_by_correlation_read_effect",
-    # OMN-22339: the tenant savings and delegations reads are reached only
-    # through their contract-declared HTTP mounts, so they subscribe to no topic
-    # and have no onex.nodes entry point.
-    "node_tenant_savings_read_effect",
-    "node_tenant_delegations_read_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
@@ -164,6 +159,16 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
+    # OMN-23529: the landing liveness read takes its overlay, reader and
+    # publisher as constructor parameters and the landing snapshot step
+    # composes it; it subscribes to no topic, so it has no onex.nodes entry
+    # point.
+    "node_pr_landing_liveness_read_effect",
+    # OMN-23606: the factory floor unresolved rows effect runs as a step of the
+    # floor publisher through its own `python -m` module, about every six hours;
+    # it publishes nothing and subscribes to no topic, so it has no onex.nodes
+    # entry point.
+    "node_factory_floor_unresolved_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
@@ -687,3 +692,41 @@ def test_inventory_accounts_for_local_invocation_and_refuses_broken_handler(
     assert report["summary"]["local_invokable"] == 0
     assert report["summary"]["failed"] == 1
     assert report["summary"]["failure_buckets"] == {"invalid_local_invocation": 1}
+
+
+def _declared_entry_point_nodes_that_subscribe_without_registration() -> list[str]:
+    """Nodes whose contract subscribes to a bus topic and whose metadata.yaml
+    declares an onex.nodes entry point, yet pyproject.toml has no such line.
+
+    The runtime finds nodes only through the onex.nodes table, so such a node
+    is never loaded: its command topic is never subscribed and its result topic
+    is never created (OMN-18925). An EXPECTED_MISSING_ENTRY_POINTS reason that
+    says "subscribes to no topic" cannot be true for it.
+    """
+    with _PYPROJECT.open("rb") as f:
+        registered = set(
+            tomllib.load(f)["project"]["entry-points"]["onex.nodes"].keys()
+        )
+    offenders: list[str] = []
+    for meta_path in sorted(_NODES_DIR.glob("*/metadata.yaml")):
+        node_dir = meta_path.parent
+        meta = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+        declared = (meta.get("entry_points") or {}).get("onex.nodes") or {}
+        contract_path = node_dir / "contract.yaml"
+        if not declared or not contract_path.exists():
+            continue
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        topics = (contract.get("event_bus") or {}).get("subscribe_topics") or []
+        if topics and any(name not in registered for name in declared):
+            offenders.append(node_dir.name)
+    return offenders
+
+
+def test_declared_subscribing_node_entry_points_are_registered() -> None:
+    offenders = _declared_entry_point_nodes_that_subscribe_without_registration()
+
+    assert offenders == [], (
+        "these nodes declare an onex.nodes entry point and subscribe to a bus topic, "
+        "but pyproject.toml's onex.nodes table has no line for them, so the runtime "
+        "never loads them: " + ", ".join(offenders)
+    )

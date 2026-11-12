@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23603
+title: The dev deploy reading accepts a later build's receipt and a later running build
+summary: The piece 11 dev deploy reading judged each runtime-affecting merge by a PASS lab receipt for its exact sha and the probe by an exact sha match. Under the operator ruling of 2026-11-10T16:53:27Z a PASS receipt for a later commit covers the earlier runtime-affecting merges it contains (git ancestry in the clone), and a running sha that descends from the expected one passes when no runtime-affecting commit lies between. The rule and its bounds are overlay values; an unreadable clone or sha reads UNKNOWN and never passes.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23603-lineage
+  statement: The reading widens its receipt and probe rules by ancestry the clone read, under the overlay's lineage rule and bounds.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a passing lab receipt whose sha has an earlier runtime-affecting merge as an ancestor covers that merge, and a receipt that is not a descendant does not -- falsifier: pytest tests/nodes/node_dev_deploy_reading_compute/test_lineage_coverage.py -q"
+  - id: AC2
+    statement: "AC2: an unreadable clone or sha reads unknown and never a pass; a running sha that is a descendant of the expected one passes only when no runtime-affecting commit lies between, and the rule and its bounds come from overlay values -- falsifier: pytest tests/nodes/node_dev_deploy_reading_compute/test_lineage_coverage.py tests/nodes/node_dev_deploy_reading_effect/test_dev_deploy_lineage_facts.py -q"
+  - id: AC3
+    statement: "AC3: golden and error chain event tests for the lineage rule pass and fail without the change -- falsifier: pytest tests/nodes/node_dev_deploy_reading_compute/test_golden_chain_dev_deploy_reading_compute.py tests/nodes/node_dev_deploy_reading_compute/test_error_chain_dev_deploy_reading_compute.py -q"
+evidence_requirements:
+- kind: tests
+  description: The lineage coverage tests of the compute node and the lineage fact tests of the effect node.
+  command: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute tests/nodes/node_dev_deploy_reading_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23603-lineage-compute
+  description: Runs the compute lineage tests, including the golden and error chain mutations that turn each chain red.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23603-lineage-facts
+  description: Runs the effect node's lineage fact tests over real git repositories, with the overlay switches off as the failing control.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23603-integration-proof-lab
+  description: 'Integrated: on a lab host the piece 11 reading node runs its read-only probe verb once at the pushed head under the deployed overlay (ONEX_SKILL_OVERLAY_ROOTS naming the overlays checkout, carrying the lineage section) and prints the reading run event with the lineage rule applied. Hosted CI cannot reach the lab runtime, so only the local Done gate runs this unbound item.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23603 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python -m omnimarket.nodes.node_dev_deploy_reading_effect probe'
+    cwd: .

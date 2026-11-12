@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-23529
+title: The new landing decision holds a change that adds a self-starting program missing from the liveness register
+summary: node_pr_landing_decision_compute takes an optional liveness-read fact per PR (models/model_landing_liveness.py). A read made on the exact head that names an undeclared installer source holds the head with the land skip reason liveness_undeclared and the files named; an unreadable read, a read of another head, or an absent read where the policy expects one holds nothing and is listed in the decision's liveness_unread. A PR without the fact decides as before. node_pr_landing_liveness_read_effect produces the fact; it proves the checkout is at the head, runs the register completeness reader and keeps the undeclared installer sources the head adds; its reader, checkout and timeouts come from its overlay, a made read publishes the completed event and a read not made publishes the failed event. A join test carries the fact from the read node through the snapshot step's tick record and the tick orchestrator's reader into the decision. The dev runtime proof is not in this change.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23529-liveness-hold
+  statement: The landing decision holds a head whose liveness read names an undeclared installer source, and never holds on a read that was not made.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_pr_landing_decision_compute takes a liveness-read fact per pull request and returns a hold naming the file when the head adds an undeclared installer source -- falsifier: a decision test with an added undeclared installer fails when the hold branch is removed'
+  - id: AC2
+    statement: 'AC2: a change whose liveness read is absent or unreadable is not held and the decision says the read was not made -- falsifier: a decision test for the unreadable fact fails when the unreadable case holds the change'
+  - id: AC3
+    statement: 'AC3: the settings for the read (reader, checkout, timeouts) come from an overlay value, none in code -- falsifier: a test that removes one overlay key fails with the key named'
+  - id: AC4
+    statement: 'AC4: golden chain event and error chain event tests exist for the new fact and the hold, and a join test fails when the snapshot step and the decision disagree on the fact''s shape -- falsifier: renaming a field of the fact on one side turns the join test red'
+evidence_requirements:
+- kind: tests
+  description: The liveness hold decision tests (golden, error, controls) and the J8 decision tests beside them.
+  command: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_liveness_hold.py tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py tests/unit/nodes/node_pr_landing_liveness_read_effect/test_liveness_read.py tests/nodes/node_pr_landing_snapshot_effect/test_join_liveness_fact.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23529-hold
+  description: A made read on the exact head naming an undeclared timer holds the head with reason liveness_undeclared and the file named; with the hold branch removed the test fails (measured 3 failed, 6 passed). The model does not exist at the merge base, so the control fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_liveness_hold.py -q --no-cov -p no:randomly -k "undeclared or golden"
+    cwd: .
+- id: dod-omn23529-unread
+  description: An unreadable read, a read of another head and an absent read where the policy expects one are not held and are listed in liveness_unread; a break that holds the unreadable case fails the control test.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_liveness_hold.py -q --no-cov -p no:randomly -k "unreadable or absent or another_head"
+    cwd: .
+- id: dod-omn23529-overlay
+  description: Every setting of the liveness read (reader backend and argv, checkout variables and base ref, read and git timeouts, topics) is an overlay key with no default; removing any one key refuses the load with the key named. The read node does not exist at the merge base, so the test fails there.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_liveness_read_effect/test_liveness_read.py -q --no-cov -p no:randomly -k "overlay"
+    cwd: .
+- id: dod-omn23529-chain-join
+  description: The read node's golden chain (completed event with the fact naming the timer) and error chain (failed event, unreadable fact naming no file), the decision's hold, and the join test from the read node through the snapshot step's record and the tick orchestrator's reader into the decision; renaming undeclared_sources in the record is refused by the reader, and a fact dropped between the steps fails the hold assertion.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_liveness_read_effect/test_liveness_read.py tests/nodes/node_pr_landing_snapshot_effect/test_join_liveness_fact.py -q --no-cov -p no:randomly -k "chain or join"
+    cwd: .
+- id: dod-omn23529-integration-proof-lab
+  description: Runs the liveness hold decision tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item; the dev runtime proof of the ticket's AC5 is owed by a later change that wires the reader.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23529 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_liveness_hold.py -q --no-cov -p no:randomly'
+    cwd: .

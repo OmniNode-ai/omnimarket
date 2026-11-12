@@ -39,8 +39,11 @@ event_bus:
     major: 1
     minor: 0
     patch: 0
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-delegations-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.tenant-delegations-read-completed.v1
+    - onex.evt.omnimarket.tenant-delegations-read-failed.v1
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -56,8 +59,27 @@ handler_routing:
       supported_operations:
         - "tenant_delegations.read"
       description: "Serve GET /v1/tenants/me/delegations: the caller tenant's most recent delegation runs (bounded by limit, 1 to 50, default 5) with measured cost and savings, keyed by the canonical tenant UUID."
+    - operation: "tenant_delegations.read_bus"
+      topic: "onex.cmd.omnimarket.tenant-delegations-read-requested.v1"
+      event_model:
+        name: "ModelTenantReadCommand"
+        module: "omnimarket.models.model_tenant_read_bus"
+      event_type: "tenant_delegations.read_bus"
+      message_category: "COMMAND"
+      handler:
+        name: "HandlerTenantDelegationsReadBus"
+        module: "omnimarket.nodes.node_tenant_delegations_read_effect.handlers.handler_tenant_delegations_read_bus"
+      supported_operations:
+        - "tenant_delegations.read_bus"
+      description: "Bus entry for the tenant delegations read; the command carries the tenant and limit, the answer is the same JSON body the HTTP route answers."
   execution_mode: "single"
   max_timeout_seconds: 30
+terminal_event: onex.evt.omnimarket.tenant-delegations-read-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-delegations-read-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-delegations-read-completed.v1
+    failure: onex.evt.omnimarket.tenant-delegations-read-failed.v1
 config:
   # Logical secret name the runtime secret resolver maps to the read-only DSN of
   # the analytics projection database. The value is never in this repository.
@@ -89,8 +111,8 @@ capabilities:
   - name: "tenant_delegations.read"
     description: "Serve GET /v1/tenants/me/delegations: the caller tenant's most recent delegation runs (bounded by limit, 1 to 50, default 5) with measured cost and savings, keyed by the canonical tenant UUID."
 metadata:
-  # No bus topics: the read is served over the runtime's HTTP mount only, so the
-  # liveness gate (both topic sides or an explicit lifecycle) reads this annotation.
+  # Bus topics: the read is served over the runtime's HTTP mount and the bus entry
+  # beside it; the liveness gate (both topic sides or an explicit lifecycle) reads this annotation.
   lifecycle: experimental
   description: "Serve GET /v1/tenants/me/delegations: the caller tenant's most recent delegation runs (bounded by limit, 1 to 50, default 5) with measured cost and savings, keyed by the canonical tenant UUID."
   author: "OmniNode Team"

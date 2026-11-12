@@ -46,6 +46,7 @@ import yaml
 from omnimarket.handlers.handler_ledger_claims import claim_lane, live_claims
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumDuplicateEvidence,
+    EnumReplacesRefusal,
     ModelDuplicateEvidence,
     ModelDuplicateGuardConfig,
     ModelDuplicateGuardRules,
@@ -54,6 +55,9 @@ from omnimarket.models.model_pr_duplicate_guard import (
     ModelPrDuplicateGuardRequest,
     ModelPrDuplicateGuardResult,
     ModelPrTouch,
+    ModelReplacedPrFacts,
+    ModelReplacesRefusal,
+    ModelSetAsideOverlap,
 )
 
 NODE_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
@@ -228,8 +232,20 @@ def overlap(
     repo: str,
 ) -> tuple[list[str], list[str]]:
     """(same-line hits, shared files that are neither generic nor generated in ``repo``) between two diffs, each sorted."""
-    lines, shared, _ = _overlap(new, other, rules, repo)
+    lines, shared, _, _ = _overlap(new, other, rules, repo)
     return lines, shared
+
+
+def _set_aside(
+    match: ModelFileTouch, span: tuple[int, int], replaced: dict[str, str]
+) -> tuple[str, ...] | None:
+    """The commits of ``span`` when every one of them belongs to a replaced pull request, else None (the overlap counts)."""
+    for part in match.attributed:
+        if (part.start, part.end) == span:
+            if part.commits and all(sha in replaced for sha in part.commits):
+                return part.commits
+            return None
+    return None
 
 
 def _overlap(
@@ -237,11 +253,20 @@ def _overlap(
     other: ModelPrTouch,
     rules: ModelDuplicateGuardRules,
     repo: str,
-) -> tuple[list[str], list[str], set[str]]:
+    replaced: dict[str, str] | None = None,
+    pr_ref: str = "",
+) -> tuple[list[str], list[str], set[str], list[ModelSetAsideOverlap]]:
+    """(counted line hits, shared files, files with a counted hit, overlaps set aside as the replaced change's own).
+
+    ``replaced`` maps the 12-character sha of each commit of a replaced closed change to its ``repo#n``. An overlap
+    is set aside only when its hunk is attributed and every introducing commit is in that map; with no map nothing
+    is ever set aside.
+    """
     theirs: dict[str, ModelFileTouch] = {f.path: f for f in other.files}
     lines: list[str] = []
     shared: list[str] = []
     hit_paths: set[str] = set()
+    aside: list[ModelSetAsideOverlap] = []
     for mine in new.files:
         match = theirs.get(mine.path)
         if match is None or rules.ignores(repo, mine.path):
@@ -252,12 +277,32 @@ def _overlap(
             hit_paths.add(mine.path)
             continue
         for a in mine.spans:
-            hit = next((b for b in match.spans if a[0] <= b[1] and b[0] <= a[1]), None)
-            if hit is not None:
-                lines.append(f"{mine.path}:{max(a[0], hit[0])}")
+            counted: tuple[int, int] | None = None
+            for b in match.spans:
+                if not (a[0] <= b[1] and b[0] <= a[1]):
+                    continue
+                via = _set_aside(match, b, replaced) if replaced else None
+                if via is None or not replaced:
+                    counted = b
+                    break
+                owners = tuple(sorted({replaced[sha] for sha in via}))
+                aside.append(
+                    ModelSetAsideOverlap(
+                        pr=pr_ref,
+                        place=f"{mine.path}:{max(a[0], b[0])}",
+                        commits=via,
+                        replaced=owners,
+                        why=(
+                            f"every commit that introduced these lines ({', '.join(via)}) belongs to "
+                            f"{', '.join(owners)}, which the node read as closed and not merged"
+                        ),
+                    )
+                )
+            if counted is not None:
+                lines.append(f"{mine.path}:{max(a[0], counted[0])}")
                 hit_paths.add(mine.path)
                 break
-    return sorted(lines), sorted(shared), hit_paths
+    return sorted(lines), sorted(shared), hit_paths, aside
 
 
 def _similarity(
@@ -362,6 +407,58 @@ def _owned(pr: ModelOpenPr, repo: str, live: tuple[str, ...]) -> bool:
     return False
 
 
+def _replaced(
+    request: ModelPrDuplicateGuardRequest,
+) -> tuple[dict[str, str], list[ModelReplacesRefusal]]:
+    """(sha -> ``repo#n`` of each commit of a valid replaced change, a typed refusal per entry that is not valid).
+
+    A ``replaces`` entry counts only when the node read it as a closed, unmerged pull request of this repository.
+    """
+    commits: dict[str, str] = {}
+    refusals: list[ModelReplacesRefusal] = []
+    for facts in request.replaced:
+        ref = f"{facts.repo}#{facts.number}"
+        reason, detail = _replaces_problem(request.repo, facts)
+        if reason is not None:
+            refusals.append(ModelReplacesRefusal(ref=ref, reason=reason, detail=detail))
+            continue
+        for sha in facts.commits:
+            commits.setdefault(sha, ref)
+    return commits, refusals
+
+
+def _replaces_problem(
+    repo: str, facts: ModelReplacedPrFacts
+) -> tuple[EnumReplacesRefusal | None, str]:
+    ref = f"{facts.repo}#{facts.number}"
+    if facts.repo.casefold() != repo.casefold():
+        return (
+            EnumReplacesRefusal.OTHER_REPOSITORY,
+            f"{ref} is not a pull request of {repo}; replaces names pull requests of the same repository",
+        )
+    if facts.state is None:
+        return (
+            EnumReplacesRefusal.UNREADABLE,
+            f"the node could not read the state of {ref}, so it cannot say it was closed without merging",
+        )
+    if facts.state == "OPEN":
+        return (
+            EnumReplacesRefusal.STILL_OPEN,
+            f"{ref} is still open: close it first, or adopt it instead of replacing it",
+        )
+    if facts.state == "MERGED" or facts.merged:
+        return (
+            EnumReplacesRefusal.MERGED,
+            f"{ref} merged: its change is already in the base branch, there is nothing to replace",
+        )
+    if not facts.commits:
+        return (
+            EnumReplacesRefusal.NO_COMMITS,
+            f"{ref} is closed and not merged but its commits could not be listed, so no overlap can be attributed to it",
+        )
+    return None, ""
+
+
 class HandlerPrDuplicateGuard:
     """Fold one new pull request against the open ones and the live CLAIMs."""
 
@@ -381,6 +478,19 @@ class HandlerPrDuplicateGuard:
         evidence: list[ModelDuplicateEvidence] = []
         notes: list[str] = []
         unread: list[str] = []
+        set_aside: list[ModelSetAsideOverlap] = []
+        replaced, refusals = _replaced(request)
+        if refusals:
+            return ModelPrDuplicateGuardResult(
+                state="replaces_refused",
+                replaces_refusals=tuple(refusals),
+                judged_commits=request.judged_commits,
+                judged_base=request.judged_base,
+                message=(
+                    "replaces refused, no pull request opened: "
+                    + "; ".join(r.detail for r in refusals)
+                ),
+            )
         open_numbers = {pr.number for pr in request.open_prs}
         live = live_claims(request.ledger_text, _utc(request.now), CLAIM_LIVE_HOURS)
         own_rows = [
@@ -418,9 +528,14 @@ class HandlerPrDuplicateGuard:
             start = len(evidence)
             hit = False
             if request.touch is not None and pr.touch is not None:
-                lines, shared, hit_paths = _overlap(
-                    request.touch, pr.touch, rules, repo
+                lines, shared, hit_paths, aside = _overlap(
+                    request.touch, pr.touch, rules, repo, replaced, ref
                 )
+                set_aside.extend(aside)
+                if aside:
+                    notes.append(
+                        f"{ref} also changes {_hits([a.place for a in aside])}: set aside, {aside[0].why}"
+                    )
                 words = sorted(new_words & distinctive_words(pr.title))
                 shared_ticket = bool(new_tickets & tickets(pr.head_ref, pr.title))
                 same_intent = _same_intent(
@@ -454,7 +569,7 @@ class HandlerPrDuplicateGuard:
                             ),
                         )
                     )
-                elif shared and not lines:
+                elif shared and not lines and not aside:
                     notes.append(
                         f"{ref} also changes {', '.join(shared)}, on other lines and under an unrelated title: not the same fix"
                     )
@@ -510,10 +625,11 @@ class HandlerPrDuplicateGuard:
                 unread=tuple(unread),
                 message=(
                     f"no open pull request or live CLAIM in {repo} covers this change. "
-                    f"{_judged_text(request)}"
+                    f"{_set_aside_text(set_aside)}{_judged_text(request)}"
                 ),
                 judged_commits=request.judged_commits,
                 judged_base=request.judged_base,
+                set_aside=tuple(set_aside),
             )
         ordered = sorted(
             evidence,
@@ -540,6 +656,7 @@ class HandlerPrDuplicateGuard:
             unread=tuple(unread),
             judged_commits=request.judged_commits,
             judged_base=request.judged_base,
+            set_aside=tuple(set_aside),
             message=(
                 f"{target} already covers this change ({'; '.join(e.detail for e in ordered)}). "
                 f"{_judged_text(request)} "
@@ -547,6 +664,17 @@ class HandlerPrDuplicateGuard:
                 f"(adopted={adopt_pr or target})."
             ),
         )
+
+
+def _set_aside_text(set_aside: list[ModelSetAsideOverlap]) -> str:
+    """One sentence naming the overlaps set aside as a replaced closed change's own, empty when none were."""
+    if not set_aside:
+        return ""
+    owners = ", ".join(sorted({o for item in set_aside for o in item.replaced}))
+    return (
+        f"Set aside {len(set_aside)} overlap{'s' if len(set_aside) != 1 else ''} "
+        f"({_hits([item.place for item in set_aside])}) introduced only by {owners}, closed and not merged. "
+    )
 
 
 def _judged_text(request: ModelPrDuplicateGuardRequest) -> str:

@@ -73,7 +73,10 @@ def test_golden_one_publish_run_calls_the_node_before_the_floor_step(
 ) -> None:
     runner, steps = _run(tmp_path)
     modules = _modules(runner)
-    assert modules.index(JOIN_REFUSAL) < modules.index(FLOOR_SIMPLE)
+    # The simple floor module also runs inside the concurrent group (the MVP reads step), in whatever order the threads start:
+    # the step that follows the record is the last call of the module before the canary.
+    last_floor_simple = len(modules) - 1 - modules[::-1].index(FLOOR_SIMPLE)
+    assert modules.index(JOIN_REFUSAL) < last_floor_simple
     assert dict(_module_calls(runner))[JOIN_REFUSAL] == ["run"]
     assert dict(steps)["join_refusal"] == "ok"
 

@@ -867,6 +867,13 @@ class HandlerFactoryFloorPublish:
                 argv = [sys.executable, "-m", step.module, *fill(step.args)]
             else:
                 argv = fill(step.argv)
+            if step.environment:
+                # The step's own variables over the unit's, through env(1), so the runner boundary stays the same.
+                argv = [
+                    "/usr/bin/env",
+                    *(f"{k}={v}" for k, v in sorted(step.environment.items())),
+                    *argv,
+                ]
             done = self._run(argv, None, step.timeout_seconds)
         except (OSError, ValueError, PublishRefusedError) as exc:
             return failed(type(exc).__name__, str(exc))

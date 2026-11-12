@@ -1,0 +1,131 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 92 and seed -544030080040707501 with 2 workers on 56 cores with 1928MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/ClaimRelease.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module ClaimRelease
+Starting... (2026-11-11 13:55:07)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-11 13:55:07.
+Error: Invariant DeletesWhatItInspected is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "unborn", i2 |-> "unborn"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 2: <Start line 83, col 3 to line 85, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "live", i2 |-> "unborn"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 3: <Start line 83, col 3 to line 85, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "live", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 4: <Acquire line 88, col 3 to line 91, col 40 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "live", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 5: <End line 106, col 3 to line 108, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> FALSE, i2 |-> FALSE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "ended", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 6: <Observe line 128, col 3 to line 130, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> FALSE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "ended", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 7: <Inspect line 135, col 3 to line 140, col 48 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> FALSE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "ended", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "i1", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 8: <Age line 112, col 3 to line 115, col 47 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> FALSE]
+/\ claim = [p1 |-> "i1", p2 |-> "none"]
+/\ rel = {}
+/\ life = [i1 |-> "ended", i2 |-> "live"]
+/\ stale = [p1 |-> TRUE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "i1", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 9: <Expire line 118, col 3 to line 124, col 35 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = { [ life |-> "ended",
+    seen |-> TRUE,
+    how |-> "expiry",
+    by |-> "reaper",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "ended", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "i1", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 10: <Acquire line 88, col 3 to line 91, col 40 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> FALSE]
+/\ claim = [p1 |-> "i2", p2 |-> "none"]
+/\ rel = { [ life |-> "ended",
+    seen |-> TRUE,
+    how |-> "expiry",
+    by |-> "reaper",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "ended", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "i1", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+State 11: <Delete line 143, col 3 to line 159, col 29 of module ClaimRelease>
+/\ seen = [i1 |-> TRUE, i2 |-> FALSE]
+/\ claim = [p1 |-> "none", p2 |-> "none"]
+/\ rel = { [ life |-> "live",
+    seen |-> TRUE,
+    how |-> "closeout",
+    by |-> "i1",
+    holder |-> "i2",
+    snapshot |-> "i1" ],
+  [ life |-> "ended",
+    seen |-> TRUE,
+    how |-> "expiry",
+    by |-> "reaper",
+    holder |-> "i1",
+    snapshot |-> "i1" ] }
+/\ life = [i1 |-> "ended", i2 |-> "live"]
+/\ stale = [p1 |-> FALSE, p2 |-> FALSE]
+/\ snap = [i1 |-> [p1 |-> "none", p2 |-> "none"], i2 |-> [p1 |-> "none", p2 |-> "none"]]
+
+3158 states generated, 1318 distinct states found, 471 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 00s at (2026-11-11 13:55:07)
+exit=12

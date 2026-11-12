@@ -19,6 +19,7 @@ class ModelTenantSavingsAggregate(BaseModel):
     total_saved_usd: float = 0.0
     total_spend_usd: float = 0.0
     delegation_runs: int = 0
+    total_tokens: int = 0
     savings_latest: datetime | None = None
     runs_latest: datetime | None = None
 
@@ -34,6 +35,8 @@ class ModelDelegationRunRow(BaseModel):
     quality_gate_passed: bool = False
     cost_usd: float = 0.0
     saved_usd: float = 0.0
+    tokens: int = 0
+    data_source: str = "real"
     occurred_at: datetime | None = None
 
 

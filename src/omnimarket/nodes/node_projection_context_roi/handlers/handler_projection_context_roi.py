@@ -25,6 +25,7 @@ delegation/generation terminals through one operation_match handler.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,6 +38,11 @@ from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
 
 TABLE = "context_roi_scores"
 CONFLICT_KEY = "correlation_id"
+
+
+def _value(member: StrEnum | None) -> str | None:
+    """The stored text of an optional enum member."""
+    return None if member is None else member.value
 
 
 class ModelContextRoiRunCompletedEvent(BaseModel):
@@ -115,6 +121,22 @@ class HandlerProjectionContextRoi:
                 # empty off-arm value — see migration 002's comment.
                 "factor_subset_hash": row.factor_subset_hash,
                 "routing_source": row.routing_source,
+                # OMN-23628: the code-eval try fields. An older row never
+                # carried them, so the migration defaults read for it.
+                "check_verdict": _value(row.check_verdict),
+                "unscorable_source": _value(row.unscorable_source),
+                "row_kind": row.row_kind.value,
+                "try_end": row.try_end,
+                "suite_digest": row.suite_digest,
+                "size_band": row.size_band.value,
+                "sequence_id": row.sequence_id,
+                "try_ordinal": row.try_ordinal,
+                "diff_hash": row.diff_hash,
+                "max_turns": row.max_turns,
+                "try_timeout_s": row.try_timeout_s,
+                "generation_s": row.generation_s,
+                "env_sync_s": row.env_sync_s,
+                "check_s": row.check_s,
                 "attempt_count": row.attempt_count,
                 "first_pass_success": row.first_pass_success,
                 "final_success": row.final_success,
@@ -127,9 +149,12 @@ class HandlerProjectionContextRoi:
                 "provider": row.provider,
                 "endpoint_ref": row.endpoint_ref,
                 "proof_class": str(row.proof_class),
-                "created_at": now,
                 "updated_at": now,
             }
+            # A replayed terminal re-projects the same correlation_id: the
+            # row keeps the creation time of its first write.
+            if not db.query(TABLE, {CONFLICT_KEY: row.correlation_id}, limit=1):
+                db_row["created_at"] = now
             # OMN-15655 house-tenant ruling: this relation is TENANT data.
             # Stamp a lane-configured tenant; otherwise omit the key so the
             # column DEFAULT supplies the house tenant (never write NULL --

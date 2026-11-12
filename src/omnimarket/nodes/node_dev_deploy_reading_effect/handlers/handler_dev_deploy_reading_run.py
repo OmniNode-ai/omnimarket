@@ -124,8 +124,11 @@ class HandlerDevDeployReadingRun:
                     merges=merges,
                     receipts=facts.receipts,
                     probes=facts.probes,
+                    lineage_rule=self._overlay.lineage,
+                    lineage=facts.lineage,
                     receipts_unread_reason=facts.receipts_unread_reason,
                     probes_unread_reason=facts.probes_unread_reason,
+                    deploy_source=facts.deploy_source,
                 )
             )
         except ValidationError as exc:
@@ -182,6 +185,7 @@ class HandlerDevDeployReadingRun:
         cells = [
             f"lane={publish.lane}",
             _ROW_SOURCE_CELL,
+            f"source_rule={self._overlay.source_rule}",
             f"actor={publish.actor}",
             "model=none",
             f"host={self._host}",

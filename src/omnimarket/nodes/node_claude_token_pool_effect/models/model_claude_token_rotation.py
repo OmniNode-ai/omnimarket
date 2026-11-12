@@ -98,6 +98,49 @@ class ModelRotationSpread(BaseModel):
     in_use_longer_than_seconds: int = Field(ge=60)
 
 
+class ModelRotationSteering(BaseModel):
+    """Account steering for NEW lane starts: the switch, the usage verdict to ask and the lanes-per-label cap.
+
+    ``enabled`` is the switch. Off, a lane start draws exactly as it did before the block existed: nothing
+    is asked and nothing is passed to ``resolve``. On, the lane start runs ``verdict_argv`` (the command
+    that prints the usage verdict node's result as JSON), passes its ``drain_labels`` to ``resolve``, and
+    counts the lanes running under each label from the open CLAIM rows no older than
+    ``open_claim_max_age_seconds``. ``max_lanes_per_label`` is the hard cap ``resolve`` holds those counts
+    against; unset, a label carries any number of lanes. A cap needs the counts, so it needs the switch on.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool
+    max_lanes_per_label: int | None = Field(default=None, ge=1)
+    verdict_argv: tuple[str, ...] = ()
+    verdict_timeout_seconds: float | None = Field(default=None, gt=0)
+    open_claim_max_age_seconds: int | None = Field(default=None, ge=60)
+
+    @model_validator(mode="after")
+    def _on_needs_its_values(self) -> ModelRotationSteering:
+        if self.enabled:
+            missing = [
+                name
+                for name, value in (
+                    ("verdict_argv", self.verdict_argv),
+                    ("verdict_timeout_seconds", self.verdict_timeout_seconds),
+                    ("open_claim_max_age_seconds", self.open_claim_max_age_seconds),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    f"steering.enabled is true and {', '.join(missing)} is not set"
+                )
+        elif self.max_lanes_per_label is not None:
+            raise ValueError(
+                "steering.max_lanes_per_label is set and steering.enabled is false: "
+                "the cap is held against lane counts only a switched-on lane start passes"
+            )
+        return self
+
+
 class ModelRotationOverlay(BaseModel):
     """``<root>/node_claude_token_pool_effect/overlay.yaml``: the hosts, the source, the events file and the interval."""
 
@@ -112,6 +155,9 @@ class ModelRotationOverlay(BaseModel):
     #: When set and enabled, a usable login in use longer than the bound is spread to an unused token.
     #: ``None`` declares no spread rule: the tick only swaps a login that is limited or revoked.
     spread: ModelRotationSpread | None = None
+    #: Account steering for new lane starts. ``None`` (or ``enabled: false``) declares none: a lane start
+    #: draws as before, and no label has a lane cap.
+    steering: ModelRotationSteering | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRotationOverlay:
@@ -218,4 +264,5 @@ __all__ = [
     "ModelRotationOverlay",
     "ModelRotationSchedule",
     "ModelRotationSpread",
+    "ModelRotationSteering",
 ]

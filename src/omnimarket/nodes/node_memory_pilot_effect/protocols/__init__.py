@@ -4,16 +4,20 @@ from omnimarket.nodes.node_memory_pilot_effect.protocols.protocol_memory_pilot i
     BackendAnswer,
     LabModelUnavailableError,
     ProtocolChatAnswerer,
+    ProtocolConnectionAudit,
     ProtocolEventPublisher,
     ProtocolFailureRecorder,
     ProtocolMemoryBackend,
+    ProtocolPilotResultSink,
 )
 
 __all__ = [
     "BackendAnswer",
     "LabModelUnavailableError",
     "ProtocolChatAnswerer",
+    "ProtocolConnectionAudit",
     "ProtocolEventPublisher",
     "ProtocolFailureRecorder",
     "ProtocolMemoryBackend",
+    "ProtocolPilotResultSink",
 ]

@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
 from omnimarket.handlers.rules_unit_roots import UnitRoots
@@ -22,7 +23,15 @@ from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_sched
 
 
 class _NoInstalledUnits:
-    """A host with no installed service, so a tick never reads the runner's own systemd."""
+    """A host with no installed service, so a tick never reads the runner's own systemd.
+
+    It records the keyword arguments the tick builds the reader with, so a test can read what the overlay handed over.
+    """
+
+    built_with: dict[str, object] = {}
+
+    def __init__(self, **kwargs: object) -> None:
+        type(self).built_with = dict(kwargs)
 
     def read(self) -> UnitRoots:
         return UnitRoots.from_paths({})
@@ -184,6 +193,38 @@ def test_overlay_uses_typed_reconcile_commands(tmp_path: Path) -> None:
     )
     assert parsed.hosts["lab-host"].execute is False
     assert parsed.hosts["lab-host"].policy.quiet_hours == 6
+
+
+def test_tick_hands_the_overlay_declared_environment_files_to_the_unit_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Seam: the host overlay's declared value reaches the reader; an overlay that declares none hands it an empty mapping."""
+    from omnimarket.nodes.node_worktree_reconcile_effect.__main__ import main
+
+    path = overlay(tmp_path)
+    monkeypatch.delenv("KAFKA_BROKERS", raising=False)
+    assert main(["tick", "--host", "lab-host", "--overlay", str(path)]) == 0
+    capsys.readouterr()
+    assert _NoInstalledUnits.built_with == {"declared_environment_files": {}}
+    document = yaml.safe_load(path.read_text())
+    document["hosts"]["lab-host"]["policy"]["unreadable_environment_files"] = {
+        "/etc/example/service.env": []
+    }
+    path.write_text(yaml.safe_dump(document))
+    assert main(["tick", "--host", "lab-host", "--overlay", str(path)]) == 0
+    capsys.readouterr()
+    assert _NoInstalledUnits.built_with == {
+        "declared_environment_files": {"/etc/example/service.env": ()}
+    }
+
+
+def test_overlay_refuses_a_relative_declared_environment_file(tmp_path: Path) -> None:
+    document = yaml.safe_load(overlay(tmp_path).read_text())
+    document["hosts"]["lab-host"]["policy"]["unreadable_environment_files"] = {
+        "etc/x.env": []
+    }
+    with pytest.raises(ValidationError):
+        ModelWorktreeScheduleOverlay.model_validate(document)
 
 
 def test_tick_refreshes_correlation_and_writes_receipt(
