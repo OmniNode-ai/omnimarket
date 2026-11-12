@@ -2015,6 +2015,7 @@
   "tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request.py": 2.56,
   "tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_cli_chain.py": 1.6,
   "tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_runtime.py": 2.32,
+  "tests/nodes/node_pr_landing_tick_orchestrator/test_rerun_request_topics_provisioned.py": 13.41,
   "tests/nodes/node_pr_landing_tick_orchestrator/test_runtime_tick.py": 2.26,
   "tests/nodes/node_pr_landing_tick_orchestrator/test_tick_bus_publisher.py": 0.03,
   "tests/nodes/node_pr_landing_tick_orchestrator/test_tick_facts_topic_provisioned.py": 0.02,
