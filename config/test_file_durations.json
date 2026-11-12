@@ -1622,6 +1622,8 @@
   "tests/nodes/node_lane_github_budget_effect/test_lane_github_budget.py": 12.69,
   "tests/nodes/node_lane_guard_admission_compute/test_golden_chain_lane_guard_admission_compute.py": 0.01,
   "tests/nodes/node_lane_guard_unit_effect/test_lane_guard_end_record.py": 4.71,
+  "tests/nodes/node_lane_guard_unit_effect/test_lane_guard_end_record_paths.py": 2.13,
+  "tests/nodes/node_lane_guard_unit_effect/test_lane_guard_parity.py": 11.3,
   "tests/nodes/node_lane_guard_unit_effect/test_lane_guard_unit.py": 0.17,
   "tests/nodes/node_lane_host_discovery_compute/test_golden_chain_lane_host_discovery_compute.py": 0.03,
   "tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_file.py": 1.91,

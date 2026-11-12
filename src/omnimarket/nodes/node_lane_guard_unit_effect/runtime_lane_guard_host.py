@@ -61,6 +61,13 @@ HARD_CAP_S = 3 * 3600
 GRACE_S = 120
 KILL_AFTER_S = 60
 STOP_TIMEOUT_S = 30
+# OMN-22991: a lane that must be stopped is told first. A headless engine run that gets SIGTERM mid-tool ends 143 with no
+# ``result`` event (measured on h053 with the engine CLI 2.1.316); the same run that gets SIGINT ends 0 with a ``result`` event
+# (subtype error_during_execution) within a second. So an engine lane's stop is SIGINT, then the notice, then SIGTERM.
+STOP_NOTICE_S = 20
+# How far apart two readings of one process's start may fall: ``ps`` reports elapsed time in whole seconds and the
+# tracker and the reap read it at different moments.
+IDENTITY_SLACK_S = 3.0
 GIB = 1024**3
 DEFAULT_MEM_BYTES = 8 * GIB
 MEM_CEILING_BYTES = 32 * GIB
@@ -141,7 +148,20 @@ class Limits:
         }
 
 
-def scope_argv(unit: str, limits: Limits, command: list[str]) -> list[str]:
+# OMN-22991: an engine lane that reaches its deadline is told by the guard first (SIGINT, ``stop_notice_s``, SIGTERM,
+# ``STOP_TIMEOUT_S`` to SIGKILL), which only works while the guard's deadline comes before the OS limit's. So the OS limit
+# (``RuntimeMaxSec``, ``timeout``) is a backstop set that long after it. A tests run gets no notice and no offset.
+def backstop_runtime_s(limits: Limits, stop_notice_s: float = STOP_NOTICE_S) -> int:
+    return limits.runtime_s + (
+        int(stop_notice_s) + STOP_TIMEOUT_S
+        if limits.kind == "lane" and stop_notice_s > 0
+        else 0
+    )
+
+
+def scope_argv(
+    unit: str, limits: Limits, command: list[str], stop_notice_s: float = STOP_NOTICE_S
+) -> list[str]:
     """``systemd-run --user --scope``: the limits as unit properties, the command after ``--``."""
     return [
         # No ``--collect``: a scope that failed (memory kill, runtime limit) stays loaded in the failed state until
@@ -155,7 +175,7 @@ def scope_argv(unit: str, limits: Limits, command: list[str]) -> list[str]:
         "--description",
         f"onex lane guard {unit}",
         "-p",
-        f"RuntimeMaxSec={limits.runtime_s}",
+        f"RuntimeMaxSec={backstop_runtime_s(limits, stop_notice_s)}",
         "-p",
         f"MemoryMax={limits.mem_bytes}",
         "-p",
@@ -171,13 +191,15 @@ def scope_argv(unit: str, limits: Limits, command: list[str]) -> list[str]:
     ]
 
 
-def timeout_argv(limits: Limits, command: list[str]) -> list[str]:
+def timeout_argv(
+    limits: Limits, command: list[str], stop_notice_s: float = STOP_NOTICE_S
+) -> list[str]:
     """``timeout --kill-after=60 <runtime> prlimit --as|--data=<bytes> -- <command>``."""
     flag = "--as" if limits.kind == "tests" else "--data"
     return [
         "timeout",
         f"--kill-after={KILL_AFTER_S}",
-        str(limits.runtime_s),
+        str(backstop_runtime_s(limits, stop_notice_s)),
         "prlimit",
         f"{flag}={limits.mem_bytes}",
         "--",
@@ -517,6 +539,15 @@ def scope_result(
     return value if done.returncode == 0 and value else None
 
 
+# OMN-22991: a pid is a name, not an identity. On a Mac pids wrap at 99999 and a busy lab host reuses one about every
+# hour, so a pid the tracker saw in a neighbouring lane's tree can later belong to another lane's guard, run script or
+# engine. The old test (age >= age at first sight - 2) held for every process older than two seconds, so a lane ending
+# signalled every live process that shared a number with anything it had ever spawned. A process keeps its start time
+# for life; that time must equal the one recorded.
+def same_process(proc: Proc, born: float, now: float) -> bool:
+    return abs((now - proc.age_s) - born) <= IDENTITY_SLACK_S
+
+
 def reap_unit(
     unit: str,
     *,
@@ -527,7 +558,7 @@ def reap_unit(
     tracked: dict[int, float] | None = None,
 ) -> dict[str, Any]:
     """Stop the systemd unit (when there is one) and kill every process that carries the unit's tag, and every
-    ``tracked`` descendant (pid -> age when first seen) that is still the same process (macOS hides the
+    ``tracked`` descendant (pid -> epoch it started) that is still the same process (macOS hides the
     environment from ps, so there the guard follows the process tree while the command runs)."""
     stopped = False
     if sys.platform.startswith("linux") and shutil.which("systemctl"):
@@ -555,16 +586,16 @@ def reap_unit(
                 pass
     me = os.getpid()
     table = read_table()
+    now = time.time()
     victims = [p for p in table if p.tag == unit and p.pid != me]
     seen = {p.pid for p in victims}
     for p in table:
-        first_age = (tracked or {}).get(p.pid)
-        # the same process, not a recycled pid: it is at least as old as when it was first seen
+        born = (tracked or {}).get(p.pid)
         if (
-            first_age is not None
+            born is not None
             and p.pid not in seen
             and p.pid != me
-            and p.age_s + 2 >= first_age
+            and same_process(p, born, now)
         ):
             victims.append(p)
     outcome = kill([p.pid for p in victims]) if victims else {}
@@ -862,17 +893,23 @@ class _TreeTracker(threading.Thread):
             while frontier:
                 for child in kids.get(frontier.pop(), []):
                     if child.pid not in self.seen:
-                        self.seen[child.pid] = child.age_s
+                        self.seen[child.pid] = (
+                            time.time() - child.age_s
+                        )  # the epoch it started: its identity
                         frontier.append(child.pid)
             self.stop.wait(self.interval_s)
 
 
+# OMN-22991: a stop (a SIGTERM, SIGHUP or SIGINT to this guard, or the deadline of an engine lane in any mode) of an engine lane
+# (kind=lane) is a notice first: SIGINT to the command's group, then stop_notice_s seconds for it to write its report and
+# exit, and only then the SIGTERM and SIGKILL of before. A tests run gets no notice.
 def run_guarded(
     unit: str,
     limits: Limits,
     command: list[str],
     lane: str = "",
     end_record: dict[str, Any] | None = None,
+    stop_notice_s: float = STOP_NOTICE_S,
 ) -> int:
     """Run ``command`` bounded by ``limits``; return the exit code the shell would see.
 
@@ -889,10 +926,11 @@ def run_guarded(
     env = systemd_env() if mode == MODE_SCOPE else dict(os.environ)
     env[TAG_ENV] = unit
     env[DEADLINE_ENV] = str(int(deadline))
+    notice_s = stop_notice_s if limits.kind == "lane" else 0.0
     if mode == MODE_SCOPE:
-        argv = scope_argv(unit, limits, command)
+        argv = scope_argv(unit, limits, command, notice_s)
     elif mode == MODE_TIMEOUT:
-        argv = timeout_argv(limits, command)
+        argv = timeout_argv(limits, command, notice_s)
     else:
         argv = list(command)
     enforced = {
@@ -947,8 +985,9 @@ def run_guarded(
     if tracker:
         tracker.start()
     term_at: float | None = None
-    killed_group = False
-    deadline_fired = False
+    notice_at: float | None = None
+    stop_phase: str | None = None
+    killed_group = deadline_fired = False
     rc: int | None = None
     while rc is None:
         try:
@@ -957,14 +996,20 @@ def run_guarded(
         except subprocess.TimeoutExpired:
             pass
         now = time.time()
-        if stop_signal and term_at is None:
-            reap_unit(unit, tracked=tracker.seen if tracker else None)
-            _signal_group(proc.pid, signal.SIGTERM)
-            term_at = now
-        if mode == MODE_WATCHDOG and now >= deadline and term_at is None:
-            deadline_fired = True
-            _signal_group(proc.pid, signal.SIGTERM)
-            term_at = now
+        # An engine lane's own deadline is enforced here in every mode, so it gets the notice (OMN-22991); the OS limit
+        # is the backstop ``backstop_runtime_s`` sets after it. A tests run keeps the OS limit as its only deadline.
+        if (
+            stop_signal or ((mode == MODE_WATCHDOG or notice_s > 0) and now >= deadline)
+        ) and term_at is None:
+            if notice_at is None and notice_s > 0:
+                notice_at, stop_phase, deadline_fired = now, "notice", not stop_signal
+                _signal_group(proc.pid, signal.SIGINT)
+            if notice_at is None or now - notice_at >= notice_s:
+                deadline_fired = deadline_fired or not stop_signal
+                if stop_signal:
+                    reap_unit(unit, tracked=tracker.seen if tracker else None)
+                _signal_group(proc.pid, signal.SIGTERM)
+                term_at, stop_phase = now, "term"
         if (
             term_at is not None
             and not killed_group
@@ -996,6 +1041,7 @@ def run_guarded(
         "elapsed_s": round(ended - started, 1),
         "deadline_hit": bool(deadline_hit),
         "stopped_by_signal": stop_signal[0] if stop_signal else None,
+        "stop_phase": stop_phase,
         "residue_killed": len(residue["killed"]),
         "residue": residue["killed"],
     }
@@ -1073,6 +1119,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--cpu-pct", type=int, default=DEFAULT_CPU_PCT)
     run.add_argument("--tasks-max", type=int, default=TASKS_MAX)
     run.add_argument("--kind", choices=KINDS, default="lane")
+    run.add_argument("--stop-notice-s", type=float, default=STOP_NOTICE_S)
     run.add_argument("--record-dir", default=None)
     run.add_argument("--worktrees-dir", default=None)
     run.add_argument("--git-timeout-s", type=int, default=None)
@@ -1082,6 +1129,44 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("probe")
     sub.add_parser("spool-drain")
     return ap
+
+
+OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
+OVERLAY_NODE = "node_lane_guard_unit_effect"
+#: The overlay's end_record keys, each the flag of the same name with dashes (``record_dir`` -> ``--record-dir``).
+END_RECORD_KEYS = ("record_dir", "worktrees_dir", "git_timeout_s", "max_trees")
+
+
+def overlay_end_record_flags(environ: dict[str, str] | None = None) -> list[str]:
+    """The ``run`` flags of the end record, read by a launcher from the overlay ``node_lane_guard_unit_effect`` (the first
+    root of ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one): the one reading of those settings outside the node's own, so a
+    runner that embeds this program passes what the node would. Empty when no root holds the overlay (no record is written,
+    the end line still carries the cause); a present overlay without exactly the four keys is a ``ValueError``, never read
+    as absent."""
+    env = os.environ if environ is None else environ
+    for root in filter(None, env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)):
+        path = Path(root) / OVERLAY_NODE / "overlay.yaml"
+        if not path.is_file():
+            continue
+        import yaml  # a launcher reads the overlay; the program that runs on a host never does
+
+        row = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("end_record")
+        if not isinstance(row, dict) or set(row) != set(END_RECORD_KEYS):
+            raise ValueError(
+                f"{path} must hold end_record with exactly {', '.join(END_RECORD_KEYS)}"
+            )
+        return [
+            w
+            for k in END_RECORD_KEYS
+            for w in ("--" + k.replace("_", "-"), str(row[k]))
+        ]
+    return []
+
+
+def _expand_path(path: str) -> str:
+    """A settings path as the host reads it: ``~`` is the lane user's home and ``$VAR`` (``$OMNI_HOME``, the host's own
+    registry root) the lane's environment, so one overlay row serves every lab host."""
+    return os.path.expanduser(os.path.expandvars(path))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1114,12 +1199,19 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return EXIT_USAGE
             end_record = {
-                "record_dir": ns.record_dir,
-                "worktrees_dir": ns.worktrees_dir,
+                "record_dir": _expand_path(ns.record_dir),
+                "worktrees_dir": _expand_path(ns.worktrees_dir),
                 "git_timeout_s": ns.git_timeout_s,
                 "max_trees": ns.max_trees,
             }
-        return run_guarded(ns.unit, limits, command, ns.lane, end_record)
+        return run_guarded(
+            ns.unit,
+            limits,
+            command,
+            ns.lane,
+            end_record,
+            stop_notice_s=ns.stop_notice_s,
+        )
     if ns.cmd == "reap":
         if not ns.unit.startswith(UNIT_PREFIX):
             sys.stderr.write(
