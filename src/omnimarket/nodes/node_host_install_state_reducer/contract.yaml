@@ -204,16 +204,6 @@ state_machine:
       to_state: failed
       trigger: rollback_failed
     - version: {major: 1, minor: 0, patch: 0}
-      transition_name: run_ok_to_requested_on_request_ok
-      from_state: run_ok
-      to_state: requested
-      trigger: request_ok
-    - version: {major: 1, minor: 0, patch: 0}
-      transition_name: rolled_back_to_requested_on_request_ok
-      from_state: rolled_back
-      to_state: requested
-      trigger: request_ok
-    - version: {major: 1, minor: 0, patch: 0}
       transition_name: failed_to_requested_on_request_ok
       from_state: failed
       to_state: requested
