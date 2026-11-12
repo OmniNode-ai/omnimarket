@@ -38,6 +38,7 @@ def announced_delegate_pin(backend_id: str | None) -> ModelDelegatePin | None:
         f"delegate pin: backend_id={pin.backend_id} host={pin.host} "
         f"endpoint={pin.endpoint_url} model={pin.model_name or '?'}\n"
     )
+    sys.stderr.flush()
     return pin
 
 
