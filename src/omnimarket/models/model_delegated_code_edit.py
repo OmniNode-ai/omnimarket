@@ -122,9 +122,12 @@ class ModelDeclaredCheck(BaseModel):
         "rubric can bind a passing check to the answer that names it.",
     )
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
     def _name(cls, value: str) -> str:
+        """Normalise a lane-brief name (``PYTEST``) before the rule is applied."""
+        if isinstance(value, str):
+            value = re.sub(r"[^a-z0-9_-]+", "-", value.strip().lower()).strip("-")
         if not _CHECK_NAME.fullmatch(value):
             raise ValueError(
                 "a check name is lowercase letters, digits, '_' or '-', at most 48"

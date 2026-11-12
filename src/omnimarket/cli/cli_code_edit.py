@@ -35,7 +35,6 @@ the worktree; model-written code executes there when a check runs.
 from __future__ import annotations
 
 import json
-import re
 import shlex
 import shutil
 import subprocess
@@ -51,18 +50,15 @@ from omnimarket.delegated_code_edit.loop_ports import (
     DelegatedCodeEditPorts,
     DelegatePinUnresolvedError,
     deployed_lane_delegate_flags,
-)
-from omnimarket.handlers.code_edit_request_builder import (
-    announced_delegate_pin,
-    build_code_edit_request,
-    request_from_file,
-    request_from_receipt,
+    resolve_delegate_pin,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     EnumCodeEditStatus,
     HandlerDelegatedCodeEditOrchestrator,
     LoopReceiptExistsError,
     ModelDeclaredCheck,
+    ModelDelegatedCodeEditRequest,
+    ModelDelegatePin,
     ResumeRefusedError,
 )
 
@@ -91,14 +87,7 @@ def read_file_list(path: Path | None) -> tuple[str, ...]:
 
 
 def parse_check(spec: str) -> ModelDeclaredCheck:
-    """``NAME=COMMAND`` as a declared check; its test targets come from the command.
-
-    The name is normalised before it reaches ``ModelDeclaredCheck``: it is
-    stripped, lowercased, every run of characters outside ``[a-z0-9_-]`` is
-    replaced by a single ``-``, and leading and trailing ``-`` are stripped.
-    A name that is empty after that, or longer than 48 characters, is still
-    refused through ``click.BadParameter`` (``param_hint="--check"``) as today.
-    """
+    """``NAME=COMMAND`` as a declared check; its test targets come from the command."""
     name, sep, command = spec.partition("=")
     if not sep or not command.strip():
         raise click.BadParameter(f"{spec!r} is not NAME=COMMAND", param_hint="--check")
@@ -107,13 +96,8 @@ def parse_check(spec: str) -> ModelDeclaredCheck:
     except ValueError as exc:
         raise click.BadParameter(f"{spec!r}: {exc}", param_hint="--check") from exc
     found = [word for word in argv if word.startswith("tests/")]
-    normalised = re.sub(r"[^a-z0-9_-]+", "-", name.strip().lower()).strip("-")
-    if not normalised or len(normalised) > 48:
-        raise click.BadParameter(
-            f"{spec!r} has an invalid check name", param_hint="--check"
-        )
     try:
-        return ModelDeclaredCheck(name=normalised, argv=argv, targets=tuple(found))
+        return ModelDeclaredCheck(name=name.strip(), argv=argv, targets=tuple(found))
     except ValueError as exc:
         raise click.BadParameter(str(exc), param_hint="--check") from exc
 
@@ -196,24 +180,7 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     "the file path is appended to each (e.g. 'uv run ruff check --select I "
     "--fix', then 'uv run ruff format'). Omitted: no format tool.",
 )
-@click.option(
-    "--max-turns",
-    type=click.IntRange(1, 40),
-    default=None,
-    help="The round limit; omitted, the node's overlay decides, else the request model's default.",
-)
-@click.option(
-    "--check-timeout-s",
-    type=click.IntRange(1, 1800),
-    default=None,
-    help="The check time limit in seconds; omitted, the node's overlay decides, else the request model's default.",
-)
-@click.option(
-    "--ticket-contract",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    default=None,
-    help="The ticket's contract file; its test_passes checks are declared checks.",
-)
+@click.option("--max-turns", type=click.IntRange(1, 40), default=20, show_default=True)
 @click.option(
     "--caller-lane",
     default=None,
@@ -283,9 +250,7 @@ def run_command(
     file_list_path: Path | None,
     check_specs: tuple[str, ...],
     formatter: tuple[str, ...],
-    max_turns: int | None,
-    check_timeout_s: int | None,
-    ticket_contract: Path | None,
+    max_turns: int,
     caller_lane: str | None,
     ticket: str | None,
     new_correlation: bool,
@@ -313,32 +278,57 @@ def run_command(
         for flag, present in conflicts.items():
             if present:
                 raise click.ClickException(f"--resume conflicts with {flag}")
-    try:
-        if resume_id is not None:
-            request = request_from_receipt(state_root, resume_id)
-        elif request_path is not None:
-            request = request_from_file(request_path, new_correlation)
-        else:
-            request = build_code_edit_request(
-                worktree=worktree,
-                task_file=task_file,
-                writable=writable,
-                context_paths=context_paths,
+        try:
+            receipt = json.loads(
+                (state_root / "runs" / str(resume_id) / "loop_receipt.json").read_text()
+            )
+            if not isinstance(receipt, dict):
+                raise ValueError("receipt is not an object")
+            request = ModelDelegatedCodeEditRequest.model_validate(receipt["request"])
+        except (OSError, ValueError, KeyError, UnicodeError, RecursionError) as exc:
+            raise click.ClickException(f"unreadable receipt: {exc}") from exc
+    elif request_path is not None:
+        try:
+            request = ModelDelegatedCodeEditRequest.model_validate_json(
+                request_path.read_text()
+            )
+        except ValueError as exc:
+            raise click.ClickException(f"unreadable request: {exc}") from exc
+        if new_correlation:
+            request = request.model_copy(update={"correlation_id": str(uuid.uuid4())})
+    else:
+        if worktree is None or task_file is None or not writable or not check_specs:
+            raise click.ClickException(
+                "without --request, give --worktree, --task-file, at least one "
+                "--writable and at least one --check"
+            )
+        try:
+            request = ModelDelegatedCodeEditRequest(
+                correlation_id=str(uuid.uuid4()),
                 file_list=read_file_list(file_list_path),
-                cli_checks=tuple(parse_check(spec) for spec in check_specs),
-                formatter=formatter,
+                task=task_file.read_text(),
+                workspace_root=str(worktree.resolve()),
+                writable_globs=writable,
+                context_paths=context_paths,
+                checks=tuple(parse_check(spec) for spec in check_specs),
+                formatter=tuple(tuple(shlex.split(step)) for step in formatter),
                 max_turns=max_turns,
-                check_timeout_s=check_timeout_s,
-                ticket_contract=ticket_contract,
                 caller_lane=caller_lane,
                 ticket=ticket,
             )
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-    try:
-        pin = announced_delegate_pin(backend_id)
-    except DelegatePinUnresolvedError as exc:
-        raise click.ClickException(f"cannot pin turns: {exc}") from exc
+        except ValueError as exc:
+            raise click.ClickException(f"invalid request: {exc}") from exc
+    pin: ModelDelegatePin | None = None
+    if backend_id is not None:
+        try:
+            pin = resolve_delegate_pin(backend_id)
+        except DelegatePinUnresolvedError as exc:
+            raise click.ClickException(f"cannot pin turns: {exc}") from exc
+        click.echo(
+            f"delegate pin: backend_id={pin.backend_id} host={pin.host} "
+            f"endpoint={pin.endpoint_url} model={pin.model_name or '?'}",
+            err=True,
+        )
     ports = DelegatedCodeEditPorts(
         onex=_resolve_onex(onex_path, omnibase_path),
         state_root=state_root.resolve(),
