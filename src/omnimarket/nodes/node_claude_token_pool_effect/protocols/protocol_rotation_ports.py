@@ -12,6 +12,9 @@ from typing import Protocol
 
 from pydantic import SecretStr
 
+from omnimarket.models.model_claude_pool_limit_recheck import (
+    ModelLimitProbeAnswer,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
     ModelRotationMarksRead,
 )
@@ -35,3 +38,15 @@ class ProtocolLoginFile(Protocol):
 
 class ProtocolMarksSource(Protocol):
     def read(self) -> ModelRotationMarksRead: ...
+
+
+class ProtocolLimitProbe(Protocol):
+    """The pool's own headless probe: one small Claude call under the stored token of ``label``."""
+
+    def probe(self, label: str) -> ModelLimitProbeAnswer:
+        """Answer ``ok``, ``limited`` (with the reset the answer names, when it names one) or ``error``.
+
+        The token is handed to the call's environment and never returned or logged; an answer carries
+        no text of the call.
+        """
+        ...

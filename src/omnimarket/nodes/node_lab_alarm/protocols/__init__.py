@@ -66,6 +66,14 @@ class ProtocolSampleStore(Protocol):
     def save(self, sample: Mapping[str, int]) -> None: ...
 
 
+class ProtocolGrowthStreakStore(Protocol):
+    def load(self) -> dict[str, int]:
+        """Each group's count of consecutive growth samples, empty when there is none."""
+        ...
+
+    def save(self, streaks: Mapping[str, int]) -> None: ...
+
+
 class ProtocolRunRecordStore(Protocol):
     def append(self, record: Mapping[str, Any]) -> None:
         """Add one finished run to the record the floor reads, or raise RunRecordUnwritableError."""
@@ -108,6 +116,7 @@ __all__ = [
     "ManifestUnreadableError",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
+    "ProtocolGrowthStreakStore",
     "ProtocolHeldStateStore",
     "ProtocolLaneDispatcher",
     "ProtocolManifestCache",

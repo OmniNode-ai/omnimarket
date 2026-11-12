@@ -1,0 +1,3597 @@
+{
+ "pre_control_exclusions": [
+  {
+   "count": 72,
+   "reason": "omnibase_core:check_names_no_touched_path"
+  },
+  {
+   "count": 8,
+   "reason": "omnibase_core:held_answer_empty"
+  },
+  {
+   "count": 18,
+   "reason": "omnibase_core:held_touches_protected"
+  },
+  {
+   "count": 53,
+   "reason": "omnibase_core:no_single_contract_file"
+  },
+  {
+   "count": 5,
+   "reason": "omnibase_core:not_yet_run_by_the_control"
+  },
+  {
+   "count": 43,
+   "reason": "omnibase_core:over_300_lines"
+  },
+  {
+   "count": 223,
+   "reason": "omnibase_core:over_5_files_or_binary"
+  },
+  {
+   "count": 217,
+   "reason": "omnibase_infra:check_names_no_touched_path"
+  },
+  {
+   "count": 37,
+   "reason": "omnibase_infra:held_answer_empty"
+  },
+  {
+   "count": 24,
+   "reason": "omnibase_infra:held_touches_protected"
+  },
+  {
+   "count": 3,
+   "reason": "omnibase_infra:later_merge_of_a_contract_already_in_the_suite"
+  },
+  {
+   "count": 192,
+   "reason": "omnibase_infra:no_single_contract_file"
+  },
+  {
+   "count": 16,
+   "reason": "omnibase_infra:not_yet_run_by_the_control"
+  },
+  {
+   "count": 127,
+   "reason": "omnibase_infra:over_300_lines"
+  },
+  {
+   "count": 590,
+   "reason": "omnibase_infra:over_5_files_or_binary"
+  },
+  {
+   "count": 2,
+   "reason": "omnibase_infra:path_fails_the_public_repo_hygiene_gate"
+  },
+  {
+   "count": 359,
+   "reason": "omnimarket:check_names_no_touched_path"
+  },
+  {
+   "count": 70,
+   "reason": "omnimarket:held_answer_empty"
+  },
+  {
+   "count": 21,
+   "reason": "omnimarket:held_touches_protected"
+  },
+  {
+   "count": 1,
+   "reason": "omnimarket:later_merge_of_a_contract_already_in_the_suite"
+  },
+  {
+   "count": 91,
+   "reason": "omnimarket:no_single_contract_file"
+  },
+  {
+   "count": 70,
+   "reason": "omnimarket:not_yet_run_by_the_control"
+  },
+  {
+   "count": 196,
+   "reason": "omnimarket:over_300_lines"
+  },
+  {
+   "count": 1455,
+   "reason": "omnimarket:over_5_files_or_binary"
+  },
+  {
+   "count": 227,
+   "reason": "overlays:no_single_contract_file"
+  },
+  {
+   "count": 1,
+   "reason": "overlays:not_single_parent"
+  },
+  {
+   "count": 7,
+   "reason": "overlays:over_300_lines"
+  },
+  {
+   "count": 28,
+   "reason": "overlays:over_5_files_or_binary"
+  }
+ ],
+ "suite_id": "code-eval-suite-v1-2026-10-01-to-2026-11-11",
+ "tasks": [
+  {
+   "band": "S",
+   "base_commit": "970c1d3b03f0075b4905e05a553fcc5aaff5afdd",
+   "check_files": [
+    "tests/unit/nodes/node_canonical_file_shape_check_compute/test_typescript_and_shell_rules.py",
+    "tests/unit/validation/test_checker_canonical_file_shape.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/validation/test_checker_canonical_file_shape.py tests/unit/nodes/node_canonical_file_shape_check_compute/test_typescript_and_shell_rules.py -q --no-cov -o addopts='' -k 'baselined_growth_text_names_the_bind_then_edit_path or baselined_file_growth_any_surface_refused'",
+     "item_id": "dod-001"
+    }
+   ],
+   "contract_id": "OMN-21666",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_core/validation/contracts/canonical_file_shape.validation.yaml"
+   ],
+   "lines_changed": 61,
+   "merge_commit": "1a6b9c0b987ea4f45bc88c980167a8e1679543b7",
+   "merged_at": "2026-10-31T10:25:59Z",
+   "repository": "omnibase_core",
+   "subject": "docs(OMN-21666): baselined-file-growth message names the bind-then-edit path (#2186)"
+  },
+  {
+   "band": "S",
+   "base_commit": "d7ed23f1e89b8b6ce6079d303f8599c661c7f191",
+   "check_files": [
+    "tests/unit/scripts/test_pin_bump.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/scripts/test_pin_bump.py -q -k omnidash_has_one_pin_site",
+     "item_id": "dod-omn-9050-ac1"
+    }
+   ],
+   "contract_id": "OMN-9050",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "docs/downstream-repos.yaml"
+   ],
+   "lines_changed": 54,
+   "merge_commit": "1c52855e8bdbcf21508e13c41a3eecda7a1ef983",
+   "merged_at": "2026-10-15T19:42:03Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-9050): omnidash declares check-handshake.yml as its only pin site (#2007)"
+  },
+  {
+   "band": "S",
+   "base_commit": "178538e7f099402a41f9d22c4e53399d2899984f",
+   "check_files": [
+    "tests/unit/enums/test_enum_delegation_terminal_failure_cause.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/enums/test_enum_delegation_terminal_failure_cause.py -q",
+     "item_id": "dod-omn19448-core-refused-before-dispatch"
+    }
+   ],
+   "contract_id": "OMN-19448",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_core/enums/enum_delegation_terminal_failure_cause.py"
+   ],
+   "lines_changed": 84,
+   "merge_commit": "2351a6c6000bf74d56f196fe79fed9eaaa800ddb",
+   "merged_at": "2026-10-15T18:18:22Z",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-19448): add REFUSED_BEFORE_DISPATCH failure cause (#2004)"
+  },
+  {
+   "band": "S",
+   "base_commit": "8e807b44b10236a8bd1f46c2f4ca96af765143aa",
+   "check_files": [
+    "tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py -q --no-cov -n 0 -k retired_gpt",
+     "item_id": "dod-omn19432-ac1-family-regex"
+    },
+    {
+     "check_type": "command",
+     "check_value": "uv run pytest tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py -q --no-cov -n 0 -k retired_gpt",
+     "item_id": "dod-omn19432-deploy-hosted-policy"
+    }
+   ],
+   "contract_id": "OMN-19432",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_core/validation/hardcoded_model_config/policy.yaml"
+   ],
+   "lines_changed": 68,
+   "merge_commit": "31b01a3685cd414a111a4a10a5144ebe95b8d4c5",
+   "merged_at": "2026-10-15T15:42:27Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-19432): remove a retired model name from the hardcoded-model-config family regex (#2001)"
+  },
+  {
+   "band": "S",
+   "base_commit": "624e03f3d7797709879b6c410708be6cc1061261",
+   "check_files": [
+    "tests/unit/models/delegation/wire/test_delegation_wire_models.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/models/delegation/wire/test_delegation_wire_models.py -q -k canonical -o addopts=''",
+     "item_id": "dod-omn21140-context-role-wire"
+    }
+   ],
+   "contract_id": "OMN-21140",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_core/models/delegation/wire/model_delegation_wire_request.py"
+   ],
+   "lines_changed": 50,
+   "merge_commit": "3ac93e01f2d7bcc630eafce3a965b7059a202199",
+   "merged_at": "2026-10-18T02:31:30Z",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-21140): the delegation wire request admits the context-service role task classes (#2043)"
+  },
+  {
+   "band": "S",
+   "base_commit": "c7d18ba0148a061b83e23c14888fbb7600425a42",
+   "check_files": [
+    "tests/unit/models/delegation/wire/test_delegation_wire_models.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/models/delegation/wire/test_delegation_wire_models.py -q -o addopts= -k test_all_live_tier_values_accepted",
+     "item_id": "dod-omn17122-ac1-live-tier-set"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/models/delegation/wire/test_delegation_wire_models.py -q -o addopts= -k test_removed_cli_agents_tier_rejected",
+     "item_id": "dod-omn17122-ac2-cli-agents-rejected"
+    }
+   ],
+   "contract_id": "OMN-17122",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_core/models/delegation/wire/model_bifrost_delegation_config.py"
+   ],
+   "lines_changed": 93,
+   "merge_commit": "3f62d30aa7eb2581634d5a2e3d69990a4fa7a1d6",
+   "merged_at": "2026-10-18T00:17:08Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-17122): backend tier Literal drops cli_agents and adds typed_decision (#2039)"
+  },
+  {
+   "band": "M",
+   "base_commit": "1c58f98cb6953ea9cd0b21089bf1ca1fbde3df86",
+   "check_files": [
+    "tests/ci/test_receipt_gate_writer_pin_swap_omn20068.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_receipt_gate_writer_pin_swap_omn20068.py -q -k test_4832_pin_swap_is_exempt",
+     "item_id": "dod-omn-20068-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_receipt_gate_writer_pin_swap_omn20068.py -q -k test_mixed_pin_swap_fails_closed",
+     "item_id": "dod-omn-20068-ac2"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_receipt_gate_writer_pin_swap_omn20068.py -q -k \"test_pin_swap_with_dependency_manifests or test_workflow_uses_pin_swap or test_pin_file_version_swap or test_multiple_dependency_manifests_still_refused or test_writer_pin_swap_step_stays_writer_app_only\"",
+     "item_id": "dod-omn-20068-ac3"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_receipt_gate_writer_pin_only_in_job_omn17427.py tests/ci/test_receipt_gate_writer_pin_swap_omn20068.py -q -n 0 --no-cov",
+     "item_id": "dod-omn-20068-ac4"
+    }
+   ],
+   "contract_id": "OMN-20068",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    ".pre-commit-config.yaml"
+   ],
+   "lines_changed": 65,
+   "merge_commit": "483fc4641e49ed95a412c85152e073317636b4a5",
+   "merged_at": "2026-10-13T05:58:46Z",
+   "repository": "omnibase_core",
+   "subject": "ci(OMN-20068): wire the writer pin-only verdict tests as a pre-commit hook (#1962)"
+  },
+  {
+   "band": "S",
+   "base_commit": "2325069657ea2096043971b41532059b8302c779",
+   "check_files": [
+    "tests/unit/constants/test_literal_topic_slice_omn21777.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/constants/test_literal_topic_slice_omn21777.py -q -o addopts=''",
+     "item_id": "dod-omn21777-ac1-checker-count"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/constants tests/unit/test_topics.py -q -o addopts=''",
+     "item_id": "dod-omn21777-ac2-topics-from-contracts"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/constants/test_literal_topic_slice_omn21777.py -q -o addopts=''",
+     "item_id": "dod-omn21777-ac3-lab-proof"
+    }
+   ],
+   "contract_id": "OMN-21777",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_core/topic_base_names.yaml",
+    "src/omnibase_core/topics.py"
+   ],
+   "lines_changed": 249,
+   "merge_commit": "5ec260cef8c452fb5f4307820bda1fa36970dde9",
+   "merged_at": "2026-10-31T16:24:26Z",
+   "repository": "omnibase_core",
+   "subject": "refactor(OMN-21777): 32 TopicBase members come from a packaged YAML contract (#2193)"
+  },
+  {
+   "band": "S",
+   "base_commit": "d3fe026e658f1651943c42b97feedc79d59164c5",
+   "check_files": [
+    "tests/unit/models/config_overlay/test_developer_principal_overlay.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/models/config_overlay/test_developer_principal_overlay.py -q -p no:cacheprovider -k role",
+     "item_id": "dod-omn21622-ac1-principal-role"
+    }
+   ],
+   "contract_id": "OMN-21622",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnibase_core/enums/enum_developer_principal_role.py",
+    "src/omnibase_core/models/config_overlay/model_developer_principal_declaration.py",
+    "src/omnibase_core/schemas/config_overlay/developer_principal.schema.json"
+   ],
+   "lines_changed": 132,
+   "merge_commit": "6615f3d7424ef8a4c53eee6bbee4f2d02420bfc8",
+   "merged_at": "2026-10-30T23:19:52Z",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-21622): a developer.principal row may declare that its principal is a machine (#2176)"
+  },
+  {
+   "band": "S",
+   "base_commit": "e06f904a9baaa1f2bd8d329f7844cb3ac50c3baf",
+   "check_files": [
+    "tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py -q",
+     "item_id": "dod-omn21075-core-vendor-default"
+    }
+   ],
+   "contract_id": "OMN-21075",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "pyproject.toml",
+    "src/omnibase_core/validation/hardcoded_model_config/policy.yaml",
+    "uv.lock"
+   ],
+   "lines_changed": 50,
+   "merge_commit": "70f7ceda44af968ccf26264ecd429cfd27503971",
+   "merged_at": "2026-10-13T14:22:43-05:00",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-21075): admit the onboarding script as a VENDOR_DEFAULT file in the hardcoded-model-config policy (#1966)"
+  },
+  {
+   "band": "S",
+   "base_commit": "a4123a1b04307e81f9d355974c9b63f892720d23",
+   "check_files": [
+    "tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py -q -k 'classify_path or every_scanned_class'",
+     "item_id": "dod-omn20910-ac1-overlay-class"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py -q -k overlay",
+     "item_id": "dod-omn20910-ac2-overlay-passes-source-fails"
+    },
+    {
+     "check_type": "command",
+     "check_value": "uv run pytest tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py -q -k overlay",
+     "item_id": "dod-omn20910-hosted-guard-probe"
+    }
+   ],
+   "contract_id": "OMN-20910",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_core/validation/hardcoded_model_config/models.py",
+    "src/omnibase_core/validation/hardcoded_model_config/policy.yaml"
+   ],
+   "lines_changed": 145,
+   "merge_commit": "759508560875f1a6e4c5c3c41ac6b2254d5ef0f7",
+   "merged_at": "2026-10-19T06:12:32Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-20910): class the contract overlay tree as OVERLAY in the model-config guard (#2053)"
+  },
+  {
+   "band": "S",
+   "base_commit": "3499e554ebd21b14c2426fa15005d7916c1d6f6d",
+   "check_files": [
+    "tests/unit/models/delegation/wire/test_model_delegation_budget_evidence.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/models/delegation/wire/test_model_delegation_budget_evidence.py -q --no-cov -o addopts='' -n 0 -k ceiling_source",
+     "item_id": "dod-omn23215-ac1"
+    }
+   ],
+   "contract_id": "OMN-23215",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnibase_core/enums/enum_delegation_ceiling_source.py",
+    "src/omnibase_core/models/delegation/wire/__init__.py",
+    "src/omnibase_core/models/delegation/wire/model_delegation_budget_evidence.py"
+   ],
+   "lines_changed": 181,
+   "merge_commit": "7af1e05074296c27549e48688b587160a758ced8",
+   "merged_at": "2026-11-08T21:41:51Z",
+   "repository": "omnibase_core",
+   "subject": "OMN-23215: Add ceiling_source and ceiling_overlay_ref to ModelDelegationBudgetEvidence (#2296)"
+  },
+  {
+   "band": "S",
+   "base_commit": "6d719430a9d3e1d4002db57c5a671f4ba7c7dc1d",
+   "check_files": [
+    "tests/unit/test_hermetic_import_guard_omn14420.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/test_hermetic_import_guard_omn14420.py -n 0 -q",
+     "item_id": "dod-hermetic-import-guard-ac1"
+    }
+   ],
+   "contract_id": "OMN-14420",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "tests/conftest.py",
+    "tests/fixtures/hermetic_import.py",
+    "tests/unit/test_hermetic_import_guard_probe_omn14420.py"
+   ],
+   "lines_changed": 199,
+   "merge_commit": "7bed448e7f7792006b2609d6e7b47069b634fae9",
+   "merged_at": "2026-10-17T19:00:43Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-14420): guard tests against PYTHONPATH shadowing omnibase_core (#2031)"
+  },
+  {
+   "band": "S",
+   "base_commit": "1271407368a2b41fc9416b0087c8e6e193f2f77c",
+   "check_files": [
+    "tests/ci/test_dev_tool_bounds_omn23012.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_dev_tool_bounds_omn23012.py -q --no-cov",
+     "item_id": "dod-omn23012-dev-tool-bounds"
+    }
+   ],
+   "contract_id": "OMN-23012",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "pyproject.toml",
+    "uv.lock"
+   ],
+   "lines_changed": 152,
+   "merge_commit": "844685202b088f4aa5e1bc30213d99f5c7130954",
+   "merged_at": "2026-11-07T16:03:00Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-23012): a dependency refresh cannot upgrade the linter or the type checker (#2277)"
+  },
+  {
+   "band": "S",
+   "base_commit": "bdb0c92513eaa4d7411571defc2d5b8c937f3d88",
+   "check_files": [
+    "tests/unit/validation/test_validator_event_registry_drift_node_owned_omn21416.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validation/test_validator_event_registry_drift_node_owned_omn21416.py -q -n 0 --no-cov -p no:cacheprovider -k node_owned",
+     "item_id": "dod-omn22473-ac1-node-owned"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validation/test_validator_event_registry_drift_node_owned_omn21416.py -q -n 0 --no-cov -p no:cacheprovider -k side_channel",
+     "item_id": "dod-omn22473-ac2-side-channel"
+    }
+   ],
+   "contract_id": "OMN-22473",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_core/validation/checker_event_registry_drift_sources.py"
+   ],
+   "lines_changed": 258,
+   "merge_commit": "94fac775b15321af4a3c775481539a2b76071b0c",
+   "merged_at": "2026-11-04T12:57:30-05:00",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-22473): the event-registry drift check skips node-owned events and accepts side-channel registrations (#2260)"
+  },
+  {
+   "band": "S",
+   "base_commit": "d738c9db6b3a53dcd1588bd0b4ec63f14679fd4e",
+   "check_files": [
+    "tests/validation/test_validator_requirements_consumer.py",
+    "tests/validation/test_validator_requirements_spec.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/validation/test_validator_requirements_consumer.py -q -o addopts='' -k 'canonical_file_shape'",
+     "item_id": "dod-omn22009-ac1-handshake-refusal"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/validation/test_validator_requirements_spec.py -q -o addopts='' -k 'test_shape_gates_apply_to_all_repos'",
+     "item_id": "dod-omn22009-shape-gates-apply-to-all"
+    }
+   ],
+   "contract_id": "OMN-22009",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "architecture-handshakes/validator-requirements.yaml"
+   ],
+   "lines_changed": 117,
+   "merge_commit": "958cd6d3aef8a9cc8900b2e1f45ac3f3b6b5af11",
+   "merged_at": "2026-11-05T01:25:44Z",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-22009): canonical-file-shape and shape-gate-independence apply to every repository (#2263)"
+  },
+  {
+   "band": "M",
+   "base_commit": "4ef5ddc5a1e341bbbafd271131e55a6662a569ae",
+   "check_files": [
+    "tests/unit/models/orchestrator/payloads/test_model_action_typed_payload.py",
+    "tests/unit/utils/test_workflow_executor_effect_werror.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/utils/test_workflow_executor_effect_werror.py -q -k 'test_effect_step_action_emits_no_warning'",
+     "item_id": "dod-omn17869-ac1-effect-action-no-warning"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/utils/test_workflow_executor_effect_werror.py -q -k 'completes_under_werror'",
+     "item_id": "dod-omn17869-ac2-effect-workflows-werror"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/models/orchestrator/payloads/test_model_action_typed_payload.py -q -k 'test_recommended_payloads'",
+     "item_id": "dod-omn17869-ac3-recommendation-table"
+    },
+    {
+     "check_type": "command",
+     "check_value": "uv run pytest tests/unit/utils/test_workflow_executor_effect_werror.py -q -k 'completes_under_werror'",
+     "item_id": "dod-omn17869-deploy-hosted-readback"
+    }
+   ],
+   "contract_id": "OMN-17869",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py"
+   ],
+   "lines_changed": 201,
+   "merge_commit": "9bfa5cf5ed05b64da7f1d72ae847aafd628658d9",
+   "merged_at": "2026-10-15T08:56:38Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-17869): effect workflow steps no longer emit a Werror-fatal payload recommendation warning (#1995)"
+  },
+  {
+   "band": "S",
+   "base_commit": "7bed448e7f7792006b2609d6e7b47069b634fae9",
+   "check_files": [
+    "tests/unit/scripts/ci/test_canonical_handler_shape_no_legacy.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/scripts/ci/test_canonical_handler_shape_no_legacy.py -q -o addopts= -k test_landed_no_legacy_receipt_remains_valid_on_descendants",
+     "item_id": "dod-omn20935-ac1-landed-proof"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/scripts/ci/test_canonical_handler_shape_no_legacy.py -q -o addopts= -k 'test_landed_no_legacy_receipt_remains_valid_on_descendants or test_landed_no_legacy_proof_cannot_be_replaced or test_old_handlerless_commit_cannot_be_cited_past_a_live_handler'",
+     "item_id": "dod-omn20935-ac2-replaced-inputs"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/scripts/ci/test_canonical_handler_shape_no_legacy.py -q -o addopts= -k test_landed_no_legacy_receipt_still_executes_contract_tests",
+     "item_id": "dod-omn20935-ac3-contract-tests"
+    }
+   ],
+   "contract_id": "OMN-20935",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "scripts/ci/canonical_handler_shape.py"
+   ],
+   "lines_changed": 156,
+   "merge_commit": "9ec8cd90765fe9d5af66c84532f389397e9b14f2",
+   "merged_at": "2026-10-17T21:17:04Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-20935): Canonical Handler-Shape Ratchet rejects previously landed flips wrongly (#2032)"
+  },
+  {
+   "band": "S",
+   "base_commit": "49e69fc7d3a4ccedf97c309b2c0f1834cd06c23a",
+   "check_files": [
+    "tests/unit/scripts/ci/test_ci_summary_partial_rerun.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/scripts/ci/test_ci_summary_partial_rerun.py -q --no-cov -o addopts='' -n 0",
+     "item_id": "dod-omn23399-ac1"
+    }
+   ],
+   "contract_id": "OMN-23399",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "scripts/ci/ci_summary_gate.py"
+   ],
+   "lines_changed": 203,
+   "merge_commit": "a84c3afcb9d39cb925bf347b43a4343fc3855209",
+   "merged_at": "2026-11-10T00:30:48Z",
+   "repository": "omnibase_core",
+   "subject": "OMN-23399: Carry earlier-attempt successes in ci_summary_gate partial re-runs (#2305)"
+  },
+  {
+   "band": "S",
+   "base_commit": "27417d9bec7c9ef59ed99b48e45090c4cec13b2d",
+   "check_files": [
+    "tests/ci/test_main_target_guard_prepush_omn20780.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_main_target_guard_prepush_omn20780.py -q -p no:randomly --no-cov",
+     "item_id": "dod-omn20780-main-target-guard-prepush"
+    }
+   ],
+   "contract_id": "OMN-20780",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    ".pre-commit-config.yaml",
+    "tests/ci/test_prepush_test_leg_retired_omn18176.py"
+   ],
+   "lines_changed": 207,
+   "merge_commit": "b05c7d6f6336659d4965123bbc78a5d5b8822d70",
+   "merged_at": "2026-10-14T15:33:00Z",
+   "repository": "omnibase_core",
+   "subject": "ci(OMN-20780): warn on a push to main through a main-target-guard pre-push hook (#1969)"
+  },
+  {
+   "band": "S",
+   "base_commit": "bd81e15d2a61ed215ee3f0f2bed28528094a2ebe",
+   "check_files": [
+    "tests/unit/constants/test_constants_runtime_profiles_projection_writers.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/constants/test_constants_runtime_profiles_projection_writers.py -q",
+     "item_id": "dod-omn19972-core1-run-trace-profile"
+    },
+    {
+     "check_type": "command",
+     "check_value": "uv run pytest tests/unit/constants/test_constants_runtime_profiles_projection_writers.py -q",
+     "item_id": "dod-omn19972-hosted-profile-probe"
+    }
+   ],
+   "contract_id": "OMN-19972",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_core/constants/constants_runtime_profiles.py"
+   ],
+   "lines_changed": 60,
+   "merge_commit": "c330f5a7d5972ba921174cafbebac0a18e28ab06",
+   "merged_at": "2026-10-19T09:00:50Z",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-19972): register the projection-writer-run-trace runtime profile (#2056)"
+  },
+  {
+   "band": "S",
+   "base_commit": "257ba54d6dad5aef724a260547ed6da35f25e4ca",
+   "check_files": [
+    "tests/unit/nodes/node_canonical_file_shape_check_compute/test_hook_fail_fast.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_canonical_file_shape_check_compute/test_hook_fail_fast.py -q --no-cov -n 0 -k refusal_stops_later_hooks",
+     "item_id": "dod-omn21648-ac1-refusal-ends-the-run"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_canonical_file_shape_check_compute/test_hook_fail_fast.py -q --no-cov -n 0 -k 'refusal_stops_later_hooks or refusal_result_unchanged'",
+     "item_id": "dod-omn21648-ac2-refusal-unchanged"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_canonical_file_shape_check_compute/test_hook_fail_fast.py -q --no-cov -n 0 -k 'refusal_stops_later_hooks or admitted_change_runs_later_hooks'",
+     "item_id": "dod-omn21648-ac3-admitted-change-runs-hooks"
+    }
+   ],
+   "contract_id": "OMN-21648",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    ".pre-commit-hooks.yaml"
+   ],
+   "lines_changed": 229,
+   "merge_commit": "c501b4c1dad2004c386dba561af2896ee3a15ffd",
+   "merged_at": "2026-10-31T09:33:11Z",
+   "repository": "omnibase_core",
+   "subject": "fix(OMN-21648): a canonical-file-shape refusal ends the consumer's pre-commit run (#2184)"
+  },
+  {
+   "band": "S",
+   "base_commit": "e15f8c4749bf04df272159d7f81acc5e5fa7eac2",
+   "check_files": [
+    "tests/unit/validators/test_canonical_file_shape.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validators/test_canonical_file_shape.py -q --no-cov -n 0 -k mod_file_growth",
+     "item_id": "dod-omn20864-ac1-growth-refused"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validators/test_canonical_file_shape.py -q --no-cov -n 0 -k \"mod_file_shrink or mod_file_comment or mod_file_equal or not_in_scope or mod_surface_paths\"",
+     "item_id": "dod-omn20864-ac2-controls-accepted"
+    },
+    {
+     "check_type": "command",
+     "check_value": "uv run pytest tests/unit/validators/test_canonical_file_shape.py -q --no-cov -n 0 -k \"mod_file or mod_surface\"",
+     "item_id": "dod-omn20864-deploy-hosted-ratchet"
+    }
+   ],
+   "contract_id": "OMN-20864",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_core/validators/canonical_file_shape.py"
+   ],
+   "lines_changed": 207,
+   "merge_commit": "d7ed23f1e89b8b6ce6079d303f8599c661c7f191",
+   "merged_at": "2026-10-15T18:55:42Z",
+   "repository": "omnibase_core",
+   "subject": "feat(OMN-20864): the canonical-file-shape ratchet refuses growth of a baselined mod script (#2006)"
+  },
+  {
+   "band": "S",
+   "base_commit": "7af1e05074296c27549e48688b587160a758ced8",
+   "check_files": [
+    "tests/unit/validation/dependency_pins/test_checker_dependency_pins.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/validation/dependency_pins/test_checker_dependency_pins.py -q --no-cov -o addopts='' -n 0 -k near_bound",
+     "item_id": "dod-omn23245-ac1"
+    }
+   ],
+   "contract_id": "OMN-23245",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_core/validation/checker_dependency_pins.py",
+    "src/omnibase_core/validation/contracts/dependency_pins.validation.yaml"
+   ],
+   "lines_changed": 165,
+   "merge_commit": "fe4f8362588a4b4b59d2e0e8e3b1535dc8c95fc0",
+   "merged_at": "2026-11-09T01:06:30Z",
+   "repository": "omnibase_core",
+   "subject": "OMN-23245: warn on pinned hook revs nearing the max-releases-behind bound (#2297)"
+  },
+  {
+   "band": "S",
+   "base_commit": "cb6637850488eb846564eb0e7ab64d684e11764a",
+   "check_files": [
+    "tests/unit/migrations/test_context_roi_code_eval_columns_omn23750.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/migrations/test_context_roi_code_eval_columns_omn23750.py -q -n 0 --no-cov -p no:cacheprovider",
+     "item_id": "dod-omn23750-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/migrations/test_context_roi_code_eval_columns_omn23750.py -q -n 0 --no-cov -p no:cacheprovider",
+     "item_id": "dod-omn23750-ac2"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/migrations/test_context_roi_code_eval_columns_omn23750.py -q -n 0 --no-cov -p no:cacheprovider",
+     "item_id": "dod-omn23750-ac3"
+    }
+   ],
+   "contract_id": "OMN-23750",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv",
+    "docker/migrations/forward/nodes/node_projection_context_roi/004_add_code_eval_trial_columns.sql"
+   ],
+   "lines_changed": 165,
+   "merge_commit": "13566fb2549178331acfeb13c2fdfa42357ed288",
+   "merged_at": "2026-11-11T15:57:31Z",
+   "repository": "omnibase_infra",
+   "subject": "OMN-23750: carry the coding-trial result columns in the shared migration tree (#5893)"
+  },
+  {
+   "band": "S",
+   "base_commit": "299c2adb11c731b7f550cf46043fd40fac65ea5c",
+   "check_files": [
+    "tests/unit/migrations/test_omn20008_metering_savings_pct_vendor.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/migrations/test_omn20008_metering_savings_pct_vendor.py -q",
+     "item_id": "dod-omn20008-ac5-vendor-0004-savings-pct"
+    }
+   ],
+   "contract_id": "OMN-20008",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv",
+    "docker/migrations/forward/nodes/node_projection_metering_summary/0004_metering_summary_savings_pct.sql"
+   ],
+   "lines_changed": 115,
+   "merge_commit": "159a447f7cf8839925abe837f3d4528d68ba375b",
+   "merged_at": "2026-10-11T08:15:05Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-20008): vendor metering_summary 0004, savings as a share of the baseline (#4795)"
+  },
+  {
+   "band": "S",
+   "base_commit": "d17efeed446f253aba659d7135492a9b14fee8b8",
+   "check_files": [
+    "tests/scripts/test_release_drift_monitor_no_staging.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_release_drift_monitor_no_staging.py tests/scripts/test_release_drift_monitor.py -q",
+     "item_id": "dod-omn20112-drift-monitor-reads-no-staging"
+    }
+   ],
+   "contract_id": "OMN-20112",
+   "control": "unscorable",
+   "control_source": "contract",
+   "files_changed": 3,
+   "held_paths": [
+    "scripts/release_drift_monitor.py"
+   ],
+   "lines_changed": 206,
+   "merge_commit": "1f6507f44c1502ff8c84afb3154adee970f5fbb6",
+   "merged_at": "2026-10-12T09:17:58Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-20112): the release drift monitor reads no staging deploy result (#4888)"
+  },
+  {
+   "band": "S",
+   "base_commit": "72d3f8c7f6c719c194597eb472966f80417d4b60",
+   "check_files": [
+    "tests/ci/test_check_runner_host_artifact_freshness.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/observability/runner_health/test_runner_fleet_config.py tests/ci/test_check_runner_host_artifact_freshness.py::test_live_deploy_script_sync_paths_all_exist_in_tree -k 'git_mirror or live_deploy_script_sync_paths_all_exist_in_tree' -q -p no:randomly",
+     "item_id": "dod-omn-20597-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_check_runner_host_artifact_freshness.py tests/scripts/test_deploy_runners_sync_paths.py -q -p no:randomly",
+     "item_id": "dod-omn-20597-ac4"
+    }
+   ],
+   "contract_id": "OMN-20597",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "scripts/ci/check_runner_host_artifact_freshness.py",
+    "tests/ci/fixtures/ci_live_contact/deploy_runners_sync_paths_omn20597.json"
+   ],
+   "lines_changed": 120,
+   "merge_commit": "2ba134c5760f2002b5f28a0166944061aae6ea79",
+   "merged_at": "2026-10-15T10:37:10Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-20597): parse only leading quoted entries in SYNC_PATHS (#4986)"
+  },
+  {
+   "band": "S",
+   "base_commit": "c75ce909f23da843d495c747c152be50dd837364",
+   "check_files": [
+    "tests/unit/migrations/test_omn19988_local_environment_vendor.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/migrations/test_omn19988_local_environment_vendor.py -q --no-cov",
+     "item_id": "dod-omn22715-ac1-vendor-binding"
+    }
+   ],
+   "contract_id": "OMN-22715",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv",
+    "docker/migrations/forward/nodes/node_projection_local_environment/0003_grant_delete_local_environment.sql"
+   ],
+   "lines_changed": 66,
+   "merge_commit": "32c276e7d68f5e72ac144bcfa2abcecfe8adc383",
+   "merged_at": "2026-11-09T16:17:09Z",
+   "repository": "omnibase_infra",
+   "subject": "Vendor node_projection_local_environment migration 0003 (OMN-22715) (#5827)"
+  },
+  {
+   "band": "S",
+   "base_commit": "8b4382a1606de7f0991533d888367917d9351c24",
+   "check_files": [
+    "src/omnibase_infra/cli/cli_delegate.py",
+    "tests/unit/cli/test_delegate_tenant_omn17427.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/cli/test_delegate_tenant_omn17427.py -q --no-cov",
+     "item_id": "dod-omn23356-ac1"
+    },
+    {
+     "check_type": "command",
+     "check_value": "sh -c 'test \"$(grep -c \"lab_run_hosts\" src/omnibase_infra/cli/cli_delegate.py)\" = 0'",
+     "item_id": "dod-omn23356-ac1"
+    },
+    {
+     "check_type": "command",
+     "check_value": "env PATH=\"$PWD/../../venv/bin:$PATH\" onex --help >/dev/null && grep -q \"overlay-store/lab_hosts/overlay.yaml\" src/omnibase_infra/cli/cli_delegate.py && ! grep -q \"lab_run_hosts\" src/omnibase_infra/cli/cli_delegate.py",
+     "item_id": "dod-omn23356-deploy"
+    }
+   ],
+   "contract_id": "OMN-23356",
+   "control": "unscorable",
+   "control_source": "falsifier_not_held",
+   "files_changed": 4,
+   "held_paths": [
+    "tests/integration/cli/test_delegate_lab_host_tenant_omn18829.py"
+   ],
+   "lines_changed": 131,
+   "merge_commit": "3a9cdbdcffd444963d75dc2163b97971c608dfa8",
+   "merged_at": "2026-11-09T21:10:02Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-23356): read lab host table from overlay projection under HOME (#5852)"
+  },
+  {
+   "band": "S",
+   "base_commit": "64076da9075e6318f61f4bd4e2806bfdbdfafd46",
+   "check_files": [
+    "tests/scripts/test_lab_principal_issuer_omn20150.py"
+   ],
+   "checks": [
+    {
+     "check_type": "command",
+     "check_value": "uv run pytest tests/scripts/test_lab_principal_issuer_omn20150.py -q -k scm_read_caller",
+     "item_id": "dod-omn21000-ac1-scm-read-grants"
+    }
+   ],
+   "contract_id": "OMN-21000",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "deploy/lab/developer-principal-grants.yaml"
+   ],
+   "lines_changed": 84,
+   "merge_commit": "5258236d1e11bd97e6ea6ce1cceca85dbb2cc03d",
+   "merged_at": "2026-10-11T21:33:20Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-21000): developer principals may send a source-control read command and read its terminal on the dev broker (#4872)"
+  },
+  {
+   "band": "S",
+   "base_commit": "87036b168b8695df3517cbb428f2a1a57420aec2",
+   "check_files": [
+    "tests/scripts/test_reconcile_sourced_scripts_bash32_omn21256.py",
+    "tests/scripts/test_stage_pinned_proof_root_omn19086.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_reconcile_sourced_scripts_bash32_omn21256.py -q -p no:cacheprovider -k bash32",
+     "item_id": "dod-omn21256-manifest-sources-bash32"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_reconcile_sourced_scripts_bash32_omn21256.py -q -p no:cacheprovider -k \"sourced_set or no_unguarded\"",
+     "item_id": "dod-omn21256-sourced-scripts-sweep"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_stage_pinned_proof_root_omn19086.py tests/scripts/test_cut_lab_ref.py -q -p no:cacheprovider -k 'bash32_guarded or dogfood_lane_is_isolated'",
+     "item_id": "dod-omn21256-proof-root-guarded-array"
+    }
+   ],
+   "contract_id": "OMN-21256",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "scripts/runtime_build/sibling_clone_manifest.sh",
+    "scripts/runtime_build/stage_pinned_proof_root.py"
+   ],
+   "lines_changed": 195,
+   "merge_commit": "5d169783f88929aad40ff3d56059873f9cd54242",
+   "merged_at": "2026-10-22T01:38:53Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-21256): sibling clone manifest sources under macOS bash 3.2 (#5235)"
+  },
+  {
+   "band": "S",
+   "base_commit": "5ff5e7fd29bebb42d3b1068e673aea9d1731bf17",
+   "check_files": [
+    "docker/runners/Dockerfile",
+    "tests/ci/test_runner_toolcache_libpython_omn23342.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_runner_toolcache_libpython_omn23342.py -q --no-cov --tb=line",
+     "item_id": "dod-omn23342-registration-tests"
+    },
+    {
+     "check_type": "command",
+     "check_value": "grep -qF 'onex-uv-python-libpython.conf' docker/runners/Dockerfile",
+     "item_id": "dod-omn23342-dockerfile-registers"
+    }
+   ],
+   "contract_id": "OMN-23342",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "docker/runners/runner-image.lock.json"
+   ],
+   "lines_changed": 179,
+   "merge_commit": "6446d58b41fc434626e9ddf11d7c95b7afba5cde",
+   "merged_at": "2026-11-09T19:47:06Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-23342): runner image keeps libpython3.12 on the loader path for the tool-cache Python (#5848)"
+  },
+  {
+   "band": "S",
+   "base_commit": "11e3f803c6f78f4a92c1509d8f985bbad65a5b59",
+   "check_files": [
+    "tests/ci/test_chain_lane_receipt_omn18866.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_chain_lane_receipt_omn18866.py -q",
+     "item_id": "dod-omn-18866-pr4808-chain-receipt"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_chain_lane_receipt_omn18866.py -q -k live_chain_receipt",
+     "item_id": "dod-omn-18866-live-chain-receipt-readback"
+    }
+   ],
+   "contract_id": "OMN-18866",
+   "control": "unscorable",
+   "control_source": "env",
+   "files_changed": 3,
+   "held_paths": [
+    "tests/ci/fixtures/omn18866_live_chain_receipt.json"
+   ],
+   "lines_changed": 88,
+   "merge_commit": "67f8dd3c784112062fc57e8c820c0595392ab0d7",
+   "merged_at": "2026-10-15T01:12:20Z",
+   "repository": "omnibase_infra",
+   "subject": "OMN-18866: record the live readback of the chain canary's sha-keyed receipt (#4961)"
+  },
+  {
+   "band": "S",
+   "base_commit": "b11a12ebbe37226f0c82d0f7f2c75fa5a7bd2b2c",
+   "check_files": [
+    "tests/unit/migrations/test_omn19996_last_used_vendor.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/migrations/test_omn19996_last_used_vendor.py -q -n 0 --no-cov",
+     "item_id": "dod-omn19996-last-used-migration-vendor"
+    }
+   ],
+   "contract_id": "OMN-19996",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv",
+    "docker/migrations/forward/nodes/node_projection_tenant_credentials/0010_tenant_credentials_last_used_at.sql"
+   ],
+   "lines_changed": 118,
+   "merge_commit": "79bc8a26389c860b775f7d4d827b980b4976fb39",
+   "merged_at": "2026-10-28T17:54:38Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-19996): vendor the credential last-used migration 0010 (#5419)"
+  },
+  {
+   "band": "S",
+   "base_commit": "3bc32bb116aa129858709d1e7b241d86cd23cf63",
+   "check_files": [
+    "tests/ci/test_dev_ahead_of_v0_38_71_omn13912.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_runner_image_identity.py tests/ci/test_dev_ahead_of_v0_38_71_omn13912.py -q -p no:randomly",
+     "item_id": "dod-omn13912-ac1-runner-image-identity"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_dev_ahead_of_v0_38_71_omn13912.py -q -p no:randomly",
+     "item_id": "dod-omn13912-ac2-release-identity"
+    }
+   ],
+   "contract_id": "OMN-13912",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "docker/runners/runner-image.lock.json",
+    "pyproject.toml",
+    "uv.lock"
+   ],
+   "lines_changed": 102,
+   "merge_commit": "7b588c355526a5c198aa669e5efdab487dbf4b6b",
+   "merged_at": "2026-10-13T00:57:59Z",
+   "repository": "omnibase_infra",
+   "subject": "chore(OMN-13912): post-release dev version bump to 0.38.72 (#4908)"
+  },
+  {
+   "band": "S",
+   "base_commit": "3126443c039ea67718d679c0148dda69d1d318c8",
+   "check_files": [
+    "docker/migrations/forward/nodes/node_projection_delegation/0064_delegation_events_data_source_experiment.sql",
+    "tests/unit/migrations/test_omn19448_data_source_experiment_vendored.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/migrations/test_omn19448_data_source_experiment_vendored.py -q",
+     "item_id": "dod-omn19448-vendored-0064-test"
+    },
+    {
+     "check_type": "command",
+     "check_value": "bash -eu -o pipefail <<'PROBE'\nmigrations=docker/migrations/forward/nodes/node_projection_delegation\nname=\"omn19448-readback-$$\"\ndocker run --detach --name \"$name\" -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16-alpine >/dev/null\ntrap 'docker rm -f \"$name\" >/dev/null' EXIT\nready=0\nfor _ in $(seq 1 60); do\n  if docker exec \"$name\" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then ready=1; break; fi\n  sleep 1\ndone\ntest \"$ready\" = 1\npsql() { docker exec \"$name\" psql -X -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -qAt \"$@\" </dev/null; }\napply() { docker exec -i \"$name\" psql -X -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -q < \"$migrations/$1\"; }\npsql -c \"CREATE TABLE delegation_events (id serial PRIMARY KEY)\"\napply 0049_delegation_events_data_source.sql\npsql -c \"INSERT INTO delegation_events (data_source) VALUES ('real'), ('fixture')\"\nif psql -c \"INSERT INTO delegation_events (data_source) VALUES ('experiment')\" 2>/dev/null; then echo \"experiment accepted before 0064\"; exit 1; fi\napply 0064_delegation_events_data_source_experiment.sql\npsql -c \"INSERT INTO delegation_events (data_source) VALUES ('experiment')\"\nif psql -c \"INSERT INTO delegation_events (data_source) VALUES ('bogus')\" 2>/dev/null; then echo \"bogus accepted after 0064\"; exit 1; fi\ntest \"$(psql -c \"SELECT string_agg(data_source, ',' ORDER BY id) FROM delegation_events\")\" = \"real,fixture,experiment\"\ntest \"$(psql -c \"SELECT convalidated FROM pg_constraint WHERE conname = 'delegation_events_data_source_check'\")\" = \"f\"\necho \"READBACK PASS\"\nPROBE\n",
+     "item_id": "dod-omn19448-postgres-0064-readback"
+    }
+   ],
+   "contract_id": "OMN-19448",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv"
+   ],
+   "lines_changed": 160,
+   "merge_commit": "7e969fd8c88ba393db4b5dcbcb680a397a785a7f",
+   "merged_at": "2026-10-24T11:31:11Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-19448): vendor delegation_events 0064, data_source admits experiment (#5326)"
+  },
+  {
+   "band": "S",
+   "base_commit": "18f66ed5db486234baf7bbfeba062596ccf37001",
+   "check_files": [
+    "tests/unit/cli/test_cli_skill.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/cli/test_cli_skill.py -k test_claude_code_binding_install_entry_resolves -q --no-cov",
+     "item_id": "dod-omn21335-ac2-bindings-arg"
+    }
+   ],
+   "contract_id": "OMN-21335",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnibase_infra/cli/skill_mapping.yaml"
+   ],
+   "lines_changed": 47,
+   "merge_commit": "9927981afdd1a00f70e3ef933e454069f63c2a42",
+   "merged_at": "2026-10-24T07:15:37Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-21335): surface bindings on the claude_code_binding_install skill (#5302)"
+  },
+  {
+   "band": "S",
+   "base_commit": "32c276e7d68f5e72ac144bcfa2abcecfe8adc383",
+   "check_files": [
+    "tests/unit/event_bus/test_contract_topic_scan_once_omn22607.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/event_bus/test_contract_topic_scan_once_omn22607.py -q",
+     "item_id": "dod-omn22607-ac1-scan-once"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/event_bus/test_contract_topic_scan_once_omn22607.py -q",
+     "item_id": "dod-omn22607-scan-line"
+    }
+   ],
+   "contract_id": "OMN-22607",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_infra/models/event_bus/model_contract_topic_scan.py",
+    "tests/integration/event_bus/test_contract_topic_scan_real_tree_omn22607.py"
+   ],
+   "lines_changed": 72,
+   "merge_commit": "9f3e691b933ebaec3d06d4201053c67c61ec06bb",
+   "merged_at": "2026-11-09T16:50:06Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-22607): a scan that runs logs one line so a boot counts its scans (#5834)"
+  },
+  {
+   "band": "S",
+   "base_commit": "82ea56b38ff89e14bc71829a5a79ae83f7ee37e6",
+   "check_files": [
+    "tests/integration/delegation/test_omn19558_broker_timeout_cause.py",
+    "tests/unit/runtime/test_service_delegation_dispatch_port.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/integration/delegation/test_omn19558_broker_timeout_cause.py -q",
+     "item_id": "dod-omn-19558-ac3-typed-timeout"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/runtime/test_service_delegation_dispatch_port.py -q -k timeout_without_recorded_cause_is_typed",
+     "item_id": "dod-omn-19558-ac3-typed-timeout"
+    }
+   ],
+   "contract_id": "OMN-19558",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_infra/runtime/service_delegation_dispatch_port.py"
+   ],
+   "lines_changed": 155,
+   "merge_commit": "a7fad2064d61a7aa8ebef27657d71143784714e8",
+   "merged_at": "2026-10-10T04:50:26Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-19558): preserve typed broker timeout cause (#4789)"
+  },
+  {
+   "band": "S",
+   "base_commit": "b11050012df8da1f3a58e7588556785f3bb54181",
+   "check_files": [
+    "tests/ci/test_docker_free_install_units_omn22713.py"
+   ],
+   "checks": [
+    {
+     "check_type": "command",
+     "check_value": "uv run --frozen pytest tests/ci/test_docker_free_install_units_omn22713.py -q && uv run --project scripts/deploy-agent --extra dev pytest scripts/deploy-agent/tests/unit/test_unit_drift.py -q",
+     "item_id": "dod-001"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_docker_free_install_units_omn22713.py -q",
+     "item_id": "dod-002"
+    }
+   ],
+   "contract_id": "OMN-22713",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "deploy/unit-drift-manifest.yaml",
+    "scripts/launchd/com.omninode.monitor-logs.plist"
+   ],
+   "lines_changed": 134,
+   "merge_commit": "aadb2638d142436616eab1f86cd2ea6f441049cd",
+   "merged_at": "2026-11-06T20:59:39Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-22713): the Docker log watcher launchd plist and one deploy agent plist leave the declared installs (#5747)"
+  },
+  {
+   "band": "S",
+   "base_commit": "f211e42fe4665f574392a16feef880896fa95b1e",
+   "check_files": [
+    "tests/unit/infra/test_catalog_local_profile.py",
+    "tests/unit/scripts/test_prepr_pool_stage0_tags_omn17427.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/scripts/test_prepr_pool_stage0_tags_omn17427.py -k defaults_to_dev_tags -q --no-cov",
+     "item_id": "dod-omn21968-default-dev-tags"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/infra/test_catalog_local_profile.py -k omn21968 -q --no-cov",
+     "item_id": "dod-omn21968-template-broker-memory"
+    }
+   ],
+   "contract_id": "OMN-21968",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "docker/local.env.example",
+    "scripts/runtime_build/prepr_pool_prove.sh"
+   ],
+   "lines_changed": 122,
+   "merge_commit": "c75ce909f23da843d495c747c152be50dd837364",
+   "merged_at": "2026-11-09T16:15:17Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-21968): the lab pool stack for an omnimarket proof stages dev-merge tags and boots on a 4G broker (#5839)"
+  },
+  {
+   "band": "S",
+   "base_commit": "1cbfc51ddaff66adc6e7fd6336cd83a330a2f341",
+   "check_files": [
+    "tests/scripts/test_lane_lock_status_omn19424.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_lane_lock_status_omn19424.py tests/scripts/test_lane_lock_omn16729.py -q",
+     "item_id": "dod-lane-lock-status-reads-the-flock"
+    }
+   ],
+   "contract_id": "OMN-19424",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "scripts/runtime_build/lane_lock.py"
+   ],
+   "lines_changed": 296,
+   "merge_commit": "c7b4d872a4c0bbd25aa7a1e6ce0c99cc0c451c36",
+   "merged_at": "2026-10-17T23:59:27Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-19424): lane_lock.py status reads whether a lane lock is held and by whom (#5091)"
+  },
+  {
+   "band": "S",
+   "base_commit": "0ba1a61d34b50513491f161d82ba187b582e4dfb",
+   "check_files": [
+    "tests/ci/test_anthropic_key_prefix_workflows_omn20967.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q",
+     "item_id": "dod-omn20967-ac1-workflow-key-scan"
+    }
+   ],
+   "contract_id": "OMN-20967",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    ".pre-commit-config.yaml"
+   ],
+   "lines_changed": 126,
+   "merge_commit": "d17efeed446f253aba659d7135492a9b14fee8b8",
+   "merged_at": "2026-10-12T08:27:51Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-20967): no Anthropic key value can enter a workflow (#4886)"
+  },
+  {
+   "band": "S",
+   "base_commit": "a3ceeeabacf6ce25e182bc1e134d40825e66b8e8",
+   "check_files": [
+    "tests/unit/migrations/test_omn19513_claude_hook_events_vendor.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/migrations/test_omn19513_claude_hook_events_vendor.py -q",
+     "item_id": "dod-omn20381-ac1-vendor-0007"
+    }
+   ],
+   "contract_id": "OMN-20381",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv",
+    "docker/migrations/forward/nodes/node_projection_claude_hook_events/0007_add_guard_refusal_and_token_usage.sql"
+   ],
+   "lines_changed": 213,
+   "merge_commit": "d1f197d56ee97b39cb6127d10f71cc5ab57bf4ca",
+   "merged_at": "2026-10-14T12:32:55Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-20381): vendor claude_hook_events migration 0007, the guard, refusal_reason and token usage columns (#4933)"
+  },
+  {
+   "band": "S",
+   "base_commit": "cf595eeba01d3fc92cf485e576548d259542efa9",
+   "check_files": [
+    "tests/unit/migrations/test_omn23169_summary_excludes_experiment_vendored.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/migrations/test_omn23169_summary_excludes_experiment_vendored.py -q",
+     "item_id": "dod-omn23169-vendored-0068-test"
+    }
+   ],
+   "contract_id": "OMN-23169",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv",
+    "docker/migrations/forward/nodes/node_projection_delegation/0068_delegation_summary_excludes_experiment.sql"
+   ],
+   "lines_changed": 219,
+   "merge_commit": "d4b60b051ce33ce4e43dffff48866c8a27c0b058",
+   "merged_at": "2026-11-09T21:05:37Z",
+   "repository": "omnibase_infra",
+   "subject": "Vendor omnimarket migration 0068, the delegation summary without experiment runs (OMN-23169) (#5818)"
+  },
+  {
+   "band": "S",
+   "base_commit": "b4f38762cbb164d327898aefcb2e19b4a92f9ac7",
+   "check_files": [
+    "tests/unit/migrations/test_omn18534_turn_count_vendored.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/migrations/test_omn18534_turn_count_vendored.py -q",
+     "item_id": "dod-omn18534-vendored-0069-test"
+    }
+   ],
+   "contract_id": "OMN-18534",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/migration_classes.yaml",
+    "docker/migrations/forward/_ledger/application-migrations.tsv",
+    "docker/migrations/forward/nodes/node_projection_delegation/0069_delegation_events_turn_count.sql"
+   ],
+   "lines_changed": 125,
+   "merge_commit": "d7a07edd786c6bed0ef4fc862aba8feedb27cd30",
+   "merged_at": "2026-11-10T09:31:48Z",
+   "repository": "omnibase_infra",
+   "subject": "feat(OMN-18534): vendor node_projection_delegation migration 0068_delegation_events_turn_count.sql (#5845)"
+  },
+  {
+   "band": "M",
+   "base_commit": "33b470fda2b8b235a1c6c35d27188ba264c03082",
+   "check_files": [
+    "docker/docker-compose.infra.yml",
+    "tests/ci/test_boot_universe_provision_omn22815.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_boot_universe_provision_omn22815.py -q --no-cov",
+     "item_id": "dod-omn22815-compose-provisioning-test"
+    },
+    {
+     "check_type": "command",
+     "check_value": "grep -c 'ONEX_BOOT_UNIVERSE_PROVISION' docker/docker-compose.infra.yml",
+     "item_id": "dod-omn22815-anchor-sets-switch"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_boot_universe_provision_omn22815.py::test_dev_boot_does_not_run_the_universe_warm tests/unit/runtime/auto_wiring/test_omn15330_contract_dlq_topics_provisioned.py tests/unit/runtime/auto_wiring/test_omn15832_projection_topics_provisioned.py tests/unit/runtime/test_topic_provisioner_integration.py -q --no-cov",
+     "item_id": "dod-omn22815-per-contract-confirm"
+    }
+   ],
+   "contract_id": "OMN-22815",
+   "control": "unscorable",
+   "control_source": "falsifier_not_held",
+   "files_changed": 4,
+   "held_paths": [
+    "tests/ci/test_application_database_acl_connect_inputs.py"
+   ],
+   "lines_changed": 188,
+   "merge_commit": "e28ccdff2c98817676b41110e77abb0aad04e408",
+   "merged_at": "2026-11-07T14:31:02Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-22815): the dev runtime provisions only the topics its deployed nodes declare, not the whole topic universe on every boot (#5764)"
+  },
+  {
+   "band": "M",
+   "base_commit": "9f3e691b933ebaec3d06d4201053c67c61ec06bb",
+   "check_files": [
+    "config/deploy_lane_routing.yaml",
+    "tests/ci/test_deploy_lane_verify_route_omn19507.py",
+    "tests/ci/test_dev_verify_effects_target_folded_omn23333.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_dev_verify_effects_target_folded_omn23333.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23333-folded-effects-target"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_deploy_lane_verify_route_omn19507.py tests/ci/test_lane_sibling_revision_omn18268.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23333-verify-route-regression"
+    },
+    {
+     "check_type": "command",
+     "check_value": "python3 -c 'import re; t = open(\"config/deploy_lane_routing.yaml\").read(); assert re.search(r\"\\n      runtime_container: omninode-runtime\\n(?:      #[^\\n]*\\n)*      effects_container: omninode-runtime\\n\", t)'",
+     "item_id": "dod-omn23333-routing-row-at-commit"
+    }
+   ],
+   "contract_id": "OMN-23333",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "scripts/ci/check_lane_sibling_revision.py"
+   ],
+   "lines_changed": 154,
+   "merge_commit": "e4d461e59f9cc0e846224bc492deae9ec9a57bd5",
+   "merged_at": "2026-11-09T19:17:27Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-23333): the dev lane's lab-pass receipt writer reads the container that carries the folded effects role (#5849)"
+  },
+  {
+   "band": "S",
+   "base_commit": "9078434372a990f5e6290e0fd4309d733c33a16f",
+   "check_files": [
+    "tests/unit/scripts/test_prepr_runtime_pool_omn18893.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/scripts/test_prepr_runtime_pool_omn18893.py -q -m \"not lab_overlay\"",
+     "item_id": "dod-pool-runs-the-post-bringup-command"
+    }
+   ],
+   "contract_id": "OMN-20117",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "scripts/runtime_build/prepr_pool_prove.sh",
+    "scripts/runtime_build/prepr_runtime_pool.py"
+   ],
+   "lines_changed": 278,
+   "merge_commit": "efd3d19296f577e33f5f0aec080af1f1337beb3e",
+   "merged_at": "2026-10-18T03:36:15Z",
+   "repository": "omnibase_infra",
+   "subject": "OMN-20117: Rebase PR #5101 onto refreshed origin/dev (#5101)"
+  },
+  {
+   "band": "S",
+   "base_commit": "af40afe779c3ce14e687d47b8c1d0813e10a4760",
+   "check_files": [
+    "tests/integration/cli/test_delegate_ceiling_guidance_omn19131.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/integration/cli/test_delegate_ceiling_guidance_omn19131.py -q",
+     "item_id": "dod-omn-19131-timeout-refusal-guidance"
+    }
+   ],
+   "contract_id": "OMN-19131",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_infra/cli/delegate_human_output.py",
+    "tests/unit/cli/test_delegate_human_output_omn19131.py"
+   ],
+   "lines_changed": 242,
+   "merge_commit": "f04a2cc7d3255ec0e0878a7f52ef4305d37b0d4e",
+   "merged_at": "2026-10-10T04:04:57Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-19131): name --timeout and the ceiling in the timeout refusal line (#4797)"
+  },
+  {
+   "band": "S",
+   "base_commit": "530e0cf0275fb6d8c75d5132a9f42e075f79bed9",
+   "check_files": [
+    "tests/unit/configs/test_pricing_manifest_opus_5_5_omn21431.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/configs/test_pricing_manifest_opus_5_5_omn21431.py -q -k opus_5_5_family_row_matches_the_published_rate",
+     "item_id": "dod-omn-21431-ac1-rates"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/configs/test_pricing_manifest_opus_5_5_omn21431.py -q -k opus_5_5_family_row_cites_the_provider_page",
+     "item_id": "dod-omn-21431-ac1-cited"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/configs/test_pricing_manifest_opus_5_5_omn21431.py -q -k opus_5_5_family_prompt_is_priced",
+     "item_id": "dod-omn-21431-ac2-priced"
+    }
+   ],
+   "contract_id": "OMN-21431",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnibase_infra/configs/pricing_manifest.yaml",
+    "tests/unit/configs/test_pricing_manifest_verified_omn20387.py"
+   ],
+   "lines_changed": 222,
+   "merge_commit": "f25bb6c1251b8a2b721caeed4fc152ec5e5cb95f",
+   "merged_at": "2026-10-27T15:03:08Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(pricing): price Claude Opus 5.5, Opus 5 and Fable 5.x in the manifest (OMN-21431) (#5410)"
+  },
+  {
+   "band": "S",
+   "base_commit": "a16f5794816f515e54b625a17381d5af1d03b6f9",
+   "check_files": [
+    "tests/ci/test_runner_broker_dispatch_wedge_rerun.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_runner_broker_dispatch_wedge_rerun.py -q -k \"TestOnlyFailedRunsAreRead or test_recorded_runs_list_reads_only_runs_that_can_hold_a_wedge\"",
+     "item_id": "dod-omn19998-ac1-run-conclusion-filter"
+    }
+   ],
+   "contract_id": "OMN-19998",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "scripts/ci/runner_broker_dispatch_wedge_rerun.sh",
+    "tests/ci/fixtures/omn19998_wedge_runs_list.json"
+   ],
+   "lines_changed": 176,
+   "merge_commit": "f8aa509094c6d741e63e913feb7ec6e03594352a",
+   "merged_at": "2026-10-11T11:55:26Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-19998): the broker-wedge rerun scan reads jobs only of runs that can hold a wedge job (#4850)"
+  },
+  {
+   "band": "S",
+   "base_commit": "7931048cd6594ee28fb863c2a5a400e1cb6bb5b0",
+   "check_files": [
+    "tests/scripts/test_resolve_node_migration_source_ref.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_resolve_node_migration_source_ref.py -q -k draft",
+     "item_id": "dod-omn-19155-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_resolve_node_migration_source_ref.py -q -k sha_binding",
+     "item_id": "dod-omn-19155-ac2"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/scripts/test_resolve_node_migration_source_ref.py -q -k whether_draft_or_ready",
+     "item_id": "dod-omn-19155-ac3"
+    }
+   ],
+   "contract_id": "OMN-19155",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "scripts/resolve_node_migration_source_ref.py"
+   ],
+   "lines_changed": 172,
+   "merge_commit": "fc702fdd858b5ad830c2a660bfeb708e161eb132",
+   "merged_at": "2026-10-15T08:01:55Z",
+   "repository": "omnibase_infra",
+   "subject": "fix(OMN-19155): allow draft node-migration source PRs to resolve their source ref (#4982)"
+  },
+  {
+   "band": "S",
+   "base_commit": "87c92f204d38576ba05727ea1d905201543e9b71",
+   "check_files": [
+    "tests/nodes/node_pytest_full_suite_host_guard/test_prepush_logins_overlay_model.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_pytest_full_suite_host_guard/test_prepush_logins_overlay_model.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23597-model-tests"
+    }
+   ],
+   "contract_id": "OMN-23597",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_pytest_full_suite_host_guard/models/model_prepush_logins_overlay.py"
+   ],
+   "lines_changed": 190,
+   "merge_commit": "02f6c32f7de4b8aa40f01593c261d2829570594e",
+   "merged_at": "2026-11-10T14:38:31-05:00",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23597): prepush login overlay gets a checked model (#5764)"
+  },
+  {
+   "band": "S",
+   "base_commit": "6000aef3f1f888cb32cc1260b88d72f94fc65b9e",
+   "check_files": [
+    "tests/test_omn19343_shadow_comparison.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_omn19343_shadow_comparison.py -q",
+     "item_id": "dod-insufficient-shadow-sample-ac1"
+    }
+   ],
+   "contract_id": "OMN-19343",
+   "control": "unscorable",
+   "control_source": "env",
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/delegation/shadow_comparison/harness.py",
+    "src/omnimarket/ranges/compare.py"
+   ],
+   "lines_changed": 108,
+   "merge_commit": "03387cb1d2fec9a73ef4d8ad865f5a4192f43be3",
+   "merged_at": "2026-10-06T07:27:12Z",
+   "repository": "omnimarket",
+   "subject": "OMN-19343: Refuse shadow comparisons with insufficient sample size (#3451)"
+  },
+  {
+   "band": "M",
+   "base_commit": "bda49355ddb321652b9c709e0dc3a4c14a7c8a49",
+   "check_files": [
+    "tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k default",
+     "item_id": "dod-omn23844-ac1-default-roots"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k same_clone",
+     "item_id": "dod-omn23844-ac2-same-clone"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py -q -k rendered",
+     "item_id": "dod-omn23844-ac3-ac4-rendered"
+    }
+   ],
+   "contract_id": "OMN-23844",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "config/test_file_durations.json",
+    "src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml"
+   ],
+   "lines_changed": 196,
+   "merge_commit": "1595a42907fea8999206f54b72fff64009a11f54",
+   "merged_at": "2026-11-11T18:24:53Z",
+   "repository": "omnimarket",
+   "subject": "OMN-23844: overlay store refresh units read the overlays clone first (#5850)"
+  },
+  {
+   "band": "M",
+   "base_commit": "73c34302c02146e17435b5a93bdecb8786598304",
+   "check_files": [
+    "benchmarks/delegation_ladder/tests/test_class_table.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k pins_only_when_requested -q -n 0 --no-cov -p no:randomly",
+     "item_id": "dod-omn23653-ac1-command-shape"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k runner_names_no_per_run_overlay_file -q -n 0 --no-cov -p no:randomly",
+     "item_id": "dod-omn23653-ac2-old-overlay-path-absent"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest benchmarks/delegation_ladder/tests/test_class_table.py -k second_local_arm_names_its_declared_backend -q -n 0 --no-cov -p no:randomly",
+     "item_id": "dod-omn23653-ac3-hosted-proxy"
+    }
+   ],
+   "contract_id": "OMN-23653",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "benchmarks/delegation_ladder/run_ladder.py"
+   ],
+   "lines_changed": 101,
+   "merge_commit": "179d481f9e8128d6c76d972510814f9f885ea44f",
+   "merged_at": "2026-11-11T13:30:33-06:00",
+   "repository": "omnimarket",
+   "subject": "OMN-23653: second local-model benchmark arm runs from the lab's declared settings (#5798)"
+  },
+  {
+   "band": "S",
+   "base_commit": "a59d1bfbdbfd2581bad68cd22de4a41f1740fe2b",
+   "check_files": [
+    "tests/unit/scripts/test_application_relation_inventory.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k 'retained_live_census_gap_fails_closed or checked_in_inventory_is_source_derived_and_current'",
+     "item_id": "dod-omn21336-relation-inventory"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k compaction_receipts_ownership_precedes_migration_delivery",
+     "item_id": "dod-omn21336-inventory-fresh"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k compaction_receipts_ownership_precedes_migration_delivery",
+     "item_id": "dod-omn21336-deploy-ownership-readback"
+    }
+   ],
+   "contract_id": "OMN-21336",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "docs/evidence/OMN-15423-relation-inventory.json",
+    "scripts/application-relation-ownership.yaml"
+   ],
+   "lines_changed": 194,
+   "merge_commit": "193912e08a36cdb9d97e3d8d87bd331a8974ed01",
+   "merged_at": "2026-10-24T03:49:54Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-21336): declare compaction_receipts and its node-owned migrations ahead of the writer node (#4347)"
+  },
+  {
+   "band": "S",
+   "base_commit": "14c88f49726b1a9123a57f9d145605e2b5f61c2f",
+   "check_files": [
+    "tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -q",
+     "item_id": "dod-timeout-stage-ac3"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_local_watchdog_timeout_names_inference_after_worker_boot -q",
+     "item_id": "dod-local-watchdog-inference-stage"
+    }
+   ],
+   "contract_id": "OMN-18978",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py"
+   ],
+   "lines_changed": 67,
+   "merge_commit": "1a32818c687bbefa8364daf492e9f43d0bdcb6db",
+   "merged_at": "2026-10-06T05:43:29Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-18978): include stage=inference in local effect watchdog timeout message (#3471)"
+  },
+  {
+   "band": "S",
+   "base_commit": "6bc43c27d3b73a8d6126917e0c0a08ca0299eb5a",
+   "check_files": [
+    "tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23465-ac1-single-pass-test"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_work_state_projection_compute/test_work_state_ledger_single_pass.py tests/nodes/node_work_state_projection_scheduled_effect/test_bus_roundtrip_work_state_projected.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23465-ac3-scheduled-single-pass"
+    }
+   ],
+   "contract_id": "OMN-23465",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_work_state_projection_effect/runtime_work_state.py"
+   ],
+   "lines_changed": 157,
+   "merge_commit": "1bff507dacb82cfc251d2f77379fd750a6dfe73a",
+   "merged_at": "2026-11-10T08:07:23-06:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23465): read the ledger in one pass in the work-state projection (#5692)"
+  },
+  {
+   "band": "M",
+   "base_commit": "7126c39946cc6ca31686bfb7e02abc5b5874b15e",
+   "check_files": [
+    "tests/unit/nodes/node_delegate_skill_orchestrator/test_retry_policy_contract_omn19561.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_retry_policy_contract_omn19561.py -q",
+     "item_id": "dod-omn19561-ac1-retry-policy-removed"
+    }
+   ],
+   "contract_id": "OMN-19561",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml",
+    "src/omnimarket/nodes/node_delegation_orchestrator/contract.yaml"
+   ],
+   "lines_changed": 125,
+   "merge_commit": "2058a5e7bff5f2512f92a45c29b657e86d2c1ced",
+   "merged_at": "2026-10-15T01:02:31Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-19561): the delegation contracts declare no retry_policy that no handler honours (#3915)"
+  },
+  {
+   "band": "M",
+   "base_commit": "4ae7b4f674b4eb6396a6236065b6c50d7a6c4abe",
+   "check_files": [
+    "tests/nodes/node_factory_floor_publish_effect/test_page_readiness_seam_omn23522.py",
+    "tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_simple_page_piece_panel.py tests/nodes/node_factory_floor_publish_effect/test_page_readiness_seam_omn23522.py -q -n 0 --no-cov",
+     "item_id": "dod-omn23522-page-tests"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_page_readiness_seam_omn23522.py -k computed_record -q -n 0 --no-cov",
+     "item_id": "dod-omn23522-ac4-hosted-record"
+    }
+   ],
+   "contract_id": "OMN-23522",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/nodes/node_factory_floor_publish_effect/page/simple.html"
+   ],
+   "lines_changed": 230,
+   "merge_commit": "21b20431a80ba3808ebf05ad924d898b5d60d905",
+   "merged_at": "2026-11-11T00:30:49-05:00",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23522): the main floor page words a working but not joined-up piece as not integrated and shows the ready count (#5734)"
+  },
+  {
+   "band": "S",
+   "base_commit": "a7dbd4c75941bbbd0461bd01da01dc5e2358adc3",
+   "check_files": [
+    "tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q --no-cov",
+     "item_id": "dod-omn23123-note-and-replay"
+    }
+   ],
+   "contract_id": "OMN-23123",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_floor_simple_effect/handlers/sources_deploy_agent.py"
+   ],
+   "lines_changed": 79,
+   "merge_commit": "2223b0796f91d6ca538722e4c03d10789a276c29",
+   "merged_at": "2026-11-10T02:04:27Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23123): correct deploy agent note about bounded result history (#5447)"
+  },
+  {
+   "band": "S",
+   "base_commit": "2351e4f208ba7900c6d1601c01f808b44eb018e1",
+   "check_files": [
+    "tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q",
+     "item_id": "dod-omn20601-ac1-ac2-house-overlay-publisher"
+    }
+   ],
+   "contract_id": "OMN-20601",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/nodes/node_house_routing_overlay_effect/contract.yaml",
+    "src/omnimarket/nodes/node_house_routing_overlay_effect/metadata.yaml",
+    "src/omnimarket/nodes/node_house_routing_overlay_effect/publish_house_overlay_command.py"
+   ],
+   "lines_changed": 242,
+   "merge_commit": "294a1d0bc60dae29c0c2489acd07504fcb5c8dcb",
+   "merged_at": "2026-10-05T16:32:23Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-20601): publish the house routing-overlay write command; declare the runtime profile (#3428)"
+  },
+  {
+   "band": "S",
+   "base_commit": "a05b68df8d746828e6beb7f7a0f3f944d0c6c5ee",
+   "check_files": [
+    "tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py -q",
+     "item_id": "dod-omn20555-bus-byok-throttle-climbs-catalogue"
+    }
+   ],
+   "contract_id": "OMN-20555",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py"
+   ],
+   "lines_changed": 250,
+   "merge_commit": "2de67c44e26048fa04830b16663e82bceead57e8",
+   "merged_at": "2026-10-05T18:01:39Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-20555): a throttled BYOK model on the bus path climbs to the next catalogue family (#3425)"
+  },
+  {
+   "band": "S",
+   "base_commit": "70d01d83d788694732459dac57bdecc98ca05844",
+   "check_files": [
+    "tests/projection/test_dashboard_bundle_pin_omn21469.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k \"seven_page_release or release_tag_peels or bundle_and_its_sidecar or publish_run_for_the_tag\"",
+     "item_id": "dod-omn21469-ac2-release-v1-1-11"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k \"seven_page_release or lists_settings_in_its_navigation\"",
+     "item_id": "dod-omn21469-ac3-bundle-pin-1-1-11"
+    }
+   ],
+   "contract_id": "OMN-21469",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "config/test_file_durations.json",
+    "pyproject.toml"
+   ],
+   "lines_changed": 253,
+   "merge_commit": "30f13902853afe40791b96218838a0e45f7447c2",
+   "merged_at": "2026-10-28T10:41:18-04:00",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-21469): pin omnidash v1.1.11 so onex dashboard serves the seven-page OmniDash (#4524)"
+  },
+  {
+   "band": "S",
+   "base_commit": "8455a05816c4260a511b68e12fd07b01d8144606",
+   "check_files": [
+    "tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k imported_before",
+     "item_id": "dod-omn21300-transport-import-before-timeout"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k slow_transport_import",
+     "item_id": "dod-omn21300-slow-import-no-timeout"
+    },
+    {
+     "check_type": "command",
+     "check_value": "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov",
+     "item_id": "dod-omn21300-deploy-probe"
+    }
+   ],
+   "contract_id": "OMN-21300",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_event_emit_effect/handlers/handler_event_emit_effect.py"
+   ],
+   "lines_changed": 189,
+   "merge_commit": "38affe56b67ecb647692cc5c8a4705c3f93292fc",
+   "merged_at": "2026-10-22T03:44:40Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-21300): import the Kafka transport before the emit publish timeout starts (#4300)"
+  },
+  {
+   "band": "S",
+   "base_commit": "0243a91343afc83b92b36bfc876ca31cf3a99232",
+   "check_files": [
+    "tests/test_throughput_tick_node_cold_start.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_throughput_tick_node_cold_start.py -q --no-cov --tb=line -k tick",
+     "item_id": "dod-omn22120-ac1"
+    }
+   ],
+   "contract_id": "OMN-22120",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/__init__.py"
+   ],
+   "lines_changed": 96,
+   "merge_commit": "3968d5a8ab484fb2f8fdc5b74839fafa871256f7",
+   "merged_at": "2026-11-02T23:26:35Z",
+   "repository": "omnimarket",
+   "subject": "OMN-22120: throughput tick decision node skips the runtime-models import on cold start (#4911)"
+  },
+  {
+   "band": "S",
+   "base_commit": "8f02b98bef8ed5fe83fe6841d85d9bcf345a7434",
+   "check_files": [
+    "tests/unit/lab_work/test_lab_host_table_ilo_address.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/lab_work/test_lab_host_table_ilo_address.py -q -n 0 --no-cov",
+     "item_id": "dod-omn23040-ac1-ilo-address-field"
+    }
+   ],
+   "contract_id": "OMN-23040",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/models/overlay_keys/model_overlay_documents.py"
+   ],
+   "lines_changed": 112,
+   "merge_commit": "3ea67734fe2af141a45667a636f08a814b63601d",
+   "merged_at": "2026-11-10T02:18:39-06:00",
+   "repository": "omnimarket",
+   "subject": "OMN-23040: ModelLabHostRow accepts the ilo_address column (#5377)"
+  },
+  {
+   "band": "S",
+   "base_commit": "5074b233b1058214f30196bf0e8e8539234b56c4",
+   "check_files": [
+    "tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/clone_dirty_converge -q --no-cov",
+     "item_id": "dod-omn23039-build-lock"
+    }
+   ],
+   "contract_id": "OMN-23039",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml",
+    "src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/handlers/handler_canonical_clone_dirty_converge_effect.py",
+    "src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/models/model_canonical_clone_dirty_converge.py"
+   ],
+   "lines_changed": 220,
+   "merge_commit": "3f218cf0a606be4e181fa0f60b34c8d96d6fb473",
+   "merged_at": "2026-11-09T13:36:53Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23039): dirty-converge skips clones while a build lock is held (#5444)"
+  },
+  {
+   "band": "M",
+   "base_commit": "294a1d0bc60dae29c0c2489acd07504fcb5c8dcb",
+   "check_files": [
+    "tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k a_claimed_command_with_no_terminal",
+     "item_id": "dod-omn19441-ac1-one-no-terminal-terminal"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k a_real_terminal_arriving_after_the_reaper",
+     "item_id": "dod-omn19441-ac2-late-terminal-is-evidence"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k never_reaps_a_command_that_already_holds_a_terminal",
+     "item_id": "dod-omn19441-ac3-never-reaps-a-terminal-holder"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'shared_correlation or replay_keeps_delivery_id'",
+     "item_id": "dod-omn19441-ac4-command-keyed"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'contract_routes_tick or no_terminal_round_trip'",
+     "item_id": "dod-omn19441-ac5-contract-and-projection"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k test_missing_slot_verdict_keeps_attempt_evidence_without_publishing",
+     "item_id": "dod-omn19441-ac6-terminal-slot-verdict"
+    }
+   ],
+   "contract_id": "OMN-19441",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_delegation_claim.py"
+   ],
+   "lines_changed": 97,
+   "merge_commit": "41db226f58e885764af2570dfa738cd6943e291c",
+   "merged_at": "2026-10-05T16:33:43Z",
+   "repository": "omnimarket",
+   "subject": "OMN-19441: require a terminal slot verdict before publishing (#3422)"
+  },
+  {
+   "band": "S",
+   "base_commit": "c8a427a7a5cf0de78617b1deb471f14f1d02f926",
+   "check_files": [
+    "src/omnimarket/nodes/node_hook_lane_join_compute/models/model_hook_lane_join.py",
+    "tests/nodes/node_hook_lane_join_compute/test_error_chain_hook_lane_join.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov",
+     "item_id": "dod-omn22576-node-tests"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov -k \"unmatched or silent\"",
+     "item_id": "dod-omn22576-unmatched-and-silent"
+    },
+    {
+     "check_type": "command",
+     "check_value": "grep -q silent_hosts src/omnimarket/nodes/node_hook_lane_join_compute/models/model_hook_lane_join.py",
+     "item_id": "dod-omn22576-unmatched-and-silent"
+    }
+   ],
+   "contract_id": "OMN-22576",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/nodes/node_hook_lane_join_compute/handlers/handler_hook_lane_join.py",
+    "src/omnimarket/nodes/node_hook_lane_join_compute/models/__init__.py"
+   ],
+   "lines_changed": 122,
+   "merge_commit": "42a1a083eb5c001e4d2184d5553ec8d2923e82e2",
+   "merged_at": "2026-11-10T09:14:13-06:00",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-22576): name unmatched agents and silent hosts in the hook lane join (#5509)"
+  },
+  {
+   "band": "M",
+   "base_commit": "42a1a083eb5c001e4d2184d5553ec8d2923e82e2",
+   "check_files": [
+    "src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_integrating.py",
+    "tests/nodes/node_floor_fill_candidates_compute/test_floor_fill_candidates_parity.py",
+    "tests/nodes/node_floor_fill_candidates_compute/test_floor_item_states_seam.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_integrating.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23489-integrating-reader"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_floor_fill_candidates_compute/test_floor_item_states_seam.py tests/nodes/node_floor_fill_candidates_compute/test_floor_fill_candidates_parity.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23489-item-state-seam"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_integrating.py -k stopped_lane_is_listed -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23489-ac3-stopped-lane-listed"
+    }
+   ],
+   "contract_id": "OMN-23489",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/nodes/node_floor_fill_candidates_compute/handlers/handler_floor_fill_candidates.py"
+   ],
+   "lines_changed": 246,
+   "merge_commit": "4b6f89b58b8f691ec1db9ce94fc7bf08e4994e8a",
+   "merged_at": "2026-11-10T10:20:23-05:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23489): the fill reads a floor record whose jobs are integrating (#5721)"
+  },
+  {
+   "band": "S",
+   "base_commit": "a3e3a71093c76545fdee25ce104801e003984932",
+   "check_files": [
+    "src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_dotted_task_id.py",
+    "src/omnimarket/nodes/node_floor_fill_reducer/tests/test_floor_fill_reducer.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_dotted_task_id.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23463-dotted-task-id"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer/tests/test_floor_fill_reducer.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23463-reducer-keys"
+    }
+   ],
+   "contract_id": "OMN-23463",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/models/floor_fill/model_floor_fill_state.py",
+    "src/omnimarket/nodes/node_floor_fill_reducer/handlers/handler_floor_fill_reducer.py"
+   ],
+   "lines_changed": 153,
+   "merge_commit": "4e92c094bd0d6d7b28d7389b540de035b8240176",
+   "merged_at": "2026-11-10T11:15:23Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23463): fill accepts a real task id that contains a dot (#5715)"
+  },
+  {
+   "band": "S",
+   "base_commit": "6fe5b6c6ed4bdcf2ec72e35ce96d1d7c8cb26cfa",
+   "check_files": [
+    "tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py -q -n 0 --no-cov",
+     "item_id": "dod-omn23222-ac1-stale-envs-pruned"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py -q -n 0 --no-cov",
+     "item_id": "dod-deploy-omn23222-retention-tests"
+    }
+   ],
+   "contract_id": "OMN-23222",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py"
+   ],
+   "lines_changed": 223,
+   "merge_commit": "5074b233b1058214f30196bf0e8e8539234b56c4",
+   "merged_at": "2026-11-09T13:33:58Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23222): dod-verify prunes the old hermetic verify environments a host holds (#5515)"
+  },
+  {
+   "band": "S",
+   "base_commit": "c0b2dc9c6f676495c80207ce3bbd49a47b986c0a",
+   "check_files": [
+    "tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py",
+    "tests/test_delegation_refusal_reads_overlay.py",
+    "tests/unit/delegation/test_routing_globals_isolated_omn21433.py"
+   ],
+   "checks": [
+    {
+     "check_type": "command",
+     "check_value": "python3 - <<'PYCODE'\nimport ast\nimport subprocess\nsource = subprocess.check_output([\"git\", \"show\", \"HEAD:tests/test_delegation_refusal_reads_overlay.py\"], text=True)\ntree = ast.parse(source)\nreset = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == \"_reset_routing_caches\")\nassert {\"routing._load_bifrost_endpoints.cache_clear()\", \"routing._get_task_class_contract.cache_clear()\", \"routing._config = None\"} <= {ast.unparse(node) for node in reset.body}\nfixture = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == \"contract_without_overlay\")\nassert any(isinstance(node, ast.Expr) and ast.unparse(node) == \"_reset_routing_caches()\" for node in fixture.body)\ncleanup = next(node for node in fixture.body if isinstance(node, ast.Try))\nassert any(isinstance(node, ast.Expr) and ast.unparse(node) == \"_reset_routing_caches()\" for node in cleanup.finalbody)\nprint(\"committed overlay fixture resets all three routing globals before and after the test\")\nPYCODE",
+     "item_id": "dod-omn21433-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_delegation_refusal_reads_overlay.py tests/unit/delegation/test_cloud_escalation_omn13140.py -q --no-cov --tb=line",
+     "item_id": "dod-omn21433-ac1"
+    },
+    {
+     "check_type": "command",
+     "check_value": "python3 - <<'PYCODE'\nimport ast\nimport subprocess\nsource = subprocess.check_output([\"git\", \"show\", \"HEAD:tests/unit/delegation/test_routing_globals_isolated_omn21433.py\"], text=True)\ntree = ast.parse(source)\nassignments = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Constant)}\nassert assignments[\"POLLUTER\"] == \"tests/test_delegation_refusal_reads_overlay.py\"\nassert assignments[\"VICTIM\"] == \"tests/unit/delegation/test_cloud_escalation_omn13140.py\"\ncall = next(node for node in ast.walk(tree) if isinstance(node, ast.Call) and ast.unparse(node.func) == \"subprocess.run\")\nassert [ast.unparse(node) for node in call.args[0].elts[3:5]] == [\"POLLUTER\", \"VICTIM\"]\nassert any(isinstance(node, ast.Assert) and ast.unparse(node.test) == \"result.returncode == 0\" for node in ast.walk(tree))\nprint(\"committed regression executes the polluter then victim and asserts the child exit status\")\nPYCODE",
+     "item_id": "dod-omn21433-ac2"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line",
+     "item_id": "dod-omn21433-ac2"
+    },
+    {
+     "check_type": "command",
+     "check_value": "python3 - <<'PYCODE'\nimport ast\nimport subprocess\nsource = subprocess.check_output([\"git\", \"show\", \"HEAD:tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py\"], text=True)\ntree = ast.parse(source)\nhelper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == \"_record_backoff_sleeps\")\nassert any(isinstance(node, ast.Call) and ast.unparse(node) == \"monkeypatch.setattr(adapters, 'time', types.SimpleNamespace(sleep=sleeps.append))\" for node in ast.walk(helper))\nfor name in (\"test_contention_is_retried_then_given_up_with_the_attempt_count\", \"test_a_writer_slow_to_exit_adds_no_polling_sleep_to_the_backoff\"):\n    test = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name)\n    assert any(isinstance(node, ast.Call) and ast.unparse(node) == \"_record_backoff_sleeps(monkeypatch)\" for node in ast.walk(test))\n    assert any(isinstance(node, ast.Assert) and ast.unparse(node.test) == \"sleeps == [2.0, 4.0, 6.0, 8.0]\" for node in ast.walk(test))\nprint(\"committed contention tests record adapter-local backoff and assert the exact delays\")\nPYCODE",
+     "item_id": "dod-omn21433-ac3"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py -q --no-cov --tb=line",
+     "item_id": "dod-omn21433-ac3"
+    }
+   ],
+   "contract_id": "OMN-21433",
+   "control": "fail_check",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/test_file_durations.json"
+   ],
+   "lines_changed": 231,
+   "merge_commit": "54a6d7231bbac488f4794aa0ad69a180f0a59053",
+   "merged_at": "2026-10-28T05:44:36Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-21433): two order and timing test defects behind Tests (Split 18/20) and (Split 4/20) (#4523)"
+  },
+  {
+   "band": "S",
+   "base_commit": "bd0002cc5ed2d10435e3294dce7d5adeb0e54b86",
+   "check_files": [
+    "tests/unit/delegation/test_omn18265_provider_error_in_200_body.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q",
+     "item_id": "dod-omn18265-provider-error-parity"
+    }
+   ],
+   "contract_id": "OMN-18265",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/inference/provider_response_error.py",
+    "src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py"
+   ],
+   "lines_changed": 175,
+   "merge_commit": "5e801605b1370507cf5cb826b3c762ff97d6e57b",
+   "merged_at": "2026-10-05T12:50:21Z",
+   "repository": "omnimarket",
+   "subject": "OMN-18265: preserve provider verdicts across the bus (#3419)"
+  },
+  {
+   "band": "S",
+   "base_commit": "409989eb1b5e7440525e33f8b028a3ecae4247a0",
+   "check_files": [
+    "tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_r5_backend_override.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23555-override-tests"
+    }
+   ],
+   "contract_id": "OMN-23555",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/nodes/node_delegation_scenario_r5_effect/contract.yaml",
+    "src/omnimarket/nodes/node_delegation_scenario_r5_effect/handlers/handler_scenario_r5.py"
+   ],
+   "lines_changed": 118,
+   "merge_commit": "5fe8005e170a6e5be48a1d3e9e6ab23812ef8478",
+   "merged_at": "2026-11-10T16:31:17Z",
+   "repository": "omnimarket",
+   "subject": "OMN-23555: the R5 readiness check takes its backend from the host settings file (#5754)"
+  },
+  {
+   "band": "S",
+   "base_commit": "863f25eabe5233f7128823f2480cfa6a790b9794",
+   "check_files": [
+    "tests/chain/test_landing_grant_seam.py",
+    "tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_command_topic_provisioned.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23459-failure-terminal-provisioned"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/chain/test_landing_grant_seam.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23459-granted-topics-provisioned"
+    }
+   ],
+   "contract_id": "OMN-23459",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/nodes/node_pr_landing_decision_compute/contract.yaml"
+   ],
+   "lines_changed": 213,
+   "merge_commit": "646d5e3851cf7fd3a827575606f5888d774649f6",
+   "merged_at": "2026-11-11T03:10:10Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23459): declare the landing decision failure terminal for the topic provisioner (#5714)"
+  },
+  {
+   "band": "S",
+   "base_commit": "7590c49fe39d8684a93a06c6f94c48a284c89925",
+   "check_files": [
+    "tests/projection/test_dashboard_bundle_failure_omn20705.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py::test_the_printed_root_serves_the_verified_pages -q -p no:randomly",
+     "item_id": "dod-omn20705-ac1-printed-root-serves-pages"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py::test_an_unreachable_bundle_exits_non_zero_and_names_the_failure_on_stderr -q -p no:randomly",
+     "item_id": "dod-omn20705-ac2-unreachable-exits-non-zero"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py::test_a_bundle_failing_its_checksum_exits_non_zero_and_names_the_failure_on_stderr -q -p no:randomly",
+     "item_id": "dod-omn20705-ac2-checksum-exits-non-zero"
+    }
+   ],
+   "contract_id": "OMN-20705",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/cli/cli_local.py",
+    "tests/projection/test_local_serving_auth.py"
+   ],
+   "lines_changed": 273,
+   "merge_commit": "6d5481a60e96f757a7260e5fcb7b582b1280daaa",
+   "merged_at": "2026-10-16T22:30:05Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-20705): onex dashboard verifies the bundle before printing its address, and a failure exits 1 named on stderr (#4030)"
+  },
+  {
+   "band": "S",
+   "base_commit": "e7a2ee8706af46f498804fe467cf408fe0f80782",
+   "check_files": [
+    "tests/nodes/node_delegation_eval_orchestrator/test_publish_label_record.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_publish_label_record.py -q",
+     "item_id": "dod-omn20571-ac1-label-record-publisher"
+    }
+   ],
+   "contract_id": "OMN-20571",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/nodes/node_delegation_eval_orchestrator/metadata.yaml",
+    "src/omnimarket/nodes/node_delegation_eval_orchestrator/publish_label_record.py"
+   ],
+   "lines_changed": 269,
+   "merge_commit": "6db638ca6abcc9afff985021ae2a41a4d7100f2d",
+   "merged_at": "2026-10-05T11:06:58Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-20571): publish the delegation-eval label-record command from a node-package publisher (#3412)"
+  },
+  {
+   "band": "S",
+   "base_commit": "2cab83f1727069762e1703a1357e40daf616f1a1",
+   "check_files": [
+    "tests/nodes/node_host_installer_registry_units/test_log_directory.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_log_directory.py -q --no-cov",
+     "item_id": "dod-omn23111-log-directory-tests"
+    }
+   ],
+   "contract_id": "OMN-23111",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml",
+    "src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py",
+    "src/omnimarket/nodes/node_host_installer_registry_units/templates/ai.omninode.registry-module-tick.plist.tmpl"
+   ],
+   "lines_changed": 198,
+   "merge_commit": "6eb582222a76dd2f42c61e5cd3f6f19c5a0d0417",
+   "merged_at": "2026-11-09T00:15:23Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23111): the piece 4 reader resolves its launchd log directory on a host whose registry root is an external volume (#5417)"
+  },
+  {
+   "band": "M",
+   "base_commit": "fedcc9b9a743497be7c3b60b1c4fb58854cbf3a8",
+   "check_files": [
+    "tests/test_omn23159_local_alerts_exposure_reader_declared.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -n 0 --no-cov",
+     "item_id": "dod-omn23414-ac1-optout-deleted"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -n 0 --no-cov",
+     "item_id": "dod-omn23414-ac2-keys-stay-paired"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py -q -n 0 --no-cov",
+     "item_id": "dod-omn23414-ac4-exposure-stays-in-gate-input"
+    }
+   ],
+   "contract_id": "OMN-23414",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_projection_local_alerts/contract.yaml"
+   ],
+   "lines_changed": 178,
+   "merge_commit": "7498975dd0db89e96bdfe05cd932110af72081ed",
+   "merged_at": "2026-11-10T03:32:34Z",
+   "repository": "omnimarket",
+   "subject": "chore(OMN-23414): the local-alerts opt-out expires now that the status page declares a reader (#5684)"
+  },
+  {
+   "band": "M",
+   "base_commit": "9638c3a54997703a4d8c3d4f9696ec20081403ca",
+   "check_files": [
+    "src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_cascade_checks.py",
+    "tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py",
+    "tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -k test_thread_gate_red_is_the_pull_requests_own_red -q --no-cov --tb=line",
+     "item_id": "dod-omn21917-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -k \"test_hostile_review_family_is_still_set_aside_beside_the_thread_gate or test_thread_gate_red_is_the_pull_requests_own_red\" -q --no-cov --tb=line",
+     "item_id": "dod-omn21917-ac2"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py -k test_thread_gate_red_is_per_pr_even_with_armed_peers_carrying_it -q --no-cov --tb=line",
+     "item_id": "dod-omn21917-ac2-classify-ci-red"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -k test_thread_gate_red_is_never_presented_as_a_reviewer_rerun -q --no-cov --tb=line",
+     "item_id": "dod-omn21917-ac3"
+    },
+    {
+     "check_type": "command",
+     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\npath=src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_cascade_checks.py;\ncurl --fail --silent --show-error --location --max-time 10 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n  --output \"$readback_dir/source.py\";\ncmp \"$path\" \"$readback_dir/source.py\";\ngrep -F 'hostile review(?!\\s+thread gate)' \"$readback_dir/source.py\";\nprintf 'classifier thread-gate exclusion source readback matched %s\\n' \"$revision\"\n",
+     "item_id": "dod-omn21917-deploy-probe"
+    }
+   ],
+   "contract_id": "OMN-21917",
+   "control": "fail_check",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_ci_red.py"
+   ],
+   "lines_changed": 189,
+   "merge_commit": "7a96f247f42956b771bb12b9d3c882e0d6c8fd97",
+   "merged_at": "2026-11-03T18:10:00-05:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-21917): the landing red rules take the Hostile Review Thread Gate as the pull request's own red (#4816)"
+  },
+  {
+   "band": "S",
+   "base_commit": "bd48011e82ff071a0390a4a96b7bb1c775112915",
+   "check_files": [
+    "tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_before_inference_omn21365.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_before_inference_omn21365.py -q --no-cov",
+     "item_id": "dod-omn21365-routed-rung-test"
+    }
+   ],
+   "contract_id": "OMN-21365",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "config/test_file_durations.json",
+    "src/omnimarket/nodes/node_delegate_skill_orchestrator/dispatch_progress.py"
+   ],
+   "lines_changed": 148,
+   "merge_commit": "82ffe83a019ea566f8585752cfe04718a6d1423a",
+   "merged_at": "2026-11-01T12:33:46Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-21365): a routed run the budget cancels records its rung as a timeout attempt (#4753)"
+  },
+  {
+   "band": "S",
+   "base_commit": "8003c398551ac909a5cc85464c2df691c86ea77b",
+   "check_files": [
+    "tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py -q --no-cov",
+     "item_id": "dod-omn21776-refusal"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py -q --no-cov -k declared",
+     "item_id": "dod-omn21776-declared"
+    }
+   ],
+   "contract_id": "OMN-21776",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/configs/runtime_paths.yaml",
+    "src/omnimarket/nodes/node_dod_verify/__main__.py",
+    "src/omnimarket/nodes/node_dod_verify/services/evidence_home.py"
+   ],
+   "lines_changed": 298,
+   "merge_commit": "8a06f5f9c0ab41cbff683961b2d9cfc28fdde532",
+   "merged_at": "2026-10-31T15:56:03Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-21776): node_dod_verify refuses a receipt root inside a retired repository and reads the evidence home from the runtime-path authority (#4688)"
+  },
+  {
+   "band": "S",
+   "base_commit": "4e92c094bd0d6d7b28d7389b540de035b8240176",
+   "check_files": [
+    "tests/nodes/node_sibling_pin_hook_revs_compute/test_apply_sibling_pin_hook_revs.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov",
+     "item_id": "dod-omn22753-node-tests"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -k test_cli_apply_plans_the_pin_alone_and_leaves_a_config_with_no_block_untouched -q --no-cov",
+     "item_id": "dod-omn22753-cli-untouched-config"
+    }
+   ],
+   "contract_id": "OMN-22753",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_sibling_pin_hook_revs_compute/runtime_sibling_pin_hook_revs.py"
+   ],
+   "lines_changed": 42,
+   "merge_commit": "917c5de8a25d43e1ca598573add8a68f7e38b14b",
+   "merged_at": "2026-11-10T06:16:39-05:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-22753): the hook revs command line leaves a config with no block of the repository untouched (#5527)"
+  },
+  {
+   "band": "S",
+   "base_commit": "278e377ab624abc07f1491f9ee3f70ad277b4c1c",
+   "check_files": [
+    "tests/test_omn19514_dod_verdict_delegation_run.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_omn19514_dod_verdict_delegation_run.py -q",
+     "item_id": "dod-delegation-link-ac1"
+    }
+   ],
+   "contract_id": "OMN-19528",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_dod_verify/__main__.py"
+   ],
+   "lines_changed": 131,
+   "merge_commit": "9eabaf7c61a70c7c08b4eaf355682ce3c771a6da",
+   "merged_at": "2026-10-05T22:59:21Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-19528): preserve delegation links in DoD verifier CLI (#3455)"
+  },
+  {
+   "band": "S",
+   "base_commit": "796051348e4f9cd8cebae875bf3e3cc39bb2cce1",
+   "check_files": [
+    "tests/unit/delegated_code_edit/test_loop_ports.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"prompt_by_file_and_carries\"",
+     "item_id": "dod-code-edit-prompt-file-argv-ac10"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"prompt_over_one_argv_word\"",
+     "item_id": "dod-code-edit-long-prompt-by-file-ac11"
+    }
+   ],
+   "contract_id": "OMN-20291",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/delegated_code_edit/loop_ports.py"
+   ],
+   "lines_changed": 112,
+   "merge_commit": "a2b1629174fed85f2e49a6962087f306102e4a05",
+   "merged_at": "2026-10-04T08:32:38Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-20291): code-edit node passes its turn prompt to onex delegate by file (#3303)"
+  },
+  {
+   "band": "S",
+   "base_commit": "179d481f9e8128d6c76d972510814f9f885ea44f",
+   "check_files": [
+    "tests/ci/test_omn23566_lane_tenant_key.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_omn23566_lane_tenant_key.py -q --no-cov -n 0 -p no:randomly",
+     "item_id": "dod-omn23605-ac1-tenant"
+    }
+   ],
+   "contract_id": "OMN-23605",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "config/ci_bus_lanes.yaml",
+    "config/test_file_durations.json",
+    "tests/ci/test_sibling_core_pin_pair_omn17427.py"
+   ],
+   "lines_changed": 124,
+   "merge_commit": "a3cc080459924ff30fb82c17a796f8370f808e7b",
+   "merged_at": "2026-11-11T14:11:48-06:00",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23605): the lane the chain canary grades declares its tenant_id (#5767)"
+  },
+  {
+   "band": "S",
+   "base_commit": "b45ea0d3c6ba244d156f58ac39654356e574dbed",
+   "check_files": [
+    "tests/projection/test_dashboard_bundle_pin_omn23212.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly",
+     "item_id": "dod-omn23212-ac1-bundle-pin-1-1-12"
+    }
+   ],
+   "contract_id": "OMN-23212",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "config/test_file_durations.json",
+    "pyproject.toml"
+   ],
+   "lines_changed": 102,
+   "merge_commit": "a6466476918156377f3ffd741e9ba88e22534428",
+   "merged_at": "2026-11-11T13:31:02-05:00",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23212): pin omnidash v1.1.12 so onex dashboard serves the work since v1.1.11 (#5848)"
+  },
+  {
+   "band": "S",
+   "base_commit": "110f9d2587f50da6d37734fb266b1e44c8e6124e",
+   "check_files": [
+    "tests/test_omn20034_goal_trace_ownership_declared.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_omn20034_goal_trace_ownership_declared.py -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23341-ownership-declared"
+    }
+   ],
+   "contract_id": "OMN-23341",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "docs/evidence/OMN-15423-relation-inventory.json",
+    "scripts/application-relation-ownership.yaml",
+    "tests/unit/scripts/test_application_relation_inventory.py"
+   ],
+   "lines_changed": 262,
+   "merge_commit": "a7dbd4c75941bbbd0461bd01da01dc5e2358adc3",
+   "merged_at": "2026-11-10T02:02:51Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23341): declare ownership of the goal-trace tables ahead of their migration (#5618)"
+  },
+  {
+   "band": "S",
+   "base_commit": "54d1c08d71dd32fbcd4d48b8dcf7022722f6fb79",
+   "check_files": [
+    "tests/unit/lab_work/test_lab_work_host_table.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov --tb=line -k cap_zero",
+     "item_id": "dod-omn22015-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov --tb=line -k unit_slots",
+     "item_id": "dod-omn22015-ac2"
+    }
+   ],
+   "contract_id": "OMN-22015",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/models/overlay_keys/model_overlay_documents.py"
+   ],
+   "lines_changed": 87,
+   "merge_commit": "a8372469c5b86a361ea0501d94c168c7a4d8db15",
+   "merged_at": "2026-11-02T20:46:31Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-22015): a lab host row may carry cap 0 and unit_slots, so the host table stays readable and lab-run stops exiting 69 (#4893)"
+  },
+  {
+   "band": "S",
+   "base_commit": "4fee5dbc1fdd1290bf91915c73b7cdb00c598d00",
+   "check_files": [
+    "src/omnimarket/nodes/node_delegated_test_control_compute/tests/test_collection_control_omn19361.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest src/omnimarket/nodes/node_delegated_test_control_compute/tests -q",
+     "item_id": "dod-omn19361-ac2-collection-control"
+    }
+   ],
+   "contract_id": "OMN-19361",
+   "control": "unscorable",
+   "control_source": "falsifier_not_held",
+   "files_changed": 3,
+   "held_paths": [
+    "tests/nodes/node_delegated_test_control_compute/test_handler_delegated_test_control.py"
+   ],
+   "lines_changed": 92,
+   "merge_commit": "a8f84b73da008359c34f281932489c60871a2c6e",
+   "merged_at": "2026-10-06T03:12:31Z",
+   "repository": "omnimarket",
+   "subject": "OMN-19361: Make the declared control-grading probe executable (#3460)"
+  },
+  {
+   "band": "S",
+   "base_commit": "2f43f770a518e8a681b9e92e5610855ec83efc77",
+   "check_files": [
+    "tests/gates/test_private_vocabulary_canary_omn21494.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/gates/test_private_vocabulary_canary_omn21494.py -q --no-cov --tb=line",
+     "item_id": "dod-omn21494-canary-resolves-unset"
+    }
+   ],
+   "contract_id": "OMN-21494",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "tests/fixtures/private_vocabulary_canary/canary.yaml"
+   ],
+   "lines_changed": 150,
+   "merge_commit": "b367e79b7bd4af33aab287289f40e571276d8369",
+   "merged_at": "2026-10-29T20:11:37Z",
+   "repository": "omnimarket",
+   "subject": "test(OMN-21494): canary that the hygiene vocabulary resolves with OMNI_HYGIENE_VOCAB_PATH unset (#4569)"
+  },
+  {
+   "band": "M",
+   "base_commit": "5964561a28f2ee540a2736657cc5d48e584e03a9",
+   "check_files": [
+    "tests/test_omn19998_local_identity_reader_optout.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/test_omn19998_local_identity_reader_optout.py -q --no-cov -n 0 -p no:randomly",
+     "item_id": "dod-omn23596-ac1-opt-out"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/test_omn19998_local_identity_reader_optout.py -q --no-cov -n 0 -p no:randomly -k unchanged",
+     "item_id": "dod-omn23596-ac2-no-behaviour-change"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/test_omn19998_local_identity_reader_optout.py -q --no-cov -n 0 -p no:randomly -k still_discovered",
+     "item_id": "dod-omn23596-ac3-hosted"
+    }
+   ],
+   "contract_id": "OMN-23596",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_projection_local_identity/contract.yaml"
+   ],
+   "lines_changed": 119,
+   "merge_commit": "b5b51bf8b3f2127bdcf896ec72fa1c600870b88b",
+   "merged_at": "2026-11-10T19:17:06-06:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23596): declare no-reader opt-out for local-identity projection (#5766)"
+  },
+  {
+   "band": "S",
+   "base_commit": "f893538838140e35ce57531c0181a5a8ae6d6b05",
+   "check_files": [
+    "tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_node_rows_omn23019.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_timer_rows_omn22778.py tests/nodes/node_silent_failure_alarm_effect/test_quiet_host_node_rows_omn23019.py -q",
+     "item_id": "dod-omn23019-ac1"
+    }
+   ],
+   "contract_id": "OMN-23019",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_silent_failure_alarm_effect/handlers/handler_silent_failure_alarm.py"
+   ],
+   "lines_changed": 147,
+   "merge_commit": "b68cdabe41aaf77db6f3de3fca3affbb89150eb0",
+   "merged_at": "2026-11-09T20:10:38Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23019): exclude node: STATUS rows from quiet-host lane stamps (#5663)"
+  },
+  {
+   "band": "S",
+   "base_commit": "f41aff6d20158f7246a05a550d01178790ab4cf0",
+   "check_files": [
+    "tests/ci/test_pr_stale_red_heal_omn19852.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov --tb=line",
+     "item_id": "dod-omn19998-ac1"
+    }
+   ],
+   "contract_id": "OMN-19998",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "scripts/ci/pr_stale_red_heal.py"
+   ],
+   "lines_changed": 197,
+   "merge_commit": "c700d4f00e85a48f9280db1f1a4722663b0b08f2",
+   "merged_at": "2026-11-03T20:01:19-05:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-19998): the stale-red heal retries a GitHub gateway error on a read (#5008)"
+  },
+  {
+   "band": "S",
+   "base_commit": "d857d807694b4477ad316f3df76042cc3c55081e",
+   "check_files": [
+    "tests/test_omn19988_local_environment_cursor_ownership_declared.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q",
+     "item_id": "dod-omn19988-ac1-cursor-sequence-ownership"
+    }
+   ],
+   "contract_id": "OMN-19988",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "docs/evidence/OMN-15423-relation-inventory.json",
+    "scripts/application-relation-ownership.yaml"
+   ],
+   "lines_changed": 90,
+   "merge_commit": "ca5790f6180a4d33e554e2a2068287d60c7fb7d6",
+   "merged_at": "2026-10-17T07:54:07-04:00",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-19988): declare the local_environment cursor sequence's ownership ahead of its vendoring (#4062)"
+  },
+  {
+   "band": "S",
+   "base_commit": "c3dfb58772026f936f3ef992e307105f438fb108",
+   "check_files": [
+    "tests/unit/delegation/test_declared_label_set_membership_omn18989.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q",
+     "item_id": "dod-omn18989-ac1-contract-failure-reasons"
+    }
+   ],
+   "contract_id": "OMN-18989",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/delegation/deliverable_extraction.py",
+    "src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py"
+   ],
+   "lines_changed": 157,
+   "merge_commit": "ca88d134451d6085d65f189217f6dc1e75546ead",
+   "merged_at": "2026-10-06T01:04:14Z",
+   "repository": "omnimarket",
+   "subject": "OMN-18989: Preserve contract_failure_reasons in shared gate result (#3447)"
+  },
+  {
+   "band": "S",
+   "base_commit": "997e82dd7959b6248fcc8bee924f1b15be6cad3a",
+   "check_files": [
+    "tests/unit/models/test_lane_commit_signing_overlay_omn22993.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/models/test_lane_commit_signing_overlay_omn22993.py -q --no-cov -k lane_commit_signing",
+     "item_id": "dod-omn23276-ac1-model"
+    }
+   ],
+   "contract_id": "OMN-23276",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/models/node_overlays/model_lane_commit_signing_overlay.py"
+   ],
+   "lines_changed": 248,
+   "merge_commit": "d1b329f49aa13875311a4eb3567910222a9b3a7d",
+   "merged_at": "2026-11-09T09:13:49Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23276): lane_commit_signing overlay model for the overlays pin check (#5559)"
+  },
+  {
+   "band": "S",
+   "base_commit": "3f15d6a0982a6021796ef0891479303149f6eb84",
+   "check_files": [
+    "tests/unit/delegation/test_probe_ladder.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k tolerated",
+     "item_id": "dod-omn23161-ac1-tolerated"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -k wire_gate_graded_keys",
+     "item_id": "dod-omn23161-ac2-wire-gate"
+    }
+   ],
+   "contract_id": "OMN-23161",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/models/delegation/wire/model_delegate_skill_request.py"
+   ],
+   "lines_changed": 150,
+   "merge_commit": "db43d2dfcd3e5a890ea3dff568659406adb2e6b4",
+   "merged_at": "2026-11-08T20:35:40Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-23161): the delegate request decoder accepts and ignores an optional probe_ladder key (#5470)"
+  },
+  {
+   "band": "S",
+   "base_commit": "86eeee36cbeae3b1ea5b699d7faefc82cf3ad8d2",
+   "check_files": [
+    "tests/unit/test_bad_batch_replay_set.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k matched_or_corrected",
+     "item_id": "dod-omn22968-ac1"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/test_bad_batch_replay_set.py -q -k replay_fails_on_misclass",
+     "item_id": "dod-omn22968-ac2"
+    }
+   ],
+   "contract_id": "OMN-22968",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "tests/fixtures/bad_batch_replay/h051_2026_11_04_1923z.json"
+   ],
+   "lines_changed": 139,
+   "merge_commit": "df84f803105d4a4bb3c33b6139770c57c57e6abf",
+   "merged_at": "2026-11-09T19:26:14Z",
+   "repository": "omnimarket",
+   "subject": "test(OMN-22968): replay the bad-batch set through the lane result classifier (#5592)"
+  },
+  {
+   "band": "S",
+   "base_commit": "aa9b6b13387509e8354df725feefb341a46a9619",
+   "check_files": [
+    "tests/nodes/node_reading_writer_effect/test_append_command_stderr_kept.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_append_command_stderr_kept.py tests/nodes/node_delegation_scenario_r2_effect -q --no-cov -p no:randomly",
+     "item_id": "dod-omn23454-stderr-kept"
+    }
+   ],
+   "contract_id": "OMN-23454",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_reading_writer_effect/adapters/ledger_adapters.py"
+   ],
+   "lines_changed": 164,
+   "merge_commit": "e39d51e057862846051e9d1db7d5a04aeb1de051",
+   "merged_at": "2026-11-10T05:39:29-06:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23454): a failed ledger append keeps the reason the command gave (#5708)"
+  },
+  {
+   "band": "M",
+   "base_commit": "6a09ee93e6534fc49ce256f8b534f4a2bc3a07aa",
+   "check_files": [
+    "tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py -q -n 0 --no-cov -p no:randomly",
+     "item_id": "dod-omn23644-ac1-duplicate-text"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py -q -n 0 --no-cov -p no:randomly -k still_builds",
+     "item_id": "dod-omn23644-ac2-failing-control"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py -q -n 0 --no-cov -p no:randomly -k builds",
+     "item_id": "dod-omn23644-ac3-integration-hosted"
+    }
+   ],
+   "contract_id": "OMN-23644",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "config/test_file_durations.json",
+    "src/omnimarket/nodes/node_context_pack_orchestrator/handlers/handler_context_pack_orchestrator.py"
+   ],
+   "lines_changed": 153,
+   "merge_commit": "e57a70ff3f48a6e686fa1b72bf5ad923cfb141df",
+   "merged_at": "2026-11-11T05:09:20-05:00",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-23644): the full context package builds when two sections repeat the same text (#5792)"
+  },
+  {
+   "band": "M",
+   "base_commit": "77f915408b4f8d6f482ef9a4267cf0a3eddb0d57",
+   "check_files": [
+    "tests/projection/test_dashboard_bundle_pin_omn21469.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_check_reads_the_recorded_fixture",
+     "item_id": "dod-omn23599-publish-run-reads-recorded-fixture"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_check_rejects",
+     "item_id": "dod-omn23599-publish-run-control-rejects-wrong-run"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_for_the_tag_succeeded",
+     "item_id": "dod-omn23599-fixture-parsed-by-read-node"
+    }
+   ],
+   "contract_id": "OMN-23599",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/models/model_github_gateway_io.py",
+    "tests/fixtures/dashboard_bundle/omnidash_publish_runs_v1_1_11.json"
+   ],
+   "lines_changed": 183,
+   "merge_commit": "e6bb4c8c15822573f8ca88358499729866eb0976",
+   "merged_at": "2026-11-10T14:43:58-06:00",
+   "repository": "omnimarket",
+   "subject": "test(OMN-23599): read the publish run check from a recorded fixture, not the GitHub API (#5762)"
+  },
+  {
+   "band": "S",
+   "base_commit": "e18cf1b13b3902f8fa8dc9aca2dfe03f82db39b2",
+   "check_files": [
+    "tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py -q",
+     "item_id": "dod-omn20570-ac3-prompt-behaviour-unchanged"
+    }
+   ],
+   "contract_id": "OMN-20570",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 4,
+   "held_paths": [
+    "src/omnimarket/delegation/acceptance_directives.py",
+    "src/omnimarket/inference/task_class_authority.py"
+   ],
+   "lines_changed": 58,
+   "merge_commit": "e7a2ee8706af46f498804fe467cf408fe0f80782",
+   "merged_at": "2026-10-05T10:33:47Z",
+   "repository": "omnimarket",
+   "subject": "refactor(OMN-20570): rename EnumTaskClassPromptShape to EnumPromptShape so the task-class admission gate stops matching it (#3411)"
+  },
+  {
+   "band": "S",
+   "base_commit": "b7f02fb417ac7e36c5a0cbc429c6f780007958dd",
+   "check_files": [
+    "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_contract_walk.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_contract_walk.py -q",
+     "item_id": "dod-omn19546-ac1-contract-walk-pins-machine"
+    }
+   ],
+   "contract_id": "OMN-19546",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_pr_lifecycle_orchestrator/contract.yaml"
+   ],
+   "lines_changed": 130,
+   "merge_commit": "e912c8b8d0eed9283608f8f9dd19564ff5672f1a",
+   "merged_at": "2026-10-06T03:41:37Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-19546): pr_lifecycle_orchestrator declares terminal_events and a walker test pins its machine (#3439)"
+  },
+  {
+   "band": "S",
+   "base_commit": "cead8546ac8e92240e0c1dd9681b4d599ddb9a10",
+   "check_files": [
+    "tests/test_omn19454_install_canary.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/test_omn19454_install_canary.py -q -p no:randomly",
+     "item_id": "dod-ac1-canary-state-root"
+    }
+   ],
+   "contract_id": "OMN-19454",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "scripts/ci/install_canary/run_install_canary.py"
+   ],
+   "lines_changed": 64,
+   "merge_commit": "f0583d999f4810ffc2dfa55d79e7bc138efca1ea",
+   "merged_at": "2026-10-06T02:46:10Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-19454): pin install canary artifact state root (#3461)"
+  },
+  {
+   "band": "S",
+   "base_commit": "6dac310df3893f83e6f7ad10b6896baaedc37bb9",
+   "check_files": [
+    "tests/nodes/node_silent_failure_alarm_effect/test_throughput_results_one_resolved_per_episode_omn22868.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_throughput_results_one_resolved_per_episode_omn22868.py -q --no-cov",
+     "item_id": "dod-omn22868-ac1-tests"
+    }
+   ],
+   "contract_id": "OMN-22868",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_silent_failure_alarm_effect/handlers/handler_silent_failure_alarm.py"
+   ],
+   "lines_changed": 260,
+   "merge_commit": "f3da03c266d44f6e3cda2173513f37f83bc9bea9",
+   "merged_at": "2026-11-09T05:18:08Z",
+   "repository": "omnimarket",
+   "subject": "fix(OMN-22868): one resolved row per episode in silent failure alarm (#5547)"
+  },
+  {
+   "band": "S",
+   "base_commit": "ca88d134451d6085d65f189217f6dc1e75546ead",
+   "check_files": [
+    "tests/unit/contracts/test_build_loop_orchestrator_machine.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k every_phase -q",
+     "item_id": "dod-omn17049-ac1-every-phase"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k contract_walker -q",
+     "item_id": "dod-omn17049-ac2-walker-clean"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k terminal_events -q",
+     "item_id": "dod-omn17049-ac3-terminal-events"
+    }
+   ],
+   "contract_id": "OMN-17049",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "src/omnimarket/nodes/node_build_loop_orchestrator/contract.yaml"
+   ],
+   "lines_changed": 174,
+   "merge_commit": "fff418d00aa91761c4fc4a0801c2bb10d0810e2e",
+   "merged_at": "2026-10-06T01:13:33Z",
+   "repository": "omnimarket",
+   "subject": "feat(OMN-17049): build_loop_orchestrator declares DEPLOYING and POST_VERIFY and success and failure terminal_events (#3442)"
+  }
+ ]
+}

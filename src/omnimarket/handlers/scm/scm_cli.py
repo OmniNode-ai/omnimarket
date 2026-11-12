@@ -19,10 +19,10 @@ A lane does GitHub work through this command and no ``gh`` verb:
 - **Other reads** (pr-review, pr-ticket, pr-threads, branch-protection, run-list,
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  pr-thread-reply, pr-thread-resolve, pr-review-post, workflow-run,
+  pr-thread-reply, pr-thread-resolve, pr-review-post, pr-label, workflow-run,
   check-run-create) publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
-  needs. pr-edit, pr-ready, pr-close and pr-review-post take the expected head from the
+  needs. pr-edit, pr-ready, pr-close, pr-review-post and pr-label take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
   caller took from the caller's own claim registry and carries it on the
   command: the effect runs elsewhere and cannot read that directory.
@@ -770,6 +770,7 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_comment": ("body", "body_file"),
     "pr_thread_reply": ("thread", "body", "body_file"),
     "pr_thread_resolve": ("review_thread",),
+    "pr_label": ("add_label", "remove_label"),
     "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
@@ -784,7 +785,7 @@ _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
     {"pr_create", "workflow_dispatch", "check_run_create"}
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
-    {"pr_edit", "pr_ready", "pr_close", "pr_review_post"}
+    {"pr_edit", "pr_ready", "pr_close", "pr_review_post", "pr_label"}
 )
 
 _OPTION_DECORATORS: Final[
@@ -864,7 +865,24 @@ _OPTION_DECORATORS: Final[
     "input": click.option(
         "--input", "inputs", multiple=True, help="KEY=VALUE, repeatable."
     ),
+    "add_label": click.option(
+        "--add", "add_labels", multiple=True, help="A label to add (repeatable)."
+    ),
+    "remove_label": click.option(
+        "--remove",
+        "remove_labels",
+        multiple=True,
+        help="A label to remove (repeatable).",
+    ),
 }
+
+
+def _labels_given(raw: object) -> list[JsonValue]:
+    """The labels a repeatable --add or --remove option gave, in the order given."""
+    given: list[JsonValue] = (
+        [str(label) for label in raw] if isinstance(raw, tuple) else []
+    )
+    return given
 
 
 def _carried_claim(
@@ -973,11 +991,21 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
             if spec.operation == EnumRepoWriteOperation.PR_CLOSE
             else None
         )
+        if spec.operation == EnumRepoWriteOperation.PR_LABEL:
+            add_labels = _labels_given(fields.pop("add_labels", ()))
+            remove_labels = _labels_given(fields.pop("remove_labels", ()))
+            if not add_labels and not remove_labels:
+                raise click.UsageError("give at least one of --add, --remove")
         given: dict[str, JsonValue] = {
             name: value
             for name, value in fields.items()
             if value is not None and isinstance(value, (str, bool, int))
         }
+        if spec.operation == EnumRepoWriteOperation.PR_LABEL:
+            if add_labels:
+                given["add_labels"] = add_labels
+            if remove_labels:
+                given["remove_labels"] = remove_labels
         if spec.operation == EnumRepoWriteOperation.CHECK_RUN_CREATE:
             given["head_sha"] = head_sha
             head_sha = None
