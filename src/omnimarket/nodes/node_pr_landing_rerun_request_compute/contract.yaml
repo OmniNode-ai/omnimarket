@@ -74,6 +74,8 @@ event_bus:
   # itself publishes nothing on it.
   publish_topics:
     - "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
+externally_consumed_topics:
+  - "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
 runtime_profiles:
   - main
 descriptor:

@@ -71,6 +71,15 @@ def test_the_request_topic_is_not_a_tick_publish_or_subscribe_topic() -> None:
     assert request_topic not in bus["subscribe_topics"]
 
 
+def test_the_rerun_compute_contract_provisions_and_declares_the_request_topic() -> None:
+    contract = _contract(RERUN_COMPUTE_DIR)
+    request_topic = "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
+
+    assert contract["event_bus"]["publish_topics"] == [request_topic]
+    assert contract["externally_consumed_topics"] == [request_topic]
+    assert request_topic not in contract["event_bus"]["subscribe_topics"]
+
+
 def test_consumed_only_command_topics_are_named() -> None:
     declared: set[str] = set()
     wired: set[str] = set()
