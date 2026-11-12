@@ -29,7 +29,7 @@ def golden_bus() -> Bus:
 def assert_nothing_hidden_is_sent(bus: Bus) -> None:
     assert bus.units
     secrets = set()
-    for material in bus.reader.read(bus.reader_candidates):  # type: ignore[attr-defined]
+    for material in bus.reader.read(bus.reader_candidates):
         secrets |= {
             material.held_diff,
             material.contract.path,
@@ -49,7 +49,7 @@ def assert_nothing_hidden_is_sent(bus: Bus) -> None:
 
 def test_no_contract_check_check_path_or_held_answer_reaches_a_draft_request() -> None:
     bus = golden_bus()
-    bus.reader_candidates = tuple(run_request(2, 2).candidates)  # type: ignore[attr-defined]
+    bus.reader_candidates = tuple(run_request(2, 2).candidates)
     assert_nothing_hidden_is_sent(bus)
 
 
@@ -77,6 +77,6 @@ def test_break_leak_a_contract_check_into_the_draft(
 
     monkeypatch.setattr(leg, "build_unit_request", leaking)
     bus = golden_bus()
-    bus.reader_candidates = tuple(run_request(2, 2).candidates)  # type: ignore[attr-defined]
+    bus.reader_candidates = tuple(run_request(2, 2).candidates)
     with pytest.raises(AssertionError):
         assert_nothing_hidden_is_sent(bus)

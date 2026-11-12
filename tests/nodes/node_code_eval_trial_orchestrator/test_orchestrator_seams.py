@@ -150,7 +150,7 @@ def test_s3_rows_reach_the_projection_one_row_each_by_run_id(
     for result in bus.projection:
         delivered = trip(wire, topic, result)
         out = handler.handle({**delivered.model_dump(mode="json"), "_db": db})
-        upserted += out["rows_upserted"]  # type: ignore[operator]
+        upserted += int(out["rows_upserted"])
     stored = db.query("context_roi_scores")
     assert upserted == len(stored) == 14
     assert {r["run_id"] for r in stored} == {str(RUN_ID)}
@@ -164,7 +164,7 @@ def test_s3_the_columns_the_orchestrator_fills_are_exactly_the_result_stores() -
         model_arm="m",
         try_ordinal=2,
         is_control=False,
-        verdict="fail_check",  # type: ignore[arg-type]
+        verdict="fail_check",
         loop_status="accepted",
     )
     filled = set(trial_columns(row, RUN_ID, "digest", "S"))
@@ -179,7 +179,7 @@ def test_s3_a_declared_column_is_filled_on_the_published_row() -> None:
     declared = E3_TRIAL_COLUMNS & set(ModelAttemptReductionRow.model_fields)
     for row in bus.rows:
         if "suite_digest" in declared:
-            assert row.suite_digest  # type: ignore[attr-defined]
+            assert row.suite_digest
 
 
 def test_s4_run_command_and_closed_event_survive_the_bus(

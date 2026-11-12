@@ -12,6 +12,9 @@ from datetime import timedelta
 
 import pytest
 
+from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (
+    ModelCodeScoreRequest,
+)
 from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
     ModelCodeEvalRunClosed,
 )
@@ -36,10 +39,6 @@ from tests.nodes.node_code_eval_trial_orchestrator.orchestrator_support import (
 )
 
 pytestmark = pytest.mark.unit
-
-from omnimarket.nodes.node_code_contract_score_effect.models.model_code_score import (  # noqa: E402
-    ModelCodeScoreRequest,
-)
 
 
 def stored_row(bus: Bus):

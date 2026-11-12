@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -167,7 +168,7 @@ class InMemorySuiteReader:
 
     def read(self, candidates: object) -> tuple[ModelCodeEvalTaskMaterial, ...]:
         out = []
-        for candidate in candidates:  # type: ignore[attr-defined]
+        for candidate in cast("Iterable[Any]", candidates):
             key = task_key_for(candidate)
             self.reads.append(key)
             held = f"held diff of {key}"
@@ -325,7 +326,7 @@ def make_bus(
     reader: InMemorySuiteReader | None = None,
     hosts: tuple[str, ...] = HOSTS,
     config: CodeEvalLegConfig | None = None,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> Bus:
     reader = reader or InMemorySuiteReader()
     holder: list[datetime] = [T0]
@@ -334,7 +335,7 @@ def make_bus(
         ports=CodeEvalLegPorts(suite_reader=reader, free_hosts=StaticFreeHosts(hosts)),
         clock=lambda: holder[0],
     )
-    bus = Bus(handler=handler, reader=reader, **kwargs)  # type: ignore[arg-type]
+    bus = Bus(handler=handler, reader=reader, **kwargs)
 
     class _Clock:
         def __call__(self) -> datetime:

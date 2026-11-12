@@ -14,6 +14,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from omnimarket.nodes.node_code_contract_score_effect.models.enum_code_score import (
     EnumCodeScoreSource,
@@ -148,7 +149,7 @@ class Run:
                 row=self.row,
                 message=message,
                 now=self.now,
-                free_hosts=self.hosts,  # type: ignore[arg-type]
+                free_hosts=cast("tuple[str, ...]", self.hosts),
             )
         )
         self.row = out.row
@@ -222,7 +223,7 @@ class Run:
 
 
 def start(
-    n_tasks: int = 2, n_arms: int = 2, **kwargs: object
+    n_tasks: int = 2, n_arms: int = 2, **kwargs: Any
 ) -> tuple[Run, ModelCodeEvalReduceOutput]:
     run = Run()
-    return run, run.feed(run_message(n_tasks, n_arms, **kwargs))  # type: ignore[arg-type]
+    return run, run.feed(run_message(n_tasks, n_arms, **kwargs))

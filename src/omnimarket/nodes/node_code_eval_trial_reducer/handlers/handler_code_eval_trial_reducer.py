@@ -111,7 +111,8 @@ class HandlerCodeEvalTrialReducer:
             transition = self._score_answered(leg, message)
         elif isinstance(message, ModelNudgeMessage):
             transition = self._nudge(leg)
-        else:  # pragma: no cover - the union is closed
+        else:
+            # the union is closed
             raise TypeError(type(message).__name__)
         if transition.startswith("dropped:"):
             return self._dropped(stored, transition.removeprefix("dropped:"))

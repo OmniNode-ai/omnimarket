@@ -11,16 +11,23 @@ entry per published event, with ``event_type`` the class name minus its
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
+import yaml
 from pydantic import BaseModel
 
-from omnimarket.events.topics import CODE_EVAL_RUN_CLOSED_TOPIC_V1
 from omnimarket.nodes.node_code_eval_trial_orchestrator.models.model_code_eval_run_closed import (
     ModelCodeEvalRunClosed,
 )
 
+_CONTRACT = yaml.safe_load(
+    (Path(__file__).parent / "contract.yaml").read_text(encoding="utf-8")
+)
+
+# The topic is read from the node's own contract (its terminal event), so no topic
+# literal lives in code and the map cannot drift from the contract.
 CODE_EVAL_EVENT_TOPICS: Mapping[type[BaseModel], str] = {
-    ModelCodeEvalRunClosed: CODE_EVAL_RUN_CLOSED_TOPIC_V1,
+    ModelCodeEvalRunClosed: str(_CONTRACT["terminal_event"]),
 }
 
 

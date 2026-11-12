@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import subprocess
 import uuid
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from omnibase_core.enums.enum_delegation_traffic_class import (
@@ -70,7 +72,7 @@ def _turn_argv(tmp_path: Path, request: ModelDelegatedCodeEditRequest) -> list[s
         onex=Path("/bin/onex"),
         state_root=tmp_path / "state",
         delegate_flags=deployed_lane_delegate_flags("dev"),
-        run_delegate=runner,  # type: ignore[arg-type]
+        run_delegate=cast(Callable[[list[str]], Any], runner),
     )
     ports.delegate(request, "PROMPT", RESPONSE_CONTRACT, 1)
     return seen[0]
