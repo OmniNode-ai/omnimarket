@@ -92,6 +92,8 @@ def _batch() -> ModelIntegrationReadingBatch:
 def test_seam_the_publisher_the_reader_and_the_overlays_agree_on_topic_and_id() -> None:
     publisher = _contract(NODE)
     reader = _contract(READ_NODE)
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    assert TOPIC == "onex.snapshot.projection.floor-integration.v1"
     assert TOPIC in publisher["event_bus"]["publish_topics"]
     assert TOPIC in reader["snapshot_reads"]
     published_as = ModelFloorProjectionPublishOverlay.model_validate(
