@@ -48,14 +48,6 @@ def test_github_tag_identity(tmp_path: Path, tag: str, expected: list[str]) -> N
     assert [issue.rule_name for issue in result.issues] == expected
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "omninode-memory's pinned tag names an older omnibase-core than this repository's "
-        "pin, so uv refuses the consumer environment with conflicting omnibase-core URLs; "
-        "remove this mark when omnimemory moves its core pin"
-    ),
-)
 @pytest.mark.parametrize(
     ("tag", "spec", "override", "source_kind", "rules", "exit_code", "rule"),
     [
