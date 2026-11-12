@@ -19,13 +19,13 @@ from typing import Any
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from omnimarket.events.claude_pool_revoke_staleness import (
+from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
     ModelRevokeObservation,
     ModelRevokeStalenessPolicy,
     ModelRevokeStalenessRequest,
 )
-from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
     HandlerRevokeStaleness,
 )

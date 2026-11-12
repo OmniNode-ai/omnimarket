@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
-from omnimarket.events.claude_pool_revoke_staleness import (
+from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (

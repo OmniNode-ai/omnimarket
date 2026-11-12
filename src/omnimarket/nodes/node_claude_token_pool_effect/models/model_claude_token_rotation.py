@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from omnimarket.events.claude_pool_revoke_staleness import (
+from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelRevokeStalenessPolicy,
 )
 

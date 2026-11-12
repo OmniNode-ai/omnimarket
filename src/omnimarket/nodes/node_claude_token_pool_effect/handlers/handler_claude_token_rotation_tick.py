@@ -42,7 +42,7 @@ from typing import Any, Literal
 
 from pydantic import SecretStr
 
-from omnimarket.events.claude_pool_revoke_staleness import (
+from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
     ModelRevokeObservation,
     ModelRevokeStalenessRequest,
