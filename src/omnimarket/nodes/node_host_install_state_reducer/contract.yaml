@@ -61,9 +61,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.host-install-state-updated.v1
 
-externally_produced_topics:
-  - topic: onex.evt.omnimarket.host-install-step.v1
-    producer: "the host install workflow, which publishes one step event per install step directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.host-install-state-updated.v1
 

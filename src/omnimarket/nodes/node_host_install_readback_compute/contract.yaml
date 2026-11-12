@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host install readback COMPUTE (OMN-23957)
+#
+# Compares the unit text the declared render produced with the text read back from the installed file(s), and names
+# both digests. Pure compute, no I/O.
+---
+name: node_host_install_readback_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Host unit install readback compute. Compares the render text (the unit text the declared render produced) with the
+  installed text (the text read back from the installed file(s)) and names both digests. The digest algorithm is the
+  node overlay's digest_algorithm. An empty render text is refused with a typed ValueError naming the unit. An absent
+  installed file yields status absent. Equal digests yield match; different digests yield mismatch.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelHostInstallReadbackRequest
+        module: omnimarket.nodes.node_host_install_readback_compute.models.model_host_install_readback
+      handler:
+        name: HandlerHostInstallReadback
+        module: omnimarket.nodes.node_host_install_readback_compute.handlers.handler_host_install_readback
+
+handler:
+  module: omnimarket.nodes.node_host_install_readback_compute.handlers.handler_host_install_readback
+  class: HandlerHostInstallReadback
+  input_model: omnimarket.nodes.node_host_install_readback_compute.models.model_host_install_readback.ModelHostInstallReadbackRequest
+
+input_model:
+  name: ModelHostInstallReadbackRequest
+  module: omnimarket.nodes.node_host_install_readback_compute.models.model_host_install_readback
+  description: "The render text, the installed text (or absence), and the host/unit identity."
+output_model:
+  name: ModelHostInstallReadbackResult
+  module: omnimarket.nodes.node_host_install_readback_compute.models.model_host_install_readback
+  description: "The comparison result: status, both digests, and a detail string."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles: [workers]
+
+terminal_event: onex.evt.omnimarket.host-install-readback-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-install-readback-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.host-install-readback-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.host-install-readback-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-install-readback-completed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Host install readback compute"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-23957"
