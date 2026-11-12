@@ -137,6 +137,8 @@ class HandlerWorkLedgerReader:
             )
         if request.query is EnumReaderQuery.INBOX and not request.lane:
             raise ValueError("an inbox read names its lane")
+        if request.query is EnumReaderQuery.OPEN_RULINGS and not request.ticket:
+            raise ValueError("an open-rulings read names its ticket")
         now = self._clock().astimezone(UTC)
         answer = self._read_open_set(request, now)
         if answer.error is not None:
@@ -193,6 +195,9 @@ class HandlerWorkLedgerReader:
                     lanes=(request.lane,)
                     if request.query is EnumReaderQuery.INBOX and request.lane
                     else (),
+                    ticket=request.ticket
+                    if request.query is EnumReaderQuery.OPEN_RULINGS
+                    else None,
                     since=(
                         now - timedelta(hours=request.window_hours)
                         if request.query is EnumReaderQuery.ROWS

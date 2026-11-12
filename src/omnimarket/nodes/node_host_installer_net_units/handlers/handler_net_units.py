@@ -39,6 +39,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
     ModelGpuBudget,
+    ModelNetUnitsOverlay,
     ModelNetUnitsRequest,
     ModelNetUnitsResult,
 )
@@ -165,7 +166,13 @@ class HandlerNetUnits:
 
     def declared_unit(self, request: ModelNetUnitsRequest) -> dict[str, Any]:
         overlay = Path(request.overlay_root)
-        units_file = overlay / str(self.contract["overlay"]["units_file"])
+        name = request.units_file or str(self.contract["overlay"]["units_file"])
+        if "/" in name or name in ("..", "."):
+            raise RefusalError(
+                "units-file-not-allowed",
+                f"units_file {name!r} is not a plain file name",
+            )
+        units_file = overlay / name
         try:
             document = yaml.safe_load(units_file.read_text(encoding="utf-8")) or {}
         except OSError as exc:
@@ -175,6 +182,14 @@ class HandlerNetUnits:
                 "overlay-schema",
                 f"{units_file}: schema must be {self.contract['overlay']['schema']}",
             )
+        try:
+            ModelNetUnitsOverlay.model_validate(document)
+        except ValidationError as exc:
+            paths = [
+                ".".join(str(p) for p in err["loc"])
+                for err in exc.errors(include_input=False)
+            ]
+            raise RefusalError("overlay-invalid", "; ".join(paths)) from exc
         unit = (document.get("units") or {}).get(request.unit)
         if unit is None:
             raise RefusalError(
