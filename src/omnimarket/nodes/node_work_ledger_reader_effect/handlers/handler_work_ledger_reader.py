@@ -39,6 +39,7 @@ from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     ModelReaderResult,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolClosable,
     ProtocolLedgerPointRead,
     ProtocolReaderEventSink,
 )
@@ -124,6 +125,13 @@ class HandlerWorkLedgerReader:
         self._clock = clock
 
     def handle(self, request: ModelReaderRequest) -> ModelReaderResult:
+        try:
+            return self._handle(request)
+        finally:
+            if isinstance(self._read, ProtocolClosable):
+                self._read.close()
+
+    def _handle(self, request: ModelReaderRequest) -> ModelReaderResult:
         bound = self._overlay.max_watermark_age_seconds
         if request.reader not in self._overlay.moved_readers:
             # Not moved: the caller keeps its own read. No event: nothing was read here.
@@ -137,6 +145,8 @@ class HandlerWorkLedgerReader:
             )
         if request.query is EnumReaderQuery.INBOX and not request.lane:
             raise ValueError("an inbox read names its lane")
+        if request.query is EnumReaderQuery.OPEN_RULINGS and not request.ticket:
+            raise ValueError("an open-rulings read names its ticket")
         now = self._clock().astimezone(UTC)
         answer = self._read_open_set(request, now)
         if answer.error is not None:
@@ -193,6 +203,9 @@ class HandlerWorkLedgerReader:
                     lanes=(request.lane,)
                     if request.query is EnumReaderQuery.INBOX and request.lane
                     else (),
+                    ticket=request.ticket
+                    if request.query is EnumReaderQuery.OPEN_RULINGS
+                    else None,
                     since=(
                         now - timedelta(hours=request.window_hours)
                         if request.query is EnumReaderQuery.ROWS
@@ -201,6 +214,8 @@ class HandlerWorkLedgerReader:
                     ),
                     page_size=self._overlay.page_size,
                     cursor=cursor,
+                    lines_only=self._overlay.rows_lines_only
+                    and request.query is EnumReaderQuery.ROWS,
                 )
             )
             if page.error is not None:

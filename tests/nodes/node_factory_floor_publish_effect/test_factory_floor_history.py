@@ -29,6 +29,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelHistoryRetention,
     ModelPublishHistory,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -78,6 +79,7 @@ def _publish(
         skip_refresh=True,
         now=now,
         overlay=ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             ssh_target="lab-web",
             remote_dir=str(site),
             serve_url="http://example.invalid:8088/",

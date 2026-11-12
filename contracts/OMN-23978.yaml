@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23978
+title: The R2 dev-merge redeploy node runs as a declared host unit with a lane-probe refusal
+summary: The dev-merge redeploy node gains unit render, install, uninstall and status verbs that read a unit block from its overlay; an install whose lane probe cannot read the lane is refused before anything is written.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23978-declared-unit
+  statement: The node's host unit is declared in its overlay and installed, rolled back and read through the node's own verbs, and an install that would only write deadline_missed receipts is refused.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the dev-merge redeploy node renders, installs, rolls back and reads a systemd user unit from its overlay's unit block, and refuses every verb when the block is absent or the host is undeclared -- falsifier: uv run pytest tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_unit.py -q fails at the merge base"
+  - id: AC2
+    statement: "AC2: an install whose lane probe fails (a probe naming a missing container) is refused, writes no unit file and makes no systemctl call -- falsifier: uv run pytest tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_unit.py -q -k missing_container fails with the lane probe check removed from install"
+  - id: AC3
+    statement: "AC3: integrated: on host h053 the node runs as a systemd user unit installed by the node's unit install verb, replacing the hand-started process, and the receipt topic shows new receipts after the install with the verified and deadline_missed counts read against the 368 before -- falsifier: systemctl --user is-active on h053 is not active, or no receipt is newer than the install time"
+evidence_requirements:
+- kind: tests
+  description: The unit tests and the existing dev-merge redeploy tests pass at the pushed head.
+  command: uv run pytest tests/unit/dev_merge_redeploy -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23978-ac1
+  description: 'AC1: the unit tests pass at the head; the new test file does not exist at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_unit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23978-ac2
+  description: 'AC2: the missing-container control passes at the head and fails when the lane probe check is removed from install (measured: 1 failed, 8 passed).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_unit.py -q -p no:randomly --no-cov -k missing_container
+    cwd: .
+- id: dod-omn23978-ac3
+  description: 'hosted proxy for AC3: the install and rollback tests that stand in for h053 pass here; the h053 unit reading and the receipt counts are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/dev_merge_redeploy -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23978-integration-proof
+  description: the unit tests run on a lab host at the pushed head, including the control that fails with the lane probe check removed; hosted CI cannot reach the lab or h053, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23978 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/dev_merge_redeploy/test_dev_merge_redeploy_unit.py -q --no-cov -p no:randomly
