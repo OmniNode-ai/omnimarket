@@ -198,6 +198,10 @@ runtime:
     # cells, never from an owner typed into the overlay. The work-state node publishes its projection with the time it was built; one
     # that is unknown (never published, or older than its bound) is a cause on the board, and no lane is drawn from it.
     work_state_projection: work_state
+    # The integration list (OMN-23899): every merged change and whether it runs where it runs, published by the hourly integration
+    # pass through node_integration_reading_publish_effect. One that is unknown (never published, or older than its bound) draws the
+    # board's integration section unread with the reason, never an empty list.
+    integration_projection: integration
     # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
     deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
     # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.
