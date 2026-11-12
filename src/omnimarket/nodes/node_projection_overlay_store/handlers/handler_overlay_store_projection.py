@@ -20,7 +20,12 @@ from omnimarket.handlers.handler_projection_runtime_writer import (
 from omnimarket.handlers.overlay_store.store_postgres import PostgresOverlayStore
 from omnimarket.models.overlay_store import ModelOverlayStoreRecord
 from omnimarket.projection.envelope import strip_runner_injected_keys
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta, PublishFn
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+    PublishFn,
+    PublishKeyedFn,
+)
 
 _STORE_TABLE = "overlay_store"
 _SNAPSHOT_MARK = "onex.snapshot."
@@ -30,9 +35,13 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
     """One delivery: validate, store, read back, publish."""
 
     def __init__(
-        self, contract_path: Path | None = None, *, publish_fn: PublishFn | None = None
+        self,
+        contract_path: Path | None = None,
+        *,
+        publish_fn: PublishFn | None = None,
+        publish_keyed_fn: PublishKeyedFn | None = None,
     ) -> None:
-        super().__init__(publish_fn=publish_fn)
+        super().__init__(publish_fn=publish_fn, publish_keyed_fn=publish_keyed_fn)
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(path) as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
@@ -68,10 +77,11 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
         store = PostgresOverlayStore(self.db_for(_STORE_TABLE, operation="write").pool)
         await store.write_version(loaded.model_dump(mode="json"))
         current = await store.read_current(loaded.overlay_id)
-        publish = await self.get_publish_fn()
+        publish = await self.get_keyed_publish_fn()
         if publish is not None and current is not None:
             await publish(
                 self._snapshot_topic,
+                loaded.overlay_id.encode("utf-8"),
                 ModelOverlayStoreRecord.model_validate(current)
                 .model_dump_json()
                 .encode("utf-8"),
