@@ -1,11 +1,11 @@
+---
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Schedule Verdict Effect (OMN-19998)
 #
-# Effect with one operation:
-#   schedule_verdict.scheduled: ModelRuntimeTick -> ModelScheduleVerdictResult | None
-#                               (the tick-driven verdict pass; a declared schedule that has not fired inside its
-#                                interval plus grace reads red)
+# Judges every declared scheduled job against the schedule run store on the runtime tick; a declared schedule that has not fired inside its interval plus grace reads red.
+# Shape of node_floor_simple_scheduled_effect: it subscribes to the runtime scheduler's tick, gates on its own overlay
+# (run_interval_seconds, grace_seconds) and returns its terminal event for the runtime to publish.
 name: node_schedule_verdict_effect
 contract_name: node_schedule_verdict_effect
 node_name: node_schedule_verdict_effect
@@ -13,12 +13,10 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [main]
+runtime_profiles: [effects]
 
 description: >
-  Runs the schedule verdict on the runtime's tick. A tick inside the overlay's interval returns nothing; the tick that
-  is due loads the declared job overlays, builds the request from the run store's held states and returns the verdict.
-  A declared schedule that has not fired inside its interval plus grace reads red.
+  Runs the schedule verdict on the runtime's tick. A tick inside the overlay's interval returns nothing; the tick that is due loads the declared job overlays, builds the request from the run store's held states and returns the verdict. A declared schedule that has not fired inside its interval plus grace reads red.
 
 handler:
   module: omnimarket.nodes.node_schedule_verdict_effect.handlers.handler_schedule_verdict_scheduled
@@ -32,41 +30,48 @@ handler_routing:
       handler:
         name: HandlerScheduleVerdictScheduled
         module: omnimarket.nodes.node_schedule_verdict_effect.handlers.handler_schedule_verdict_scheduled
-      input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
-      output_model: omnimarket.models.schedule_trigger.model_schedule_trigger.ModelScheduleVerdictResult
-
-descriptor:
-  node_archetype: effect
-  purity: impure
-  idempotent: false
-  timeout_ms: 2000
+      handler_module: omnimarket.nodes.node_schedule_verdict_effect.handlers.handler_schedule_verdict_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the overlay's run_interval_seconds, then judge every declared job.
 
 input_model:
   name: ModelRuntimeTick
   module: omnibase_infra.runtime.models.model_runtime_tick
-  description: The runtime tick.
+  description: The runtime scheduler's tick.
 output_model:
   name: ModelScheduleVerdictResult
   module: omnimarket.models.schedule_trigger.model_schedule_trigger
   description: The verdicts, the red flag and the reason.
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  side_effects:
+    - reads the schedule run store held in the runtime process
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "schedule_verdict.scheduled"
+
 terminal_event: onex.evt.omnimarket.schedule-verdict.v1
 
-runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.schedule-verdict-requested.v1
-
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
   publish_topics:
-    - onex.evt.omnimarket.schedule-verdict.v1
+    - "onex.evt.omnimarket.schedule-verdict.v1"
+
+published_events:
+  - event_type: ModelScheduleVerdictResult
+    topic: onex.evt.omnimarket.schedule-verdict.v1
+    description: "One verdict pass over the declared scheduled jobs."
 
 externally_consumed_topics:
   - onex.evt.omnimarket.schedule-verdict.v1
-
-input_subscriptions:
-  - topic: onex.intent.platform.runtime-tick.v1
-    operation: schedule_verdict.scheduled
-    event_type: platform.runtime-tick
 
 # Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
 runtime:
@@ -77,6 +82,8 @@ broker_acl_grants:
     grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-verdict.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-verdict.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
 
 metadata:
   ticket: OMN-19998

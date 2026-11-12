@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-24029
+title: Run the factory's recurring jobs on a schedule inside the runtime
+summary: 'Adds the schedule run path in omnimarket: a gate, a typed run event, a reducer, a verdict that reads a never-firing declared schedule as red, and the floor fill tick as the first job on it.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24029-runtime-schedule-path
+  statement: A scheduled job runs on the runtime tick from overlay values, records each run as a typed event, and reads red when its declared schedule stops firing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a scheduled job node gates on its overlay interval and emits one typed run event, and the reducer holds the last run per job and refuses an older or repeated run -- falsifier: uv run --frozen pytest tests/handlers/test_schedule_gate.py tests/nodes/node_schedule_run_reducer -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a declared schedule that never fires inside its interval plus grace reads red and one that fires reads green -- falsifier: uv run --frozen pytest tests/nodes/node_schedule_verdict_compute tests/nodes/node_schedule_verdict_effect -q --no-cov'
+  - id: AC3
+    statement: 'AC3: the lab state alarm and the floor fill tick each run on the runtime tick from overlay values and emit a run event -- falsifier: uv run --frozen pytest tests/nodes/node_lab_state_alarm_scheduled_effect tests/nodes/node_floor_fill_scheduled_effect -q --no-cov'
+  - id: AC4
+    statement: 'AC4: integrated: on the dev runtime one run event from each of the two jobs is read on onex.evt.omnimarket.schedule-run.v1 and the verdict event reads a job with no run as red -- falsifier: read the topic and the verdict topic on the dev broker after the deploy; no run event from either job within 30 minutes fails it'
+evidence_requirements:
+- kind: tests
+  description: The golden and error chain tests of the schedule nodes
+  command: uv run --frozen pytest tests/handlers/test_schedule_gate.py tests/nodes/node_schedule_run_reducer tests/nodes/node_schedule_verdict_compute tests/nodes/node_schedule_verdict_effect tests/nodes/node_floor_fill_scheduled_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24029-ac1
+  description: AC1 proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_schedule_gate.py tests/nodes/node_schedule_run_reducer -q --no-cov
+    cwd: .
+- id: dod-omn24029-ac2
+  description: AC2 proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_schedule_verdict_compute tests/nodes/node_schedule_verdict_effect -q --no-cov
+    cwd: .
+- id: dod-omn24029-ac3
+  description: AC3 proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_fill_scheduled_effect -q --no-cov
+    cwd: .
+- id: dod-omn24029-deploy-schedule-nodes
+  description: 'Deploy probe the hosted runner can run: a GitHub contents read of the verdict effect contract on the PR branch; it returns 404 where the node does not exist, as at the merge base. The dev runtime reading follows the dev deploy through the deploy agent.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_schedule_verdict_effect/contract.yaml?ref=omn-19998-runtime-schedule-trigger' --jq .name
+    cwd: .
