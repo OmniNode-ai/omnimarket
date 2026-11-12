@@ -28,19 +28,28 @@ class EnumIntegrationState(StrEnum):
     NOT_RUNNING = "not_running"
     BLOCKED = "blocked"
     DEFECT = "defect"
+    # In place or unproven: the change is where it would run, but no run of it has been seen yet; a reading is owed.
+    # Counted on its own, never as unintegrated.
+    UNPROVEN = "unproven"
     # Merged changes that run nowhere by design: counted, never listed as unintegrated.
     CI_ONLY = "ci_only"
     LIBRARY = "library"
 
 
 class EnumIntegrationGapClass(StrEnum):
-    """What it would take to get a change running. The declaration order is the order the floor draws the groups in."""
+    """What it would take to get a change running: the integration pass's own classes (its ledger counts unintegrated
+    work by register, unit, plugin, reader, pin, second and ahead; blocked work waits on a merge; an unproven change
+    owes a reading). The declaration order is the order the floor draws the groups in."""
 
     NONE = "none"
-    NEEDS_FIX = "needs_fix"
+    RUNTIME_BEHIND = "runtime_behind"
+    NEEDS_REGISTRATION = "needs_registration"
+    NEEDS_UNIT = "needs_unit"
+    NEEDS_READER = "needs_reader"
+    NEEDS_PIN = "needs_pin"
+    NEEDS_PLUGIN_RELEASE = "needs_plugin_release"
+    SECOND_COPY = "second_copy"
     WAITS_ON_MERGE = "waits_on_merge"
-    NEEDS_INSTALL = "needs_install"
-    NEEDS_PROOF = "needs_proof"
     NEEDS_READING = "needs_reading"
 
 
@@ -50,6 +59,16 @@ SETTLED_STATES = frozenset(
         EnumIntegrationState.RUNNING,
         EnumIntegrationState.CI_ONLY,
         EnumIntegrationState.LIBRARY,
+    }
+)
+
+
+# Unintegrated work: merged, meant to run, and not running.
+UNINTEGRATED_STATES = frozenset(
+    {
+        EnumIntegrationState.NOT_RUNNING,
+        EnumIntegrationState.BLOCKED,
+        EnumIntegrationState.DEFECT,
     }
 )
 
@@ -85,10 +104,17 @@ class ModelIntegrationReading(_Frozen):
                 raise ValueError(
                     f"{name} carries its time zone; a bare time cannot be aged"
                 )
-        settled = self.state in SETTLED_STATES
-        if settled and self.gap_class is not EnumIntegrationGapClass.NONE:
-            raise ValueError(f"a {self.state.value} change has no gap class")
-        if not settled:
+        if self.state in SETTLED_STATES:
+            if self.gap_class is not EnumIntegrationGapClass.NONE:
+                raise ValueError(f"a {self.state.value} change has no gap class")
+        elif self.state is EnumIntegrationState.UNPROVEN:
+            if self.gap_class is not EnumIntegrationGapClass.NEEDS_READING:
+                raise ValueError(
+                    "an unproven change owes a reading (gap_class needs_reading)"
+                )
+            if not self.step:
+                raise ValueError("an unproven change names the reading it owes (step)")
+        else:
             if self.gap_class is EnumIntegrationGapClass.NONE:
                 raise ValueError(
                     f"a {self.state.value} change names what it would take (gap_class)"
@@ -127,6 +153,7 @@ class ModelIntegrationCounts(_Frozen):
     merged: int = Field(ge=0)
     seen_running: int = Field(ge=0)
     settled_elsewhere: int = Field(ge=0)
+    reading_owed: int = Field(ge=0)
     unintegrated: int = Field(ge=0)
     by_gap_class: dict[EnumIntegrationGapClass, int]
     oldest_unintegrated: ModelIntegrationOldest | None = None
@@ -158,6 +185,7 @@ class ModelIntegrationPublishCommand(_Frozen):
 
 __all__ = [
     "SETTLED_STATES",
+    "UNINTEGRATED_STATES",
     "EnumIntegrationGapClass",
     "EnumIntegrationState",
     "ModelIntegrationCounts",

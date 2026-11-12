@@ -4,6 +4,7 @@
 
 from omnimarket.models.integration_reading.model_integration_reading import (
     SETTLED_STATES,
+    UNINTEGRATED_STATES,
     EnumIntegrationGapClass,
     EnumIntegrationState,
     ModelIntegrationCounts,
@@ -17,6 +18,7 @@ from omnimarket.models.integration_reading.model_integration_reading import (
 
 __all__ = [
     "SETTLED_STATES",
+    "UNINTEGRATED_STATES",
     "EnumIntegrationGapClass",
     "EnumIntegrationState",
     "ModelIntegrationCounts",

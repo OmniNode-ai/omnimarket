@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from omnimarket.models.integration_reading import (
     SETTLED_STATES,
+    UNINTEGRATED_STATES,
     EnumIntegrationGapClass,
     EnumIntegrationState,
     ModelIntegrationCounts,
@@ -38,7 +39,7 @@ class HandlerIntegrationProjection:
             if held is None or reading.read_at >= held.read_at:
                 newest[reading.key] = reading
         rows = dict(sorted(newest.items(), key=lambda item: _merge_order(item[1])))
-        open_rows = [r for r in rows.values() if r.state not in SETTLED_STATES]
+        open_rows = [r for r in rows.values() if r.state in UNINTEGRATED_STATES]
         by_class = {
             gap_class: sum(1 for r in open_rows if r.gap_class is gap_class)
             for gap_class in EnumIntegrationGapClass
@@ -55,6 +56,9 @@ class HandlerIntegrationProjection:
                 for r in rows.values()
                 if r.state in SETTLED_STATES
                 and r.state is not EnumIntegrationState.RUNNING
+            ),
+            reading_owed=sum(
+                1 for r in rows.values() if r.state is EnumIntegrationState.UNPROVEN
             ),
             unintegrated=len(open_rows),
             by_gap_class=by_class,

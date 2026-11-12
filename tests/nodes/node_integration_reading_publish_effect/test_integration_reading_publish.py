@@ -130,10 +130,10 @@ async def test_golden_chain_the_batch_reaches_the_floor_bundle_over_the_in_memor
     )
     publications = await listen
     assert result.published
-    assert result.entries == 5
+    assert result.entries == 6
     assert result.as_of == AS_OF
     assert [e.phase for e in sink.events] == ["start", "success"]
-    assert sink.events[1].counters == {"rows_published": 5, "unintegrated": 3}
+    assert sink.events[1].counters == {"rows_published": 6, "unintegrated": 3}
     assert len(publications) == 1
 
     # The floor's own reader, over the publications the bus delivered, writes the bundle the floor cycle reads.

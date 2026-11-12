@@ -42,8 +42,8 @@ READINGS: list[dict[str, Any]] = [
         number=301,
         title="text steps ordered local first",
         merged_at="2026-11-11T21:17:00Z",
-        state="not_running",
-        gap_class="needs_proof",
+        state="unproven",
+        gap_class="needs_reading",
         gap="the local rung answered from a free hosted model; no dev-runtime receipt yet",
         step="one text step through the dev lane answered by a GPU",
         owner="lane local-prove-5270",
@@ -66,9 +66,21 @@ READINGS: list[dict[str, Any]] = [
         title="lane guard writes typed end records",
         merged_at="2026-11-11T23:45:00Z",
         state="defect",
-        gap_class="needs_fix",
+        gap_class="second_copy",
         gap="lanes run the plugin's copy of the guard; this fixed omnimarket's copy",
         step="one copy, overlay rows, plugin bump",
+        owner="",
+    ),
+    reading(
+        repository="omnimarket",
+        number=5125,
+        title="recover failed ruling mechanism lanes",
+        merged_at="2026-11-05T02:36:00Z",
+        target="a schedule the node installs",
+        state="not_running",
+        gap_class="needs_unit",
+        gap="no unit for it on the Mac or the lab hosts",
+        step="install a timer unit from the canonical clone via the installer, read one clean run",
         owner="",
     ),
     reading(
@@ -98,25 +110,34 @@ BATCH = {
 }
 
 GOLDEN_COUNTS = {
-    "merged": 5,
+    "merged": 6,
     "seen_running": 1,
     "settled_elsewhere": 1,
+    "reading_owed": 1,
     "unintegrated": 3,
     "by_gap_class": {
-        "needs_fix": 1,
+        "runtime_behind": 0,
+        "needs_registration": 0,
+        "needs_unit": 1,
+        "needs_reader": 0,
+        "needs_pin": 0,
+        "needs_plugin_release": 0,
+        "second_copy": 1,
         "waits_on_merge": 1,
-        "needs_install": 0,
-        "needs_proof": 1,
         "needs_reading": 0,
     },
-    "oldest_unintegrated": {"key": "overlays#301", "merged_at": "2026-11-11T21:17:00Z"},
+    "oldest_unintegrated": {
+        "key": "omnimarket#5125",
+        "merged_at": "2026-11-05T02:36:00Z",
+    },
 }
 GOLDEN_GROUPS = [
-    {"gap_class": "needs_fix", "keys": ["omnimarket#5856"]},
+    {"gap_class": "needs_unit", "keys": ["omnimarket#5125"]},
+    {"gap_class": "second_copy", "keys": ["omnimarket#5856"]},
     {"gap_class": "waits_on_merge", "keys": ["omnimarket#5843"]},
-    {"gap_class": "needs_proof", "keys": ["overlays#301"]},
 ]
 GOLDEN_ROW_ORDER = [
+    "omnimarket#5125",
     "overlays#301",
     "omnibase_infra#5896",
     "omnimarket#5843",
@@ -155,9 +176,9 @@ def test_golden_a_change_read_twice_keeps_its_newest_reading() -> None:
     )
     projection = project({**BATCH, "readings": [*READINGS, newer]})
     assert projection["rows"]["overlays#301"]["state"] == "running"
-    assert projection["counts"]["merged"] == 5
+    assert projection["counts"]["merged"] == 6
     assert projection["counts"]["seen_running"] == 2
-    assert projection["counts"]["oldest_unintegrated"]["key"] == "omnimarket#5843"
+    assert projection["counts"]["reading_owed"] == 0
     # The named break: the older reading delivered last still loses to the newer one.
     reversed_order = project({**BATCH, "readings": [newer, *READINGS]})
     assert reversed_order["rows"]["overlays#301"]["state"] == "running"
@@ -173,9 +194,16 @@ def test_golden_an_empty_batch_projects_to_zero_with_no_oldest() -> None:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        ({"gap_class": "none"}, "names what it would take"),
-        ({"gap": ""}, "names its gap and its one step"),
-        ({"step": ""}, "names its gap and its one step"),
+        ({"gap_class": "none", "state": "not_running"}, "names what it would take"),
+        (
+            {"gap": "", "state": "blocked", "gap_class": "waits_on_merge"},
+            "names its gap and its one step",
+        ),
+        (
+            {"step": "", "state": "defect", "gap_class": "second_copy"},
+            "names its gap and its one step",
+        ),
+        ({"gap_class": "needs_unit"}, "owes a reading"),
         ({"state": "running"}, "has no gap class"),
         ({"merged_at": "2026-11-11T21:17:00"}, "time zone"),
         ({"state": "deployed"}, "Input should be"),
@@ -185,6 +213,7 @@ def test_golden_an_empty_batch_projects_to_zero_with_no_oldest() -> None:
         "unintegrated-with-no-class",
         "no-gap",
         "no-step",
+        "unproven-with-another-class",
         "running-with-a-class",
         "bare-time",
         "unknown-state",
