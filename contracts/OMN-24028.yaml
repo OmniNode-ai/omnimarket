@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-24028
+title: The settings store keeps the newest copy of every setting, not only the last one written
+summary: The overlay store projection published each snapshot record on a compacted topic with no message key, so compaction kept only the newest record of the whole topic and the host table read 3.1 days old. BaseProjectionRunner gains get_keyed_publish_fn and the projection publishes with the overlay id as key; the seam tests in tests/unit/nodes/node_overlay_store and the real-Postgres projection test hold the producer side and the reader side to one shape.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24028-keyed-snapshot
+  statement: The projection publishes each snapshot record keyed by its overlay id, so a compacted snapshot topic keeps the newest record of every overlay, and a reader folding the topic sees all of them.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the overlay store projection publishes each snapshot record with the overlay id as its message key, so a compacted topic keeps one record per overlay -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_snapshot_key.py -q -n 0 --no-cov -p no:cacheprovider fails when the handler publishes with no key'
+  - id: AC2
+    statement: 'AC2: an invalid load publishes nothing and a runtime with no publisher still stores the record -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_snapshot_key.py -q -n 0 --no-cov -p no:cacheprovider -k "invalid or no_publisher"'
+  - id: AC3
+    statement: 'AC3: integrated: after the merge reaches the running runtime and one loader tick, the lab host overlay refresh reads lab_hosts with an age under one hour -- falsifier: the lab_hosts snapshot stamp loaded_at on h053 stays older than one hour after the tick; the reading of 3.1 days fails this criterion'
+evidence_requirements:
+- kind: tests
+  description: The projection key tests and the overlay store golden and error chain tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24028-ac1
+  description: 'AC1: the golden test passes at the head; replacing the key with None in the handler turned test_keyed_publish_survives_compaction red (1 failed, 4 passed).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_snapshot_key.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-ac2
+  description: 'AC2: the error chain tests pass: an invalid payload raises and publishes nothing, and with no producer the record is stored and project_event returns True.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_snapshot_key.py -q -n 0 --no-cov -p no:cacheprovider -k "invalid or no_publisher"
+    cwd: .
+- id: dod-omn24028-ac3
+  description: 'hosted proxy for AC3: the overlay store tests pass; the reading of lab_hosts age on h053 after the merged runtime ran one loader tick is named in the pull request and read after the merge.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
