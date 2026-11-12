@@ -23,6 +23,10 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.model_work_ledger_reader import (
+    EnumReaderEventKind,
+    EnumReaderStatus,
+)
 from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
     EnumHoldSource,
     EnumHoldVerdict,
@@ -33,10 +37,6 @@ from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
 )
 from omnimarket.nodes.node_ledger_hold_verdict_effect.protocols import (
     ProtocolHoldVerdictEventSink,
-)
-from omnimarket.nodes.node_work_ledger_reader_effect.models import (
-    EnumReaderEventKind,
-    EnumReaderStatus,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"

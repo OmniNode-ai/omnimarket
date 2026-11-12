@@ -17,6 +17,10 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from omnimarket.models.model_work_ledger_reader import (
+    EnumReaderQuery,
+    ModelReaderRequest,
+)
 from omnimarket.nodes.node_ledger_hold_verdict_effect.adapters import (
     InMemoryHoldVerdictSink,
     JournalHoldVerdictSink,
@@ -36,10 +40,6 @@ from omnimarket.nodes.node_work_ledger_reader_effect.adapters import (
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.handlers import (
     HandlerWorkLedgerReader,
-)
-from omnimarket.nodes.node_work_ledger_reader_effect.models import (
-    EnumReaderQuery,
-    ModelReaderRequest,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.overlay import (
     load_overlay as load_reader_overlay,

@@ -25,7 +25,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_work_ledger_reader_effect.handlers.handler_work_ledger_reader
   class: HandlerWorkLedgerReader
-  input_model: omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_reader.ModelReaderRequest
+  input_model: omnimarket.models.model_work_ledger_reader.ModelReaderRequest
 
 # HandlerWorkLedgerReader takes the overlay, the read port, the event sink and the clock as
 # constructor parameters, so a reader runs it through its own CLI, not handler_routing.
@@ -40,11 +40,11 @@ descriptor:
 
 input_model:
   name: ModelReaderRequest
-  module: omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_reader
+  module: omnimarket.models.model_work_ledger_reader
   description: The reader's name, its point query, its lane, and whether to read parity.
 output_model:
   name: ModelReaderResult
-  module: omnimarket.nodes.node_work_ledger_reader_effect.models.model_work_ledger_reader
+  module: omnimarket.models.model_work_ledger_reader
   description: Status, the verb lines, the watermark age against its bound, parity, and the event.
 
 runtime_dispatch:
