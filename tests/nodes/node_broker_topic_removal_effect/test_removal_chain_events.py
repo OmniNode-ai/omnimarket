@@ -154,3 +154,10 @@ def test_named_break_the_golden_assertion_turns_red_when_the_inventory_is_unread
     events = asyncio.run(_publish(world, DRY_PAYLOAD))
     with pytest.raises(AssertionError):
         assert_golden_chain(events)
+
+
+def test_terminal_event_topic_is_the_declared_run_completed_topic() -> None:
+    assert (
+        TOPICS["broker_topic_removal_run_completed"]
+        == "onex.evt.omnimarket.broker-topic-removal-run-completed.v1"
+    )
