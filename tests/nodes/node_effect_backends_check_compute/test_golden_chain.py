@@ -47,22 +47,22 @@ async def _run(
     return runtime, status
 
 
-def test_golden_chain_declares_the_command_topic() -> None:
+def test_golden_chain_declares_the_command_and_terminal_topics() -> None:
     contract = yaml.safe_load(CONTRACT.read_text())
     assert (
         contract["runtime_dispatch"]["command_topic"]
         in contract["event_bus"]["subscribe_topics"]
     )
+    for topic in contract["runtime_dispatch"]["terminal_events"].values():
+        assert topic in contract["event_bus"]["publish_topics"]
 
 
-def test_golden_chain_declares_terminal_events_the_runtime_publishes() -> None:
+def test_golden_chain_publishes_the_check_completed_and_failed_events() -> None:
     contract = yaml.safe_load(CONTRACT.read_text())
-    assert contract["runtime_dispatch"]["terminal_events"] == {
-        "success": "onex.evt.omnimarket.effect-backends-check-completed.v1",
-        "failure": "onex.evt.omnimarket.effect-backends-check-failed.v1",
-    }
-    # The handler is pure and publishes nothing itself.
-    assert "publish_topics" not in contract["event_bus"]
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.effect-backends-check-completed.v1",
+        "onex.evt.omnimarket.effect-backends-check-failed.v1",
+    ]
 
 
 @pytest.mark.asyncio
