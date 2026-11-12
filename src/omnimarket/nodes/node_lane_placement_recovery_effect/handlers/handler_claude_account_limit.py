@@ -117,8 +117,14 @@ class HandlerClaudeAccountLimit:
         )
 
     def _pool_account(self, text: str) -> str | None:
-        labels = _POOL_LABEL_RE.findall(text)
-        return labels[-1] if labels else None
+        """The pool label the notice's log text names, or ``None`` when it names none or several.
+
+        Measured 2026-11-11 (OMN-23895): the last label in a log won, so a notice about one account was marked
+        on the label of another, and a reset that was never that label's stamped it until Nov 13. A text that
+        names more than one distinct label does not say which account hit the limit: no label is marked.
+        """
+        labels = set(_POOL_LABEL_RE.findall(text))
+        return next(iter(labels)) if len(labels) == 1 else None
 
     def _claude_account(self, text: str) -> str | None:
         label = self._pool_account(text)
@@ -129,9 +135,16 @@ class HandlerClaudeAccountLimit:
         return set(_POOL_LABEL_RE.findall(text)) | set(_TOKEN_ACCOUNT_RE.findall(text))
 
     def _mark_pool_account(
-        self, host: Any, label: str, seconds: float, capture: Capture
+        self,
+        host: Any,
+        label: str,
+        seconds: float,
+        capture: Capture,
+        *,
+        exact: bool = False,
     ) -> int:
-        script = f'{self.runtime["CLAUDE_POOL_SH"]}\n[ -n "$CPY" ] || exit 127\n"$CPY" -m {self.runtime["CLAUDE_POOL_MODULE"]} mark-limited --label {shlex.quote(label)} --seconds {int(seconds) + 1}'
+        flag = " --exact" if exact else ""
+        script = f'{self.runtime["CLAUDE_POOL_SH"]}\n[ -n "$CPY" ] || exit 127\n"$CPY" -m {self.runtime["CLAUDE_POOL_MODULE"]} mark-limited --label {shlex.quote(label)} --seconds {int(seconds) + 1}{flag}'
         return capture(
             self.runtime["exec_argv"](host, "claude-pool-mark", script),
             timeout=self.runtime["PROBE_TIMEOUT_S"],
@@ -436,7 +449,13 @@ class HandlerClaudeAccountLimit:
             pick = hosts.get(name)
             owned = source_owned if name == host else None
             if label is not None and pick is not None:
-                rc = self._mark_pool_account(pick, label, seconds, capture)
+                rc = self._mark_pool_account(
+                    pick,
+                    label,
+                    seconds,
+                    capture,
+                    exact=reset is not None and account is not None,
+                )
                 if name != host and rc not in (0, 4):
                     answered, _, selected = self._claude_room_verified(pick, capture)
                     if answered or not identities.intersection(selected):

@@ -47,6 +47,9 @@ from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
     WorklistKind,
 )
+from omnimarket.nodes.node_floor_simple_compute.handlers.integration_section import (
+    build_integration_section,
+)
 
 # The one row that names the open pull requests citing no ticket; the overlay's `causes.titles` may reword it.
 UNTICKETED_PRS_ID = "prs:no-ticket"
@@ -572,6 +575,9 @@ class HandlerFloorSimple:
                 "worklist": worklist,
                 "readiness": readiness,
                 "owner_inputs": inputs,
+                "integration": build_integration_section(
+                    ov.integration, request.integration
+                ),
             }
         )
         return document.model_copy(
