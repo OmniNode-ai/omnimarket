@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_effect_backends_check_compute
+node_id: node_effect_backends_check_compute
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 0, patch: 0}
+tags: [validator_node]
+description: >
+  Two-backend rule of rebuild piece 4 (OMN-22911). Lists every effect node whose contract does not declare
+  an in-memory default and a real backend chosen by an overlay key. The list is the input of piece 4's
+  reading and of the two-backend suite in omnimarket. A reading, never a gate: the check refuses nothing.
+  Moved from omnibase_core, where the runtime cannot register a node (OMN-23932); the directory read stays
+  in node_effect_backends_load_effect so this judging step is pure.
+input_model: omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_request.ModelEffectBackendsRequest
+output_model: omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_report.ModelEffectBackendsReport
+handler_routing:
+  version: {major: 1, minor: 0, patch: 0}
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: effect_backends
+      handler:
+        name: HandlerEffectBackends
+        module: omnimarket.nodes.node_effect_backends_check_compute.handlers.handler_effect_backends
+      event_model:
+        name: ModelEffectBackendsRequest
+        module: omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_request
+  default_handler: omnimarket.nodes.node_effect_backends_check_compute.handlers.handler_effect_backends:HandlerEffectBackends
+handler:
+  module: omnimarket.nodes.node_effect_backends_check_compute.handlers.handler_effect_backends
+  class: HandlerEffectBackends
+  input_model: omnimarket.nodes.node_effect_backends_check_compute.models.model_effect_backends_request.ModelEffectBackendsRequest
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+runtime_profiles: [main]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.effect-backends-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.effect-backends-check-completed.v1
+    failure: onex.evt.omnimarket.effect-backends-check-failed.v1
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+    - onex.cmd.omnimarket.effect-backends-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.effect-backends-check-completed.v1
+    - onex.evt.omnimarket.effect-backends-check-failed.v1

@@ -627,6 +627,7 @@ node_dev_deploy_reading_effect = "omnimarket.nodes.node_dev_deploy_reading_effec
 node_dev_merge_redeploy_trigger_effect = "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect"
 node_dev_roll_request_compute = "omnimarket.nodes.node_dev_roll_request_compute"
 node_dev_runtime_mutation_guard_effect = "omnimarket.nodes.node_dev_runtime_mutation_guard_effect"
+node_dev_tag_lineage_effect = "omnimarket.nodes.node_dev_tag_lineage_effect"
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
 node_developer_lane_admission_compute = "omnimarket.nodes.node_developer_lane_admission_compute"
 node_dirty_canonical_sweep = "omnimarket.nodes.node_dirty_canonical_sweep"
@@ -645,6 +646,8 @@ node_dod_verify = "omnimarket.nodes.node_dod_verify"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
 node_e2e_bridge_effect = "omnimarket.nodes.node_e2e_bridge_effect"
 node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"
+node_effect_backends_check_compute = "omnimarket.nodes.node_effect_backends_check_compute"
+node_effect_backends_load_effect = "omnimarket.nodes.node_effect_backends_load_effect"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
 node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment_orchestrator"
 node_entrypoint_lib_compute = "omnimarket.nodes.node_entrypoint_lib_compute"
@@ -1621,7 +1624,7 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # for external installs.
 # OMN-22472: core and infra move together; the ticket validator (omnibase_core#2281) the floor-task ticket nodes import came with core cd128b790ec6.
 # OMN-23839: this core tag is the one infra dev-20261111211012-df3f14f5e6b9 locks (omnibase_infra#5896); it carries the delegation routing order models (omnibase_core#2309).
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261111160725-6cbe67b216fe" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261111183916-a85cb916d4c1" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261108074331-82c1680fad8a" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
