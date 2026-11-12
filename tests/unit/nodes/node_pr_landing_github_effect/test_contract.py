@@ -110,7 +110,8 @@ def test_topics_are_registered_in_the_topic_registry() -> None:
 
 def test_only_the_effect_and_the_orchestrator_claim_the_topics() -> None:
     """The orchestrator sends the request and consumes both results; the PR lifecycle
-    orchestrator also sends it, for a runner-class red's one rerun."""
+    orchestrator also sends it, for a runner-class red's one rerun; the merge override
+    alarm sends one read_pr_state per merge and consumes both results (OMN-23772)."""
     claims: dict[tuple[str, str], list[str]] = {}
     for path in sorted(_NODES.glob("*/contract.yaml")):
         bus = _load(path).get("event_bus") or {}
@@ -121,13 +122,14 @@ def test_only_the_effect_and_the_orchestrator_claim_the_topics() -> None:
     effect = "node_pr_landing_github_effect"
     orchestrator = "node_pr_landing_orchestrator"
     lifecycle = "node_pr_lifecycle_orchestrator"
+    alarm = "node_merge_override_alarm_effect"
     assert claims == {
-        (_REQUESTED, "publish_topics"): [orchestrator, lifecycle],
+        (_REQUESTED, "publish_topics"): [alarm, orchestrator, lifecycle],
         (_REQUESTED, "subscribe_topics"): [effect],
         (_COMPLETED, "publish_topics"): [effect],
-        (_COMPLETED, "subscribe_topics"): [orchestrator],
+        (_COMPLETED, "subscribe_topics"): [alarm, orchestrator],
         (_FAILED, "publish_topics"): [effect],
-        (_FAILED, "subscribe_topics"): [orchestrator],
+        (_FAILED, "subscribe_topics"): [alarm, orchestrator],
     }
 
 

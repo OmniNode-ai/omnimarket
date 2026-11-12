@@ -74,6 +74,9 @@ from omnimarket.github_landing.model_github_http_exchange import (
 from omnimarket.handlers.github_quota_readings import GithubQuotaReadings
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.merge_control.hold_marker import evaluate_merge_hold
+from omnimarket.models.model_github_pr_merge_state_fact import (
+    ModelGithubPrMergeStateFact,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_landing_github_effect.models import (
     EnumPrLandingGithubFailureReason,
@@ -146,7 +149,7 @@ class _Exchange:
         http_status: int | None = None,
         retry_after_seconds: int | None = None,
         quota: ModelGithubQuotaReading | None = None,
-        pr_state: ModelGithubPrStateFact | None = None,
+        pr_state: ModelGithubPrMergeStateFact | None = None,
     ) -> _RefusedError:
         command = self.command
         return _RefusedError(
@@ -217,7 +220,7 @@ class _Exchange:
         etag: str | None = None,
         check_runs: tuple[ModelGithubCheckRunFact, ...] = (),
         required_contexts: tuple[str, ...] | None = None,
-        pr_state: ModelGithubPrStateFact | None = None,
+        pr_state: ModelGithubPrMergeStateFact | None = None,
         started_attempts: tuple[ModelGithubRunAttempt, ...] = (),
     ) -> ModelPrLandingGithubCompleted:
         command = self.command
@@ -373,7 +376,7 @@ class HandlerPrLandingGithubEffect:
         if response.status == 304:
             return exchange.completed(not_modified=True, etag=etag)
         try:
-            state = ModelGithubPrStateFact.from_rest_pull(response.body)
+            state = ModelGithubPrMergeStateFact.from_rest_pull(response.body)
         except (GithubPrStateParseError, ValueError) as exc:
             raise exchange.failed(
                 EnumPrLandingGithubFailureReason.VALIDATION_FAILED,
@@ -477,7 +480,7 @@ class HandlerPrLandingGithubEffect:
         policy_read, mutation = command.to_http_requests()
         response = await exchange.send(policy_read)
         try:
-            state = ModelGithubPrStateFact.from_policy_read(response.body)
+            state = ModelGithubPrMergeStateFact.from_policy_read(response.body)
         except (GithubPrStateParseError, ValueError) as exc:
             raise exchange.failed(
                 EnumPrLandingGithubFailureReason.VALIDATION_FAILED,
