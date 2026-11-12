@@ -66,6 +66,7 @@ def render_units(
     source_root: Path,
     overlay_file: Path,
     home: Path,
+    workspace_root: Path,
 ) -> tuple[str, str]:
     """The systemd user service and timer text of the watermark reading on one host."""
     interpreter = _safe(python, "interpreter")
@@ -74,6 +75,7 @@ def render_units(
         "HOME": user_home,
         "PATH": f"{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
         "PYTHONPATH": _safe(source_root / "src", "source root"),
+        "OMNIBASE_PATH": _safe(workspace_root, "workspace root"),
         OVERLAY_ENV: _safe(overlay_file, "overlay file"),
     }
     service = (
@@ -121,6 +123,7 @@ class WatermarkScheduler:
         python: Path,
         source_root: Path,
         overlay_file: Path,
+        workspace_root: Path,
         dry_run: bool = False,
     ) -> ModelLabDiskWatermarkScheduleResult:
         try:
@@ -131,6 +134,7 @@ class WatermarkScheduler:
                 source_root=source_root,
                 overlay_file=overlay_file,
                 home=self.home,
+                workspace_root=workspace_root,
             )
         except ValueError as exc:
             return ModelLabDiskWatermarkScheduleResult(exit_code=1, stderr=f"{exc}\n")

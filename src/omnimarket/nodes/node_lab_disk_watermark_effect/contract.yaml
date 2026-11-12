@@ -45,7 +45,7 @@ schedule:
     first_pass: 1s
     interval_seconds: 300
     accuracy: 30s
-    timeout_start_seconds: 120
+    timeout_start_seconds: 600
     description: a first reading at install, then every 300 s
 event_bus:
   publish_topics:
