@@ -64,7 +64,7 @@ handler_routing:
       event_model:
         name: "ModelTenantReadCommand"
         module: "omnimarket.models.model_tenant_read_bus"
-      event_type: "tenant_savings.read_bus"
+      event_type: "omnimarket.tenant-savings-read-requested"
       message_category: "COMMAND"
       handler:
         name: "HandlerTenantSavingsReadBus"

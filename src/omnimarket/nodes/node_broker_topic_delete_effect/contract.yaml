@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Broker Topic Delete Effect (OMN-23879)
+#
+# Executes the typed delete of broker topics a removal plan already cleared. The command names the
+# topics and the class the plan gave each; this node re-reads the broker's live evidence and the
+# contracts' declarations, refuses any topic the evidence does not support, and only issues deletes
+# when the overlay enforces and the command names an approval. Nothing is deleted otherwise: a
+# report-only run names what would go. Every value is an overlay value.
+name: node_broker_topic_delete_effect
+contract_name: node_broker_topic_delete_effect
+node_name: node_broker_topic_delete_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Takes the topics a removal plan cleared, reads the broker's live evidence and the contracts'
+  declarations fresh, refuses every topic the evidence does not support, and issues the deletes of
+  the rest only when the overlay enforces and the command names an approval. The result carries each
+  named topic by status - deleted, would delete, refused, absent, failed - with the reasons and the
+  partitions the broker lost.
+
+handler:
+  module: omnimarket.nodes.node_broker_topic_delete_effect.handlers.handler_broker_topic_delete
+  class: HandlerBrokerTopicDelete
+  input_model: omnimarket.nodes.node_broker_topic_delete_effect.models.model_topic_delete.ModelTopicDeleteCommand
+
+# HandlerBrokerTopicDelete takes the overlay, the declared topics and the broker admin as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [broker-topic-delete]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelTopicDeleteCommand
+  module: omnimarket.nodes.node_broker_topic_delete_effect.models.model_topic_delete
+  description: A correlation id, the named topics with the class the plan gave each, the approval reference for an enforcing overlay and the ruling that covers a declared topic.
+output_model:
+  name: ModelTopicDeleteResult
+  module: omnimarket.nodes.node_broker_topic_delete_effect.models.model_topic_delete
+  description: Every named topic by status, the reasons of each refusal, and the partitions the broker lost.
+
+terminal_event: onex.evt.omnimarket.broker-topic-delete-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  broker_topic_delete_requested: onex.cmd.omnimarket.broker-topic-delete-requested.v1
+  broker_topic_delete_reported: onex.evt.omnimarket.broker-topic-delete-reported.v1
+  broker_topic_delete_refused: onex.evt.omnimarket.broker-topic-delete-refused.v1
+  broker_topic_delete_run_completed: onex.evt.omnimarket.broker-topic-delete-run-completed.v1
+  broker_topic_delete_run_failed: onex.evt.omnimarket.broker-topic-delete-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.broker-topic-delete-reported.v1
+  - onex.evt.omnimarket.broker-topic-delete-refused.v1
+  - onex.evt.omnimarket.broker-topic-delete-run-completed.v1
+  - onex.evt.omnimarket.broker-topic-delete-run-failed.v1
+
+overlay:
+  node: node_broker_topic_delete_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_broker_topic_delete_effect.overlay.ModelTopicDeleteOverlay
+
+metadata:
+  ticket: OMN-23879
+  transport_type: inmemory

@@ -20,9 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    ModelPRInfo,
-)
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot import (
     HandlerPrSnapshot,
     _detect_stalls,

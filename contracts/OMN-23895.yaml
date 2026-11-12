@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-23895
+title: Claude token pool re-tests a limited login and stops misattributing limit notices
+summary: A limited mark on a pool login was stamped from a limit notice that named another account, and nothing re-tested it, so the login stayed benched on every host after its real reset. A new compute node decides when a limited label is due for a re-test and what each probe answer means (ok clears the mark, a newer reset replaces the stamp even when earlier, limited without a newer reset or an error keeps it); the rotation tick on the marks-source host runs the pool's own headless probe through an injected port and sends one typed command that the pool executes only while it holds that fingerprint and that exact stamp. A notice whose text names more than one pool label is no longer attributed to the last one, and only a notice that names its own reset replaces a stamp. A second compute node decides which labels held on a host are outside the secret store and the refill adopts them through a pool export piped into the existing secret seed node, create only, never overwriting and never adopting a revoked or conflicting label.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23895-limit-recheck
+  statement: A limited mark that the account's real answer contradicts is cleared by the pool through a typed command decided by a compute node after the pool's own probe; a real limit stays.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a compute decision probes a limited label only when its last probe is older than the overlay interval, clears the mark only on an ok answer, replaces the stamp with a newer reset time even when earlier, and keeps it on a limited-without-newer-reset or error answer -- falsifier: uv run pytest tests/nodes/node_claude_pool_limit_recheck_compute -q, red at the merge base where the node does not exist'
+  - id: AC2
+    statement: 'AC2: the rotation tick on the marks-source host asks the compute node, runs the injected probe, and the pool effect executes the typed command only while it still holds that fingerprint and that exact limited-until stamp -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_limit_recheck.py -q, red when the fingerprint or stamp guard is removed'
+  - id: AC3
+    statement: 'AC3: a notice naming more than one pool label is not attributed to any one label -- falsifier: uv run pytest tests/nodes/node_lane_placement_recovery_effect -q -k ambiguous, red at the merge base where the last label wins'
+  - id: AC4
+    statement: 'AC4: integrated: run from the branch on a lab host against a copy of a pool file holding a stale limited mark and a real one, with a fake probe, the stale mark clears, the real one stays and the live pool file hash is unchanged -- falsifier: the copy still shows the stale mark after the tick, or the live pool file hash changed'
+evidence_requirements:
+- kind: tests
+  description: The recheck, attribution, adopt and pool tests pass at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_pool_limit_recheck_compute tests/nodes/node_claude_pool_store_adopt_compute tests/nodes/node_claude_token_pool_effect tests/nodes/node_claude_pool_refill_effect tests/nodes/node_lane_placement_recovery_effect/test_pool_account_attribution.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23895-ac1
+  description: The compute node's rule tests probe only a due label, clear only on ok, replace with an earlier newer reset, and keep on limited-without-newer-reset and on error; the control shows no non-ok answer clears.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_pool_limit_recheck_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23895-ac2
+  description: The tick on the marks-source host probes through the injected port and the pool executes the typed command only for its own fingerprint and exact stamp; a host without the marks, an overlay without the block, a dry run and a label inside the interval probe nothing.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_limit_recheck.py tests/nodes/node_claude_token_pool_effect/test_limit_probe_adapter.py tests/nodes/node_claude_token_pool_effect/test_seams_omn23895.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23895-ac3
+  description: A notice whose text names two pool labels is attributed to none, one label is attributed, and the mark command carries the exact flag only for a notice that names its own reset.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_placement_recovery_effect/test_pool_account_attribution.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23895-ac4
+  description: The tick handler over a pool file holding a stale limited mark and a real one, with a fake probe, clears the stale mark and keeps the real one; a non-ok answer never clears.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_limit_recheck.py -q --no-cov -n 0 -p no:randomly -k "stale_mark or only_an_ok_answer_clears"
+    cwd: .
+- id: dod-omn23895-integration-proof
+  description: From the branch on a lab host, the tick handler over a copy of the live pool file with a fake probe clears the stale limited mark, keeps the limited and error ones, and the live pool file hash is unchanged. Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23895-pool --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_limit_recheck.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

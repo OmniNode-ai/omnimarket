@@ -183,6 +183,7 @@ class HandlerJoinRefusal:
                         "phase": "failure",
                         "emitted_at": now,
                         "backend": self._backend,
+                        "origin": "probe",
                         "failure_code": f"{UPSTREAM_PREFIX}{failure.failure_code}",
                         "failure_detail": (
                             f"{join.join}: piece {join.from_piece} failed with "

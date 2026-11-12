@@ -29,6 +29,7 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryDispatcher,
     InMemoryEffectsGroups,
+    InMemoryGrowthStreaks,
     InMemoryHeldState,
     InMemoryLag,
     InMemoryManifest,
@@ -37,6 +38,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     CommandLaneDispatcher,
+    FileGrowthStreaks,
     FileHeldState,
     FileManifestCache,
     FileRunRecords,
@@ -102,6 +104,7 @@ def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
         manifest=InMemoryManifest({"contracts": []}),
         lag=InMemoryLag({}),
         samples=InMemorySamples(),
+        streaks=InMemoryGrowthStreaks(),
         records=InMemoryRunRecords(),
         clock=_utc_now,
     )
@@ -122,6 +125,11 @@ def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
         ),
         lag=KafkaLag(overlay.bus.lane, overlay.lag.timeout_seconds),
         samples=FileSamples(Path(overlay.lag.state_path)),
+        streaks=(
+            FileGrowthStreaks(Path(overlay.lag.growth.streak_path))
+            if overlay.lag.growth
+            else None
+        ),
         records=FileRunRecords(Path(overlay.lag.record_path)),
         clock=_utc_now,
     )
