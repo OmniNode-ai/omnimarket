@@ -15,6 +15,7 @@ import asyncio
 import os
 import time
 import uuid
+from typing import Any
 
 import pytest
 
@@ -36,7 +37,7 @@ BOOTSTRAP_ENV = "CONSUMER_GROUP_PARITY_BOOTSTRAP"
 WAIT_S = 30.0
 
 
-def join(bootstrap: str, topic: str, group: str) -> object:
+def join(bootstrap: str, topic: str, group: str) -> Any:
     from confluent_kafka import Consumer
 
     consumer = Consumer(
@@ -86,7 +87,7 @@ def test_real_groups_are_deleted_read_back_and_a_file_decided_command_is_refused
     keeper = join(bootstrap, topic, live)
     try:
         for name in due:
-            join(bootstrap, topic, name).close()  # type: ignore[attr-defined]
+            join(bootstrap, topic, name).close()
         for name in due:
             wait_for(admin, config, name, "EMPTY")
         wait_for(admin, config, live, "STABLE")
@@ -117,4 +118,4 @@ def test_real_groups_are_deleted_read_back_and_a_file_decided_command_is_refused
         assert not set(due) & set(listing)
         assert listing[live] == "STABLE"
     finally:
-        keeper.close()  # type: ignore[attr-defined]
+        keeper.close()

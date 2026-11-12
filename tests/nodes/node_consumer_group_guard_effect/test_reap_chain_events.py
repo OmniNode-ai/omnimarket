@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
@@ -40,8 +42,8 @@ async def chain(
 ) -> ModelGroupReapOutcome:
     """The command crosses the bus as JSON, the handler consumes it, the outcome crosses back."""
 
-    async def on_command(message: object) -> None:
-        received = ModelGroupReapCommand.model_validate_json(message.value)  # type: ignore[attr-defined]
+    async def on_command(message: Any) -> None:
+        received = ModelGroupReapCommand.model_validate_json(message.value)
         outcome = await handler.handle(received)
         await bus.publish(
             COMPLETED_TOPIC, key=None, value=outcome.model_dump_json().encode()

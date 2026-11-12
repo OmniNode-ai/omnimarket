@@ -114,11 +114,13 @@ def test_seam_folds_through_reducer() -> None:
 
 def test_renamed_field_is_refused() -> None:
     with pytest.raises(ValueError, match="groups"):
-        ModelGroupCensusEvent(
-            correlation_id=uuid4(),
-            bus_lane="lane-a",
-            observed_at=datetime(2026, 1, 1, tzinfo=UTC),
-            group_states={"a": "EMPTY"},  # type: ignore[call-arg]
+        ModelGroupCensusEvent.model_validate(
+            {
+                "correlation_id": uuid4(),
+                "bus_lane": "lane-a",
+                "observed_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "group_states": {"a": "EMPTY"},
+            }
         )
 
 
