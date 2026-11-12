@@ -760,6 +760,7 @@ node_host_drain_effect = "omnimarket.nodes.node_host_drain_effect"
 node_host_drift_check_effect = "omnimarket.nodes.node_host_drift_check_effect"
 node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
 node_host_gap_unit_effect = "omnimarket.nodes.node_host_gap_unit_effect"
+node_host_install_state_reducer = "omnimarket.nodes.node_host_install_state_reducer"
 node_host_installer_container_units = "omnimarket.nodes.node_host_installer_container_units"
 node_host_installer_net_units = "omnimarket.nodes.node_host_installer_net_units"
 node_host_installer_registry_units = "omnimarket.nodes.node_host_installer_registry_units"
@@ -2118,4 +2119,5 @@ markers = [
     "closing_row_parity: the remote lane's closing row (needs and report cells) joins the close node, the row writer and the stopped-lane compute the same on the in-memory bus and on a Redpanda bus (needs CLOSING_ROW_PARITY_BOOTSTRAP for the Redpanda leg)",
     "work_state_parity: the work-state projection projects the same items on the in-memory bus and on a Redpanda bus (needs WORK_STATE_PARITY_BOOTSTRAP for the Redpanda leg)",
     "join_j7_parity: the J7 refusal seam answers the same on the in-memory bus and on a Redpanda bus (needs JOIN_J7_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "host_install_parity: the host install state reducer folds the same step events on the in-memory bus and on a Redpanda bus (needs HOST_INSTALL_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]
