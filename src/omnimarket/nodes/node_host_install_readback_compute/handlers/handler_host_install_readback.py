@@ -15,14 +15,21 @@ from omnimarket.nodes.node_host_install_readback_compute.models.model_host_insta
 )
 from omnimarket.nodes.node_host_install_readback_compute.overlay import (
     ModelHostInstallReadbackOverlay,
+    load_overlay,
 )
 
 
 class HandlerHostInstallReadback:
     """``handle(request) -> result``. The overlay supplies the digest algorithm."""
 
-    def __init__(self, overlay: ModelHostInstallReadbackOverlay) -> None:
-        self.overlay = overlay
+    def __init__(self, overlay: ModelHostInstallReadbackOverlay | None = None) -> None:
+        self._configured_overlay = overlay
+
+    @property
+    def overlay(self) -> ModelHostInstallReadbackOverlay:
+        if self._configured_overlay is None:
+            self._configured_overlay = load_overlay()
+        return self._configured_overlay
 
     def handle(
         self, request: ModelHostInstallReadbackRequest

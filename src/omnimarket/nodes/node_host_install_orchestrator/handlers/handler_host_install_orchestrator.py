@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from collections import OrderedDict
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
@@ -39,6 +39,7 @@ from omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_o
 )
 from omnimarket.nodes.node_host_install_orchestrator.overlay import (
     ModelHostInstallOrchestratorOverlay,
+    load_overlay,
 )
 from omnimarket.nodes.node_host_install_readback_compute.digest import digest_text
 from omnimarket.nodes.node_host_install_readback_compute.models.model_host_install_readback import (
@@ -96,17 +97,27 @@ class ModelHostInstallOutput(BaseModel):
     payload: BaseModel
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 class HandlerHostInstallOrchestrator:
     """``handle(envelope)`` routes one consumed payload; ``decide`` is the same routing without the runtime wrapper."""
 
     def __init__(
         self,
-        overlay: ModelHostInstallOrchestratorOverlay,
-        clock: Callable[[], datetime],
+        overlay: ModelHostInstallOrchestratorOverlay | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
-        self._overlay = overlay
-        self._clock = clock
+        self._configured_overlay = overlay
+        self._clock = clock if clock is not None else _utc_now
         self._contexts: OrderedDict[UUID, ModelHostInstallContext] = OrderedDict()
+
+    @property
+    def _overlay(self) -> ModelHostInstallOrchestratorOverlay:
+        if self._configured_overlay is None:
+            self._configured_overlay = load_overlay()
+        return self._configured_overlay
 
     @property
     def known_installs(self) -> tuple[UUID, ...]:

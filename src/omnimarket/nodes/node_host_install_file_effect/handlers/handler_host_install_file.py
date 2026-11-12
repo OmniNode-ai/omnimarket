@@ -19,6 +19,7 @@ from omnimarket.nodes.node_host_install_file_effect.models.model_host_install_fi
 )
 from omnimarket.nodes.node_host_install_file_effect.overlay import (
     ModelHostInstallFileOverlay,
+    load_overlay,
 )
 from omnimarket.nodes.node_host_install_file_effect.protocols.protocol_host_install_files import (
     ProtocolHostInstallFiles,
@@ -56,10 +57,18 @@ class HandlerHostInstallFile:
     """Runs one file step of a host unit install."""
 
     def __init__(
-        self, overlay: ModelHostInstallFileOverlay, files: ProtocolHostInstallFiles
+        self,
+        overlay: ModelHostInstallFileOverlay | None = None,
+        files: ProtocolHostInstallFiles | None = None,
     ) -> None:
-        self._overlay = overlay
-        self._files = files
+        self._configured_overlay = overlay
+        self._files = files if files is not None else LocalHostInstallFiles()
+
+    @property
+    def _overlay(self) -> ModelHostInstallFileOverlay:
+        if self._configured_overlay is None:
+            self._configured_overlay = load_overlay()
+        return self._configured_overlay
 
     def handle(
         self, request: ModelHostInstallFileRequest
