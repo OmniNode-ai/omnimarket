@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23909
+title: Real chains from the workstation's units reach the bus, and a refused copy says so
+summary: The Mac lane login gets the broker rows the floor chain emission topics need (overlays repository, additions only), the journal sink writes one line when the bus refuses a chain copy, and a seam test fails when the topics the publishers use stop being the topics the rows grant.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23909-ac1
+  statement: The Mac login holds rows on the four floor emission topics, additions only.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the workstation lane login holds read, write and describe rows on the three chain emission topics and the emissions snapshot topic, as an additions-only overlays change -- falsifier: the overlays rows test fails when that login or one of the four topics is missing from the scope, or when a topic DELETE row is present'
+- id: req-omn23909-ac2
+  statement: A refused chain copy is written to the process error output.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a chain-copy refusal by the bus is written once per distinct refusal to the process error output with the topic and the exception type, and the journal write still stands -- falsifier: uv run pytest of the sink test fails on the base commit (no line written) and passes with the change; a control with a working mirror writes no line'
+- id: req-omn23909-ac3
+  statement: Chains from the workstation's units read origin real on the dev broker.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: after the operator applies the rows, a read of the three emission topics on the dev broker shows at least one chain from a workstation unit''s node with origin real -- falsifier: the same read before the rows are applied shows no chain from any workstation unit node; host, revision and the node names read are named in a comment on this ticket'
+evidence_requirements:
+- kind: tests
+  description: The sink refusal tests and the seam test between the publishers and the overlays rows (AC1, AC2).
+  command: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_emission_mirror_omn23877.py tests/nodes/node_floor_emissions_publish_effect/test_mac_rows_seam_omn23909.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23909-ac1
+  description: AC1 is the seam test of this repository (the topics the publishers write and read are the four topics the rows grant, with a control that a renamed topic breaks it); the rows themselves and their test are overlays pull request 336, whose test fails on a missing login, a missing topic or a DELETE row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_mac_rows_seam_omn23909.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23909-ac2
+  description: AC2 is the focused sink tests named in its check; on the base commit the refusal line tests fail because the sink writes nothing.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_emission_mirror_omn23877.py -q -n 0 -p no:randomly --no-cov -k "refused_copy or names_the_topic or working_mirror_writes_no_line"
+    cwd: .
+- id: dod-omn23909-ac3
+  description: AC3 hosted part is the golden chain on the in-memory bus (every phase topic gets the event, so a Mac unit's chain reaches the topics the rows grant); the reading on the dev broker after the rows are applied is a ticket comment.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_mac_rows_seam_omn23909.py -q -n 0 -p no:randomly --no-cov -k "golden_chain"
+    cwd: .
+- id: dod-omn23909-integration-proof-mac-chains
+  description: 'AC3 on the running floor: the served board is read and at least one join must hold a real golden chain; before the Mac rows are applied no join does. The dev broker read (host, revision, node names read) is a ticket comment. Hosted CI cannot reach the served board, so only the local Done gate runs this check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: curl -sf -m 20 "${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert any(j.get('real_golden_age_s') is not None for p in d['pieces'] for j in p['joins']), 'no join holds a real golden chain'"
+    cwd: .
