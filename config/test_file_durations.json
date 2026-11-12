@@ -4398,6 +4398,7 @@
   "tests/unit/nodes/node_dev_running_revision_compute/test_error_chain_dev_running_revision.py": 2.59,
   "tests/unit/nodes/node_dev_running_revision_compute/test_golden_chain_dev_running_revision.py": 1.98,
   "tests/unit/nodes/node_dev_running_revision_compute/test_handler_dev_running_revision.py": 2.42,
+  "tests/unit/nodes/node_dev_running_revision_compute/test_seam_build_manifest.py": 2.38,
   "tests/unit/nodes/node_dev_running_revision_effect/test_handler_dev_running_revision_read.py": 1.79,
   "tests/unit/nodes/node_dev_running_revision_effect/test_lab_source_dev_running_revision.py": 1.68,
   "tests/unit/nodes/node_dirty_canonical_sweep/test_handler_dirty_canonical_sweep.py": 0.05,
