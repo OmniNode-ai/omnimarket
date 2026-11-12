@@ -1231,6 +1231,7 @@
   "tests/nodes/node_floor_simple_effect/test_harness_reading_floor_simple.py": 0.14,
   "tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py": 0.09,
   "tests/nodes/node_floor_simple_effect/test_hosts_own_load_floor_simple.py": 11.03,
+  "tests/nodes/node_floor_simple_effect/test_integration_section_omn23899.py": 1.04,
   "tests/nodes/node_floor_simple_effect/test_ledger_readings_floor_simple.py": 0.28,
   "tests/nodes/node_floor_simple_effect/test_mvp_launch_floor_simple.py": 2.35,
   "tests/nodes/node_floor_simple_effect/test_mvp_launch_reads.py": 12.61,

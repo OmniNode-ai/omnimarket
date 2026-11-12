@@ -85,6 +85,9 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state impor
 from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import (
     abandoned_starts,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers.integration_source import (
+    read_integration,
+)
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     ModelLedgerFloorRead,
     read_ledger_facts,
@@ -212,6 +215,8 @@ class ModelSourcePaths(BaseModel):
     broker_lag_condition: str
     projection_reads_relpath: str
     overlay_store_projection: str
+    # The integration projection (OMN-23899); ``None`` is a contract that names none and the cycle reads none.
+    integration_projection: str | None = None
     deploy_agent_relpath: str
     readings_relpath: str
     harness_result_relpath: str
@@ -964,6 +969,11 @@ class HandlerFloorSimpleTick:
             if delegation_spec is not None
             else None
         )
+        integration = (
+            read_integration(projections, rt.sources.integration_projection, now)
+            if rt.sources.integration_projection is not None
+            else None
+        )
         floor_input = ModelFloorSimpleInput(
             now=now,
             overlay=floor_ov,
@@ -1018,8 +1028,14 @@ class HandlerFloorSimpleTick:
                     if delegation_spec is not None
                     else {}
                 ),
+                **(
+                    {"integration_projection": integration.status == "read"}
+                    if integration is not None
+                    else {}
+                ),
             },
             worklist=worklist,
+            integration=integration,
             delegation_tickets=delegation_tickets,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),

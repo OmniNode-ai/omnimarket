@@ -18,6 +18,11 @@ from omnimarket.models.floor_17a.model_delegation_idle import (
     ModelDelegationIdleOverlay,
     ModelDelegationTicketIn,
 )
+from omnimarket.models.floor_17a.model_floor_integration import (
+    ModelFloorIntegrationIn,
+    ModelFloorIntegrationOverlay,
+    ModelFloorIntegrationSection,
+)
 from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
 from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistClass,
@@ -718,6 +723,9 @@ class ModelFloorSimple(_Frozen):
     worklist: tuple[ModelWorklistClass, ...] | None = None
     # The owner map and lane list as judged this cycle (OMN-23388); ``None`` when the overlay declares no judgment.
     owner_inputs: ModelOwnerInputs | None = None
+    # Merged work that is not running, from the integration projection (OMN-23899); ``None`` is a record written before the
+    # section existed.
+    integration: ModelFloorIntegrationSection | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -985,6 +993,8 @@ class ModelFloorSimpleOverlay(_Frozen):
     details_href: str = Field(min_length=1)
     # The board's work list (OMN-23184); ``None`` declares none and the floor draws none.
     worklist: ModelWorklistOverlay | None = None
+    # The integration section's words (OMN-23899); ``None`` declares none and the floor draws the section not configured.
+    integration: ModelFloorIntegrationOverlay | None = None
 
     @model_validator(mode="after")
     def _eighteen(self) -> ModelFloorSimpleOverlay:
@@ -1059,6 +1069,8 @@ class ModelFloorSimpleInput(_Frozen):
     # The operator-owned delegation tickets whose start criterion reads true (OMN-23313); ``None`` is a list that was not
     # read (drawn as an unread input), ``()`` is a list that was read and holds none.
     delegation_tickets: tuple[ModelDelegationTicketIn, ...] | None = None
+    # The integration projection as this cycle read it (OMN-23899); ``None`` is a cycle that did not read it.
+    integration: ModelFloorIntegrationIn | None = None
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------
