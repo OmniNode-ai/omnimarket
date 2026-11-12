@@ -101,6 +101,7 @@ from omnimarket.nodes.node_lab_alarm.overlay import (
     ModelLabAlarmOverlay,
     load_overlay,
 )
+from omnimarket.nodes.node_lab_alarm.protocols import ProtocolListenerProbe
 from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
     HandlerLabAlarmDeliver,
 )
@@ -360,17 +361,20 @@ def run_effects_held(
     return _EFFECTS_EXIT[result.outcome]
 
 
+_LISTENER_PROBES: dict[str, Callable[[], ProtocolListenerProbe]] = {
+    "inmemory": InMemoryListenerProbe,
+    "runtime": TcpApiVersionsProbe,
+}
+
+
 def build_broker_listener_handler(
     overlay: ModelLabAlarmOverlay, settings: ModelBrokerListenerSettings
 ) -> HandlerBrokerListener:
     """The listener handler wired to the overlay's backend: the TCP probe on the runtime backend, fixtures in memory."""
-    probe = (
-        TcpApiVersionsProbe()
-        if overlay.bus.backend == "runtime"
-        else InMemoryListenerProbe()
-    )
     return HandlerBrokerListener(
-        settings=settings, probe=probe, delivery=_delivery_for(overlay)
+        settings=settings,
+        probe=_LISTENER_PROBES[overlay.bus.backend](),
+        delivery=_delivery_for(overlay),
     )
 
 
