@@ -23,7 +23,7 @@ description: >-
   run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job, and ends its run
   on TERM, INT and HUP, so an unload ends it too. A unit that declares tick_lock_file has a tick that holds that file in its evidence directory
   while it runs: an install or uninstall waits for a running tick to end after the unload, then stops it, and refuses the install of one it cannot stop.
-  Before loading a unit the installer runs its module with the arguments of the unit's declared probe_argv (the help request when none is declared) under the rendered environment; a module whose help request would run a real pass declares a probe its main honours without a pass, a bus read or a write, and a probe that is not a non-empty list of words is refused.
+  Before loading a unit the installer runs its module with the arguments of the unit's declared probe_argv (the help request when none is declared) under the rendered environment; a module whose help request would run a real pass declares a probe its main honours without a pass, a bus read or a write, and a probe that is not a non-empty list of words is refused. The status mode of a systemd unit also compares the installed service and timer files with the text the installer renders now, prints one UNIT TEXT line per file (IN SYNC, DIFFERS FROM RENDER with the differing lines, or NOT COMPARED with the reason) and fails when a file differs.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
