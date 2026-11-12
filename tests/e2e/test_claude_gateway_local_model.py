@@ -59,6 +59,7 @@ async def _execute(
     return process.returncode or 0, stdout.decode(), stderr.decode()
 
 
+@pytest.mark.release_proof
 async def test_installed_claude_uses_actual_native_local_model(tmp_path: Path) -> None:
     endpoint = os.environ.get("ONEX_NATIVE_MESSAGES_ENDPOINT")
     model = os.environ.get("ONEX_NATIVE_MESSAGES_MODEL")

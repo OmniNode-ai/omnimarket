@@ -183,6 +183,7 @@ def test_collector_reads_rosetta_and_vm_from_sysctl(
 @pytest.mark.skipif(
     __import__("platform").system() != "Darwin", reason="reads this Mac's sysctl"
 )
+@pytest.mark.release_proof
 def test_collector_answers_on_a_real_mac(tmp_path: Path) -> None:
     from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
         collect_machine_facts,

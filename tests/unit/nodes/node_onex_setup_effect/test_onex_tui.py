@@ -396,7 +396,7 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
     )
     app = _app(runner)
     async with app.run_test(size=(100, 44)) as pilot:
-        await _open_config(pilot, app, "/setup")
+        await _open_config(pilot, app)
         assert not app.screen.query_one("#key").display
         await _press(pilot, app, "find")
         await pilot.pause()
@@ -714,7 +714,7 @@ async def test_model_with_nothing_set_up_points_to_setup() -> None:
         await _type(pilot, "/model")
         await pilot.press("enter")
         await pilot.pause()
-        assert "Type /setup to connect one." in _log_text(app)
+        assert "Type /config to connect one." in _log_text(app)
 
 
 async def test_clear_empties_the_output() -> None:
@@ -840,15 +840,20 @@ async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
         assert "Ready:" not in text
 
 
-async def test_typing_setup_still_opens_the_config_form() -> None:
+async def test_setup_is_not_a_tui_command_config_is() -> None:
+    """/config collects the choices and runs onex setup, so /setup is not a second
+    way in: it is neither listed nor run, and says how to find the commands."""
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
-    app = _app(_Runner([]))
+    runner = _Runner([])
+    app = _app(runner)
     async with app.run_test(size=(120, 50)) as pilot:
         await _type(pilot, "/setup ")
         await pilot.press("backspace", "enter")
         await pilot.pause()
-        assert isinstance(app.screen, SetupScreen)
+        assert not isinstance(app.screen, SetupScreen)
+        assert "no onex command matches '/setup'" in _log_text(app)
+        assert not [call for call in runner.calls if call[0] == "setup"]
 
 
 async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:

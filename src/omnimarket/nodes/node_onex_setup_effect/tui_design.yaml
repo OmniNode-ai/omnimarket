@@ -65,8 +65,13 @@ shortcuts:
 
 # Typed but not listed: each opens the shortcut it names.
 aliases:
-  setup: config
   exit: quit
+
+# CLI commands a shortcut replaces in the TUI: neither listed nor typed here.
+# /config collects the choices and runs `onex setup` with them, so /setup is
+# not a second way in (operator decision 2026-11-12). The CLI command itself stays.
+replaced_commands:
+  - [setup]
 
 # Marks used in the output pane.
 glyphs:

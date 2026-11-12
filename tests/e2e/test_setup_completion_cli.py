@@ -19,6 +19,7 @@ pytestmark = pytest.mark.e2e
     ("kind", "tool", "notice"),
     [("audio", "say", "system voice"), ("notification", "osascript", "notification")],
 )
+@pytest.mark.release_proof
 @requires_supported_macos
 def test_completion_review_and_once_only_cli(
     tmp_path: Path, kind: str, tool: str, notice: str

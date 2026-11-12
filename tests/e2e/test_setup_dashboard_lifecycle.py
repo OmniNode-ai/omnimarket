@@ -26,6 +26,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 pytestmark = pytest.mark.e2e
 
 
+@pytest.mark.release_proof
 def test_actual_dashboard_is_authenticated_idempotent_and_tenant_scoped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

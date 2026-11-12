@@ -1208,7 +1208,7 @@ jobs:
       # It is not the integration-guard job: that job already runs 313-509 s and
       # would become the slowest job of the run once the shards drop below it.
       - name: Collect the whole tree once (OMN-19684)
-        run: uv run pytest tests/ --collect-only -q -m "not kafka" -p no:cacheprovider > collected.txt
+        run: uv run pytest tests/ --collect-only -q -m "not kafka and not release_proof" -p no:cacheprovider > collected.txt
       - name: Prove the shard plans partition the collected files (OMN-19684)
         run: python3 scripts/ci/merge_test_durations.py verify --splits 20 --collected collected.txt
 
@@ -1469,7 +1469,7 @@ jobs:
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
             --cov=src --cov-report= \
-            -v --tb=short -m "not kafka" \
+            -v --tb=short -m "not kafka and not release_proof" \
             --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
             | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
@@ -1513,7 +1513,7 @@ jobs:
             --clean-durations \
             --durations-path .test_durations.${{ matrix.split }} \
             --cov=src --cov-report= \
-            -v --tb=short -m "not kafka" \
+            -v --tb=short -m "not kafka and not release_proof" \
             --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
             | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
@@ -2046,6 +2046,54 @@ jobs:
         with:
           name: integration-guard-results
           path: integration-guard.xml
+          retention-days: 7
+
+  # OMN-23413: positively selects the release_proof marker the Tests job deselects
+  # (operator decision 2026-11-12). On a hosted runner only the proofs whose prerequisites
+  # exist here execute; the rest skip, each listed with its reason (-rs). The
+  # complete run, where a skip is a failure (ONEX_E2E_REQUIRE_COMPLETE=1), is the
+  # OMN-23413 AC10 release proof.
+  release-proof:
+    name: Release Proof (OMN-23413)
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+      # OMN-18693: the shadow-comparison migration proof starts a private,
+      # socket-only PostgreSQL 16 cluster through the standard integration
+      # connection inputs.  The service container supplies the shared DB
+      # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
+      # matching server tools and fail before pytest if the required PG16
+      # binaries are unavailable; a missing native proof must not self-skip.
+      # The runner image already ships PG16, so apt runs only when the tools are
+      # missing or not version 16, under network timeouts and a step timeout:
+      # an unbounded `apt-get update` once stalled a shard to the 90-minute job
+      # ceiling, so pytest never ran and its coverage artifact was lost.
+      - name: Run release_proof-marked tests
+        run: |
+          uv run pytest -m "release_proof" \
+            -rs -v --tb=short --no-cov -p no:randomly \
+            --junitxml=release-proof.xml
+
+      - name: Upload release-proof results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-proof-results
+          path: release-proof.xml
           retention-days: 7
 
   topic-naming-lint:

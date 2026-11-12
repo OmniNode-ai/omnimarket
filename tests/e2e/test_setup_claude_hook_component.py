@@ -24,6 +24,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 pytestmark = pytest.mark.e2e
 
 
+@pytest.mark.release_proof
 def test_hook_component_verifies_the_effective_mask_and_preserves_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

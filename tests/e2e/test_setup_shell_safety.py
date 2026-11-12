@@ -200,6 +200,7 @@ def test_concurrent_profile_change_is_not_overwritten(
     assert profile.read_text() == "# later user content\n"
 
 
+@pytest.mark.release_proof
 @requires_supported_macos
 def test_setup_cli_set_aside_is_explicit_and_verify_never_edits(tmp_path: Path) -> None:
     profile = tmp_path / ".bashrc"

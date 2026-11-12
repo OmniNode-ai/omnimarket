@@ -94,6 +94,7 @@ async def test_cli_refuses_modes_that_ignore_gateway_settings(
 @pytest.mark.parametrize(
     "tool", ["Read", "Agent", "BackgroundAgent", "Compaction", "Cancel"]
 )
+@pytest.mark.release_proof
 async def test_real_claude_tool_cycle_uses_gateway_and_preserves_scope(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool: str
 ) -> None:

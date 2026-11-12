@@ -98,8 +98,16 @@ _RESTORE_KNOB_RE = re.compile(r"\b(PREPUSH_[A-Z0-9_]+|ENABLE_SMART_TESTS)\b")
 # runs the first; the integration guard runs the second. A third entry here is
 # a deliberate decision about what pull-request CI stops running, which is
 # exactly the decision that must not be made silently now that no local leg
-# runs tests behind it.
-_ALLOWED_CI_MARKER_EXPRESSIONS = frozenset({"not kafka", "integration and not kafka"})
+# runs tests behind it. OMN-23413 (operator decision 2026-11-12): the Tests job also
+# deselects release_proof, and the Release Proof job positively selects it.
+_ALLOWED_CI_MARKER_EXPRESSIONS = frozenset(
+    {
+        "not kafka",
+        "integration and not kafka",
+        "not kafka and not release_proof",
+        "release_proof",
+    }
+)
 
 _CI_MARKER_RE = re.compile(r'-m "([^"]+)"')
 

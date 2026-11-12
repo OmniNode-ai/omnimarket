@@ -113,6 +113,8 @@ class ModelTuiDesign(BaseModel):
     banner: ModelTuiBanner
     shortcuts: tuple[ModelTuiShortcut, ...] = Field(min_length=1)
     aliases: dict[str, str]
+    #: CLI command paths a shortcut replaces: the TUI neither lists nor runs them.
+    replaced_commands: tuple[tuple[str, ...], ...] = ()
     glyphs: ModelTuiGlyphs
     prompt_placeholder: str
     help: str
@@ -143,7 +145,13 @@ class ModelTuiDesign(BaseModel):
         for alias, target in self.aliases.items():
             if (target,) not in names:
                 raise ValueError(f"alias {alias!r} names no shortcut {target!r}")
+            if (alias,) in self.replaced_commands:
+                raise ValueError(f"alias {alias!r} is a replaced command")
         return self
+
+    def replaces(self, path: tuple[str, ...]) -> bool:
+        """Whether ``path`` is, or sits under, a CLI command a shortcut replaces."""
+        return any(path[: len(cut)] == cut for cut in self.replaced_commands)
 
     def shortcut_for(self, words: list[str]) -> ModelTuiShortcut | None:
         """The shortcut typed words name, directly or through an alias."""

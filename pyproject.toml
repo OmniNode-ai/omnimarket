@@ -2130,6 +2130,7 @@ markers = [
     "integration: Integration tests that test multiple components together",
     "slow: Tests that take a long time to run (>1s)",
     "kafka: marks tests requiring a running Kafka broker",
+    "release_proof: OMN-23413 end-to-end setup proofs that need a signed-in Claude Code, a real Mac or a running dashboard and gateway; deselected from the hosted Tests job and run by the AC10 release proof (ONEX_E2E_REQUIRE_COMPLETE=1)",
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
     "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",

@@ -860,7 +860,9 @@ class OnexTui(App[int]):
             from omnibase_core.cli.cli_commands import cli
 
             root = cli
-        self._commands = command_tree(root)
+        self._commands = tuple(
+            c for c in command_tree(root) if not tui_design().replaces(c.path)
+        )
         self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
         self._list_models = list_models
         self._load_status = load_status or globals()["load_status"]
@@ -1122,7 +1124,7 @@ class OnexTui(App[int]):
             code = await self._runner.stream(argv, self._write)
         if code:
             self._write(f"exit {code}")
-        if entry.path[:1] in (("models",), ("claude",), ("setup",)):
+        if entry.path[:1] in (("models",), ("claude",)):
             self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
     async def _shortcut(self, action: str) -> None:
@@ -1240,7 +1242,7 @@ class OnexTui(App[int]):
         _, out, _ = await self._runner.capture(("models", "list", "--json"))
         choices = _model_choices(out)
         if not choices:
-            self._write("No model is set up yet. Type /setup to connect one.")
+            self._write("No model is set up yet. Type /config to connect one.")
             return
         self.push_screen(ModelPickScreen(choices), self._apply_model)
 

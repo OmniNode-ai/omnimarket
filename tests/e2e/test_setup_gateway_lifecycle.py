@@ -94,6 +94,7 @@ async def test_protocol_readiness_checks_actual_selected_route(
     assert not calls, "Readiness made a billable request"
 
 
+@pytest.mark.release_proof
 @requires_supported_macos
 def test_setup_gateway_proves_route_reuses_process_and_preserves_user_edits(
     tmp_path: Path,

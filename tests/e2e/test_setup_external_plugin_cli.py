@@ -19,6 +19,7 @@ from tests.helpers.setup_shell_environment import requires_supported_macos
 pytestmark = pytest.mark.e2e
 
 
+@pytest.mark.release_proof
 @requires_supported_macos
 def test_installed_setup_accepts_external_component(tmp_path: Path) -> None:
     package = tmp_path / "packages"

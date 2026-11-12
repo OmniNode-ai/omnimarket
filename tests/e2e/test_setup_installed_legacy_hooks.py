@@ -18,6 +18,7 @@ import yaml
 pytestmark = pytest.mark.e2e
 
 
+@pytest.mark.release_proof
 def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None:
     selected = os.environ.get("ONEX_TEST_CLI")
     wheel_value = os.environ.get("ONEX_TEST_CLAUDE_WHEEL")

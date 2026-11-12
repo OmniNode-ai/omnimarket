@@ -63,6 +63,7 @@ def test_attribution_catalog_cache_isolates_credentials(tmp_path: Path) -> None:
         worker.join(timeout=5)
 
 
+@pytest.mark.release_proof
 @requires_supported_macos
 @pytest.mark.parametrize("saved_keys", [False, True])
 def test_unattended_setup_counts_only_keys_missing_from_saved_connections(

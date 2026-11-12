@@ -131,6 +131,7 @@ def _run(
     return subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
 
 
+@pytest.mark.release_proof
 @pytest.mark.parametrize("existing_profile", [False, True])
 def test_built_package_setup_delegation_dashboard_journey(
     tmp_path: Path, existing_profile: bool

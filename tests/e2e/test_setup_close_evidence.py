@@ -13,6 +13,7 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 
+@pytest.mark.release_proof
 def test_required_customer_evidence_close_probe(tmp_path: Path) -> None:
     """An explicit completion probe must fail rather than quietly skip evidence."""
     if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") != "1":
