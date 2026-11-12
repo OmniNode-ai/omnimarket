@@ -66,6 +66,7 @@ def _parser() -> argparse.ArgumentParser:
     install.add_argument("--source-root", required=True, type=Path)
     install.add_argument("--overlay", required=True, type=Path)
     install.add_argument("--workspace-root", required=True, type=Path)
+    install.add_argument("--workspace-config-root", required=True, type=Path)
     install.add_argument("--dry-run", action="store_true")
     for verb in ("status", "run-now", "uninstall"):
         verbs.add_parser(verb)
@@ -138,6 +139,7 @@ def _schedule(args: argparse.Namespace) -> int:
             source_root=args.source_root,
             overlay_file=args.overlay,
             workspace_root=args.workspace_root,
+            workspace_config_root=args.workspace_config_root,
             dry_run=args.dry_run,
         )
     elif args.verb == "status":

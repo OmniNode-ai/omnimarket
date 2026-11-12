@@ -139,6 +139,8 @@ def test_the_install_takes_its_interval_from_the_overlay(
             str(overlay),
             "--workspace-root",
             str(tmp_path),
+            "--workspace-config-root",
+            str(tmp_path),
             "--dry-run",
         ]
     )
