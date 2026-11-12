@@ -13,6 +13,9 @@ import os
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
+from omnimarket.nodes.node_branch_deploy_probe_effect.adapters.adapter_runtime_probe import (
+    RuntimeBuildProbe,
+)
 from omnimarket.nodes.node_branch_deploy_probe_effect.models.model_branch_deploy_probe import (
     ModelBranchDeployProbeRequest,
     ModelBranchDeployProbeResult,
@@ -23,9 +26,6 @@ from omnimarket.nodes.node_branch_deploy_probe_effect.overlay import (
 )
 from omnimarket.nodes.node_branch_deploy_probe_effect.protocols.protocol_branch_deploy_probe import (
     ProtocolBranchDeployProbe,
-)
-from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_lab_facts import (
-    RuntimeProbeSource,
 )
 
 
@@ -53,7 +53,7 @@ class HandlerBranchDeployProbe:
     @property
     def _probe(self) -> ProtocolBranchDeployProbe:
         if self._configured_probe is None:
-            self._configured_probe = RuntimeProbeSource(
+            self._configured_probe = RuntimeBuildProbe(
                 self._overlay.probe,
                 self._environ if self._environ is not None else os.environ,
             )

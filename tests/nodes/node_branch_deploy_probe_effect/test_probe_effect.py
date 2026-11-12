@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,14 +14,15 @@ import pytest
 from omnimarket.nodes.node_branch_deploy_probe_effect.adapters.adapter_in_memory_probe import (
     InMemoryBranchDeployProbe,
 )
+from omnimarket.nodes.node_branch_deploy_probe_effect.adapters.adapter_runtime_probe import (
+    RuntimeBuildProbe,
+)
 from omnimarket.nodes.node_branch_deploy_probe_effect.handlers.handler_branch_deploy_probe import (
     HandlerBranchDeployProbe,
 )
-from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_lab_facts import (
-    RuntimeProbeSource,
-)
 from tests.nodes.node_branch_deploy_probe_effect.support import (
     HEAD,
+    NODE_DIR,
     fact,
     overlay,
     request,
@@ -96,36 +97,154 @@ def test_control_swapped_shas_differ() -> None:
     assert result.observed_sha != result.expected_sha
 
 
-def test_real_source_read_with_fake_fetch_and_run() -> None:
+def test_runtime_build_probe_read_with_observed_sha() -> None:
     settings = overlay().probe
-
-    def fetch(url: str, timeout: int) -> str:
-        assert url == settings.health_url
-        return json.dumps({"details": {"healthy": True}})
+    calls: list[Any] = []
 
     def run(argv: Any, stdin: Any, timeout: int) -> subprocess.CompletedProcess[bytes]:
+        calls.append((argv, stdin, timeout))
         return subprocess.CompletedProcess(
-            argv, 0, stdout=json.dumps({"vcs_ref": HEAD}).encode(), stderr=b""
+            args=[],
+            returncode=0,
+            stdout=b'{"details": {"healthy": true}}\n---\n{"vcs_ref": "'
+            + HEAD.encode()
+            + b'"}\n',
         )
 
-    source = RuntimeProbeSource(settings, {settings.ssh_host_env: "host"}, fetch, run)
-    result = _handler(source).handle(request())
+    probe = RuntimeBuildProbe(settings, {settings.ssh_host_env: "host"}, run)
+    result = HandlerBranchDeployProbe(
+        overlay=overlay(),
+        probe=probe,
+        environ={},
+        clock=lambda: PROBED_AT,
+    ).handle(request())
     assert result.status == "read"
     assert result.healthy is True
     assert result.observed_sha == HEAD
+    assert len(calls) == 1
+    argv, stdin, timeout = calls[0]
+    assert argv == [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "--",
+        "host",
+        "bash -s",
+    ]
+    assert timeout == settings.timeout_seconds
+    script = stdin.decode()
+    assert settings.health_url in script
+    assert f'docker exec -i "$RT" cat {settings.provenance_path}' in script
 
 
-def test_real_source_unreadable_when_run_fails() -> None:
+def test_runtime_build_probe_unhealthy_flag_false() -> None:
     settings = overlay().probe
 
-    def fetch(url: str, timeout: int) -> str:
-        return json.dumps({"details": {"healthy": True}})
+    def run(argv: Any, stdin: Any, timeout: int) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=b'{"details": {"healthy": false}}\n---\n{"vcs_ref": "'
+            + HEAD.encode()
+            + b'"}\n',
+        )
+
+    probe = RuntimeBuildProbe(settings, {settings.ssh_host_env: "host"}, run)
+    result = HandlerBranchDeployProbe(
+        overlay=overlay(),
+        probe=probe,
+        environ={},
+        clock=lambda: PROBED_AT,
+    ).handle(request())
+    assert result.status == "read"
+    assert result.healthy is False
+    assert result.observed_sha == HEAD
+
+
+def test_runtime_build_probe_unreadable_nonzero_exit() -> None:
+    settings = overlay().probe
 
     def run(argv: Any, stdin: Any, timeout: int) -> subprocess.CompletedProcess[bytes]:
-        return subprocess.CompletedProcess(argv, 1, stdout=b"", stderr=b"boom")
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout=b"")
 
-    source = RuntimeProbeSource(settings, {settings.ssh_host_env: "host"}, fetch, run)
-    result = _handler(source).handle(request())
+    probe = RuntimeBuildProbe(settings, {settings.ssh_host_env: "host"}, run)
+    result = HandlerBranchDeployProbe(
+        overlay=overlay(),
+        probe=probe,
+        environ={},
+        clock=lambda: PROBED_AT,
+    ).handle(request())
     assert result.status == "unreadable"
     assert result.healthy is False
     assert result.observed_sha == ""
+    assert "exited 1" in result.detail
+
+
+def test_runtime_build_probe_unreadable_no_separator() -> None:
+    settings = overlay().probe
+
+    def run(argv: Any, stdin: Any, timeout: int) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=b'{"details": {"healthy": true}}\n{"vcs_ref": "'
+            + HEAD.encode()
+            + b'"}\n',
+        )
+
+    probe = RuntimeBuildProbe(settings, {settings.ssh_host_env: "host"}, run)
+    result = HandlerBranchDeployProbe(
+        overlay=overlay(),
+        probe=probe,
+        environ={},
+        clock=lambda: PROBED_AT,
+    ).handle(request())
+    assert result.status == "unreadable"
+    assert result.healthy is False
+    assert result.observed_sha == ""
+
+
+def test_runtime_build_probe_unreadable_host_unset() -> None:
+    settings = overlay().probe
+
+    def run(argv: Any, stdin: Any, timeout: int) -> subprocess.CompletedProcess[bytes]:
+        raise AssertionError("run must not be called when the host is unset")
+
+    probe = RuntimeBuildProbe(settings, {}, run)
+    result = HandlerBranchDeployProbe(
+        overlay=overlay(),
+        probe=probe,
+        environ={},
+        clock=lambda: PROBED_AT,
+    ).handle(request())
+    assert result.status == "unreadable"
+    assert result.healthy is False
+    assert result.observed_sha == ""
+
+
+def test_node_does_not_import_adapter_lab_facts() -> None:
+    for path in NODE_DIR.rglob("*.py"):
+        text = path.read_text()
+        assert "adapter_lab_facts" not in text
+
+
+def test_the_ssh_script_is_valid_shell(tmp_path: Path) -> None:
+    """The script sent to the runtime host parses: a bracket missing its space once passed every other test."""
+    seen: dict[str, str] = {}
+
+    def run(argv, stdin, timeout):
+        seen["script"] = (stdin or b"").decode()
+        return subprocess.CompletedProcess(argv, 1, b"", b"")
+
+    settings = overlay().probe
+    RuntimeBuildProbe(settings, {settings.ssh_host_env: "host-a"}, run).read(
+        PROBED_AT, HEAD
+    )
+    script = tmp_path / "probe.sh"
+    script.write_text(seen["script"])
+    checked = subprocess.run(
+        ["bash", "-n", str(script)], capture_output=True, text=True, check=False
+    )
+    assert checked.returncode == 0, checked.stderr
