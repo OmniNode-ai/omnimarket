@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-23983
+title: The factory board reads its host list through the one host table reader
+summary: A new compute node, node_host_table_compute, turns the lab host table into one row set (every row, the admitted names, the excluded rows with their stated reasons) and refuses a table that excludes a host without a reason or names a host twice. The factory board's host list reads the table through resolve_lab_hosts_table and that node instead of its own yaml parse, so the board and placement read the same row set.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23983-one-host-table-reader
+  statement: The board's host list and placement read the same host table row set through one typed reader, and a reader with its own copy is found by a failing control.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the factory board''s host list and the host table node return the same rows (names, caps, availability, reasons) for one table file -- falsifier: `uv run pytest tests/nodes/node_host_table_compute/test_host_table_seam_placement_board.py -q -p no:randomly --no-cov` fails with the board''s host reader at the base commit'
+  - id: AC2
+    statement: 'AC2: the host table node refuses a table that excludes a host without a stated reason or names a host twice, naming the host -- falsifier: `uv run pytest tests/nodes/node_host_table_compute/test_error_chain_host_table_compute.py -q -p no:randomly --no-cov` passes with the refusal removed'
+  - id: AC3
+    statement: 'AC3: the board''s host reader holds no yaml parse of its own -- falsifier: `uv run pytest tests/nodes/node_host_table_compute/test_no_second_board_parser.py -q -p no:randomly --no-cov` fails when an own-copy parse returns'
+  - id: AC4
+    statement: 'AC4: integrated: on the running dev runtime after this merges, the factory board''s host panel lists every row of the lab host table and each excluded row with its stated reason, equal to the host table node''s reading of the same overlay -- falsifier: the board''s host count differs from the node''s row count, or an excluded row shows no reason, read from the running runtime''s board output'
+evidence_requirements:
+- kind: tests
+  description: The node's golden chain, error chain, seam and own-parser tests and the board's lane source tests pass at the pushed head; with the board's reader at the base commit three of the new tests fail.
+  command: env -u PYTHONPATH uv run pytest tests/nodes/node_host_table_compute tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23983-ac1
+  description: 'AC1: the seam test passes at the head; it fails with the board''s host reader at the base commit.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_compute/test_host_table_seam_placement_board.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23983-ac2
+  description: 'AC2: the error chain test passes at the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_compute/test_error_chain_host_table_compute.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23983-ac3
+  description: 'AC3: the no-own-parser test passes at the head; it fails with the board''s reader at the base commit.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_compute/test_no_second_board_parser.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23983-golden
+  description: The golden chain test of the node passes at the head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_compute/test_golden_chain_host_table_compute.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23983-ac4-integration-proof
+  description: 'AC4: integrated: the pushed head''s node tests ran on a lab host through the lab work runner and exited 0; the running dev runtime''s board host panel is read after the merge and recorded in the pull request. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23983 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_table_compute -q --no-cov
+    cwd: .
