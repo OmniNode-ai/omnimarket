@@ -10,11 +10,8 @@ ask for a tenant is the broker access rule on the command topic, never a field o
 
 from __future__ import annotations
 
-from omnimarket.handlers.tenant_projection_read.analytics_postgres import (
-    ProtocolLogicalSecretResolver,
-)
-from omnimarket.handlers.tenant_projection_read.resolver_reader import (
-    reader_for_node,
+from omnimarket.handlers.container.container_overlay_dependencies import (
+    packaged_factory,
 )
 from omnimarket.handlers.tenant_projection_read.timestamps import (
     NOT_CONFIGURED_DETAIL,
@@ -34,6 +31,9 @@ from omnimarket.nodes.node_tenant_delegations_read_effect.models.model_recent_de
     ModelRecentDelegations,
 )
 from omnimarket.protocols.protocol_clock import ProtocolClock
+from omnimarket.protocols.protocol_logical_secret_resolver import (
+    ProtocolLogicalSecretResolver,
+)
 from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
     ProjectionMissingError,
     ProjectionNotConfiguredError,
@@ -41,6 +41,7 @@ from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
     ProtocolTenantDelegationProjectionReader,
 )
 
+PACKAGE = "omnimarket.nodes.node_tenant_delegations_read_effect"
 KIND = EnumTenantReadKind.DELEGATIONS
 
 
@@ -69,9 +70,8 @@ class HandlerTenantDelegationsReadBus:
         self._reader = (
             reader
             if reader is not None
-            else reader_for_node(
-                "omnimarket.nodes.node_tenant_delegations_read_effect",
-                secret_resolver,
+            else packaged_factory(PACKAGE, "config", "reader_factory")(
+                PACKAGE, secret_resolver
             )
         )
         self._clock: ProtocolClock = clock or SystemClock()

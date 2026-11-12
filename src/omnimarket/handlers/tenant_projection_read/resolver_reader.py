@@ -29,12 +29,14 @@ from omnimarket.handlers.container.container_overlay_dependencies import (
     packaged_contract_value,
 )
 from omnimarket.handlers.tenant_projection_read.analytics_postgres import (
-    ProtocolLogicalSecretResolver,
     Psycopg2AnalyticsQueryExecutor,
     SecretResolverDsnSource,
 )
 from omnimarket.handlers.tenant_projection_read.projection_reader import (
     AnalyticsTenantProjectionReader,
+)
+from omnimarket.protocols.protocol_logical_secret_resolver import (
+    ProtocolLogicalSecretResolver,
 )
 from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
     ProtocolTenantDelegationProjectionReader,

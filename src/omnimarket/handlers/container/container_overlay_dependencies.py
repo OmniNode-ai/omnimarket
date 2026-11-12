@@ -21,6 +21,7 @@ environment; the nodes read it only through the protocol this module binds.
 
 from __future__ import annotations
 
+import importlib
 import os
 from collections.abc import Callable, Mapping, Sequence
 from functools import cache
@@ -147,6 +148,12 @@ def packaged_contract_value(package: str, *keys: str) -> Any:
     for key in keys:
         value = value[key]
     return value
+
+
+def packaged_factory(package: str, *keys: str) -> Callable[..., Any]:
+    """The callable the contract packaged with ``package`` names as ``module:attribute`` under ``keys``."""
+    module, _, attribute = str(packaged_contract_value(package, *keys)).partition(":")
+    return getattr(importlib.import_module(module), attribute)  # type: ignore[no-any-return]
 
 
 def bind_overlay(bindings: ModelOverlayBindings | None) -> None:

@@ -20,9 +20,13 @@ from pydantic import SecretStr
 
 from omnimarket.handlers.container.container_overlay_dependencies import (
     packaged_contract_value,
+    packaged_factory,
 )
 from omnimarket.handlers.tenant_projection_read.analytics_postgres import (
     Psycopg2AnalyticsQueryExecutor,
+)
+from omnimarket.handlers.tenant_projection_read.resolver_reader import (
+    reader_for_node,
 )
 from omnimarket.models.model_tenant_read_bus import (
     EnumTenantReadKind,
@@ -207,3 +211,17 @@ def test_seam_contract_secret_name_is_the_runtime_mapping_name(package: str) -> 
     assert (
         packaged_contract_value(package, "config", "analytics_dsn_secret") == SECRET_REF
     )
+
+
+@pytest.mark.parametrize(
+    "package",
+    [
+        "omnimarket.nodes.node_tenant_savings_read_effect",
+        "omnimarket.nodes.node_tenant_delegations_read_effect",
+    ],
+)
+def test_seam_contract_declared_reader_factory_is_the_resolver_reader(
+    package: str,
+) -> None:
+    """Seam: the factory each contract names is the module-level builder the handlers call."""
+    assert packaged_factory(package, "config", "reader_factory") is reader_for_node

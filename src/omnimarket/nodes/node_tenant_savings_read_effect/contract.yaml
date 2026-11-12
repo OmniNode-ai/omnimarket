@@ -84,6 +84,9 @@ config:
   # Logical secret name the runtime secret resolver maps to the read-only DSN of
   # the analytics projection database. The value is never in this repository.
   analytics_dsn_secret: "omnidash.analytics.db_url"
+  # The bus handler builds its projection reader through this contract-declared factory, so the
+  # handler module holds no import of a database driver.
+  reader_factory: "omnimarket.handlers.tenant_projection_read.resolver_reader:reader_for_node"
 handler_dependencies:
   - omnimarket.protocols.protocol_http_tenant_identity.ProtocolHttpTenantIdentity
   - omnimarket.protocols.protocol_tenant_delegation_projection_reader.ProtocolTenantDelegationProjectionReader
