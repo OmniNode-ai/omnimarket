@@ -57,11 +57,13 @@ from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_u
 
 HANDLER_ID = "host-install-orchestrator"
 
-TOPIC_REGISTRY_REQUESTED = "onex.cmd.omnimarket.host-registry-unit-requested.v1"
-TOPIC_FILE_REQUESTED = "onex.cmd.omnimarket.host-install-file-requested.v1"
-TOPIC_READBACK_REQUESTED = "onex.cmd.omnimarket.host-install-readback-requested.v1"
-TOPIC_STEP = "onex.evt.omnimarket.host-install-step.v1"
-TOPIC_COMPLETED = "onex.evt.omnimarket.host-install-completed.v1"
+TOPIC_REGISTRY_REQUESTED = "onex.cmd.omnimarket.host-registry-unit-requested.v1"  # onex-topic-allow: contract-declared
+TOPIC_FILE_REQUESTED = "onex.cmd.omnimarket.host-install-file-requested.v1"  # onex-topic-allow: contract-declared
+TOPIC_READBACK_REQUESTED = "onex.cmd.omnimarket.host-install-readback-requested.v1"  # onex-topic-allow: contract-declared
+TOPIC_STEP = (
+    "onex.evt.omnimarket.host-install-step.v1"  # onex-topic-allow: contract-declared
+)
+TOPIC_COMPLETED = "onex.evt.omnimarket.host-install-completed.v1"  # onex-topic-allow: contract-declared
 
 logger = logging.getLogger(__name__)
 
