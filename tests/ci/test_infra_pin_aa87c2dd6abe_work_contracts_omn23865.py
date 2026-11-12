@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-23892: the relock names the new infra build and every work contract records its hash.
+"""OMN-23865: the relock names the new infra build and every work contract records its hash.
 
 omnimarket moves its omnibase-infra dev merge tag from
-dev-20261111190933-a349fbf4478e to dev-20261111211012-df3f14f5e6b9
-(omnibase_infra#5896, the runtime account's grants on the four merge override
+dev-20261111211012-df3f14f5e6b9 to dev-20261112010628-aa87c2dd6abe
+(omnibase_infra#5901, the runtime account's grants on the two host disk
 tables; core stays at dev-20261111160725-6cbe67b216fe), relocks, and the 70
 work contracts that pin the lock re-record its sha256. The lock must name the
 new infra build and every work contract that pins the lock must record the
@@ -24,8 +24,8 @@ pytestmark = pytest.mark.unit
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATH = REPO_ROOT / "uv.lock"
 INFRA_LOCK_URL = (
-    "omnibase_infra.git?tag=dev-20261111211012-df3f14f5e6b9"
-    "#df3f14f5e6b910abd721ea27b53e0dce4f3d3106"
+    "omnibase_infra.git?tag=dev-20261112010628-aa87c2dd6abe"
+    "#aa87c2dd6abef015f758077349eb25f899655692"
 )
 CONTRACTS_GLOB = "src/omnimarket/configs/work_contracts/contracts/*.yaml"
 LOCK_PIN_MARKER = "path: uv.lock"
@@ -33,8 +33,8 @@ SHA256_PREFIX = "sha256: "
 MIN_CONTRACT_FILES = 70
 
 
-def test_the_lock_names_infra_df3f14f5e6b9() -> None:
-    """The relocked uv.lock names the dev merge tag and commit of the new infra build."""
+def test_the_lock_names_infra_aa87c2dd6abe() -> None:
+    """The relocked uv.lock names the dev merge tag and commit of the aa87c2dd6abe infra build."""
     lock_text = LOCK_PATH.read_text(encoding="utf-8")
     assert INFRA_LOCK_URL in lock_text
 

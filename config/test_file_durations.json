@@ -135,7 +135,7 @@
   "tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py": 1.78,
   "tests/ci/test_house_overlay_publisher_wiring_omn20601.py": 0.61,
   "tests/ci/test_imperative_contract_guard_caller_omn21002.py": 3.23,
-  "tests/ci/test_infra_pin_df3f14f5e6b9_work_contracts_omn23892.py": 2.23,
+  "tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py": 2.23,
   "tests/ci/test_lab_pass_settle_budget_pin_omn18638.py": 0.12,
   "tests/ci/test_lab_work_receipt_gates.py": 2.02,
   "tests/ci/test_lint_no_hardcoded_topics_parity.py": 0.74,
