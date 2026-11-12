@@ -206,7 +206,7 @@ class HandlerWorkLedgerQuery:
                 return self._fail(base, str(exc), page_size=request.page_size)
             answer = {
                 "matched": total,
-                "rows": tuple(page),
+                "rows": () if request.lines_only else tuple(page),
                 "lines": tuple(r.text for r in page),
                 "page_size": request.page_size,
                 "next_cursor": next_cursor,

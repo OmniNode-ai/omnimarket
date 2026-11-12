@@ -31,3 +31,5 @@ class ModelPointQuery(BaseModel):
     limit: int | None = Field(default=None, ge=1)
     page_size: int | None = Field(default=None, ge=1)
     cursor: str | None = None
+    #: A paged rows answer carries lines and no typed rows; the reader prints lines only.
+    lines_only: bool = False
