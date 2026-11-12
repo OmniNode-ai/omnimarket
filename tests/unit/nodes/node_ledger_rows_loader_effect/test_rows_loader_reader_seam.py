@@ -43,6 +43,9 @@ from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     ModelPointQuery,
     ModelReaderRequest,
 )
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
+)
 from tests.unit.nodes.node_work_ledger_reader_effect.test_reader_rows_window import (
     MSG_ROW,
     OUTSIDE_ROW,
@@ -86,10 +89,12 @@ def ledger_file(tmp_path: Path, rows: tuple[str, ...]) -> Path:
     return path
 
 
-def loader_over(point_read: object, ledger: Path, *, fallback: bool = True):
+def loader_over(
+    point_read: ProtocolLedgerPointRead, ledger: Path, *, fallback: bool = True
+):
     reader = HandlerWorkLedgerReader(
         overlay(moved_readers=("drain-map",), page_size=2),
-        point_read,  # type: ignore[arg-type]
+        point_read,
         InMemoryEventSink(),
         clock=lambda: SEAM_NOW,
         topics=READER_TOPICS,
