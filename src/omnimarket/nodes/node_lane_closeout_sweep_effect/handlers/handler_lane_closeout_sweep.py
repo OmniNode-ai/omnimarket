@@ -23,6 +23,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.models.lane_closeout.enum_lane_guard_verdict import (
+    EnumLaneGuardVerdict,
+)
 from omnimarket.models.lane_closeout.model_lane_closeout_record import (
     ModelLaneCloseoutRecord,
 )
@@ -35,8 +38,14 @@ from omnimarket.models.lane_closeout.model_lane_closeout_sweep_request import (
 from omnimarket.models.lane_closeout.model_lane_closeout_sweep_result import (
     ModelLaneCloseoutSweepResult,
 )
+from omnimarket.models.lane_closeout.model_lane_closeout_sweep_settings import (
+    ModelLaneCloseoutSweepSettings,
+)
 from omnimarket.models.lane_closeout.model_lane_closeout_tree_outcome import (
     ModelLaneCloseoutTreeOutcome,
+)
+from omnimarket.models.lane_closeout.model_lane_guard_end_record import (
+    ModelLaneGuardEndRecord,
 )
 from omnimarket.models.lane_closeout.model_lane_tree_inventory_request import (
     ModelLaneTreeInventoryRequest,
@@ -49,6 +58,9 @@ from omnimarket.nodes.node_lane_tree_inventory_effect.handlers.handler_lane_tree
 )
 
 _RUN_HASH = re.compile(r"-[0-9a-f]{6}$")
+# The guard names its unit onexlane-<lane>-<run tail> and its end record file after the unit.
+GUARD_UNIT_PREFIX = "onexlane-"
+_GUARD_NAME_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
 
 
 @dataclass(frozen=True)
@@ -270,6 +282,55 @@ class HandlerLaneCloseoutSweep:
     def _recorded(self, records: Path, run: str) -> bool:
         return (records / f"{run}.json").is_file()
 
+    def _end_record(
+        self, settings: ModelLaneCloseoutSweepSettings, lane: str
+    ) -> tuple[ModelLaneGuardEndRecord | None, str]:
+        """The lane guard's end record of a killed lane (newest file of its unit first); the error names the file,
+        never its content. The guard names the file ``<unit prefix><lane>-<run tail>.json``."""
+        if not settings.end_records_dir:
+            return None, ""
+        directory = Path(settings.end_records_dir)
+        if not directory.is_dir():
+            return None, ""
+        prefix = (
+            f"{GUARD_UNIT_PREFIX}{_GUARD_NAME_CHARS.sub('-', lane)[:60].strip('-.')}-"
+        )
+        files = [
+            p
+            for p in directory.iterdir()
+            if p.name.startswith(prefix)
+            and p.name.endswith(".json")
+            and p.is_file()
+            and not p.is_symlink()
+        ]
+        files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        unreadable = ""
+        for path in files:
+            try:
+                record = ModelLaneGuardEndRecord.model_validate_json(
+                    path.read_text(encoding="utf-8")
+                )
+            except ValueError as exc:
+                unreadable = unreadable or f"{type(exc).__name__} in {path.name}"
+                continue
+            except OSError:
+                unreadable = unreadable or f"OSError in {path.name}"
+                continue
+            if record.lane == lane:
+                return record, ""
+        return None, unreadable
+
+    @staticmethod
+    def _unpushed_paths(record: ModelLaneGuardEndRecord | None) -> set[str]:
+        """The trees the end record says hold unpushed commits, changed files, or could not be read."""
+        if record is None:
+            return set()
+        return {
+            Path(t.path).resolve().as_posix()
+            for t in record.trees
+            if t.unpushed_commits > 0 or t.changed_files > 0 or not t.readable
+        }
+
     # -- closing -----------------------------------------------------------------
 
     def _close(
@@ -283,6 +344,8 @@ class HandlerLaneCloseoutSweep:
         outcomes: list[ModelLaneCloseoutTreeOutcome] = []
         error = ""
         run_dir_removed = False
+        end_record, end_record_error = self._end_record(request.settings, item.lane)
+        unpushed = self._unpushed_paths(end_record)
         try:
             trees = (
                 self._inventory.handle(
@@ -296,15 +359,28 @@ class HandlerLaneCloseoutSweep:
                 tag = re.sub(
                     r"[^A-Za-z0-9._-]+", "-", f"{item.lane}-{item.run}-{relative}"
                 ).strip("-.")
-                result = self._closeout.handle(
-                    ModelLaneCloseoutRequest(
-                        correlation_id=request.correlation_id,
-                        lane=item.lane,
-                        tree=line.path,
-                        tag=tag,
-                        salvage_branch=f"{prefix}/{tag}",
-                    )
+                guarded = Path(line.path).resolve().as_posix() in unpushed
+                closeout = ModelLaneCloseoutRequest(
+                    correlation_id=request.correlation_id,
+                    lane=item.lane,
+                    tree=line.path,
+                    tag=tag,
+                    salvage_branch=f"{prefix}/{tag}",
+                    remove=not guarded,
                 )
+                result = self._closeout.handle(closeout)
+                if guarded:
+                    # A tree the end record says holds unpushed work is removed only once that work is pushed.
+                    if result.verdict is EnumLaneGuardVerdict.WIP and result.wip_push:
+                        result = self._closeout.handle(
+                            closeout.model_copy(update={"remove": True})
+                        )
+                    elif result.verdict is EnumLaneGuardVerdict.OK:
+                        result = result.model_copy(
+                            update={
+                                "cell": f"worktree=kept:{line.path}:end-record-unpushed-work"
+                            }
+                        )
                 outcomes.append(
                     ModelLaneCloseoutTreeOutcome(
                         tree=result.tree,
@@ -336,6 +412,8 @@ class HandlerLaneCloseoutSweep:
             ),
             ended_by=item.ended_by,
             trees=tuple(outcomes),
+            end_record=end_record,
+            end_record_error=end_record_error,
             run_dir_removed=run_dir_removed,
             complete=not error and run_dir_removed and not lane_dir.exists(),
             error=error,
