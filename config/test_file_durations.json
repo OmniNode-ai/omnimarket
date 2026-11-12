@@ -5093,6 +5093,7 @@
   "tests/unit/projection/test_projection_binding_env_discipline_omn20159.py": 19.14,
   "tests/unit/projection/test_projection_discovery.py": 1.74,
   "tests/unit/projection/test_projection_materialization_validation.py": 9.05,
+  "tests/unit/projection/test_projection_read_binding_host_overlay.py": 2.49,
   "tests/unit/projection/test_projection_replay.py": 0.07,
   "tests/unit/projection/test_projection_table_migration_coverage.py": 2.97,
   "tests/unit/projection/test_projection_table_reader.py": 9.96,
