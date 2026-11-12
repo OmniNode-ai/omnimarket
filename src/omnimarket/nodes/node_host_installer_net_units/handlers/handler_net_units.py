@@ -11,6 +11,11 @@ rendered byte string whose sha256 differs from the declared pin is refused befor
 restart. ``sshd-dropin``: the file is placed, ``sshd -t`` validates the whole configuration, and a failed check puts the
 previous bytes (or absence) back before anything is reloaded; the reload is ``systemctl reload``, never a restart, so
 the sessions already open stay. A request whose installed files already match writes and reloads nothing.
+
+``render: values`` fills every ``__NAME__`` placeholder in a payload from the entry's ``values`` map; a placeholder with
+no value, or a value with no placeholder, is refused. The ``__GPU_MEMORY_UTILIZATION__`` placeholder is computed from the
+unit's ``gpu_budget`` measurements. A unit that declares ``serving: true`` must have a ``Restart=`` line in its systemd
+unit file whose value is in the contract's ``restart_policies``; this check runs before the sha256 pin check.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import math
 import os
 import platform
 import re
@@ -29,8 +35,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
+    ModelGpuBudget,
     ModelNetUnitsRequest,
     ModelNetUnitsResult,
 )
@@ -100,6 +108,9 @@ class UnitPlan:
     files: list[FilePlan] = field(default_factory=list)
     interface: str = ""
     rendered: str = ""
+    serving: bool = False
+    gpu_budget: dict[str, Any] | None = None
+    gpu_fraction: str = ""
 
 
 class HandlerNetUnits:
@@ -194,6 +205,8 @@ class HandlerNetUnits:
                 "service-not-declared", f"{request.unit} declares no service"
             )
         plan = UnitPlan(name=request.unit, kind=kind, service=service)
+        plan.serving = bool(unit.get("serving"))
+        plan.gpu_budget = unit.get("gpu_budget")
         for entry in unit.get("files") or []:
             plan.files.append(self.file_plan(request, entry, spec, plan))
         if not plan.files:
@@ -267,17 +280,22 @@ class HandlerNetUnits:
                 raise RefusalError(
                     "render-not-supported", f"{source} asks for render {render!r}"
                 )
-            placeholder = str(rule["placeholder"]).encode()
-            if placeholder not in data:
-                raise RefusalError(
-                    "template-lacks-placeholder",
-                    f"{source} has no {rule['placeholder']}",
-                )
-            if not plan.interface:
-                plan.interface = self.host_interface()
-            data = data.replace(placeholder, plan.interface.encode())
-            plan.rendered = data.decode("utf-8")
-            item.rendered = True
+            if str(render) == "values":
+                data = self.render_values(source, entry, plan, item, data, rule)
+            else:
+                placeholder = str(rule["placeholder"]).encode()
+                if placeholder not in data:
+                    raise RefusalError(
+                        "template-lacks-placeholder",
+                        f"{source} has no {rule['placeholder']}",
+                    )
+                if not plan.interface:
+                    plan.interface = self.host_interface()
+                data = data.replace(placeholder, plan.interface.encode())
+                plan.rendered = data.decode("utf-8")
+                item.rendered = True
+        if plan.serving and item.is_unit_file:
+            self.check_serving_restart(item.destination, data)
         pin = entry.get("sha256") or (entry.get("sha256_by_host") or {}).get(
             request.host_name
         )
@@ -289,6 +307,109 @@ class HandlerNetUnits:
                     f"{item.destination}: rendered bytes hash to {hashlib.sha256(data).hexdigest()}, the declared pin is {pin}",
                 )
         return data
+
+    def render_values(
+        self,
+        source: str,
+        entry: dict[str, Any],
+        plan: UnitPlan,
+        item: FilePlan,
+        data: bytes,
+        rule: dict[str, Any],
+    ) -> bytes:
+        values = entry.get("values") or {}
+        if not isinstance(values, dict):
+            raise RefusalError(
+                "values-not-mapping", f"{source} declares values that are not a mapping"
+            )
+        pattern = re.compile(str(rule["placeholder_pattern"]))
+        gpu_placeholder = str(rule["gpu_budget_placeholder"])
+        found = set(pattern.findall(data.decode("utf-8")))
+        declared = {f"__{name}__" for name in values}
+        missing = found - declared - {gpu_placeholder}
+        if missing:
+            raise RefusalError(
+                "placeholder-without-value",
+                f"{source} has placeholders without values: {sorted(missing)}",
+            )
+        unused = declared - found
+        if unused:
+            raise RefusalError(
+                "value-without-placeholder",
+                f"{source} has values without placeholders: {sorted(unused)}",
+            )
+        text = data.decode("utf-8")
+        if gpu_placeholder in found:
+            if plan.gpu_budget is None:
+                raise RefusalError(
+                    "gpu-budget-not-declared",
+                    f"{source} uses {gpu_placeholder} but the unit declares no gpu_budget",
+                )
+            fraction = self.gpu_fraction(plan.gpu_budget)
+            plan.gpu_fraction = fraction
+            text = text.replace(gpu_placeholder, fraction)
+        for name, value in values.items():
+            text = text.replace(f"__{name}__", str(value))
+        remaining = pattern.findall(text)
+        if remaining:
+            raise RefusalError(
+                "placeholder-remaining",
+                f"{source} still has placeholders after rendering: {sorted(set(remaining))}",
+            )
+        plan.rendered = text
+        item.rendered = True
+        return text.encode("utf-8")
+
+    def check_serving_restart(self, destination: str, data: bytes) -> None:
+        policies = [str(p) for p in self.contract["serving_unit"]["restart_policies"]]
+        lines = data.decode("utf-8").splitlines()
+        restart_lines = [line for line in lines if line.startswith("Restart=")]
+        if not restart_lines:
+            raise RefusalError(
+                "serving-restart-policy",
+                f"{destination} is a serving unit file with no Restart= line; allowed policies: {policies}",
+            )
+        for line in restart_lines:
+            value = line.split("=", 1)[1].strip()
+            if value not in policies:
+                raise RefusalError(
+                    "serving-restart-policy",
+                    f"{destination} has Restart={value} which is not in {policies}; found line: {line}",
+                )
+
+    def gpu_fraction(self, budget: dict[str, Any]) -> str:
+        try:
+            model = ModelGpuBudget(**budget)
+        except (TypeError, ValidationError) as exc:
+            raise RefusalError(
+                "gpu-budget-incomplete", f"gpu_budget is incomplete or invalid: {exc}"
+            ) from exc
+        decimals = int(self.contract["serving_unit"]["gpu_fraction_decimals"])
+        overhead = (
+            model.engine_resident_gib - model.engine_fraction_measured * model.total_gib
+        )
+        ceiling = (
+            model.total_gib - model.co_resident_gib - overhead - model.margin_gib
+        ) / model.total_gib
+        fraction = math.floor(ceiling * 10**decimals) / 10**decimals
+        if fraction <= 0:
+            raise RefusalError(
+                "gpu-budget-no-room",
+                f"the gpu budget leaves no room for the engine (ceiling {ceiling:.4f})",
+            )
+        kv_tokens = (
+            model.kv_cache_tokens_measured
+            - (model.engine_fraction_measured - fraction)
+            * model.total_gib
+            * 2**30
+            / model.kv_bytes_per_token
+        )
+        if kv_tokens < model.max_model_len:
+            raise RefusalError(
+                "gpu-budget-kv-floor",
+                f"kv cache holds {kv_tokens:.0f} tokens but max_model_len is {model.max_model_len}",
+            )
+        return f"{fraction:.{decimals}f}"
 
     def host_interface(self) -> str:
         """The interface that carries the lowest-metric IPv4 default route, which must carry an IPv4 address."""
@@ -613,4 +734,5 @@ class HandlerNetUnits:
             digests={i.destination: i.digest for i in plan.files if i.data}
             if plan
             else {},
+            gpu_memory_utilization=plan.gpu_fraction if plan else "",
         )

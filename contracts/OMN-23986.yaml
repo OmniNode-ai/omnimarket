@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23986
+title: The local model service restarts on any stop and keeps room for its neighbour on the card
+summary: The host system-unit installer renders a serving unit's restart policy and GPU memory share from overlay values, computes the share from measured sizes, and refuses a serving unit whose restart policy is not always.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23986-serving-unit-values
+  statement: A serving unit installed by node_host_installer_net_units takes its restart policy and GPU memory share from overlay values, the share computed from measured sizes, and a restart policy that does not restart an engine that exits 0 is refused before anything is written.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a model-serving unit whose rendered restart rule is anything but always is refused with a typed reason and nothing is written -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_serving.py -q -p no:randomly --no-cov fails at the merge base"
+  - id: AC2
+    statement: "AC2: the GPU memory share is computed from the measured engine, neighbour, card and margin sizes, refused when no room or less than one full context of cache remains, and equals 0.83 for the measured 28.26 and 2.98 GiB on the 31.36 GiB card -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_serving.py -q -p no:randomly --no-cov -k gpu fails at the merge base"
+  - id: AC3
+    statement: "AC3: the overlay values (restart always, delay 10, user, budget numbers, pinned rendered digest) agree with the template and the formula -- falsifier: python -m pytest tests/test_vllm_gpu0_unit_overlay.py -q fails when RESTART_POLICY is set to on-failure"
+  - id: AC4
+    statement: "AC4: integrated: on h201 systemctl show vllm-gpu0.service reports Restart=always, the running engine process carries --gpu-memory-utilization 0.83, /v1/models lists Qwen3.8-27B and one onex delegate smoke answers from the local rung -- falsifier: any of the four readings differs, or the unit file on h201 differs from the installer's rendered bytes"
+evidence_requirements:
+- kind: tests
+  description: The serving-unit tests and the existing net unit installer tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_net_units -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23986-ac1
+  description: 'AC1: the restart refusal tests pass at the head and fail with the handler at its merge-base state, where render values is not supported.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_serving.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23986-ac2
+  description: 'AC2: the GPU budget tests pass at the head and fail at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_serving.py -q -p no:randomly --no-cov -k gpu
+    cwd: .
+- id: dod-omn23986-ac3
+  description: 'AC3: the overlay-side test lives in the overlays repository (pull request OmniNode-ai/overlays#358); here the node test that renders a fixture overlay with the same shape passes.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23986-integration-proof
+  description: the serving-unit tests run on a lab host at the pushed head; hosted CI cannot reach h201, so the reading of the installed unit is posted as a pull request comment naming the head and only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23986 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_net_units/test_host_net_units_serving.py -q --no-cov -p no:randomly
