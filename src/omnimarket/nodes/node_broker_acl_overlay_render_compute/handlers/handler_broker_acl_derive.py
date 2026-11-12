@@ -90,7 +90,15 @@ class HandlerBrokerAclDerive:
                 row = ModelBrokerAclRow(principal=principal, **grant.model_dump())
                 rows[_row_key(row)] = row
 
+        if request.only_node is not None and request.only_node not in principal_of:
+            findings.append(
+                ModelBrokerAclFinding(
+                    code=_CODES.NODE_WITHOUT_PRINCIPAL, detail=request.only_node
+                )
+            )
         for node, principal in sorted(principal_of.items()):
+            if request.only_node is not None and node != request.only_node:
+                continue
             uses = uses_by_node.get(node, [])
             for use in uses:
                 operations = (
@@ -123,7 +131,11 @@ class HandlerBrokerAclDerive:
             for row in request.declared_rows
             if row.resource_type == EnumAclResourceType.TOPIC
         }
-        topics = {use.topic for use in request.topic_uses}
+        topics = {
+            use.topic
+            for use in request.topic_uses
+            if request.only_node is None or use.node == request.only_node
+        }
         uncovered = tuple(sorted(topics - covered))
         findings.extend(
             ModelBrokerAclFinding(code=_CODES.TOPIC_WITHOUT_ROW, detail=topic)

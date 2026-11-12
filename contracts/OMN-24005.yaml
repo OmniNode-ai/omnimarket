@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24005
+title: "Broker permission rows by role: coverage check and readiness check"
+summary: The broker ACL render node gains a coverage check (a contract topic no declared grant covers and no baseline entry holds is refused), and the reconcile effect gains a ready_check mode that names the derived rows one node lacks on the broker.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24005-coverage-readiness
+  statement: A new contract topic with no declared grant and no baseline entry is refused by name; a node asks whether the broker holds its derived rows and is told the missing rows or ready.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a node contract that declares a topic no declared grant covers and that is not in the frozen baseline makes the coverage check refuse and name the topic -- falsifier: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py -q -k new_topic fails at the merge base"
+  - id: AC2
+    statement: "AC2: the readiness check names each permission row a node's derived rows lack on the broker and answers not ready, and answers ready when none lack -- falsifier: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_readiness_check.py -q fails at the merge base"
+  - id: AC3
+    statement: "AC3: the real principals overlay in the overlays repository loads through the node's own model and every node it names has a contract -- falsifier: the overlays repository check that loads overlays/broker_acl_principals/overlay.yaml fails on an unknown node name"
+  - id: AC4
+    statement: "AC4: integrated: a dry-run reconcile against the development broker, read-only, reports declared, live, missing and extra row counts from the running runtime -- falsifier: the dry-run result has no derived count, or the broker is unreadable and is named as such"
+evidence_requirements:
+- kind: tests
+  description: The coverage and readiness tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute tests/nodes/node_broker_acl_reconcile_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24005-ac1
+  description: 'AC1: the new-topic test passes at the head; the coverage gate handler does not exist at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py -q -p no:randomly --no-cov -k new_topic
+    cwd: .
+- id: dod-omn24005-ac2
+  description: 'AC2: the readiness tests pass at the head; the reconcile request has no ready_check mode at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_readiness_check.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24005-ac3
+  description: 'hosted proxy for AC3: the overlays repository holds the real principals overlay and loads it through the node model in its own check; this repository holds the model it is loaded through'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_derive_chain.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24005-ac4
+  description: 'hosted proxy for AC4: the reconcile tests that stand in for the dev broker pass here; the dry-run reading against the dev broker is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24005-integration-proof
+  description: the coverage and readiness tests run on a lab host at the pushed head, including the tests that fail at the merge base; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24005 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py tests/nodes/node_broker_acl_reconcile_effect/test_readiness_check.py -q --no-cov -p no:randomly

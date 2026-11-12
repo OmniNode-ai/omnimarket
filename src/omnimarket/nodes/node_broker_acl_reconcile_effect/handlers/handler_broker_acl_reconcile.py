@@ -146,24 +146,31 @@ def derived_grants(
     settings: Mapping[str, Any],
     declared: Sequence[Mapping[str, str]],
     environ: Mapping[str, str],
+    node: str | None = None,
 ) -> tuple[list[dict[str, str]], int]:
     """The rows the contracts' topics need for the declared principals, and how many topics still have no row.
 
     No principals overlay (the setting is absent or the file is not found) derives nothing, so a deployment that does not
     declare principals applies exactly what it applied before. A derivation the apply tool would refuse raises.
+    With a node (the readiness check) an absent overlay raises instead: no answer is never read as ready.
     """
     scope = settings.get("derive_principals_scope")
     if not scope:
+        if node is not None:
+            raise ValueError("no principals overlay scope is configured")
         return [], 0
     try:
         principals = load_principals_overlay(scope, environ)
     except NodeOverlayNotFoundError:
+        if node is not None:
+            raise ValueError(f"no principals overlay found for scope {scope}") from None
         return [], 0
     result = HandlerBrokerAclDerive().handle(
         ModelBrokerAclDeriveRequest(
             scope=scope,
             topic_uses=load_topic_uses(),
             principals=principals,
+            only_node=node,
             declared_rows=tuple(
                 ModelBrokerAclRow(**row)
                 for row in declared
@@ -224,6 +231,14 @@ class HandlerBrokerAclReconcile:
         # The program comes only from operator configuration; a bus request never
         # carries an argv. Without configured command, the packaged driver runs.
         command = shlex.split(self._environ.get(settings["reconcile_command_env"], ""))
+        if request.mode == "ready_check":
+            if command:
+                return ModelBrokerAclReconcileResult(
+                    mode=request.mode,
+                    exit_code=2,
+                    error="ready_check reads through the packaged driver only",
+                )
+            return self._ready_check(request, loaded, target)
         if not command:
             return self._apply_driver(request, loaded, target)
         try:
@@ -258,6 +273,66 @@ class HandlerBrokerAclReconcile:
                 )
         return self._result(request, completed)
 
+    def _ready_check(
+        self,
+        request: ModelBrokerAclReconcileRequest,
+        loaded: Mapping[str, Any],
+        target: str,
+    ) -> ModelBrokerAclReconcileResult:
+        """Does the broker hold every row derived for one node? Reads only; a row it lacks is named in missing_rows."""
+        try:
+            settings = loaded["broker_acl_reconcile"]
+            derived, _ = derived_grants(settings, [], self._environ, node=request.node)
+            declaration = dict(loaded["broker_acl_declaration"])
+            declaration.pop("principals", None)
+            keys = ("principal", "resource_type", "pattern", "name", "operation")
+            declaration["rows"] = [
+                dict(zip(keys, tuple(row[k] for k in keys), strict=True))
+                for row in derived
+            ]
+            timeout = float(settings["timeout_seconds"])
+            connection = driver_broker_acl.AclConnection.from_mapping(
+                declaration, target, timeout
+            )
+            grants = [driver_broker_acl.AclGrant(**row) for row in declaration["rows"]]
+
+            def run_remote(ssh_target: str, script: str) -> str:
+                return driver_broker_acl.run_remote(ssh_target, script, timeout=timeout)
+
+            output = driver_broker_acl.apply(
+                grants, connection, "dry_run", self._remote_runner or run_remote
+            )
+            reports = _REPORT.findall(output)
+            if not reports:
+                return ModelBrokerAclReconcileResult(
+                    mode=request.mode,
+                    exit_code=2,
+                    error="the broker listing could not be read",
+                    output=output,
+                )
+            missing = int(reports[-1][2])
+            missing_rows = tuple(
+                line.removeprefix("MISSING ")
+                for line in output.splitlines()
+                if line.startswith("MISSING ")
+            )
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode,
+                exit_code=int(missing > 0),
+                declared=int(reports[-1][0]),
+                live=int(reports[-1][1]),
+                missing=missing,
+                undeclared=int(reports[-1][3]),
+                missing_rows=missing_rows,
+                derived=len(derived),
+                ready=missing == 0,
+                output=output,
+            )
+        except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode, exit_code=2, error=str(error)
+            )
+
     def _apply_driver(
         self,
         request: ModelBrokerAclReconcileRequest,
@@ -288,7 +363,10 @@ class HandlerBrokerAclReconcile:
                 return driver_broker_acl.run_remote(ssh_target, script, timeout=timeout)
 
             output = driver_broker_acl.apply(
-                grants, connection, request.mode, self._remote_runner or run_remote
+                grants,
+                connection,
+                "apply" if request.mode == "apply" else "dry_run",
+                self._remote_runner or run_remote,
             )
             reports = _REPORT.findall(output)
             code = int(bool(int(reports[-1][2])))

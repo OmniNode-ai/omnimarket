@@ -18,12 +18,18 @@ from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_a
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("dry_run", "apply"), required=True)
-    args = parser.parse_args(argv)
-    result = HandlerBrokerAclReconcile().handle(
-        ModelBrokerAclReconcileRequest(mode=args.mode)
+    parser.add_argument(
+        "--mode", choices=("dry_run", "apply", "ready_check"), required=True
     )
+    parser.add_argument("--node", help="the node a ready_check asks about")
+    args = parser.parse_args(argv)
+    try:
+        request = ModelBrokerAclReconcileRequest(mode=args.mode, node=args.node)
+    except ValueError as error:
+        parser.error(str(error))
+    result = HandlerBrokerAclReconcile().handle(request)
     sys.stdout.write(result.output)
+    sys.stdout.write(result.model_dump_json(exclude={"output"}) + "\n")
     if result.error:
         sys.stderr.write(result.error + "\n")
     return result.exit_code

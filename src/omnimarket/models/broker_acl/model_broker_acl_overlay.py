@@ -47,6 +47,9 @@ class EnumBrokerAclFindingCode(StrEnum):
     TOPIC_WITHOUT_ROW = "topic_without_row"
     NODE_WITHOUT_CONTRACT = "node_without_contract"
     NODE_PRINCIPAL_CONFLICT = "node_principal_conflict"
+    NODE_WITHOUT_PRINCIPAL = "node_without_principal"
+    TOPIC_OPERATION_WITHOUT_ROW = "topic_operation_without_row"
+    BASELINE_STALE = "baseline_stale"
 
 
 class ModelBrokerAclGrant(BaseModel):

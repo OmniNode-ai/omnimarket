@@ -34,6 +34,12 @@ handler_routing:
       module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_derive
     input_model: omnimarket.models.broker_acl.model_broker_acl_derive.ModelBrokerAclDeriveRequest
     output_model: omnimarket.models.broker_acl.model_broker_acl_derive.ModelBrokerAclDeriveResult
+  - operation: check_broker_acl_coverage
+    handler:
+      name: HandlerBrokerAclCoverageGate
+      module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_coverage_gate
+    input_model: omnimarket.models.broker_acl.model_broker_acl_coverage.ModelBrokerAclCoverageRequest
+    output_model: omnimarket.models.broker_acl.model_broker_acl_coverage.ModelBrokerAclCoverageResult
 descriptor:
   node_archetype: compute
   purity: pure

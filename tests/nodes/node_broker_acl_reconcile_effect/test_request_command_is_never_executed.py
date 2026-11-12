@@ -39,7 +39,8 @@ def _recording(calls: list[list[str]]):
 
 
 def test_model_fields_do_not_declare_reconcile_command():
-    assert set(ModelBrokerAclReconcileRequest.model_fields) == {"mode"}
+    # node is the readiness check's question (OMN-24005); it names a node and never a program to run.
+    assert set(ModelBrokerAclReconcileRequest.model_fields) == {"mode", "node"}
 
 
 def test_model_fields_forbid_extra_cells():

@@ -56,6 +56,8 @@ class ModelBrokerAclDeriveRequest(BaseModel):
     topic_uses: tuple[ModelContractTopicUse, ...]
     principals: ModelBrokerAclPrincipalsOverlay
     declared_rows: tuple[ModelBrokerAclRow, ...] = ()
+    # Derive only this node's rows (the readiness check asks what one node needs). A node no principal runs refuses.
+    only_node: str | None = Field(default=None, min_length=1)
 
 
 class ModelBrokerAclDeriveResult(BaseModel):
