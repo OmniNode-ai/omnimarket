@@ -13,12 +13,14 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import 
     ModelEscalationBrief,
 )
 from omnimarket.nodes.node_lab_alarm.protocols import (
+    ContainerUnreadableError,
     EffectsGroupReadError,
     GroupNeverCommittedError,
     GroupUnreadableError,
     LaneDispatchError,
     ManifestUnreachableError,
     ManifestUnreadableError,
+    RestartBoundsUnreadableError,
     RunRecordUnwritableError,
 )
 
@@ -140,6 +142,38 @@ class InMemoryDispatcher:
         self.briefs.append(brief)
 
 
+class InMemoryRestartBounds:
+    """Serves the declared restart bounds by container; a non-empty ``unreadable`` makes the read refuse with it."""
+
+    def __init__(
+        self, bounds: Mapping[str, int] | None = None, unreadable: str = ""
+    ) -> None:
+        self.declared = dict(bounds or {})
+        self.unreadable = unreadable
+
+    def bounds(self) -> dict[str, int]:
+        if self.unreadable:
+            raise RestartBoundsUnreadableError(self.unreadable)
+        return dict(self.declared)
+
+
+class InMemoryRestartReader:
+    """Reads the fixture ``readings`` (restart count and status) by container; a listed ``unreadable`` container refuses."""
+
+    def __init__(self) -> None:
+        self.readings: dict[str, tuple[int, str]] = {}
+        self.unreadable: dict[str, str] = {}
+        self.calls: list[str] = []
+
+    def read(self, container: str, timeout: float) -> tuple[int, str]:
+        self.calls.append(container)
+        if container in self.unreadable:
+            raise ContainerUnreadableError(self.unreadable[container])
+        if container not in self.readings:
+            raise ContainerUnreadableError(f"{container} is not a fixture container")
+        return self.readings[container]
+
+
 __all__ = [
     "InMemoryDispatcher",
     "InMemoryEffectsGroups",
@@ -148,6 +182,8 @@ __all__ = [
     "InMemoryLag",
     "InMemoryManifest",
     "InMemoryManifestCache",
+    "InMemoryRestartBounds",
+    "InMemoryRestartReader",
     "InMemoryRunRecords",
     "InMemorySamples",
 ]

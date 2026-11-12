@@ -64,3 +64,12 @@ effects_held:
     ticket: OMN-1
     settle_seconds: 20
     brief_dir: .onex_state/lab-alarm/escalation-briefs
+# The container-restarts condition (OMN-23934). Needed by the container-restarts verbs only; the other verbs run without it.
+# lane_manifest and census_lane are the old alarm script's keys of the same names: each service of the census lane that declares a
+# restart_bound is read, and a restart count above its own bound is an ALARM. docker_command reaches docker where the lane runs
+# (ssh to the lab host), and the 30 second bound on one docker inspect is the alarm script's own, held here as data.
+container_restarts:
+  lane_manifest: ${ONEX_WORKSPACE_CONFIG_ROOT}/config/lab/lane-census/lane-manifest.yaml
+  census_lane: dev
+  docker_command: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10, example-user@example-host, docker]
+  timeout_seconds: 30

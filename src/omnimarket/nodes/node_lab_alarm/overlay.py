@@ -7,6 +7,7 @@ The package ships ``overlay.example.yaml`` (the in-memory backend, synthetic val
 a default: an absent key refuses the load and names it, with one exception: ``effects_held`` is the
 block of the effects-held verbs only, so an overlay that lacks it still loads and the broker lag read
 (the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23340).
+``container_restarts`` is the same: the block of the container-restarts verbs only (OMN-23934).
 """
 
 from __future__ import annotations
@@ -169,6 +170,22 @@ class ModelEffectsHeldSettings(BaseModel):
     escalation: ModelEscalationSettings
 
 
+class ModelContainerRestartsSettings(BaseModel):
+    """The container-restarts condition (OMN-23934): which lane's containers, whose bounds, reached how."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The lane manifest holding each container's ``restart_bound``, the old config key ``lane_manifest``.
+    #: May name ``${ONEX_WORKSPACE_CONFIG_ROOT}``, as the old key did.
+    lane_manifest: str = Field(min_length=1)
+    #: The manifest lane whose services are read, the old config key ``census_lane``.
+    census_lane: str = Field(min_length=1)
+    #: The argv prefix that reaches docker on the lane's host, the old config key ``docker_command``.
+    docker_command: tuple[str, ...] = Field(min_length=1)
+    #: The old script's own 30 s bound on one ``docker inspect``, held here as data.
+    timeout_seconds: float = Field(gt=0)
+
+
 class ModelAlarmDeliveryWiring(BaseModel):
     """Names that this node's alarms are delivered through node_lab_alarm_deliver_effect (OMN-23906).
 
@@ -192,6 +209,9 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the effects-held verbs alone. Absent, the broker lag verbs still run: a block that
     #: belongs to one condition must not stop another condition's reading (the 2026-11-09 stale read).
     effects_held: ModelEffectsHeldSettings | None = None
+    #: Read by the container-restarts verbs alone; absent, the overlay still loads and the other verbs run,
+    #: and the container-restarts verbs refuse it themselves, as the effects-held ones do theirs.
+    container_restarts: ModelContainerRestartsSettings | None = None
     #: Absent, nothing is delivered: an overlay written before the delivery existed loads and runs unchanged.
     alarm_delivery: ModelAlarmDeliveryWiring | None = None
 
@@ -211,6 +231,7 @@ __all__ = [
     "NODE_NAME",
     "ModelAlarmBackend",
     "ModelAlarmDeliveryWiring",
+    "ModelContainerRestartsSettings",
     "ModelDeclaredNode",
     "ModelEffectsHeldSettings",
     "ModelEscalationSettings",

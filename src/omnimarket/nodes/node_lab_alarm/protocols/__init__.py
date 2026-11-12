@@ -111,6 +111,26 @@ class ProtocolLaneDispatcher(Protocol):
         ...
 
 
+class ContainerUnreadableError(Exception):
+    """Docker could not answer, the container is absent, or the answer is not ``<int> <status>``."""
+
+
+class RestartBoundsUnreadableError(Exception):
+    """The lane manifest is missing or unparsable, the lane is unknown, a restart bound is invalid, or the lane declares none."""
+
+
+class ProtocolRestartBoundSource(Protocol):
+    def bounds(self) -> dict[str, int]:
+        """Each declared container's restart bound, keyed by container name, or raise RestartBoundsUnreadableError."""
+        ...
+
+
+class ProtocolContainerRestartReader(Protocol):
+    def read(self, container: str, timeout: float) -> tuple[int, str]:
+        """The container's restart count and status, or raise ContainerUnreadableError."""
+        ...
+
+
 class ProtocolAlarmDelivery(Protocol):
     def handle(
         self, request: ModelLabAlarmDeliveryRequest
@@ -120,6 +140,7 @@ class ProtocolAlarmDelivery(Protocol):
 
 
 __all__ = [
+    "ContainerUnreadableError",
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
     "GroupUnreadableError",
@@ -127,6 +148,7 @@ __all__ = [
     "ManifestUnreachableError",
     "ManifestUnreadableError",
     "ProtocolAlarmDelivery",
+    "ProtocolContainerRestartReader",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
@@ -136,5 +158,6 @@ __all__ = [
     "ProtocolManifestSource",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
+    "RestartBoundsUnreadableError",
     "RunRecordUnwritableError",
 ]

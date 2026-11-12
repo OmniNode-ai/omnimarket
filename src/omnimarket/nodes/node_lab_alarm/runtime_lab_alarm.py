@@ -9,6 +9,9 @@
                         member has held past the bound (what a schedule runs).
 ``effects-held-probe``  the same read, keeping nothing and opening nothing.
 
+``container-restarts``        read every declared container's restart count and deliver an alarm for each past its bound.
+``container-restarts-probe``  the same read, delivering nothing.
+
 ``--fault`` injects a drill fault (planted-lag, unknown-node, manifest-down); a drill never keeps its sample.
 
 Exit codes: 0 OK, 2 ALARM, 3 INDETERMINATE (a group or the manifest could not be read, or no baseline yet),
@@ -34,6 +37,8 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryHeldState,
     InMemoryLag,
     InMemoryManifest,
+    InMemoryRestartBounds,
+    InMemoryRestartReader,
     InMemoryRunRecords,
     InMemorySamples,
 )
@@ -47,11 +52,22 @@ from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     HttpManifest,
     KafkaEffectsGroups,
     KafkaLag,
+    SshDockerRestartReader,
+    YamlLaneManifestBounds,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
     HandlerBrokerLag,
     events_for,
     load_topics,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
+    HandlerContainerRestarts,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
+    events_for as container_restarts_events_for,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
+    load_topics as container_restarts_load_topics,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held import (
     HandlerEffectsHeld,
@@ -71,15 +87,25 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm import (
     EnumLabAlarmFault,
     ModelBrokerLagCommand,
 )
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_container_restarts import (
+    EnumContainerRestartsFault,
+    EnumContainerRestartsOutcome,
+    ModelContainerRestartsCommand,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     EnumEffectsHeldFault,
     EnumEffectsHeldOutcome,
     ModelEffectsHeldCommand,
 )
 from omnimarket.nodes.node_lab_alarm.overlay import (
+    ModelContainerRestartsSettings,
     ModelEffectsHeldSettings,
     ModelLabAlarmOverlay,
     load_overlay,
+)
+from omnimarket.nodes.node_lab_alarm.protocols import (
+    ProtocolContainerRestartReader,
+    ProtocolRestartBoundSource,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
     HandlerLabAlarmDeliver,
@@ -101,6 +127,13 @@ _EFFECTS_EXIT = {
     EnumEffectsHeldOutcome.OK: 0,
     EnumEffectsHeldOutcome.ALARM: 2,
     EnumEffectsHeldOutcome.INDETERMINATE: 3,
+}
+
+
+_RESTARTS_EXIT = {
+    EnumContainerRestartsOutcome.OK: 0,
+    EnumContainerRestartsOutcome.ALARM: 2,
+    EnumContainerRestartsOutcome.INDETERMINATE: 3,
 }
 
 
@@ -333,6 +366,93 @@ def run_effects_held(
     return _EFFECTS_EXIT[result.outcome]
 
 
+def _inmemory_restart_sources(
+    settings: ModelContainerRestartsSettings,
+) -> tuple[ProtocolRestartBoundSource, ProtocolContainerRestartReader]:
+    return InMemoryRestartBounds(), InMemoryRestartReader()
+
+
+def _runtime_restart_sources(
+    settings: ModelContainerRestartsSettings,
+) -> tuple[ProtocolRestartBoundSource, ProtocolContainerRestartReader]:
+    return (
+        YamlLaneManifestBounds(
+            settings.lane_manifest, settings.census_lane, os.environ
+        ),
+        SshDockerRestartReader(settings.docker_command),
+    )
+
+
+_RESTART_SOURCES: dict[
+    str,
+    Callable[
+        [ModelContainerRestartsSettings],
+        tuple[ProtocolRestartBoundSource, ProtocolContainerRestartReader],
+    ],
+] = {
+    "inmemory": _inmemory_restart_sources,
+    "runtime": _runtime_restart_sources,
+}
+
+
+def build_container_restarts_handler(
+    overlay: ModelLabAlarmOverlay, settings: ModelContainerRestartsSettings
+) -> HandlerContainerRestarts:
+    """The restarts handler wired to the overlay's backend: the lane manifest and ssh docker on the runtime backend, fixtures in memory."""
+    bounds, reader = _RESTART_SOURCES[overlay.bus.backend](settings)
+    return HandlerContainerRestarts(
+        settings=settings,
+        bounds=bounds,
+        reader=reader,
+        delivery=_delivery_for(overlay),
+    )
+
+
+def run_container_restarts(
+    verb: str,
+    fault: EnumContainerRestartsFault,
+    *,
+    overlay: ModelLabAlarmOverlay,
+    handler: HandlerContainerRestarts | None = None,
+    out: Callable[[str], object] = sys.stdout.write,
+) -> int:
+    """One container-restarts tick."""
+    settings = overlay.container_restarts
+    if settings is None:
+        sys.stderr.write(
+            "LAB-ALARM-REFUSED container_restarts: the overlay has no container_restarts block; "
+            "the other verbs do not need it\n"
+        )
+        return 1
+    handler = handler or build_container_restarts_handler(overlay, settings)
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = handler.handle(
+        ModelContainerRestartsCommand(
+            correlation_id=f"lab-alarm-container-restarts-{now}",
+            write=verb == "container-restarts",
+            fault=fault,
+        )
+    )
+    for topic, body in container_restarts_events_for(
+        result, container_restarts_load_topics()
+    ):
+        out(f"EVENT topic={topic} correlation_id={body['correlation_id']}\n")
+    out(
+        f"CONTAINER-RESTARTS outcome={result.outcome.value} fault={result.fault.value} "
+        f"lane={result.census_lane} alarms={len(result.alarms)} "
+        f"reasons={','.join(result.reasons) or 'none'}\n"
+    )
+    for reading in result.readings:
+        out(f"CONTAINER {reading}\n")
+    for alarm in result.alarms:
+        out(f"ALARM {alarm}\n")
+    for entry in result.delivery:
+        out(f"DELIVERY {entry}\n")
+    if "delivery-failed" in result.failure or "delivery-unavailable" in result.failure:
+        return _RESTARTS_EXIT[EnumContainerRestartsOutcome.ALARM]
+    return _RESTARTS_EXIT[result.outcome]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="node_lab_alarm")
     sub = parser.add_subparsers(dest="verb", required=True)
@@ -345,6 +465,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         held = sub.add_parser(verb)
         held.add_argument(
             "--fault", choices=[f.value for f in EnumEffectsHeldFault], default="none"
+        )
+    for verb in ("container-restarts", "container-restarts-probe"):
+        restarts = sub.add_parser(verb)
+        restarts.add_argument(
+            "--fault",
+            choices=[f.value for f in EnumContainerRestartsFault],
+            default="none",
         )
     schedule = sub.add_parser("schedule")
     schedule.add_argument(
@@ -376,6 +503,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             omni_root=Path(registry_root) if registry_root else None,
             overlay_root=args.overlay_root or _first_overlay_root(os.environ),
             dry_run=args.dry_run,
+        )
+    if args.verb.startswith("container-restarts"):
+        return run_container_restarts(
+            args.verb, EnumContainerRestartsFault(args.fault), overlay=overlay
         )
     if args.verb.startswith("effects-held"):
         return run_effects_held(

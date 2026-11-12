@@ -25,7 +25,7 @@ _CONTRACT = (
     / "node_lab_alarm"
     / "contract.yaml"
 )
-_OPERATIONS = {"broker_lag", "effects_held"}
+_OPERATIONS = {"broker_lag", "effects_held", "container_restarts"}
 _BOOT_INJECTABLE = {"event_bus", "container", "ownership_query"}
 
 
