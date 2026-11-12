@@ -369,3 +369,13 @@ def test_seam_the_files_the_drainer_writes_are_read_as_the_node_reads_them(
     assert result.before.dead_lettered == 1
     assert result.before.unreadable == 0
     assert result.alarmed_losses == 1
+
+
+def test_contract_terminal_event_is_the_declared_completed_topic() -> None:
+    contract = yaml.safe_load(
+        OVERLAY_EXAMPLE.with_name("contract.yaml").read_text(encoding="utf-8")
+    )
+    completed = "onex.evt.omnimarket.hook-spool-reconcile-completed.v1"
+    assert contract["terminal_event"] == completed
+    assert contract["topics"]["hook_spool_reconcile_completed"] == completed
+    assert completed in contract["externally_consumed_topics"]
