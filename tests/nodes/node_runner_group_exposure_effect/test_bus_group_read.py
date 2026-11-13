@@ -18,7 +18,7 @@ same refused organization call reads org-read-denied.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, override
@@ -110,31 +110,37 @@ _RATE = {
 }
 
 
-class _RecordingHandler(_Handler):
+class _PathServer(_Server):
     """The shared fixture server, also recording every path it is asked."""
+
+    seen_paths: list[str]
+
+
+class _RecordingHandler(_Handler):
+    server: _PathServer
 
     @override
     def do_GET(self) -> None:
-        self.server.seen_paths.append(self.path)  # type: ignore[attr-defined]
+        self.server.seen_paths.append(self.path)
         super().do_GET()
 
 
 @pytest.fixture
-def server() -> Iterator[_Server]:
+def server() -> Iterator[_PathServer]:
     import threading
 
-    httpd = _Server(("127.0.0.1", 0), _RecordingHandler)
+    httpd = _PathServer(("127.0.0.1", 0), _RecordingHandler)
     httpd.scenario = Scenario()
     httpd.seen_auth = []
-    httpd.seen_paths = []  # type: ignore[attr-defined]
+    httpd.seen_paths = []
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield httpd
     httpd.shutdown()
     httpd.server_close()
 
 
-def _paths(server: _Server) -> list[str]:
-    return list(server.seen_paths)  # type: ignore[attr-defined]
+def _paths(server: _PathServer) -> list[str]:
+    return list(server.seen_paths)
 
 
 @dataclass
@@ -227,7 +233,7 @@ class _Node:
 
 
 def _probe(
-    server: _Server,
+    server: _PathServer,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     call: WriteCall | None,
@@ -272,7 +278,7 @@ def _request() -> ModelExposureProbeRequest:
 
 
 def test_golden_chain_the_group_is_read_through_the_write_node_and_not_with_the_source_token(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     node = _Node()
     # the fixture refuses every organization call: only the write node can have read the group
@@ -301,7 +307,7 @@ def test_golden_chain_the_group_is_read_through_the_write_node_and_not_with_the_
 
 
 def test_the_write_node_facts_decide_the_verdict(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     node = _Node(group_body=_group_body(allows_public_repositories=True))
     probe, _ = _probe(server, tmp_path, monkeypatch, node.call())
@@ -313,7 +319,7 @@ def test_the_write_node_facts_decide_the_verdict(
 
 
 def test_failing_control_without_group_read_the_same_refusal_reads_org_read_denied(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     probe, _ = _probe(
         server,
@@ -347,7 +353,7 @@ def _answers(failed: bool, payload: dict[str, JsonValue]) -> WriteCall:
 
 
 def _unknown_with(
-    server: _Server,
+    server: _PathServer,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     call: WriteCall,
@@ -365,7 +371,7 @@ def _unknown_with(
 
 
 def test_error_chain_a_write_node_that_does_not_answer_reads_unknown_with_its_own_reason(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     result, _ = _unknown_with(
         server,
@@ -379,7 +385,7 @@ def test_error_chain_a_write_node_that_does_not_answer_reads_unknown_with_its_ow
 
 
 def test_error_chain_a_group_the_overlay_does_not_name_is_refused_by_the_node(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     node = _Node(overlay_group=GROUP + 1)
     result, _ = _unknown_with(server, tmp_path, monkeypatch, node.call())
@@ -388,7 +394,7 @@ def test_error_chain_a_group_the_overlay_does_not_name_is_refused_by_the_node(
 
 
 def test_error_chain_a_github_denial_at_the_write_node_names_the_declared_permission(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     denied = ModelRepoWriteFailed(
         correlation_id=UUID(int=1),
@@ -412,7 +418,7 @@ def test_error_chain_a_github_denial_at_the_write_node_names_the_declared_permis
 
 
 def test_error_chain_an_older_write_node_shape_reads_group_read_refused_or_unreadable(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     refused, _ = _unknown_with(
         server,
@@ -424,7 +430,7 @@ def test_error_chain_an_older_write_node_shape_reads_group_read_refused_or_unrea
 
 
 def test_error_chain_a_completed_answer_without_the_group_reads_unreadable(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     result, _ = _unknown_with(
         server, tmp_path, monkeypatch, _answers(False, {"operation": "runner_list"})
@@ -433,7 +439,7 @@ def test_error_chain_a_completed_answer_without_the_group_reads_unreadable(
 
 
 def test_error_chain_the_answer_for_another_group_is_not_used(
-    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     inner = _Node().call()
 
@@ -471,6 +477,13 @@ def test_the_anchor_repository_must_belong_to_the_sources_org() -> None:
         )
 
 
+class _NeverCalled:
+    def get(
+        self, url: str, headers: Mapping[str, str], timeout: float
+    ) -> tuple[int, bytes]:
+        raise AssertionError("no HTTP call is made at construction")
+
+
 def test_a_declared_group_read_with_no_reader_is_refused_at_construction() -> None:
     from omnimarket.nodes.node_runner_group_exposure_effect.adapters.github_group_source import (
         GithubGroupSource,
@@ -490,4 +503,4 @@ def test_a_declared_group_read_with_no_reader_is_refused_at_construction() -> No
         timeout_seconds=1,
     )
     with pytest.raises(ValueError, match="group_read"):
-        GithubGroupSource(source, http_get=None, environ={})  # type: ignore[arg-type]
+        GithubGroupSource(source, _NeverCalled(), {})
