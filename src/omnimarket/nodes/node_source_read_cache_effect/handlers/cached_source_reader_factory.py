@@ -128,7 +128,9 @@ def build_cached_source_reader(
         if not password and connection.password_ref_env:
             reference = env.get(connection.password_ref_env, "").strip()
             if reference:
-                password = resolve_password(reference, password_reader)
+                password = resolve_password(
+                    reference, password_reader, store_overlay=declared.secret_store
+                )
                 if not password:
                     return CachedSourceReader(
                         None,

@@ -3,7 +3,7 @@ ticket_id: OMN-24112
 title: The board publisher's install carries the Valkey password by secret store reference
 summary: The board's source read cache reaches a Valkey that has a password, and a launchd unit cannot be given that password safely (a dry run prints the rendered unit, and launchd does not inherit the installing shell's environment).
   The installer's factory-floor-publish unit takes one new optional input, source_cache_valkey_password_ref, a secret store path of the form secret://onex/<folder>/<KEY> that names where the password is kept, and persists it as ONEX_SOURCE_CACHE_VALKEY_PASSWORD_REF; no password is a request input.
-  The cache overlay's valkey block gains an optional password_ref_env naming that variable; the cache's reader factory reads the password through the secret store reader the delegation scenarios already use, and a reference that does not resolve leaves the cache off for the run with a typed reason (the variable name only) so every step reads its sources as before.
+  The cache overlay's valkey block gains an optional password_ref_env naming that variable; the cache overlay also gains an optional secret_store block (the shared store addressing), and the cache's reader factory reads the password through the secret store reader the delegation scenarios already use, built from that block (the machine's default route names a LAN address the plain-http rule refuses), and a reference that does not resolve leaves the cache off for the run with a typed reason (the variable name only) so every step reads its sources as before.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

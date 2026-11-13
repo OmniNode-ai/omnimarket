@@ -12,6 +12,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
+
 
 class EnumSourceCacheOutcome(StrEnum):
     HIT = "hit"
@@ -105,3 +109,5 @@ class ModelSourceCacheOverlay(BaseModel):
     # The store: a `valkey` block names the Valkey this deployment keeps its answers in; with no block the answers are kept in memory for
     # the run (the default, which a test or a host with no store uses).
     valkey: ModelSourceCacheValkey | None = None
+    # The store the password reference is resolved through (addressing and the identity's references, never a value); absent, the reader falls back to the machine's own configuration.
+    secret_store: ModelSecretStoreOverlay | None = None

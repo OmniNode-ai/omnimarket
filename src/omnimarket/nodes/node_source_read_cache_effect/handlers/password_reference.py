@@ -16,6 +16,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from omnimarket.handlers.delegation_scenario_settings import ProtocolSettingStore
+    from omnimarket.models.secret_store.model_secret_store_overlay import (
+        ModelSecretStoreOverlay,
+    )
 
 _SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
@@ -38,8 +41,12 @@ def split_store_reference(reference: str) -> tuple[str, str]:
     return folder, key
 
 
-def resolve_password(reference: str, reader: ProtocolSettingStore | None = None) -> str:
-    """The password a reference names, or ``""`` when it cannot be had; never raises, never logs or prints."""
+def resolve_password(
+    reference: str,
+    reader: ProtocolSettingStore | None = None,
+    store_overlay: ModelSecretStoreOverlay | None = None,
+) -> str:
+    """The password a reference names, or ``""`` when it cannot be had; when no reader is given it is built from the overlay the cache declares, never raises, never logs or prints."""
     try:
         folder, name = split_store_reference(reference)
     except ValueError:
@@ -49,7 +56,7 @@ def resolve_password(reference: str, reader: ProtocolSettingStore | None = None)
             SecretStoreSettingsReader,
         )
 
-        reader = SecretStoreSettingsReader()
+        reader = SecretStoreSettingsReader(overlay=store_overlay)
     try:
         secret = asyncio.run(reader.read(folder, name))
     except Exception:

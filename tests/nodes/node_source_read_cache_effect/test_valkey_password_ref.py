@@ -16,9 +16,13 @@ import pytest
 import yaml
 from pydantic import SecretStr
 
+import omnimarket.handlers.delegation_scenario_settings as dss
 from omnimarket.models.model_source_read_cache import (
     EnumSourceCacheOutcome,
     ModelSourceCacheOverlay,
+)
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers import (
     cached_source_reader_factory as factory,
@@ -215,3 +219,55 @@ def test_resolve_password_returns_empty_when_the_store_raises() -> None:
 
 def test_resolve_password_returns_empty_for_a_bad_reference() -> None:
     assert resolve_password("hunter2", FakeStore()) == ""
+
+
+SECRET_STORE_BLOCK = {
+    "provider": "infisical",
+    "address": "https://secrets.example.invalid",
+    "project_id": "00000000-0000-4000-8000-000000000000",
+    "environment": "dev",
+    "identity_file": ".example/.env",
+    "client_id_ref": "EXAMPLE_CLIENT_ID",
+    "client_secret_ref": "EXAMPLE_CLIENT_SECRET",
+}
+
+
+class RecordingReader:
+    """Records the overlay it is built with and reads through a FakeStore."""
+
+    recorded: list[ModelSecretStoreOverlay | None] = []
+
+    def __init__(
+        self, *, overlay: ModelSecretStoreOverlay | None = None, **kwargs: object
+    ) -> None:
+        RecordingReader.recorded.append(overlay)
+        self._store = FakeStore()
+
+    async def read(self, folder: str, name: str) -> SecretStr | None:
+        return await self._store.read(folder, name)
+
+
+def test_golden_a_declared_secret_store_block_reaches_the_reader(
+    tmp_path: Path, spy: type[SpyBackend], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    RecordingReader.recorded = []
+    monkeypatch.setattr(dss, "SecretStoreSettingsReader", RecordingReader)
+    doc = {**VALKEY, "secret_store": SECRET_STORE_BLOCK}
+    build_cached_source_reader(_env(tmp_path, doc, T_PW_REF=REFERENCE))
+    assert RecordingReader.recorded == [
+        ModelSourceCacheOverlay.model_validate(doc).secret_store
+    ]
+    declared = RecordingReader.recorded[0]
+    assert declared is not None
+    assert declared.address == "https://secrets.example.invalid"
+    assert spy.urls == [valkey_url("valkey.example.invalid", 16379, "pw-from-store", 3)]
+
+
+def test_error_chain_an_overlay_without_a_secret_store_block_records_none(
+    tmp_path: Path, spy: type[SpyBackend], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    RecordingReader.recorded = []
+    monkeypatch.setattr(dss, "SecretStoreSettingsReader", RecordingReader)
+    build_cached_source_reader(_env(tmp_path, VALKEY, T_PW_REF=REFERENCE))
+    assert RecordingReader.recorded == [None]
+    assert spy.urls == [valkey_url("valkey.example.invalid", 16379, "pw-from-store", 3)]
