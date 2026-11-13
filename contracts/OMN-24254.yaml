@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-24254"
 title: "A refused runner group read names the GitHub App permission it lacked"
-summary: "node_runner_group_exposure_effect's GitHub source gains a required org_read_permission overlay key, the NAME of the App permission the organization read of the runner group needs. When that read is refused (401, 403 or 404 on the group call) the source carries the declared name in its read result, the probe result passes it on, and the reading writer adds a needs-<permission> reason cell beside org-read-denied. A missing stored token still reads org-read-denied with no permission named. The h053 unit was found running a revision from before the token mint merged; installing this change from its branch replaces it."
+summary: "node_runner_group_exposure_effect's GitHub source gains a required org_read_permission overlay key, the NAME of the App permission the organization read of the runner group needs. When that read is refused (403 or 404 on the group call; a 401 means the token itself was refused and names no permission) the source carries the declared name in its read result, the probe result passes it on, and the reading writer adds a needs-<permission> reason cell beside org-read-denied. A missing stored token still reads org-read-denied with no permission named. The h053 unit was found running a revision from before the token mint merged; installing this change from its branch replaces it."
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
