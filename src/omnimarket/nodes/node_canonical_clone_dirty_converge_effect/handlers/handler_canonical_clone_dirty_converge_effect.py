@@ -767,10 +767,10 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
                 outcomes.append(
                     self.converge_clone(Path(match["clone"]), int(match["age"]))
                 )
-        return self._raise_alarms(outcomes)
+        return self.raise_alarms(outcomes)
 
     # -- the owned alarm ----------------------------------------------------------------------
-    def _raise_alarms(
+    def raise_alarms(
         self, outcomes: list[ModelDirtyConvergeOutcome]
     ) -> list[ModelDirtyConvergeOutcome]:
         """One alarm delivery per tick: an ALARM naming every REFUSED clone, or an OK that ends an episode.

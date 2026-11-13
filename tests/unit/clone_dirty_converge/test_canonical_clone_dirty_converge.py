@@ -170,7 +170,18 @@ class Planted:
             self._fake(tmp)
 
     def _link_real(self, tmp: Path) -> None:
-        (self.home / "omniclaude").symlink_to(Path(REAL_ROOT))
+        """Copy the real engine and script beside the planted clone.
+
+        A copy, never a link to the real checkout: the engine syncs every git clone under the registry
+        root, and the checkout itself would be one of them. The copy holds no .git, so it is not.
+        """
+        root = Path(REAL_ROOT)
+        for relative in ("plugins/onex/hooks/lib", "scripts"):
+            shutil.copytree(
+                root / relative,
+                self.home / "omniclaude" / relative,
+                ignore=shutil.ignore_patterns("__pycache__", "tests"),
+            )
 
     def _fake(self, tmp: Path) -> None:
         script = self.home / "omniclaude/scripts/converge-canonical-clone.sh"
@@ -183,7 +194,7 @@ class Planted:
         env.update(
             OMNI_HOME=str(self.home),
             ONEX_STATE_DIR=str(self.state),
-            ONEX_REGISTRY_ROOTS="",
+            ONEX_REGISTRY_ROOTS=str(self.home),
             GIT_CONFIG_NOSYSTEM="1",
             GIT_AUTHOR_NAME="t",
             GIT_AUTHOR_EMAIL="t@example.com",
@@ -967,15 +978,36 @@ def clean_case(tmp_path: Path) -> Planted:
     return Planted(tmp_path, "platform", {"a.txt": "one\n", "b.txt": "one\n"})
 
 
+def _decide(
+    planted: Planted,
+    delivery: ProtocolAlarmDelivery | None = None,
+    *,
+    refused_for: int = 3 * AGE,
+) -> list[ModelDirtyConvergeOutcome]:
+    """What the tick does with one clone the engine named, without the engine in the way.
+
+    The real engine names a clone only for tracked changes, a commit it does not have, a detached HEAD
+    and the like, never for an untracked file alone, so a case that must reach the handler's own
+    decision goes through converge_clone and the alarm step directly. The cases that cross the
+    engine's line use tick() and run against the real engine too (ONEX_TEST_OMNICLAUDE_ROOT).
+    """
+    _git("fetch", "--quiet", "origin", cwd=planted.clone)  # the engine's own first step
+    handler = HandlerCanonicalCloneDirtyConvergeEffect(
+        planted.home,
+        env=planted.env(**{AGE_ENV: str(AGE)}),
+        engine_argv=planted.engine_argv,
+        delivery=delivery,
+    )
+    return handler.raise_alarms([handler.converge_clone(planted.clone, refused_for)])
+
+
 @pytest.mark.parametrize("kind", list(KIND_PLANTS), ids=lambda k: k.value)
 def test_a_clone_holding_one_kind_of_local_work_is_refused_and_kept_byte_for_byte(
     clean_case: Planted, kind: EnumLocalWorkKind
 ) -> None:
     name = KIND_PLANTS[kind](clean_case.clone)
     before = tree_state(clean_case.clone)
-    handler = clean_case.handler(**{AGE_ENV: str(AGE)})
-    clean_case.refuse_for(handler, 3 * AGE)
-    (outcome,) = handler.tick()
+    (outcome,) = _decide(clean_case)
     assert outcome.status is EnumDirtyConvergeStatus.REFUSED, outcome
     assert [(w.kind, w.names) for w in outcome.local_work] == [(kind, (name,))]
     assert outcome.reason.startswith(
@@ -993,9 +1025,7 @@ def test_a_clean_clone_with_no_unpushed_commit_is_not_refused_as_holding_work(
 ) -> None:
     """Positive control: the same clone without local work reads as clean, so a refusal is the work's."""
     before = tree_state(clean_case.clone)
-    handler = clean_case.handler(**{AGE_ENV: str(AGE)})
-    clean_case.refuse_for(handler, 3 * AGE)
-    (outcome,) = handler.tick()
+    (outcome,) = _decide(clean_case)
     assert outcome.status is EnumDirtyConvergeStatus.SKIPPED, outcome
     assert outcome.local_work == ()
     assert "no local work" in outcome.reason
@@ -1032,9 +1062,7 @@ def test_many_paths_are_counted_and_only_the_declared_number_is_named(
     listed = load_declaration().max_listed
     for index in range(listed + 3):
         (clean_case.clone / f"extra{index:02d}.txt").write_text("x\n")
-    handler = clean_case.handler(**{AGE_ENV: str(AGE)})
-    clean_case.refuse_for(handler, 3 * AGE)
-    (outcome,) = handler.tick()
+    (outcome,) = _decide(clean_case)
     (work,) = outcome.local_work
     assert work.count == listed + 3
     assert len(work.names) == listed
@@ -1046,7 +1074,6 @@ def test_a_clone_whose_local_work_cannot_be_read_is_failed_and_never_converged(
 ) -> None:
     """Error chain: an unreadable clone is not taken for a clean one."""
     handler = clean_case.handler(**{AGE_ENV: str(AGE)})
-    clean_case.refuse_for(handler, 3 * AGE)
     real = handler._run
 
     def run(argv: list[str], **kwargs: object) -> object:
@@ -1055,8 +1082,9 @@ def test_a_clone_whose_local_work_cannot_be_read_is_failed_and_never_converged(
         return real(argv, **kwargs)
 
     handler._run = run
+    _git("fetch", "--quiet", "origin", cwd=clean_case.clone)
     before = tree_state(clean_case.clone)
-    (outcome,) = handler.tick()
+    outcome = handler.converge_clone(clean_case.clone, 3 * AGE)
     assert outcome.status is EnumDirtyConvergeStatus.FAILED, outcome
     assert "could not be read" in outcome.reason
     assert tree_state(clean_case.clone) == before
@@ -1190,14 +1218,7 @@ class RecordingDelivery:
 def _refused_tick(
     planted: Planted, delivery: ProtocolAlarmDelivery | None
 ) -> list[ModelDirtyConvergeOutcome]:
-    handler = HandlerCanonicalCloneDirtyConvergeEffect(
-        planted.home,
-        env=planted.env(**{AGE_ENV: str(AGE)}),
-        engine_argv=planted.engine_argv,
-        delivery=delivery,
-    )
-    planted.refuse_for(handler, 3 * AGE)
-    return handler.tick()
+    return _decide(planted, delivery)
 
 
 def test_a_refused_clone_raises_one_owned_alarm_under_the_contracts_condition(
