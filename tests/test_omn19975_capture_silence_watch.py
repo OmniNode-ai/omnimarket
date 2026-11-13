@@ -748,3 +748,260 @@ async def test_runtime_bus_publish_failure_is_recorded() -> None:
     assert not result.heartbeat_published
     assert "runtime bus dark" in (result.heartbeat_error or "")
     assert bus.publish.await_count == 4
+
+
+# --- OMN-24325: the database password comes from a secret store reference --------------------------------------------------------
+
+REFERENCE_VARIABLE = "ONEX_CAPTURE_WATCH_DB_PASSWORD_REF"
+PASSWORDLESS_DSN = "postgresql://omninode_runtime@127.0.0.1:5436/omnidash_analytics"
+STORE_REFERENCE = "secret://onex/shared/env/OMNINODE_RUNTIME_PASSWORD"
+STORE_PASSWORD = (
+    "p-w-for-the-test"  # a synthetic value; the real one is only ever in the store
+)
+
+
+def _reference_environ(**extra: str) -> dict[str, str]:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    return {
+        source.dsn_env: PASSWORDLESS_DSN,
+        REFERENCE_VARIABLE: STORE_REFERENCE,
+        **extra,
+    }
+
+
+class _Store:
+    """The store seam: one name at a time, in process, as handlers.delegation_scenario_settings.ProtocolSettingStore reads."""
+
+    def __init__(self, held: dict[tuple[str, str], str]) -> None:
+        self.held = held
+        self.asked: list[tuple[str, str]] = []
+
+    async def read(self, folder: str, name: str) -> SecretStr | None:
+        self.asked.append((folder, name))
+        value = self.held.get((folder, name))
+        return SecretStr(value) if value is not None else None
+
+
+def _resolver_over(store: _Store) -> Any:
+    from omnimarket.nodes.node_source_read_cache_effect.handlers.password_reference import (
+        resolve_password,
+    )
+
+    return lambda reference, store_overlay=None: resolve_password(
+        reference, reader=store, store_overlay=store_overlay
+    )
+
+
+def test_contract_names_the_password_reference_variable() -> None:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    assert source.password_ref_env == REFERENCE_VARIABLE
+    assert source.dsn_env == "OMNINODE_INTERNAL_DB_URL"
+
+
+def test_password_reference_resolved_into_dsn() -> None:
+    from psycopg2.extensions import parse_dsn
+
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): STORE_PASSWORD})
+    overlays: list[str] = []
+
+    def _load(name: str) -> None:
+        overlays.append(name)
+
+    dsn = resolve_reads_source_dsn(
+        source,
+        environ=_reference_environ(),
+        resolve=_resolver_over(store),
+        load_store=_load,
+    )
+    parsed = parse_dsn(dsn)
+    assert parsed["password"] == STORE_PASSWORD
+    assert (parsed["user"], parsed["host"], parsed["port"], parsed["dbname"]) == (
+        "omninode_runtime",
+        "127.0.0.1",
+        "5436",
+        "omnidash_analytics",
+    )
+    # The reference was split into its folder and key, and the node's own overlay was the store asked.
+    assert store.asked == [("/shared/env", "OMNINODE_RUNTIME_PASSWORD")]
+    assert overlays == ["node_capture_silence_watch_effect"]
+
+
+def test_password_reference_special_characters_round_trip_through_the_dsn() -> None:
+    from psycopg2.extensions import parse_dsn
+
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    awkward = "p w@:/%#?&='\\x"
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): awkward})
+    keyword_dsn = (
+        "host=127.0.0.1 port=5436 dbname=omnidash_analytics user=omninode_runtime"
+    )
+    for given in (PASSWORDLESS_DSN, keyword_dsn):
+        dsn = resolve_reads_source_dsn(
+            source,
+            environ=_reference_environ(**{source.dsn_env: given}),
+            resolve=_resolver_over(store),
+            load_store=lambda _name: None,
+        )
+        parsed = parse_dsn(dsn)
+        assert parsed["password"] == awkward
+        assert (parsed["user"], parsed["host"], parsed["dbname"]) == (
+            "omninode_runtime",
+            "127.0.0.1",
+            "omnidash_analytics",
+        )
+
+
+def test_keyword_dsn_with_password_is_used_as_given() -> None:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    given = "host=127.0.0.1 dbname=omnidash_analytics user=omninode_runtime password=already"
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): STORE_PASSWORD})
+    dsn = resolve_reads_source_dsn(
+        source,
+        environ=_reference_environ(**{source.dsn_env: given}),
+        resolve=_resolver_over(store),
+        load_store=lambda _name: None,
+    )
+    assert dsn == given
+    assert store.asked == []
+
+
+def test_password_reference_unresolved_fails_closed_naming_the_variable_only() -> None:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    store = _Store({})
+    with pytest.raises(CaptureWatchPolicyError) as raised:
+        resolve_reads_source_dsn(
+            source,
+            environ=_reference_environ(),
+            resolve=_resolver_over(store),
+            load_store=lambda _name: None,
+        )
+    text = str(raised.value)
+    assert REFERENCE_VARIABLE in text
+    assert STORE_REFERENCE not in text
+    assert "OMNINODE_RUNTIME_PASSWORD" not in text
+
+
+def test_password_reference_malformed_fails_closed() -> None:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    with pytest.raises(CaptureWatchPolicyError):
+        resolve_reads_source_dsn(
+            source,
+            environ=_reference_environ(**{REFERENCE_VARIABLE: "not-a-store-path"}),
+            resolve=_resolver_over(_Store({})),
+            load_store=lambda _name: None,
+        )
+
+
+def test_url_with_password_is_used_as_given() -> None:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    given = "postgresql://omninode_runtime:already@127.0.0.1:5436/omnidash_analytics"
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): STORE_PASSWORD})
+    dsn = resolve_reads_source_dsn(
+        source,
+        environ=_reference_environ(**{source.dsn_env: given}),
+        resolve=_resolver_over(store),
+        load_store=lambda _name: None,
+    )
+    assert dsn == given
+    assert store.asked == []
+
+
+def test_unset_reference_variable_leaves_the_dsn_as_given() -> None:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    environ = _reference_environ()
+    del environ[REFERENCE_VARIABLE]
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): STORE_PASSWORD})
+    assert (
+        resolve_reads_source_dsn(
+            source,
+            environ=environ,
+            resolve=_resolver_over(store),
+            load_store=lambda _name: None,
+        )
+        == PASSWORDLESS_DSN
+    )
+    assert store.asked == []
+
+
+@pytest.mark.asyncio
+async def test_password_reference_chain_golden_reads_with_the_resolved_password(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Golden chain: a tick with a reference resolves it, dials with the password, and the evaluation event carries none."""
+    from functools import partial
+
+    from psycopg2.extensions import parse_dsn
+
+    dialled: list[str] = []
+
+    class _Dialled(_Reader):
+        def __init__(self, *, dsn: str) -> None:
+            super().__init__()
+            dialled.append(dsn)
+
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): STORE_PASSWORD})
+    monkeypatch.setattr(HANDLER_MODULE, "PostgresCaptureWatchReader", _Dialled)
+    monkeypatch.setattr(
+        HANDLER_MODULE,
+        "resolve_reads_source_dsn",
+        partial(
+            resolve_reads_source_dsn,
+            environ=_reference_environ(),
+            resolve=_resolver_over(store),
+            load_store=lambda _name: None,
+        ),
+    )
+    publisher = _Publisher()
+    with caplog.at_level(logging.DEBUG):
+        result = await HandlerCaptureSilenceWatch(
+            event_publisher=publisher, clock=_Clock(), host="test-host"
+        ).handle(ModelCaptureWatchTrigger(correlation_id=CORRELATION))
+    assert len(dialled) == 1
+    assert parse_dsn(dialled[0])["password"] == STORE_PASSWORD
+    assert all(v.state is not EnumCaptureWatchState.UNKNOWN for v in result.verdicts)
+    assert result.heartbeat_published
+    assert STORE_PASSWORD not in result.model_dump_json()
+    assert STORE_PASSWORD not in caplog.text
+    assert all(
+        STORE_PASSWORD.encode() not in payload for _topic, payload in publisher.calls
+    )
+
+
+@pytest.mark.asyncio
+async def test_password_reference_unresolved_chain_is_unknown_and_leaks_nothing(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Error chain: an unresolved reference makes every verdict UNKNOWN with the variable named, no alarm, a heartbeat, no value in any output."""
+    from functools import partial
+
+    dialled: list[str] = []
+
+    class _Dialled(_Reader):
+        def __init__(self, *, dsn: str) -> None:
+            super().__init__()
+            dialled.append(dsn)
+
+    monkeypatch.setattr(HANDLER_MODULE, "PostgresCaptureWatchReader", _Dialled)
+    monkeypatch.setattr(
+        HANDLER_MODULE,
+        "resolve_reads_source_dsn",
+        partial(
+            resolve_reads_source_dsn,
+            environ=_reference_environ(),
+            resolve=_resolver_over(_Store({})),
+            load_store=lambda _name: None,
+        ),
+    )
+    publisher = _Publisher()
+    with caplog.at_level(logging.DEBUG):
+        result = await HandlerCaptureSilenceWatch(
+            event_publisher=publisher, clock=_Clock(), host="test-host"
+        ).handle(ModelCaptureWatchTrigger(correlation_id=CORRELATION))
+    assert dialled == []
+    assert all(v.state is EnumCaptureWatchState.UNKNOWN for v in result.verdicts)
+    assert all(REFERENCE_VARIABLE in (v.error or "") for v in result.verdicts)
+    assert STORE_REFERENCE not in result.model_dump_json()
+    assert STORE_REFERENCE not in caplog.text
+    assert not publisher.matching("slack-publish")
+    assert result.heartbeat_published
