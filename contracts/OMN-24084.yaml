@@ -13,7 +13,7 @@ requirements:
       - id: AC1
         statement: 'AC1: the lab health board and alert nodes accept the batch the evaluate node publishes on its topic, state carried between batches -- falsifier: pytest tests/nodes/node_lab_sli_compute/test_seam_lab_sli_evaluated_consumers.py -q fails on the dev tip without this change'
       - id: AC2
-        statement: 'AC2: every event the prompt-intent producer can emit validates in both of its consumers, and the producer refuses a missing emission time or a non-UUID id -- falsifier: pytest tests/nodes/node_prompt_intent_classify_compute/test_seam_intent_classified_consumers.py -q fails on the dev tip without this change'
+        statement: 'AC2: every event the prompt-intent producer can emit validates in both of its consumers, and the producer refuses a missing emission time or a non-UUID id -- falsifier: pytest tests/nodes/node_prompt_intent_seam/test_seam_intent_classified_consumers.py -q fails on the dev tip without this change'
       - id: AC3
         statement: 'AC3: the pull request status topic''s two producer shapes are pinned against the branch-claim consumer (webhook shape accepted, poller shape refused, poller publishes nothing by default) -- falsifier: pytest tests/nodes/node_branch_claim_check_effect/test_seam_pr_status_producers.py -q fails if either shape changes'
       - id: AC4

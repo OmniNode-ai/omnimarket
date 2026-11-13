@@ -13,6 +13,9 @@ from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel
 
+from omnimarket.events.github_pr_status_poll import (
+    ModelGitHubPrStatusPollEvent,
+)
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp
 from omnimarket.models.model_github_pr_state_observation import (
     ModelGitHubPrStateObservation,
@@ -51,9 +54,6 @@ from omnimarket.nodes.node_branch_claim_check_effect.models import (
     ModelBranchClaimCheckResult,
     ModelBranchClaimPolicy,
     load_branch_claim_policy,
-)
-from omnimarket.nodes.node_github_pr_poller_effect.models.model_github_pr_status_poll_event import (
-    ModelGitHubPrStatusPollEvent,
 )
 
 logger = logging.getLogger(__name__)
