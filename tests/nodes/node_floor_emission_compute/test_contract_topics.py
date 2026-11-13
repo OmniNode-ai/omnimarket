@@ -45,16 +45,19 @@ def _node_contract(node: str) -> dict[str, Any]:
     return contract
 
 
-def test_emission_subscribes_to_nothing_and_publishes_its_result() -> None:
+def test_emission_subscribes_to_nothing_and_publishes_nothing() -> None:
     bus = _bus()
     assert bus["subscribe_topics"] == []
-    assert "onex.evt.omnimarket.floor-receipts-computed.v1" in bus["publish_topics"]
+    assert bus["publish_topics"] == []
 
 
-def test_emission_terminal_event_is_published() -> None:
+def test_emission_runs_in_process_for_its_caller() -> None:
     loaded = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
-    assert loaded["terminal_event"] == "onex.evt.omnimarket.floor-receipts-computed.v1"
-    assert loaded["terminal_event"] in _bus()["publish_topics"]
+    assert loaded["metadata"]["transport_type"] == "local"
+    assert loaded["descriptor"]["runtime_profiles"] == []
+    assert "runtime_profiles" not in loaded
+    assert "terminal_event" not in loaded
+    assert "node_floor_simple_effect" in loaded["runtime_dispatch"]["external_trigger"]
 
 
 def test_single_event_is_refused_by_the_input_model() -> None:
