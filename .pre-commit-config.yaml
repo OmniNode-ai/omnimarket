@@ -31,6 +31,13 @@ repos:
         files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: workflow-contract-catalog-http
+        name: Workflow contract catalog runtime HTTP route
+        entry: uv run --frozen pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_contract_catalog_effect/.*|tests/nodes/node_workflow_contract_catalog_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: catalog-http-mounts
         name: Catalog runtime HTTP mounts (plans, usage privileges)
         entry: uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
