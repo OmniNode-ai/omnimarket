@@ -271,6 +271,8 @@ not_routing_configs:
     reason: sanitization gate patterns
   - path: src/omnimarket/configs/check_register.yaml
     reason: register of checks
+  - path: src/omnimarket/configs/code_eval_suite.v1.json
+    reason: the verified past tasks the code eval census counts, with their checks and control verdicts; data rows of the suite, no choice among routes
   - path: src/omnimarket/configs/delegation_acceptance_judge_rubric.v1.yaml
     reason: judge rubric text
   - path: src/omnimarket/configs/delegation_class_rubrics.v1.yaml

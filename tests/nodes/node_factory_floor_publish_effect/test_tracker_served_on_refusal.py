@@ -28,6 +28,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -76,6 +77,7 @@ def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
         history_root=str(tmp_path / "site"),
         owner_login="owner@example.invalid",
         local_copy_relpath="floor-copy",
+        limits=TEST_LIMITS,
     )
 
 
