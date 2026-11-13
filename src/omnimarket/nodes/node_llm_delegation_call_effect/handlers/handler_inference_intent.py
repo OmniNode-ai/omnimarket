@@ -1108,6 +1108,14 @@ class HandlerInferenceIntent:
 
         ceiling_seconds = _ceiling_seconds_for(intent)
         timeout = _resolve_effective_timeout(intent)
+        logger.info(
+            "inference call ceiling task_type=%s ceiling_seconds=%s requested_timeout_seconds=%s resolved_timeout_seconds=%s correlation_id=%s",
+            getattr(intent, "task_type", None),
+            ceiling_seconds,
+            intent.timeout_seconds,
+            timeout,
+            intent.correlation_id,
+        )
         started = time.monotonic()
 
         # OMN-20299: the correlation query parameter is the client's, so the

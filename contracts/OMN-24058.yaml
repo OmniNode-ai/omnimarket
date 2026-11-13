@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24058
+title: The branch deploy command step reaches the deploy service over the bus with a signed command
+summary: node_branch_deploy_command_effect stops running the deploy agent's trigger script in a subprocess (the dev runtime image holds no trigger, env file or ssh key) and publishes the deploy agent's HMAC-signed rebuild command on the bus through an injected event bus, as node_standalone_service_redeploy_effect already does. The signing key's variable name is an overlay value; the command effect result no longer carries an exit code. The deploy agent's port 8098 API has read routes only, so the bus is its only command transport.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24058-bus-transport
+  statement: The branch deploy command step publishes a signed rebuild command for the deploy agent on the bus, with the signing key named by the overlay and read from the runtime's environment.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the command step signs the deploy service's rebuild command and publishes it on the bus, refuses with nothing published when the signing key is not set, and reports a failed publish as failed -- falsifier: uv run pytest tests/nodes/node_branch_deploy_command_effect/test_command_effect.py -q fails when the step stops signing, publishes without a key, or hides a publish error"
+  - id: AC2
+    statement: "AC2: the command the step publishes stays inside the deploy service's own command shape, and the step's signature equals the deploy service's own signature for the same command -- falsifier: uv run pytest tests/nodes/node_branch_deploy_command_effect/test_wire_seam.py -q fails when a field name of the published command changes or the signing rule changes"
+  - id: AC3
+    statement: "AC3: the workflow's orchestrator chains still hold against the new command step: a good build ends deployed, a wrong build or an unhealthy runtime sends the rollback, a refused command sends none -- falsifier: uv run pytest tests/nodes/node_branch_deploy_orchestrator -q fails when the orchestrator stops sending the rollback or sends it after a good build"
+  - id: AC4
+    statement: "AC4: integrated: after the merge and the overlay change, one request through the workflow on the development runtime publishes a signed rebuild command that the deploy service accepts, read as the deploy job's record for that request in the deploy service -- falsifier: the deploy service answers rejected with an invalid-signature reason, or holds no job for the request's correlation id"
+evidence_requirements:
+- kind: tests
+  description: The command effect and orchestrator suites pass at the pushed head.
+  command: uv run pytest tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_branch_deploy_command_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24058-ac1
+  description: 'AC1: the command effect golden and error chain tests pass at the head; changing a published key name turns them red.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect/test_command_effect.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24058-ac2
+  description: 'AC2: the wire seam tests pass at the head on the golden fixture generated from the deploy agent models; the real agent model and verifier accepted the published deploy and rollback envelopes on a lab host.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect/test_wire_seam.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24058-ac3
+  description: 'AC3: the orchestrator suite passes at the head over the new command effect.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_orchestrator -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24058-ac4
+  description: 'hosted proxy for AC4: the two suites pass here; the reading on the development runtime after the overlay change is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_branch_deploy_command_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24058-integration-proof
+  description: the two suites run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24058 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_branch_deploy_command_effect -q --no-cov -p no:randomly
