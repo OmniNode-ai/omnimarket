@@ -34,29 +34,49 @@ description: >
   any input order. No clock, no I/O, no model. All rule values come from an
   overlay, never from code.
 input_model:
-  name: "ModelHookToolOutcomeRequest"
-  module: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome"
-  description: "One finished tool call's facts."
+  name: "ModelToolContentRecord"
+  module: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_tool_content_record"
+  description: "Inbound record from onex.cmd.omniintelligence.content-captured.v1."
 output_model:
-  name: "ModelHookToolOutcomeResult"
-  module: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome"
+  name: "ModelHookToolOutcomeClassified"
+  module: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome_classified"
   description: "The typed outcome, the refusing component, the deciding rule or marker, the exit code and a short reason."
 handler:
-  module: "omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome"
-  class: "HandlerHookToolOutcome"
-  input_model: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome.ModelHookToolOutcomeRequest"
-  output_model: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome.ModelHookToolOutcomeResult"
-# Called in process through its own command line (python -m
-# omnimarket.nodes.node_hook_tool_outcome_compute: JSON Lines in, JSON Lines out)
-# and by import, so it declares no bus topic and needs no broker permission row.
+  module: "omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome_capture"
+  class: "HandlerHookToolOutcomeCapture"
+  input_model: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_tool_content_record.ModelToolContentRecord"
+  output_model: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome_classified.ModelHookToolOutcomeClassified"
+# The runtime loads the node overlay through the handler's lazy rule load and
+# the in-process command line stays.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: classify_tool_outcome
+      handler:
+        name: HandlerHookToolOutcomeCapture
+        module: omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome_capture
+      event_model:
+        name: ModelToolContentRecord
+        module: omnimarket.nodes.node_hook_tool_outcome_compute.models.model_tool_content_record
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
-dependency_ownership:
-  rules: "Owned by the hook runtime's command line, which loads the node overlay and constructs the handler in process."
-runtime_profiles: []
+  subscribe_topics:
+    - onex.cmd.omniintelligence.content-captured.v1
+  publish_topics:
+    - onex.evt.omnimarket.hook-tool-outcome-classified.v1
+terminal_event: onex.evt.omnimarket.hook-tool-outcome-classified.v1
+# The content-capture topic is produced by the omniclaude hooks through the
+# emit daemon's fan-out registry, not by a node contract. It is a restricted
+# onex.cmd.omniintelligence.* topic on purpose (omniclaude's privacy split):
+# full prompts and file contents never travel on the broad onex.evt.omniclaude.*
+# family.
+externally_produced_topics:
+  - topic: onex.cmd.omniintelligence.content-captured.v1
+    producer: "omniclaude full-content capture hooks, fanned out by node_emit_daemon registries/topics.yaml (content.captured)"
+externally_consumed_topics:
+  - onex.evt.omnimarket.hook-tool-outcome-classified.v1
+runtime_profiles: [main]
 descriptor:
-  runtime_profiles: []
+  runtime_profiles: [main]
   node_archetype: compute
   purity: pure
   idempotent: true
@@ -64,9 +84,21 @@ descriptor:
 replay:
   deterministic: true
 runtime_dispatch:
-  external_trigger: Direct Python invocation by the hook runtime through the node's JSON Lines command line, with one finished tool call's facts.
+  external_trigger: The capture topic onex.cmd.omniintelligence.content-captured.v1 feeds this node; the handler classifies each tool call's stored response or failure text into a typed outcome.
+  command_topic: onex.cmd.omniintelligence.content-captured.v1
+# The runtime login reads the capture topic and writes the classified outcome topic
+# (the permission rows the broker needs for the new topic uses).
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omniintelligence.content-captured.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omniintelligence.content-captured.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.hook-tool-outcome-classified.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.hook-tool-outcome-classified.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_hook_tool_outcome_compute.consume.v1., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_hook_tool_outcome_compute.consume.v1., operation: DESCRIBE}
 metadata:
-  transport_type: local
+  transport_type: kafka
   description: "Pure classification of one finished tool call into a typed outcome."
   author: "OmniNode Team"
   license: "MIT"
