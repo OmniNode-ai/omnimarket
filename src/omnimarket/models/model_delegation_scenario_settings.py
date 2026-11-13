@@ -91,6 +91,8 @@ class ModelScenarioTenantReadOverlay(BaseModel):
     bus_lane: str = Field(min_length=1)
     probe_tenant_id: UUID
     timeout_seconds: float = Field(gt=0)
+    #: The routing backend id the organic control run is pinned to, a priced route so the control carries spend; absent means ordinary routing.
+    control_backend_id: str | None = Field(default=None, min_length=1)
 
 
 class ModelScenarioStoreOverlay(BaseModel):

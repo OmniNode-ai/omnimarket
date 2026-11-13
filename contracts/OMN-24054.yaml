@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24054
+title: Host retention node for a lab host root disk
+summary: A lab host's root disk filled to three quarters with a 99 GiB uv cache, about 120 GiB of CI runner work and cache folders and 40 GiB of lane scratch, and nothing aged any of it out. This adds node_host_retention_effect, one node with an overlay value per path class (lane scratch, lane results, runner work, uv cache), a dry run that lists each entry it would remove with its bytes, and a real run. It never removes an entry a live process, live lane, running container mount or installed unit file names, never a runner folder while its job runs, and removes nothing when a guard cannot be read. The uv cache is touched only by uv cache prune.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24054-host-retention-node
+  statement: The node lists and removes aged entries per path class from overlay values, guarded by live processes, lanes, container mounts, unit files and runner state.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a dry run lists every entry the step would remove with its bytes and per-class totals, removes nothing, and a real run on the same tree removes exactly that list -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention.py -k dry_run -q fails at the merge base"
+  - id: AC2
+    statement: "AC2: the step never removes an entry a live process, a live lane, a running container mount or an installed unit file names, nor any runner folder while its job runs, and removes nothing when a guard cannot be read -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention.py -k 'guard or runner or unreadable' -q fails at the merge base"
+  - id: AC3
+    statement: "AC3: every path class takes its keep window or size from the overlay, the overlay stays inside the contract bounds, and the uv cache is touched only by uv cache prune -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py tests/nodes/node_host_retention_effect/test_host_retention.py -k 'overlay_seam or uv_adapter' -q fails at the merge base"
+  - id: AC4
+    statement: "AC4: integrated: on h053 a dry run list is read and one real run lowers the root disk used share, with df before and after in the receipt, and h051 answers a dry run -- falsifier: the receipt names the h053 root used percent before and after and shows after below before"
+evidence_requirements:
+- kind: tests
+  description: The node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_retention_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24054-ac1
+  description: 'AC1: the dry run tests pass at the head; at the merge base the node does not exist, so the test file cannot import it.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention.py -k dry_run -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24054-ac2
+  description: 'AC2: every guard test and its blind-guard control pass at the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention.py -k 'guard or runner or unreadable' -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24054-ac3
+  description: 'AC3: the overlay seam and the uv adapter tests pass at the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py tests/nodes/node_host_retention_effect/test_host_retention.py -k 'overlay_seam or uv_adapter' -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24054-ac4
+  description: 'hosted proxy for AC4: the node tests pass here; the h053 dry run list and real run with df before and after are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24054-integration-proof
+  description: the node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24054 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_retention_effect -q --no-cov -p no:randomly

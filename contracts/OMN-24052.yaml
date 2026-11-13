@@ -21,6 +21,11 @@ requirements:
     statement: 'AC4: integrated: after the merge reaches the running runtime and one loader tick, the projection consumer group on the dev broker has a member and lag 0 -- falsifier: the group shows no member or a lag above 0 after the tick'
   - id: AC5
     statement: 'AC5: integrated: after the same tick every overlay in the store on h053 has a loaded_at stamp under one hour old and the lab_hosts snapshot shows h106 available false -- falsifier: any stamp older than one hour, or h106 without available false, on h053 after the tick'
+- id: req-omn24052-store-unit-workspace-root
+  statement: The installer units overlay-store-load-systemd, overlay-store-refresh-systemd and overlay-store-refresh carry OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT in their environment so the overlay's bus lane declaration can be located.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the three store units carry the workspace root in their environment -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_load_unit.py -q -n 0 --no-cov -k workspace_root fails when the contract change is removed'
 evidence_requirements:
 - kind: tests
   description: The overlay store tests pass at the pushed head.
@@ -74,6 +79,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24052-ac6
+  description: 'AC6: the three store units carry OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT; with the contract change removed three of these tests fail.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_load_unit.py -q -n 0 --no-cov -p no:cacheprovider -k workspace_root
     cwd: .
 - id: dod-omn24052-integration-proof
   description: the overlay store tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

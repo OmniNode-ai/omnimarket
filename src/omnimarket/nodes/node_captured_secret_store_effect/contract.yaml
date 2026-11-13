@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Captured Secret Store Effect (OMN-20926)
 #
-# In-process effect, like node_captured_secret_resolve_effect: no subscription,
-# no publish and no onex.nodes entry point. The content-capture producer (the
+# In-process effect, like node_captured_secret_resolve_effect: it has an
+# onex.nodes entry point and is invoked in process (local transport). The
+# content-capture producer (the
 # omniclaude hook) calls it with each secret its scrub detects and puts the
 # returned reference in the captured record in place of the value.
 name: captured_secret_store_effect
@@ -36,6 +37,7 @@ handler:
   module: omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store
   class: HandlerCapturedSecretStore
   input_model: omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request.ModelCapturedSecretStoreRequest
+  output_model: omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_result.ModelCapturedSecretStoreResult
 
 handler_routing:
   default_handler: omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store:HandlerCapturedSecretStore
@@ -54,8 +56,11 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 
+runtime_dispatch:
+  external_trigger: "In-process call by the content-capture producer for each detected secret, with a store built from the caller's own identity."
+
 metadata:
-  transport_type: kafka
+  transport_type: local
 
 timeouts:
   store_call_timeout_seconds: 5.0  # Bounds each secret-store API call.

@@ -73,7 +73,8 @@ def test_postgres_latest_host_run(monkeypatch: pytest.MonkeyPatch) -> None:
     try:
         writer = module.WorktreeReconcileProjectionWriter()
         writer.bind_projection_database_url(dsn)
-        latest = event()
+        # A run that deferred trees (OMN-22799) still writes its host row.
+        latest = event(deferred=2, deferred_paths=("trees/task/a", "trees/task/b"))
         for incoming, expected in (
             (latest, 1),
             (latest, 0),

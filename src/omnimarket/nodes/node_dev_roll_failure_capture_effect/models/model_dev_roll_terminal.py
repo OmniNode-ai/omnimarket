@@ -38,6 +38,7 @@ class ModelDevRollTerminal(BaseModel):
     commit: str | None
     error: str | None
     recovery_verified: bool | None
+    failed_phase: str | None = None
     manifest_seen: bool
     manifest_issuer_matches: bool | None
     health_probe_count: int

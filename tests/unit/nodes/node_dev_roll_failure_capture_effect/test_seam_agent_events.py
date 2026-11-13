@@ -10,9 +10,11 @@ shape; the infra side spells the same sets in tests/unit/handlers/test_handler_d
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_infra.models.model_dev_roll_incident import ModelDevRollIncident
 
 from omnimarket.nodes.node_dev_roll_failure_capture_effect.handlers import (
     HandlerDevRollIncidentCapture,
@@ -38,6 +40,7 @@ from tests.unit.nodes.node_dev_roll_failure_capture_effect.conftest import (
 pytestmark = pytest.mark.unit
 
 INCIDENT_FIELDS = {
+    "failed_phase",
     "event_id",
     "job_id",
     "issuer",
@@ -91,6 +94,14 @@ def test_our_incident_event_has_exactly_the_producers_fields() -> None:
     )
 
 
+def test_our_incident_event_has_exactly_the_deploy_agents_model_fields() -> None:
+    assert set(ModelDevRollIncidentEvent.model_fields) == set(
+        ModelDevRollIncident.model_fields
+    ), (
+        "ModelDevRollIncidentEvent (ours) and omnibase_infra ModelDevRollIncident (theirs) are no longer one description"
+    )
+
+
 def test_our_manifest_event_has_exactly_the_producers_fields() -> None:
     assert set(ModelDevRollManifestEvent.model_fields) == MANIFEST_FIELDS, (
         "ModelDevRollManifestEvent (ours) or the deploy agent's manifest event (theirs) changed shape"
@@ -129,3 +140,32 @@ def test_a_payload_from_the_spelled_sets_is_read_as_recovered() -> None:
     terminal = handler.handle(ModelDevRollIncidentEvent.model_validate(payload))
     assert isinstance(terminal, ModelDevRollTerminal)
     assert terminal.outcome is EnumDevRollOutcome.RECOVERED
+
+
+def test_an_incident_built_by_the_deploy_agents_model_is_read_with_its_failed_phase() -> (
+    None
+):
+    store = InMemoryDevRollArtifactStore()
+    handler = HandlerDevRollIncidentCapture(store, policy=POLICY, clock=lambda: NOW)
+    incident = ModelDevRollIncident.model_validate(
+        {
+            "event_id": str(uuid4()),
+            "job_id": "job-1",
+            "issuer": "operator-lane",
+            "commit": "b" * 40,
+            "error": "preflight failed",
+            "project": "omnibase-infra",
+            "at": NOW.isoformat(),
+            "restored_revision": "c" * 40,
+            "recovery_verified": False,
+            "recovery_error": "no recovery ran: the runtime was untouched",
+            "failed_phase": "preflight",
+            "health_probes": [],
+        }
+    )
+    payload = incident.model_dump(mode="json")
+    terminal = handler.handle(ModelDevRollIncidentEvent.model_validate(payload))
+    assert isinstance(terminal, ModelDevRollTerminal)
+    assert terminal.outcome is EnumDevRollOutcome.UNRECOVERED
+    assert terminal.issuer == "operator-lane"
+    assert terminal.failed_phase == "preflight"
