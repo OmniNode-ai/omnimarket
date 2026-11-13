@@ -40,6 +40,8 @@ ENV = {
     "ONEX_ACL_DEV_ROLL_CAPTURE_PRINCIPAL": "User:dev-roll-capture",
     "ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL": "User:branch-deploy",
     "ONEX_ACL_CODE_EDIT_PRINCIPAL": "User:code-edit",
+    "ONEX_ACL_GPU_POWER_CAPS_PRINCIPAL": "User:gpu-power-caps",
+    "ONEX_ACL_LANE_READ_GUARD_PRINCIPAL": "User:lane-read-guard",
     "ONEX_ACL_RUNTIME_PRINCIPAL": "User:runtime",
 }
 HEADER = (
