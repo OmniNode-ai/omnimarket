@@ -47,7 +47,8 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -644,6 +645,19 @@ class ProtocolProjectionRowSource(Protocol):
     ) -> dict[str, object]: ...
 
 
+@asynccontextmanager
+async def _tenant_scoped_read(
+    pool: asyncpg.Pool, tenant_id: str | None
+) -> AsyncIterator[asyncpg.Connection]:
+    """A pooled read-only transaction with the tenant GUC set when given."""
+    async with pool.acquire() as connection, connection.transaction(readonly=True):
+        if tenant_id is not None:
+            await connection.execute(
+                "SELECT set_config($1, $2, true)", TENANT_GUC, tenant_id
+            )
+        yield connection
+
+
 class TableRowSource:
     """Read projection exposures from the tables their writers materialize.
 
@@ -875,14 +889,7 @@ class TableRowSource:
         pool = await self._pool(cfg)
         relation = qualified_relation(cfg)
         try:
-            async with (
-                pool.acquire() as connection,
-                connection.transaction(readonly=True),
-            ):
-                if tenant_id is not None:
-                    await connection.execute(
-                        "SELECT set_config($1, $2, true)", TENANT_GUC, tenant_id
-                    )
+            async with _tenant_scoped_read(pool, tenant_id) as connection:
                 since_type = (
                     await self._cursor_type(connection, cfg)
                     if since is not None and cfg.cursor_column is not None
@@ -971,14 +978,7 @@ class TableRowSource:
                 f"LIMIT {retain}) AS newest"
             )
         try:
-            async with (
-                pool.acquire() as connection,
-                connection.transaction(readonly=True),
-            ):
-                if tenant_id is not None:
-                    await connection.execute(
-                        "SELECT set_config($1, $2, true)", TENANT_GUC, tenant_id
-                    )
+            async with _tenant_scoped_read(pool, tenant_id) as connection:
                 newest = await connection.fetchval(sql, *params)
         except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
             raise _read_failure(cfg, relation, exc) from exc
@@ -1003,14 +1003,7 @@ class TableRowSource:
             params.append(tenant_id)
             where = f" WHERE {quote_identifier(cfg.tenant_column)}::text = $1"
         try:
-            async with (
-                pool.acquire() as connection,
-                connection.transaction(readonly=True),
-            ):
-                if tenant_id is not None:
-                    await connection.execute(
-                        "SELECT set_config($1, $2, true)", TENANT_GUC, tenant_id
-                    )
+            async with _tenant_scoped_read(pool, tenant_id) as connection:
                 smallest = await connection.fetchval(
                     f"SELECT min({quote_identifier(cfg.cursor_column)}) "
                     f"FROM {relation}{where}",
