@@ -783,6 +783,8 @@
   "tests/nodes/node_commitment_check_runner_effect/test_commitment_schedule.py": 0.051,
   "tests/nodes/node_commitment_check_runner_effect/test_review_findings.py": 0.068,
   "tests/nodes/node_commitment_check_runner_effect/test_review_findings_runner.py": 1.306,
+  "tests/nodes/node_commitment_check_scheduled_effect/test_contract_topics.py": 1.5,
+  "tests/nodes/node_commitment_check_scheduled_effect/test_golden_chain_commitment_check_scheduled.py": 2.0,
   "tests/nodes/node_commitment_ledger_compute/test_commitment_rows.py": 0.11,
   "tests/nodes/node_commitment_writer_effect/test_commitment_ids.py": 0.02,
   "tests/nodes/node_commitment_writer_effect/test_commitment_writer_cli.py": 0.036,

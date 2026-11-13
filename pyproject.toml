@@ -467,6 +467,7 @@ node_codex_hook_registration_effect = "omnimarket.nodes.node_codex_hook_registra
 node_codex_landing_compute = "omnimarket.nodes.node_codex_landing_compute"
 node_codex_sandbox_probe_compute = "omnimarket.nodes.node_codex_sandbox_probe_compute"
 node_commitment_check_runner_effect = "omnimarket.nodes.node_commitment_check_runner_effect"
+node_commitment_check_scheduled_effect = "omnimarket.nodes.node_commitment_check_scheduled_effect"
 node_commitment_ledger_compute = "omnimarket.nodes.node_commitment_ledger_compute"
 node_commitment_writer_effect = "omnimarket.nodes.node_commitment_writer_effect"
 node_compact_package_read_effect = "omnimarket.nodes.node_compact_package_read_effect"
