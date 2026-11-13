@@ -1,0 +1,89 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Canary Scheduled Effect (OMN-24117)
+#
+# Runs the daily landing canary on the runtime tick in place of the host timer unit. The canary waits up to an
+# hour on a real pull request, so one tick opens it and later ticks settle it; the run spans several ticks.
+name: node_landing_canary_scheduled_effect
+contract_name: node_landing_canary_scheduled_effect
+node_name: node_landing_canary_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs the daily landing canary on the runtime's tick in place of the host timer, and returns a typed run event. One tick opens the canary's test pull request and later ticks settle it, so a run spans several ticks. It fails by name when the canary overlay cannot be read.
+
+handler:
+  module: omnimarket.nodes.node_landing_canary_scheduled_effect.handlers.handler_landing_canary_scheduled
+  class: HandlerLandingCanaryScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: landing_canary.scheduled_run
+      handler:
+        name: HandlerLandingCanaryScheduled
+        module: omnimarket.nodes.node_landing_canary_scheduled_effect.handlers.handler_landing_canary_scheduled
+      handler_module: omnimarket.nodes.node_landing_canary_scheduled_effect.handlers.handler_landing_canary_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the overlay's run_interval_seconds, open the canary's test pull request, and settle it on later ticks; return the run event.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelScheduleRunEvent
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: "One scheduled job run, with when it was scheduled, when it fired and how it went."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  side_effects:
+    - opens and settles the landing canary's test pull request on the runtime tick
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "landing_canary.scheduled_run"
+
+terminal_event: onex.evt.omnimarket.schedule-run.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.schedule-run.v1"
+
+published_events:
+  - event_type: ModelScheduleRunEvent
+    topic: onex.evt.omnimarket.schedule-run.v1
+    description: "One scheduled landing canary run."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-run.v1
+
+# Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_landing_canary_scheduled_effect, model: omnimarket.nodes.node_landing_canary_scheduled_effect.models.model_landing_canary_schedule_overlay.ModelLandingCanaryScheduleOverlay}
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-24117
+  transport_type: kafka

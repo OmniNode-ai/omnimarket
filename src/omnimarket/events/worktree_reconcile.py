@@ -14,6 +14,10 @@ from omnimarket.models.model_worktree_reconcile_policy import (
 )
 
 
+class ModelWorktreeReconcileBase(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
 class EnumWorktreeKind(StrEnum):
     LINKED_WORKTREE = "linked_worktree"
     STANDALONE_CLONE = "standalone_clone"
@@ -32,10 +36,8 @@ class EnumDecidedBy(StrEnum):
     MODEL = "model"
 
 
-class ModelWorktreeFacts(BaseModel):
+class ModelWorktreeFacts(ModelWorktreeReconcileBase):
     """Only metadata; never file contents or credentials from remote URLs."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
     host: str
     path: str
@@ -91,9 +93,7 @@ class ModelWorktreeFacts(BaseModel):
         )
 
 
-class ModelWorktreeDecisionRecord(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class ModelWorktreeDecisionRecord(ModelWorktreeReconcileBase):
     path: str
     decision: EnumWorktreeReconcileDecision
     decided_by: EnumDecidedBy = EnumDecidedBy.RULE
@@ -101,23 +101,17 @@ class ModelWorktreeDecisionRecord(BaseModel):
     model_rationale: str | None = None
 
 
-class ModelWorktreeReconcileRequest(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class ModelWorktreeReconcileRequest(ModelWorktreeReconcileBase):
     facts: tuple[ModelWorktreeFacts, ...]
     policy: Policy = Field(default_factory=Policy)
 
 
-class ModelWorktreeReconcileDecisions(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class ModelWorktreeReconcileDecisions(ModelWorktreeReconcileBase):
     decisions: tuple[ModelWorktreeDecisionRecord, ...]
     policy: Policy = Field(default_factory=Policy)
 
 
-class ModelWorktreeReconcileCommand(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class ModelWorktreeReconcileCommand(ModelWorktreeReconcileBase):
     host: str = Field(min_length=1)
     roots: tuple[str, ...]
     extra_clone_roots: tuple[str, ...] = ()
@@ -136,9 +130,7 @@ class ModelWorktreeReconcileCommand(BaseModel):
     correlation_id: UUID
 
 
-class ModelWorktreeReconcileDecidedEvent(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class ModelWorktreeReconcileDecidedEvent(ModelWorktreeReconcileBase):
     correlation_id: UUID
     host: str
     facts: ModelWorktreeFacts
@@ -149,9 +141,7 @@ class ModelWorktreeReconcileDecidedEvent(BaseModel):
     error: str | None = None
 
 
-class ModelWorktreeReconcileRunCompletedEvent(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class ModelWorktreeReconcileRunCompletedEvent(ModelWorktreeReconcileBase):
     correlation_id: UUID
     host: str
     started_at: datetime
@@ -164,11 +154,11 @@ class ModelWorktreeReconcileRunCompletedEvent(BaseModel):
     failures: int = Field(ge=0)
     freed_bytes: int = Field(ge=0)
     needs_human_paths: tuple[str, ...]
+    deferred: int = Field(default=0, ge=0)
+    deferred_paths: tuple[str, ...] = ()
 
 
-class ModelWorktreeReconcileRunResult(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class ModelWorktreeReconcileRunResult(ModelWorktreeReconcileBase):
     decided_events: tuple[ModelWorktreeReconcileDecidedEvent, ...]
     completed_event: ModelWorktreeReconcileRunCompletedEvent
     errors: tuple[str, ...] = ()

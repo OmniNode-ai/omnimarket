@@ -160,6 +160,37 @@ def network_problem(unit: ModelContainerUnit, inspect_stdout: str) -> str | None
     return None
 
 
+def running_memory_bytes(inspect_stdout: str) -> tuple[int, int]:
+    """The running (Memory, MemorySwap) limits in bytes from a ``docker inspect`` document."""
+    try:
+        documents = json.loads(inspect_stdout)
+    except (json.JSONDecodeError, ValueError):
+        raise ValueError("docker inspect printed no container document") from None
+    if (
+        not isinstance(documents, list)
+        or not documents
+        or not isinstance(documents[0], dict)
+    ):
+        raise ValueError("docker inspect printed no container document")
+    host_config = documents[0].get("HostConfig", {})
+    memory, swap = host_config.get("Memory", 0), host_config.get("MemorySwap", 0)
+    return int(memory or 0), int(swap or 0)
+
+
+def memory_problem(
+    unit: ModelContainerUnit, inspect_stdout: str
+) -> tuple[int, int] | None:
+    """The declared (memory, memory plus swap) in bytes the running container lacks, else None."""
+    if unit.memory_gib is None:
+        return None
+    memory_bytes = unit.memory_gib * 1024**3
+    swap_bytes = (unit.memory_swap_gib or unit.memory_gib) * 1024**3
+    running_memory, running_swap = running_memory_bytes(inspect_stdout)
+    if running_memory == memory_bytes and running_swap == swap_bytes:
+        return None
+    return memory_bytes, swap_bytes
+
+
 def declared_unit(
     overlay: ModelContainerUnitsOverlay, host: str, name: str
 ) -> ModelContainerUnit:
@@ -249,12 +280,44 @@ class HandlerContainerUnits:
                 exit_code=1,
                 stderr=f"{problem}; nothing written; recreate the container from its declared create settings\n",
             )
+        # OMN-24208: a declared memory limit is applied in place (docker update only, so the
+        # container neither restarts nor is recreated) before the unit is written.
+        try:
+            memory = memory_problem(unit, found.stdout)
+        except ValueError as exc:
+            return ModelContainerUnitsResult(
+                exit_code=1, stderr=f"{exc}; nothing written\n"
+            )
+        memory_line = ""
+        if memory is not None:
+            memory_bytes, swap_bytes = memory
+            updated = self.run(
+                [
+                    unit.docker_binary,
+                    "update",
+                    "--memory",
+                    str(memory_bytes),
+                    "--memory-swap",
+                    str(swap_bytes),
+                    unit.container,
+                ]
+            )
+            if updated.returncode:
+                return ModelContainerUnitsResult(
+                    exit_code=1,
+                    stderr=f"docker update failed (exit {updated.returncode}): {updated.stderr}; nothing written\n",
+                )
+            memory_line = (
+                f"set memory limit of {unit.container} to {unit.memory_gib} GiB, "
+                f"memory plus swap {unit.memory_swap_gib} GiB\n"
+            )
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists() and target.read_text(encoding="utf-8") == text:
             output = f"{service} unchanged\n"
         else:
             target.write_text(text, encoding="utf-8")
             output = f"wrote {target}\n"
+        output += memory_line
         for args in (["daemon-reload"], ["enable", "--now", service]):
             done = self.run(["systemctl", "--user", *args])
             output += done.stdout
@@ -285,6 +348,7 @@ class HandlerContainerUnits:
             f"{'ANSWERS' if answers else 'SILENT'} {unit.probe_address}:{unit.probe_port}\n"
         )
         exit_code = 0 if loaded and answers else 1
+        found: subprocess.CompletedProcess[str] | None = None
         if unit.network is not None:
             found = self.run(
                 [unit.docker_binary, "inspect", "--type", "container", unit.container]
@@ -295,6 +359,31 @@ class HandlerContainerUnits:
                 exit_code = 1
             else:
                 output += f"NETWORK ATTACHED {unit.network}\n"
+        if unit.memory_gib is not None:
+            if found is None:
+                found = self.run(
+                    [
+                        unit.docker_binary,
+                        "inspect",
+                        "--type",
+                        "container",
+                        unit.container,
+                    ]
+                )
+            try:
+                running_memory, _running_swap = running_memory_bytes(found.stdout)
+            except ValueError as exc:
+                return ModelContainerUnitsResult(
+                    exit_code=1, stdout=output + f"MEMORY LIMIT UNREAD {exc}\n"
+                )
+            if memory_problem(unit, found.stdout) is None:
+                output += f"MEMORY LIMIT OK {unit.memory_gib} GiB\n"
+            else:
+                output += (
+                    f"MEMORY LIMIT DIFFERS declared {unit.memory_gib} GiB, "
+                    f"running {running_memory} bytes\n"
+                )
+                exit_code = 1
         return ModelContainerUnitsResult(exit_code=exit_code, stdout=output)
 
     def _overlay(self, overlay_file: str) -> ModelContainerUnitsOverlay:

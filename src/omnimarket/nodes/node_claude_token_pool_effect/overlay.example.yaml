@@ -62,3 +62,15 @@ limit_recheck:
     limited_patterns: ["hit your weekly limit"]
     reset_pattern: 'resets (?P<month>[A-Za-z]{3}) (?P<day>\d{1,2}), (?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?(?P<ampm>am|pm)'
     reset_margin_seconds: 7
+# Revoke-recheck rule (OMN-19998). Absent: a revoked mark is never re-tested (the tick answers revoke_recheck=not_configured).
+# Present: on the marks-source host only, the tick probes each revoked label every policy.interval_seconds with the
+# limit-recheck probe above (which this block therefore requires). An ok or limited answer clears the mark (the token
+# answers, so the revocation is not real); a refused answer keeps it, and confirms a challenged one as a real revoke; an
+# error answer proves nothing and is asked again next tick. challenge_markers are the case-insensitive substrings a 403
+# challenge page's output carries: a probe answer whose text has one proves nothing, and a mark-revoked --evidence-stdin
+# whose evidence carries one is recorded challenged instead of revoked. The values are the operator's, in the overlays
+# repository.
+revoke_recheck:
+  policy:
+    interval_seconds: 1800
+  challenge_markers: ["synthetic challenge marker"]
