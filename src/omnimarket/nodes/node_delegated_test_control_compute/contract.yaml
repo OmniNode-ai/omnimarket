@@ -61,6 +61,29 @@ outputs:
     type: str
   reason:
     type: str
+# OMN-19998: the declared broker grants for the topics this contract's event_bus lists (the permission coverage check, OMN-24005).
+# The principal is the dev runtime's login, read from the environment where the reconcile runs; no login name is written in a repository.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DEV_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegated-test-control-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegated-test-control-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-test-control-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-test-control-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-test-control-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-test-control-failed.v1, operation: DESCRIBE}
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegated-test-control-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegated-test-control-completed.v1
+    - onex.evt.omnimarket.delegated-test-control-failed.v1
+  dlq_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegated-test-control-completed.v1
+  - onex.evt.omnimarket.delegated-test-control-failed.v1
+
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.delegated-test-control-requested.v1"
   terminal_events:

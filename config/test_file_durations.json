@@ -2477,6 +2477,7 @@
   "tests/nodes/node_workflow_routing_scan_compute/test_golden_chain_workflow_routing_scan.py": 0.05,
   "tests/nodes/test_code_edit_scope_node.py": 0.17,
   "tests/nodes/test_code_entity_repository_provider_omn15230.py": 0.06,
+  "tests/nodes/test_declared_topics_provisioned.py": 19.16,
   "tests/nodes/test_dep_health_ast_scanner.py": 0.05,
   "tests/nodes/test_dep_health_baseline_diff.py": 0.05,
   "tests/nodes/test_dep_health_contract_topology.py": 0.12,

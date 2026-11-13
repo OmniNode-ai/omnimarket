@@ -61,11 +61,38 @@ topics:
   commitment_check_completed: onex.evt.omnimarket.commitment-check-completed.v1
   commitment_check_run_failed: onex.evt.omnimarket.commitment-check-run-failed.v1
 
+# OMN-19998: the declared broker grants for the topics this contract's event_bus lists (the permission coverage check, OMN-24005).
+# The principal is the dev runtime's login, read from the environment where the reconcile runs; no login name is written in a repository.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.commitment-check-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.commitment-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-verified.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-verified.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-regressed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-regressed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-check-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-check-failed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-check-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-check-run-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.commitment-check-run-failed.v1, operation: DESCRIBE}
+# OMN-19998: boot provisioning reads only event_bus; the topics are listed as publish topics so they
+# exist on the broker, never as subscriptions, because the handler takes constructor arguments and a
+# subscription would make the runtime wire it.
 event_bus:
   subscribe_topics: []
-  publish_topics: []
+  publish_topics:
+    - onex.cmd.omnimarket.commitment-check-requested.v1
+    - onex.evt.omnimarket.commitment-verified.v1
+    - onex.evt.omnimarket.commitment-regressed.v1
+    - onex.evt.omnimarket.commitment-check-failed.v1
+    - onex.evt.omnimarket.commitment-check-completed.v1
+    - onex.evt.omnimarket.commitment-check-run-failed.v1
 
 externally_consumed_topics:
+  - onex.cmd.omnimarket.commitment-check-requested.v1
   - onex.evt.omnimarket.commitment-verified.v1
   - onex.evt.omnimarket.commitment-regressed.v1
   - onex.evt.omnimarket.commitment-check-failed.v1
