@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Tag Pin Mover Compute (OMN-19998)
+#
+# Operator rulings 2026-10-16T07:34:18Z and 09:35:49Z: internal consumers read a
+# sibling at its dev tag, never wait on a release, and the move is automatic.
+# This is the pure half of the move: a consumer's pyproject.toml, the sibling's
+# new dev tag and the consumer's test outcome on that tag in, the moved text (or
+# a typed refusal) out. A consumer whose tests fail on the new tag keeps its pin.
+# The move is two calls: with consumer_tests not_run the refusal
+# consumer_tests_not_run carries the candidate text (and the CLI writes it in
+# place) so the caller can lock and test the consumer on it; the second call
+# names the test outcome and only passed accepts. Every other refusal carries no
+# candidate and leaves the file alone.
+# Directly invoked by the pin-move tick; it declares empty event_bus topics and
+# a typed local invocation.
+name: "node_dev_tag_pin_mover_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Pure pin move: rewrites a consumer's uv git source for a sibling to the
+  sibling's new dev tag, and refuses a tag that is not a dev tag, a consumer
+  with no tag pin, a tag that is not newer, and a move the consumer's tests
+  have not passed. A refusal for tests not yet run returns the candidate text
+  for the caller to test; no other refusal returns text.
+input_model:
+  name: "ModelDevTagPinMoveRequest"
+  module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover"
+  description: "The consumer pyproject.toml text, the sibling and its new dev tag, and the consumer's test outcome."
+output_model:
+  name: "ModelDevTagPinMoveResult"
+  module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover"
+  description: "The moved text when accepted, a typed refusal otherwise; the consumer_tests_not_run refusal also carries the candidate text to test."
+
+handler:
+  module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_mover"
+  class: "HandlerDevTagPinMover"
+  input_model: "omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover.ModelDevTagPinMoveRequest"
+  output_model: "omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover.ModelDevTagPinMoveResult"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_mover:HandlerDevTagPinMover"
+  handlers:
+    - operation: "move_dev_tag_pin"
+      handler:
+        name: "HandlerDevTagPinMover"
+        module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_mover"
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "The pin-move tick invokes the local node module per consumer when a sibling's newest dev tag is ahead of the consumer's pin."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: local
+  description: "Dev tag pin mover COMPUTE - moves a consumer's sibling pin to its new dev tag (OMN-19998, no external transport)"
+  author: "OmniNode Team"
+  created: "2026-10-18"
+  tags:
+    - "compute"
+    - "ci"
+    - "pin"
+    - "dev-tag"
+    - "OMN-19998"
+  related_tickets:
+    - "OMN-19998"
