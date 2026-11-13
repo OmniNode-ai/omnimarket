@@ -756,6 +756,17 @@ class GitWorktreeFactsProbe:
                 }
             )
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            if isinstance(exc, FileNotFoundError) and not os.path.lexists(path):
+                # The tree was removed between discovery and this read (a lane's closeout):
+                # nothing is left to keep or remove, and the next scan no longer lists it.
+                return facts.model_copy(
+                    update={
+                        "probe_errors": (
+                            *facts.probe_errors,
+                            f"{PROBE_DEFERRED_PREFIX}path_vanished",
+                        )
+                    }
+                )
             # Do not leak subprocess arguments or remote credentials.
             return facts.model_copy(
                 update={

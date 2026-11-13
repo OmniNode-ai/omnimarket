@@ -59,10 +59,14 @@ from tests.unit.nodes.node_gpu_power_caps_effect.fixtures import (
     subprocess_overlay,
     unit_entry,
 )
+from tests.unit.nodes.node_gpu_power_caps_effect.test_gpu_power_caps_direct_bootstrap import (
+    runtime_overlay,
+)
 from tests.unit.nodes.node_gpu_power_caps_effect.test_gpu_power_caps_lab_work import (
     FakeSender,
     lab_work_overlay,
     overlay_document,
+    receipt,
 )
 
 pytestmark = pytest.mark.unit
@@ -190,6 +194,34 @@ def test_seam_lab_work_unit_the_nodes_unit_is_the_lab_work_request_shape() -> No
     wire = sender.calls[0].model_dump(mode="json", exclude_none=True)
     assert set(wire) <= set(ModelLabWorkUnitRequest.model_fields)
     assert ModelLabWorkUnitRequest.model_validate(wire) == sender.calls[0]
+
+
+def test_seam_direct_bootstrap_the_runtime_profile_unit_is_the_lab_work_request_shape() -> (
+    None
+):
+    sender = FakeSender(receipt(EnumLabWorkUnitStatus.INFRA_ERROR, exit_code=None))
+    overlay = runtime_overlay()
+    handler_gpu_power_caps.HandlerGpuPowerCaps(overlay=overlay, sender=sender).handle(
+        ModelGpuPowerCapsRequest(host=overlay.hosts[0].name, requested_by="lane-a")
+    )
+    wire = sender.calls[0].model_dump(mode="json", exclude_none=True)
+    assert set(wire) <= set(ModelLabWorkUnitRequest.model_fields)
+    assert ModelLabWorkUnitRequest.model_validate(wire) == sender.calls[0]
+
+
+def test_seam_direct_bootstrap_the_overlay_profiles_of_the_contract_exist() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    profiles = contract["overlay_profiles"]
+    assert "lab_work_runtime" in profiles
+    for path in profiles.values():
+        assert (NODE_DIR / path).exists()
+    runtime = ModelGpuPowerCapsOverlay.model_validate(
+        yaml.safe_load(
+            (NODE_DIR / profiles["lab_work_runtime"]).read_text(encoding="utf-8")
+        )
+    )
+    assert runtime.lab_work is not None
+    assert runtime.lab_work.kafka_bootstrap is not None
 
 
 def grants_of_the_contract() -> set[tuple[str, str]]:

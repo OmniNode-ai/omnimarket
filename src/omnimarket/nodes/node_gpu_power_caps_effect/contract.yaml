@@ -60,13 +60,15 @@ descriptor:
 # watts_value_prefix (the key prefixes the caps are read from in that document), read_argv with the
 # nvidia-smi query and format words, set_argv with {index} and {watts} placeholders,
 # read_timeout_seconds, set_timeout_seconds and hosts (name, transport_prefix, caps_unit,
-# simulated_cards) and, for the lab_work backend, a lab_work block (bus_lane, workspace_root, repo, commit_sha, lane,
+# simulated_cards) and, for the lab_work backend, a lab_work block (bus_lane or kafka_bootstrap, exactly one: the
+# latter is the broker address of a node running inside the runtime container; workspace_root, repo, commit_sha, lane,
 # unit_timeout_seconds and host_argv with {host} and {requested_by}). Profiles ship in overlays/: in_memory.yaml,
-# subprocess.example.yaml and lab_work.example.yaml.
+# subprocess.example.yaml, lab_work.example.yaml and lab_work_runtime.example.yaml.
 overlay_profiles:
   in_memory: overlays/in_memory.yaml
   real: overlays/subprocess.example.yaml
   lab_work: overlays/lab_work.example.yaml
+  lab_work_runtime: overlays/lab_work_runtime.example.yaml
 metadata:
   transport_type: kafka
   ticket: OMN-24042
