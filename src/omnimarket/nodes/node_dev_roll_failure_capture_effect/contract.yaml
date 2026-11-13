@@ -83,6 +83,11 @@ handler_routing:
       topic: onex.evt.omnimarket.dev-roll-incident.v1
       description: "The incident the boot guard published for a recovered failed roll; answered by one terminal event."
 
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.dev-roll-manifest.v1
+    producer: "the dev deploy agent's dev roll events publisher (omnibase_infra node_dev_roll_events_effect, run inside the deploy agent), not an omnimarket node contract"
+  - topic: onex.evt.omnimarket.dev-roll-incident.v1
+    producer: "the dev deploy agent's dev roll events publisher (omnibase_infra node_dev_roll_events_effect, run inside the deploy agent), not an omnimarket node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.dev-roll-manifest-recorded.v1
   - onex.evt.omnimarket.dev-roll-terminal.v1

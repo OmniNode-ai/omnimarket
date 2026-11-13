@@ -112,6 +112,16 @@ def test_our_contract_declares_the_two_topics() -> None:
     )
 
 
+def test_our_contract_publishes_the_recorded_and_terminal_topics() -> None:
+    published = {
+        entry["event_type"]: entry["topic"] for entry in _CONTRACT["published_events"]
+    }
+    assert published == {
+        "DevRollManifestRecorded": "onex.evt.omnimarket.dev-roll-manifest-recorded.v1",
+        "DevRollTerminal": "onex.evt.omnimarket.dev-roll-terminal.v1",
+    }, "contract.yaml (ours) renamed a topic the roll terminal is read from"
+
+
 def test_a_payload_from_the_spelled_sets_is_read_as_recovered() -> None:
     store = InMemoryDevRollArtifactStore()
     handler = HandlerDevRollIncidentCapture(store, policy=POLICY, clock=lambda: NOW)

@@ -19,6 +19,7 @@ from pathlib import Path
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_dev_roll_failure_capture_effect.models import (
     ModelDevRollCapturePolicy,
+    ModelDevRollInMemoryStore,
 )
 from omnimarket.nodes.node_dev_roll_failure_capture_effect.protocols import (
     ProtocolDevRollArtifactStore,
@@ -92,7 +93,7 @@ def store_from_policy(
 ) -> ProtocolDevRollArtifactStore:
     """Build the store the overlay's capture policy names."""
     store = policy.store
-    if store.backend == "in_memory":
+    if isinstance(store, ModelDevRollInMemoryStore):
         return InMemoryDevRollArtifactStore()
     try:
         root_env = environ[store.home_env]
