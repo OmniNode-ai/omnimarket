@@ -35,6 +35,11 @@ description: >
   the canonical overlays clone(s) beside the registry root, and the declared
   roots in their given order. Reads the filesystem through an injected probe;
   an absent root is named in the finding, never an exception.
+handler:
+  module: omnimarket.nodes.node_overlay_roots_resolve_effect.handlers.handler_overlay_roots_resolve
+  class: HandlerOverlayRootsResolve
+  input_model: omnimarket.models.overlay_roots.model_overlay_roots.ModelOverlayRootsRequest
+  output_model: omnimarket.models.overlay_roots.model_overlay_roots.ModelOverlayRootsResult
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -49,9 +54,15 @@ descriptor:
   purity: impure
   idempotent: true
   side_effects: []
-  runtime_profiles: [main]
+  runtime_profiles: []
+runtime_dispatch:
+  external_trigger: "Every root builder (omnimarket node_overlay_path, the run-node resolver in omnibase_infra, the remote-lane runner) calls the local node in process with the declared roots, the registry root and the home directory, because the overlay roots are needed before any overlay, runtime or bus is reachable."
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
 metadata:
   ticket: OMN-24032
+  transport_type: local
 config:
   overlay_file_name: overlay.yaml
   store_read_overlay_id: node_overlay_store_read_effect
