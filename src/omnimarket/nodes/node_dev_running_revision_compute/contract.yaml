@@ -50,6 +50,13 @@ event_bus:
     patch: 0
   subscribe_topics:
     - onex.cmd.omnimarket.dev-running-revision-requested.v1
+# The broker grant the subscribed command topic needs (OMN-24005 coverage gate): the same login that reconciles host
+# state reads the reading's request.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-running-revision-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-running-revision-requested.v1, operation: DESCRIBE}
 published_events:
   - event_type: "RunningRevisionReading"
     topic: onex.evt.omnimarket.dev-running-revision-read.v1
