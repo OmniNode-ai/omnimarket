@@ -1,0 +1,69 @@
+schema_version: 1.0.0
+ticket_id: OMN-24220
+title: Declare a resource-limited machine slice and a request path to refresh the h051 stability lane
+summary: node_host_installer_net_units installs a systemd slice declared as data and reads its limits back, and node_stability_lane_refresh_effect answers refresh requests read from the bus through a serve tick that the host registry installs as a timer unit, so a collaborator's login requests a refresh that the operator account runs. This contract binds the evidence so dod-verify can judge the pull request that adds them.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24220-slice-and-refresh-serve
+  statement: A host overlay can declare a resource-limited systemd slice that the net-unit installer writes, starts and reads back, and a stability refresh request on the bus is answered by a typed event after the operator account's serve tick runs the refresh through the node.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the host net-unit installer accepts a systemd slice unit declared as data and installs it without enabling a service -- falsifier: uv run pytest -q the net-units slice test, which fails on the merge base because the slice kind is refused'
+  - id: AC2
+    statement: 'AC2: a stability refresh request on the bus is read by a tick of the refresh node, runs the refresh through the injected runner and publishes one typed completed, refused or failed event carrying the request id -- falsifier: uv run pytest -q the stability refresh serve golden and error chain tests, red without the serve module'
+  - id: AC3
+    statement: 'AC3: a request naming a dev tag, a sha or a branch is refused with a typed event before anything runs -- falsifier: the error chain test with an injected dev tag expects the refused event and a runner that was never called'
+  - id: AC4
+    statement: 'AC4: the refresh serve tick is declared as a host unit in the registry units contract and its dry run on h051 renders it -- falsifier: onex-host-install-units stability-refresh-serve-systemd --dry-run on h051 exits nonzero without the declaration'
+  - id: AC5
+    statement: 'AC5: integrated: on h051 a refresh request published by a test login is answered by the running unit with a typed event and the lane health read is reported -- falsifier: read the unit''s last-run evidence and the completed or refused event on the bus on h051; absent when the unit is not installed'
+evidence_requirements:
+- kind: tests
+  description: The slice installer tests, the serve tick golden and error tests, the topic and unit seam tests
+  command: uv run --frozen pytest tests/nodes/node_host_installer_net_units tests/nodes/node_stability_lane_refresh_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24220-slice
+  description: Runs the slice installer tests. A systemd-system-slice unit is written, the slice started and MemoryMax, MemorySwapMax and CPUQuotaPerSecUSec read back; a limit that reads unbounded fails the install with slice-limit-unapplied; an unknown kind is still refused. At the merge base the kind is refused with kind-not-supported, so the golden test fails there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_net_units/test_host_net_units_slice.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24220-serve-chain
+  description: Runs the serve tick tests over in-memory reader and publisher fakes. The golden pass publishes pin-accepted then completed under one correlation id and writes the unit heartbeat; the error passes end on the failed or refused topic with the runner never called for a dev tag or a differing set; a named break (a dropped terminal event) turns the golden assertion red. Absent at the merge base, so the command fails there.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_serve.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24220-seams
+  description: Runs the seam tests. The tick reads and publishes only topics the node's contract declares, the contract lists and grants every one of them, and the unit's run limit covers a whole refresh plus the bus bounds the overlay declares. Either side changing shape turns them red.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_topic_seam.py tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_unit_seam.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24220-integration-proof-h051
+  description: Reads the unit on h051 after it is installed from the branch through onex-host-install-units, and requires the timer to be active and the unit's last-run evidence to hold a typed exit code. Hosted CI cannot reach h051, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: ssh h051 'systemctl --user is-active onex-stability-refresh-serve.timer && test -s .local/state/omni/stability-refresh-serve/last-run.json'
+    cwd: .

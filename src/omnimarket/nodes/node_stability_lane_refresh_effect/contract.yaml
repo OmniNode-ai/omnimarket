@@ -52,6 +52,8 @@ terminal_event: onex.evt.omnimarket.stability-refresh-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  # The serve tick runtime_stability_refresh_serve reads the command topic; the node is not runtime-wired.
+  command_topic: onex.cmd.omnimarket.stability-refresh-requested.v1
 
 topics:
   stability_refresh_requested: onex.cmd.omnimarket.stability-refresh-requested.v1
@@ -60,9 +62,36 @@ topics:
   stability_refresh_completed: onex.evt.omnimarket.stability-refresh-completed.v1
   stability_refresh_failed: onex.evt.omnimarket.stability-refresh-failed.v1
 
+# The serve tick (runtime_stability_refresh_serve, run by a host timer as the operator account) reads the request topic
+# and publishes the four answer topics. The node has no handler_routing, so the runtime wires nothing from this block;
+# it lists the topics for provisioning and for the broker rows the grants below name.
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.stability-refresh-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.stability-refresh-pin-accepted.v1
+    - onex.evt.omnimarket.stability-refresh-refused.v1
+    - onex.evt.omnimarket.stability-refresh-completed.v1
+    - onex.evt.omnimarket.stability-refresh-failed.v1
+
+# The login the serve tick runs under (the host's lane login, filled from the broker_acl_principals overlay): it reads the
+# request topic and its consumer group, and writes the four answers. The requesting login's rows (write the request, read
+# the answers) are a scope overlay of the overlays repository, never this contract.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_STABILITY_REFRESH_SERVE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.stability-refresh-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.stability-refresh-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-pin-accepted.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-pin-accepted.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-refused.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-refused.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-failed.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: onex-stability-refresh-serve, operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: onex-stability-refresh-serve, operation: DESCRIBE}
 
 externally_consumed_topics:
   - onex.evt.omnimarket.stability-refresh-pin-accepted.v1

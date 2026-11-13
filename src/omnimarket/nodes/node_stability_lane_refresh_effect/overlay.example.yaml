@@ -23,3 +23,10 @@ state_dir: /example/state/stability-lane-refresh
 deploy_reason: "OMN-0: example refresh"
 refresh_timeout_seconds: 3600
 health_timeout_seconds: 10
+serve:
+  bus_lane: example-bus-lane
+  workspace_root: /example/omninode
+  consumer_group: onex-stability-refresh-serve.example-box
+  max_records: 100
+  read_timeout_s: 30.0
+  join_timeout_s: 10.0
