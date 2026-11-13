@@ -97,6 +97,10 @@ class ModelSourceCacheOverlay(BaseModel):
     backend: Literal["memory", "valkey"]
     key_prefix: str = Field(min_length=1)
     ttl_backstop_seconds: int = Field(ge=1)
+    # Where a repository's canonical clone is, relative to the registry home; ``{name}`` is the repository's name after the owner. The
+    # default branch's tip there is the revision of a source that can change only by a commit (a workflow file's existence).
+    clone_relpath_template: str = Field(min_length=1)
+    clone_revision_timeout_seconds: int = Field(ge=1)
     valkey: ModelSourceCacheValkey | None = None
 
     @model_validator(mode="after")

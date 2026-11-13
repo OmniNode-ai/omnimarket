@@ -2291,6 +2291,7 @@
   "tests/nodes/node_source_read_cache_effect/test_backend_valkey_adapter.py": 1.79,
   "tests/nodes/node_source_read_cache_effect/test_cached_source_reader.py": 1.81,
   "tests/nodes/node_source_read_cache_effect/test_cached_source_reader_factory.py": 1.91,
+  "tests/nodes/node_source_read_cache_effect/test_repo_revision.py": 1.94,
   "tests/nodes/node_source_read_cache_effect/test_source_read_cache_handler.py": 2.58,
   "tests/nodes/node_stability_lane_refresh_effect/test_stability_lane_chain_events.py": 0.02,
   "tests/nodes/node_stability_lane_refresh_effect/test_stability_lane_real_profile.py": 1.05,

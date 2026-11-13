@@ -126,4 +126,12 @@ def build_cached_source_reader(
     handler = HandlerSourceReadCache(
         chosen, declared.key_prefix, declared.ttl_backstop_seconds
     )
-    return CachedSourceReader(handler, clock, backend_name=declared.backend)
+    return CachedSourceReader(
+        handler,
+        clock,
+        backend_name=declared.backend,
+        clone_settings=(
+            declared.clone_relpath_template,
+            declared.clone_revision_timeout_seconds,
+        ),
+    )

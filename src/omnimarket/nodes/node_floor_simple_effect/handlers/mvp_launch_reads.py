@@ -31,6 +31,9 @@ from omnimarket.models.floor_17a.model_mvp_launch_reads import (
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.repo_revision import (
+    cached_repo_head,
+)
 from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
     SLOT_STAMP,
     schedule_slot,
@@ -99,6 +102,14 @@ def list_is_current(read: ModelMvpSourceRead, slot: datetime) -> bool:
         and all(r.status == "completed" for r in read.runs)
         and any(r.created_at >= slot for r in read.runs)
     )
+
+
+# The source-control node's typed answer for a workflow GitHub does not have: it stays so until a commit adds the file.
+MISSING_WORKFLOW_MARK = "HTTP 404"
+
+
+def is_missing_workflow(read: ModelMvpSourceRead) -> bool:
+    return read.error is not None and MISSING_WORKFLOW_MARK in read.error
 
 
 def _encode_read(read: ModelMvpSourceRead) -> str:
@@ -213,6 +224,7 @@ def refresh(
     run: CommandRunner,
     clock: Callable[[], datetime],
     cache: CachedSourceReader | None = None,
+    revision_run: CommandRunner | None = None,
 ) -> ModelMvpReads:
     """Re-read the stalest workflows inside the stage deadline, keep the others as they are, write the record and return it.
 
@@ -261,9 +273,34 @@ def refresh(
                 clock(),
             )
 
+        head = cached_repo_head(cache, home, repo, revision_run)
+        absent_key = (
+            ModelSourceCacheKey(
+                source_id=f"mvp-runs-absent:{repo}:{workflow}",
+                params_digest=ModelSourceCacheKey.digest({"workflow": workflow}),
+                revision=head,
+            )
+            if cache is not None and head is not None
+            else None
+        )
+        if cache is not None and absent_key is not None:
+            remembered = cache.lookup(
+                absent_key,
+                ModelMvpSourceRead.model_validate_json,
+                usable=is_missing_workflow,
+            )
+            if remembered is not None:
+                result[key] = remembered.model_copy(update={"read_at": clock()})
+                continue
         slot = schedule_slot(schedules.get(key, ()), clock())
         if cache is None or slot is None:
             result[key] = fetch()
+            if (
+                cache is not None
+                and absent_key is not None
+                and is_missing_workflow(result[key])
+            ):
+                cache.store(absent_key, result[key], _encode_read)
             continue
 
         def current(read: ModelMvpSourceRead, slot: datetime = slot) -> bool:
@@ -289,6 +326,8 @@ def refresh(
             if outcome == EnumSourceCacheOutcome.HIT
             else listed
         )
+        if cache is not None and absent_key is not None and is_missing_workflow(listed):
+            cache.store(absent_key, listed, _encode_read)
     record = ModelMvpReads(
         updated_at=clock(), reads=tuple(result[k] for k in sources if k in result)
     )

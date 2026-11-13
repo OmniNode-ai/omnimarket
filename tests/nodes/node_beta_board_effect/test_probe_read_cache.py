@@ -232,3 +232,76 @@ def test_the_build_stage_writes_the_cache_tally_receipt(tmp_path: Path) -> None:
     )
     assert receipt["backend"] == "memory"
     assert receipt["source_reads"] == 1
+
+
+MISSING_REASON = (
+    "GitHub GET /repos/x/actions/workflows/y/runs answered HTTP 404: Not Found"
+)
+
+
+class MissingRunner(Runner):
+    """Answers HTTP 404 for the workflow named, as the source-control node does for a workflow GitHub does not have."""
+
+    def __init__(self, missing: str) -> None:
+        super().__init__()
+        self.missing = missing
+
+    def __call__(self, argv, timeout):  # type: ignore[no-untyped-def]
+        workflow = argv[argv.index("--workflow") + 1]
+        if workflow == self.missing:
+            self.calls.append(workflow)
+            return (
+                0,
+                json.dumps(
+                    {"outcome": "failed", "result": {"failure_reason": MISSING_REASON}}
+                ),
+                "",
+            )
+        return super().__call__(argv, timeout)
+
+
+class Tip:
+    def __init__(self) -> None:
+        self.sha = "a" * 40
+        self.reads = 0
+
+    def __call__(self, argv, timeout):  # type: ignore[no-untyped-def]
+        self.reads += 1
+        return 0, self.sha + "\n", ""
+
+
+def test_a_missing_workflow_is_not_asked_again_until_the_default_branch_moves(
+    tmp_path: Path,
+) -> None:
+    for name in ("localrepo", "cloudrepo"):
+        (tmp_path / name).mkdir()
+    cache, _ = memory_reader()
+    runner = MissingRunner("cloud.yml")
+    tip = Tip()
+    rt = _runtime()
+    at = NOW + timedelta(minutes=2)
+
+    def cycle(moment, runner=runner):  # type: ignore[no-untyped-def]
+        runner.now = moment
+        reads = refresh_probes(rt, tmp_path, moment, runner, lambda: moment, cache, tip)
+        path = tmp_path / rt.reads_relpath
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(reads.model_dump_json(), encoding="utf-8")
+        return reads
+
+    first = cycle(at)
+    cloud_first = next(r for r in first.reads if r.source_id == "probe-cloud")
+    assert cloud_first.read == "unread"
+    assert runner.calls.count("cloud.yml") == 1
+    second_at = _past_interval(at)
+    second = cycle(second_at)
+    cloud_second = next(r for r in second.reads if r.source_id == "probe-cloud")
+    assert runner.calls.count("cloud.yml") == 1, (
+        "a missing workflow was asked about again"
+    )
+    assert cloud_second.read == "unread"
+    assert cloud_second.reason == cloud_first.reason
+    assert cloud_second.read_at == second_at
+    tip.sha = "b" * 40
+    cycle(_past_interval(second_at))
+    assert runner.calls.count("cloud.yml") == 2, "a moved default branch was not a miss"

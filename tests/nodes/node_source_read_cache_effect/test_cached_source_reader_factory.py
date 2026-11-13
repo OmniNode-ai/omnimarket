@@ -29,7 +29,13 @@ from tests.nodes.node_source_read_cache_effect.support import Clock, key
 pytestmark = pytest.mark.unit
 
 NODE_DIR = Path(factory.__file__).resolve().parents[1]
-MEMORY = {"backend": "memory", "key_prefix": "t:", "ttl_backstop_seconds": 60}
+MEMORY = {
+    "backend": "memory",
+    "key_prefix": "t:",
+    "ttl_backstop_seconds": 60,
+    "clone_relpath_template": "{name}",
+    "clone_revision_timeout_seconds": 5,
+}
 
 
 def _write(tmp_path: Path, doc: object) -> dict[str, str]:

@@ -47,13 +47,21 @@ class DownBackend:
         return None
 
 
+CLONE_SETTINGS = ("{name}", 5)
+
+
 def memory_reader(
     clock: Clock | None = None,
 ) -> tuple[CachedSourceReader, BackendMemorySourceReadCache]:
     ticks = clock or Clock()
     backend = BackendMemorySourceReadCache(ticks)
     handler = HandlerSourceReadCache(backend, PREFIX, TTL_BACKSTOP)
-    return CachedSourceReader(handler, ticks, backend_name="memory"), backend
+    return (
+        CachedSourceReader(
+            handler, ticks, backend_name="memory", clone_settings=CLONE_SETTINGS
+        ),
+        backend,
+    )
 
 
 def key(revision: str = "r1", source: str = "src") -> ModelSourceCacheKey:

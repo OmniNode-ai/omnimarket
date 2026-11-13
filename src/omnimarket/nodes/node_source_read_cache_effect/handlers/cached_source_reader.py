@@ -35,8 +35,10 @@ class CachedSourceReader:
         clock: Callable[[], float] = time.monotonic,
         disabled_reason: str = "",
         backend_name: str = "none",
+        clone_settings: tuple[str, int] | None = None,
     ) -> None:
         self._handler = handler
+        self._clone_settings = clone_settings
         self._clock = clock
         self.tally = ModelSourceCacheTally(
             backend=backend_name, disabled_reason=disabled_reason
@@ -50,6 +52,49 @@ class CachedSourceReader:
             self.tally.source_seconds + (self._clock() - started), 3
         )
         return value
+
+    def lookup[T](
+        self,
+        key: ModelSourceCacheKey,
+        decode: Callable[[str], T],
+        *,
+        usable: Callable[[T], bool] = lambda _value: True,
+    ) -> T | None:
+        """The cached value for ``key`` when the cache holds one the caller still accepts, else ``None`` (counted as a hit, miss or bypass)."""
+        if self._handler is None:
+            self.tally.bypassed += 1
+            return None
+        looked = self._handler.handle(
+            ModelSourceCacheRequest(operation="lookup", key=key)
+        )
+        if looked.outcome == EnumSourceCacheOutcome.UNAVAILABLE:
+            self.tally.unavailable += 1
+            return None
+        if looked.outcome == EnumSourceCacheOutcome.HIT and looked.payload is not None:
+            try:
+                cached = decode(looked.payload)
+            except (ValueError, ValidationError):
+                self.tally.misses += 1
+                return None
+            if usable(cached):
+                self.tally.hits += 1
+                return cached
+        self.tally.misses += 1
+        return None
+
+    def store[T](
+        self, key: ModelSourceCacheKey, value: T, encode: Callable[[T], str]
+    ) -> None:
+        """Keep ``value`` under ``key`` (counted as a store, or as unavailable); a handler that is absent keeps nothing."""
+        if self._handler is None:
+            return
+        stored = self._handler.handle(
+            ModelSourceCacheRequest(operation="store", key=key, payload=encode(value))
+        )
+        if stored.outcome == EnumSourceCacheOutcome.STORED:
+            self.tally.stores += 1
+        elif stored.outcome == EnumSourceCacheOutcome.UNAVAILABLE:
+            self.tally.unavailable += 1
 
     def read[T](
         self,
@@ -65,37 +110,24 @@ class CachedSourceReader:
         if self._handler is None:
             self.tally.bypassed += 1
             return self._fetch(fetch), EnumSourceCacheOutcome.BYPASS
-        looked = self._handler.handle(
-            ModelSourceCacheRequest(operation="lookup", key=key)
-        )
-        outcome = EnumSourceCacheOutcome.MISS
-        if looked.outcome == EnumSourceCacheOutcome.HIT and looked.payload is not None:
-            try:
-                cached = decode(looked.payload)
-            except (ValueError, ValidationError):
-                self.tally.misses += 1
-            else:
-                if usable(cached):
-                    self.tally.hits += 1
-                    return cached, EnumSourceCacheOutcome.HIT
-                self.tally.misses += 1
-        elif looked.outcome == EnumSourceCacheOutcome.UNAVAILABLE:
-            self.tally.unavailable += 1
-            outcome = EnumSourceCacheOutcome.UNAVAILABLE
-        else:
-            self.tally.misses += 1
+        unavailable_before = self.tally.unavailable
+        cached = self.lookup(key, decode, usable=usable)
+        if cached is not None:
+            return cached, EnumSourceCacheOutcome.HIT
+        reachable = self.tally.unavailable == unavailable_before
         value = self._fetch(fetch)
-        if outcome != EnumSourceCacheOutcome.UNAVAILABLE and store_if(value):
-            stored = self._handler.handle(
-                ModelSourceCacheRequest(
-                    operation="store", key=key, payload=encode(value)
-                )
-            )
-            if stored.outcome == EnumSourceCacheOutcome.STORED:
-                self.tally.stores += 1
-            elif stored.outcome == EnumSourceCacheOutcome.UNAVAILABLE:
-                self.tally.unavailable += 1
-        return value, outcome
+        if reachable and store_if(value):
+            self.store(key, value, encode)
+        return value, (
+            EnumSourceCacheOutcome.MISS
+            if reachable
+            else EnumSourceCacheOutcome.UNAVAILABLE
+        )
+
+    @property
+    def clone_revision_settings(self) -> tuple[str, int] | None:
+        """The overlay's clone location template and timeout, or ``None`` when no cache is configured."""
+        return self._clone_settings
 
     def close(self) -> None:
         if self._handler is not None:

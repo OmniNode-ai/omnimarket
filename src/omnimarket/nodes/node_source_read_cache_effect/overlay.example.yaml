@@ -4,6 +4,8 @@
 backend: valkey
 key_prefix: "example-board:"
 ttl_backstop_seconds: 900
+clone_relpath_template: "{name}"
+clone_revision_timeout_seconds: 10
 valkey:
   host_env: EXAMPLE_VALKEY_HOST
   port_env: EXAMPLE_VALKEY_PORT

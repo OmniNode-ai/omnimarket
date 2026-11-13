@@ -242,7 +242,13 @@ def test_the_publish_step_writes_the_cache_tally_receipt(tmp_path: Path) -> None
     cache_overlay = tmp_path / "cache-overlay.yaml"
     cache_overlay.write_text(
         yaml.safe_dump(
-            {"backend": "memory", "key_prefix": "t:", "ttl_backstop_seconds": 60}
+            {
+                "backend": "memory",
+                "key_prefix": "t:",
+                "ttl_backstop_seconds": 60,
+                "clone_relpath_template": "{name}",
+                "clone_revision_timeout_seconds": 5,
+            }
         ),
         encoding="utf-8",
     )
@@ -286,3 +292,120 @@ def test_the_publish_step_with_no_cache_overlay_reads_and_says_why(
         )
     )
     assert receipt["disabled_reason"].startswith("overlay: ")
+
+
+MISSING = "GitHub GET /repos/x/actions/workflows/y/runs answered HTTP 404: Not Found"
+
+
+class MissingRunner(Runner):
+    """Answers HTTP 404 for the workflows named (they do not exist on GitHub), as the source-control node does."""
+
+    def __init__(self, missing: set[str]) -> None:
+        super().__init__()
+        self.missing = missing
+
+    def __call__(self, argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
+        workflow = argv[argv.index("--workflow") + 1]
+        if workflow in self.missing:
+            self.calls.append((workflow, argv[argv.index("--event") + 1]))
+            return (
+                0,
+                json.dumps(
+                    {
+                        "outcome": "failed",
+                        "result": {"failure_reason": MISSING},
+                    }
+                ),
+                "",
+            )
+        return super().__call__(argv, timeout)
+
+
+class Tip:
+    """Stands in for the clone's tip read: one commit per repository that the test can move."""
+
+    def __init__(self) -> None:
+        self.sha = "a" * 40
+        self.reads = 0
+
+    def __call__(self, argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
+        self.reads += 1
+        return 0, self.sha + "\n", ""
+
+
+def _clones(home: Path) -> None:
+    for repo, *_rest in SOURCES.values():
+        (home / repo.rsplit("/", 1)[-1]).mkdir(exist_ok=True)
+
+
+def _refresh_with_tip(
+    home: Path,
+    runner: Runner,
+    at: datetime,
+    cache: CachedSourceReader,
+    tip: Tip,
+) -> None:
+    runner.now = at
+    refresh(
+        overlay_model(),
+        home=home,
+        onex_relpath="onex",
+        reads_relpath=RT.reads_relpath,
+        read_timeout_seconds=RT.read_timeout_seconds,
+        stage_deadline_seconds=100_000,
+        refresh_seconds=RT.refresh_seconds,
+        run=runner,
+        clock=lambda: at,
+        cache=cache,
+        revision_run=tip,
+    )
+
+
+def test_a_workflow_github_does_not_have_is_not_asked_again_until_the_default_branch_moves(
+    tmp_path: Path,
+) -> None:
+    home = build_home(tmp_path)
+    _clones(home)
+    cache, _ = memory_reader()
+    absent = sorted({v[1] for v in SOURCES.values()})[:3]
+    runner = MissingRunner(set(absent))
+    tip = Tip()
+    _refresh_with_tip(home, runner, BASE, cache, tip)
+    first_missing_reads = sum(1 for call in runner.calls if call[0] in absent)
+    assert first_missing_reads >= len(absent)
+    _refresh_with_tip(home, runner, _past_interval(BASE), cache, tip)
+    second_missing_reads = sum(1 for call in runner.calls if call[0] in absent)
+    assert second_missing_reads == first_missing_reads, (
+        "a missing workflow was asked about again"
+    )
+    tip.sha = "b" * 40
+    _refresh_with_tip(home, runner, _past_interval(_past_interval(BASE)), cache, tip)
+    third_missing_reads = sum(1 for call in runner.calls if call[0] in absent)
+    assert third_missing_reads > second_missing_reads, (
+        "a moved default branch was not a miss"
+    )
+
+
+def test_a_clone_that_cannot_be_read_leaves_the_missing_workflow_read_every_cycle(
+    tmp_path: Path,
+) -> None:
+    home = build_home(tmp_path)
+    cache, _ = memory_reader()
+    absent = sorted({v[1] for v in SOURCES.values()})[:1]
+    runner = MissingRunner(set(absent))
+    tip = Tip()
+    _refresh_with_tip(home, runner, BASE, cache, tip)
+    _refresh_with_tip(home, runner, _past_interval(BASE), cache, tip)
+    assert sum(1 for call in runner.calls if call[0] in absent) >= 2 * len(absent)
+    assert tip.reads == 0
+
+
+def test_an_error_that_is_not_a_missing_workflow_is_never_remembered(
+    tmp_path: Path,
+) -> None:
+    home = build_home(tmp_path)
+    _clones(home)
+    cache, backend = memory_reader()
+    runner = Runner(fail=True)
+    _refresh_with_tip(home, runner, BASE, cache, Tip())
+    assert backend.keys == []
