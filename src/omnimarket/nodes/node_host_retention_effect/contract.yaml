@@ -70,7 +70,7 @@ execution:
     - The pass runs as the user that owns the scratch and result directories; runner folders are removed through docker exec only.
     - A shared runtime must never subscribe to this host-local filesystem command.
 # The overlay this node reads (schema ModelHostRetentionOverlay): one row per host with its lane run roots, receipt roots, age
-# classes, runner groups and uv caches. `overlay.yaml` beside this contract declares the pool hosts.
+# classes, runner groups and uv caches. `overlay.example.yaml` beside this contract is the example; the lab rows are in the overlays repository.
 overlay:
   file: overlay.yaml
   environment_pin: ONEX_HOST_RETENTION_OVERLAY

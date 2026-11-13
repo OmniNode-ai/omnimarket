@@ -58,16 +58,16 @@ def completed(monkeypatch: pytest.MonkeyPatch, code: int, out: str) -> list[list
     return seen
 
 
-def test_overlay_seam_the_real_overlay_loads_and_every_declaration_is_inside_the_contract_bounds() -> (
+def test_overlay_seam_the_example_overlay_loads_and_every_declaration_is_inside_the_contract_bounds() -> (
     None
 ):
     overlay = ModelHostRetentionOverlay.model_validate(
-        yaml.safe_load((NODE_DIR / "overlay.yaml").read_text())
+        yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
     )
     bounds = load_bounds()
 
-    assert {row.name for row in overlay.hosts} >= {"h053"}
-    text = (NODE_DIR / "overlay.yaml").read_text()
+    assert {row.name for row in overlay.hosts} >= {"pool-a"}
+    text = (NODE_DIR / "overlay.example.yaml").read_text()
     assert "/home/" not in text  # a home path is written as ~/ and expanded at load
     for row in overlay.hosts:
         assert validate_declarations(row, bounds) == [], row.name

@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # A root written `~/...` or `$OMNI_HOME/...` is expanded where the pass runs; an unset variable leaves it relative and the pass refuses it.
-# Declared host retention of the lab pool hosts (OMN-22290). Read by `node_host_retention_effect`; nothing in the node names a host,
+# Example host retention declaration (OMN-22290), with one placeholder host row. The lab's real rows live in the overlays repository at
+# node_host_retention_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS. Read by `node_host_retention_effect`; nothing in the node names a host,
 # a path or a number. Every number is the keep window or size of one path class, set from the 2026-11-13 census of h053's root
 # disk (546G, 75 percent used): the uv cache 99G, runner work and cache folders about 120G, lane scratch 40G.
 #
@@ -16,7 +17,7 @@
 # uv_caches: `uv cache prune` once the cache holds min_gib; `uv cache size` walks every file, so its timeout is minutes.
 # docker_timeout_seconds: the most one docker call may take; past it the runner state or the container mounts read as unreadable.
 hosts:
-  - name: h053
+  - name: pool-a
     docker_timeout_seconds: 120
     lane_run_roots: [/data/lab-run/runs]
     receipt_roots: [~/.local/state/omni/remote-lanes]
