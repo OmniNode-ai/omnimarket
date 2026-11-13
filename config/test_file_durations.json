@@ -4310,6 +4310,7 @@
   "tests/unit/models/evidence_pipeline/wire/test_types.py": 0.03,
   "tests/unit/models/test_claude_code_binding_core_reexport_omn21093.py": 0.02,
   "tests/unit/models/test_cli_report.py": 0.01,
+  "tests/unit/models/test_contract_hotload_lane_overlay_document_omn24215.py": 3.0,
   "tests/unit/models/test_lab_host_row_volumes_root_omn22788.py": 0.021,
   "tests/unit/models/test_lane_commit_signing_overlay_omn22993.py": 0.7,
   "tests/unit/models/test_lane_inbox_guard_overlay_document_omn24110.py": 2.37,
