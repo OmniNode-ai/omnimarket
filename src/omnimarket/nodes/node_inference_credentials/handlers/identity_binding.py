@@ -10,10 +10,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from omnimarket.handlers.edge_overlay_identity import overlay_identity_resolver
 from omnimarket.models.model_http_tenant_identity import ModelHttpTenantIdentity
 from omnimarket.protocols.protocol_http_tenant_identity import (
     ProtocolHttpTenantIdentity,
 )
+
+OVERLAY_ID = "node_inference_credentials"
 
 
 class TenantIdentityResolverNotBoundError(RuntimeError):
@@ -35,14 +38,18 @@ class LateBoundTenantIdentity:
     async def resolve(
         self, headers: Mapping[str, str]
     ) -> ModelHttpTenantIdentity | None:
-        if _BOUND is None:
+        if _BOUND is not None:
+            return await _BOUND.resolve(headers)
+        resolver = overlay_identity_resolver(OVERLAY_ID)
+        if resolver is None:
             raise TenantIdentityResolverNotBoundError(
                 "no tenant identity resolver is bound"
             )
-        return await _BOUND.resolve(headers)
+        return await resolver.resolve(headers)
 
 
 __all__: list[str] = [
+    "OVERLAY_ID",
     "LateBoundTenantIdentity",
     "TenantIdentityResolverNotBoundError",
     "bind_tenant_identity_resolver",

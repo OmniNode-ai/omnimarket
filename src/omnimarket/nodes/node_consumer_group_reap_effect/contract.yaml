@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Consumer group reap EFFECT (OMN-23992)
+#
+# Deletes the long-Empty per-call consumer groups a reducer named. The command proves a reducer decided it through a
+# recomputed decision digest; a command decided from a file or a hand-built list is refused with a typed refusal and nothing
+# is deleted. Every delete is read back. The reap policy (the empty-since bound, the patterns, the per-decision cap) is the
+# reducer node's overlay; this node's overlay holds only the execution settings.
+---
+name: node_consumer_group_reap_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Consumer group reap effect. Takes a typed reap command built from a reducer record, refuses it (DECIDED_NOT_BY_REDUCER,
+  DIGEST_MISMATCH, BOUND_NOT_MET, NOT_REAPABLE, PROTECTED, OVER_CAP, DISABLED, BROKER_UNHEALTHY) before any delete, drops a
+  group that is no longer listed or no longer Empty, deletes in batches with a broker health check after each, and reads the
+  deleted groups back until none is listed. A dry run lists what it would delete and touches nothing.
+
+input_model:
+  name: ModelGroupReapCommand
+  module: omnimarket.nodes.node_consumer_group_reap_effect.models.model_group_reap
+output_model:
+  name: ModelGroupReapOutcome
+  module: omnimarket.nodes.node_consumer_group_reap_effect.models.model_group_reap
+
+handler:
+  module: omnimarket.nodes.node_consumer_group_reap_effect.handlers.handler_group_reap
+  class: HandlerGroupReap
+  input_model: omnimarket.nodes.node_consumer_group_reap_effect.models.model_group_reap.ModelGroupReapCommand
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: consumer_group_reap_command
+      handler:
+        name: HandlerGroupReap
+        module: omnimarket.nodes.node_consumer_group_reap_effect.handlers.handler_group_reap
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.consumer-group-reap-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.consumer-group-reap-completed.v1
+terminal_event: onex.evt.omnimarket.consumer-group-reap-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.consumer-group-reap-requested.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.consumer-group-reap-requested.v1
+    producer: "the consumer group guard's orchestration, which builds one command from each reducer record that names groups"
+externally_consumed_topics:
+  - onex.evt.omnimarket.consumer-group-reap-completed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_CONSUMER_GROUP_REAP_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.consumer-group-reap-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.consumer-group-reap-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-reap-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-reap-completed.v1, operation: DESCRIBE}
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Consumer group reap effect"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-23992"
