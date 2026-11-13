@@ -1469,6 +1469,7 @@ node_work_ledger_parity_receipt_effect = "omnimarket.nodes.node_work_ledger_pari
 node_work_ledger_query_effect = "omnimarket.nodes.node_work_ledger_query_effect"
 node_work_ledger_reader_effect = "omnimarket.nodes.node_work_ledger_reader_effect"
 node_work_ledger_reducer_compute = "omnimarket.nodes.node_work_ledger_reducer_compute"
+node_work_ledger_reducer_scheduled_effect = "omnimarket.nodes.node_work_ledger_reducer_scheduled_effect"
 node_work_ledger_render_effect = "omnimarket.nodes.node_work_ledger_render_effect"
 node_work_ledger_runtime_inventory_effect = "omnimarket.nodes.node_work_ledger_runtime_inventory_effect"
 node_work_ledger_seam_counter_compute = "omnimarket.nodes.node_work_ledger_seam_counter_compute"

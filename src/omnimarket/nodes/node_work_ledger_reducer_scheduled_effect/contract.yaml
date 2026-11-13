@@ -1,0 +1,95 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work Ledger Reducer Scheduled Effect (OMN-24305)
+#
+# Runs the work-ledger reducer on the runtime tick; no host timer unit exists for it.
+# Shape of node_commitment_check_scheduled_effect: it subscribes to the runtime scheduler's tick, gates on its own overlay
+# (run_interval_seconds, grace_seconds) and returns its terminal event for the runtime to publish.
+name: node_work_ledger_reducer_scheduled_effect
+contract_name: node_work_ledger_reducer_scheduled_effect
+node_name: node_work_ledger_reducer_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  On each runtime tick that is due, a scheduled job node reads a bounded window of work-ledger rows from the bus read
+  command, runs the reducer's guard replay and rebuild on it and emits one typed run event, failed by name when the
+  overlay, the read or the reducer refuses.
+
+handler:
+  module: omnimarket.nodes.node_work_ledger_reducer_scheduled_effect.handlers.handler_work_ledger_reducer_scheduled
+  class: HandlerWorkLedgerReducerScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: work_ledger_reducer.scheduled_run
+      handler:
+        name: HandlerWorkLedgerReducerScheduled
+        module: omnimarket.nodes.node_work_ledger_reducer_scheduled_effect.handlers.handler_work_ledger_reducer_scheduled
+      handler_module: omnimarket.nodes.node_work_ledger_reducer_scheduled_effect.handlers.handler_work_ledger_reducer_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the overlay's run_interval_seconds, then read the bounded ledger window, run the reducer's guard replay
+        and rebuild, and return the run event.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelScheduleRunEvent
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: "One scheduled job run, with when it was scheduled, when it fired and how it went."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  side_effects:
+    - reads a bounded window of work-ledger rows over the bus read command
+    - runs the work-ledger reducer's guard replay and rebuild
+    - emits one typed run event
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "work_ledger_reducer.scheduled_run"
+
+terminal_event: onex.evt.omnimarket.schedule-run.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.schedule-run.v1"
+
+published_events:
+  - event_type: ModelScheduleRunEvent
+    topic: onex.evt.omnimarket.schedule-run.v1
+    description: "One scheduled work-ledger reducer run."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-run.v1
+
+# Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_work_ledger_reducer_scheduled_effect, model: omnimarket.nodes.node_work_ledger_reducer_scheduled_effect.models.model_work_ledger_reducer_schedule_overlay.ModelWorkLedgerReducerScheduleOverlay}
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-24305
+  transport_type: kafka
