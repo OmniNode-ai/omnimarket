@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24079
+title: The delegation call effect and its producer agree on the task kind, pinned to the core release that carries it
+summary: 'omnimarket moves its omnibase-core and omnibase-infra dev tags to the release pair that carries the optional task_type field of the inference intent (omnibase_core#2316, omnibase_infra#5925) and adds the seam test that the task class the orchestrator stamps on the intent is the class the call effect reads its overlay ceiling for. The call effect and the ceiling overlay are unchanged (OMN-24039).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24079-task-class-seam
+    statement: The task class the orchestrator stamps on the inference intent is the class the call effect reads its overlay ceiling for, held by a test against the core release that carries the field.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnimarket names the same omnibase-core and omnibase-infra dev tags as omnibase_infra''s locked core, and the sibling pin gate accepts it -- falsifier: uv lock --check fails on origin/dev''s pyproject.toml after the infra tag is published and passes on the branch'
+      - id: AC2
+        statement: 'AC2: the seam test fails when the producer stops stamping task_type or the effect stops reading it, and follows an overlay edit -- falsifier: uv run pytest tests/unit/delegation/test_omn24039_task_class_seam.py -q -n 0 --no-cov fails against the previous core pin'
+      - id: AC3
+        statement: 'AC3: integrated: a local reasoning call that runs past 120 s finishes in the dev runtime and the revision running carries the pin -- falsifier: the delegation receipt of a reasoning call shows terminal_wait over 120 s with status success, read with the running image revision label'
+evidence_requirements:
+  - kind: tests
+    description: The seam test passes at the pushed head.
+    command: uv run pytest tests/unit/delegation/test_omn24039_task_class_seam.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24079-ac1
+    description: 'AC1: omnimarket names the same omnibase-core and omnibase-infra dev tags as omnibase_infra''s locked core, and the sibling pin gate accepts it -- falsifier: uv lock --check fails on origin/dev''s pyproject.toml after the infra tag is published and passes on the branch'
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: uv lock --check
+        cwd: .
+  - id: dod-omn24079-ac2
+    description: 'AC2: the seam test fails when the producer stops stamping task_type or the effect stops reading it, and follows an overlay edit -- falsifier: uv run pytest tests/unit/delegation/test_omn24039_task_class_seam.py -q -n 0 --no-cov fails against the previous core pin'
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_omn24039_task_class_seam.py -q -n 0 --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24079-ac3
+    description: 'hosted proxy for AC3: the seam test passes; the lab reading of a reasoning call past 120 s and the running image revision is named in the pull request and read after the dev runtime runs this revision.'
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_omn24039_task_class_seam.py -q -n 0 --no-cov -p no:cacheprovider
+        cwd: .
