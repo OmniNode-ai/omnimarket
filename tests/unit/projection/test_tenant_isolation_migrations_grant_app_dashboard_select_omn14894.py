@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Grant-coverage ratchet: every tenant_isolation RLS migration must also grant
-app_dashboard SELECT on the same table, in the same migration file.
+"""Grant-coverage ratchet: every tenant_isolation RLS policy must be followed, in
+the same node's migration chain, by an app_dashboard SELECT grant on the same table.
+
+The chain is the node's migration files in apply order. A migration that is already
+applied is immutable (a vendored copy in omnibase_infra, byte-identical, is what
+runs), so the grant may sit in the same file as the policy or in a later migration of
+the chain; it may not sit in an earlier one, and it may not be missing.
 
 OMN-14894 grant-gap finding: five of the nine tenant-RLS node migrations
 landed by omnimarket#2011 (fix(OMN-15655)) created the ``tenant_isolation``
@@ -14,9 +19,9 @@ RLS-scoped dashboard read path completely unreachable for that table (the
 role has no way to read the relation at all, policy or not).
 
 This test is the repo-wide enforcement this omission should have been
-caught by. It has no allowlist: every migration that creates the
-``tenant_isolation`` policy on a table must, in that same file, grant
-``app_dashboard`` SELECT on that table. If a table genuinely has no reader
+caught by. It has no allowlist: every table with a ``tenant_isolation`` policy
+must, in that file or a later migration of the same node, be granted
+``app_dashboard`` SELECT. If a table genuinely has no reader
 and should stay unreadable, the fix is to not enable RLS with a
 dashboard-facing policy in the first place -- not to skip the grant only
 DB-role membership would have caught missing.
@@ -61,24 +66,61 @@ def _tenant_isolation_migrations() -> list[Path]:
     return sorted(NODES_ROOT.glob("*/migrations/*.sql"))
 
 
-def test_every_tenant_isolation_migration_grants_app_dashboard_select() -> None:
+def _missing_grants(migrations: list[Path]) -> list[str]:
+    """Tables whose policy has no app_dashboard SELECT grant at or after it in the node chain."""
+    by_node: dict[Path, list[Path]] = {}
+    for path in migrations:
+        by_node.setdefault(path.parent, []).append(path)
     missing: list[str] = []
-    for path in _tenant_isolation_migrations():
-        text = path.read_text(encoding="utf-8")
-        policy_matches = list(_POLICY_RE.finditer(text))
-        if not policy_matches:
-            continue
-        tables = {_unquote(match.group("table")) for match in policy_matches}
-        granted_tables = {
-            _unquote(match.group("table")) for match in _GRANT_SELECT_RE.finditer(text)
-        }
-        for table in sorted(tables - granted_tables):
-            missing.append(f"{path.relative_to(REPO_ROOT)} (table={table!r})")
+    for chain in by_node.values():
+        for index, path in enumerate(sorted(chain)):
+            text = path.read_text(encoding="utf-8")
+            tables = {_unquote(m.group("table")) for m in _POLICY_RE.finditer(text)}
+            granted: set[str] = set()
+            for later in sorted(chain)[index:]:
+                granted |= {
+                    _unquote(m.group("table"))
+                    for m in _GRANT_SELECT_RE.finditer(
+                        later.read_text(encoding="utf-8")
+                    )
+                }
+            for table in sorted(tables - granted):
+                missing.append(f"{path.relative_to(REPO_ROOT)} (table={table!r})")
+    return missing
 
+
+def test_every_tenant_isolation_migration_grants_app_dashboard_select() -> None:
+    missing = _missing_grants(_tenant_isolation_migrations())
     assert not missing, (
-        "tenant_isolation RLS migration(s) missing the sibling-pattern "
-        "app_dashboard SELECT grant in the same file (OMN-14894): " + "; ".join(missing)
+        "tenant_isolation RLS policy without an app_dashboard SELECT grant in the "
+        "same file or a later migration of the node (OMN-14894): " + "; ".join(missing)
     )
+
+
+def test_the_grant_must_not_precede_the_policy_in_the_chain(tmp_path: Path) -> None:
+    """Negative control: a grant in an EARLIER migration does not cover a later policy,
+    and a policy with no grant anywhere is reported."""
+    chain = tmp_path / "node_x" / "migrations"
+    chain.mkdir(parents=True)
+    early = chain / "0001_grant.sql"
+    early.write_text("GRANT SELECT ON public.t TO app_dashboard;\n")
+    late = chain / "0002_policy.sql"
+    late.write_text(
+        "CREATE POLICY tenant_isolation ON public.t FOR ALL USING (true);\n"
+    )
+    global REPO_ROOT
+    original = REPO_ROOT
+    REPO_ROOT = tmp_path
+    try:
+        assert _missing_grants([early, late]) == [
+            "node_x/migrations/0002_policy.sql (table='t')"
+        ]
+        late.write_text(
+            late.read_text() + "GRANT SELECT ON public.t TO app_dashboard;\n"
+        )
+        assert _missing_grants([early, late]) == []
+    finally:
+        REPO_ROOT = original
 
 
 def test_the_five_omn14894_tables_are_covered_by_the_scan() -> None:
