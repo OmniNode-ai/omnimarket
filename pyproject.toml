@@ -928,6 +928,7 @@ node_lane_queue_start_decision_compute = "omnimarket.nodes.node_lane_queue_start
 node_lane_reader_provision_effect = "omnimarket.nodes.node_lane_reader_provision_effect"
 node_lane_report_relay_effect = "omnimarket.nodes.node_lane_report_relay_effect"
 node_lane_result_sweep_effect = "omnimarket.nodes.node_lane_result_sweep_effect"
+node_lane_result_sweep_scheduled_effect = "omnimarket.nodes.node_lane_result_sweep_scheduled_effect"
 node_lane_rules_block_compute = "omnimarket.nodes.node_lane_rules_block_compute"
 node_lane_stack_orphan_compute = "omnimarket.nodes.node_lane_stack_orphan_compute"
 node_lane_toolchain_provision_effect = "omnimarket.nodes.node_lane_toolchain_provision_effect"

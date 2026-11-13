@@ -1860,6 +1860,8 @@
   "tests/nodes/node_lane_reader_provision_effect/test_lane_reader_provision.py": 0.11,
   "tests/nodes/node_lane_report_relay_effect/test_report_relay.py": 0.25,
   "tests/nodes/node_lane_result_sweep_effect/test_lane_result_sweep.py": 0.17,
+  "tests/nodes/node_lane_result_sweep_scheduled_effect/test_contract_topics.py": 3.57,
+  "tests/nodes/node_lane_result_sweep_scheduled_effect/test_golden_chain_lane_result_sweep_scheduled.py": 2.14,
   "tests/nodes/node_lane_rules_block_compute/test_golden_chain_lane_rules_block_compute.py": 0.17,
   "tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py": 0.02,
   "tests/nodes/node_lane_toolchain_provision_effect/test_crush_declared.py": 0.02,
