@@ -107,6 +107,13 @@ class HandlerBranchDeployCommand:
         self, request: ModelBranchDeployCommandRequest
     ) -> ModelBranchDeployCommandResult:
         overlay = self._overlay
+        if overlay.hmac_secret_env is None:
+            return ModelBranchDeployCommandResult(
+                correlation_id=request.correlation_id,
+                mode=request.mode,
+                status="refused",
+                detail="the overlay names no signing key variable (hmac_secret_env is absent)",
+            )
         secret = self._environ.get(overlay.hmac_secret_env, "").strip()
         if not secret:
             return ModelBranchDeployCommandResult(
