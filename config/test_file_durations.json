@@ -1524,6 +1524,7 @@
   "tests/nodes/node_host_install_state_reducer/test_contract.py": 3.41,
   "tests/nodes/node_host_install_state_reducer/test_reducer.py": 2.76,
   "tests/nodes/node_host_install_state_reducer/test_seam.py": 2.96,
+  "tests/nodes/node_host_installer_container_units/test_container_unit_recreate.py": 1.5,
   "tests/nodes/node_host_installer_container_units/test_container_units.py": 1.93,
   "tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py": 1.46,
   "tests/nodes/node_host_installer_net_units/test_host_net_units.py": 0.21,
