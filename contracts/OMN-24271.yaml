@@ -63,6 +63,9 @@ dod_evidence:
   - check_type: command
     check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_bus_login_exposure_scheduled_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "HandlerBusLoginExposureScheduled" > /dev/null'''
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_overlay_drift_scheduled_effect/test_contract_topics.py tests/nodes/node_bus_login_exposure_scheduled_effect/test_contract_topics.py tests/nodes/node_delegation_events_defect_scan_scheduled_effect/test_contract_topics.py tests/nodes/node_c32_probe_scheduled_effect/test_contract_topics.py -q --no-cov
+    cwd: .
 - id: dod-omn24271-integration-proof
   description: AC4 is read on the dev runtime after the dev deploy through the deploy agent; the pushed head is run on a lab host first and the deployed reading is named in the pull request.
   source: manual
