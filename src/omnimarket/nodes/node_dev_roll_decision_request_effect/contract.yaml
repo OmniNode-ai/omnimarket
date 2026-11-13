@@ -1,0 +1,127 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Roll Decision Request Effect (OMN-24251)
+#
+# SHADOW ONLY (parent OMN-23532, root R4): node_dev_roll_request_compute is
+# subscribed to onex.cmd.omnimarket.dev-roll-decision-requested.v1 but nothing
+# publishes it. This node publishes one ModelDevRollFacts on that topic for
+# every queued dev roll: it turns each accepted manifest into one pending
+# dev_tip_changed event, keeps the shadow last roll, and records what every
+# decision of the compute node cleared. A manifest that cannot yield a request
+# is skipped with a typed reason. It publishes no deploy-agent command and
+# nothing else toward the deploy agent. Every bound (the CI issuer pattern, the
+# shadow roll duration, the seen-job bound, the store backend) is an overlay
+# value: nothing is packaged as a fallback.
+name: node_dev_roll_decision_request_effect
+contract_name: node_dev_roll_decision_request_effect
+node_name: node_dev_roll_decision_request_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+
+runtime_profiles:
+  - main
+
+description: >
+  The dev lane's decision request (shadow only). It reads the roll manifest the
+  deploy agent publishes at every accepted dev roll, turns it into one pending
+  dev_tip_changed event plus the shadow last roll, and publishes the batched
+  facts as one decision request for node_dev_roll_request_compute. A manifest
+  that cannot yield a request (a missing job id, a non-CI issuer, a ref that is
+  not a sha, no usable instant, a job already requested) is skipped with a
+  typed reason. No deploy-agent command is published.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+
+input_model:
+  name: ModelDevRollManifestEvent
+  module: omnimarket.nodes.node_dev_roll_decision_request_effect.models.model_dev_roll_manifest_event
+output_model:
+  name: ModelDevRollFacts
+  module: omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.evt.omnimarket.dev-roll-manifest.v1
+    - onex.evt.omnimarket.dev-roll-decided.v1
+  publish_topics:
+    - onex.cmd.omnimarket.dev-roll-decision-requested.v1
+    - onex.evt.omnimarket.dev-roll-decision-request-skipped.v1
+    - onex.evt.omnimarket.dev-roll-observation-recorded.v1
+
+published_events:
+  - event_type: "DevRollFacts"
+    topic: onex.cmd.omnimarket.dev-roll-decision-requested.v1
+    description: "One decision request per accepted dev roll: the pending tip events and the shadow last roll."
+  - event_type: "DevRollDecisionRequestSkipped"
+    topic: onex.evt.omnimarket.dev-roll-decision-request-skipped.v1
+    description: "One manifest did not yield a decision request, with the typed reason."
+  - event_type: "DevRollObservationRecorded"
+    topic: onex.evt.omnimarket.dev-roll-observation-recorded.v1
+    description: "What one observed decision of the compute node cleared from the observation state."
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: "dev_roll_decision_request.queued_roll"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollQueuedRoll"
+        module: "omnimarket.nodes.node_dev_roll_decision_request_effect.handlers.handler_dev_roll_queued_roll"
+      event_model:
+        name: "ModelDevRollManifestEvent"
+        module: "omnimarket.nodes.node_dev_roll_decision_request_effect.models.model_dev_roll_manifest_event"
+      topic: onex.evt.omnimarket.dev-roll-manifest.v1
+      description: "The roll manifest the deploy agent published; answered by one decision request or a typed skip."
+    - operation: "dev_roll_decision_request.decided_observed"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollDecidedObserved"
+        module: "omnimarket.nodes.node_dev_roll_decision_request_effect.handlers.handler_dev_roll_decided_observed"
+      event_model:
+        name: "ModelDevRollDecided"
+        module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_decided"
+      topic: onex.evt.omnimarket.dev-roll-decided.v1
+      description: "A decision of node_dev_roll_request_compute; answered by one observation record."
+
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.dev-roll-manifest.v1
+    producer: "the dev deploy agent's dev roll events publisher (omnibase_infra node_dev_roll_events_effect, run inside the deploy agent), not an omnimarket node contract"
+  - topic: onex.evt.omnimarket.dev-roll-decided.v1
+    producer: "node_dev_roll_request_compute (omnimarket), which decides on the decision-request topic this node publishes"
+externally_consumed_topics:
+  - onex.cmd.omnimarket.dev-roll-decision-requested.v1
+  - onex.evt.omnimarket.dev-roll-decision-request-skipped.v1
+  - onex.evt.omnimarket.dev-roll-observation-recorded.v1
+
+# The broker rows the principal that runs this node needs (OMN-24251). The principal is named by an environment variable
+# so this public file names no identity; the overlays repository holds the concrete login.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DEV_ROLL_CAPTURE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-manifest.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-manifest.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-decided.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-decided.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-decision-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-decision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-decision-request-skipped.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-decision-request-skipped.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-observation-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-observation-recorded.v1, operation: DESCRIBE}
+
+overlay:
+  node: node_dev_roll_decision_request_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24251
