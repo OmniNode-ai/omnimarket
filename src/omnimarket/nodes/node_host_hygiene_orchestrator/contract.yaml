@@ -1,0 +1,120 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Hygiene Orchestrator (OMN-23707)
+#
+# Records the newest host disk readings on the bus and, on a runtime tick, decides which
+# hygiene cleanups are due on which hosts and dispatches them as lab work units. The
+# cleanups, the hosts, the thresholds and the transports are all in the node's overlay.
+name: node_host_hygiene_orchestrator
+lifecycle: experimental
+node_type: orchestrator
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Records host disk readings and, on a runtime tick, dispatches the due host hygiene
+  cleanups as lab work units; the cleanups, hosts and thresholds come from the overlay.
+contract_name: node_host_hygiene_orchestrator
+node_name: node_host_hygiene_orchestrator
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: record_host_disk_read
+    topic: onex.evt.omnimarket.host-disk-read.v1
+    message_category: event
+    handler:
+      name: HandlerHostHygieneRecordRead
+      module: omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_record_read
+    event_model:
+      name: ModelHostDiskRead
+      module: omnimarket.models.model_host_disk_reading
+  - operation: record_host_disk_read_failed
+    topic: onex.evt.omnimarket.host-disk-read-failed.v1
+    message_category: event
+    handler:
+      name: HandlerHostHygieneRecordReadFailed
+      module: omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_record_read
+    event_model:
+      name: ModelHostDiskReadFailed
+      module: omnimarket.models.model_host_disk_reading
+  - operation: host_hygiene.scheduled_run
+    topic: onex.intent.platform.runtime-tick.v1
+    handler:
+      name: HandlerHostHygieneScheduled
+      module: omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_scheduled
+    event_model:
+      name: ModelRuntimeTick
+      module: omnibase_infra.runtime.models.model_runtime_tick
+    event_type: platform.runtime-tick
+input_subscriptions:
+- topic: onex.intent.platform.runtime-tick.v1
+  operation: host_hygiene.scheduled_run
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.host-disk-read.v1
+  - onex.evt.omnimarket.host-disk-read-failed.v1
+  - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-hygiene-run-completed.v1
+  - onex.evt.omnimarket.schedule-run.v1
+terminal_event: onex.evt.omnimarket.host-hygiene-run-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-hygiene-run-completed.v1
+  event_type: ModelHostHygieneRunCompleted
+- topic: onex.evt.omnimarket.schedule-run.v1
+  event_type: ModelScheduleRunEvent
+externally_consumed_topics:
+- onex.evt.omnimarket.host-hygiene-run-completed.v1
+- onex.evt.omnimarket.schedule-run.v1
+config:
+  host_hygiene_orchestrator:
+    max_hosts: 256
+runtime:
+  schedule_overlay:
+    overlay_id: node_host_hygiene_orchestrator
+    model: omnimarket.models.model_host_hygiene_orchestrator.ModelHostHygieneOrchestratorOverlay
+overlay_profiles:
+  in_memory: overlays/in_memory.yaml
+  lab_work: overlays/lab_work.example.yaml
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+  side_effects:
+  - sends one lab work unit per due cleanup to its host, which runs the cleanup's declared command there
+metadata:
+  transport_type: kafka
+  ticket: OMN-23707
+  description: Records host disk readings and dispatches the due host hygiene cleanups as lab
+    work units on a runtime tick.
+  created: '2026-11-13'
+  tags:
+  - host-hygiene
+  - orchestrator
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-hygiene-run-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-hygiene-run-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-host-capacity-advertised.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-host-capacity-advertised.v1, operation: DESCRIBE}
+  - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_host_hygiene_orchestrator.consume.v1., operation: READ}
+  - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_host_hygiene_orchestrator.consume.v1., operation: DESCRIBE}
