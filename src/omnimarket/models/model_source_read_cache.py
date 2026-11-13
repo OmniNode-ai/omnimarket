@@ -12,6 +12,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
+
 
 class EnumSourceCacheOutcome(StrEnum):
     HIT = "hit"
@@ -86,6 +90,8 @@ class ModelSourceCacheValkey(BaseModel):
     host_env: str = Field(min_length=1)
     port_env: str = Field(min_length=1)
     password_env: str | None = Field(min_length=1)
+    # The NAME of the environment variable that holds a secret store reference (secret://onex/<folder>/<KEY>) for the password; used when the variable named by password_env holds none; absent, only password_env is read.
+    password_ref_env: str | None = Field(default=None, min_length=1)
     database: int = Field(ge=0)
     connect_timeout_seconds: int = Field(ge=1)
     operation_timeout_seconds: int = Field(ge=1)
@@ -103,3 +109,5 @@ class ModelSourceCacheOverlay(BaseModel):
     # The store: a `valkey` block names the Valkey this deployment keeps its answers in; with no block the answers are kept in memory for
     # the run (the default, which a test or a host with no store uses).
     valkey: ModelSourceCacheValkey | None = None
+    # The store the password reference is resolved through (addressing and the identity's references, never a value); absent, the reader falls back to the machine's own configuration.
+    secret_store: ModelSecretStoreOverlay | None = None

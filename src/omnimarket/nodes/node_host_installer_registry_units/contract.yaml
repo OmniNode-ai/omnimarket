@@ -139,6 +139,9 @@ units:
       # variables for. Not required: unset, the cache is off for the run and every step reads its sources as before.
       ONEX_SOURCE_CACHE_VALKEY_HOST: source_cache_valkey_host
       ONEX_SOURCE_CACHE_VALKEY_PORT: source_cache_valkey_port
+      # The reference of the Valkey password the board's source read cache uses (OMN-24112). Not required: unset, the
+      # cache connects with no password.
+      ONEX_SOURCE_CACHE_VALKEY_PASSWORD_REF: source_cache_valkey_password_ref
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST, ONEX_LEDGER_HOST_NAME]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
