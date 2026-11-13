@@ -11,33 +11,22 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.handlers.floor_fill_scheduled_tick import (
+    FloorFillProfileUnboundError,
+    run_floor_fill_tick,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
-    load_structured_overlay,
 )
 from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleRunEvent,
-)
-from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
-    build_inmemory_handler,
-)
-from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
-    HandlerFloorFillCommand,
-)
-from omnimarket.nodes.node_floor_fill_orchestrator.models import (
-    EnumFloorFillCommand,
-    ModelFloorFillCommandRequest,
-    ModelFloorFillConfig,
-)
-from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document import (
-    ModelFloorFillOverlayDocument,
 )
 from omnimarket.nodes.node_floor_fill_scheduled_effect.models import (
     ModelFloorFillScheduleOverlay,
@@ -53,8 +42,7 @@ class HandlerFloorFillScheduled:
         self,
         *,
         gate: ScheduleGate | None = None,
-        build_handler: Callable[[ModelFloorFillConfig], HandlerFloorFillCommand]
-        | None = None,
+        build_handler: Callable[[Any], Any] | None = None,
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
@@ -95,8 +83,11 @@ class HandlerFloorFillScheduled:
             return None
         self._gate.mark(now)
         try:
-            document = load_structured_overlay(
-                overlay.fill_overlay_id, ModelFloorFillOverlayDocument, self._environ
+            outcome = run_floor_fill_tick(
+                fill_overlay_id=overlay.fill_overlay_id,
+                profile=overlay.profile,
+                environ=self._environ,
+                build_handler=self._build_handler,
             )
         except NodeOverlayError:
             return self._event(
@@ -104,24 +95,16 @@ class HandlerFloorFillScheduled:
                 "failed",
                 f"the fill overlay {overlay.fill_overlay_id} could not be read",
             )
-        config = document.floor_fill
-        build = self._build_handler
-        if build is None:
-            if overlay.profile != "inmemory":
-                return self._event(
-                    request,
-                    "failed",
-                    f"the {overlay.profile} profile is not bound in the runtime yet",
-                )
-            build = build_inmemory_handler
-        result = build(config).handle(
-            ModelFloorFillCommandRequest(
-                command=EnumFloorFillCommand.TICK, key=None, host_id=config.host_id
+        except FloorFillProfileUnboundError:
+            return self._event(
+                request,
+                "failed",
+                f"the {overlay.profile} profile is not bound in the runtime yet",
             )
-        )
-        first_line = result.stdout.splitlines()[0] if result.stdout else ""
         return self._event(
-            request, "completed" if result.exit_code == 0 else "failed", first_line
+            request,
+            "completed" if outcome.exit_code == 0 else "failed",
+            outcome.first_line,
         )
 
 
