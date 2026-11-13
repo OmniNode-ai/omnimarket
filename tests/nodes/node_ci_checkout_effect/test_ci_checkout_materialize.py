@@ -14,7 +14,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.nodes.node_ci_checkout_effect.handlers.handler_ci_checkout_materialize import (
+from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_materialize import (
     CheckoutNotServedError,
     materialize,
 )

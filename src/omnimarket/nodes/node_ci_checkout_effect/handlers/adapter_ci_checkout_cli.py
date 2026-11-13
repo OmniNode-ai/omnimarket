@@ -27,7 +27,7 @@ from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.handlers.scm.scm_cli import _open_bus
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
-from omnimarket.nodes.node_ci_checkout_effect.handlers.handler_ci_checkout_materialize import (
+from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_materialize import (
     CheckoutMaterializeError,
     materialize,
 )

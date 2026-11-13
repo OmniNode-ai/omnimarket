@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Client-side materialization of a CI checkout result over git.
+"""Client-side materialization of a CI checkout result over git (an adapter, not a handler: no contract binds it).
 
 The bytes move over git from the served URL; GitHub is never named.
 """
