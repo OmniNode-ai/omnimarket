@@ -13,6 +13,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from omnimarket.models.model_source_read_cache import (
+    EnumSourceCacheOutcome,
+    ModelSourceCacheKey,
+)
 from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardRuntime,
     ModelBetaLedgerReading,
@@ -25,6 +29,16 @@ from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ProtocolLedgerRowSource,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
+    CachedSourceReader,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.repo_revision import (
+    cached_repo_head,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
+    SLOT_STAMP,
+    schedule_slot,
 )
 
 CommandRunner = Callable[[Sequence[str], int], tuple[int, str, str]]
@@ -231,17 +245,104 @@ def load_previous_reads(path: Path) -> dict[str, ModelSourceRead]:
         return {}
 
 
+def probe_read_is_current(read: ModelSourceRead, slot: datetime) -> bool:
+    """True when a cached probe read needs no new read for ``slot``: it was read, and a run finished at or after the slot (a run still
+    in flight is not a point, so the read stays a miss until it ends)."""
+    return read.read == "read" and any(p.at >= slot for p in read.points)
+
+
+# The source-control node's typed answer for a workflow GitHub does not have: it stays so until a commit adds the file.
+MISSING_WORKFLOW_MARK = "HTTP 404"
+
+
+def probe_is_missing(read: ModelSourceRead) -> bool:
+    return read.read == "unread" and MISSING_WORKFLOW_MARK in read.reason
+
+
+def _encode_probe_read(value: ModelSourceRead) -> str:
+    return value.model_dump_json()
+
+
+def _read_probe_through_cache(
+    probe: ModelBetaProbe,
+    rt: ModelBetaBoardRuntime,
+    onex: Path,
+    run: CommandRunner,
+    clock: Callable[[], datetime],
+    cache: CachedSourceReader | None,
+    home: Path,
+    revision_run: CommandRunner | None = None,
+) -> ModelSourceRead:
+    """One probe's read: from the cache when it holds the read for the probe's current schedule slot, or the missing-workflow answer for the
+    repository's current default branch commit, else from the source."""
+    if cache is None:
+        return read_probe(probe, rt, onex, run, clock())
+    head = cached_repo_head(cache, home, probe.repository, revision_run)
+    absent_key = (
+        ModelSourceCacheKey(
+            source_id=f"beta-probe-absent:{probe.repository}:{probe.workflow}",
+            params_digest=ModelSourceCacheKey.digest({"workflow": probe.workflow}),
+            revision=head,
+        )
+        if head is not None
+        else None
+    )
+    if absent_key is not None:
+        remembered = cache.lookup(
+            absent_key, ModelSourceRead.model_validate_json, usable=probe_is_missing
+        )
+        if remembered is not None:
+            return remembered.model_copy(update={"read_at": clock()})
+    slot = schedule_slot([probe.cron], clock()) if probe.cron is not None else None
+
+    def fetch() -> ModelSourceRead:
+        return read_probe(probe, rt, onex, run, clock())
+
+    if slot is None:
+        fresh = fetch()
+        if absent_key is not None and probe_is_missing(fresh):
+            cache.store(absent_key, fresh, _encode_probe_read)
+        return fresh
+
+    def current(value: ModelSourceRead) -> bool:
+        return probe_read_is_current(value, slot)
+
+    read, outcome = cache.read(
+        ModelSourceCacheKey(
+            source_id=f"beta-probe:{probe.repository}:{probe.workflow}",
+            params_digest=ModelSourceCacheKey.digest(
+                {"limit": rt.probe_run_limit, "events": list(probe.events)}
+            ),
+            revision=slot.strftime(SLOT_STAMP),
+        ),
+        fetch,
+        _encode_probe_read,
+        ModelSourceRead.model_validate_json,
+        usable=current,
+        store_if=current,
+    )
+    # A hit is current by its key (the same slot, the slot's run finished): it carries this cycle's read time.
+    if outcome == EnumSourceCacheOutcome.HIT:
+        return read.model_copy(update={"read_at": clock()})
+    if absent_key is not None and probe_is_missing(read):
+        cache.store(absent_key, read, _encode_probe_read)
+    return read
+
+
 def refresh_probes(
     rt: ModelBetaBoardRuntime,
     home: Path,
     now: datetime,
     run: CommandRunner,
     clock: Callable[[], datetime],
+    cache: CachedSourceReader | None = None,
+    revision_run: CommandRunner | None = None,
 ) -> ModelSourceReads:
     """Refresh the probe reads one at a time, the least recently read first, inside the stage deadline.
 
     A probe read within ``probe_refresh_seconds`` is kept as it is; one the deadline left no time for keeps its previous read,
-    which the board then draws stale or unread by that probe's own bound.
+    which the board then draws stale or unread by that probe's own bound. With a ``cache``, a probe that declares its schedule is read
+    from the source only when the cache holds no read for its current slot.
     """
     kept = load_previous_reads(home / rt.reads_relpath)
     onex = home / rt.onex_relpath
@@ -263,7 +364,9 @@ def refresh_probes(
             continue
         if (clock() - started).total_seconds() >= rt.stage_deadline_seconds:
             break
-        fresh = read_probe(probe, rt, onex, run, clock())
+        fresh = _read_probe_through_cache(
+            probe, rt, onex, run, clock, cache, home, revision_run
+        )
         # A failed read does not erase a good earlier one: the board ages it by the probe's own bound.
         if fresh.read == "unread" and previous is not None and previous.read == "read":
             continue

@@ -16,6 +16,9 @@ from omnimarket.nodes.node_beta_board_effect.handlers.handler_beta_board import 
 from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardRequest,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader_factory import (
+    build_cached_source_reader,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,8 +30,9 @@ def main(argv: list[str] | None = None) -> int:
         help="accepted for the module tick; this node keeps its files under the registry home",
     )
     args = ap.parse_args(argv)
+    cache = build_cached_source_reader()
     try:
-        result = HandlerBetaBoard().handle(
+        result = HandlerBetaBoard(cache=cache).handle(
             ModelBetaBoardRequest(stage=args.stage, home=args.home)
         )
     except (OSError, NodeOverlayError, ValidationError) as exc:
@@ -36,5 +40,7 @@ def main(argv: list[str] | None = None) -> int:
             f"REFUSED beta-board {args.stage}: {type(exc).__name__}: {exc}\n"
         )
         return 2
+    finally:
+        cache.close()
     sys.stdout.write(result.model_dump_json(indent=1) + "\n")
     return 0 if result.ok else 2

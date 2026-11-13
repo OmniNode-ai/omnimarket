@@ -33,6 +33,12 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_reads import 
     CommandRunner,
     refresh,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader_factory import (
+    build_cached_source_reader,
+    write_tally_receipt,
+)
+
+MVP_READS_STEP = "mvp_launch_reads"
 
 
 def _run_command(argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
@@ -74,21 +80,27 @@ def run_mvp_reads(
     except NodeOverlayError as exc:
         sys.stderr.write(f"REFUSED mvp-reads: {exc}\n")
         return 2
-    record = refresh(
-        overlay,
-        home=home,
-        onex_relpath=rt.onex_relpath,
-        reads_relpath=rt.reads_relpath,
-        read_timeout_seconds=rt.read_timeout_seconds,
-        stage_deadline_seconds=rt.stage_deadline_seconds,
-        refresh_seconds=rt.refresh_seconds,
-        run=run,
-        clock=clock or (lambda: datetime.now(UTC)),
-    )
+    cache = build_cached_source_reader(env)
+    try:
+        record = refresh(
+            overlay,
+            home=home,
+            onex_relpath=rt.onex_relpath,
+            reads_relpath=rt.reads_relpath,
+            read_timeout_seconds=rt.read_timeout_seconds,
+            stage_deadline_seconds=rt.stage_deadline_seconds,
+            refresh_seconds=rt.refresh_seconds,
+            run=run,
+            clock=clock or (lambda: datetime.now(UTC)),
+            cache=cache,
+        )
+    finally:
+        cache.close()
     failed = [r for r in record.reads if r.error is not None]
     sys.stdout.write(
         json.dumps({"workflows_read": len(record.reads), "unread": len(failed)}) + "\n"
     )
+    write_tally_receipt(cache, home, MVP_READS_STEP)
     return 0
 
 

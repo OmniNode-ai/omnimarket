@@ -23,6 +23,7 @@ class ModelDevRollIncidentEvent(BaseModel):
     recovery_verified: bool | None = None
     recovery_skipped_healthy: bool | None = None
     recovery_error: str | None = None
+    failed_phase: str | None = None
     runtime_kept_revision: str | None = None
     health_probes: list[dict[str, JsonValue]] = []
     log_captures: list[dict[str, JsonValue]] = []

@@ -135,6 +135,10 @@ units:
       # 23.5 s through that default and 15.9 s through the internal ledger source, which put the 30 s factory_floor step
       # over its limit on every cycle. Not required: unset, the default stands.
       ONEX_LEDGER_BUS_READ_COMMAND: ledger_read_command
+      # The board's source read cache (OMN-24050): the address of the Valkey its overlay (node_source_read_cache_effect) names these two
+      # variables for. Not required: unset, the cache is off for the run and every step reads its sources as before.
+      ONEX_SOURCE_CACHE_VALKEY_HOST: source_cache_valkey_host
+      ONEX_SOURCE_CACHE_VALKEY_PORT: source_cache_valkey_port
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST, ONEX_LEDGER_HOST_NAME]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would

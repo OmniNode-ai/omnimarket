@@ -68,6 +68,9 @@ handler_routing:
     handler:
       name: HandlerSeamEmitter
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_seam_emitter
+    event_model:
+      name: ModelSeamEmitterRequest
+      module: omnimarket.models.seam_reading.model_seam_emitter
     input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
     output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
 event_bus:
