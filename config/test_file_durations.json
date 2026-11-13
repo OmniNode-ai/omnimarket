@@ -3730,6 +3730,7 @@
   "tests/test_projection_handler_shim_omn13825.py": 0.04,
   "tests/test_projection_handlers.py": 1.45,
   "tests/test_projection_instruction_eval_omn12998.py": 0.1,
+  "tests/test_projection_intent_classification_failure_notice.py": 0.5,
   "tests/test_projection_kafka_auth_kwargs_omn15816.py": 0.05,
   "tests/test_projection_malformed_dlq_omn13548.py": 0.76,
   "tests/test_projection_probe_envelope_writes_row.py": 0.26,
