@@ -110,7 +110,6 @@ def _render(tmp_path: Path, units: dict[str, Any] | None = None) -> Any:
             registry_root=str(tmp_path / "omni"),
             project_path=str(path),
             expected_revision=revision,
-            marketplace_root=str(tmp_path / "market"),
             path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},
             capture_watch_db_url=DB_URL,
             capture_watch_db_password_ref=PASSWORD_REF,

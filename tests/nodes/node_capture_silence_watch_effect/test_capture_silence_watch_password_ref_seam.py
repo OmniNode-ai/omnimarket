@@ -168,7 +168,6 @@ def test_what_the_unit_persists_gives_the_node_the_dsn_it_dials(tmp_path: Path) 
     request = _request(
         tmp_path,
         mode="install",
-        marketplace_root=str(tmp_path / "market"),
         path_overrides=OVERLAY_ROOT_OVERRIDE,
         **{URL_FIELD: URL, REF_FIELD: REFERENCE},
     )
