@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24248
+title: Lab filler fences only tickets whose worker is alive
+summary: The triage fence list kept a ticket fenced for 48 hours after its CLAIM's lane last wrote any ledger row. At 15:31Z on 2026-11-13 it fenced 54 tickets of which 16 had a live lane; 37 of the 39 dead claims were child-ticket claims whose lane had written its own TERMINAL (naming the carrier ticket), so the claim stayed open, and 42 lab slots sat idle with dispatched=0. The fence nodes move from a frozen internal repository to omnimarket (RULING 2026-11-03T18:40:27Z) and the rule changes. A claim fences only while its lane is live, that is its runner receipt reads running or it wrote a ledger row inside the window the node overlay sets (45 minutes, the window queue-status and the landing controller use). A claim of any other lane is reported in stale_claims and fences nothing. No value is a default in code any more; the window, the pull-request window, the repositories and the receipt folder come from the node overlay. A lane's own TERMINAL also closes the child-ticket CLAIMs the lane runner wrote for that lane (the parent_ticket cell names the carrier ticket the TERMINAL names), because 37 of the 39 dead claims were such children. The deletion of the old nodes from the frozen repository follows once the operator host runs this one.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24248-live-claims-only
+  statement: A claim whose lane wrote no ledger row inside the overlay window and has no running receipt fences nothing; a claim whose lane wrote a row inside the window or has a running receipt still fences its ticket.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a claim whose lane wrote nothing within the live window and has no running receipt does not fence its ticket -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_compute/tests -k dead_claim_does_not_fence -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a claim whose lane has a running receipt, or a row inside the window, still fences its ticket -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_compute/tests -k live_claim_still_fences -q --no-cov'
+  - id: AC3
+    statement: 'AC3: the live window and the receipt folder come from the node overlay, with no value in code, and the golden and error chain tests pass -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_effect/tests -q --no-cov'
+  - id: AC4
+    statement: 'AC4: integrated: after the filler on the operator machine runs the moved step, its latest run reads fenced tickets close to the live-lane count and dispatched above zero -- falsifier: read lab-fill-latest.json on the operator machine; fenced_tickets count above the live-claim count or dispatched equal to zero fails'
+evidence_requirements:
+- kind: tests
+  description: The liveness, receipts, overlay, golden chain, error chain, parity and seam tests of the two moved nodes.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_compute/tests src/omnimarket/nodes/node_triage_fences_effect/tests -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24248-ac1
+  description: The dead-claim test fails with the 48 hour window (the control in the same file asserts the old window fences it) and passes with the 45 minute window.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_compute/tests -k dead_claim_does_not_fence -q --no-cov
+- id: dod-omn24248-ac2
+  description: A recent ledger row and a running receipt each keep a claim fencing.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_compute/tests -k live_claim_still_fences -q --no-cov
+- id: dod-omn24248-ac3
+  description: The overlay model has no defaults, a missing overlay refuses, and the golden chain, error chain, parity and seam tests pass.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_effect/tests -q --no-cov
+- id: dod-omn24248-integration-proof
+  description: After the operator host runs the moved node, the next lab fill run reads fenced tickets close to the live-lane count and dispatches above zero. Hosted CI cannot reach the operator host, so only the local Done gate reads this.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24248 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_compute/tests src/omnimarket/nodes/node_triage_fences_effect/tests -q --no-cov
