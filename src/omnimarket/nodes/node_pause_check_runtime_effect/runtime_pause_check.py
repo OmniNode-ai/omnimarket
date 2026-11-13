@@ -170,10 +170,14 @@ def decide_batch(
     return decided
 
 
-def _parse_prs(args: argparse.Namespace) -> tuple[ModelPauseCheckPr, ...]:
-    """The pull requests from ``--prs-json`` or the ``--pr`` flags."""
+def _parse_prs(
+    args: argparse.Namespace, document: Mapping[str, object]
+) -> tuple[ModelPauseCheckPr, ...]:
+    """The pull requests from ``--request-json``, ``--prs-json`` or the ``--pr`` flags."""
     entries: list[dict[str, object]]
-    if args.prs_json:
+    if document:
+        entries = document["prs"]  # type: ignore[assignment]
+    elif args.prs_json:
         entries = json.loads(Path(args.prs_json).read_text(encoding="utf-8"))
     else:
         labels = [x for x in (args.labels or "").split(",") if x]
@@ -207,13 +211,19 @@ def main(
     parser.add_argument("--prs-json", help="a JSON list of {pr, labels, lane}")
     parser.add_argument("--labels", help="comma-separated labels for --pr")
     parser.add_argument("--lane")
-    parser.add_argument("--rules-json", required=True)
+    parser.add_argument("--rules-json")
+    parser.add_argument(
+        "--request-json",
+        help='a JSON document {"prs": [...], "rules": {...}} from a file, or "-" for stdin',
+    )
     parser.add_argument("--now", help="UTC stamp an until= is compared against")
     parser.add_argument("--full-scan", action="store_true")
     parser.add_argument("--format", choices=("lines", "json"), default="lines")
     args = parser.parse_args(argv)
-    if not args.pr and not args.prs_json:
-        parser.error("name a pull request with --pr or --prs-json")
+    if not (args.pr or args.prs_json or args.request_json):
+        parser.error("name a pull request with --pr, --prs-json or --request-json")
+    if not (args.rules_json or args.request_json):
+        parser.error("name the pause rules with --rules-json or --request-json")
     env = os.environ if environ is None else environ
     overlay = load_overlay(env)
     hold_overlay = load_hold_overlay(env)
@@ -225,9 +235,19 @@ def main(
             f"pause_check: ledger not readable: {ledger or '<unset>'}: {exc}\n"
         )
         return 2
-    rules = json.loads(Path(args.rules_json).read_text(encoding="utf-8"))
+    document: dict[str, object] = {}
+    if args.request_json:
+        raw = (
+            sys.stdin.read()
+            if args.request_json == "-"
+            else Path(args.request_json).read_text(encoding="utf-8")
+        )
+        document = json.loads(raw)
+        rules = document["rules"]
+    else:
+        rules = json.loads(Path(args.rules_json).read_text(encoding="utf-8"))
     request = ModelPauseCheckRequest(
-        prs=_parse_prs(args),
+        prs=_parse_prs(args, document),
         rules=ModelPauseCheckRules.model_validate(rules),
         ledger_text=ledger_text,
         now=args.now or clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

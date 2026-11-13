@@ -219,3 +219,28 @@ def test_labels_still_pause_through_the_runtime(
     code, out, _, _ = run(tmp_path, FakeStateReader(()), capsys, argv)
     assert code == 3
     assert "LABEL hold" in out
+
+
+def test_a_request_document_on_stdin_carries_the_prs_and_the_rules(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    document = {
+        "prs": [{"pr": "omnimarket#7", "labels": ["hold"]}, {"pr": "omnimarket#8"}],
+        "rules": RULES,
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(document)))
+    environment = env(tmp_path, file_rows=(OTHER_ROW,), fallback=True)
+    code = main(
+        ["--request-json", "-", "--format", "json", "--now", NOW],
+        environ=environment,
+        point_read=QueryNodePointRead(FakeStateReader(())),
+        clock=lambda: datetime(2026, 11, 13, 12, tzinfo=UTC),
+    )
+    doc = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert [(r["pr"], r["verdict"]) for r in doc["results"]] == [
+        ("omnimarket#7", "PAUSED"),
+        ("omnimarket#8", "CLEAR"),
+    ]
