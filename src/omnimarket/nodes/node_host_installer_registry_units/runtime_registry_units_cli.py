@@ -72,6 +72,27 @@ def _set_option(value: str) -> str:
     return value
 
 
+def resolve_mode(
+    flags: list[str] | None, held: list[str]
+) -> tuple[str | None, str | None]:
+    """The mode and plan_verb the mode flags name.
+
+    When ``dry-run`` is among the flags and any flag is in ``held``, the dry run holds whatever the order: the mode is
+    ``dry-run`` and ``plan_verb`` is the last held flag unless that is ``install`` (a dry run of an install already
+    prints the install plan, so ``plan_verb`` stays ``None``). Otherwise the last flag wins, or ``None`` when there are
+    none.
+    """
+    if not flags:
+        return None, None
+    if "dry-run" in flags:
+        held_flags = [f for f in flags if f in held]
+        if held_flags:
+            last = held_flags[-1]
+            plan_verb = None if last == "install" else last
+            return "dry-run", plan_verb
+    return flags[-1], None
+
+
 def build_request(
     argv: list[str],
     environ: Mapping[str, str],
@@ -89,11 +110,12 @@ def build_request(
 
     parser = argparse.ArgumentParser(prog=command_line["program"], allow_abbrev=False)
     parser.add_argument("unit", nargs="?")
+    held: list[str] = command_line.get("held_by_dry_run", [])
     for mode in modes:
         parser.add_argument(
             f"--{mode}",
-            dest="mode",
-            action="store_const",
+            dest="modes",
+            action="append_const",
             const=mode,
             default=None,
         )
@@ -113,8 +135,11 @@ def build_request(
 
     resolved: dict[str, str] = {"home": home}
     values: dict[str, object] = {"unit": args.unit, "home": home}
-    if args.mode is not None:
-        values["mode"] = args.mode
+    chosen_mode, plan_verb = resolve_mode(args.modes, held)
+    if chosen_mode is not None:
+        values["mode"] = chosen_mode
+    if plan_verb is not None:
+        values["plan_verb"] = plan_verb
     path_overrides: dict[str, str] = {}
     for item in args.set:
         name, _, value = item.partition("=")

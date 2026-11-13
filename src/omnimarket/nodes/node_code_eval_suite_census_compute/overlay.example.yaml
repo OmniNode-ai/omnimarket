@@ -6,3 +6,6 @@ line:                          # delegation.capability_map.line
   margin: 0.07
   confidence: 0.95
   power: 0.8
+event_bus:                     # read by onex run-node, not by the node
+  type: kafka
+  lane: dev

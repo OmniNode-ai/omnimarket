@@ -534,6 +534,8 @@ _WRITE_ARGS: dict[str, list[str]] = {
         "Passed.",
     ],
     "pr-label": [f"{REPO}#77", "--add", "ci:ready", "--head-sha", HEAD],
+    "variable-set": [REPO, "--variable", "LAB_VAR_ONE"],
+    "variable-get": [REPO, "--variable", "LAB_VAR_ONE"],
 }
 
 
@@ -744,6 +746,8 @@ def _contract_1_2_0_request() -> type[BaseModel]:
             "pr-thread-resolve",
             "pr-review-post",
             "pr-label",
+            "variable-set",
+            "variable-get",
         }
     ),
 )
@@ -826,6 +830,35 @@ def test_pr_label_carries_the_labels(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "review_thread_id" not in payload
     assert payload["pr_number"] == 77
     assert payload["expected_head_sha"] == HEAD
+
+
+@pytest.mark.parametrize("verb_name", ["variable-set", "variable-get"])
+def test_variable_verbs_carry_the_name_and_never_a_value(
+    monkeypatch: pytest.MonkeyPatch, verb_name: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run([verb_name, *_WRITE_ARGS[verb_name], "--lane", "lane-x"])
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["variable_name"] == "LAB_VAR_ONE"
+    assert payload["operation"] == "repo_" + verb_name.replace("-", "_")
+    assert payload["pr_number"] is None
+    assert "value" not in payload
+    assert payload["expected_head_sha"] is None
+
+
+@pytest.mark.parametrize("verb_name", ["variable-set", "variable-get"])
+def test_variable_verbs_refuse_a_typed_value_and_a_missing_name(
+    monkeypatch: pytest.MonkeyPatch, verb_name: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    typed = _run([verb_name, REPO, "--variable", "LAB_VAR_ONE", "--value", "x"])
+    assert typed.exit_code != 0
+    missing = _run([verb_name, REPO, "--lane", "lane-x"])
+    assert missing.exit_code != 0
+    assert bus.published == []
 
 
 def test_pr_label_needs_a_label(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -28,6 +28,8 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
     HostRetentionPorts,
+    PreCommitStorePort,
+    read_references_portable,
 )
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelAgeClass,
@@ -49,7 +51,6 @@ from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
     _held_names,
     _remove,
     _scan,
-    read_process_references,
     tree_bytes,
 )
 
@@ -143,6 +144,14 @@ def validate_declarations(
                 f"{age.name}: keep_days {age.keep_days} is below the contract minimum "
                 f"{bounds.min_keep_days}"
             )
+        if (
+            age.kind == "pre_commit_store"
+            and age.index_db is not None
+            and Path(age.index_db).parent != Path(age.root)
+        ):
+            refusals.append(
+                f"{age.name}: index_db {age.index_db!r} must sit directly inside the root"
+            )
     for group in row.runner_groups:
         for runner_id in group.ids:
             if not _RUNNER_ID.fullmatch(runner_id):
@@ -232,6 +241,7 @@ def _age_class(
     live: set[str],
     mounts: set[str],
     unit_refs: ProcessReferences,
+    store: PreCommitStorePort,
     out: _Pass,
 ) -> None:
     root = Path(age.root)
@@ -253,8 +263,13 @@ def _age_class(
         reason: str | None = None
         if info.st_uid != uid:
             reason = "foreign_owner"
-        elif any(p.fullmatch(entry.name) for p in protected) or (
-            entry.name in bounds.protected_leaf_names_always
+        elif (
+            (
+                age.kind == "pre_commit_store"
+                and (entry.is_symlink() or not entry.is_dir())
+            )
+            or any(p.fullmatch(entry.name) for p in protected)
+            or (entry.name in bounds.protected_leaf_names_always)
         ):
             reason = "protected"
         elif entry.name in held:
@@ -282,6 +297,15 @@ def _age_class(
         )
         if dry_run:
             continue
+        if age.kind == "pre_commit_store" and age.index_db is not None:
+            try:
+                result = store.forget(age.index_db, path)
+            except OSError as exc:
+                out.errors.append(f"{entry}: {type(exc).__name__}")
+                continue
+            if result == "locked":
+                out.keep(age.name, path, "store_locked")
+                continue
         try:
             _remove(entry, uid)
         except OSError as exc:
@@ -451,7 +475,7 @@ class HandlerHostRetention:
         self,
         *,
         now: Callable[[], float] = time.time,
-        references: Callable[[], ProcessReferences | None] = read_process_references,
+        references: Callable[[], ProcessReferences | None] = read_references_portable,
         ports: HostRetentionPorts | None = None,
         uid: int | None = None,
     ) -> None:
@@ -526,6 +550,7 @@ class HandlerHostRetention:
                         live=live,
                         mounts=mounts,
                         unit_refs=ProcessReferences(blobs=units),
+                        store=ports.pre_commit_store,
                         out=out,
                     )
         if runs("runner_work"):

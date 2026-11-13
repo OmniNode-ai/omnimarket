@@ -97,6 +97,8 @@ class HandlerBranchDeployCommand:
         }
         if request.image_ref:
             envelope["image_ref"] = request.image_ref
+        if request.overlay_ref:
+            envelope["overlay_ref"] = request.overlay_ref
         if request.mode == "deploy":
             envelope["open_pr"] = (
                 f"{request.repo}#{request.pr_number}@{request.git_ref}"

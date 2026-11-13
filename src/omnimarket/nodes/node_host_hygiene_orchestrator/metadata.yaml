@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_hygiene_orchestrator
+version: 0.1.0
+description: Orchestrator - records host disk readings and, on a runtime tick, dispatches the due
+  host hygiene cleanups as lab work units; the cleanups, hosts and thresholds come from the overlay.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_hygiene_orchestrator: omnimarket.nodes.node_host_hygiene_orchestrator
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+- pydantic>=2.0
+- omnibase-infra>=0.38.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- orchestrator
+- host-hygiene
+pack: operator_tooling
+display_name: Host Hygiene Orchestrator
+node_role: orchestrator
