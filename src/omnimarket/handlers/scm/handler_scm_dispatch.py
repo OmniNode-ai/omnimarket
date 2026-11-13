@@ -36,13 +36,18 @@ from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmBusReceipt,
-    ModelScmRefusedVerb,
     ModelScmTerminal,
     ModelScmTopics,
     ModelScmVerb,
 )
 from omnimarket.models.scm.model_scm_local_verbs import (
     SCM_LOCAL_VERBS as SCM_LOCAL_VERBS,
+)
+from omnimarket.models.scm.model_scm_refused_verbs import (
+    LANDING_CONTROLLER as LANDING_CONTROLLER,
+)
+from omnimarket.models.scm.model_scm_refused_verbs import (
+    SCM_REFUSED_VERBS as SCM_REFUSED_VERBS,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 
@@ -192,20 +197,6 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
             ),
         )
     ),
-)
-
-LANDING_CONTROLLER: Final[str] = (
-    "the landing controller (hand the PR off with /omni:pr-handoff, needs=land)"
-)
-
-#: Verbs with no node operation. Not invented here: refused, naming where the
-#: work is done today.
-SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
-    ModelScmRefusedVerb(verb=verb, handled_by=LANDING_CONTROLLER)
-    for verb in (
-        *("pr-merge", "merge", "arm", "pr-arm"),
-        *("run-rerun", "pr-rerun", "update-branch", "pr-update-branch"),
-    )
 )
 
 
