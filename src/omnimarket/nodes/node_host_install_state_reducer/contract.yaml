@@ -64,6 +64,14 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.host-install-state-updated.v1
 
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-step.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-step.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: DESCRIBE}
+
 dependencies:
   packages:
     - "omnibase_core>=0.39.0"

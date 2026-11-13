@@ -26,15 +26,15 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel
 
-from omnimarket.events.host_install_file import (
+from omnimarket.models.host_install_file import (
     ModelHostInstallFileRequest,
     ModelHostInstallFileResult,
 )
-from omnimarket.events.host_install_readback import (
+from omnimarket.models.host_install_readback import (
     ModelHostInstallReadbackRequest,
     ModelHostInstallReadbackResult,
 )
-from omnimarket.events.host_install_state import (
+from omnimarket.models.host_install_state import (
     EnumHostInstallOutcome,
     EnumHostInstallState,
     EnumHostInstallStep,
@@ -42,7 +42,7 @@ from omnimarket.events.host_install_state import (
     ModelHostInstallReduceCommand,
     ModelHostInstallStepEvent,
 )
-from omnimarket.events.host_installer_registry_units import (
+from omnimarket.models.host_installer_registry_units import (
     ModelRegistryUnitsResult,
 )
 from omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_orchestrator import (
