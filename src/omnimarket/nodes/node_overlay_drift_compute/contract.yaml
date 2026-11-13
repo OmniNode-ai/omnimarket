@@ -64,6 +64,9 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 
+dependency_ownership:
+  overlay: "Supplied by the node's own command line, which loads the overlay and constructs the handler in process with the host, file source, environment, appender and clock."
+
 metadata:
   transport_type: local
 
