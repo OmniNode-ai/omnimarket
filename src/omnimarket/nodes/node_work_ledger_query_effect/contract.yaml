@@ -87,6 +87,15 @@ work_ledger_query:
   # table (326 thousand rows, 22.5 s). The node's overlay field default_rows_window_days, when an
   # overlay supplies it, replaces this declared default.
   rows_default_window_days: 3
+  # A rows query that carries page_size reads its window from the store once and holds it (OMN-24031):
+  # the cursor of each page names the window's until, so the next page is cut from the held copy
+  # instead of re-reading the window (measured on the dev bus: 108,757 rows over 7 days, about 109
+  # pages, each page paid the whole read). A page that finds no held window re-reads it, so the held
+  # copy is an optimisation, never a source of truth. The node's overlay fields
+  # rows_window_cache_ttl_seconds and rows_window_cache_max_windows replace these declared values.
+  rows_window_cache:
+    ttl_seconds: 600
+    max_windows: 2
   # A latest-state query with no page_size reads this many entries (OMN-23606): entries are small, so the
   # default page is larger than a point query's, and the answer bound below still refuses an answer over it.
   latest_default_page_size: 1000
@@ -148,6 +157,12 @@ dod_evidence:
     description: "A latest-state read that fails answers status=error, never an empty page"
   - test: tests/unit/nodes/node_work_ledger_query_effect/test_latest_state_seams.py::test_seam_the_answer_fields_the_consumers_read_exist
     description: "The answer fields the board floor step and the work-state projection read exist"
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py::test_reads_the_window_once_for_every_page
+    description: "A multi-page rows read of one window reads the store once, not once per page"
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py::test_error_chain_a_store_failure_on_any_page_is_an_error_answer_and_is_not_held
+    description: "A store failure on any page is an error answer, never an empty page, and a failed window is not held"
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py::test_reader_seam_a_window_read_through_the_reader_reads_the_store_once
+    description: "The reader node paging the query node by next_cursor reads the store once for the window"
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-20738, OMN-19513, OMN-21948, OMN-23541, OMN-23694]
+  related_tickets: [OMN-20738, OMN-19513, OMN-21948, OMN-23541, OMN-23694, OMN-24031]

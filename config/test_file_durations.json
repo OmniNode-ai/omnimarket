@@ -5048,6 +5048,7 @@
   "tests/unit/nodes/node_work_ledger_query_effect/test_rows_page_size.py": 0.17,
   "tests/unit/nodes/node_work_ledger_query_effect/test_rows_read_narrowed_in_store.py": 1.61,
   "tests/unit/nodes/node_work_ledger_query_effect/test_rows_read_narrowed_without_start.py": 2.2,
+  "tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py": 3.49,
   "tests/unit/nodes/node_work_ledger_query_effect/test_stale_holds.py": 0.05,
   "tests/unit/nodes/node_work_ledger_query_effect/test_stale_holds_chain.py": 0.24,
   "tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py": 0.01,
