@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-24187
+title: The closer reads a merged pull request's proof file through the shared GitHub reading service, so a lab machine's closer check returns a verdict instead of a refusal
+summary: 'node_dod_verify read a product repository''s contract at the pull request''s own head commit with a raw gh call. A squash-merged pull request''s head is not a commit the canonical clone holds,
+  and a lab lane may not read GitHub, so every product-repository ticket stopped on durable_gate::contract_on_occ_main with "raw GitHub read budget=0". The GitHub gateway node gains one read, repo_file
+  (one file''s text at one commit through the contents API; a 404 is a not-found result, any other failure is refused), and node_dod_verify reads the head contract through it, with no gh fallback.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24187-head-contract-through-gateway
+  statement: The closer's check on a merged ticket reads the contract at the pull request head through the GitHub gateway node on a lab lane and returns a verdict.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the gateway''s repo_file read returns one file''s text at one commit, answers a 404 as not found, and refuses any other failure, a directory, a non-text file and a path outside the
+      repository -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_gateway_effect/test_repo_file.py -q fails at the merge base'
+  - id: AC2
+    statement: 'AC2: node_dod_verify reads a product repository''s contract at a pull request head the clone does not hold through the gateway and makes no gh call, and an unreadable or missing file
+      refuses naming gateway repo_file -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_head_contract_through_gateway.py -q fails with the gh read restored'
+  - id: AC3
+    statement: 'AC3: a seam test holds the request node_dod_verify sends and the result it reads to the gateway''s own request and result models over the wire form, and fails when either side renames
+      a field -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k repo_file_seam fails when the request field file_path is renamed on one side'
+  - id: AC4
+    statement: 'AC4: integrated: in the running dev runtime, one dod_verify on a merged omnimarket ticket run on a lab host returns a verdict (pass or a named gap) and not the refusal "raw GitHub read
+      budget=0" -- falsifier: the result carries that refusal or "no answer on lane"'
+evidence_requirements:
+- kind: tests
+  description: The gateway and dod_verify tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_github_repo_gateway_effect/test_repo_file.py tests/unit/nodes/node_dod_verify/test_dod_verify_head_contract_through_gateway.py tests/unit/nodes/node_dod_verify/test_dod_verify_repo_file_seam.py
+    -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24187-ac1
+  description: 'AC1: the repo_file read returns the decoded text at the commit, a 404 as found=false, and refuses a 502, a directory answer, a non-UTF-8 file and a request that names no commit, no path
+    or a path outside the repository; fails at the merge base (operation unknown).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_gateway_effect/test_repo_file.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24187-ac2
+  description: 'AC2: a squash-merged pull request whose head the clone does not hold has its contract read through the gateway with no gh call; an unreadable file and an absent file each refuse; fails
+    with the old raw gh read.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_head_contract_through_gateway.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24187-ac3
+  description: 'AC3: the seam test sends the dod_verify request through its wire form, the gateway dispatch and the response wrapper, and fails when the result model leaves the discriminated union.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_file_seam.py -q -n 0 --no-cov -p no:cacheprovider -k repo_file_seam
+    cwd: .
+- id: dod-omn24187-ac4
+  description: 'hosted proxy for AC4: the dod_verify and gateway tests pass; the in-runtime reading of one dod_verify on a merged ticket is read on a lab host after the deploy and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_head_contract_through_gateway.py tests/unit/nodes/node_github_repo_gateway_effect/test_repo_file.py -q -n 0 --no-cov
+      -p no:cacheprovider
+    cwd: .
+- id: dod-omn24187-integration-proof
+  description: the gateway and dod_verify tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24187 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/nodes/node_github_repo_gateway_effect/test_repo_file.py tests/unit/nodes/node_dod_verify/test_dod_verify_head_contract_through_gateway.py tests/unit/nodes/node_dod_verify/test_dod_verify_repo_file_seam.py
+      -q --no-cov

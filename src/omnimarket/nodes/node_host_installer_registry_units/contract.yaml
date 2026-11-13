@@ -51,8 +51,19 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.host-registry-unit-requested.v1
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.host-registry-unit-requested.v1]
-  publish_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
-externally_consumed_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
+  # OMN-23991: the serve command topics, so boot provisioning creates them. `node_repo_state_query_effect` and
+  # `node_canonical_clone_refresh_effect` (host serve processes) read these two command topics and declare no event_bus
+  # block, so nothing created them; they are listed here, as node_pr_landing_snapshot_effect lists the tick-facts topic,
+  # and never as a subscription: a subscription would make the runtime wire a handler to every request under its own
+  # group. The host installer itself publishes nothing on them.
+  publish_topics:
+    - onex.evt.omnimarket.host-registry-unit-completed.v1
+    - onex.cmd.omnimarket.repo-state-query-requested.v1
+    - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-registry-unit-completed.v1
+  - onex.cmd.omnimarket.repo-state-query-requested.v1
+  - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -64,6 +75,25 @@ metadata:
 execution:
   deterministic: false
   side_effects: true
+# The command line (OMN-24108): `onex-host-install-units <unit> [--dry-run|--install|--status|--kickstart|--uninstall|--rollback]`,
+# declared in omnimarket's pyproject. Every request input is a `--<field-with-hyphens>` option; `--set NAME=PATH` repeats for
+# path_overrides. A value comes from the option, else the environment variable named under env_inputs, else the template under
+# defaults ({home}, {registry_root}, filled in that order; a path to a private repository is never a default here). A field named under required_inputs that
+# resolves to nothing is refused before anything is dispatched. `mode` is the node's own default, so a bare command is a dry run.
+command_line:
+  program: onex-host-install-units
+  modes: [dry-run, install, status, kickstart, uninstall, rollback]
+  # The modes a dry run holds back when --dry-run is on the command line with one of these verbs
+  held_by_dry_run: [install, kickstart, uninstall, rollback]
+  required_inputs: [registry_root]
+  env_inputs:
+    registry_root: OMNI_HOME
+    workspace_config_root: ONEX_WORKSPACE_CONFIG_ROOT
+    plans_path: ONEX_PLANS_KB_PATH
+    marketplace_root: ONEX_MARKETPLACE_ROOT
+    ledger_path: ONEX_LEDGER_PATH
+    source_root: ONEX_PLUGIN_ROOT
+  defaults: {}
 # The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
 # {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given), and
 # {overlays_root}: the overlays directory of the clone the lab_hosts overlay declares for the host the request names
@@ -124,6 +154,13 @@ units:
       # 23.5 s through that default and 15.9 s through the internal ledger source, which put the 30 s factory_floor step
       # over its limit on every cycle. Not required: unset, the default stands.
       ONEX_LEDGER_BUS_READ_COMMAND: ledger_read_command
+      # The board's source read cache (OMN-24050): the address of the Valkey its overlay (node_source_read_cache_effect) names these two
+      # variables for. Not required: unset, the cache is off for the run and every step reads its sources as before.
+      ONEX_SOURCE_CACHE_VALKEY_HOST: source_cache_valkey_host
+      ONEX_SOURCE_CACHE_VALKEY_PORT: source_cache_valkey_port
+      # The reference of the Valkey password the board's source read cache uses (OMN-24112). Not required: unset, the
+      # cache connects with no password.
+      ONEX_SOURCE_CACHE_VALKEY_PASSWORD_REF: source_cache_valkey_password_ref
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST, ONEX_LEDGER_HOST_NAME]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
@@ -199,6 +236,9 @@ units:
       # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
+      # The bus lane the store reads and writes is named in the overlay, so the lane declaration is found from the workspace root (OMN-24052).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
     # h101's registry root links to an external volume: launchd could not open logs there (exit 78, EX_CONFIG, no log).
@@ -278,6 +318,9 @@ units:
       # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
+      # The bus lane the store reads and writes is named in the overlay, so the lane declaration is found from the workspace root (OMN-24052).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
   # The same sweep on a macOS lab host (OMN-23404): a launchd tick. The registry root of such a host links to an external
@@ -451,6 +494,9 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # The bus lane the store reads and writes is named in the overlay, so the lane declaration is found from the workspace root (OMN-24052).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/overlay-store-load/last-run.json
     state_directory: .onex_state/overlay-store-load
   # The daily memory pilot run (node_memory_pilot_effect, OMN-23619): once a day one pass runs the pilot and writes
@@ -1451,3 +1497,48 @@ units:
           registry_root: "{registry_root}"
     evidence_file: .local/state/omni/silent-failure-alarm/last-run.json
     state_directory: .onex_state/silent-failure-alarm
+  rescue-patch-review:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.rescue-patch-review
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 21600
+      run_at_load: true
+      description: every 21600 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 900
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_rescue_patch_review_effect
+    entry_file: src/omnimarket/nodes/node_rescue_patch_review_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    evidence_file: .local/state/omni/rescue-patch-review/last-run.json
+    state_directory: .onex_state/rescue-patch-review
+  consumer-group-guard:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.consumer-group-guard
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 240
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_consumer_group_guard_effect
+    entry_file: src/omnimarket/nodes/node_consumer_group_guard_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_CONSUMER_GROUP_GUARD_BUS_LANE: dev
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/consumer-group-guard/last-run.json
+    state_directory: .onex_state/consumer-group-guard

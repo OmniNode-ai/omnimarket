@@ -30,7 +30,9 @@ entrypoint:
 execution:
   deterministic: false
   side_effects: true
-# The overlay file this node reads: `<overlay_root>/units.yaml`, schema `host_net_units.v1`.
+# The overlay file this node reads: `<overlay_root>/<units_file>`, schema `host_net_units.v1`. A request that names no `units_file`
+# reads `units_file` below; the overlays repository names `overlay.yaml` so that its ci loads the document through
+# ModelNetUnitsOverlay. The whole document is validated through that model before a unit is looked up.
 overlay:
   units_file: units.yaml
   schema: host_net_units.v1
@@ -49,6 +51,20 @@ unit_kinds:
 render:
   interface:
     placeholder: __INTERFACE__
+  # `render: values` fills every placeholder of the payload (`__NAME__`) from the entry's `values` map; a placeholder with
+  # no value, or a value with no placeholder, is refused. `gpu_budget_placeholder` is the one placeholder that is computed:
+  # from the unit's `gpu_budget` measurements (see `serving_unit`), never typed.
+  values:
+    placeholder_pattern: "__[A-Z0-9_]+__"
+    gpu_budget_placeholder: __GPU_MEMORY_UTILIZATION__
+# A unit that declares `serving: true` keeps a model server up. Its rendered unit file must restart on any exit while the
+# unit is enabled (an engine that exits 0 after an out-of-memory error is not restarted by `on-failure`), so a `Restart=`
+# line outside `restart_policies` is refused before anything is written. The GPU fraction is computed from the measured
+# resident sizes of the engine and of every process that shares the card; the result must still hold one full context of
+# KV cache.
+serving_unit:
+  restart_policies: [always]
+  gpu_fraction_decimals: 2
 sshd:
   binary: /usr/sbin/sshd
   services: [ssh.service, sshd.service]

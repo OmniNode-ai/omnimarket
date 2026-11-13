@@ -23,6 +23,7 @@ class EnumCodeBudgetRefusal(StrEnum):
     TOO_FEW_COMPLETED_SAMPLES = "too_few_completed_samples"
     OVER_CEILING = "over_ceiling"
     UNNAMED_INPUT_CEILING = "unnamed_input_ceiling"
+    UNNAMED_SAMPLING_CLASS = "unnamed_sampling_class"
 
 
 # The overlay key under which a site declares the input ceiling of a backend and task class (OMN-23631).
@@ -32,6 +33,41 @@ INPUT_CEILING_OVERLAY_KEY = "delegation.code_budget.input_ceilings"
 def input_ceiling_overlay_key(backend: str, task_class: str) -> str:
     """The overlay key that names the input ceiling of ``backend`` for ``task_class``."""
     return f"{INPUT_CEILING_OVERLAY_KEY}.{backend}.{task_class}"
+
+
+class ModelClassSampling(BaseModel):
+    """The sampling settings a task class is called with; a None field is not sent."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, ge=1)
+    enable_thinking: bool | None = None
+    thinking_token_budget: int | None = Field(default=None, ge=1)
+    top_p: float | None = Field(default=None, gt=0, le=1)
+    top_k: int | None = Field(default=None, ge=1)
+    min_p: float | None = Field(default=None, ge=0, le=1)
+    presence_penalty: float | None = Field(default=None, ge=-2, le=2)
+    repetition_penalty: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_at_least_one_value(self) -> ModelClassSampling:
+        if all(
+            getattr(self, name) is None
+            for name in (
+                "temperature",
+                "max_tokens",
+                "enable_thinking",
+                "thinking_token_budget",
+                "top_p",
+                "top_k",
+                "min_p",
+                "presence_penalty",
+                "repetition_penalty",
+            )
+        ):
+            raise ValueError("class_sampling entry must name at least one value")
+        return self
 
 
 class ModelCodeBudgetOverlay(BaseModel):
@@ -45,6 +81,17 @@ class ModelCodeBudgetOverlay(BaseModel):
     min_completed_samples: int = Field(ge=1)
     ceiling_s: float = Field(gt=0)
     input_ceilings: dict[str, dict[str, int]]
+    class_sampling: dict[str, ModelClassSampling] | None = None
+
+    @model_validator(mode="after")
+    def validate_class_sampling(self) -> ModelCodeBudgetOverlay:
+        if self.class_sampling is not None:
+            if not self.class_sampling:
+                raise ValueError("class_sampling must not be empty")
+            for name in self.class_sampling:
+                if not name:
+                    raise ValueError("class_sampling must name a class")
+        return self
 
     @model_validator(mode="after")
     def validate_class_budgets_s(self) -> ModelCodeBudgetOverlay:
@@ -83,7 +130,7 @@ class ModelCodeBudgetRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["resolve", "size", "input_ceiling"]
+    operation: Literal["resolve", "size", "input_ceiling", "sampling"]
     task_class: str = Field(min_length=1)
     measurements: tuple[ModelDraftMeasurement, ...] = ()
     overlay: ModelCodeBudgetOverlay
@@ -101,7 +148,7 @@ class ModelCodeBudgetResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["resolve", "size", "input_ceiling"]
+    operation: Literal["resolve", "size", "input_ceiling", "sampling"]
     task_class: str
     call_budget_s: float | None
     source: Literal["overlay", "measured"]
@@ -111,3 +158,4 @@ class ModelCodeBudgetResult(BaseModel):
     backend: str | None = None
     input_ceiling_tokens: int | None = None
     overlay_key: str | None = None
+    sampling: ModelClassSampling | None = None

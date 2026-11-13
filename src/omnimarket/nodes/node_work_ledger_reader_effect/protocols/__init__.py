@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     ModelPointAnswer,
@@ -23,8 +23,16 @@ class ProtocolReaderEventSink(Protocol):
     def emit(self, event: ModelReaderEvent) -> None: ...
 
 
+@runtime_checkable
+class ProtocolClosable(Protocol):
+    """A read port that holds a session; the handler closes it after one read."""
+
+    def close(self) -> None: ...
+
+
 __all__ = [
     "ModelPointQuery",
+    "ProtocolClosable",
     "ProtocolLedgerPointRead",
     "ProtocolReaderEventSink",
 ]

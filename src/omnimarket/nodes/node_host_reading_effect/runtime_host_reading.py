@@ -62,6 +62,11 @@ from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading imp
 from omnimarket.nodes.node_host_reading_effect.handlers.join_j2 import (
     JoinJ2,
 )
+from omnimarket.nodes.node_host_reading_effect.handlers.join_j2_hosts import (
+    failure_report,
+    parked_line,
+    split_probed_and_parked,
+)
 from omnimarket.nodes.node_host_reading_effect.handlers.schedule import (
     HostReadingScheduler,
     load_schedule,
@@ -245,8 +250,16 @@ def _join_j2(arguments: Sequence[str]) -> int:
             host.name for host in HostTableInventory(os.environ).hosts() if host.pooled
         )
     )
+    skipped_lines: list[str] = []
+    if not args.host:
+        hosts, parked, warning = split_probed_and_parked(
+            hosts, HostTableInventory(os.environ)
+        )
+        skipped_lines = [parked_line(host, reason) for host, reason in parked]
+        if warning:
+            sys.stderr.write(warning + "\n")
 
-    async def main() -> tuple[bool, list[str]]:
+    async def main() -> tuple[bool, list[str], str | None]:
         # A terminate cancels the run, so every host closes its open chains typed before the process ends.
         run = asyncio.current_task()
         if run is not None:
@@ -276,20 +289,23 @@ def _join_j2(arguments: Sequence[str]) -> int:
             finally:
                 await caller.stop()
         lines = [
-            f"J2 host={r.host} outcome={r.outcome.value} failure={r.failure_code or 'none'} "
-            f"correlation={r.correlation_id} unit={r.work_unit_id or 'none'} "
-            f"receipt_host={r.receipt_host or 'none'} advert_age_s={r.advert_age_seconds} "
-            f"detail={r.detail!r}"
-            for r in results
+            *skipped_lines,
+            *(
+                f"J2 host={r.host} outcome={r.outcome.value} failure={r.failure_code or 'none'} "
+                f"correlation={r.correlation_id} unit={r.work_unit_id or 'none'} "
+                f"receipt_host={r.receipt_host or 'none'} advert_age_s={r.advert_age_seconds} "
+                f"detail={r.detail!r}"
+                for r in results
+            ),
         ]
         golden = sum(r.ok for r in results)
         lines.append(
             f"RUN-J2 hosts={len(results)} golden={golden} failed={len(results) - golden}"
         )
-        return all_hosts_golden(results), lines
+        return all_hosts_golden(results), lines, failure_report(results)
 
     try:
-        ok, lines = asyncio.run(main())
+        ok, lines, report = asyncio.run(main())
     except LabRunBusError as exc:
         sys.stderr.write(f"J2-BUS-FAILED {exc}\n")
         return 1
@@ -299,6 +315,8 @@ def _join_j2(arguments: Sequence[str]) -> int:
         )
         return 1
     sys.stdout.write("\n".join(lines) + "\n")
+    if report is not None:
+        sys.stderr.write(report + "\n")
     return 0 if ok else 1
 
 
