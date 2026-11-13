@@ -469,6 +469,7 @@ def _uv_cache(
             out=out,
         )
         return
+    after = size
     try:
         ports.uv_cache.prune(
             cache.uv_binary, cache.path, cache.ci_prune, cache.timeout_seconds
@@ -477,9 +478,10 @@ def _uv_cache(
             cache.uv_binary, cache.path, cache.timeout_seconds
         )
     except OSError as exc:
+        # The cap has its own guards and does not depend on the prune: it measures from the size read before the prune.
         out.errors.append(f"{cache.path}: {type(exc).__name__}")
-        return
-    out.done(UV_CACHE, max(0, size - after))
+    else:
+        out.done(UV_CACHE, max(0, size - after))
     evict_over_cap(
         cache,
         size_after=after,

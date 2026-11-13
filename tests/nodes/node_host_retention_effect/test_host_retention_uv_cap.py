@@ -307,6 +307,25 @@ def test_scan_failure_adds_error_and_evicts_nothing(tmp_path: Path) -> None:
     assert uv.prunes, "the prune still ran"
 
 
+def test_a_failed_prune_is_an_error_and_the_cap_still_evicts_from_the_size_read_before_it(
+    tmp_path: Path,
+) -> None:
+    """Found on h101: the prune failed (the cache lock was held), and the cap pass must not be skipped with it."""
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    archive = FakeUvArchive(
+        entries=_entries(("old", 10 * _GIB, NOW - 30 * 86400.0, False, False))
+    )
+    uv = FakeUv(size=40 * _GIB, after=40 * _GIB, fail=True)
+    cache = _uv_cache(path, cap_gib=35.0)
+
+    result = _run_uv(tmp_path, cache, ports=make_ports(uv=uv, uv_archive=archive))
+
+    assert len(result.errors) == 1
+    assert "OSError" in result.errors[0]
+    assert archive.removed == ["archive-v0/old"]
+
+
 def test_unreadable_process_references_add_error_and_evict_nothing(
     tmp_path: Path,
 ) -> None:
