@@ -243,6 +243,8 @@ class ModelTuiDesign(BaseModel):
     toast_seconds: float = Field(gt=0)
     #: A failure reason longer than this is cut on screen.
     reason_chars: int = Field(ge=20)
+    #: A setup read this recent, and not shown yet, opens a tab as it is.
+    fresh_seconds: float = Field(gt=0)
     min_key_length: int = Field(ge=1)
 
     @model_validator(mode="after")

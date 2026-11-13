@@ -174,6 +174,15 @@ def test_command_tree_of_the_real_onex_has_the_setup_models_and_claude_commands(
         assert expected in paths, expected
 
 
+#: The setup read the TUI starts with (OMN-23413), which tests of a command leave out.
+_SETUP_READS = {("models", "list", "--json"), ("models", "connections", "--json")}
+
+
+def _commands(runner: object) -> list[tuple[str, ...]]:
+    """The runner's calls without the start-up setup read."""
+    return [c for c in runner.calls if c not in _SETUP_READS]  # type: ignore[attr-defined]
+
+
 class _Runner:
     def __init__(
         self,
@@ -271,7 +280,7 @@ async def test_enter_runs_the_named_cli_command_and_shows_its_output() -> None:
             await pilot.press("space" if key == " " else "slash" if key == "/" else key)
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.calls == [("models", "connections")]
+        assert _commands(runner) == [("models", "connections")]
         assert "qwen/qwen3.8-27b" in _log_text(app)
 
 
@@ -330,7 +339,7 @@ async def test_plain_text_is_delegated_and_its_receipt_reaches_the_status_bar() 
             await pilot.press(key)
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.calls == [("delegate", "hello", "--json")]
+        assert _commands(runner) == [("delegate", "hello", "--json")]
         text = _log_text(app)
         assert "A receipt proves the run happened." in text
         assert "Qwen3.8-27B" in text
@@ -378,7 +387,7 @@ async def test_a_prompting_command_runs_in_the_real_terminal() -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert runner.terminal_calls == [("models", "connect")]
-        assert runner.calls == []
+        assert _commands(runner) == []
 
 
 async def test_status_bar_shows_workspace_model_and_gateway() -> None:

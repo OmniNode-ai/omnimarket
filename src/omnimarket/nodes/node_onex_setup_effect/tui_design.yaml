@@ -103,6 +103,9 @@ auto_find_seconds: 0.8
 toast_seconds: 6
 # A test's failure reason is cut to this many characters on screen.
 reason_chars: 160
+# A setup read this recent, and not shown yet, opens a tab without reading it
+# again; an older one, or one a tab has shown, is read again after the tab opens.
+fresh_seconds: 30
 min_key_length: 8
 
 # The model table every model screen shows: /config (tick models), /model

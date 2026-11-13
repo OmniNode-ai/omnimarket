@@ -12,6 +12,7 @@ command the CLI runs; nothing here re-implements setup, routing or settings.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import shlex
@@ -1636,6 +1637,13 @@ class OnexTui(App[int]):
         self.setup_ok = False
         #: The setup as last read, so a tab opens at once and refreshes after.
         self._selection: ModelTuiSelection | None = None
+        #: The setup read started with the app, so the first tab need not wait
+        #: for one (measured 2026-11-13: 5.1 s before the first /model showed).
+        self._warming: asyncio.Task[ModelTuiSelection] | None = None
+        #: When the setup was last read, and whether any tab has opened yet: only
+        #: the start-up read can be one no tab has shown.
+        self._read_at = 0.0
+        self._shown = False
         #: What each server said, by (URL, models), with when it was asked.
         self._said: dict[
             tuple[str, tuple[str, ...]],
@@ -1656,6 +1664,9 @@ class OnexTui(App[int]):
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
+        self._warming = asyncio.create_task(self.load_selection())
+        # A failed start-up read is read again by the first tab; never unretrieved.
+        self._warming.add_done_callback(lambda t: t.cancelled() or t.exception())
 
     async def _refresh_status(self) -> None:
         try:
@@ -1936,11 +1947,25 @@ class OnexTui(App[int]):
         """The /config, /model or /delegation screen. After the first read it
         opens at once from the setup as last read, then refreshes it."""
         cached = self._selection
-        selection = cached or await self.load_selection()
+        selection = cached or await self._first_selection()
         screen = self._build_tab(name, selection)
-        if cached is not None:
+        fresh = time.monotonic() - self._read_at < tui_design().fresh_seconds
+        if cached is not None and (self._shown or not fresh):
             self.call_after_refresh(self._refresh_tab, screen)
+        self._shown = True
         return screen
+
+    async def _first_selection(self) -> ModelTuiSelection:
+        """The start-up read if it worked, else a read now, else nothing yet:
+        a tab always opens, and refreshes its setup when it can be read."""
+        warming, self._warming = self._warming, None
+        if warming is not None:
+            with contextlib.suppress(Exception):
+                return await warming
+        try:
+            return await self.load_selection()
+        except Exception:  # an unreadable setup must not keep the tab shut
+            return ModelTuiSelection()
 
     def _refresh_tab(self, screen: Screen[object]) -> None:
         if isinstance(screen, _TabbedScreen):
@@ -2121,6 +2146,7 @@ class OnexTui(App[int]):
             index,
             servers,
         )
+        self._read_at = time.monotonic()
         return self._selection
 
     async def _server_said(

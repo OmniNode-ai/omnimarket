@@ -20,7 +20,7 @@ import pytest
 from textual.pilot import Pilot
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus, OnexTui
-from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import _root
+from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import _commands, _root
 
 pytestmark = pytest.mark.unit
 
@@ -81,7 +81,7 @@ async def test_a_running_task_shows_progress_and_the_key_cancels_it(key: str) ->
     async with app.run_test(size=(120, 40)) as pilot:
         await _ask(pilot, "hi")
         await pilot.pause(1.2)
-        assert runner.calls == [("delegate", "hi", "--json")]
+        assert _commands(runner) == [("delegate", "hi", "--json")]
         assert "esc cancels" in _status_text(app)
         assert "working" in _status_text(app)
         await pilot.press(key)
@@ -101,7 +101,7 @@ async def test_a_second_task_waits_for_the_first() -> None:
         await pilot.pause()
         await _ask(pilot, "two")
         await pilot.pause()
-        assert runner.calls == [("delegate", "one", "--json")]
+        assert _commands(runner) == [("delegate", "one", "--json")]
         assert "a task is still running" in _log(app)
         await pilot.press("escape")
         await pilot.pause()

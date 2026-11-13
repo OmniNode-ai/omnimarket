@@ -608,6 +608,86 @@ async def test_a_server_that_did_not_answer_is_asked_again() -> None:
         assert asked.count(_VLLM) == 2
 
 
+# Measured on the real app 2026-11-13T04:01Z: the first /model showed nothing
+# for 5.1 s while the setup was read; later tabs showed in under 0.2 s.
+#   K4  the first tab open waits for a read that could have run at start-up.
+#   K5  the first open reads the setup a second time when one read is running.
+#   K6  (control) a start-up read that failed leaves the first open able to read.
+#   K7  a tab's re-read counted as unshown, so the next tab did not read again.
+
+
+class _Broken(_Runner):
+    """The first setup read fails, as a CLI that is not installed yet does."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.failed = False
+
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
+        if argv[:2] == ("models", "list") and not self.failed:
+            self.failed = True
+            raise OSError("onex is not on PATH yet")
+        return await super().capture(argv, stdin)
+
+
+async def test_the_setup_is_read_at_start_so_the_first_tab_opens_at_once() -> None:
+    """K4."""
+    runner = _Slow([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await pilot.pause(0.6)  # the user is still typing; the 0.3 s read is done
+        assert runner.calls.count(("models", "list", "--json")) == 1
+        await _type(pilot, "/model")
+        await pilot.press("enter")
+        await pilot.pause(0.1)  # well inside the 0.3 s a second read would take
+        assert isinstance(app.screen, ModelPickScreen)
+
+
+async def test_a_tab_opened_during_the_start_read_shares_that_read() -> None:
+    """K5."""
+    runner = _Slow([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _type(pilot, "/model")
+        await pilot.press("enter")
+        await _settle(pilot, 20)
+        assert isinstance(app.screen, ModelPickScreen)
+        assert runner.calls.count(("models", "list", "--json")) == 1
+
+
+async def test_every_tab_after_the_first_reads_the_setup_again() -> None:
+    """K7: a re-read a tab has shown is not mistaken for the unshown start-up read
+    (seen on the real app 2026-11-13T04:07Z: the third tab did not re-read)."""
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _settle(pilot, 20)
+        await _type(pilot, "/model")
+        await pilot.press("enter")
+        await _settle(pilot, 20)
+        reads = [runner.calls.count(("models", "list", "--json"))]
+        for _ in range(3):  # /delegation, /dashboard, /config
+            await pilot.press("tab")
+            await _settle(pilot, 20)
+            reads.append(runner.calls.count(("models", "list", "--json")))
+        assert reads == [1, 2, 3, 4]
+
+
+async def test_a_failed_start_read_does_not_stop_the_first_tab() -> None:
+    """K6."""
+    runner = _Broken([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await pilot.pause(0.3)
+        await _type(pilot, "/model")
+        await pilot.press("enter")
+        await _settle(pilot, 20)
+        assert isinstance(app.screen, ModelPickScreen)
+        assert runner.failed
+
+
 # Edge cases (OMN-23413, operator 2026-11-13: "cover all edge cases"):
 #   G1  Esc while an action runs tore the tab down and hid its outcome.
 #   G2  a tab switch while an action runs did the same.
