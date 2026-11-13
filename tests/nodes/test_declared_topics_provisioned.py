@@ -65,6 +65,110 @@ GROUP_B: tuple[str, ...] = (
 )
 
 
+# The topics each listed contract's event_bus publishes and subscribes, pinned by name: the seam with the boot
+# provisioning and the permission check, which fails when either side renames or drops a topic (OMN-24070).
+EXPECTED_PUBLISH_TOPICS: dict[str, tuple[str, ...]] = {
+    "node_broker_auth_refusal_reading_effect": (
+        "onex.cmd.omnimarket.broker-auth-refusal-requested.v1",
+        "onex.evt.omnimarket.broker-auth-refusal-written.v1",
+        "onex.evt.omnimarket.broker-auth-refusal-failed.v1",
+        "onex.evt.omnimarket.broker-auth-refusal-run-completed.v1",
+        "onex.evt.omnimarket.broker-auth-refusal-run-failed.v1",
+    ),
+    "node_bus_login_exposure_effect": (
+        "onex.cmd.omnimarket.bus-login-exposure-probe-requested.v1",
+        "onex.evt.omnimarket.bus-login-exposure-probed.v1",
+        "onex.evt.omnimarket.bus-login-exposure-probe-failed.v1",
+    ),
+    "node_commitment_check_runner_effect": (
+        "onex.cmd.omnimarket.commitment-check-requested.v1",
+        "onex.evt.omnimarket.commitment-verified.v1",
+        "onex.evt.omnimarket.commitment-regressed.v1",
+        "onex.evt.omnimarket.commitment-check-failed.v1",
+        "onex.evt.omnimarket.commitment-check-completed.v1",
+        "onex.evt.omnimarket.commitment-check-run-failed.v1",
+    ),
+    "node_daily_line_effect": ("onex.evt.omnimarket.daily-line-published.v1",),
+    "node_delegation_completion_rate_effect": (
+        "onex.cmd.omnimarket.delegation-completion-rate-run-requested.v1",
+        "onex.evt.omnimarket.delegation-completion-rate-run-started.v1",
+        "onex.evt.omnimarket.delegation-completion-rate-run-completed.v1",
+        "onex.evt.omnimarket.delegation-completion-rate-run-failed.v1",
+    ),
+    "node_delegation_events_defect_scan_effect": (
+        "onex.cmd.omnimarket.delegation-events-defect-scan-run-requested.v1",
+        "onex.evt.omnimarket.delegation-events-defect-scan-run-started.v1",
+        "onex.evt.omnimarket.delegation-events-defect-scan-run-completed.v1",
+        "onex.evt.omnimarket.delegation-events-defect-scan-run-failed.v1",
+    ),
+    "node_order_advance_effect": (
+        "onex.cmd.omnimarket.order-advance-requested.v1",
+        "onex.evt.omnimarket.order-advance-answered.v1",
+        "onex.evt.omnimarket.order-advance-failed.v1",
+    ),
+    "node_overlay_drift_effect": (
+        "onex.cmd.omnimarket.overlay-drift-requested.v1",
+        "onex.evt.omnimarket.overlay-drift-written.v1",
+        "onex.evt.omnimarket.overlay-drift-failed.v1",
+        "onex.evt.omnimarket.overlay-drift-run-completed.v1",
+        "onex.evt.omnimarket.overlay-drift-run-failed.v1",
+    ),
+    "node_stability_lane_refresh_effect": (
+        "onex.cmd.omnimarket.stability-refresh-requested.v1",
+        "onex.evt.omnimarket.stability-refresh-pin-accepted.v1",
+        "onex.evt.omnimarket.stability-refresh-refused.v1",
+        "onex.evt.omnimarket.stability-refresh-completed.v1",
+        "onex.evt.omnimarket.stability-refresh-failed.v1",
+    ),
+    "node_stop_escalation_effect": (
+        "onex.cmd.omnimarket.stop-escalation-requested.v1",
+        "onex.evt.omnimarket.stop-escalated.v1",
+    ),
+    "node_validator_workflow_orchestrator": (
+        "onex.cmd.omnimarket.validator-workflow-requested.v1",
+        "onex.evt.omnimarket.validator-workflow-started.v1",
+        "onex.evt.omnimarket.validator-workflow-validator-skipped.v1",
+        "onex.evt.omnimarket.validator-workflow-validator-completed.v1",
+        "onex.evt.omnimarket.validator-workflow-ratchet-refused.v1",
+        "onex.evt.omnimarket.validator-workflow-verdict-folded.v1",
+        "onex.evt.omnimarket.validator-workflow-completed.v1",
+        "onex.evt.omnimarket.validator-workflow-failed.v1",
+    ),
+    "node_lab_proof_judge_compute": (
+        "onex.cmd.omnimarket.lab-proof-judge-requested.v1",
+        "onex.evt.omnimarket.lab-proof-judge-decided.v1",
+        "onex.evt.omnimarket.lab-proof-judge-run-failed.v1",
+    ),
+    "node_ask_state_compute": (
+        "onex.evt.omnimarket.ask-state-completed.v1",
+        "onex.evt.omnimarket.ask-state-failed.v1",
+    ),
+    "node_delegated_test_control_compute": (
+        "onex.evt.omnimarket.delegated-test-control-completed.v1",
+        "onex.evt.omnimarket.delegated-test-control-failed.v1",
+    ),
+    "node_delegation_readiness_verdict_compute": (
+        "onex.evt.omnimarket.delegation-readiness-verdict-computed.v1",
+    ),
+    "node_delegation_scenario_days_compute": (
+        "onex.evt.omnimarket.delegation-scenario-green-days-computed.v1",
+    ),
+}
+
+EXPECTED_SUBSCRIBE_TOPICS: dict[str, tuple[str, ...]] = {
+    "node_ask_state_compute": ("onex.cmd.omnimarket.ask-state-requested.v1",),
+    "node_delegated_test_control_compute": (
+        "onex.cmd.omnimarket.delegated-test-control-requested.v1",
+    ),
+    "node_delegation_readiness_verdict_compute": (
+        "onex.cmd.omnimarket.delegation-readiness-verdict-compute-requested.v1",
+    ),
+    "node_delegation_scenario_days_compute": (
+        "onex.cmd.omnimarket.delegation-scenario-green-days-compute-requested.v1",
+    ),
+}
+
+
 def _declared_topics(contract: dict[str, Any]) -> set[str]:
     """Every topic the contract declares in its topics map, runtime_dispatch and terminal_event."""
     topics: set[str] = set()
@@ -203,3 +307,25 @@ def test_the_coverage_check_refuses_a_use_with_no_declared_grant() -> None:
 
     assert result.status == "refused"
     assert result.uncovered_new_uses == 1
+
+
+@pytest.mark.parametrize("node_dir", GROUP_A + GROUP_B)
+def test_event_bus_publish_topics_are_the_pinned_set(node_dir: str) -> None:
+    contract = yaml.safe_load(
+        (NODES / node_dir / "contract.yaml").read_text(encoding="utf-8")
+    )
+
+    published = tuple((contract.get("event_bus") or {}).get("publish_topics") or [])
+
+    assert published == EXPECTED_PUBLISH_TOPICS[node_dir]
+
+
+@pytest.mark.parametrize("node_dir", GROUP_A + GROUP_B)
+def test_event_bus_subscribe_topics_are_the_pinned_set(node_dir: str) -> None:
+    contract = yaml.safe_load(
+        (NODES / node_dir / "contract.yaml").read_text(encoding="utf-8")
+    )
+
+    subscribed = tuple((contract.get("event_bus") or {}).get("subscribe_topics") or [])
+
+    assert subscribed == EXPECTED_SUBSCRIBE_TOPICS.get(node_dir, ())
