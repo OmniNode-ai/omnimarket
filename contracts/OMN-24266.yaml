@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-24266
+title: The floor fill's store connection is a declared boundary so the fill can write its state row
+summary: The table-backed store of the floor fill opens its own database connection, which the freestanding imperative-IO scan reports as a blocking finding for a live module, so the fill's live profile was reverted and floor_fill_state holds 0 rows. The connection line carries the scan's sanctioned boundary mark, and two tests read the scan's verdict on the store's own source, one that fails on dev and a control that fails if the scanner stops flagging an unmarked connection.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24266-store-boundary
+  statement: The store's connection is a declared boundary the guard accepts, an unmarked connection is still an active finding, and a fill tick on the dev runtime leaves a row in floor_fill_state.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the store''s database connection is a declared boundary the freestanding imperative-IO scan accepts, with no active finding -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -k declared_boundary fails on dev today with an active finding and passes with the boundary mark'
+  - id: AC2
+    statement: 'AC2: the same scan still reports the connection as an active finding once the mark is removed -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -k control_unmarked fails if the scanner stops flagging an unmarked connection'
+  - id: AC3
+    statement: 'AC3: integrated: after a floor fill tick on the dev runtime the floor_fill_state table holds at least one row -- falsifier: psql on dev, select count(*) from public.floor_fill_state, reads 0 today and reads 1 or more after the tick'
+evidence_requirements:
+- kind: tests
+  description: The guard-boundary tests at the pushed head.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24266-ac1-boundary
+  description: The store's connection line carries the boundary mark, so the scan of the store's own source has no active finding; on origin/dev source the test fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -q --no-cov -n 0 -p no:randomly -k declared_boundary
+    cwd: .
+- id: dod-omn24266-ac2-control
+  description: With the mark removed the same scan reports an active finding, so the scan still flags the connection.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -q --no-cov -n 0 -p no:randomly -k control_unmarked
+    cwd: .
+- id: dod-omn24266-ac3-integrated
+  description: After a floor fill tick on the dev runtime the table holds at least one row; the read is a count on the dev database and fails while it reads 0. Hosted CI cannot reach dev, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: 'psql "$OMNIBASE_INFRA_DB_URL" -tA -c "select count(*) from public.floor_fill_state" | grep -v -x 0'
+    cwd: .
