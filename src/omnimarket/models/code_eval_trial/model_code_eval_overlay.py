@@ -17,6 +17,8 @@ from itertools import pairwise
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 # A check is a shell-free command word list joined by a single space (for
 # example ``uv run python -c pass``): words of plain characters, separated by
 # exactly one space, and no shell metacharacter anywhere.
@@ -24,7 +26,11 @@ _DRAFT_CHECK_COMMAND = re.compile(r"^[A-Za-z0-9_.+/=%:@,-]+( [A-Za-z0-9_.+/=%:@,
 
 
 class ModelCodeEvalRunnerOverlay(BaseModel):
-    """The runner's overlay. No key has a default."""
+    """The runner's overlay. No key has a default.
+
+    The optional ``event_bus`` key is read by the bus overlay reader behind
+    ``onex run-node`` and the node never reads it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -40,6 +46,7 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     unit_lane_prefix: str
     onex_executable: str = Field(min_length=1)
     caller_ticket: str | None = Field(pattern=r"^OMN-[0-9]+$")
+    event_bus: ModelNodeEventBus | None = None
 
     @field_validator("draft_checks")
     @classmethod

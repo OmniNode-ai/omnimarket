@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_seam_field_diff_check_effect
+node_type: effect
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+lifecycle: experimental
+description: >
+  The merge check over every producer-consumer contract pair. It resolves the model each
+  producer declares and the model each consumer validates into (only the tiers that name
+  the model the runtime itself uses), summarises both, and asks node_seam_field_diff_compute
+  which differences are new compared with the base revision. The base side is evaluated, not
+  looked up: the base revision's package source is extracted with git into a temporary
+  directory and the same loader runs there in a subprocess, so the base models are the
+  base's own. A difference the base already has is not judged and no exception list exists.
+  Exit 0 clean, 1 a new difference, 2 the base or the contracts could not be read.
+input_model:
+  name: ModelSeamFieldDiffCheckRequest
+  module: omnimarket.models.seam_field_diff.model_seam_field_diff_check
+output_model:
+  name: ModelSeamFieldDiffCheckResult
+  module: omnimarket.models.seam_field_diff.model_seam_field_diff_check
+handler:
+  module: omnimarket.nodes.node_seam_field_diff_check_effect.handlers.handler_seam_field_diff_check
+  class: HandlerSeamFieldDiffCheck
+  input_model: omnimarket.models.seam_field_diff.model_seam_field_diff_check.ModelSeamFieldDiffCheckRequest
+  output_model: omnimarket.models.seam_field_diff.model_seam_field_diff_check.ModelSeamFieldDiffCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: check_seam_fields
+    handler:
+      name: HandlerSeamFieldDiffCheck
+      module: omnimarket.nodes.node_seam_field_diff_check_effect.handlers.handler_seam_field_diff_check
+    input_model: omnimarket.models.seam_field_diff.model_seam_field_diff_check.ModelSeamFieldDiffCheckRequest
+    output_model: omnimarket.models.seam_field_diff.model_seam_field_diff_check.ModelSeamFieldDiffCheckResult
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 1200000
+  runtime_profiles:
+  - effects
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.seam-field-diff-check-requested.v1
+config:
+  # package name -> repo-relative source directory; the base revision's copy is extracted from here
+  repo_packages:
+    omnimarket: src/omnimarket
+  # packages whose contract.yaml files are read (installed packages resolve from the environment)
+  contract_packages:
+  - omnimarket
+  - omnibase_infra
+  - omnibase_core
+  # generic transport envelopes: a consumer model that is one of these is never a seam
+  envelope_models:
+  - omnibase_infra.event_bus.models.model_event_message.ModelEventMessage
+  nested_depth_limit: 3
+  # a scan that resolves fewer pairs than this fails (exit 2): a gate that cannot see must not pass
+  min_pairs_compared: 20
+  # seconds the subprocess that reads the base revision's models may run
+  base_load_timeout_s: 900
+metadata:
+  ticket: OMN-24121
+  transport_type: inmemory
