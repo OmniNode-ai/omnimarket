@@ -2586,6 +2586,7 @@
   "tests/projection/test_api_server_local_mode.py": 2.66,
   "tests/projection/test_dashboard_bundle_failure_omn20705.py": 0.1,
   "tests/projection/test_dashboard_bundle_omn19917.py": 0.29,
+  "tests/projection/test_dashboard_bundle_packaged_offline.py": 1.77,
   "tests/projection/test_dashboard_bundle_pin_omn20008.py": 0.02,
   "tests/projection/test_dashboard_bundle_pin_omn20728.py": 0.02,
   "tests/projection/test_dashboard_bundle_pin_omn20752.py": 0.02,
