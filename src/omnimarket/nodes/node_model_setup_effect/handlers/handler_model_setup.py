@@ -1391,6 +1391,8 @@ def _without_local_url(text: str) -> str:
 
 def _with_local_url(text: str, entry: dict[str, object]) -> str:
     """``text`` with ``entry`` appended as the last item of its ``backends`` list."""
+    # An emptied list is written ``backends: []`` (OMN-23413); grow it in place.
+    text = _EMPTIED_BACKENDS.sub("backends:", text)
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
@@ -1413,10 +1415,21 @@ def _with_local_url(text: str, entry: dict[str, object]) -> str:
 
 
 def _with_local_urls(text: str, entries: Sequence[dict[str, object]]) -> str:
-    """``text`` with ``entries`` appended, in order, to its ``backends`` list."""
+    """``text`` with ``entries`` appended, in order, to its ``backends`` list.
+
+    A ``backends:`` line left with no items is written ``backends: []``: bare,
+    YAML reads it as null, which emptied routing (OMN-23413).
+    """
     for entry in entries:
         text = _with_local_url(text, entry)
+    data = yaml.safe_load(text) if text.strip() else None
+    if isinstance(data, dict) and "backends" in data and data["backends"] is None:
+        text = _BARE_BACKENDS.sub("backends: []", text)
     return text
+
+
+_BARE_BACKENDS = re.compile(r"^backends:[ \t]*$", re.MULTILINE)
+_EMPTIED_BACKENDS = re.compile(r"^backends:[ \t]*\[\][ \t]*$", re.MULTILINE)
 
 
 def _free_local_url_id(entries: Sequence[dict[str, object]]) -> str:

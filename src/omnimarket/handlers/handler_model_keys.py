@@ -109,7 +109,7 @@ MODEL_LABELS: dict[str, str] = {
     "gemini": "Gemini",
     "openrouter": "OpenRouter",
     "openai": "OpenAI",
-    "reflection": "Reflection AI",  # OMN-23413
+    "reflection": "Reflection",  # OMN-23413; fits the 11-wide list column
     "anthropic": "Anthropic",
     "glm": "GLM",
     "ollama": "Ollama",

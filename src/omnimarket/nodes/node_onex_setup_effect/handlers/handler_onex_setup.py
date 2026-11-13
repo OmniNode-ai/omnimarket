@@ -34,6 +34,9 @@ from pathlib import Path
 
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
 from omnibase_core.errors.model_onex_error import ModelOnexError
+from omnibase_infra.handlers.handler_workspace_config_root_resolve import (
+    DEVELOPER_WORKSPACE_CONFIG_RELATIVE_PATH,
+)
 from pydantic import ValidationError
 
 from omnimarket.handlers.routing.byok_provider_backends import (
@@ -68,7 +71,14 @@ ARGUMENTS_STEP = "arguments"
 SETUP_MARKER = "# generated-by: onex setup"
 INSTALL_SH_MARKER = "# generated-by: omnibase install.sh"
 INSTALL_PATHS: tuple[str, ...] = ("local", "docker")
-RUNTIME_CONFIG_RELPATH = Path("config/onex/runtime/runtime_config.yaml")
+#: Where onex delegate reads a developer workspace's runtime config: the config
+#: root omnibase_infra resolves for it (.onex/workspace-config, OMN-20700). Setup
+#: wrote <ws>/config/onex/runtime/ before, which delegate never read, so
+#: `OMNIBASE_PATH=<ws> onex delegate` refused the workspace (OMN-23413). A
+#: checkout's materialised config still outranks this one in delegate.
+RUNTIME_CONFIG_RELPATH = DEVELOPER_WORKSPACE_CONFIG_RELATIVE_PATH / Path(
+    "config/onex/runtime/runtime_config.yaml"
+)
 STATE_FILE_NAME = "setup.json"
 USER_CONFIG_FILE_NAME = "config.yaml"
 _OWNED_MARKERS = (SETUP_MARKER, INSTALL_SH_MARKER)

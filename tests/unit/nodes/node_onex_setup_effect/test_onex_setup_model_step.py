@@ -37,6 +37,7 @@ from pydantic import SecretStr
 
 from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+    RUNTIME_CONFIG_RELPATH,
     HandlerOnexSetup,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
@@ -379,7 +380,7 @@ def test_wrong_key_resumes(
     assert WRONG_KEY not in failed.output
     # The earlier steps are kept.
     assert workspace.is_dir()
-    assert (workspace / "config/onex/runtime/runtime_config.yaml").is_file()
+    assert (workspace / RUNTIME_CONFIG_RELPATH).is_file()
     assert (home / ".onex/config.yaml").is_file()
     assert (home / ".onex/setup.json").is_file()
     assert recorder.delegations() == [], "a refused key must not reach a delegation"
