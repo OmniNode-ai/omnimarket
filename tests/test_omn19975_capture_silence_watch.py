@@ -827,6 +827,45 @@ def test_password_reference_resolved_into_dsn() -> None:
     assert overlays == ["node_capture_silence_watch_effect"]
 
 
+def test_password_reference_special_characters_round_trip_through_the_dsn() -> None:
+    from psycopg2.extensions import parse_dsn
+
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    awkward = "p w@:/%#?&='\\x"
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): awkward})
+    keyword_dsn = (
+        "host=127.0.0.1 port=5436 dbname=omnidash_analytics user=omninode_runtime"
+    )
+    for given in (PASSWORDLESS_DSN, keyword_dsn):
+        dsn = resolve_reads_source_dsn(
+            source,
+            environ=_reference_environ(**{source.dsn_env: given}),
+            resolve=_resolver_over(store),
+            load_store=lambda _name: None,
+        )
+        parsed = parse_dsn(dsn)
+        assert parsed["password"] == awkward
+        assert (parsed["user"], parsed["host"], parsed["dbname"]) == (
+            "omninode_runtime",
+            "127.0.0.1",
+            "omnidash_analytics",
+        )
+
+
+def test_keyword_dsn_with_password_is_used_as_given() -> None:
+    source = load_capture_watch_config(CONTRACT_PATH)[1]
+    given = "host=127.0.0.1 dbname=omnidash_analytics user=omninode_runtime password=already"
+    store = _Store({("/shared/env", "OMNINODE_RUNTIME_PASSWORD"): STORE_PASSWORD})
+    dsn = resolve_reads_source_dsn(
+        source,
+        environ=_reference_environ(**{source.dsn_env: given}),
+        resolve=_resolver_over(store),
+        load_store=lambda _name: None,
+    )
+    assert dsn == given
+    assert store.asked == []
+
+
 def test_password_reference_unresolved_fails_closed_naming_the_variable_only() -> None:
     source = load_capture_watch_config(CONTRACT_PATH)[1]
     store = _Store({})

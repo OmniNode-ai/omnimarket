@@ -229,12 +229,7 @@ class PostgresReadDatabaseAdapter:
             self._conn.close()
 
 
-__all__ = ["PostgresReadDatabaseAdapter", "dsn_with_password"]
-
-
-def dsn_with_password(dsn: str, password: str) -> str:
-    """Return a DSN with the given password, built by the driver's make_dsn."""
-    return str(psycopg2.extensions.make_dsn(dsn, password=password))
+__all__ = ["PostgresReadDatabaseAdapter"]
 
 
 def connect_read_only(

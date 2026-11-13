@@ -9,7 +9,7 @@ import re
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from omnimarket.handlers.delegation_scenario_settings import load_store_overlay
 from omnimarket.models.secret_store.model_secret_store_overlay import (
@@ -25,10 +25,10 @@ from omnimarket.nodes.node_capture_silence_watch_effect.models import (
 from omnimarket.nodes.node_source_read_cache_effect.handlers.password_reference import (
     resolve_password,
 )
-from omnimarket.projection.postgres_read_database import dsn_with_password
 
 NODE_NAME = "node_capture_silence_watch_effect"
 _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$")
+_KEYWORD_PASSWORD = re.compile(r"(?:^|\s)password\s*=", re.IGNORECASE)
 
 
 def validate_identifier(value: str) -> str:
@@ -36,6 +36,24 @@ def validate_identifier(value: str) -> str:
     if not _IDENTIFIER.fullmatch(value):
         raise CaptureWatchPolicyError(f"not a plain SQL identifier: {value!r}")
     return value
+
+
+def dsn_carries_password(dsn: str) -> bool:
+    """Whether a URL or keyword DSN already holds a password."""
+    return bool(urlsplit(dsn).password) or bool(_KEYWORD_PASSWORD.search(dsn))
+
+
+def dsn_with_password(dsn: str, password: str) -> str:
+    """The DSN with ``password`` added: a URL gets it percent-encoded in its user part, a keyword DSN a quoted ``password`` pair."""
+    parts = urlsplit(dsn)
+    if parts.scheme in ("postgresql", "postgres"):
+        host = parts.netloc.rpartition("@")[2]
+        user = quote(parts.username or "", safe="")
+        return parts._replace(
+            netloc=f"{user}:{quote(password, safe='')}@{host}"
+        ).geturl()
+    escaped = password.replace("\\", "\\\\").replace("'", "\\'")
+    return f"{dsn} password='{escaped}'"
 
 
 def resolve_reads_source_dsn(
@@ -59,7 +77,7 @@ def resolve_reads_source_dsn(
         )
     if (
         source.password_ref_env is None
-        or urlsplit(dsn).password
+        or dsn_carries_password(dsn)
         or not (env.get(source.password_ref_env, "") or "").strip()
     ):
         return dsn
