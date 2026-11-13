@@ -20,6 +20,7 @@ import asyncio
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import aiohttp
@@ -84,8 +85,8 @@ async def test_runtime_mount_publishes_a_command_the_consumer_model_accepts(
     received: list[ModelEventEnvelope[object]] = []
     got = asyncio.Event()
 
-    async def receive(message: object) -> None:
-        envelope = ModelEventEnvelope.model_validate_json(message.value)  # type: ignore[attr-defined]
+    async def receive(message: Any) -> None:
+        envelope = ModelEventEnvelope.model_validate_json(message.value)
         received.append(envelope)
         got.set()
 
@@ -115,7 +116,7 @@ async def test_runtime_mount_publishes_a_command_the_consumer_model_accepts(
         SKILL_TOPIC, group_id="workflow-gateway-proof", on_message=receive
     )
 
-    gateway = build_gateway(publisher=publisher)  # type: ignore[arg-type]
+    gateway = build_gateway(publisher=publisher)
     original_factory = http_app.create_app
     # Only the dependency port changes; the declared factory path, the ASGI adapter, the
     # typed handlers and the runtime mount bridge all run.

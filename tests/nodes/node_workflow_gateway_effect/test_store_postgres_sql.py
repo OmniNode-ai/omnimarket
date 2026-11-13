@@ -13,7 +13,7 @@ import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -26,6 +26,9 @@ from omnimarket.nodes.node_workflow_gateway_effect.handlers.store_postgres impor
 )
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.workflow_advisory_key import (
     advisory_lock_key,
+)
+from omnimarket.nodes.node_workflow_gateway_effect.handlers.workflow_postgres_pool import (
+    WorkflowPostgresPool,
 )
 from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_envelope import (
     ModelWorkflowCommandEnvelope,
@@ -83,7 +86,7 @@ class RecordingPool:
 
 def _store(pool: RecordingPool) -> PostgresWorkflowStore:
     return PostgresWorkflowStore(
-        pool=pool,  # type: ignore[arg-type]
+        pool=cast(WorkflowPostgresPool, pool),
         metric_key="workflow_executions",
         window_key="month",
         lock_namespace="workflow_month_quota",
@@ -213,8 +216,8 @@ async def test_api_key_identity_rejects_a_wrong_prefix_without_touching_the_pool
 ):
     pool = RecordingPool()
     identity = PostgresApiKeyTenantIdentity(
-        pool=pool, header="x-api-key", prefix="onxk_"
-    )  # type: ignore[arg-type]
+        pool=cast(WorkflowPostgresPool, pool), header="x-api-key", prefix="onxk_"
+    )
     assert await identity.resolve({"x-api-key": "other_abc"}) is None
     assert await identity.resolve({"x-api-key": ""}) is None
     assert await identity.resolve({}) is None
@@ -227,8 +230,8 @@ async def test_api_key_identity_resolves_a_hashed_key_to_its_tenant_and_key_id()
     key = "onxk_secret"
     pool = RecordingPool({"FROM tenant_api_keys": (TENANT_A, "tenant-a", UUID(int=9))})
     identity = PostgresApiKeyTenantIdentity(
-        pool=pool, header="X-API-Key", prefix="onxk_"
-    )  # type: ignore[arg-type]
+        pool=cast(WorkflowPostgresPool, pool), header="X-API-Key", prefix="onxk_"
+    )
     resolved = await identity.resolve({"x-api-key": key})
     assert resolved is not None
     assert (resolved.tenant_id, resolved.tenant_slug, resolved.principal_id) == (
@@ -241,6 +244,8 @@ async def test_api_key_identity_resolves_a_hashed_key_to_its_tenant_and_key_id()
     )  # the hash, never the key
     assert not any(key in str(args) for _, args in pool.log)
     missing = PostgresApiKeyTenantIdentity(
-        pool=RecordingPool(), header="x-api-key", prefix="onxk_"
-    )  # type: ignore[arg-type]
+        pool=cast(WorkflowPostgresPool, RecordingPool()),
+        header="x-api-key",
+        prefix="onxk_",
+    )
     assert await missing.resolve({"x-api-key": key}) is None

@@ -37,14 +37,18 @@ def _client(gateway: Gateway) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://runtime")
 
 
-def _store(**kwargs: object) -> InMemoryWorkflowStore:
-    options: dict[str, object] = {
-        "monthly_limit": None,
-        "hard_cap": False,
-        "clock": lambda: NOW,
-    }
-    options.update(kwargs)
-    return InMemoryWorkflowStore(**options)  # type: ignore[arg-type]
+def _store(
+    *,
+    monthly_limit: int | None = None,
+    hard_cap: bool = False,
+    fail_with: Exception | None = None,
+) -> InMemoryWorkflowStore:
+    return InMemoryWorkflowStore(
+        monthly_limit=monthly_limit,
+        hard_cap=hard_cap,
+        clock=lambda: NOW,
+        fail_with=fail_with,
+    )
 
 
 async def test_no_credential_is_401_absent_and_a_bad_key_is_401_invalid() -> None:

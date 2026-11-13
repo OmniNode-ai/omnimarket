@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import yaml
@@ -46,6 +47,9 @@ from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_catalog
 )
 from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_handler_settings import (
     ModelWorkflowSubmitSettings,
+)
+from omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_publisher import (
+    ProtocolWorkflowPublisher,
 )
 
 CATALOG_FIXTURE = Path(__file__).with_name("fixtures") / "workflow_catalog.yaml"
@@ -87,7 +91,7 @@ class Gateway:
 def build_gateway(
     *,
     store: InMemoryWorkflowStore | None = None,
-    publisher: InMemoryWorkflowPublisher | None = None,
+    publisher: ProtocolWorkflowPublisher | None = None,
     refill_per_minute: int = 60,
     burst_capacity: int = 60,
     clock_now: datetime = NOW,
@@ -97,6 +101,7 @@ def build_gateway(
         monthly_limit=None, hard_cap=False, clock=lambda: clock_now
     )
     publisher = publisher or InMemoryWorkflowPublisher()
+    memory_publisher = cast(InMemoryWorkflowPublisher, publisher)
     ids = iter(UUID(int=n) for n in range(1, 10_000))
     api_keys = InMemoryHttpTenantIdentity(
         {
@@ -135,7 +140,7 @@ def build_gateway(
         contracts=HandlerWorkflowContractsRead(catalog=catalog),
         max_body_bytes=65536,
     )
-    return Gateway(deps=deps, store=store, publisher=publisher)
+    return Gateway(deps=deps, store=store, publisher=memory_publisher)
 
 
 SKILL_TOPIC = sample_topic("delegate-skill")

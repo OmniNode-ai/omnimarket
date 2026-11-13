@@ -46,7 +46,7 @@ def _row(**changes: object) -> ModelWorkflowRow:
         "result_content": "alive",
     }
     fields.update(changes)
-    return ModelWorkflowRow(**fields)  # type: ignore[arg-type]
+    return ModelWorkflowRow.model_validate(fields)
 
 
 def test_terminal_event_hash_is_the_pinned_five_field_shape() -> None:
