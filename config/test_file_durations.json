@@ -4675,6 +4675,7 @@
   "tests/unit/nodes/node_ledger_rows_loader_effect/test_rows_loader_chain_events.py": 0.5,
   "tests/unit/nodes/node_ledger_rows_loader_effect/test_rows_loader_reader_seam.py": 2.0,
   "tests/unit/nodes/node_ledger_rows_loader_effect/test_runtime_rows_loader.py": 2.0,
+  "tests/unit/nodes/node_ledger_rows_loader_settings_effect/test_loader_run.py": 3.2,
   "tests/unit/nodes/node_ledger_rows_loader_settings_effect/test_runtime_settings.py": 3.7,
   "tests/unit/nodes/node_ledger_rows_loader_settings_effect/test_settings_chain_events.py": 2.61,
   "tests/unit/nodes/node_ledger_rows_loader_settings_effect/test_settings_overlays.py": 2.74,

@@ -106,3 +106,34 @@ class ModelLoaderSettingsResult(BaseModel):
             "timeout_s": self.timeout_s,
             "host": self.host,
         }
+
+
+class EnumLoaderRunStatus(StrEnum):
+    """The outcome of running the loader for a reader, and the exit code each one maps to."""
+
+    ANSWERED = "answered"
+    FILE_FALLBACK_ANSWERED = "file-fallback-answered"
+    FALLBACK_ALLOWED = "fallback-allowed"
+    UNREADABLE = "unreadable"
+
+
+class ModelLoaderRunRequest(BaseModel):
+    """This host (as for the settings) and the arguments the caller passes to the loader."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    registry_root: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    loader_args: tuple[str, ...]
+
+
+class ModelLoaderRunResult(BaseModel):
+    """What the loader run answered: the loader's own lines, or why the reader may read the file, or why it must not."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: EnumLoaderRunStatus
+    reason: str
+    stdout: str
+    stderr: str
+    settings: ModelLoaderSettingsResult

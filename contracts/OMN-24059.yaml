@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24059
 title: The ledger rows loader's per-machine settings become a service step in the market repository
-summary: The plugin's shared ledger readers took the rows loader command from an environment variable a person set on each machine. node_ledger_rows_loader_settings_effect resolves it instead from the machine's row of the ledger_rows_loader_hosts overlay, with the call bound and the loader overlay's file fallback flag, found under the overlay roots through node_overlay_reader (so the one overlay root resolver's answer is the roots). A host with no row is host-row-missing; a missing or malformed overlay is refused with the overlay and the fields named; no source supplies a default command. The reader falls back to the file only when the loader overlay allows it. The plugin's drain_map calls the node through the dispatch venv (a separate pull request).
+summary: The plugin's shared ledger readers took the rows loader command from an environment variable a person set on each machine. node_ledger_rows_loader_settings_effect resolves it instead from the machine's row of the ledger_rows_loader_hosts overlay, with the call bound and the loader overlay's file fallback flag, found under the overlay roots through node_overlay_reader (so the one overlay root resolver's answer is the roots). A host with no row is host-row-missing; a missing or malformed overlay is refused with the overlay and the fields named; no source supplies a default command. The reader falls back to the file only when the loader overlay allows it. The plugin's drain_map calls the node through the dispatch venv with --run, which runs the host's loader and answers by exit code whether the reader may read the file (a separate pull request).
 is_seam_ticket: true
 interface_change: false
 interfaces_touched: []
@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24059-ac1
-  description: 'AC1: 36 tests pass at the head (golden chain, error chain with one event each, 14 malformed hosts overlay cases, the resolver seam, the CLI). With the named break (a handler that takes the first host row for a host with no row) 7 of them fail; with the overlay lookup replaced by a root walk the seam test fails.'
+  description: 'AC1: 60 tests pass at the head (golden chain, error chain with one event each, 14 malformed hosts overlay cases, the resolver seam, the CLI, the loader run with its exit-code table). With the named break (a handler that takes the first host row for a host with no row) 7 of them fail, and a handler that answers fallback-allowed while the overlay forbids the file fails its flag check.'
   source: manual
   binds_ac:
   - AC1

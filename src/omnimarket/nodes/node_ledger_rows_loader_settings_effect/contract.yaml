@@ -9,6 +9,9 @@
 # the one overlay root resolver answers). A host with no row is host-row-missing; a missing or malformed
 # overlay is refused with the overlay named. Never a default command. The reader falls back to the file
 # only when the loader overlay allows it, and counts and prints the reason.
+# With --run the node also runs the host's loader with the reader's arguments (HandlerLoaderRun) and answers by exit code what the
+# reader does: 0 the loader's rows, 10 the loader read the file itself, 11 no answer and the overlay allows the file (the reason is
+# the last stderr line), 69 no answer and the file is forbidden, the ledger unreadable, or an overlay missing or malformed.
 name: node_ledger_rows_loader_settings_effect
 contract_name: node_ledger_rows_loader_settings_effect
 node_name: node_ledger_rows_loader_settings_effect
@@ -22,7 +25,8 @@ description: >
   Resolves the loader command of the host it runs on from the ledger_rows_loader_hosts overlay, with
   the call bound and the loader overlay's file fallback flag. A found row is answered (golden event),
   a host with no row is host-row-missing and a missing or malformed overlay is refused with the
-  overlay named (error event). No source supplies a default command.
+  overlay named (error event). No source supplies a default command. With --run it runs that loader and
+  answers whether the reader may read the file instead, which only the loader overlay's flag allows.
 
 handler:
   module: omnimarket.nodes.node_ledger_rows_loader_settings_effect.handlers.handler_loader_settings
@@ -30,14 +34,15 @@ handler:
   input_model: omnimarket.nodes.node_ledger_rows_loader_settings_effect.models.model_loader_settings.ModelLoaderSettingsRequest
 
 # HandlerLoaderSettings takes the two overlay sources, the event sink and the clock as constructor
-# parameters, so a reader runs it through its own CLI, not handler_routing.
+# parameters (HandlerLoaderRun takes the settings handler and the subprocess runner), so a reader runs
+# it through its own CLI, not handler_routing.
 
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
   purity: impure
   idempotent: true
-  side_effects: [event-journal]
+  side_effects: [event-journal, subprocess]
   timeout_ms: 30000
 
 input_model:
