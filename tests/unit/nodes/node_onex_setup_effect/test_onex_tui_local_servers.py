@@ -169,3 +169,142 @@ def test_two_servers_of_one_kind_on_one_port_get_two_connection_names() -> None:
     second = connection_name("vLLM", "http://gpu-b.test:8000")
     assert first != second
     assert all(name[:1].isalpha() and len(name) <= 64 for name in (first, second))
+
+
+# The screens must say only what is true (OMN-23413, operator 2026-11-13):
+#   S1  the status bar named a model while Auto picks per task, and said "model
+#       not set" before it had read anything.
+#   S2  /config said "Selected: none yet" with three models set up, and offered
+#       127.0.0.1:11434 instead of the user's own server.
+#   S3  the /delegation gateway note named a model two servers run without
+#       saying which server.
+#   S4  a delegated task's answering model replaced the model shown as first.
+
+
+async def test_the_status_bar_says_auto_and_how_many_models_when_none_is_first() -> (
+    None
+):
+    """S1."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus
+
+    async def auto() -> ModelTuiStatus:
+        return ModelTuiStatus(workspace="~/ws", models=3)
+
+    app = OnexTui(root=_root, runner=_Runner([]), load_status=auto)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        status = str(app.query_one("#status").render())
+        assert "Auto · 3 models" in status
+        assert "first" not in status
+
+
+async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
+    """S1: before the first read, nothing about a model is claimed."""
+    import asyncio
+
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus
+
+    gate = asyncio.Event()
+
+    async def slow() -> ModelTuiStatus:
+        await gate.wait()
+        return ModelTuiStatus(workspace="~/ws", models=0)
+
+    app = OnexTui(root=_root, runner=_Runner([]), load_status=slow)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        status = str(app.query_one("#status").render())
+        assert "reading your setup" in status
+        assert "not set" not in status
+        gate.set()
+        await pilot.pause()
+        await pilot.pause()
+        assert "no model set up" in str(app.query_one("#status").render())
+
+
+async def test_the_status_bar_names_the_server_of_the_first_model() -> None:
+    """S1 with a first model on a server."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus
+
+    async def first() -> ModelTuiStatus:
+        return ModelTuiStatus(
+            workspace="~/ws", model=_MODEL, first_url=_LLAMA, models=3
+        )
+
+    app = OnexTui(root=_root, runner=_Runner([]), load_status=first)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert f"{_MODEL} on llama.test:8000 first" in str(
+            app.query_one("#status").render()
+        )
+
+
+async def test_config_shows_what_is_set_up_and_offers_the_users_own_server() -> None:
+    """S2."""
+    from textual.widgets import Input
+
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        assert isinstance(app.screen, SetupScreen)
+        basket = str(app.screen.query_one("#basket", Static).render())
+        assert "none yet" not in basket
+        assert f"{_MODEL} on vllm.test:8000" in basket
+        assert f"{_MODEL} on llama.test:8000" in basket
+        assert app.screen.query_one("#url", Input).value == _VLLM
+        summary = str(app.screen.query_one(".summary", Static).render())
+        assert "3 models · 3 servers" in summary
+
+
+async def test_the_gateway_note_names_each_server() -> None:
+    """S3."""
+    runner = _Runner(
+        [],
+        by_command={
+            ("models", "list"): _rows(),
+            ("models", "connections"): json.dumps({"connections": []}),
+        },
+    )
+
+    def native(base: str, models: tuple[str, ...]):
+        kind = {_VLLM: "vLLM", _LLAMA: "llama.cpp", _OLLAMA: "Ollama"}[base]
+        return {
+            m: ModelLocalServerDetails(server=kind, native_messages=base != _OLLAMA)
+            for m in models
+        }
+
+    app = OnexTui(root=_root, runner=runner, load_status=_status, read_server=native)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/delegation")
+        note = str(app.screen.query_one("#dnote", Static).render())
+        assert f"{_MODEL} on vllm.test:8000" in note
+        assert f"{_MODEL} on llama.test:8000" in note
+        assert "saluki" not in note
+
+
+async def test_a_delegated_task_does_not_change_the_model_shown_as_first() -> None:
+    """S4: the answering model is the last run's; the first model stays."""
+    answer = json.dumps(
+        {
+            "run_id": "175dde92-0000-0000-0000-000000000000",
+            "result": {
+                "response": "done",
+                "model_name": "other-model",
+                "metrics": {"cost_usd": 0.0},
+            },
+        }
+    )
+    runner = _Runner([], captured=answer)
+    app = OnexTui(root=_root, runner=runner, load_status=_status)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _type(pilot, "hello")
+        await pilot.press("enter")
+        for _ in range(10):
+            await pilot.pause()
+        status = str(app.query_one("#status").render())
+        assert "Qwen3.8-27B first" in status
+        assert "last run other-model" in status

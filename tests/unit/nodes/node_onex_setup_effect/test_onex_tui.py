@@ -1127,9 +1127,10 @@ async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
             region = screen.query_one(f"#{button}").region
             assert region.height > 0, button
             assert region.bottom <= 30, button
-        assert (
-            str(screen.query_one("#keys").render())
-            == (tui_design().model_table.help["config"])
+        from omnimarket.nodes.node_onex_setup_effect.cli_model_table import keycaps
+
+        assert str(screen.query_one("#keys").render()) == str(
+            keycaps(tui_design().model_table.help["config"])
         )
         _tick(app, "qwen/qwen3.8-27b")
         await pilot.pause()
@@ -1260,12 +1261,16 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
             for i in range(grid.row_count)
         }
         mark = tui_design().model_table.unknown_mark
-        assert cells["saluki:latest"][0] == "Local model · Ollama"
+        bar = tui_design().model_table.row_bar
+        assert (
+            cells["saluki:latest"][0]
+            == f"{bar} Local model · Ollama  ollama.test:11434"
+        )
         assert cells["saluki:latest"][2] == "41K"
         columns = [c.key for c in tui_design().model_table.columns if c.key != "pick"]
         caps = columns.index("capabilities")
         assert "Tools" in cells["saluki:latest"][caps]
-        assert cells["Qwen3.8-27B"][0] == "Local model · vLLM"
+        assert cells["Qwen3.8-27B"][0] == f"{bar} Local model · vLLM  vllm.test:8000"
         assert cells["Qwen3.8-27B"][2] == mark
         assert cells["Qwen3.8-27B"][caps] == mark
         assert not any("?" in c for row in cells.values() for c in row)

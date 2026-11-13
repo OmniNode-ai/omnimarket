@@ -54,12 +54,23 @@ local_servers:
     # Ollama capability -> the table's capability label.
     capabilities: {tools: Tools, thinking: Reason, vision: Vision}
   # Any OpenAI-compatible server: GET <base><models_path>; each row's owner
-  # names the server, and vLLM states the context as max_model_len.
+  # names the server. The context it serves is the first of context_fields the
+  # row states (a dotted name reads a nested field): vLLM says max_model_len,
+  # llama.cpp says meta.n_ctx (meta.n_ctx_train is training, not serving).
   openai_models:
     models_path: /v1/models
-    context_field: max_model_len
+    context_fields: [max_model_len, meta.n_ctx]
     # owned_by -> the server's name, shown beside the provider.
     owners: {vllm: vLLM, llamacpp: llama.cpp}
+  # A server that states its capabilities on a page of its own: GET <base><path>
+  # once; each dotted field that is true or false sets that capability.
+  server_props:
+    llama.cpp:
+      path: /props
+      capabilities:
+        chat_template_caps.supports_tools: Tools
+        chat_template_caps.supports_reasoning_effort: Reason
+        modalities.vision: Vision
   # Anthropic Messages: POST <base><path> with an empty JSON body. A server that
   # has the route refuses the body as invalid; one without it answers one of
   # absent_statuses. Nothing is generated. A server that has the route can serve

@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Ask a server the user runs what it is and what it knows (OMN-23413).
 
-models.dev knows nothing about a model on the user's own Ollama or vLLM, so
-the server is asked: Ollama's model page gives the context and capabilities;
-an OpenAI-compatible model list names its owner (vLLM) and context. How to
-ask is data in configs/model_catalog.yaml (local_servers). Any failure leaves
-that model's details unknown; nothing here raises to a screen.
+models.dev knows nothing about a model on the user's own Ollama, vLLM or
+llama.cpp, so the server is asked: Ollama's model page gives the context and
+capabilities; an OpenAI-compatible model list names its owner (vLLM,
+llama.cpp) and the context it serves; llama.cpp's /props states its
+capabilities. How to ask is data in configs/model_catalog.yaml
+(local_servers). Any failure leaves that model's details unknown; nothing here
+raises to a screen.
 """
 
 from __future__ import annotations
@@ -124,16 +126,53 @@ def _ollama(
     )
 
 
+def _field(document: Any, dotted: str) -> Any:
+    """The value at a dotted name (``meta.n_ctx``) in nested mappings, or None."""
+    value = document
+    for part in dotted.split("."):
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(part)
+    return value
+
+
 def _from_list(row: Mapping[str, Any] | None) -> ModelLocalServerDetails:
     rules = catalog_config()["local_servers"]["openai_models"]
     if row is None:
         return _UNKNOWN
     owner = row.get("owned_by")
     server = dict(rules["owners"]).get(owner) if isinstance(owner, str) else None
-    return ModelLocalServerDetails(
-        server=str(server) if server else None,
-        context_tokens=_positive(row.get(str(rules["context_field"]))),
+    context = next(
+        (
+            found
+            for name in rules["context_fields"]
+            if (found := _positive(_field(row, str(name)))) is not None
+        ),
+        None,
     )
+    return ModelLocalServerDetails(
+        server=str(server) if server else None, context_tokens=context
+    )
+
+
+def _props(
+    base: str, server: str | None, get_json: GetJson, timeout: float
+) -> dict[str, CapabilityState]:
+    """Capabilities a server states on its own page (llama.cpp /props); {} if none."""
+    pages = catalog_config()["local_servers"].get("server_props") or {}
+    rules = pages.get(server) if server else None
+    if not isinstance(rules, Mapping):
+        return {}
+    try:
+        page = get_json(base + str(rules["path"]), timeout)
+    except Exception:  # the page is optional: silence leaves them unknown
+        return {}
+    found: dict[str, CapabilityState] = {}
+    for dotted, label in dict(rules["capabilities"]).items():
+        value = _field(page, str(dotted))
+        if isinstance(value, bool):
+            found[str(label)] = "yes" if value else "no"
+    return found
 
 
 def read_local_details(
@@ -153,8 +192,18 @@ def read_local_details(
     timeout = float(settings["timeout_seconds"])
     wanted = list(dict.fromkeys(models))
     base = base.rstrip("/")
-    listed = _listed(base, get_json or _get_json, timeout)
+    get = get_json or _get_json
+    listed = _listed(base, get, timeout)
     found = {model: _from_list(listed.get(model)) for model in wanted}
+    # A server that states its capabilities on its own page is read once for all.
+    servers = {said.server for said in found.values() if said.server}
+    stated = {server: _props(base, server, get, timeout) for server in sorted(servers)}
+    found = {
+        model: said.model_copy(update={"capabilities": stated[said.server]})
+        if said.server and stated.get(said.server) and not said.capabilities
+        else said
+        for model, said in found.items()
+    }
     ask = [model for model in wanted if found[model].server is None]
     if ask:
         post = post_json or _post_json

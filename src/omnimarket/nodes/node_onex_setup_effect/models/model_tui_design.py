@@ -137,6 +137,10 @@ class ModelTuiModelTable(BaseModel):
     price_tier_mark: str
     ticked: str = Field(min_length=1)
     unticked: str = Field(min_length=1)
+    #: Leads every row, in the colour of the row's deployment.
+    row_bar: str = Field(min_length=1)
+    #: Leads every status word, in the status's colour.
+    status_pill: str = Field(min_length=1)
     status: dict[str, ModelTuiWord]
     deployment: dict[str, ModelTuiWord]
     capability_colours: tuple[str, ...] = Field(min_length=1)

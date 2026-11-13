@@ -137,3 +137,58 @@ def test_the_messages_route_is_asked_once_per_server_and_404_or_405_mean_no(
     )
     assert asked == [_BASE + "/v1/messages"]
     assert {said.native_messages for said in found.values()} == {expected}
+
+
+# L4 (OMN-23413): a llama.cpp model showed context "-" and no capabilities,
+# though its list states the context it serves (meta.n_ctx) and its /props page
+# states tools, reasoning and vision. n_ctx_train (training) must not be read.
+_LLAMA_LIST = {
+    "data": [
+        {
+            "id": "Qwen3.8-27B",
+            "owned_by": "llamacpp",
+            "meta": {"n_ctx": 131072, "n_ctx_train": 262144},
+        }
+    ]
+}
+_LLAMA_PROPS = {
+    "chat_template_caps": {
+        "supports_tools": True,
+        "supports_reasoning_effort": True,
+    },
+    "modalities": {"vision": False},
+}
+
+
+def test_a_llama_cpp_model_shows_the_context_it_serves_and_its_props() -> None:
+    """L4."""
+    pages = {"/v1/models": _LLAMA_LIST, "/props": _LLAMA_PROPS}
+    read: list[str] = []
+
+    def get(url: str, timeout: float) -> Any:
+        read.append(url)
+        return pages[url.removeprefix(_BASE)]
+
+    def not_ollama(url: str, body: Mapping[str, Any], timeout: float) -> Any:
+        raise AssertionError("a model the list names is not asked as Ollama")
+
+    said = read_local_details(
+        _BASE, ["Qwen3.8-27B"], get_json=get, post_json=not_ollama
+    )["Qwen3.8-27B"]
+    assert said.server == "llama.cpp"
+    assert said.context_tokens == 131072  # served, not the 262144 trained
+    assert said.capabilities == {"Tools": "yes", "Reason": "yes", "Vision": "no"}
+    assert read == [f"{_BASE}/v1/models", f"{_BASE}/props"]  # each page once
+
+
+def test_a_llama_cpp_props_page_that_is_down_leaves_capabilities_unknown() -> None:
+    """L3 for the props page: the context still shows; capabilities stay unknown."""
+
+    def get(url: str, timeout: float) -> Any:
+        if url.endswith("/props"):
+            raise OSError("down")
+        return _LLAMA_LIST
+
+    said = read_local_details(_BASE, ["Qwen3.8-27B"], get_json=get)["Qwen3.8-27B"]
+    assert said.context_tokens == 131072
+    assert said.capabilities == {}

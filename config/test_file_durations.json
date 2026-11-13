@@ -5391,5 +5391,5 @@
   "tests/validators/test_routing_input_model_fit_effective_model.py": 7.47,
   "tests/validators/test_topic_graph_closure_gates.py": 11.85,
   "tests/unit/cli/test_local_model_by_server_omn23413.py": 6.37,
-  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py": 5.59
+  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py": 8.71
 }

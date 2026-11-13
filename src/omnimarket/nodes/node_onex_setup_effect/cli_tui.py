@@ -68,6 +68,7 @@ from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     ModelTable,
     entry_key,
+    keycaps,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_command import (
     HandlerOnexCommand,
@@ -172,10 +173,17 @@ class ModelTuiCommand(BaseModel):
 
 
 class ModelTuiStatus(BaseModel):
+    """What the status bar shows, read from the CLI (OMN-23413)."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     workspace: str
+    #: The model tried first; ``None`` when Auto picks per task.
     model: str | None = None
+    #: The server the first model runs on, for a model added by URL.
+    first_url: str | None = None
+    #: How many models are set up; ``None`` until the setup is read.
+    models: int | None = None
     gateway: bool = False
 
 
@@ -310,20 +318,26 @@ async def load_status() -> ModelTuiStatus:
     """Default model and gateway state, read through the CLI's own JSON output."""
     runner = HandlerOnexCommand()
     model: str | None = None
+    first_url: str | None = None
+    count = 0
     gateway = False
-    models: list[str] = []
-    await runner.stream(("models", "list", "--json"), models.append)
-    for line in models:
-        try:
-            row = json.loads(line)
-        except ValueError:
+    lines: list[str] = []
+    await runner.stream(("models", "list", "--json"), lines.append)
+    for row in _json_rows("\n".join(lines)):
+        if not row.get("set_up"):
             continue
-        first = row.get("first_model") or next(iter(row.get("models") or []), None)
-        if row.get("set_up") and first:
-            model = model or str(first)
-            if row.get("tried_first"):
-                model = str(first)
-                break
+        # A model two servers run counts once per server, as the tables show it.
+        on_servers = row.get("local_models")
+        items = (
+            on_servers
+            if isinstance(on_servers, list) and on_servers
+            else row.get("models")
+        )
+        count += len(items) if isinstance(items, list) else 0
+        # Only a chosen first model is "first"; otherwise Auto picks per task.
+        if row.get("tried_first") and row.get("first_model"):
+            model = str(row["first_model"])
+            first_url = str(row["first_url"]) if row.get("first_url") else None
     claude: list[str] = []
     await runner.stream(("claude", "status", "--json"), claude.append)
     for line in claude:
@@ -332,7 +346,11 @@ async def load_status() -> ModelTuiStatus:
         except ValueError:
             continue
     return ModelTuiStatus(
-        workspace=display_path(Path.cwd()), model=model, gateway=gateway
+        workspace=display_path(Path.cwd()),
+        model=model,
+        first_url=first_url,
+        models=count,
+        gateway=gateway,
     )
 
 
@@ -468,6 +486,32 @@ def _tab_strip(current: str) -> Tabs:
     return strip
 
 
+def _summary(selection: ModelTuiSelection) -> Static:
+    """The one line under the tabs: how many models, on how many servers, the first."""
+    servers = len({e.server_url for e in selection.entries if e.server_url})
+    first = (
+        _say(
+            "summary_first",
+            model=_on_server(selection.first[1], selection.first_url),
+        )
+        if selection.first
+        else _say("summary_auto")
+    )
+    line = _say(
+        "summary",
+        dot=tui_design().model_table.status_pill,
+        models=len(selection.entries),
+        servers=servers,
+        first=first,
+    )
+    return Static(Text(line, style=_style("secondary", "bold")), classes="summary")
+
+
+def _base(url: str) -> str:
+    """A server URL as the CLI stores it: no trailing ``/`` or ``/v1``."""
+    return url.strip().rstrip("/").removesuffix("/v1")
+
+
 class _TabbedScreen(ModalScreen[_ResultT]):
     """A screen that is one tab of three: Tab and Shift+Tab move between them."""
 
@@ -504,7 +548,8 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
 
     CSS = """
     SetupScreen { align: center middle; }
-    #form { width: 90%; max-width: 140; height: 90%; border: round $accent; padding: 0 2; background: $panel; }
+    #form { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #form .summary { height: 1; margin: 0 0 1 0; }
     #form Input, #form Select { margin-bottom: 0; }
     #found { height: 1fr; min-height: 3; display: none; }
     #note { color: $text-muted; height: auto; }
@@ -523,9 +568,11 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         list_models: ListModels | None = None,
         load_index: LoadIndex | None = None,
         read_server: ReadServer | None = None,
+        selection: ModelTuiSelection | None = None,
     ) -> None:
         super().__init__()
         self._runner = runner
+        self._selection = selection or ModelTuiSelection()
         self._list_models: ListModels = list_models or list_byok_models
         self._load: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
@@ -536,6 +583,7 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
             yield _tab_strip(self.TAB)
+            yield _summary(self._selection)
             yield Label(_say("config_title"))
             choices = _picker()
             first = next((e for e in choices if e.selected), choices[0])
@@ -557,8 +605,8 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
                 provider_labels={e.provider: e.label for e in choices},
                 id="found",
             )
-            yield Static(_say("basket_empty"), id="basket")
-            yield Static(tui_design().model_table.help["config"], id="keys")
+            yield Static(self._current_line(), id="basket")
+            yield Static(keycaps(tui_design().model_table.help["config"]), id="keys")
             with Horizontal(id="buttons"):
                 yield Button("Add", id="add")
                 yield Button("Save", variant="primary", id="save")
@@ -573,6 +621,46 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
     def _provider(self) -> str:
         return str(self.query_one("#provider", Select).value)
 
+    def _stored_url(self, provider: str) -> str | None:
+        """The server the user already runs ``provider``'s models on, if any."""
+        return next(
+            (
+                e.server_url
+                for e in self._selection.entries
+                if e.provider == provider and e.server_url
+            ),
+            None,
+        )
+
+    def _current_line(self) -> str:
+        """What is set up already, or that nothing is, before anything is ticked."""
+        if not self._selection.entries:
+            return _say("basket_empty")
+        return _say(
+            "basket_current",
+            models=", ".join(
+                _on_server(e.model_id, e.server_url) for e in self._selection.entries
+            ),
+        )
+
+    def _as_stored(self, entry: ModelCatalogEntry, url: str) -> ModelCatalogEntry:
+        """A found model already set up shows its stored status, not "listed"."""
+        stored = next(
+            (
+                e
+                for e in self._selection.entries
+                if e.provider == entry.provider
+                and e.model_id == entry.model_id
+                and (e.server_url is None or e.server_url == _base(url))
+            ),
+            None,
+        )
+        if stored is None:
+            return entry
+        return entry.model_copy(
+            update={"status": stored.status, "status_reason": stored.status_reason}
+        )
+
     def _value(self, widget_id: str) -> str:
         return self.query_one(f"#{widget_id}", Input).value.strip()
 
@@ -581,7 +669,9 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         url = self.query_one("#url", Input)
         # A default the user has not edited follows the provider; a typed URL stays.
         if not hosted and url.value.strip() in {"", *_server_defaults()}:
-            url.value = _default_url(self._provider())
+            url.value = self._stored_url(self._provider()) or _default_url(
+                self._provider()
+            )
         self.query_one("#key").display = hosted
         self.query_one("#url").display = not hosted
 
@@ -655,6 +745,7 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             ]
         if self._source() != wanted:  # the key, URL or provider changed meanwhile
             return
+        entries = [self._as_stored(e, wanted[1]) for e in entries]
         self._show_rows(entries)
         if entries:
             self.query_one("#found", ModelTable).focus_rows()
@@ -892,7 +983,11 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
 
     CSS = """
     DelegationScreen { align: center middle; }
-    #deleg { width: 90%; max-width: 150; height: 90%; border: round $accent; padding: 0 2; background: $panel; }
+    #deleg { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #deleg .summary { height: 1; margin: 0 0 1 0; }
+    #on { border: tall $primary; background: $surface; }
+    #on .switch--slider { color: $text-muted; background: $boost; }
+    #on.-on .switch--slider { color: $success; }
     #deleg Select { margin-bottom: 0; }
     #switch-row { height: auto; }
     #switch-row Label { padding: 1 1 0 0; }
@@ -930,6 +1025,7 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
         )
         with Vertical(id="deleg"):
             yield _tab_strip(self.TAB)
+            yield _summary(self._selection)
             yield Label(Text(words.title, style=_style("primary", "bold")))
             yield Select(
                 [(m.label, m.id) for m in modes],
@@ -948,7 +1044,9 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
                 id="selected",
             )
             yield Static("", id="dnote")
-            yield Static(tui_design().model_table.help["delegation"], id="dkeys")
+            yield Static(
+                keycaps(tui_design().model_table.help["delegation"]), id="dkeys"
+            )
             with Horizontal(id="dbuttons"):
                 yield Button("Save", variant="primary", id="dsave")
                 yield Button("Cancel", id="dcancel")
@@ -964,7 +1062,7 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
             note.update(Text(words.no_models, style=_style("warning")))
             return
         capable = [
-            e.model_id
+            _on_server(e.model_id, e.server_url)
             for e in self._selection.entries
             if self._selection.serves_gateway(entry_key(e))
         ]
@@ -1056,7 +1154,8 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
 
     CSS = """
     ModelPickScreen { align: center middle; }
-    #pick { width: 90%; max-width: 150; height: 90%; border: round $accent; padding: 0 2; background: $panel; }
+    #pick { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #pick .summary { height: 1; margin: 0 0 1 0; }
     #pnote { color: $text-muted; height: auto; }
     #pkeys { color: $text-muted; height: 1; }
     #auto { width: auto; margin-bottom: 0; }
@@ -1080,6 +1179,7 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
         )
         with Vertical(id="pick"):
             yield _tab_strip(self.TAB)
+            yield _summary(self._selection)
             yield Label(
                 Text(
                     _say("model_title"),
@@ -1097,7 +1197,7 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
                 id="models",
             )
             yield Static("", id="pnote")
-            yield Static(words.help["model"], id="pkeys")
+            yield Static(keycaps(words.help["model"]), id="pkeys")
 
     def on_mount(self) -> None:
         table = self.query_one("#models", ModelTable)
@@ -1271,28 +1371,40 @@ class OnexTui(App[int]):
 
     async def _refresh_status(self) -> None:
         try:
-            loaded = await self._load_status()
-            self._status = (
-                loaded
-                if loaded.model
-                else loaded.model_copy(update={"model": self._status.model})
-            )
+            self._status = await self._load_status()
         except Exception as error:  # status is a convenience; never crash on it
-            self._write(f"status unavailable: {error}")
+            self._write(_say("status_unavailable", error=error))
         self._render_status()
 
     def _render_status(self) -> None:
         sep = ("  ·  ", _style("muted"))
+        status = self._status
+        if status.models is None and status.model is None:
+            routing = (_say("status_reading"), _style("muted", "italic"))
+        elif status.model:
+            routing = (
+                _say("status_first", model=_on_server(status.model, status.first_url)),
+                _style("secondary", "bold"),
+            )
+        elif status.models:
+            routing = (
+                _say("status_auto", count=status.models),
+                _style("secondary", "bold"),
+            )
+        else:
+            routing = (_say("status_none"), _style("warning", "bold"))
+        pill = tui_design().model_table.status_pill
         parts: list[tuple[str, str]] = [
-            (self._status.workspace, _style("muted")),
-            sep,
-            (f"model {self._status.model or 'not set'}", _style("secondary", "bold")),
+            (f"{pill} ", _style("success" if status.gateway else "muted")),
+            routing,
             sep,
             (
-                ("gateway on", _style("success"))
-                if self._status.gateway
-                else ("gateway off", _style("muted"))
+                (_say("gateway_on"), _style("success", "bold"))
+                if status.gateway
+                else (_say("gateway_off"), _style("muted"))
             ),
+            sep,
+            (status.workspace, _style("muted")),
         ]
         if self._last_run:
             parts += [sep, (self._last_run, _style("accent"))]
@@ -1300,10 +1412,10 @@ class OnexTui(App[int]):
             seconds = int(time.monotonic() - self._task_started)
             parts += [
                 sep,
-                (f"working {seconds}s  ·  esc cancels", _style("warning", "bold")),
+                (_say("status_working", seconds=seconds), _style("warning", "bold")),
             ]
         else:
-            parts += [sep, ("/ commands  ctrl+c quit", _style("muted"))]
+            parts += [sep, (_say("status_hint"), _style("muted"))]
         self.query_one("#status", Static).update(Text.assemble(*parts))
 
     def _write(self, text: str | Text) -> None:
@@ -1480,7 +1592,7 @@ class OnexTui(App[int]):
         try:
             words = shlex.split(text[1:])
         except ValueError as error:
-            self._write(f"could not read that command: {error}")
+            self._write(_say("unreadable_command", error=error))
             return
         shortcut = tui_design().shortcut_for(words)
         if shortcut is not None:
@@ -1488,9 +1600,7 @@ class OnexTui(App[int]):
             return
         entry = self._resolve(words)
         if entry is None:
-            self._write(
-                f"no onex command matches '/{' '.join(words)}'; type / to list them"
-            )
+            self._write(_say("no_match", command=" ".join(words)))
             return
         await self._run(entry, tuple(words))
 
@@ -1505,7 +1615,7 @@ class OnexTui(App[int]):
         else:
             code = await self._runner.stream(argv, self._write)
         if code:
-            self._write(f"exit {code}")
+            self._write(_say("exit_code", code=code))
         if entry.path[:1] in (("models",), ("claude",)):
             self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
@@ -1521,9 +1631,14 @@ class OnexTui(App[int]):
         elif action == "clear":
             self.query_one("#output", RichLog).clear()
         elif action == "config":
+            selection = await self._load_selection()
             self.push_screen(
                 SetupScreen(
-                    self._runner, self._list_models, self._load_index, self._read_server
+                    self._runner,
+                    self._list_models,
+                    self._load_index,
+                    self._read_server,
+                    selection,
                 ),
                 self._apply_setup,
             )
@@ -1543,7 +1658,7 @@ class OnexTui(App[int]):
             models = ", ".join(choice.models)
             self._write(
                 Text(
-                    f"Setting up {_label(choice.provider)} · {models} …",
+                    _say("setting_up", provider=_label(choice.provider), models=models),
                     style=_style("foreground", "bold"),
                 )
             )
@@ -1573,8 +1688,11 @@ class OnexTui(App[int]):
             if ok:
                 self._write(
                     Text(
-                        f"Ready: {_label(choice.provider)} · {', '.join(ready)}. "
-                        "Type a task to try it, or /model to choose which goes first.",
+                        _say(
+                            "setup_ready",
+                            provider=_label(choice.provider),
+                            models=", ".join(ready),
+                        ),
                         style=_style("success", "bold"),
                     )
                 )
@@ -1740,34 +1858,39 @@ class OnexTui(App[int]):
                     style=_style("error"),
                 )
             )
-            self._write(Text(f"exit {code}", style=_style("muted")))
+            self._write(Text(_say("exit_code", code=code), style=_style("muted")))
             return
         metrics = result.get("metrics")
         metrics = metrics if isinstance(metrics, dict) else {}
-        model = str(result.get("model_name") or "unknown model")
+        model = str(result.get("model_name") or _say("run_unknown_model"))
         cost = float(metrics.get("cost_usd") or 0.0)
         facts = [model]
         if metrics.get("total_tokens"):
-            facts.append(f"{int(metrics['total_tokens']):,} tokens")
+            facts.append(_say("run_tokens", tokens=f"{int(metrics['total_tokens']):,}"))
         if metrics.get("latency_ms"):
-            facts.append(f"{int(metrics['latency_ms']) / 1000:.1f} s")
-        facts.append(f"${cost:.4f}")
+            facts.append(
+                _say("run_seconds", seconds=f"{int(metrics['latency_ms']) / 1000:.1f}")
+            )
+        facts.append(_say("run_cost", cost=f"{cost:.4f}"))
         if metrics.get("cost_savings_usd"):
-            facts.append(f"saved ${float(metrics['cost_savings_usd']):.4f}")
+            facts.append(
+                _say("run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}")
+            )
         run_id = str(document.get("run_id") or "") if document else ""
         self.query_one("#output", RichLog).write(
             Markdown(str(result["response"]).strip())
         )
         self._write(
             Text(
-                "  ·  ".join(facts) + (f"  ·  run {run_id[:8]}" if run_id else ""),
+                "  ·  ".join(facts)
+                + (f"  ·  {_say('run_id', run=run_id[:8])}" if run_id else ""),
                 style=_style("muted"),
             )
         )
-        self._last_run = f"last run ${cost:.4f}" + (
-            f" · {run_id[:8]}" if run_id else ""
+        # The model that answered is the last run's, not the one tried first.
+        self._last_run = _say("last_run", model=model, cost=f"{cost:.4f}") + (
+            f" · {_say('run_id', run=run_id[:8])}" if run_id else ""
         )
-        self._status = self._status.model_copy(update={"model": model})
         self._render_status()
 
 

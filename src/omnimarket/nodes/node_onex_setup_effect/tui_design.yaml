@@ -3,20 +3,21 @@
 # written in code. Loaded and checked by models/model_tui_design.py.
 
 # Colour tokens. Every widget and every line of output uses these by name.
+# Midnight neon (operator choice, 2026-11-13): deep navy, electric violet and cyan.
 theme:
   name: onex
   dark: true
-  primary: "#6a7bff"
-  secondary: "#00d2ff"
-  accent: "#ffb347"
-  success: "#3ddc97"
-  warning: "#ffb347"
-  error: "#ff6b81"
-  foreground: "#e6e9ef"
-  muted: "#8b95a7"
-  background: "#0e1117"
-  surface: "#151a23"
-  panel: "#1c2230"
+  primary: "#7c5cff"
+  secondary: "#22d3ee"
+  accent: "#c084fc"
+  success: "#34d399"
+  warning: "#fbbf24"
+  error: "#fb7185"
+  foreground: "#e2e8f0"
+  muted: "#7c88a8"
+  background: "#0b1020"
+  surface: "#10172e"
+  panel: "#141c38"
 
 # Left-to-right colour ramps for the banner words.
 gradients:
@@ -142,12 +143,15 @@ model_table:
   price_tier_mark: "*"
   ticked: "●"
   unticked: "○"
+  # A row starts with a bar in its deployment's colour; a status is a coloured pill.
+  row_bar: "▍"
+  status_pill: "●"
   status:
-    ready: {text: Ready, colour: success}
-    listed: {text: Available, colour: secondary}
-    untested: {text: Untested, colour: warning}
-    failed: {text: Failed, colour: error}
-    unavailable: {text: Unavailable, colour: muted}
+    ready: {text: READY, colour: success}
+    listed: {text: AVAILABLE, colour: secondary}
+    untested: {text: UNTESTED, colour: warning}
+    failed: {text: FAILED, colour: error}
+    unavailable: {text: UNAVAILABLE, colour: muted}
   deployment:
     local: {text: Local, colour: success}
     cloud: {text: Cloud, colour: secondary}
@@ -232,3 +236,32 @@ words:
   first_model: "{model} ({provider})"
   model_on_server: "{model} on {server}"
   first_failed: "could not change the first model: {reason}"
+  # /config: what is set up already, shown before anything new is ticked.
+  basket_current: "Set up now: {models}. Tick more to add them, or Esc to keep these."
+  setting_up: "Setting up {provider} · {models} …"
+  # The one line under the tabs: how many models, on how many servers, and the first.
+  summary: "{dot} {models} models · {servers} servers · {first}"
+  summary_auto: "Auto picks per task"
+  summary_first: "{model} first"
+  # The status bar at the foot of the main screen.
+  status_reading: "reading your setup…"
+  status_none: "no model set up · /config"
+  status_auto: "Auto · {count} models"
+  status_first: "{model} first"
+  gateway_on: "gateway on"
+  gateway_off: "gateway off"
+  status_working: "working {seconds}s · esc cancels"
+  status_hint: "/ commands · ctrl+c quit"
+  status_unavailable: "status unavailable: {error}"
+  unreadable_command: "could not read that command: {error}"
+  exit_code: "exit {code}"
+  no_match: "no onex command matches '/{command}'; type / to list them"
+  setup_ready: "Ready: {provider} · {models}. Type a task to try it, or /model to choose which goes first."
+  # One delegated task's facts, and the status bar's note of the last one.
+  run_unknown_model: "unknown model"
+  run_tokens: "{tokens} tokens"
+  run_seconds: "{seconds} s"
+  run_cost: "${cost}"
+  run_saved: "saved ${saved}"
+  run_id: "run {run}"
+  last_run: "last run {model} ${cost}"

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from decimal import Decimal
+from urllib.parse import urlparse
 
 from rich.text import Text
 from textual import events, on
@@ -87,8 +88,41 @@ def capability_text(entry: ModelCatalogEntry) -> Text:
 
 
 def status_text(entry: ModelCatalogEntry) -> Text:
+    """The status as a pill: its mark and word, in the status's colour."""
     word = _table().status[entry.status]
-    return Text(word.text, style=f"bold {_colour(word.colour)}")
+    return Text(
+        f"{_table().status_pill} {word.text}", style=f"bold {_colour(word.colour)}"
+    )
+
+
+def provider_text(entry: ModelCatalogEntry, label: str) -> Text:
+    """The row's bar in its deployment's colour, then the provider and server."""
+    bar = _table().deployment[entry.deployment].colour
+    text = Text(f"{_table().row_bar} ", style=f"bold {_colour(bar)}")
+    text.append(label, style=f"bold {_colour('primary')}")
+    if entry.server_url:  # two servers can run one model: say which one this is
+        host = urlparse(entry.server_url).netloc or entry.server_url
+        text.append(f"  {host}", style=_colour("muted"))
+    return text
+
+
+def keycaps(help_line: str) -> Text:
+    """A help line as keycaps: each "Key action" part shows its key highlighted.
+
+    The parts and their words are the screen's help line in tui_design.yaml;
+    the first word of each part is its key.
+    """
+    text = Text()
+    for position, part in enumerate(p.strip() for p in help_line.split("·")):
+        key, _, action = part.partition(" ")
+        if position:
+            text.append("   ")
+        text.append(
+            f" {key} ", style=f"bold {_colour('background')} on {_colour('secondary')}"
+        )
+        if action:
+            text.append(f" {action}", style=_colour("muted"))
+    return text
 
 
 def deployment_text(entry: ModelCatalogEntry) -> Text:
@@ -110,6 +144,7 @@ def _search_blob(entry: ModelCatalogEntry, provider_label: str) -> str:
             entry.provider,
             entry.model_id,
             entry.display_name,
+            entry.server_url or "",
             capabilities,
         )
     ).lower()
@@ -262,8 +297,7 @@ class ModelTable(Widget):
                         Text(mark, style=_colour("success" if on else "muted"))
                     )
             elif column.key == "provider":
-                label = self._label(entry)
-                cells.append(Text(label, style=f"bold {_colour('primary')}"))
+                cells.append(provider_text(entry, self._label(entry)))
             elif column.key == "model":
                 cells.append(Text(entry.model_id, style=_colour("foreground")))
             elif column.key == "context":
