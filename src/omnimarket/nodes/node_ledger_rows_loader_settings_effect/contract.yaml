@@ -38,6 +38,13 @@ handler:
 # them through the node's own CLI, not handler_routing (both fail boot resolution on required constructor
 # parameters).
 
+# The loader run path this node owns beside its settings handler. Descriptive binding only: nothing routes
+# through it, the node's own CLI runs it (HandlerLoaderRun takes the settings handler and the subprocess runner).
+loader_run:
+  handler:
+    name: HandlerLoaderRun
+    module: omnimarket.nodes.node_ledger_rows_loader_settings_effect.handlers.handler_loader_run
+
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
