@@ -21,10 +21,8 @@ from typing import Any
 
 import pytest
 
+from omnimarket.events.ledger_rows_loader_overlay import ModelRowsLoaderOverlay
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
-from omnimarket.nodes.node_ledger_rows_loader_effect.models import (
-    ModelRowsLoaderOverlay,
-)
 from omnimarket.nodes.node_ledger_rows_loader_settings_effect.adapters import (
     InMemoryLoaderSettingsSink,
 )
