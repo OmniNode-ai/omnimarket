@@ -57,7 +57,7 @@ WORKFLOW_RESULT_FILE = "/state/results/20261113T060000Z-lab-fill.workflow-result
 
 @pytest.fixture
 def policy() -> ModelLabFillFireOutcomePolicy:
-    return ModelLabFillFireOutcomePolicy(**POLICY_VALUES)  # type: ignore[arg-type]
+    return ModelLabFillFireOutcomePolicy.model_validate(POLICY_VALUES)
 
 
 def valid_result(**overrides: object) -> dict[str, object]:
@@ -102,7 +102,7 @@ def make_request(
         "alert_exit": None,
     }
     fields.update(overrides)
-    return ModelLabFillFireOutcomeRequest(**fields)  # type: ignore[arg-type]
+    return ModelLabFillFireOutcomeRequest.model_validate(fields)
 
 
 def with_result(**overrides: object) -> dict[str, object]:

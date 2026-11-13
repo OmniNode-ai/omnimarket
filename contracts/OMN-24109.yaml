@@ -67,6 +67,14 @@ dod_evidence:
         check_value: >-
           python3 -c 'import json, os; rows = [json.loads(l) for l in open(os.path.join(os.environ["OMNI_HOME"], ".onex_state/morning-workflows/fire-receipts.jsonl")) if l.strip()]; last = [r for r in rows if r.get("workflow") == "lab-fill" and r.get("phase") in ("completed", "degraded", "failed", "result_invalid", "timeout")][-1]; assert (last["phase"], last["exit"], last["result_channel"]) == ("completed", 0, "read"), last'
         cwd: .
+  - id: dod-omn24109-deploy-source
+    description: The hosted runner reads the launcher entry at the evaluated repository revision and checks that it refuses with the typed line when its overlay is unreadable. This source readback does not claim a host install.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_launcher_effect/runtime_lab_fill_launcher.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "lab-fill-launcher: REFUSED"'
+        cwd: .
   - id: dod-omn24109-integration-proof
     description: The pushed head ran the compute node's and the launcher's tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual

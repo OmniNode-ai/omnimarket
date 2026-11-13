@@ -30,7 +30,8 @@ def _contract() -> dict[str, Any]:
         .joinpath("contract.yaml")
         .read_text(encoding="utf-8")
     )
-    return yaml.safe_load(text)  # type: ignore[no-any-return]
+    document: dict[str, Any] = yaml.safe_load(text)
+    return document
 
 
 def test_golden_chain_contract_is_in_process_only() -> None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
+from typing import cast
 
 import pytest
 import yaml
@@ -21,6 +22,7 @@ from omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fi
 )
 from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models import (
     ModelLabFillFireOutcomeRequest,
+    ModelLabFillFireOutcomeResult,
 )
 from omnimarket.nodes.node_lab_fill_launcher_effect.models import (
     ModelLabFillLauncherResult,
@@ -42,7 +44,8 @@ def _example() -> dict[str, object]:
         .joinpath("overlay.example.yaml")
         .read_text("utf-8")
     )
-    return yaml.safe_load(text)  # type: ignore[no-any-return]
+    document: dict[str, object] = yaml.safe_load(text)
+    return document
 
 
 def test_overlay_example_loads_through_the_overlay_model() -> None:
@@ -61,7 +64,7 @@ def test_overlay_refuses_a_missing_block(block: str) -> None:
 
 def test_overlay_refuses_a_missing_policy_key() -> None:
     document = _example()
-    policy = dict(document["policy"])  # type: ignore[call-overload]
+    policy = dict(cast("dict[str, object]", document["policy"]))
     del policy["class_blind"]
     document["policy"] = policy
     with pytest.raises(ValidationError):
@@ -116,7 +119,9 @@ def _status_idle(dispatched: int) -> dict[str, object]:
     )
 
 
-def _judge(value: dict[str, object], **overrides: object):  # type: ignore[no-untyped-def]
+def _judge(
+    value: dict[str, object], **overrides: object
+) -> ModelLabFillFireOutcomeResult:
     overlay = ModelLabFillLauncherOverlay.model_validate(_example())
     fields = {
         "policy": overlay.policy,
@@ -136,7 +141,9 @@ def _judge(value: dict[str, object], **overrides: object):  # type: ignore[no-un
         "snapshot_present": True,
     }
     fields.update(overrides)
-    return HandlerLabFillFireOutcome().handle(ModelLabFillFireOutcomeRequest(**fields))  # type: ignore[arg-type]
+    return HandlerLabFillFireOutcome().handle(
+        ModelLabFillFireOutcomeRequest.model_validate(fields)
+    )
 
 
 def test_seam_result_file_the_status_step_writes_is_read_by_the_judge() -> None:

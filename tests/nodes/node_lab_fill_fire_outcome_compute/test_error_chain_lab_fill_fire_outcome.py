@@ -83,7 +83,7 @@ def test_error_chain_marker_counts_only_as_a_first_word(log: str, seen: bool) ->
 def test_error_chain_the_policy_refuses_a_missing_setting() -> None:
     values = {k: v for k, v in POLICY_VALUES.items() if k != "degraded_exit"}
     with pytest.raises(ValidationError):
-        ModelLabFillFireOutcomePolicy(**values)  # type: ignore[arg-type]
+        ModelLabFillFireOutcomePolicy.model_validate(values)
 
 
 def test_error_chain_the_request_refuses_an_unknown_field(
