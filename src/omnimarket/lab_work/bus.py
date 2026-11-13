@@ -582,8 +582,11 @@ class LabWorkCaller:
     async def dispatch(
         self, request: ModelLabWorkUnitRequest
     ) -> ModelLabWorkUnitReceipt:
+        # exclude_none: an unset optional field (code_draft on an ordinary unit) stays off the wire, so a pool host still
+        # running a request model from before the field existed (extra="forbid") accepts the unit. OMN-19998: h106 and h201
+        # refused every J2 canary unit with "code_draft: Extra inputs are not permitted" while the caller sent null.
         envelope = ModelEventEnvelope[dict[str, object]](
-            payload=request.model_dump(mode="json"),
+            payload=request.model_dump(mode="json", exclude_none=True),
             correlation_id=uuid.uuid4(),
             event_type=event_type_for(self._topics.command),
         )
