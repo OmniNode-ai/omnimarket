@@ -892,6 +892,7 @@ node_lane_closeout_sweep_effect = "omnimarket.nodes.node_lane_closeout_sweep_eff
 node_lane_container_budget_compute = "omnimarket.nodes.node_lane_container_budget_compute"
 node_lane_dispatch_effect = "omnimarket.nodes.node_lane_dispatch_effect"
 node_lane_failure_recovery_effect = "omnimarket.nodes.node_lane_failure_recovery_effect"
+node_lane_gh_read_guard_effect = "omnimarket.nodes.node_lane_gh_read_guard_effect"
 node_lane_gh_read_scan_compute = "omnimarket.nodes.node_lane_gh_read_scan_compute"
 node_lane_github_budget_effect = "omnimarket.nodes.node_lane_github_budget_effect"
 node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
