@@ -1199,6 +1199,7 @@ node_projection_session_content = "omnimarket.nodes.node_projection_session_cont
 node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
 node_projection_session_replay = "omnimarket.nodes.node_projection_session_replay"
 node_projection_skill_executions = "omnimarket.nodes.node_projection_skill_executions"
+node_projection_skill_lifecycle = "omnimarket.nodes.node_projection_skill_lifecycle"
 node_projection_swarm = "omnimarket.nodes.node_projection_swarm"
 node_projection_tenant_credentials = "omnimarket.nodes.node_projection_tenant_credentials"
 node_projection_tenant_registry = "omnimarket.nodes.node_projection_tenant_registry"
