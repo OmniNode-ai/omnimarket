@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.handlers.delegation_call_budget_reader import read_call_budget_s
+from omnimarket.handlers.delegation_call_budget_reader import (
+    CallBudgetNotDeclaredError,
+    read_call_budget_s,
+    require_call_budget_s,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -116,3 +120,30 @@ def test_reader_is_the_node_resolve(tmp_path: Path) -> None:
             .call_budget_s
         )
         assert read_call_budget_s(task_class, _env(tmp_path)) == expected
+
+
+def test_strict_named_class_returns_overlay_value(tmp_path: Path) -> None:
+    """The strict reader returns the overlay value for a named class."""
+    _write_overlay(tmp_path)
+    assert require_call_budget_s("code_generation", _env(tmp_path)) == 600.0
+
+
+def test_strict_unnamed_class_refuses(tmp_path: Path) -> None:
+    """A class the overlay does not name refuses with the class in the message."""
+    _write_overlay(tmp_path)
+    with pytest.raises(CallBudgetNotDeclaredError) as excinfo:
+        require_call_budget_s("document", _env(tmp_path))
+    assert "document" in str(excinfo.value)
+
+
+def test_strict_no_overlay_refuses(tmp_path: Path) -> None:
+    """An install with no overlay root naming the code budget overlay refuses."""
+    with pytest.raises(CallBudgetNotDeclaredError):
+        require_call_budget_s("code_generation", _env(tmp_path))
+
+
+def test_strict_blank_class_refuses(tmp_path: Path) -> None:
+    """A blank task class refuses even when the overlay names budgets."""
+    _write_overlay(tmp_path)
+    with pytest.raises(CallBudgetNotDeclaredError):
+        require_call_budget_s("  ", _env(tmp_path))
