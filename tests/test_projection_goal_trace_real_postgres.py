@@ -23,7 +23,7 @@ import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote_plus
 from uuid import UUID, uuid4
 
@@ -70,7 +70,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
         dsn = f"postgresql://{credentials}@{host}:{port}/{db}"
     try:
         return await asyncpg.connect(dsn)
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for goal-trace proof: {exc}")
 
 
@@ -149,7 +149,7 @@ async def test_a_replay_writes_this_replays_rows_for_the_goal() -> None:
     try:
         await _setup(conn)
         writer = GoalTraceProjectionWriter()
-        writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
+        cast("Any", writer)._db = _ScopedConnectionAdapter(conn)
         before = await _count(conn)
         messages = _replay_messages()
         for message in messages:

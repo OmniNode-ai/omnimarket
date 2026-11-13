@@ -68,3 +68,13 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane d20034-1220 -- uv run --frozen pytest tests/test_golden_chain_projection_goal_trace.py tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov -p no:randomly"
         cwd: "."
+  - id: "dod-omn20034-deploy-probe-node"
+    description: "Deploy probe: the node contract GitHub serves at the checked-out commit routes GoalTraceProjectionWriter, and the checked-out migration carries the event key. The contract is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_goal_trace/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"GoalTraceProjectionWriter\" > /dev/null'"
+        cwd: "."
+      - check_type: "command"
+        check_value: "grep -F 'PRIMARY KEY (event_id, body_digest)' src/omnimarket/nodes/node_projection_goal_trace/migrations/0000_create_goal_trace_events.sql"
+        cwd: "."

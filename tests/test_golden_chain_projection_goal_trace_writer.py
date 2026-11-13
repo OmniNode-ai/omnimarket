@@ -414,6 +414,15 @@ def test_the_writer_reads_its_topics_from_the_contract() -> None:
     assert writer.poison_dlq_topics == contract["event_bus"]["dlq_topics"]
 
 
+def test_the_applied_event_is_the_terminal_event_and_the_only_one_published() -> None:
+    """The output state the contract declares is the one topic the node publishes."""
+    applied = "onex.evt.omnimarket.projection-goal-trace-applied.v1"
+    contract = _contract()
+    assert contract["terminal_event"] == applied
+    assert contract["event_bus"]["publish_topics"] == [applied]
+    assert contract["externally_consumed_topics"] == [applied]
+
+
 def test_the_migration_creates_the_tables_the_contract_declares() -> None:
     sql = (_NODE_DIR / "migrations" / "0000_create_goal_trace_events.sql").read_text()
     for table in _contract()["db_io"]["db_tables"]:
@@ -430,7 +439,7 @@ def test_the_adapter_accepts_what_the_capture_wire_accepts_and_refuses_what_it_r
     from omnimarket.nodes.node_projection_claude_hook_events.models import (
         ModelClaudeHookEventWire,
     )
-    from omnimarket.nodes.node_projection_goal_trace.handlers.handler_goal_trace_adapters import (
+    from omnimarket.nodes.node_projection_goal_trace.handlers.goal_trace_adapters import (
         to_trace_event,
     )
 
@@ -455,7 +464,7 @@ def test_the_adapter_accepts_what_the_capture_wire_accepts_and_refuses_what_it_r
 
 
 def test_the_binding_fixture_binds_its_agent_to_the_stamped_goal() -> None:
-    from omnimarket.nodes.node_projection_goal_trace.handlers.handler_goal_trace_adapters import (
+    from omnimarket.nodes.node_projection_goal_trace.handlers.goal_trace_adapters import (
         to_trace_event,
     )
 

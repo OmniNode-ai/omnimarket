@@ -88,7 +88,7 @@ db_io:
       schema: omninode_internal
       migration: "0000_create_claude_hook_events.sql"
       access: read
-      role: goal_trace_events
+      role: claude_agent_spans
 
   dedupe_key:
     - event_id

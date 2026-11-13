@@ -40,7 +40,7 @@ from omnimarket.handlers.writer_pool_host import (
 )
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_writer_pool_settings import ModelWriterPoolSettings
-from omnimarket.nodes.node_projection_goal_trace.handlers.handler_goal_trace_adapters import (
+from omnimarket.nodes.node_projection_goal_trace.handlers.goal_trace_adapters import (
     MAIN_THREAD_AGENT,
     to_trace_event,
 )

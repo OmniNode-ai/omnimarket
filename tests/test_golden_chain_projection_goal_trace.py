@@ -480,11 +480,13 @@ def test_the_trace_is_content_free() -> None:
         "body",
     }
     with pytest.raises(ValueError, match=r"[a-z]"):
-        ModelGoalTraceEvent(
-            event_id="x",
-            kind=K.HOOK,
-            body_digest="d",
-            content="secret",  # type: ignore[call-arg]
+        ModelGoalTraceEvent.model_validate(
+            {
+                "event_id": "x",
+                "kind": K.HOOK,
+                "body_digest": "d",
+                "content": "secret",
+            }
         )
 
 
