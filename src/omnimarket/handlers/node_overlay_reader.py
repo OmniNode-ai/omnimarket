@@ -20,11 +20,6 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from omnimarket.models.overlay_roots import ModelOverlayRootsRequest
-from omnimarket.nodes.node_overlay_roots_resolve_effect.handlers.handler_overlay_roots_resolve import (
-    HandlerOverlayRootsResolve,
-)
-
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 OVERLAY_FILE_NAME = "overlay.yaml"
 
@@ -37,35 +32,14 @@ class NodeOverlayNotFoundError(NodeOverlayError):
     """No overlay source was selected; a caller may discover another source."""
 
 
-def resolved_overlay_roots(
-    environ: Mapping[str, str] | None = None,
-    registry_root: str | None = None,
-) -> tuple[str, ...]:
-    """The ordered overlay root paths the resolver names, or an empty tuple."""
-    env = os.environ if environ is None else environ
-    declared = [
-        root for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
-    ]
-    if registry_root is None:
-        for name in ("OMNIBASE_PATH", "OMNI_HOME"):
-            value = env.get(name, "").strip()
-            if value:
-                registry_root = value
-                break
-    request = ModelOverlayRootsRequest(
-        declared_roots=tuple(declared),
-        registry_root=registry_root,
-        home=env.get("HOME") or None,
-    )
-    result = HandlerOverlayRootsResolve().handle(request)
-    return tuple(result.paths())
-
-
 def find_node_overlay(
     node_name: str, environ: Mapping[str, str] | None = None
 ) -> Path | None:
     """Return the first ``<root>/<node_name>/overlay.yaml`` in root order, or ``None``."""
-    for root in resolved_overlay_roots(environ):
+    env = os.environ if environ is None else environ
+    for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep):
+        if not root:
+            continue
         candidate = Path(root) / node_name / OVERLAY_FILE_NAME
         if candidate.is_file():
             return candidate

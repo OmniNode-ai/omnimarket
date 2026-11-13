@@ -17,6 +17,7 @@ must not read as an absent one. The overlay's other keys belong to other readers
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
@@ -25,8 +26,12 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
-from omnimarket.handlers.node_overlay_reader import resolved_overlay_roots
+from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
 from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.models.overlay_roots import ModelOverlayRootsRequest
+from omnimarket.nodes.node_overlay_roots_resolve_effect.handlers.handler_overlay_roots_resolve import (
+    HandlerOverlayRootsResolve,
+)
 
 NODE_OVERLAYS_RELATIVE_PATH: Final[Path] = Path("config") / "onex" / "overlays"
 _OVERLAY_FILE: Final[str] = "overlay.yaml"
@@ -39,8 +44,26 @@ def node_overlay_path(
     environ: Mapping[str, str] | None = None,
 ) -> Path | None:
     """The first overlay file the overlay root resolver names, else the frozen config root path."""
-    registry_root = str(workspace_root) if workspace_root is not None else None
-    for root in resolved_overlay_roots(environ, registry_root):
+    env = os.environ if environ is None else environ
+    declared = [
+        root for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
+    ]
+    registry_root = None
+    if workspace_root is not None:
+        registry_root = str(workspace_root)
+    else:
+        for name in ("OMNIBASE_PATH", "OMNI_HOME"):
+            value = env.get(name, "").strip()
+            if value:
+                registry_root = value
+                break
+    request = ModelOverlayRootsRequest(
+        declared_roots=tuple(declared),
+        registry_root=registry_root,
+        home=env.get("HOME") or None,
+    )
+    result = HandlerOverlayRootsResolve().handle(request)
+    for root in result.paths():
         candidate = Path(root) / node_name / _OVERLAY_FILE
         if candidate.is_file():
             return candidate
