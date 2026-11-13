@@ -114,6 +114,28 @@ def create_argv(unit: ModelContainerUnit) -> list[str]:
     return argv
 
 
+def recreate_argv(unit: ModelContainerUnit) -> list[str]:
+    """The argv for ``docker compose up --force-recreate`` of a unit that declares how to recreate its container."""
+    if unit.recreate is None:
+        raise ValueError("recreate is not declared for this unit")
+    r = unit.recreate
+    return [
+        unit.docker_binary,
+        "compose",
+        "--project-name",
+        r.project,
+        "--env-file",
+        r.env_file,
+        "-f",
+        r.compose_file,
+        "up",
+        "-d",
+        "--force-recreate",
+        "--no-deps",
+        r.service,
+    ]
+
+
 def network_problem(unit: ModelContainerUnit, inspect_stdout: str) -> str | None:
     """The first network problem a running container has against the overlay declaration, else None."""
     if unit.network is None:
@@ -275,11 +297,45 @@ class HandlerContainerUnits:
                     stderr=f"no container {unit.container} on this host (docker inspect exit {found.returncode}); nothing written\n",
                 )
         problem = network_problem(unit, found.stdout)
+        recreate_line = ""
         if problem is not None:
-            return ModelContainerUnitsResult(
-                exit_code=1,
-                stderr=f"{problem}; nothing written; recreate the container from its declared create settings\n",
-            )
+            first_problem = problem
+            if unit.recreate is not None:
+                recreated = self.run(recreate_argv(unit))
+                if recreated.returncode:
+                    return ModelContainerUnitsResult(
+                        exit_code=1,
+                        stderr=f"recreate failed (exit {recreated.returncode}): {recreated.stderr}; nothing written\n",
+                    )
+                found = self.run(
+                    [
+                        unit.docker_binary,
+                        "inspect",
+                        "--type",
+                        "container",
+                        unit.container,
+                    ]
+                )
+                if found.returncode:
+                    return ModelContainerUnitsResult(
+                        exit_code=1,
+                        stderr=f"no container {unit.container} on this host (docker inspect exit {found.returncode}); nothing written\n",
+                    )
+                problem = network_problem(unit, found.stdout)
+                if problem is not None:
+                    return ModelContainerUnitsResult(
+                        exit_code=1,
+                        stderr=f"{problem} after the recreate; nothing written\n",
+                    )
+                recreate_line = (
+                    f"recreated {unit.container} through compose project "
+                    f"{unit.recreate.project} because: {first_problem}\n"
+                )
+            else:
+                return ModelContainerUnitsResult(
+                    exit_code=1,
+                    stderr=f"{problem}; nothing written; recreate the container from its declared create settings\n",
+                )
         # OMN-24208: a declared memory limit is applied in place (docker update only, so the
         # container neither restarts nor is recreated) before the unit is written.
         try:
@@ -317,7 +373,7 @@ class HandlerContainerUnits:
         else:
             target.write_text(text, encoding="utf-8")
             output = f"wrote {target}\n"
-        output += memory_line
+        output = recreate_line + output + memory_line
         for args in (["daemon-reload"], ["enable", "--now", service]):
             done = self.run(["systemctl", "--user", *args])
             output += done.stdout
