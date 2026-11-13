@@ -19,15 +19,15 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.events.triage_fences import (
+    ModelTriageFencesDeriveRequest,
+    ModelTriageFencesVerdict,
+)
 from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_enumerate_facts import (
     FencesTool,
 )
 from omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_derive import (
     HandlerTriageFencesDerive,
-)
-from omnimarket.nodes.node_triage_fences_compute.models import (
-    ModelTriageFencesDeriveRequest,
-    ModelTriageFencesVerdict,
 )
 from omnimarket.nodes.node_triage_fences_effect.logic.triage_fences_receipts import (
     running_lanes,

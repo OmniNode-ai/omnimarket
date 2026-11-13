@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_triage_fences_compute.models import (
+from omnimarket.events.triage_fences import (
     ModelTriageFencesClaim,
     ModelTriageFencesCounts,
     ModelTriageFencesPullFence,

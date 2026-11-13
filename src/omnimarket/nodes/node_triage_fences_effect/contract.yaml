@@ -24,16 +24,6 @@ description: >
   triage lanes read. An unreadable ledger is a refusal, never an empty fence list; an unreadable
   receipt is an error in the report, never a lane silently counted as dead.
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: triage_fences
-      handler:
-        name: HandlerTriageFences
-        module: omnimarket.nodes.node_triage_fences_effect.handlers.handler_triage_fences
-      input_model: omnimarket.nodes.node_triage_fences_effect.models.model_triage_fences_request.ModelTriageFencesRequest
-      output_model: omnimarket.nodes.node_triage_fences_effect.models.model_triage_fences_report.ModelTriageFencesResult
-
 input_model:
   name: ModelTriageFencesRequest
   module: omnimarket.nodes.node_triage_fences_effect.models.model_triage_fences_request
@@ -47,8 +37,25 @@ entry_points:
   console_scripts:
     onex-triage-fences-node: omnimarket.nodes.node_triage_fences_effect.runtime_triage_fences_cli:main
 
+handler:
+  module: omnimarket.nodes.node_triage_fences_effect.handlers.handler_triage_fences
+  class: HandlerTriageFences
+  input_model: omnimarket.nodes.node_triage_fences_effect.models.model_triage_fences_request.ModelTriageFencesRequest
+  output_model: omnimarket.nodes.node_triage_fences_effect.models.model_triage_fences_report.ModelTriageFencesResult
+
+runtime_dispatch:
+  external_trigger: onex-triage-fences-node (console script), which loads the node overlay and constructs the handler in process.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
+
 descriptor:
   node_archetype: effect
+  runtime_profiles: []
   purity: effectful
   idempotent: true
   side_effects:

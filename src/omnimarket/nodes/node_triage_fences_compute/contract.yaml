@@ -42,8 +42,21 @@ output_model:
   module: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive
   description: The fenced tickets, the live and stale claims, the pull-request fences and the counts.
 
+handler:
+  module: omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_derive
+  class: HandlerTriageFencesDerive
+  input_model: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive.ModelTriageFencesDeriveRequest
+  output_model: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive.ModelTriageFencesVerdict
+
+runtime_dispatch:
+  external_trigger: called in process by node_triage_fences_effect, which supplies the ledger text, the clock, the window and the running lanes.
+
+metadata:
+  transport_type: local
+
 descriptor:
   node_archetype: compute
+  runtime_profiles: []
   purity: pure
   idempotent: true
   side_effects: []

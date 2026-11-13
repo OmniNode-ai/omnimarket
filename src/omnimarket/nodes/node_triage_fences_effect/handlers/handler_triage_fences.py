@@ -12,12 +12,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_derive import (
-    HandlerTriageFencesDerive,
-)
-from omnimarket.nodes.node_triage_fences_compute.models import (
+from omnimarket.events.triage_fences import (
     ModelTriageFencesDeriveRequest,
     ModelTriageFencesOpenPull,
+)
+from omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_derive import (
+    HandlerTriageFencesDerive,
 )
 
 from ..logic.triage_fences_receipts import running_lanes
