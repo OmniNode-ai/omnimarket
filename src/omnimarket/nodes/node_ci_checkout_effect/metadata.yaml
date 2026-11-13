@@ -21,6 +21,7 @@ capabilities:
 dependencies:
   - "click>=8.1.0"
   - "pyyaml>=6.0"
+  - "omnibase-infra>=0.38.3"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "ci-checkout", "git"]
