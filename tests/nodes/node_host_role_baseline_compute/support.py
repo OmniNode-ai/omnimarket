@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -20,8 +21,11 @@ NODE = (
 )
 
 
-def example_document() -> dict:  # type: ignore[type-arg]
-    return yaml.safe_load((NODE / "overlay.example.yaml").read_text(encoding="utf-8"))
+def example_document() -> dict[str, Any]:
+    document: dict[str, Any] = yaml.safe_load(
+        (NODE / "overlay.example.yaml").read_text(encoding="utf-8")
+    )
+    return document
 
 
 def baselines() -> ModelHostRoleBaselines:

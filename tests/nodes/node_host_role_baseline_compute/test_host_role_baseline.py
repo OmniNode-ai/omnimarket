@@ -11,6 +11,8 @@ declares and the host lacks.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -32,6 +34,7 @@ from omnimarket.nodes.node_host_role_baseline_compute.handlers.handler_host_role
 )
 from omnimarket.nodes.node_host_role_baseline_compute.models import (
     EnumBaselineRefusal,
+    ModelHostRoleBaselineResult,
     ModelHostRoleBaselines,
     ModelRoleBaseline,
 )
@@ -41,7 +44,9 @@ from .support import baselines, example_document, request
 pytestmark = pytest.mark.unit
 
 
-def _derive(host: str, role: EnumHostRole | None, **kw):  # type: ignore[no-untyped-def]
+def _derive(
+    host: str, role: EnumHostRole | None, **kw: Any
+) -> ModelHostRoleBaselineResult:
     return HandlerHostRoleBaseline().handle(request(host, role, **kw))
 
 
