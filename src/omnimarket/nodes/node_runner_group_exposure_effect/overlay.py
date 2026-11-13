@@ -126,8 +126,10 @@ class ModelGithubSource(BaseModel):
     token_mint: ModelTokenMint | None
     #: When set, the runner group's own settings and repositories are read through the write node
     #: over the bus (the organization read the source's own token may not hold); null keeps the
-    #: direct read. The workflow and run reads still use the source's token.
-    group_read: ModelWriteNodeGroupRead | None
+    #: direct read. The workflow and run reads still use the source's token. Absent reads as null,
+    #: so an overlay of the main overlays branch written before this key existed still loads; the
+    #: deployment's overlay declares the block, and this default is removed once every overlay does.
+    group_read: ModelWriteNodeGroupRead | None = None
     #: The NAME of the App permission the organization read of the group needs, named in a
     #: refusal; never a value.
     org_read_permission: str = Field(min_length=1)

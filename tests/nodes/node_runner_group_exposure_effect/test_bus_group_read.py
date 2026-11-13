@@ -504,3 +504,24 @@ def test_a_declared_group_read_with_no_reader_is_refused_at_construction() -> No
     )
     with pytest.raises(ValueError, match="group_read"):
         GithubGroupSource(source, _NeverCalled(), {})
+
+
+def test_an_overlay_written_before_group_read_existed_still_loads_as_a_direct_read() -> (
+    None
+):
+    """The main overlays branch holds an overlay with no group_read key; it must not be refused."""
+    source = ModelGithubSource.model_validate(
+        {
+            "backend": "github",
+            "api_base": "http://127.0.0.1:1",
+            "org": ORG,
+            "group_id": GROUP,
+            "group_labels": ["example-private-group"],
+            "token_env": TOKEN_ENV,
+            "token_mint": None,
+            "org_read_permission": "example_org_permission_read",
+            "max_calls": 1,
+            "timeout_seconds": 1,
+        }
+    )
+    assert source.group_read is None
