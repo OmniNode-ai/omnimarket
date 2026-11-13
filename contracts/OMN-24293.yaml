@@ -1,0 +1,80 @@
+schema_version: 1.0.0
+ticket_id: OMN-24293
+title: The workflow submit, status and receipt routes are served by the runtime
+summary: >
+  The customer-facing workflow routes (POST /v1/workflows, GET /v1/workflows/contracts,
+  GET /v1/workflows/{id}/status and GET /v1/workflows/{id}/receipt) move from the hosted onex-api
+  into the runtime as one node, node_workflow_gateway_effect, with its own contract and a
+  contract-declared HTTP mount at /v1/workflows. The caller is a bearer token or a tenant API key,
+  resolved before anything else is read. Every deployment value (identity provider keys, database
+  secret name, API key header, rate limit, plan quota keys, the workflow catalog with its topics,
+  payload schemas and wire stamps) comes from the node's overlay document; with none the routes
+  answer 503. The background terminal consumer, a shared (Valkey) rate limiter and the onex-api
+  container itself are untouched.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched: [public_api, protocols]
+requirements:
+- id: req-workflow-gateway-in-runtime
+  statement: The runtime serves the four workflow routes from one node through one contract-declared mount.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the runtime serves POST /v1/workflows, GET /v1/workflows/contracts, GET /v1/workflows/{id}/status and GET /v1/workflows/{id}/receipt through one contract-declared mount, and a submission is acknowledged only after its command was published -- falsifier: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov fails if any route or the publish-before-acknowledge order is removed'
+  - id: AC2
+    statement: 'AC2: every refusal is typed and nothing is published on a refusal (no credential 401, unknown or fenced type 400, bad payload 400, rate limit 429, plan quota 429, publish failure 503 with the row marked failed, another tenant''s id 404 identical to an unknown id) -- falsifier: tests/nodes/node_workflow_gateway_effect/test_error_chain_workflow_gateway.py'
+  - id: AC3
+    statement: 'AC3: the body the live chain canary sends is accepted by the route and the published wire payload validates against the real consumer models -- falsifier: tests/nodes/node_workflow_gateway_effect/test_seam_canary_request.py and test_workflow_wire_envelope.py'
+  - id: AC4
+    statement: 'AC4: integrated: on the dev runtime, GET /v1/workflows/contracts without a credential answers 401 and with the dev identity answers 200, read from the running runtime -- falsifier: a curl of that route at the dev runtime port answers 404 or 503 instead'
+evidence_requirements:
+- kind: tests
+  description: The workflow gateway node tests pass at the pushed head, in the in-memory profile.
+  command: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-workflow-gateway-ac1
+  description: 'AC1: the golden chain (contract, declared handler bindings, mounted routes, submit then status then receipt) and the real runtime mount answer; at the merge base the node does not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_golden_chain_workflow_gateway.py tests/nodes/node_workflow_gateway_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+    cwd: .
+- id: dod-workflow-gateway-ac2
+  description: 'AC2: the error chain, the catalog refusals, the in-memory adapters and the SQL of the Postgres store against a recording pool.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_error_chain_workflow_gateway.py tests/nodes/node_workflow_gateway_effect/test_workflow_catalog.py tests/nodes/node_workflow_gateway_effect/test_adapters_memory.py tests/nodes/node_workflow_gateway_effect/test_store_postgres_sql.py -q --no-cov --refuse-skips
+    cwd: .
+- id: dod-workflow-gateway-ac3
+  description: 'AC3: the canary request seam and the wire payload against the consumer node models and their subscribed topics.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_seam_canary_request.py tests/nodes/node_workflow_gateway_effect/test_workflow_wire_envelope.py tests/nodes/node_workflow_gateway_effect/test_workflow_receipt_render.py -q --no-cov --refuse-skips
+    cwd: .
+- id: dod-workflow-gateway-ac4
+  description: 'hosted proxy for AC4: the route inventory control passes here; the read of the contracts route on the dev runtime after the deploy is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/onex_api_fold -q --no-cov
+    cwd: .
+- id: dod-workflow-gateway-integration-proof
+  description: the node tests run on a lab host at the pushed head, the Redpanda profile included; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-workflow-gateway --kind test -- env PYTHONDONTWRITEBYTECODE=1 ONEX_WORKFLOW_GATEWAY_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_http_runtime_profiles.py -q --no-cov -p no:randomly

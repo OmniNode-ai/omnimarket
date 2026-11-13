@@ -38,6 +38,13 @@ repos:
         files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/models/model_catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: workflow-gateway-http
+        name: Workflow gateway runtime HTTP mount (submit, status, receipt, contracts)
+        entry: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_gateway_effect/.*|tests/nodes/node_workflow_gateway_effect/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: envelope-example-route-nodes
         name: Example-envelope route nodes (runtime HTTP mount)
         entry: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py -q --no-cov
