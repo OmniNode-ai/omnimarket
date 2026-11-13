@@ -22,7 +22,9 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: "0.1.0"
 description: >
   Converges a canonical clone that has been refused for tracked changes or local commits past a declared
-  age, and returns a canonical clone left on a detached HEAD or a lane branch to its tracking branch.
+  age, returns a canonical clone left on a detached HEAD or a lane branch to its tracking branch, and clears
+  core.bare on a clone that holds a working tree (a true bare mirror, with no .git directory inside it, is never
+  touched; OMN-24240).
 input_model:
   name: "ModelDirtyConvergeTickRequest"
   module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge"
