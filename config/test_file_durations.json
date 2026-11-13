@@ -4610,6 +4610,7 @@
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_reply.py": 0.44,
   "tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py": 0.42,
   "tests/unit/nodes/node_github_repo_write_effect/test_lane_write_identity.py": 0.06,
+  "tests/unit/nodes/node_github_repo_write_effect/test_overlay_three_readers_omn24088.py": 2.55,
   "tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py": 0.97,
   "tests/unit/nodes/node_glm_allowance_compute/test_glm_allowance.py": 0.24,
   "tests/unit/nodes/node_glm_usage_record_compute/test_glm_usage_record.py": 0.08,
