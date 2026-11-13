@@ -2284,6 +2284,7 @@
   "tests/nodes/node_runner_group_exposure_compute/test_runner_group_exposure.py": 0.03,
   "tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py": 8.75,
   "tests/nodes/node_runner_group_exposure_effect/test_exposure_reading_writer.py": 0.16,
+  "tests/nodes/node_runner_group_exposure_effect/test_org_read_permission.py": 4.7,
   "tests/nodes/node_runner_group_exposure_effect/test_token_mint.py": 2.53,
   "tests/nodes/node_runner_group_reading_compute/test_error_chain_runner_group_reading.py": 0.05,
   "tests/nodes/node_runner_group_reading_compute/test_golden_chain_runner_group_reading.py": 0.06,
