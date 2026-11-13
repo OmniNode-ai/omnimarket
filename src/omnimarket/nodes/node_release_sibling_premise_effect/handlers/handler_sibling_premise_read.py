@@ -18,6 +18,12 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+from omnimarket.events.sibling_premise_request import (
+    ModelSiblingPremiseRequest,
+)
+from omnimarket.events.sibling_premise_verdict import (
+    ModelSiblingPremiseVerdict,
+)
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_dev_merge_redeploy import (
     ClassifierUnavailableError,
     MergeFilesUnreadableError,
@@ -26,12 +32,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_d
 )
 from omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise import (
     HandlerSiblingPremise,
-)
-from omnimarket.nodes.node_release_sibling_premise_compute.models.model_sibling_premise_request import (
-    ModelSiblingPremiseRequest,
-)
-from omnimarket.nodes.node_release_sibling_premise_compute.models.model_sibling_premise_verdict import (
-    ModelSiblingPremiseVerdict,
 )
 from omnimarket.nodes.node_release_sibling_premise_effect.handlers.protocol_sibling_premise_read import (
     ProtocolBranchHistory,

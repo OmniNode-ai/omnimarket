@@ -13,10 +13,19 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
+from omnimarket.events.dev_merge_redeploy import (
     EnumDevMergeMode,
     EnumDevMergeOutcome,
     ModelDevMergeRedeployReceipt,
+)
+from omnimarket.events.enum_sibling_premise import (
+    EnumSiblingPremiseState,
+)
+from omnimarket.events.sibling_premise_request import (
+    ModelSiblingPremiseRequest,
+)
+from omnimarket.events.sibling_premise_verdict import (
+    ModelSiblingPremiseVerdict,
 )
 from omnimarket.nodes.node_release_sibling_premise_compute.handlers import (
     handler_sibling_premise,
@@ -24,17 +33,8 @@ from omnimarket.nodes.node_release_sibling_premise_compute.handlers import (
 from omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise import (
     HandlerSiblingPremise,
 )
-from omnimarket.nodes.node_release_sibling_premise_compute.models.enum_sibling_premise import (
-    EnumSiblingPremiseState,
-)
 from omnimarket.nodes.node_release_sibling_premise_compute.models.errors import (
     SiblingPremiseInputError,
-)
-from omnimarket.nodes.node_release_sibling_premise_compute.models.model_sibling_premise_request import (
-    ModelSiblingPremiseRequest,
-)
-from omnimarket.nodes.node_release_sibling_premise_compute.models.model_sibling_premise_verdict import (
-    ModelSiblingPremiseVerdict,
 )
 
 pytestmark = pytest.mark.unit

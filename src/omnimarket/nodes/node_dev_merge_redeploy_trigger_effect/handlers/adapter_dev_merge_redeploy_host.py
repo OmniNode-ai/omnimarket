@@ -34,6 +34,11 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.events.dev_merge_redeploy import (
+    EnumDevMergeOutcome,
+    ModelDevMergeRedeployReceipt,
+    ModelDevMergeRedeployTopics,
+)
 from omnimarket.events.runtime_deployment import ModelRedeployCompletedEvent
 from omnimarket.lab_work.bus import _bytes, _subscribe
 from omnimarket.models.dev_merge_redeploy_overlay import (
@@ -53,11 +58,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_me
     ModelDevMergeDecision,
     ModelDevMergePending,
     ModelDevMergeVerdict,
-)
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
-    EnumDevMergeOutcome,
-    ModelDevMergeRedeployReceipt,
-    ModelDevMergeRedeployTopics,
 )
 
 logger = logging.getLogger(__name__)

@@ -15,7 +15,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
+from omnimarket.events.dev_merge_redeploy import (
     ModelDevMergeRedeployReceipt,
 )
 from omnimarket.nodes.node_release_sibling_premise_effect.handlers.lane_keywords import (

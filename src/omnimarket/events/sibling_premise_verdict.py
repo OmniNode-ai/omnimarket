@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_release_sibling_premise_compute.models.enum_sibling_premise import (
+from omnimarket.events.enum_sibling_premise import (
     EnumSiblingPremiseState,
 )
 

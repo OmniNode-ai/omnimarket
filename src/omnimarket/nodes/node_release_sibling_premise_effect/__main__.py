@@ -25,6 +25,9 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
+from omnimarket.events.sibling_premise_verdict import (
+    ModelSiblingPremiseVerdict,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_dev_merge_redeploy_git import (
     DeployPathClassifier,
@@ -32,9 +35,6 @@ from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_de
 )
 from omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise import (
     HandlerSiblingPremise,
-)
-from omnimarket.nodes.node_release_sibling_premise_compute.models.model_sibling_premise_verdict import (
-    ModelSiblingPremiseVerdict,
 )
 from omnimarket.nodes.node_release_sibling_premise_effect.handlers.adapter_branch_history import (
     GitBranchHistory,

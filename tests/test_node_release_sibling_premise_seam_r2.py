@@ -28,23 +28,23 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
-from omnimarket.lab_work.bus import _bytes
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_dev_merge_redeploy_host import (
-    load_dev_merge_redeploy_topics,
-)
-from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy import (
+from omnimarket.events.dev_merge_redeploy import (
     EnumDevMergeMode,
     EnumDevMergeOutcome,
     ModelDevMergeRedeployReceipt,
 )
-from omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise import (
-    HandlerSiblingPremise,
-)
-from omnimarket.nodes.node_release_sibling_premise_compute.models.enum_sibling_premise import (
+from omnimarket.events.enum_sibling_premise import (
     EnumSiblingPremiseState,
 )
-from omnimarket.nodes.node_release_sibling_premise_compute.models.model_sibling_premise_request import (
+from omnimarket.events.sibling_premise_request import (
     ModelSiblingPremiseRequest,
+)
+from omnimarket.lab_work.bus import _bytes
+from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.adapter_dev_merge_redeploy_host import (
+    load_dev_merge_redeploy_topics,
+)
+from omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise import (
+    HandlerSiblingPremise,
 )
 from omnimarket.nodes.node_release_sibling_premise_effect.handlers.adapter_receipt_source import (
     decode_receipt,

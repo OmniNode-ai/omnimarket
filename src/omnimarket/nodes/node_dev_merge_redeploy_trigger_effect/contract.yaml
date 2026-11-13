@@ -38,7 +38,7 @@ input_model:
   description: "A pull request merged into a repository branch."
 output_model:
   name: "ModelDevMergeRedeployReceipt"
-  module: "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.models.model_dev_merge_redeploy"
+  module: "omnimarket.events.dev_merge_redeploy"
   description: "Repository, merge, correlation id, outcome, final phase and the lane's revision."
 handler:
   module: "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.handler_dev_merge_redeploy_trigger"
