@@ -17,7 +17,7 @@ dict would drift from it the first time the runtime adds a field.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -60,7 +60,7 @@ def _write(data: dict[str, Any]) -> tuple[dict[str, Any], _RecordingDb]:
     """Drive the real writer over one payload; return its report and the double."""
     writer = DodVerdictProjectionWriter()
     db = _RecordingDb()
-    writer._db = db  # type: ignore[assignment]
+    cast("Any", writer)._db = db
     report = writer.handle(dict(data))
     return report, db
 
@@ -112,7 +112,7 @@ def test_a_failure_notice_opens_no_database_connection() -> None:
             type(self).connects += 1
 
     writer = DodVerdictProjectionWriter()
-    writer._db = _CountingDb()  # type: ignore[assignment]
+    cast("Any", writer)._db = _CountingDb()
     writer.handle(_failure_notice())
     assert _CountingDb.connects == 0
 
