@@ -23,6 +23,33 @@ from omnimarket.models.model_delegation_code_budget import (
 
 class HandlerDelegationCodeBudget:
     def handle(self, request: ModelCodeBudgetRequest) -> ModelCodeBudgetResult:
+        if request.operation == "sampling":
+            sampling = (
+                request.overlay.class_sampling.get(request.task_class)
+                if request.overlay.class_sampling is not None
+                else None
+            )
+            if sampling is None:
+                return ModelCodeBudgetResult(
+                    operation="sampling",
+                    task_class=request.task_class,
+                    call_budget_s=None,
+                    source="overlay",
+                    refusal=EnumCodeBudgetRefusal.UNNAMED_SAMPLING_CLASS,
+                    completed_samples=0,
+                    detail=f"No sampling named for task class: {request.task_class}",
+                )
+            return ModelCodeBudgetResult(
+                operation="sampling",
+                task_class=request.task_class,
+                call_budget_s=None,
+                source="overlay",
+                refusal=None,
+                completed_samples=0,
+                detail="",
+                sampling=sampling,
+            )
+
         if request.operation == "input_ceiling":
             backend = request.backend or ""
             key = input_ceiling_overlay_key(backend, request.task_class)

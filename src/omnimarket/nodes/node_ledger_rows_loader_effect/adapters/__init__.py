@@ -18,6 +18,7 @@ _ROW_OPEN = re.compile(
     r"^(?:[-*] +)?\|? *(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2})?Z\s*\|"
 )
 _SPLIT_DATE = re.compile(r"(\d{4}-\d{2}-\d{2})-split")
+_ROLL_MARKER = "<!-- ledger-roll-archive"
 
 
 class InMemoryRowsLoaderSink:
@@ -86,17 +87,32 @@ class FileRowsReader:
         if not self._ledger.is_file():
             raise FileNotFoundError(str(self._ledger))
         floor = self._since.strftime("%Y-%m-%dT%H:%M")
-        lines: list[str] = []
+        rows: list[tuple[str, ...]] = []
         for path in self._files():
-            keep = False
+            current: list[str] | None = None
             for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
                 opened = _ROW_OPEN.match(line)
                 if opened:
-                    keep = opened.group(1) >= floor
-                elif not line.strip() or line.startswith("#"):
+                    if current is not None:
+                        rows.append(tuple(current))
+                    current = [line] if opened.group(1) >= floor else None
+                elif (
+                    line.startswith(_ROLL_MARKER)
+                    or not line.strip()
+                    or line.startswith("#")
+                ):
                     continue
-                if keep:
-                    lines.append(line)
+                elif current is not None:
+                    current.append(line)
+            if current is not None:
+                rows.append(tuple(current))
+        seen: set[tuple[str, ...]] = set()
+        lines: list[str] = []
+        for row in rows:
+            if row in seen:
+                continue
+            seen.add(row)
+            lines.extend(row)
         return tuple(lines)
 
 
