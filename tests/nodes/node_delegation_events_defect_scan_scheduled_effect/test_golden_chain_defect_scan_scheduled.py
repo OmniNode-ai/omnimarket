@@ -8,6 +8,7 @@ import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 import pytest
@@ -113,13 +114,13 @@ def environ(tmp_path: Path, *, with_scan: bool = True) -> dict[str, str]:
 
 def reading(
     *,
-    status: str = "read",
+    status: Literal["read", "failed"] = "read",
     verdict: EnumReadingVerdict = EnumReadingVerdict.NOT_WORKING,
     failure: str | None = None,
 ) -> ModelDefectScanRunResult:
     return ModelDefectScanRunResult(
         correlation_id="scan-run-1",
-        status=status,  # type: ignore[arg-type]
+        status=status,
         verdict=verdict,
         reasons=(),
         rows_scanned=120,
