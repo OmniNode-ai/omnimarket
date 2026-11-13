@@ -20,7 +20,10 @@ import json
 import logging
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import overload
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel
 
 from omnimarket.enums.enum_lab_sli import EnumLabSliActionKind
 from omnimarket.handlers.lab_sli_pack_gate import require_lab_sli_pack
@@ -29,7 +32,9 @@ from omnimarket.models.lab_sli import (
     ModelLabSliAlertAction,
     ModelLabSliAlertRequest,
     ModelLabSliAlertResult,
+    ModelLabSliAlertState,
     ModelLabSliDelivery,
+    ModelLabSliEvaluationBatch,
     ModelLabSliFixLaneRequested,
 )
 from omnimarket.nodes.contract_topics import (
@@ -72,8 +77,22 @@ class HandlerLabSliAlert:
         self._contract_path = contract_path
         self._push_topic = _topic(contract_path, ".slack-publish.")
         self._channel_resolver = channel_resolver or self._resolve_channel
+        self._state = ModelLabSliAlertState()
 
-    def handle(self, request: ModelLabSliAlertRequest) -> ModelLabSliAlertResult:
+    @overload
+    def handle(self, request: ModelLabSliAlertRequest) -> ModelLabSliAlertResult: ...
+
+    @overload
+    def handle(self, request: ModelLabSliEvaluationBatch) -> ModelLabSliAlertResult: ...
+
+    def handle(self, request: BaseModel) -> ModelLabSliAlertResult:
+        carries_state = isinstance(request, ModelLabSliEvaluationBatch)
+        if isinstance(request, ModelLabSliEvaluationBatch):
+            request = ModelLabSliAlertRequest(evaluation=request, state=self._state)
+        elif not isinstance(request, ModelLabSliAlertRequest):
+            raise TypeError(
+                "lab SLI alert handler requires its contract-declared payload"
+            )
         require_lab_sli_pack("node_lab_sli_alert_effect", self._environ)
         decided = self._decide.handle(request)
         correlation_id = uuid4()
@@ -94,9 +113,12 @@ class HandlerLabSliAlert:
             for a in decided.actions
             if a.kind is not EnumLabSliActionKind.PUSH_OPERATOR
         )
-        return decided.model_copy(
+        result = decided.model_copy(
             update={"deliveries": deliveries, "fix_lanes": fix_lanes}
         )
+        if carries_state:
+            self._state = result.state
+        return result
 
     def _push(
         self, action: ModelLabSliAlertAction, correlation_id: UUID

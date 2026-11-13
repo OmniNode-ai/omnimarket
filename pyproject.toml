@@ -846,6 +846,7 @@ node_knowledge_query_federation_orchestrator = "omnimarket.nodes.node_knowledge_
 node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
 node_lab_alarm = "omnimarket.nodes.node_lab_alarm"
 node_lab_alarm_deliver_effect = "omnimarket.nodes.node_lab_alarm_deliver_effect"
+node_lab_alarm_scheduled_effect = "omnimarket.nodes.node_lab_alarm_scheduled_effect"
 node_lab_check_run_effect = "omnimarket.nodes.node_lab_check_run_effect"
 node_lab_claude_token_effect = "omnimarket.nodes.node_lab_claude_token_effect"
 node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
@@ -881,6 +882,7 @@ node_lab_test_harness_reading_compute = "omnimarket.nodes.node_lab_test_harness_
 node_lab_test_harness_schedule_compute = "omnimarket.nodes.node_lab_test_harness_schedule_compute"
 node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 node_landing_canary_effect = "omnimarket.nodes.node_landing_canary_effect"
+node_landing_canary_scheduled_effect = "omnimarket.nodes.node_landing_canary_scheduled_effect"
 node_landing_not_started_effect = "omnimarket.nodes.node_landing_not_started_effect"
 node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wait_effect"
 node_landing_policy_compute = "omnimarket.nodes.node_landing_policy_compute"
@@ -1389,6 +1391,7 @@ node_test_selector_reading_compute = "omnimarket.nodes.node_test_selector_readin
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute"
+node_ticket_closer_scheduled_effect = "omnimarket.nodes.node_ticket_closer_scheduled_effect"
 node_ticket_compiler = "omnimarket.nodes.node_ticket_compiler"
 node_ticket_contract_merge_compute = "omnimarket.nodes.node_ticket_contract_merge_compute"
 node_ticket_contract_prerequisite_effect = "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
@@ -1934,6 +1937,14 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # To move the pin: bump `version`, download the new asset, compute its sha256
 # locally, and paste it. A mismatch is refused, never repaired -- re-downloading
 # on mismatch would turn an attack into a cache miss.
+#
+# The pinned archive also ships INSIDE the package, so a first run needs no
+# network: src/omnimarket/nodes/node_local_dashboard_serve_effect/packaged_bundle/
+# holds it as `<asset>.part-NN` files (each under the repository's 1000 KB
+# large-file limit), reassembled and checked against `sha256` before use. Moving
+# the pin means replacing those parts too: delete the old ones, then run
+# `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
+# pin and the parts that disagree.
 version = "v1.1.12"
 sha256 = "ec9b3f16c53b7cf77d53111bef587dbec40cdc837afb8cdc6e2be53353868de7"
 asset = "omnidash-bundle-v1.1.12.tar.gz"

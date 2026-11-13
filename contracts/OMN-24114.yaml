@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-24114"
+title: >-
+  The budget-grace timeout test and the projection writer helper threads cross-talk in the test suite: the test swaps the
+  process-wide clock and wait function, and helper threads left alive by earlier tests read them
+summary: >
+  Earlier tests in a shard leave RuntimeDeliveryHost loop threads alive, two with an AggregateCoalescer flush task that
+  retries a failed publish forever. test_deployed_budget_grace_omn21326 replaced time.monotonic and asyncio.wait_for in the
+  process-wide modules, so on a host whose real monotonic clock is below the fake one (a freshly booted runner) those
+  threads saw every timer as due and called the fake wait function in a loop, moving the fake clock by thousands of
+  seconds. Every test now closes the RuntimeDeliveryHost it constructed, and the grace test replaces the two names only
+  inside the handler module it measures.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn24114-isolation"
+    statement: "A test's helper threads end with the test, and a test that fakes time reaches only the code it measures."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: A test that starts a projection writer leaves no delivery-loop thread running once it ends
+      - id: "AC2"
+        statement: >-
+          AC2: The budget-grace timeout test reads the same duration while a retrying helper thread is alive on another thread
+      - id: "AC3"
+        statement: >-
+          AC3: After merge, two later omnimarket pull requests show no red Tests (Split N/20) check that names
+          test_deployed_budget_grace_omn21326
+evidence_requirements:
+  - kind: "tests"
+    description: "Delivery-host closing and grace-test isolation tests pass"
+    command: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24114-ac1-host-closed-after-test"
+    description: >-
+      The first test builds a RuntimeDeliveryHost and delivers one event without closing it; the second asserts its loop
+      thread is gone. With the autouse fixture in tests/conftest.py shadowed by a no-op fixture the second test fails
+      (the thread is alive); with the fixture it passes.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov -k host"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn24114-ac2-clock-unreachable-by-threads"
+    description: >-
+      A daemon thread retrying asyncio.wait_for runs while the handler is measured under the fake clock, which starts
+      ahead of the real monotonic clock. With the two names replaced process-wide (the merge base) the run reads
+      1130339 ms instead of 49000 ms; with them replaced only inside the handler module it reads 49000 ms.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov -k retry_loop"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn24114-ac3-split-green"
+    description: >-
+      Structural proof of the readback's premise: the grace test and the delivery-host test both pass in one session after
+      the polluting projection chain test file. The integrated reading, two later pull requests with no red Tests
+      (Split N/20) naming the grace test, is taken from the PR watcher state after merge and recorded on the ticket.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
