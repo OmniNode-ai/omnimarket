@@ -15,6 +15,7 @@ from omnibase_core.models.delegation.model_delegation_routing_order_request impo
     ModelDelegationRoutingOrderRequest,
 )
 
+import omnimarket.handlers.delegation_routing_order_reader as reader
 from omnimarket.handlers.delegation_routing_order_reader import (
     DelegationRoutingOrderError,
     read_engine_order,
@@ -126,6 +127,14 @@ def _node_order(task_class: str) -> tuple[str, ...]:
     return tuple(
         rung.kind.value if rung.harness is None else rung.harness
         for rung in answer.rungs
+    )
+
+
+@pytest.fixture(autouse=True)
+def _node_hosted_in_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These cases exercise the in-process answer whatever overlay the host holds (the bus path is in test_delegation_routing_order_reader_bus.py)."""
+    monkeypatch.setattr(
+        reader, "resolve_node_event_bus", lambda *_args, **_kwargs: (None, None)
     )
 
 

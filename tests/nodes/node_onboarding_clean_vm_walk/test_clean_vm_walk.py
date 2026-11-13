@@ -10,6 +10,7 @@ import shlex
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -165,7 +166,9 @@ def test_step_outside_documented_list_is_refused(
     with pytest.raises(StepNotDocumentedError, match="not documented"):
         guard.issue(
             ModelWalkStep.model_construct(
-                kind="hand_fix", argv=valid, timeout_seconds=1
+                kind=cast(Any, "hand_fix"),
+                argv=valid,
+                timeout_seconds=1,
             )
         )
     with pytest.raises(StepNotDocumentedError, match="guest_run_script"):
@@ -277,7 +280,7 @@ def test_failed_phase_returns_receipt_not_exception() -> None:
     assert "Last error" in (receipt.phases[3].failure_text or "")
     assert receipt.delegated_run.status == "failed"
     assert receipt.delegated_run.backend is None
-    assert receipt.dashboard.failure_text.startswith("not attempted:")
+    assert (receipt.dashboard.failure_text or "").startswith("not attempted:")
     assert receipt.vm_deleted
     runner = StubTartRunner()
     runner.scripted[EnumWalkStepKind.TART_CLONE] = [
@@ -296,7 +299,9 @@ def test_failed_phase_returns_receipt_not_exception() -> None:
     runner = StubTartRunner()
     runner.version = ModelRunnerResult(exit_code=127, stdout="", stderr="missing")
     receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
-    assert "tart not found at ~/.local/bin/tart on 192.0.2.1" in receipt.failure_text
+    assert "tart not found at ~/.local/bin/tart on 192.0.2.1" in (
+        receipt.failure_text or ""
+    )
     assert len(runner.calls) == 1
 
 
@@ -338,8 +343,8 @@ def test_parser_real_excerpts() -> None:
     assert [p.seconds for p in phases] == [1.0, 188.0, 46.0, 90.0]
     assert phases[0].name.endswith("agreed to)")
     assert phases[3].name == "onex, local identity and your models"
-    assert "Step:" in phases[3].failure_text
-    assert "Last error:" in phases[3].failure_text
+    assert "Step:" in (phases[3].failure_text or "")
+    assert "Last error:" in (phases[3].failure_text or "")
     assert parse_delegated_run(FAILED_LOG).status == "failed"
     assert seconds_to_first_delegated_run(FAILED_LOG) is None
     assert parse_delegated_run(SUCCESS_LOG).backend == "local"
@@ -506,7 +511,7 @@ def test_guest_readiness_retries_only_fetch() -> None:
         ModelRunnerResult(exit_code=1, stdout="", stderr="agent cannot connect"),
         ModelRunnerResult(exit_code=1, stdout="", stderr="connect failed"),
     ]
-    with patch.object(walk.time, "sleep") as sleep:
+    with patch("time.sleep") as sleep:
         receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
     assert receipt.outcome == EnumWalkOutcome.PASSED
     assert sleep.call_count == 2
@@ -585,14 +590,19 @@ def test_contract_defaults_are_resolved_at_runtime(
     modified.write_text(yaml.safe_dump(contract))
     monkeypatch.setattr(walk, "_CONTRACT", modified)
     req = request(vm_name=None)
-    assert req.cpu is req.memory_gb is req.image is req.tart_path is None
+    assert (req.cpu, req.memory_gb, req.image, req.tart_path) == (
+        None,
+        None,
+        None,
+        None,
+    )
     resolved = walk.resolve_request(req)
     assert resolved.cpu == 6
     assert resolved.memory_gb == 12
     assert resolved.image == "stock:test"
     assert resolved.tart_path == "/opt/tart"
-    assert resolved.vm_name.startswith("onex-walk-")
-    assert len(resolved.vm_name) == len("onex-walk-") + 8
+    assert (resolved.vm_name or "").startswith("onex-walk-")
+    assert len(resolved.vm_name or "") == len("onex-walk-") + 8
 
 
 def test_transport_exception_is_receipted_and_delete_still_attempted() -> None:
@@ -610,7 +620,7 @@ def test_transport_exception_is_receipted_and_delete_still_attempted() -> None:
 
     receipt = walk.HandlerOnboardingCleanVmWalk(FailingRunner()).handle(request())
     assert receipt.outcome == EnumWalkOutcome.FAILED
-    assert "SSH connection lost" in receipt.failure_text
+    assert "SSH connection lost" in (receipt.failure_text or "")
     assert receipt.vm_deleted
     assert receipt.steps[-2].exit_code != 0
     assert receipt.steps[-1].kind == EnumWalkStepKind.TART_DELETE
@@ -624,7 +634,7 @@ def test_delete_failure_is_recorded() -> None:
     receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
     assert receipt.outcome == EnumWalkOutcome.FAILED
     assert not receipt.vm_deleted
-    assert "delete refused" in receipt.failure_text
+    assert "delete refused" in (receipt.failure_text or "")
 
 
 def test_no_successful_delegate_skips_dashboard_even_with_zero_script_exit() -> None:
@@ -634,7 +644,7 @@ def test_no_successful_delegate_skips_dashboard_even_with_zero_script_exit() -> 
     receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
     assert receipt.outcome == EnumWalkOutcome.FAILED
     assert receipt.delegated_run.status == "failed"
-    assert receipt.dashboard.failure_text.startswith("not attempted:")
+    assert (receipt.dashboard.failure_text or "").startswith("not attempted:")
     assert receipt.dashboard.root_http_status is None
     assert EnumWalkStepKind.GUEST_DASHBOARD_START not in [s.kind for s in receipt.steps]
     assert receipt.vm_deleted
@@ -649,7 +659,7 @@ def test_readiness_retry_is_bounded_and_does_not_retry_other_errors() -> None:
         runner.scripted[EnumWalkStepKind.GUEST_FETCH_SCRIPT] = [
             ModelRunnerResult(exit_code=1, stdout="", stderr=message)
         ] * 20
-        with patch.object(walk.time, "sleep") as sleep:
+        with patch("time.sleep") as sleep:
             receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
         assert receipt.outcome == EnumWalkOutcome.FAILED
         assert [s.kind for s in receipt.steps].count(
