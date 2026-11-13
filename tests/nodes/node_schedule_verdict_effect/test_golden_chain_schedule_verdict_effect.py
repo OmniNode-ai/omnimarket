@@ -184,4 +184,8 @@ def test_error_a_missing_declared_job_overlay_returns_none(tmp_path: Path) -> No
         declaration=_verdict_overlay(job_overlay_ids=("job_missing",)),
     )
     h = HandlerScheduleVerdictScheduled(gate=gate, store=store, environ=environ)
-    assert h.handle(tick(T0)) is None
+    result = h.handle(tick(T0))
+    assert result is not None
+    assert result.red is True
+    assert result.verdicts[0].state == "UNREADABLE"
+    assert result.verdicts[0].job_id == "job_missing"

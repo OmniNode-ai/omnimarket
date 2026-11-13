@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24130
+title: Judge every scheduled job - the verdict reads only the schedule part of each job's settings
+summary: The schedule verdict loaded each job overlay with a model that forbids extra keys, so the real job overlays (which carry alarm_overlay_id, fill_overlay_id and profile) were rejected and no job was judged. This change reads only the schedule block of each job overlay and reports a job overlay that cannot be read as an UNREADABLE red verdict for that job while judging the others.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24130-verdict-reads-schedule-block
+  statement: The schedule verdict judges every declared job from the schedule block of its overlay, and a job overlay that cannot be read reads UNREADABLE and red for that job only.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the schedule verdict reads only the schedule block of each job overlay, loading the two real merged job overlays and judging both -- falsifier: uv run --frozen pytest tests/nodes/node_schedule_verdict_effect/test_real_job_overlays.py -q --no-cov fails on the base commit and passes on the branch'
+  - id: AC2
+    statement: 'AC2: a job overlay that cannot be read reads UNREADABLE and red by its overlay id and the other jobs are still judged -- falsifier: uv run --frozen pytest tests/nodes/node_schedule_verdict_effect tests/nodes/node_schedule_verdict_compute -q --no-cov'
+  - id: AC3
+    statement: 'AC3: integrated: on the dev runtime after the deploy, the verdict event carries one verdict per declared job and no job-overlay load error is logged -- falsifier: read onex.evt.omnimarket.schedule-verdict.v1 on the dev broker; a pass with fewer verdicts than declared jobs, or an overlay error in the runtime log, fails it'
+evidence_requirements:
+- kind: tests
+  description: The verdict effect and compute tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_schedule_verdict_effect tests/nodes/node_schedule_verdict_compute -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24130-ac1
+  description: 'AC1: the real merged job overlay documents are judged by the handler; the control that loads them with the strict model raises, and the effect tests fail on the base handler.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_schedule_verdict_effect/test_real_job_overlays.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24130-ac2
+  description: 'AC2: a missing and an invalid job overlay read UNREADABLE and red while the other job keeps its own verdict.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_schedule_verdict_effect tests/nodes/node_schedule_verdict_compute -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24130-ac3
+  description: 'hosted proxy for AC3: the tests above pass; the verdict event on the dev broker is read after the deploy and named in the pull request comment.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_schedule_verdict_effect -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24130-integration-proof
+  description: the verdict effect and compute tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24130 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_schedule_verdict_effect tests/nodes/node_schedule_verdict_compute -q --no-cov

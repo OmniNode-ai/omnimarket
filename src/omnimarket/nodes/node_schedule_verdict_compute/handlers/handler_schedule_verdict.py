@@ -14,7 +14,7 @@ from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleVerdictResult,
 )
 
-_RED_STATES = {"NEVER_FIRED", "OVERDUE", "FAILING"}
+_RED_STATES = {"NEVER_FIRED", "OVERDUE", "FAILING", "UNREADABLE"}
 
 
 def _verdict_for(
@@ -91,6 +91,16 @@ class HandlerScheduleVerdict:
                 states_by_job.get(decl.job_id),
             )
             for decl in request.declared
+        )
+        verdicts += tuple(
+            ModelScheduleJobVerdict(
+                job_id=item.overlay_id,
+                state="UNREADABLE",
+                last_fired_at=None,
+                age_seconds=None,
+                detail=f"job overlay {item.overlay_id} could not be read: {item.detail}",
+            )
+            for item in request.unreadable
         )
         red_jobs = [v.job_id for v in verdicts if v.state in _RED_STATES]
         red = bool(red_jobs)
