@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example values. The deployed values come from the overlays repository.
+#
+# `conditions` lists the lab alarm conditions whose subject is stable across raises. Do not list a
+# condition whose subject changes with every raise: replaying the 255 alarm rows of 2026-11-03 to
+# 2026-11-13 hour by hour with no lane covering anything dispatched 216 times for lab_pass_receipt
+# (one subject per commit) and 31 times for container_unhealthy (one subject per census hash), against
+# 10 for delegation_chain_canary and 11 for dev_tag_heartbeat.
+alarm_owner_policy:
+  alarm_actor: launchd:lab-alarm
+  conditions:
+    - delegation_chain_canary
+    - dev_tag_heartbeat
+  owner_required_after_hours: 6
+  redispatch_after_hours: 24
