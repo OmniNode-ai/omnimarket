@@ -43,6 +43,13 @@ Rules this handler enforces:
   the node's overlay (``overlay.py``); one that is not, or an overlay that cannot be
   read, is refused ``label_not_allowed`` before any GitHub call, in either mode. A label
   already in the asked-for state is not sent again and the result is ``replayed``.
+- **Repository variables.** repo_variable_set and repo_variable_get read and write
+  GitHub Actions repository variables, never secrets. The allowed names and the file
+  each value is read from are overlay values (``repo_variables`` in ``overlay.py``);
+  the value is never on the request. A name the overlay does not allow, a source
+  that cannot be read (set only; get reports ``variable_in_sync`` as None), or a
+  name or value carrying a refuse marker is refused before any GitHub call, in
+  either mode, and only the /actions/variables endpoints are called.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -67,6 +74,7 @@ import re
 import time
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -114,7 +122,10 @@ from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_github_token_is_actor,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    pinned_overlay_root,
+)
 from omnimarket.inference.secret_store_resolver import (
     SecretStoreConfigurationError,
     resolve_api_key_async,
@@ -132,6 +143,7 @@ from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lo
     registry_claim_refusal,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models import (
+    MAX_VARIABLE_CHARS,
     EnumRepoWriteFenceStatus,
     EnumRepoWriteMode,
     EnumRepoWriteOperation,
@@ -145,6 +157,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_conf
     ModelRepoWriteCredentialChoice,
 )
 from omnimarket.nodes.node_github_repo_write_effect.overlay import (
+    NODE_NAME,
     ModelRepoWriteOverlay,
     load_overlay,
 )
@@ -169,6 +182,13 @@ from omnimarket.nodes.node_github_repo_write_effect.services.pr_thread_resolve i
     resolve_review_thread_request,
     thread_nodes,
     threads_page_request,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable import (
+    create_variable_request,
+    get_variable_request,
+    read_variable_source_value,
+    update_variable_request,
+    variable_digest,
 )
 
 _log = logging.getLogger(__name__)
@@ -258,6 +278,19 @@ def _int_at(body: dict[str, object] | None, key: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
+@dataclass(frozen=True)
+class _VariablePlan:
+    """The value a repo_variable write acts on, from the overlay's declared source.
+
+    ``source_value`` is None when that file could not be read: repo_variable_get
+    still reads GitHub and reports ``variable_in_sync`` as None, while
+    repo_variable_set was refused before any call.
+    """
+
+    value: str
+    source_value: str | None
+
+
 class _RefusedError(Exception):
     """Internal: carries the typed failure out of a multi-request operation."""
 
@@ -281,6 +314,7 @@ class _Run:
         self.sent: list[ModelGithubHttpRequest] = []
         self.statuses: list[int] = []
         self.quota: ModelGithubQuotaReading | None = None
+        self.variable_plan: _VariablePlan | None = None
 
     def refused(
         self,
@@ -321,6 +355,10 @@ class _Run:
         comment_id: int | None = None,
         review_id: int | None = None,
         check_run_id: int | None = None,
+        variable_name: str | None = None,
+        variable_value: str | None = None,
+        variable_digest: str | None = None,
+        variable_in_sync: bool | None = None,
     ) -> ModelRepoWriteCompleted:
         c = self.command
         return ModelRepoWriteCompleted(
@@ -340,6 +378,10 @@ class _Run:
             comment_id=comment_id,
             review_id=review_id,
             check_run_id=check_run_id,
+            variable_name=variable_name,
+            variable_value=variable_value,
+            variable_digest=variable_digest,
+            variable_in_sync=variable_in_sync,
         )
 
     async def send(
@@ -441,8 +483,10 @@ class HandlerGithubRepoWriteEffect:
         clock: Callable[[], float] = time.time,
         quota_readings: GithubQuotaReadings | None = None,
         overlay: ModelRepoWriteOverlay | None = None,
+        variable_source_root: Path | None = None,
     ) -> None:
         self._write_overlay = overlay
+        self._variable_source_root = variable_source_root
         self._transport = transport
         self._fence = fence_port
         if deadline_seconds is None:
@@ -467,6 +511,100 @@ class HandlerGithubRepoWriteEffect:
         self._done: OrderedDict[
             tuple[str, str, str], tuple[dict[str, str], ModelRepoWriteCompleted]
         ] = OrderedDict()
+
+    def _variable_plan(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | _VariablePlan | None:
+        """Plan a repo_variable_set/get write, refusing before any call when the
+        overlay does not allow it.
+        """
+        if request.operation not in (
+            EnumRepoWriteOperation.REPO_VARIABLE_SET,
+            EnumRepoWriteOperation.REPO_VARIABLE_GET,
+        ):
+            return None
+        is_set = request.operation is EnumRepoWriteOperation.REPO_VARIABLE_SET
+        name = request.variable_name
+        if name is None:  # defensive; the request validator enforces this
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                "repo_variable_set/get requires variable_name; no call made",
+            )
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                f"no repo_variables overlay is configured: {exc}",
+            )
+        overlay = self._write_overlay.repo_variables
+        if overlay is None:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                f"variable {name} on {request.repo} is not in the node's "
+                "repo_variables overlay; no call made",
+            )
+        lowered_name = name.lower()
+        for marker in overlay.refuse_name_markers:
+            if marker.lower() in lowered_name:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.SECRET_REFUSED,
+                    f"variable name {name} carries a refuse marker; no call made",
+                )
+        entry = next(
+            (
+                e
+                for e in overlay.entries
+                if e.repository.lower() == request.repo.lower() and e.name == name
+            ),
+            None,
+        )
+        if entry is None:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                f"variable {name} on {request.repo} is not in the node's "
+                "repo_variables overlay; no call made",
+            )
+        try:
+            root = self._variable_source_root or pinned_overlay_root(NODE_NAME)
+            source_value = read_variable_source_value(
+                root,
+                entry.source,
+                fmt=entry.format,
+                select=entry.select,
+                name=entry.name,
+                repository=entry.repository,
+                max_chars=MAX_VARIABLE_CHARS,
+            )
+        except ValueError:
+            # The declared source cannot be read: a set refuses before any
+            # call, a get still reads GitHub and reports in_sync as None.
+            if is_set:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.VARIABLE_SOURCE_UNREADABLE,
+                    f"the source for variable {name} on {request.repo} is "
+                    "unreadable; no call made",
+                )
+            return _VariablePlan(value="", source_value=None)
+        if not is_set:
+            return _VariablePlan(value="", source_value=source_value)
+        lowered_value = source_value.lower()
+        for marker in overlay.refuse_value_markers:
+            if marker.lower() in lowered_value:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.SECRET_REFUSED,
+                    f"the source value for variable {name} on {request.repo} "
+                    "carries a refuse marker; no call made",
+                )
+        return _VariablePlan(value=source_value, source_value=source_value)
 
     def _label_refusal(
         self, request: ModelRepoWriteRequest
@@ -547,6 +685,9 @@ class HandlerGithubRepoWriteEffect:
         refused = self._label_refusal(request)
         if refused is not None:
             return refused
+        variable_plan = self._variable_plan(request)
+        if isinstance(variable_plan, ModelRepoWriteFailed):
+            return variable_plan
         mode = (
             EnumRepoWriteMode.DRY_RUN
             if request.dry_run
@@ -570,11 +711,18 @@ class HandlerGithubRepoWriteEffect:
                 request, EnumRepoWriteRefusal.CREDENTIAL_UNAVAILABLE, str(exc)
             )
         run = _Run(self, request, transport)
+        run.variable_plan = variable_plan
         try:
             result: Result = await self._run(run)
         except _RefusedError as exc:
             result = exc.failed
-        if isinstance(result, ModelRepoWriteCompleted):
+        # A repository variable is read back from GitHub on every call, so a
+        # repeat finds the value already there (replayed) without a record: the
+        # request carries no value, and a record would hide a changed source.
+        if isinstance(result, ModelRepoWriteCompleted) and request.operation not in (
+            EnumRepoWriteOperation.REPO_VARIABLE_SET,
+            EnumRepoWriteOperation.REPO_VARIABLE_GET,
+        ):
             self._done[key] = (digests, result)
             while len(self._done) > _IDEMPOTENCY_RECORD_SIZE:
                 self._done.popitem(last=False)
@@ -788,6 +936,10 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_thread_resolve(run)
         if op is EnumRepoWriteOperation.PR_LABEL:
             return await _pr_label(run)
+        if op is EnumRepoWriteOperation.REPO_VARIABLE_SET:
+            return await _repo_variable_set(run)
+        if op is EnumRepoWriteOperation.REPO_VARIABLE_GET:
+            return await _repo_variable_get(run)
         if op is EnumRepoWriteOperation.PR_REVIEW_POST:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
@@ -1099,6 +1251,44 @@ async def _pr_thread_resolve(run: _Run) -> ModelRepoWriteCompleted:
     return run.completed(html_url=url, head_sha=head_sha)
 
 
+async def _repo_variable_set(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    name = c.variable_name or ""
+    plan = run.variable_plan
+    value = plan.value if plan is not None else ""
+    response = await run.send(get_variable_request(c.repo, name), allow_not_found=True)
+    if response.status == 404:
+        await run.send(create_variable_request(c.repo, name, value))
+        return run.completed(variable_name=name, variable_digest=variable_digest(value))
+    body = response.body or {}
+    if body.get("value") == value:
+        return run.completed(
+            replayed=True,
+            variable_name=name,
+            variable_digest=variable_digest(value),
+        )
+    await run.send(update_variable_request(c.repo, name, value))
+    return run.completed(variable_name=name, variable_digest=variable_digest(value))
+
+
+async def _repo_variable_get(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    name = c.variable_name or ""
+    plan = run.variable_plan
+    response = await run.send(get_variable_request(c.repo, name))
+    body = response.body or {}
+    value = str(body.get("value", ""))
+    in_sync: bool | None = None
+    if plan is not None and plan.source_value is not None:
+        in_sync = value == plan.source_value
+    return run.completed(
+        variable_name=name,
+        variable_value=value,
+        variable_digest=variable_digest(value),
+        variable_in_sync=in_sync,
+    )
+
+
 async def _pr_label(run: _Run) -> ModelRepoWriteCompleted:
     c = run.command
     number = c.pr_number or 0
@@ -1178,6 +1368,10 @@ def planned_requests(
         in (EnumRepoWriteOperation.PR_CREATE, EnumRepoWriteOperation.WORKFLOW_DISPATCH)
         else []
     )
+    if op is EnumRepoWriteOperation.REPO_VARIABLE_SET:
+        return (get_variable_request(c.repo, c.variable_name or ""),)
+    if op is EnumRepoWriteOperation.REPO_VARIABLE_GET:
+        return (get_variable_request(c.repo, c.variable_name or ""),)
     if op is EnumRepoWriteOperation.PR_LABEL:
         return (
             pull_request_request(c.repo, n),

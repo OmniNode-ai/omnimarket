@@ -22,6 +22,7 @@ class ModelBranchDeployCommandRequest(BaseModel):
     pr_number: int = Field(ge=1)
     git_ref: str = Field(pattern=r"^[0-9a-f]{40}$")
     image_ref: str = ""
+    overlay_ref: str = Field(default="", pattern=r"^([0-9a-f]{40})?$")
     rollback_actor: str = Field(min_length=1)
     rollback_reason: str = Field(min_length=1)
     requested_by: str = Field(min_length=1)

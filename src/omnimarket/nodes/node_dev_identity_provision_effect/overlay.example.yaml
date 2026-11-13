@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+lane: dev
+keycloak:
+  base_url: https://keycloak.example.invalid
+  realm: omninode
+  timeout_seconds: 10.0
+  token_path_template: /realms/{realm}/protocol/openid-connect/token
+  admin_users_path_template: /admin/realms/{realm}/users
+  admin_reset_password_path_template: /admin/realms/{realm}/users/{user_id}/reset-password
+admin:
+  client_id: admin-client
+  secret_folder: /shared/env
+  secret_key: KEYCLOAK_ADMIN_CLIENT_SECRET
+user:
+  username: dev-probe-user
+  email: dev-probe@example.invalid
+  first_name: Dev
+  last_name: Probe
+  client_id: public-client
+  password_key_id: dev_probe_user_password
+  password_folder: /shared/env
+  password_key: DEV_PROBE_USER_PASSWORD
+api:
+  base_url: https://api.example.invalid
+  provision_path: /v1/auth/provision
+  timeout_seconds: 15.0
+secret_store: null

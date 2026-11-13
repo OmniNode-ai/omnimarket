@@ -19,5 +19,7 @@ source:
     org: example-org
     app_id_secret: EXAMPLE_APP_ID
     private_key_secret: EXAMPLE_APP_PRIVATE_KEY
+  # The NAME of the App permission the organization read of the group needs; a refusal names it.
+  org_read_permission: example_org_permission_read
   max_calls: 40
   timeout_seconds: 10
