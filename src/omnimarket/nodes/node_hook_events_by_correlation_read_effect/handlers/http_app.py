@@ -10,6 +10,7 @@ bound answers 503, a resolver that returns no tenant answers 401.
 
 # No ``from __future__ import annotations``: FastAPI evaluates the route's
 # annotations, which close over the contract-derived bounds.
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -36,6 +37,8 @@ from omnimarket.nodes.node_hook_events_by_correlation_read_effect.protocols.prot
 from omnimarket.protocols.protocol_http_tenant_identity import (
     ProtocolHttpTenantIdentity,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class _RefusalError(Exception):
@@ -93,7 +96,16 @@ def create_app(
                     status_code=503, content={"detail": config.unbound_identity_detail}
                 )
             )
-        tenant = await resolver.resolve(dict(request.headers))
+        try:
+            tenant = await resolver.resolve(dict(request.headers))
+        except Exception as exc:
+            logger.warning("identity resolver failed: %s", type(exc).__name__)
+            raise _RefusalError(
+                JSONResponse(
+                    status_code=503,
+                    content={"detail": config.identity_unavailable_detail},
+                )
+            ) from exc
         if tenant is None:
             presented = any(request.headers.get(h) for h in config.credential_headers)
             raise _RefusalError(
