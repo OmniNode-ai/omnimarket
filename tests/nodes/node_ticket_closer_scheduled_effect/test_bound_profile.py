@@ -15,6 +15,8 @@ from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.models.ticket_closer import (
     EnumCloserReadingSource,
+    ModelCloserCandidate,
+    ModelCloserWriteReceipt,
     ModelTicketCloserScheduleOverlay,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
@@ -213,8 +215,17 @@ def test_failing_control_the_unread_and_bound_readings_differ() -> None:
 
 
 class _EmptySource:
-    def candidates(self, now: datetime, limit: int) -> list[Any]:
+    def candidates(
+        self, now: datetime, limit: int
+    ) -> list[ModelCloserCandidate] | None:
         return []
+
+
+class _NoWriter:
+    def mark_done(
+        self, ticket_id: str, *, state: str, lane: str, evidence: str
+    ) -> ModelCloserWriteReceipt:
+        return ModelCloserWriteReceipt(ok=False, reason="no writer in this test")
 
 
 def test_the_bound_parts_are_built_once_and_reused(
@@ -229,9 +240,9 @@ def test_the_bound_parts_are_built_once_and_reused(
     def fake(schedule: Any, environ: Any, clock: Any) -> CloserParts:
         built.append(1)
         return CloserParts(
-            source=_EmptySource(),  # type: ignore[arg-type]
+            source=_EmptySource(),
             verifier=DodVerifyReader(),
-            writer=BusTicketDoneWriter(lambda _request: None),  # type: ignore[arg-type, return-value]
+            writer=_NoWriter(),
         )
 
     monkeypatch.setattr(handler_module, "bound_closer_parts", fake)

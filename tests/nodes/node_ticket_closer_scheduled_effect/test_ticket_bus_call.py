@@ -157,16 +157,21 @@ def test_error_chain_a_bus_that_cannot_open_is_raised_not_swallowed(
 ) -> None:
     caller = SeamCaller(terminal())  # never reached: the bus never opens
 
-    @contextlib.asynccontextmanager
-    async def refused_opener(
+    class RefusedOpening:
+        async def __aenter__(self) -> object:
+            raise LabRunBusError("no lane declaration")
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    def refused_opener(
         *,
         bus: str,
         lane: str,
         kafka_bootstrap: str | None,
         workspace: Path | None,
-    ) -> AsyncIterator[object]:
-        raise LabRunBusError("no lane declaration")
-        yield object()  # pragma: no cover
+    ) -> RefusedOpening:
+        return RefusedOpening()
 
     monkeypatch.setattr(lane_bus, "open_lab_run_bus", refused_opener)
     monkeypatch.setattr(scm_dispatch, "ScmBusCaller", lambda _handle: caller)
