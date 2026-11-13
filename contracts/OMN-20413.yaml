@@ -73,3 +73,9 @@ dod_evidence:
       - check_type: command
         check_value: |-
           sha="$(git rev-parse HEAD)"; base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$sha/src/omnimarket/nodes"; la="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_local_alerts/contract.yaml")" && dl="$(curl --fail --silent --show-error --location --max-time 30 "$base/node_projection_delegation/contract.yaml")" && ! printf '%s\n' "$la" | grep -q '^  consumers:' && printf '%s\n' "$dl" | grep -q '^      consumers: none$' && printf '%s\n' "$dl" | grep -q '^      consumers_reason:' && echo "OMN-20413 reader-coverage readback PASS"
+  - id: dod-omn20413-dev-red-role-placeholders-test
+    description: The role-placeholder tests name the placeholder the GPU power caps contract declares today (ONEX_ACL_RUNTIME_PRINCIPAL), so the broker ACL reconcile node's tests pass on dev.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q -p no:randomly --no-cov
