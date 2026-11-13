@@ -600,6 +600,7 @@
   "tests/nodes/node_branch_deploy_command_effect/test_command_effect.py": 3.34,
   "tests/nodes/node_branch_deploy_command_effect/test_contract.py": 2.66,
   "tests/nodes/node_branch_deploy_command_effect/test_trigger_seam.py": 2.48,
+  "tests/nodes/node_branch_deploy_command_effect/test_wire_seam.py": 3.37,
   "tests/nodes/node_branch_deploy_orchestrator/test_contract.py": 2.43,
   "tests/nodes/node_branch_deploy_orchestrator/test_orchestrator.py": 2.24,
   "tests/nodes/node_branch_deploy_orchestrator/test_seam.py": 2.55,
