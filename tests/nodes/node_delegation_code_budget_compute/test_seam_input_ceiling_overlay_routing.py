@@ -57,13 +57,31 @@ OVERLAYS_REPO_KEYS = {
 }
 
 
+# The one optional key (OMN-24061): a document that omits it still loads, so the overlays repository may add it after this model
+# accepts it, and never before (an overlay key no reader accepts stops every consumer of the overlay).
+OPTIONAL_OVERLAY_KEYS = {"class_sampling", "event_bus"}
+
+
 def _overlay_document() -> dict[str, object]:
     return yaml.safe_load(OVERLAY_FILE.read_text(encoding="utf-8"))
 
 
 def test_overlay_document_keys_match_the_model_and_the_overlays_repository() -> None:
-    assert set(ModelCodeBudgetOverlay.model_fields) == OVERLAYS_REPO_KEYS
-    assert set(_overlay_document()) == OVERLAYS_REPO_KEYS
+    assert set(ModelCodeBudgetOverlay.model_fields) == (
+        OVERLAYS_REPO_KEYS | OPTIONAL_OVERLAY_KEYS
+    )
+    required = {
+        name
+        for name, field in ModelCodeBudgetOverlay.model_fields.items()
+        if field.is_required()
+    }
+    assert required == OVERLAYS_REPO_KEYS
+    document_keys = set(_overlay_document())
+    assert (
+        OVERLAYS_REPO_KEYS
+        <= document_keys
+        <= (OVERLAYS_REPO_KEYS | OPTIONAL_OVERLAY_KEYS)
+    )
 
 
 def test_the_overlay_key_the_refusal_names_is_the_ticket_s_key() -> None:

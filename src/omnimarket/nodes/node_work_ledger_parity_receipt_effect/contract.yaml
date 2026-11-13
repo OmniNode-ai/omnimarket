@@ -42,6 +42,7 @@ inputs:
   registry_root: {type: str, required: true, description: Root whose state directory the parity check writes under.}
   ledger_path: {type: str, required: true, description: The rolling work ledger to read and append to.}
   parity_python: {type: str, required: false, description: Interpreter that runs the parity check.}
+  verb_command: {type: str, required: false, description: Command prefix of the ledger readers; passed to the parity check as --verb-command.}
   dsn_overlay_path: {type: str, required: false, description: Overlay file holding the host variable name, database and user.}
   dsn_env_file: {type: str, required: false, description: Env file holding the host and the password.}
   pg_port: {type: str, required: false, description: Port of the projection database.}

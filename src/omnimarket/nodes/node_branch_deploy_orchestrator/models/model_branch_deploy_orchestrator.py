@@ -57,6 +57,7 @@ class ModelBranchDeployRequest(BaseModel):
     rollback_head_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     rollback_image: str = Field(min_length=1)
     rollback_reason: str = Field(min_length=1)
+    overlay_ref: str = Field(default="", pattern=r"^([0-9a-f]{40})?$")
 
 
 class ModelDeployJobCompleted(BaseModel):

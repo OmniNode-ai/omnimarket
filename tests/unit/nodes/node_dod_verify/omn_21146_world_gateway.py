@@ -3,9 +3,10 @@
 
 """OMN-21146 -- node_github_repo_gateway_effect as a repo world's GitHub holds it.
 
-Answers the two reads node_dod_verify sends the gateway: one PR's merge facts
-(``merged_pr``) and one commit's check runs (``commit_check_runs``). Every
-other operation fails the test.
+Answers the three reads node_dod_verify sends the gateway: one PR's merge
+facts (``merged_pr``), one commit's check runs (``commit_check_runs``) and one
+repository file at a commit (``repo_file``). Every other operation fails the
+test.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
     ModelMergedPrResult,
+    ModelRepoFileResult,
 )
 
 
@@ -30,9 +32,13 @@ class WorldGateway:
         self,
         check_runs: dict[tuple[str, str], list[dict[str, object]]],
         github_prs: dict[str, dict[str, Any]],
+        repo_files: dict[tuple[str, str, str], str] | None = None,
     ) -> None:
         self._check_runs = check_runs
         self._github_prs = github_prs
+        self._repo_files: dict[tuple[str, str, str], str] = (
+            repo_files if repo_files is not None else {}
+        )
         self.requests: list[ModelGithubGatewayRequest] = []
 
     def read(self, request: ModelGithubGatewayRequest) -> GithubGatewayResult:
@@ -70,5 +76,26 @@ class WorldGateway:
                 base_ref=pr["base"],
                 merge_commit_sha=pr["merge_sha"],
                 merged_at=pr["merged_at"],
+            )
+        if request.operation is EnumGithubGatewayOperation.REPO_FILE:
+            assert request.head_sha is not None
+            assert request.file_path is not None
+            key = (request.repo, request.head_sha, request.file_path)
+            if key in self._repo_files:
+                if self._repo_files[key] == "UNREADABLE":
+                    raise GatewayReadError("gateway repo_file: HTTP 502")
+                return ModelRepoFileResult(
+                    repo=request.repo,
+                    head_sha=request.head_sha,
+                    file_path=request.file_path,
+                    found=True,
+                    text=self._repo_files[key],
+                )
+            return ModelRepoFileResult(
+                repo=request.repo,
+                head_sha=request.head_sha,
+                file_path=request.file_path,
+                found=False,
+                text=None,
             )
         raise AssertionError(f"unexpected gateway read: {request.operation.value}")

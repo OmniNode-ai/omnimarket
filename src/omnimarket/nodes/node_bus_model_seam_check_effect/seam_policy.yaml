@@ -281,3 +281,15 @@ pins:
   - window
   missing:
   - event
+- topic: onex.evt.omnimarket.host-disk-read.v1
+  producer_model: omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark.ModelLabDiskWatermarkReading
+  consumer_model: omnimarket.models.model_host_disk_reading.ModelHostDiskRead
+  refused:
+  - host_disk
+  - level
+  - paged
+  - reading_file
+  - written
+  missing:
+  - classes
+  - correlation_id

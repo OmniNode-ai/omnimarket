@@ -333,6 +333,8 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             return outcome(
                 skipped, f"an image build holds {building}: converged after it ends"
             )
+        if self._out(clone, "rev-parse", "--is-bare-repository") == "true":
+            return self._repair_bare(clone, refused_for, outcome)
         branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
         if not branch:
             return self._reattach_detached(clone, refused_for, outcome)
@@ -531,6 +533,90 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         return outcome(
             EnumDirtyConvergeStatus.CONVERGED,
             f"{note}; now on {branch} at {head[:12]}",
+            converged_to=head,
+        )
+
+    # -- a clone git wrongly treats as bare (OMN-24240) -----------------------------------------
+    def _repair_bare(
+        self,
+        clone: Path,
+        refused_for: int,
+        outcome: Callable[..., ModelDirtyConvergeOutcome],
+    ) -> ModelDirtyConvergeOutcome:
+        """Clear core.bare on a clone that has a working tree, then converge it (OMN-24240).
+
+        A lab host's clone had a full working tree and a .git directory but core.bare=true, so the
+        engine refused it forever (a fetch lands and no checkout ever does). A true bare mirror has
+        no .git directory inside it and is never touched; a clone with a working tree is repaired.
+        """
+        skipped = EnumDirtyConvergeStatus.SKIPPED
+        failed = EnumDirtyConvergeStatus.FAILED
+        if refused_for < self.detached_age:
+            return outcome(
+                skipped,
+                f"core.bare=true for {refused_for}s, below the declared {int(self.detached_age)}s",
+            )
+        if not (clone / ".git").is_dir():
+            return outcome(
+                skipped, "a bare mirror with no working tree: nothing to repair"
+            )
+        if any((clone / ".git" / marker).exists() for marker in _IN_PROGRESS):
+            return outcome(skipped, "a git operation is in progress in the clone")
+        lane = self._open_claim_naming(clone)
+        if lane:
+            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        inside = self._process_inside(clone)
+        if inside:
+            return outcome(skipped, f"a process is using the clone ({inside})")
+        before = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
+        if not before:
+            return outcome(failed, "HEAD does not resolve to a commit")
+        code, text = self._git(clone, "config", "core.bare", "false")
+        if code:
+            return outcome(failed, f"could not clear core.bare: {text}")
+        note = f"cleared core.bare=true on a clone with a working tree at {before[:12]}"
+        script = self.registry_root / self.declaration.converge_script
+        try:
+            done = self._run(
+                [
+                    "/bin/bash",
+                    str(script),
+                    str(clone),
+                    "--execute",
+                    "--ticket",
+                    self.declaration.ticket,
+                    "--lane",
+                    self.declaration.lane,
+                    "--note",
+                    note,
+                ],
+                capture_output=True,
+                text=True,
+                env={k: v for k, v in self._env.items() if k not in _GIT_LOCATION_ENV},
+                timeout=_TIMEOUTS.get("dirty_converge_script_seconds"),
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return outcome(
+                failed, f"converge could not run: {type(exc).__name__}: {exc}"
+            )
+        still_bare = self._out(clone, "rev-parse", "--is-bare-repository")
+        branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
+        head = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
+        if (
+            done.returncode
+            or still_bare == "true"
+            or branch not in self.declaration.tracking_branches
+        ):
+            tail = " ".join((done.stderr or done.stdout or "").split())[-300:]
+            return outcome(
+                failed,
+                f"clone still bare or off a tracking branch ({branch or 'detached'}); "
+                f"converge-canonical-clone.sh exit {done.returncode}: {tail}",
+            )
+        return outcome(
+            EnumDirtyConvergeStatus.CONVERGED,
+            f"{note}; now at {head[:12]}",
             converged_to=head,
         )
 
