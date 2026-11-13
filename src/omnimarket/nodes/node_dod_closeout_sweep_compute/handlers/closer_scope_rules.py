@@ -16,15 +16,15 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from omnimarket.models.closeout_scope_overlay import (
+    EnumRankRule,
+    ModelCloseoutScopeOverlay,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_examined_rules import (
     examined_update,
     held_for_unchanged_rejection,
     next_memory,
     with_examined_state,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
-    EnumRankRule,
-    ModelCloseoutScopeOverlay,
 )
 
 _TEXT_SHA = re.compile(r"^[0-9a-f]{16}$")

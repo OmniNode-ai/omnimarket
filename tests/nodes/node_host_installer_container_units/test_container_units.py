@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from omnimarket.nodes.node_host_installer_container_units.handlers.handler_container_units import (
     HandlerContainerUnits,
     create_argv,
+    memory_problem,
     render_unit,
 )
 from omnimarket.nodes.node_host_installer_container_units.models.model_container_units import (
@@ -500,3 +501,201 @@ def test_the_command_line_refuses_an_unreadable_overlay(
     )
     assert code == 1
     assert "unreadable" in capsys.readouterr().err
+
+
+GIB = 1024**3
+
+UNIT_WITH_MEMORY = {**UNIT, "memory_gib": 4, "memory_swap_gib": 8}
+
+
+def _memory_inspect_json(
+    memory_bytes: int, swap_bytes: int, network: str | None = "broker-net"
+) -> str:
+    host_config: dict = {"Memory": memory_bytes, "MemorySwap": swap_bytes}
+    document: dict = {"HostConfig": host_config}
+    if network is not None:
+        host_config["NetworkMode"] = network
+        host_config["PortBindings"] = {
+            "59092/tcp": [{"HostIp": "127.0.0.1", "HostPort": "59092"}]
+        }
+        document["State"] = {"Running": True}
+        document["NetworkSettings"] = {"Networks": {network: {}}}
+    return json.dumps([document])
+
+
+def test_memory_problem_returns_none_when_the_limits_already_match() -> None:
+    unit = ModelContainerUnit(**UNIT_WITH_MEMORY)
+    assert (
+        memory_problem(unit, _memory_inspect_json(4 * GIB, 8 * GIB, network=None))
+        is None
+    )
+
+
+def test_memory_problem_returns_the_declared_bytes_when_the_container_runs_with_0_0() -> (
+    None
+):
+    unit = ModelContainerUnit(**UNIT_WITH_MEMORY)
+    assert memory_problem(unit, _memory_inspect_json(0, 0, network=None)) == (
+        4 * GIB,
+        8 * GIB,
+    )
+
+
+def test_memory_problem_raises_on_garbage_inspect_stdout() -> None:
+    unit = ModelContainerUnit(**UNIT_WITH_MEMORY)
+    with pytest.raises(ValueError, match="printed no container document"):
+        memory_problem(unit, "not json")
+
+
+def test_memory_problem_ignores_the_inspect_when_no_memory_is_declared() -> None:
+    assert memory_problem(ModelContainerUnit(**UNIT), "") is None
+
+
+def test_model_refuses_memory_gib_without_memory_swap_gib() -> None:
+    with pytest.raises(ValidationError):
+        ModelContainerUnit(**UNIT, memory_gib=4)
+
+
+def test_model_refuses_memory_swap_gib_without_memory_gib() -> None:
+    with pytest.raises(ValidationError):
+        ModelContainerUnit(**UNIT, memory_swap_gib=8)
+
+
+def test_model_refuses_memory_swap_gib_below_memory_gib() -> None:
+    with pytest.raises(ValidationError):
+        ModelContainerUnit(**UNIT, memory_gib=8, memory_swap_gib=4)
+
+
+def test_golden_chain_install_with_a_memory_limit_updates_the_container_in_place(
+    tmp_path: Path,
+) -> None:
+    recorder = _Recorder(
+        inspect_stdout=_memory_inspect_json(2 * GIB, 2 * GIB, network=None)
+    )
+    probes: list[tuple[str, int, int]] = []
+
+    def probe(address: str, port: int, wait: int) -> bool:
+        probes.append((address, port, wait))
+        return True
+
+    node = NodeHostInstallerContainerUnits()
+    node.handler = HandlerContainerUnits(run=recorder, probe=probe, home=tmp_path)
+    result = node.handle(_request(tmp_path, unit=UNIT_WITH_MEMORY))
+    assert result.exit_code == 0, result.stderr
+    assert [call for call in recorder.calls if "update" in call] == [
+        [
+            "/usr/bin/docker",
+            "update",
+            "--memory",
+            str(4 * GIB),
+            "--memory-swap",
+            str(8 * GIB),
+            "broker-a",
+        ]
+    ]
+    assert (tmp_path / ".config/systemd/user/onex-broker-a.service").is_file()
+    assert (
+        "set memory limit of broker-a to 4 GiB, memory plus swap 8 GiB" in result.stdout
+    )
+    assert probes == [("127.0.0.1", 59092, 5)]
+
+
+def test_install_with_matching_memory_limits_makes_no_update_call(
+    tmp_path: Path,
+) -> None:
+    recorder = _Recorder(
+        inspect_stdout=_memory_inspect_json(4 * GIB, 8 * GIB, network=None)
+    )
+    result = HandlerContainerUnits(
+        run=recorder, probe=lambda *_: True, home=tmp_path
+    ).handle(_request(tmp_path, unit=UNIT_WITH_MEMORY))
+    assert result.exit_code == 0, result.stderr
+    assert not any("update" in call for call in recorder.calls)
+    assert "set memory limit" not in result.stdout
+    assert (tmp_path / ".config/systemd/user/onex-broker-a.service").is_file()
+
+
+def test_error_chain_a_failed_memory_update_writes_no_unit_file(tmp_path: Path) -> None:
+    class _FailingUpdateRecorder(_Recorder):
+        def __call__(self, command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+            if "update" in command:
+                self.calls.append(list(command))
+                return subprocess.CompletedProcess(
+                    list(command), 1, "", "update failed"
+                )
+            return super().__call__(command)
+
+    recorder = _FailingUpdateRecorder(
+        inspect_stdout=_memory_inspect_json(2 * GIB, 2 * GIB, network=None)
+    )
+    result = HandlerContainerUnits(
+        run=recorder, probe=lambda *_: True, home=tmp_path
+    ).handle(_request(tmp_path, unit=UNIT_WITH_MEMORY))
+    assert result.exit_code == 1
+    assert (
+        "docker update failed (exit 1): update failed; nothing written" in result.stderr
+    )
+    assert not (tmp_path / ".config").exists()
+
+
+def test_status_reports_memory_limit_differs(tmp_path: Path) -> None:
+    recorder = _Recorder(
+        inspect_stdout=_memory_inspect_json(2 * GIB, 2 * GIB, network="broker-net")
+    )
+    handler = HandlerContainerUnits(run=recorder, probe=lambda *_: True, home=tmp_path)
+    result = handler.handle(
+        _request(
+            tmp_path,
+            mode="status",
+            unit={**UNIT_WITH_NETWORK, "memory_gib": 4, "memory_swap_gib": 8},
+        )
+    )
+    assert "NETWORK ATTACHED broker-net" in result.stdout
+    assert (
+        "MEMORY LIMIT DIFFERS declared 4 GiB, running 2147483648 bytes" in result.stdout
+    )
+    assert result.exit_code == 1
+    assert not any("update" in call for call in recorder.calls)
+
+
+def test_status_reports_memory_limit_ok(tmp_path: Path) -> None:
+    recorder = _Recorder(
+        inspect_stdout=_memory_inspect_json(4 * GIB, 8 * GIB, network=None)
+    )
+    handler = HandlerContainerUnits(run=recorder, probe=lambda *_: True, home=tmp_path)
+    result = handler.handle(_request(tmp_path, mode="status", unit=UNIT_WITH_MEMORY))
+    assert "MEMORY LIMIT OK 4 GiB" in result.stdout
+    assert result.exit_code == 0
+    assert any("inspect" in call for call in recorder.calls)
+
+
+def test_memory_an_unreadable_inspect_refuses_the_install_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    unit = ModelContainerUnit(
+        name="onex-cache",
+        hosts=("h-test",),
+        container="cache",
+        ticket="OMN-24208",
+        docker_binary="/usr/bin/docker",
+        restart_seconds=10,
+        stop_timeout_seconds=30,
+        probe_address="127.0.0.1",
+        probe_port=3141,
+        probe_wait_seconds=1,
+        memory_gib=4,
+        memory_swap_gib=8,
+    )
+    handler = HandlerContainerUnits(
+        run=lambda argv: subprocess.CompletedProcess(list(argv), 0, "not json", ""),
+        probe=lambda *_: True,
+        home=tmp_path,
+    )
+
+    result = handler._install(
+        unit, "onex-cache.service", tmp_path / "onex-cache.service", "text"
+    )
+
+    assert result.exit_code == 1
+    assert "no container document" in result.stderr
+    assert not (tmp_path / "onex-cache.service").exists()
