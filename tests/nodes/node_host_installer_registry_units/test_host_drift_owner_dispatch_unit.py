@@ -76,6 +76,8 @@ def request(
         "registry_root": str(tmp_path / "omni"),
         "workspace_config_root": str(tmp_path / "ws"),
         "remote_lane_runner": "/example/plugin/remote-lane/onex_remote_lane.py",
+        "ledger_host_name": "h-example",
+        "ledger_path": "/example/ledger/rows.md",
         "project_path": str(path),
         "expected_revision": revision,
         "path_overrides": {
@@ -124,7 +126,7 @@ def test_the_runner_variable_is_the_one_the_nodes_overlay_names() -> None:
         declared["environment_inputs"]["ONEX_HOST_DRIFT_OWNER_RUNNER"]
         == "remote_lane_runner"
     )
-    assert declared["required_environment_inputs"] == ["ONEX_HOST_DRIFT_OWNER_RUNNER"]
+    assert len(declared["required_environment_inputs"]) == 3
 
 
 def test_an_install_that_names_no_runner_is_refused(
@@ -138,3 +140,16 @@ def test_an_install_that_names_no_runner_is_refused(
     )
     assert result.status == "failure"
     assert "ONEX_HOST_DRIFT_OWNER_RUNNER" in result.stderr
+
+
+def test_the_runner_gets_the_ledger_write_environment_the_checkers_own_unit_has(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "branch"
+    revision = checkout(path)
+    result = HandlerRegistryUnits(Recorder()).handle(request(tmp_path, path, revision))
+    assert result.status == "success", result.stderr
+    assert '"ONEX_LEDGER_WRITE_VIA=bus"' in result.rendered
+    assert '"ONEX_LEDGER_HOST_NAME=h-example"' in result.rendered
+    assert "=/example/ledger/rows.md" in result.rendered
+    assert "omnimarket.work_ledger_bus.cli append --bus-lane dev" in result.rendered

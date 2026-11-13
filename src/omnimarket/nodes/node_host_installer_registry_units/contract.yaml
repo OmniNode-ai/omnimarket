@@ -429,9 +429,15 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The runner writes the lane's CLAIM and TERMINAL from this host through the ledger's bus append, as the host drift checker's
+      # own unit does (OMN-24239; the first tick on h053 failed every placement with "set ONEX_LEDGER_PATH").
+      ONEX_LEDGER_WRITE_VIA: "bus"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
     environment_inputs:
       ONEX_HOST_DRIFT_OWNER_RUNNER: remote_lane_runner
-    required_environment_inputs: [ONEX_HOST_DRIFT_OWNER_RUNNER]
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+      ONEX_LEDGER_PATH: ledger_path
+    required_environment_inputs: [ONEX_HOST_DRIFT_OWNER_RUNNER, ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH]
     evidence_file: .local/state/omni/host-drift-owner-dispatch/last-run.json
     state_directory: .onex_state/host-drift-owner-dispatch
   # Lane context ledger archive dedupe (OMN-23297, node_lane_ctx_ledger_dedupe_effect): every lab host links the ledger archive
