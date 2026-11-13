@@ -100,6 +100,8 @@ def request(tmp_path: Path, **kw: Any) -> ModelRegistryUnitsRequest:
         "unit": UNIT,
         "home": str(tmp_path / "home"),
         "registry_root": str(tmp_path / "omni"),
+        # The store units read the lane declaration from the workspace root (OMN-24052).
+        "workspace_config_root": str(tmp_path / "workspace-config"),
         "path_overrides": {
             "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays" / "overlays"),
             "LAB_WORK_HOST_NAME": "h051",

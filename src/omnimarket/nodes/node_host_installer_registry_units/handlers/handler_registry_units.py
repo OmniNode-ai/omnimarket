@@ -45,11 +45,84 @@ from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_u
 )
 
 NODE_DIR = Path(__file__).resolve().parents[1]
+
+# The previous install of a unit, kept one level deep so a rollback can put it back (OMN-24108). An install that replaces a
+# unit's files first copies each of them to <state>/<unit>.previous/ with a manifest naming where each came from and whether it
+# existed; a rollback copies them back, or removes the unit's files when the install was the first. One level only.
+MANIFEST = "manifest.json"
+KEPT_SUFFIX = ".previous"
+
+
+class NoPreviousInstallError(ValueError):
+    """A rollback was asked for a unit that has no kept previous install."""
+
+
+def kept_directory(state: Path, unit: str) -> Path:
+    return state / f"{unit}{KEPT_SUFFIX}"
+
+
+def keep_previous(state: Path, unit: str, targets: dict[str, Path]) -> Path:
+    """Copy each target that exists to the unit's kept directory, replacing any earlier kept copy."""
+    kept = kept_directory(state, unit)
+    shutil.rmtree(kept, ignore_errors=True)
+    kept.mkdir(parents=True)
+    manifest: dict[str, dict[str, object]] = {}
+    for key, target in targets.items():
+        present = target.exists()
+        manifest[key] = {"target": str(target), "present": present}
+        if not present:
+            continue
+        if target.is_dir():
+            shutil.copytree(target, kept / key, symlinks=True)
+        else:
+            shutil.copy2(target, kept / key)
+    (kept / MANIFEST).write_text(
+        json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return kept
+
+
+def read_previous(state: Path, unit: str) -> tuple[Path, dict[str, dict[str, object]]]:
+    kept = kept_directory(state, unit)
+    manifest = kept / MANIFEST
+    if not manifest.is_file():
+        raise NoPreviousInstallError(
+            f"no previous install of {unit} is kept under {kept}; nothing to roll back "
+            "(an install keeps the files it replaces, one level deep, and a rollback uses them up)"
+        )
+    return kept, json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def restore_previous(kept: Path, manifest: dict[str, dict[str, object]]) -> list[str]:
+    """Put each kept file back where it came from; remove the ones the unit did not have. Returns what was done."""
+    done: list[str] = []
+    for key, row in sorted(manifest.items()):
+        target = Path(str(row["target"]))
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+        else:
+            target.unlink(missing_ok=True)
+        if row["present"]:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = kept / key
+            if source.is_dir():
+                shutil.copytree(source, target, symlinks=True)
+            else:
+                shutil.copy2(source, target)
+            done.append(f"restored {target}")
+        else:
+            done.append(
+                f"removed {target} (the install that was rolled back was the first)"
+            )
+    shutil.rmtree(kept)
+    return done
+
+
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
-LOCKED_MODES = frozenset({"install", "uninstall"})
+LOCKED_MODES = frozenset({"install", "uninstall", "rollback"})
 EXIT_INSTALL_IN_PROGRESS = 75
 # After an unit is unloaded, how long the install waits for a tick still holding the unit's tick lock to end by itself, then
 # how long it waits after TERM before it sends KILL (OMN-23349).
@@ -708,6 +781,23 @@ class HandlerRegistryUnits:
                 + ended
                 + f"removed {label} (state under {state} is left in place)\n",
             )
+        if request.mode == "rollback":
+            kept, manifest = read_previous(state, request.unit)
+            self.run(["launchctl", "bootout", target])
+            ended = self.stop_running_tick(unit, request)
+            restored = restore_previous(kept, manifest)
+            if plist.exists():
+                started = self.run(["launchctl", "bootstrap", domain, str(plist)])
+                if started.returncode:
+                    return self.result(
+                        request,
+                        started.returncode,
+                        out=started.stdout,
+                        error=f"the previous {label} was put back and launchctl refused it:\n{started.stderr}",
+                    )
+            return self.result(
+                request, 0, out=ended + f"rolled back {label}: {'; '.join(restored)}\n"
+            )
         if request.mode == "status":
             return self.status(request, unit, target, evidence, state, record)
 
@@ -758,6 +848,8 @@ class HandlerRegistryUnits:
             rendered.chmod(0o600)
             self.run(["launchctl", "bootout", target])
             ended = self.stop_running_tick(unit, request)
+            if not plist.exists() or plist.read_text(encoding="utf-8") != text:
+                keep_previous(state, request.unit, {"plist": plist, "record": record})
             shutil.move(str(rendered), str(plist))
         started = self.run(["launchctl", "bootstrap", domain, str(plist)])
         if started.returncode:
@@ -944,6 +1036,24 @@ class HandlerRegistryUnits:
                 out=stopped.stdout
                 + f"removed {label} (state under {state} is left in place)\n",
             )
+        if request.mode == "rollback":
+            kept, manifest = read_previous(state, request.unit)
+            self.run([*systemctl, "disable", "--now", f"{label}.timer"])
+            restored = restore_previous(kept, manifest)
+            self.run([*systemctl, "daemon-reload"])
+            if timer_path.exists():
+                for verb in ("enable", "restart"):
+                    started = self.run([*systemctl, verb, f"{label}.timer"])
+                    if started.returncode:
+                        return self.result(
+                            request,
+                            started.returncode,
+                            out=started.stdout,
+                            error=f"the previous {label} was put back and systemctl {verb} refused it:\n{started.stderr}",
+                        )
+            return self.result(
+                request, 0, out=f"rolled back {label}: {'; '.join(restored)}\n"
+            )
         if request.mode == "status":
             return self.status_systemd(request, unit, evidence, record)
 
@@ -979,6 +1089,15 @@ class HandlerRegistryUnits:
             path: (path.read_bytes() if path.exists() else None)
             for path in (service_path, timer_path)
         }
+        if (
+            previous[service_path] != service.encode()
+            or previous[timer_path] != timer.encode()
+        ):
+            keep_previous(
+                state,
+                request.unit,
+                {"service": service_path, "timer": timer_path, "record": record},
+            )
         for path, body in ((service_path, service), (timer_path, timer)):
             staged = path.with_name(f".{path.name}.staged")
             staged.write_text(body, encoding="utf-8")
@@ -1248,6 +1367,13 @@ class HandlerRegistryUnits:
                 return result(
                     out=f"removed {label}; copied payload and state retained\n"
                 )
+            if request.mode == "rollback":
+                kept, manifest = read_previous(state, request.unit)
+                self.run(["launchctl", "bootout", target])
+                restored = restore_previous(kept, manifest)
+                if plist.exists():
+                    checked(["launchctl", "bootstrap", domain, str(plist)])
+                return result(out=f"rolled back {label}: {'; '.join(restored)}\n")
             if request.mode == "status":
                 checked(["launchctl", "print", target])
                 log = state / "runs.jsonl"
@@ -1344,6 +1470,20 @@ class HandlerRegistryUnits:
                 checked(["plutil", "-lint", str(candidate)])
                 if request.mode == "dry-run":
                     return result(out=rendered)
+                if (
+                    not plist.exists()
+                    or plist.read_text(encoding="utf-8") != rendered
+                    or self.installed_digest(state) != digest
+                ):
+                    keep_previous(
+                        state,
+                        request.unit,
+                        {
+                            "plist": plist,
+                            "payload": install,
+                            "install.json": state / "install.json",
+                        },
+                    )
                 self.activate(
                     staged, install, candidate, plist, state, domain, target, checked
                 )
@@ -1357,6 +1497,19 @@ class HandlerRegistryUnits:
                 return result(out=f"installed {label}; bundle_sha256={digest}\n")
         except (OSError, ValueError, shutil.Error) as exc:
             return result(1, err=f"{exc}\n")
+
+    @staticmethod
+    def installed_digest(state: Path) -> str:
+        """The bundle digest the last install of a copied unit recorded, or empty when it recorded none."""
+        record = state / "install.json"
+        if not record.is_file():
+            return ""
+        try:
+            return str(
+                json.loads(record.read_text(encoding="utf-8")).get("bundle_sha256", "")
+            )
+        except ValueError:
+            return ""
 
     @staticmethod
     def relative(name: str) -> Path:
