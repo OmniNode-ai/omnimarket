@@ -790,6 +790,7 @@ node_host_power_effect = "omnimarket.nodes.node_host_power_effect"
 node_host_profile_compute = "omnimarket.nodes.node_host_profile_compute"
 node_host_reading_effect = "omnimarket.nodes.node_host_reading_effect"
 node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
+node_host_retention_effect = "omnimarket.nodes.node_host_retention_effect"
 node_host_state_effect = "omnimarket.nodes.node_host_state_effect"
 node_host_storage_effect = "omnimarket.nodes.node_host_storage_effect"
 node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_effect"
@@ -1334,6 +1335,7 @@ node_skill_hygiene_validate_compute = "omnimarket.nodes.node_skill_hygiene_valid
 node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_verify_orchestrator"
 node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
+node_source_read_cache_effect = "omnimarket.nodes.node_source_read_cache_effect"
 node_stability_lane_refresh_effect = "omnimarket.nodes.node_stability_lane_refresh_effect"
 node_staging_readiness_compute = "omnimarket.nodes.node_staging_readiness_compute"
 node_stall_responder_compute = "omnimarket.nodes.node_stall_responder_compute"
@@ -1650,7 +1652,7 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-23865: infra#5901 (OMN-23896) grants the runtime account the two host disk tables in every shipped topology profile;
 # the core pin is unchanged.
 # OMN-23932: infra#5906 moves infra to core dev-20261111183916-a85cb916d4c1, the core tag below; the two tags move together.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261112083258-b0b00a52dd57" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261113041401-2b0c3eacdf4d" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
