@@ -127,7 +127,11 @@ def test_error_an_unknown_outcome_string_fails_model_validation() -> None:
     with pytest.raises(ValidationError):
         ModelScheduleRunEvent.model_validate(
             {
-                **_event("job_a", T0).model_dump(),
+                "job_id": "job_a",
+                "node_name": "node_job_a",
+                "tick_id": "tick-job_a",
+                "scheduled_for": T0,
+                "fired_at": T0,
                 "outcome": "exploded",
             }
         )
