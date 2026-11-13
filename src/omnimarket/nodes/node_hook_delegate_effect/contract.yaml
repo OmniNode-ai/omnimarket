@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_delegate_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Answer one delegated Claude Code subagent task. omniclaude's PreToolUse delegation hook classifies an
+  Agent or Task call and hands a delegatable one here, in process. The effect runs onex delegate with the
+  task class the classifier's intent maps to, within the request's time limit, and returns the answer, the
+  model and the run id. Every other outcome (no onex on PATH, a run that failed, timed out or gave no
+  answer, the ONEX gateway already routing the session) is returned so the hook passes the task through to
+  Claude Code: a subagent is never blocked without an answer.
+handler:
+  module: omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate
+  class: HandlerHookDelegate
+  input_model: omnimarket.nodes.node_hook_delegate_effect.models.model_hook_delegate.ModelHookDelegateRequest
+  output_model: omnimarket.nodes.node_hook_delegate_effect.models.model_hook_delegate.ModelHookDelegateResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by omniclaude's PreToolUse delegation hook runner.
+dependency_ownership:
+- cli
+protocol_dependencies:
+- name: cli
+  protocol: omnimarket.nodes.node_hook_delegate_effect.protocols.protocol_delegate_cli:ProtocolDelegateCli
+  bind_as: cli
+  required: true
+  implementations:
+  - handler:
+      name: AdapterDelegateCli
+      module: omnimarket.nodes.node_hook_delegate_effect.adapters.adapter_delegate_cli
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  side_effects:
+  - process-run
+  timeout_ms: 240000
+  runtime_profiles: []
+metadata:
+  ticket: OMN-23413
+  transport_type: local
+lifecycle: experimental
