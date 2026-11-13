@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Pause Check Findings Compute (OMN-24233, cutover plan step L6)
+#
+# pr-land's pause check, ported from the awk of pause_check.sh: for a batch of pull requests, the
+# findings that pause each one (LABEL, PARKED, HOLD, PR-ROW, REPO-PAUSE) and the rows that only give
+# context (ORDER, CONTEXT), decided over the work ledger rows with no clock, no I/O and no model.
+# The runtime command, with the ledger file read, the one live-log hold read and the counted file
+# fallback, is node_pause_check_runtime_effect.
+name: node_pause_check_findings_compute
+contract_name: node_pause_check_findings_compute
+node_name: node_pause_check_findings_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Decides the findings of the pause check for a batch of pull requests from the work ledger rows,
+  the labels of each pull request and the pause rules of the drain map (report row types, landing
+  order, parked repositories, declared repository pauses). Pure: the same request always gives the
+  same result. The runtime command adds the one live-log hold read and the counted file fallback.
+
+handler:
+  module: omnimarket.nodes.node_pause_check_findings_compute.handlers.handler_pause_check_findings
+  class: HandlerPauseCheckFindings
+  input_model: omnimarket.nodes.node_pause_check_findings_compute.models.model_pause_check.ModelPauseCheckRequest
+
+# HandlerPauseCheckFindings takes its overlay as a constructor parameter (read by
+# node_pause_check_runtime_effect), so it runs through that command, not handler_routing.
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: [effects]
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+input_model:
+  name: ModelPauseCheckRequest
+  module: omnimarket.nodes.node_pause_check_findings_compute.models.model_pause_check
+  description: The pull requests with their labels, the pause rules, the ledger text and the time.
+output_model:
+  name: ModelPauseCheckResult
+  module: omnimarket.nodes.node_pause_check_findings_compute.models.model_pause_check
+  description: Per pull request the findings, the context rows, the order tokens and the verdict.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  ticket: OMN-24233
+  transport_type: inmemory
