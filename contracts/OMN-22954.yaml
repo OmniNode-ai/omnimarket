@@ -45,6 +45,17 @@ dod_evidence:
         check_value: "uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k classify"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: dod-refusal-trace-title-ticket-wordings
+    description: "the refusal trace reads both handoff_row.sh wordings of the title-ticket refusal (must cite, must include) as one class"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k both_printings_of_the_title_ticket_refusal"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: command
+        check_value: "grep -F '(?:cite|include) the title ticket' src/omnimarket/nodes/node_install_refusal_trace_compute/handlers/handler_install_refusal_trace.py"
+        cwd: "."
+    binds_ac: ["AC1"]
   - id: dod-canary-first-reading
     description: "the install canary returns the first canary result with its date for the floor"
     source: manual
