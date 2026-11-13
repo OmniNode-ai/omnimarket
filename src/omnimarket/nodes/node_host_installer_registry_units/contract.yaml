@@ -156,6 +156,9 @@ units:
       # variables for. Not required: unset, the cache is off for the run and every step reads its sources as before.
       ONEX_SOURCE_CACHE_VALKEY_HOST: source_cache_valkey_host
       ONEX_SOURCE_CACHE_VALKEY_PORT: source_cache_valkey_port
+      # The reference of the Valkey password the board's source read cache uses (OMN-24112). Not required: unset, the
+      # cache connects with no password.
+      ONEX_SOURCE_CACHE_VALKEY_PASSWORD_REF: source_cache_valkey_password_ref
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST, ONEX_LEDGER_HOST_NAME]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
@@ -231,6 +234,9 @@ units:
       # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
+      # The bus lane the store reads and writes is named in the overlay, so the lane declaration is found from the workspace root (OMN-24052).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
     # h101's registry root links to an external volume: launchd could not open logs there (exit 78, EX_CONFIG, no log).
@@ -310,6 +316,9 @@ units:
       # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
+      # The bus lane the store reads and writes is named in the overlay, so the lane declaration is found from the workspace root (OMN-24052).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
   # The same sweep on a macOS lab host (OMN-23404): a launchd tick. The registry root of such a host links to an external
@@ -483,6 +492,9 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # The bus lane the store reads and writes is named in the overlay, so the lane declaration is found from the workspace root (OMN-24052).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/overlay-store-load/last-run.json
     state_directory: .onex_state/overlay-store-load
   # The daily memory pilot run (node_memory_pilot_effect, OMN-23619): once a day one pass runs the pilot and writes

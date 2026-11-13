@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelBranchDeployCommandRequest(BaseModel):
-    """The typed request to build and run the deploy agent trigger."""
+    """The typed request to sign and publish the deploy agent's rebuild command over the bus."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -28,12 +28,11 @@ class ModelBranchDeployCommandRequest(BaseModel):
 
 
 class ModelBranchDeployCommandResult(BaseModel):
-    """The typed result of running the deploy agent trigger."""
+    """The typed result of publishing the deploy agent's rebuild command over the bus (no trigger)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: UUID
     mode: Literal["deploy", "rollback"]
     status: Literal["published", "refused", "failed"]
-    exit_code: int
     detail: str = ""

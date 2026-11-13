@@ -77,6 +77,14 @@ class ModelRegistryUnitsRequest(BaseModel):
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
     )
     source_cache_valkey_port: str = Field(default="", pattern=r"^(?:[0-9]{1,5})?$")
+    # The reference of the Valkey password the board's source read cache uses (OMN-24112): a store path
+    # (secret://onex/<folder>/<KEY>) naming where the password is kept, never the password. A dry run prints the
+    # rendered unit, so a value must never be a request input. Empty defers to the installing shell; unset in both,
+    # the cache connects with no password.
+    source_cache_valkey_password_ref: str = Field(
+        default="",
+        pattern=r"^(?:secret://onex/(?:[A-Za-z0-9][A-Za-z0-9_.-]*/)*[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
+    )
 
 
 class ModelRegistryUnitsResult(BaseModel):
