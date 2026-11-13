@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-24235
+title: The results records service skips a runtime failure notice instead of treating it as a malformed result
+summary: 'When node_dod_verify fails, the runtime posts its boundary failure notice (omnibase_infra ModelBoundaryFailureTerminal: failure_class, failure_code, retryable, failure_reason, origin_topic,
+  terminalized_at; no ticket_id, started_at or completed_at) on onex.evt.omnimarket.dod-verify-completed.v1. DodVerdictProjectionWriter validated every message as ModelDodVerdictWire, raised "3 validation
+  errors for ModelDodVerdictWire" and the runtime routed each notice to onex.dlq.omnimarket.projection-dod-verdict-malformed.v1. The writer now recognises the runtime''s own notice model, stores nothing,
+  opens no database connection and reports a refusal; a payload that is neither a verdict nor a notice still raises to the DLQ.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24235-failure-notice-declined
+  statement: DodVerdictProjectionWriter declines a runtime failure notice and still dead-letters a payload that is neither a verdict nor a notice.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: DodVerdictProjectionWriter given a runtime failure notice (failure_class, failure_code, origin_topic, terminalized_at, no ticket_id) stores no row, raises nothing and reports it as
+      an expected skip -- falsifier: uv run pytest tests/test_dod_verdict_failure_terminal_decline.py -q fails at the merge base'
+  - id: AC2
+    statement: 'AC2: a real verdict still stores its row and a payload that is neither a verdict nor a failure notice still raises to the malformed DLQ -- falsifier: the same file fails when the failure-notice
+      check swallows a malformed verdict'
+  - id: AC3
+    statement: 'AC3: integrated: in the running dev runtime, over ten minutes after the change runs, the log carries no line ''Projection handler DodVerdictProjectionWriter routed malformed/erroring
+      event to DLQ'' for a failure notice -- falsifier: such a line with the failure_class field present'
+evidence_requirements:
+- kind: tests
+  description: The writer tests pass at the pushed head.
+  command: uv run pytest tests/test_dod_verdict_failure_terminal_decline.py tests/test_omn18900_dod_verdict_projection.py tests/test_golden_chain_projection_dod_verdict.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24235-ac1
+  description: 'AC1: a failure notice built from the runtime''s own model reports zero rows and one refusal, issues no statement and opens no connection; fails at the merge base (ValidationError).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_dod_verdict_failure_terminal_decline.py -q -n 0 --no-cov -p no:cacheprovider -k "declines or no_database"
+    cwd: .
+- id: dod-omn24235-ac2
+  description: 'AC2: a real verdict still writes one row; a verdict without ticket_id and a notice with an unknown extra key still raise; the verdict and the notice models are disjoint.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_dod_verdict_failure_terminal_decline.py tests/test_omn18900_dod_verdict_projection.py tests/test_golden_chain_projection_dod_verdict.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24235-ac3
+  description: 'hosted proxy for AC3: the writer tests pass; the in-runtime reading of the dev runtime log is taken on a lab host after the deploy and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_dod_verdict_failure_terminal_decline.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24235-integration-proof
+  description: the writer tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24235 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/test_dod_verdict_failure_terminal_decline.py -q --no-cov

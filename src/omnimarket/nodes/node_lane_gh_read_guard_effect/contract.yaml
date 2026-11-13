@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeLaneGithubReadGuardEffect (OMN-20916)
+#
+# RULING 2026-10-10T18:17:36Z: lanes must not be able to read GitHub at all, as
+# enforcement and not instruction. The gh shim (scripts/user-bin/gh) refuses a lane's gh
+# reads; this node refuses the three read paths around it: a GitHub MCP read
+# tool, a direct call to api.github.com, and the real gh binary run by its path.
+# The PreToolUse Bash guards entrypoint reaches it through one process call,
+# `python -m` the runtime_lane_github_read module.
+
+name: node_lane_gh_read_guard_effect
+version: "1.0.0"
+contract_name: node_lane_gh_read_guard_effect
+node_name: node_lane_gh_read_guard_effect
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: EFFECT_GENERIC
+
+description: >
+  Judges one PreToolUse call from a lane against the three GitHub read paths
+  that bypass the gh shim: a GitHub MCP server read tool, a Bash command that
+  reaches api.github.com through curl, wget or a script interpreter, and the
+  real gh binary run by its path with a read subcommand. A read from a lane is
+  refused with the local reader named; a write, and every call from the
+  operator's interactive session, is allowed. Reads only the first bytes of a
+  gh path to tell the shim from the real binary.
+
+input_model:
+  name: ModelLaneGithubReadRequest
+  module: omnimarket.nodes.node_lane_gh_read_guard_effect.models
+
+output_model:
+  name: ModelLaneGithubReadDecision
+  module: omnimarket.nodes.node_lane_gh_read_guard_effect.models
+
+handler:
+  module: omnimarket.nodes.node_lane_gh_read_guard_effect.handlers.handler_lane_github_read_guard
+  class: HandlerLaneGithubReadGuard
+  input_model: omnimarket.nodes.node_lane_gh_read_guard_effect.models.ModelLaneGithubReadRequest
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: lane_github_read_check
+      topic: onex.cmd.omniclaude.lane-github-read-check.v1
+      message_category: command
+      handler:
+        name: HandlerLaneGithubReadGuard
+        module: omnimarket.nodes.node_lane_gh_read_guard_effect.handlers.handler_lane_github_read_guard
+      event_model:
+        name: ModelLaneGithubReadRequest
+        module: omnimarket.nodes.node_lane_gh_read_guard_effect.models
+    - operation: runner_placement_snapshot_check
+      topic: onex.cmd.omniclaude.runner-placement-snapshot-check.v1
+      message_category: command
+      handler:
+        name: HandlerRunnerPlacementSnapshotPolicy
+        module: omnimarket.nodes.node_lane_gh_read_guard_effect.handlers.handler_runner_placement_snapshot_policy
+      event_model:
+        name: ModelRunnerPlacementSnapshotRequest
+        module: omnimarket.nodes.node_lane_gh_read_guard_effect.models.model_runner_placement_snapshot_request
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 5000
+
+capabilities:
+  - name: hook.lane_github_read.check
+    description: Refuse a lane's GitHub reads that bypass the gh shim
+    version: 1.0.0
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_LANE_READ_GUARD_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omniclaude.lane-github-read-check.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omniclaude.lane-github-read-check.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omniclaude.runner-placement-snapshot-check.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omniclaude.runner-placement-snapshot-check.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omniclaude.lane-github-read-checked.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omniclaude.lane-github-read-checked.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omniclaude.runner-placement-snapshot-checked.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omniclaude.runner-placement-snapshot-checked.v1, operation: DESCRIBE}
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniclaude.lane-github-read-check.v1
+    - onex.cmd.omniclaude.runner-placement-snapshot-check.v1
+  publish_topics:
+    - onex.evt.omniclaude.lane-github-read-checked.v1
+    - onex.evt.omniclaude.runner-placement-snapshot-checked.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniclaude.lane-github-read-check.v1
+  terminal_events:
+    success: onex.evt.omniclaude.lane-github-read-checked.v1
+
+terminal_event: onex.evt.omniclaude.lane-github-read-checked.v1
+
+# The runner-placement snapshot check is sent by the omniclaude hook entrypoint, and
+# its verdict is read there; no omnimarket contract sits on the other side.
+externally_produced_topics:
+  - topic: onex.cmd.omniclaude.runner-placement-snapshot-check.v1
+    producer: "the omniclaude PreToolUse hook entrypoint, which publishes this command directly -- not a node contract"
+
+externally_consumed_topics:
+  - onex.evt.omniclaude.runner-placement-snapshot-checked.v1  # consumed by the omniclaude PreToolUse hook
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-20916
+  maturity: alpha
+  tags:
+    - effect
+    - hooks
+    - github
+    - quota
